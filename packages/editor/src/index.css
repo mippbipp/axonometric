@@ -1,1 +1,26 @@
 @import "@axonometric/ui/globals.css";
+
+/* The map's paper-and-ink palette, after inkboard/system-atlas. */
+:root {
+  --paper: #e6dfbe;
+  --ink: #17170f;
+  --face: #efe9cc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1e1d15;
+    --ink: #e6dfbe;
+    --face: #2a2920;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-face: var(--face);
+  /* System fonts only: the page must work offline from disk. */
+  --font-mono:
+    ui-monospace, "SFMono-Regular", "Cascadia Mono", "Liberation Mono", Menlo,
+    Consolas, monospace;
+}
