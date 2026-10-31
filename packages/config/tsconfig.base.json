@@ -22,8 +22,10 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        // The spec builds on effect/cli and @effect/platform-node, which
-        // Effect 4 still marks unstable.
+        // Effect 4 marks these modules unstable. The CLI is built on
+        // effect/cli, @effect/platform-node and their file, path, stdio and
+        // child-process services, and the tests use @effect/vitest, so all of
+        // them are allowed.
         "allowedUnstableApis": [
           "effect/cli",
           "effect/FileSystem",

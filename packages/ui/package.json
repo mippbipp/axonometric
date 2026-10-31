@@ -17,7 +17,6 @@
     "cn": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "shadcn": "catalog:",
     "tw-animate-css": "catalog:"
   },
   "devDependencies": {

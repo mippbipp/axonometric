@@ -89,9 +89,10 @@ export const makeHome = Effect.fnUntraced(function* (files: HomeFiles) {
 }, Effect.provide(NodeServices.layer));
 
 /**
- * Runs the CLI in-process with `args`, then reports the exit code, the
- * captured output and every file in `home`. Pass `home` inside `args` for
- * commands that take one.
+ * Runs the CLI in-process with `args`. `home` is only used afterwards, to
+ * read back every file in it; it is not passed to the CLI. Pass `home` inside
+ * `args` for commands that take one. Returns the exit code, the captured
+ * output and those files.
  */
 export const runCli = Effect.fnUntraced(function* (
   home: string,

@@ -1,20 +1,25 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Path, Stream, String as Str } from "effect";
+import { Effect, FileSystem, Path, Stream, String as Str } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { makeHome } from "./harness.ts";
 
-// Runs `node dist/bin.mjs` from the home folder, so the bundle can't find
-// anything relative to the working directory. `pnpm test` builds the bundle
-// first.
+// Copies the built bundle into the temporary home folder and runs the copy
+// there. The home folder sits outside the repo, so no node_modules is in
+// reach and the run fails unless the bundle is self-contained. `pnpm test`
+// builds the bundle first.
 const runBundle = Effect.fnUntraced(function* (
   home: string,
   args: readonly string[]
 ) {
+  const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const bundle = path.join(import.meta.dirname, "..", "dist", "bin.mjs");
+  const built = path.join(import.meta.dirname, "..", "dist", "bin.mjs");
+  const bundle = path.join(home, "bin.mjs");
+
+  yield* fs.copyFile(built, bundle);
 
   const command = ChildProcess.make(process.execPath, [bundle, ...args], {
     cwd: home,

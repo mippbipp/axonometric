@@ -24,7 +24,6 @@ catalog:
   oxlint-tsgolint: ^7.0.2005
   react: ^19.3.1
   react-dom: ^19.3.1
-  shadcn: ^4.23.0
   tailwindcss: ^4.3.3
   tsdown: ^0.23.4
   turbo: ^2.11.10
