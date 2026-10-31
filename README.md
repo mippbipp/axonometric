@@ -6,6 +6,10 @@ Status: in design. The plan is [#1](https://github.com/mippbipp/axonometric/issu
 
 The design is inspired by [inkboard/system-atlas](https://github.com/inkboard/system-atlas).
 
+## Install
+
+With Nix, run it straight from the flake with `nix run github:mippbipp/axonometric -- --help`, or add `github:mippbipp/axonometric` as a flake input and install `packages.<system>.default`.
+
 ## Development
 
 The Nix flake's dev shell provides Node 24.22.1, pnpm, agent-browser and Playwright's Chromium. Enter it with `nix develop`, or let direnv load it from `.envrc`.
@@ -16,6 +20,8 @@ pnpm ox    # oxlint, oxfmt and the TypeScript typecheck
 pnpm test  # builds the CLI bundle, then runs the tests
 node packages/cli/src/bin.ts --help  # the CLI from source
 ```
+
+The Nix package in `nix/package.nix` pins a hash of the pnpm dependencies, so it changes whenever `pnpm-lock.yaml` does. After a lockfile change, run `nix build` and copy the `got: sha256-...` value from the hash mismatch error into `pnpmDeps.hash`. The Nix job in CI fails with the same error.
 
 ## License
 
