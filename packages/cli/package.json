@@ -1,0 +1,37 @@
+{
+  "name": "axonometric",
+  "version": "0.0.0",
+  "description": "Editable architecture maps built with an AI agent",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mippbipp/axonometric.git"
+  },
+  "bin": {
+    "axonometric": "dist/bin.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "dev": "node src/bin.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@axonometric/config": "workspace:*",
+    "@axonometric/contracts": "workspace:*",
+    "@effect/platform-node": "catalog:effect",
+    "@effect/vitest": "catalog:effect",
+    "@types/node": "catalog:",
+    "effect": "catalog:effect",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": ">=24.22.1"
+  }
+}
