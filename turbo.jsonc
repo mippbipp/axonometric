@@ -7,8 +7,15 @@
       "outputs": ["dist/**"],
     },
     "test": {
-      // The CLI's tests run its built bundle.
+      // The CLI's tests run its built bundle, and build pages from the
+      // editor's built HTML.
       "dependsOn": ["^build", "build"],
+      // Where Playwright finds Chromium: the dev shell points it at nixpkgs'
+      // browsers; CI installs them to Playwright's default cache.
+      "passThroughEnv": [
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS",
+      ],
     },
     // oxlint/oxfmt run from the repo root, so they are Root Tasks backed by
     // the root package.json scripts of the same names. Run them through
