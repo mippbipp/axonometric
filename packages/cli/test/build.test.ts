@@ -35,7 +35,7 @@ const layoutWith = (structures: Readonly<Record<string, PlacementInput>>) => {
 const buildWith = Effect.fnUntraced(function* (
   files: Readonly<Record<string, string>>
 ) {
-  const home = yield* makeHome({ ...minimalMap, ...files });
+  const home = yield* makeHome({ ...(yield* minimalMap), ...files });
 
   return yield* runCli(home, ["build", `${home}/pipeline/map`]);
 });

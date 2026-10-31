@@ -1,41 +1,27 @@
+import { NodeServices } from "@effect/platform-node";
+import { Effect, FileSystem, Path } from "effect";
+
 import type { HomeFiles } from "./harness.ts";
+
+const minimalMapFiles = ["pipeline/map/data.mjs", "pipeline/map/layout.json"];
 
 /**
  * The smallest map worth drawing: two structures and one hop, in a home
  * folder at `pipeline/map/`. `data.mjs` uses a shared constant and a template
  * string, which only work because the CLI imports it as a module.
+ *
+ * The files live in `test/fixtures/` so the binary and Nix package checks can
+ * build the same map from disk.
  */
-export const minimalMap = {
-  "pipeline/map/data.mjs": `const UPDATER = "updater";
+export const minimalMap: Effect.Effect<HomeFiles> = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const folder = path.join(import.meta.dirname, "fixtures");
+  const files: Record<string, string> = {};
 
-export default {
-  format: 1,
-  revision: 0,
-  structures: [
-    { id: UPDATER, name: "Flake updater" },
-    { id: "gate", name: \`Build \${"gate"}\` },
-  ],
-  hops: [
-    {
-      id: "h-update",
-      from: UPDATER,
-      to: "gate",
-      label: "update → build",
-      payload: { inputs: ["nixpkgs"] },
-    },
-  ],
-};
-`,
-  "pipeline/map/layout.json": `${JSON.stringify(
-    {
-      format: 1,
-      revision: 0,
-      structures: {
-        updater: { x: 0, y: 4, w: 2, d: 2 },
-        gate: { x: 4, y: 0, w: 2, d: 1.5 },
-      },
-    },
-    null,
-    2
-  )}\n`,
-} satisfies HomeFiles;
+  for (const name of minimalMapFiles) {
+    files[name] = yield* fs.readFileString(path.join(folder, name));
+  }
+
+  return files;
+}).pipe(Effect.orDie, Effect.provide(NodeServices.layer));

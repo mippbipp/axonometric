@@ -7,6 +7,8 @@ export default defineConfig({
     "pnpm-lock.yaml",
     // vendored oxlint plugin: don't reformat third-party-owned source
     "tools/oxlint/anti-slop/**",
+    // fixture maps are written the way an agent writes data.mjs
+    "**/test/fixtures/**",
   ],
   printWidth: 80,
   tabWidth: 2,

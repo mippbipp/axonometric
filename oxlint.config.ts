@@ -283,5 +283,7 @@ export default defineConfig({
     ".roo/**",
     ".windsurf/**",
     "tools/oxlint/anti-slop/**",
+    // fixture maps are written the way an agent writes data.mjs
+    "**/test/fixtures/**",
   ],
 });

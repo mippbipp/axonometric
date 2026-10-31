@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "revision": 0,
+  "structures": {
+    "updater": {
+      "x": 0,
+      "y": 4,
+      "w": 2,
+      "d": 2
+    },
+    "gate": {
+      "x": 4,
+      "y": 0,
+      "w": 2,
+      "d": 1.5
+    }
+  }
+}
