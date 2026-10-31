@@ -1,0 +1,9 @@
+{
+  "extends": "@axonometric/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  // Root-owned files only
+  "include": ["*.config.ts"],
+  "exclude": ["node_modules"]
+}
