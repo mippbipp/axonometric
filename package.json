@@ -1,0 +1,43 @@
+{
+  "name": "axonometric-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "effect-tsgo patch --oxlint && lefthook install",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "ox": "turbo run lint format typecheck",
+    "ox:fix": "turbo run typecheck format:fix",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix --fix-suggestions --fix-dangerously",
+    "format": "oxfmt --check",
+    "format:fix": "oxfmt --write",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@axonometric/config": "workspace:*",
+    "@effect/tsgo": "catalog:",
+    "@oxlint/plugins": "catalog:",
+    "@shadcn/lint": "catalog:",
+    "@types/node": "catalog:",
+    "effect": "catalog:effect",
+    "eslint-plugin-turbo": "catalog:",
+    "lefthook": "catalog:",
+    "oxfmt": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.22.1",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=24.22.1"
+  },
+  "packageManager": "pnpm@12.9.0"
+}
