@@ -23,10 +23,12 @@
   "devDependencies": {
     "@axonometric/config": "workspace:*",
     "@axonometric/contracts": "workspace:*",
+    "@axonometric/editor": "workspace:*",
     "@effect/platform-node": "catalog:effect",
     "@effect/vitest": "catalog:effect",
     "@types/node": "catalog:",
     "effect": "catalog:effect",
+    "playwright": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
