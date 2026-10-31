@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path, Stream, String as Str } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { minimalMap } from "./fixtures.ts";
 import { makeHome } from "./harness.ts";
 
 // Copies the built bundle into the temporary home folder and runs the copy
@@ -61,5 +62,30 @@ describe("the built bundle", () => {
       assert.include(result.stdout, "axonometric");
       assert.include(result.stdout, "--version");
     })
+  );
+
+  it.effect(
+    "build writes SYSTEM.md and the page with the editor embedded",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const home = yield* makeHome(minimalMap);
+
+        const result = yield* runBundle(home, ["build", "pipeline/map"]);
+
+        const page = yield* fs.readFileString(
+          path.join(home, "pipeline", "pipeline.html")
+        );
+
+        const systemMd = yield* fs.readFileString(
+          path.join(home, "pipeline", "SYSTEM.md")
+        );
+
+        assert.strictEqual(result.exitCode, 0, result.stderr);
+        assert.include(systemMd, "| `gate` | Build gate |");
+        assert.include(page, 'id="axonometric-map-state"');
+        assert.include(page, '<div id="root"></div>');
+      }).pipe(Effect.provide(NodeServices.layer))
   );
 });
