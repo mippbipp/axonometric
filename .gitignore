@@ -1,0 +1,23 @@
+# nix
+.direnv
+
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+*.tsbuildinfo
+
+# Turbo
+.turbo
+
+# Testing
+coverage
+
+# Logs
+*.log
+
+# Editors and OS
+.idea
+*.swp
+.DS_Store
