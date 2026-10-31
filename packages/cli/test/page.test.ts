@@ -50,7 +50,7 @@ const openPage = Effect.fnUntraced(function* (file: string) {
 
 const builtPage = Effect.gen(function* () {
   const path = yield* Path.Path;
-  const home = yield* makeHome(minimalMap);
+  const home = yield* makeHome(yield* minimalMap);
   const result = yield* runCli(home, ["build", `${home}/pipeline/map`]);
 
   assert.strictEqual(result.exitCode, 0, result.stderr);
