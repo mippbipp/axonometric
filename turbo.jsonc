@@ -37,7 +37,6 @@
     // Full `tsc --noEmit` per package program
     "typecheck": {
       "dependsOn": ["^typecheck"],
-      "with": ["//#typecheck"],
     },
     "dev": {
       "cache": false,
