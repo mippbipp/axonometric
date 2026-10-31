@@ -6,7 +6,7 @@
     ];
   };
 
-  description = "axonometric dev shell";
+  description = "axonometric: editable architecture maps built with an AI agent";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
@@ -22,7 +22,32 @@
       llm-agents,
       ...
     }:
-    flake-utils.lib.eachDefaultSystem (
+    let
+      # The systems the package is built for. The dev shell covers
+      # flake-utils' default systems.
+      packageSystems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+    in
+    flake-utils.lib.eachSystem packageSystems (
+      system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        axonometric = pkgs.callPackage ./nix/package.nix { };
+      in
+      {
+        packages.default = axonometric;
+        apps.default = {
+          type = "app";
+          program = nixpkgs.lib.getExe axonometric;
+          meta.description = axonometric.meta.description;
+        };
+        checks.default = axonometric;
+      }
+    )
+    // flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = import nixpkgs { inherit system; };

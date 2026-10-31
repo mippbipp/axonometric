@@ -1,5 +1,6 @@
 # nix
 .direnv
+/result
 
 # Dependencies
 node_modules
