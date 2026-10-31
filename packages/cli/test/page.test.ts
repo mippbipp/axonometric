@@ -9,9 +9,9 @@ import type { Page } from "playwright";
 import { minimalMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
 
-// Seam 2: the page that `build` wrote, opened from disk in Chromium. Vitest's
-// browser mode runs tests inside a page it serves, and that page can't read
-// a file:// page, so this test drives Playwright from Node instead.
+// These tests build a map through the CLI, open the HTML file it wrote in
+// Chromium, and check what's on screen. They drive Playwright from Node; see
+// docs/adr/0001-seam-2-drives-playwright-from-node.md for why.
 
 const launch = Effect.acquireRelease(
   Effect.promise(() => chromium.launch()),

@@ -1,6 +1,7 @@
 @import "@axonometric/ui/globals.css";
 
-/* The map's paper-and-ink palette, after inkboard/system-atlas. */
+/* The map's palette: dark ink on khaki paper, taken from inkboard/system-atlas,
+   the MIT project axonometric grew out of. */
 :root {
   --paper: #e6dfbe;
   --ink: #17170f;

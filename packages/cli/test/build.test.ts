@@ -1,5 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Order, Record as Rec } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Order,
+  Record as Rec,
+  String as Str,
+} from "effect";
 
 import { minimalMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
@@ -110,7 +116,7 @@ describe("build", () => {
         result.stderr,
         "data.mjs structures[1].id: expected a string. Give every structure an id."
       );
-      assert.include(result.stderr, "Nothing was written.");
+      assert.include(result.stderr, "build wrote nothing.");
     })
   );
 
@@ -205,6 +211,23 @@ describe("build", () => {
       assert.strictEqual(result.exitCode, 1);
       assert.include(result.stderr, "data.mjs structures: missing.");
       assert.include(result.stderr, "layout.json format: expected 1.");
+    })
+  );
+
+  it.effect("leaves no temporary files behind when a write fails", () =>
+    Effect.gen(function* () {
+      // A folder where the page should go makes renaming the page fail.
+      const result = yield* buildWith({
+        "pipeline/pipeline.html/keep.txt": "not a page",
+      });
+
+      assert.notStrictEqual(result.exitCode, 0);
+      assert.deepStrictEqual(
+        Arr.filter(Rec.keys(result.files), (file) =>
+          Str.endsWith(".tmp")(file)
+        ),
+        []
+      );
     })
   );
 

@@ -8,8 +8,8 @@ export type InlineState =
   | { readonly ok: false; readonly message: string };
 
 /** Reads the map state that `axonometric build` inlined into the page. */
-export const readInlineState = (page: Document): InlineState => {
-  const element = page.querySelector(`#${mapStateElementId}`);
+export const readInlineState = (document: Document): InlineState => {
+  const element = document.querySelector(`#${mapStateElementId}`);
 
   if (element === null) {
     return {

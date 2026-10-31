@@ -1,3 +1,5 @@
+export { describeCause } from "./cause.ts";
+
 export { fileVersionFields, formatVersion } from "./fields.ts";
 
 export { Layout, LayoutFile, Placement } from "./layout.ts";

@@ -1,5 +1,6 @@
 import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
+import { describeCause } from "./cause.ts";
 import { fileVersionFields, objectMessages } from "./fields.ts";
 
 const gridValue = (name: string, meaning: string) =>
@@ -76,7 +77,7 @@ const JsonText = Schema.String.pipe(
           catch: (cause) =>
             new SchemaIssue.InvalidValue(
               {
-                message: `isn't valid JSON: ${cause instanceof Error ? cause.message : String(cause)}. Fix the syntax.`,
+                message: `isn't valid JSON: ${describeCause(cause)}. Fix the syntax.`,
               },
               text,
               options

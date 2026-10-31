@@ -224,9 +224,9 @@ const routeAll = (state: MapState): readonly RoutedHop[] =>
  */
 export function IsoView({ state }: { readonly state: MapState }) {
   // useId's output can hold characters that don't belong in url(#...).
-  const ids = Str.replaceAll(/\W/gu, "")(useId());
-  const hatch = `${ids}hatch`;
-  const arrowhead = `${ids}arrowhead`;
+  const idPrefix = Str.replaceAll(/\W/gu, "")(useId());
+  const hatch = `${idPrefix}hatch`;
+  const arrowhead = `${idPrefix}arrowhead`;
   const placed = placeAll(state);
   const routed = routeAll(state);
 
@@ -237,12 +237,12 @@ export function IsoView({ state }: { readonly state: MapState }) {
 
   return (
     <svg
-      aria-labelledby={`${ids}title`}
+      aria-labelledby={`${idPrefix}title`}
       className="text-ink block size-full"
       viewBox={viewBox}
       preserveAspectRatio="xMidYMid meet"
     >
-      <title id={`${ids}title`}>{`Iso view of ${state.system}`}</title>
+      <title id={`${idPrefix}title`}>{`Iso view of ${state.system}`}</title>
       <defs>
         <pattern
           id={hatch}
