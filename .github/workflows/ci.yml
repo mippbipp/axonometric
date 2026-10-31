@@ -34,9 +34,28 @@ jobs:
 
       - run: pnpm ox
 
+      # The page tests open the built page in Chromium. Locally, the dev
+      # shell provides it.
+      - name: Install Chromium for Playwright
+        run: pnpm --filter axonometric exec playwright install --with-deps chromium
+
       - run: pnpm test
 
       - name: Run the built bundle
         run: |
           node packages/cli/dist/bin.mjs --version
           node packages/cli/dist/bin.mjs --help
+
+  react-doctor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/setup@v3
+        with:
+          cache: true
+          require-lockfile: true
+
+      # Fails on any React Doctor finding in the editor.
+      - run: pnpm run react-doctor

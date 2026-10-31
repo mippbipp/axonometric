@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@axonometric/contracts": "workspace:*",
     "@axonometric/ui": "workspace:*",
+    "effect": "catalog:effect",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
@@ -21,6 +23,7 @@
     "@vitejs/plugin-react": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
-    "vite": "catalog:"
+    "vite": "catalog:",
+    "vite-plugin-singlefile": "catalog:"
   }
 }

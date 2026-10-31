@@ -12,7 +12,8 @@
     "lint:fix": "oxlint --fix --fix-suggestions --fix-dangerously",
     "format": "oxfmt --check",
     "format:fix": "oxfmt --write",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "react-doctor": "react-doctor packages/editor --blocking warning --no-score --yes"
   },
   "devDependencies": {
     "@axonometric/config": "workspace:*",
@@ -26,6 +27,7 @@
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
+    "react-doctor": "catalog:",
     "turbo": "catalog:",
     "typescript": "catalog:"
   },

@@ -142,6 +142,10 @@ export default defineConfig({
     "eslint/no-empty-function": "off",
     // one declaration per statement; comma-joined declarations hurt readability
     "eslint/one-var": ["error", "never"],
+    // A schema and its type share a name (`const Hop = Schema.Struct(...)`
+    // and `type Hop = typeof Hop.Type`). TypeScript keeps values and types
+    // apart, and tsc reports real redeclarations itself.
+    "eslint/no-redeclare": "off",
     "eslint/no-underscore-dangle": "error",
 
     "import/no-namespace": "off",
