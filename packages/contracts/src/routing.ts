@@ -47,6 +47,9 @@ const pairPointCost = 8;
  */
 const backEdgeCost = 4;
 
+/** Each half unit a route's end sits from the middle of its edge. */
+const offCentreCost = 0.25;
+
 /** Running under a box costs more than any clear route could. */
 const crossCost = 1e6;
 
@@ -278,36 +281,40 @@ const along = (from: number, to: number) =>
   to - from >= 2 ? Arr.range(from + 1, to - 1) : [from, to];
 
 /**
- * The points on a footprint's edge a route may start or end at, with the
- * direction pointing out of the footprint and whether the point is on a
- * back edge. Corners are left out unless an edge has no other points.
+ * The points on a footprint's edge a route may start or end at, each with
+ * what it costs to use it. Corners are left out unless an edge has no other
+ * points. Points away from the middle of their edge cost a little more, so
+ * a lone route leaves from the middle. Points on the back edges (-x and -y)
+ * cost more again when `backCost` is set, because the box hides a route that
+ * ends there.
  */
-const edgePoints = (box: Box) => [
-  ...Arr.map(along(box.x0, box.x1), (x) => ({
-    x,
-    y: box.y1,
-    out: 1,
-    back: false,
-  })),
-  ...Arr.map(along(box.y0, box.y1), (y) => ({
-    x: box.x1,
-    y,
-    out: 0,
-    back: false,
-  })),
-  ...Arr.map(along(box.x0, box.x1), (x) => ({
-    x,
-    y: box.y0,
-    out: 3,
-    back: true,
-  })),
-  ...Arr.map(along(box.y0, box.y1), (y) => ({
-    x: box.x0,
-    y,
-    out: 2,
-    back: true,
-  })),
-];
+const edgePoints = (box: Box, backCost: number) => {
+  const midX = (box.x0 + box.x1) / 2;
+  const midY = (box.y0 + box.y1) / 2;
+
+  return [
+    ...Arr.map(along(box.x0, box.x1), (x) => ({
+      x,
+      y: box.y1,
+      cost: offCentreCost * Math.abs(x - midX),
+    })),
+    ...Arr.map(along(box.y0, box.y1), (y) => ({
+      x: box.x1,
+      y,
+      cost: offCentreCost * Math.abs(y - midY),
+    })),
+    ...Arr.map(along(box.x0, box.x1), (x) => ({
+      x,
+      y: box.y0,
+      cost: backCost + offCentreCost * Math.abs(x - midX),
+    })),
+    ...Arr.map(along(box.y0, box.y1), (y) => ({
+      x: box.x0,
+      y,
+      cost: backCost + offCentreCost * Math.abs(y - midY),
+    })),
+  ];
+};
 
 /** Distance in half units from a point to a box, along the axes. */
 const distanceTo = (
@@ -495,9 +502,9 @@ const searchRoute = (
     ends: new Set([from.id, to.id]),
     to,
     goals: new Map(
-      Arr.map(edgePoints(to), (point) => [
+      Arr.map(edgePoints(to, backEdgeCost), (point) => [
         pointIndex(grid, point),
-        point.back ? backEdgeCost : 0,
+        point.cost,
       ])
     ),
   };
@@ -508,11 +515,11 @@ const searchRoute = (
   const done = new Uint8Array(size);
   const queue = makeQueue();
 
-  for (const start of edgePoints(from)) {
+  for (const start of edgePoints(from, 0)) {
     const state = pointIndex(grid, start) * directions + noDirection;
 
-    cost[state] = 0;
-    queue.push(state, distanceTo(to, start));
+    cost[state] = start.cost;
+    queue.push(state, start.cost + distanceTo(to, start));
   }
 
   for (let state = queue.pop(); state !== undefined; state = queue.pop()) {
