@@ -231,21 +231,26 @@ describe("build", () => {
     })
   );
 
-  it.effect("writes nothing, and leaves no lock, when the map is invalid", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({
-        [dataFile]: dataWith(
-          [structure("updater", "Flake updater")],
-          '[{ id: "h", from: "updater", to: "nowhere", label: "x" }]'
-        ),
-        [layoutFile]: layoutWith({}),
-      });
+  it.effect(
+    "writes no map file, and leaves no lock, when the map is invalid",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* buildWith({
+          [dataFile]: dataWith(
+            [structure("updater", "Flake updater")],
+            '[{ id: "h", from: "updater", to: "nowhere", label: "x" }]'
+          ),
+          [layoutFile]: layoutWith({}),
+        });
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.deepStrictEqual(Arr.sort(Rec.keys(result.files), Order.String), [
-        dataFile,
-        layoutFile,
-      ]);
-    })
+        // The lock folder stays, holding only the .gitignore that keeps it
+        // out of git.
+        assert.strictEqual(result.exitCode, 1);
+        assert.deepStrictEqual(Arr.sort(Rec.keys(result.files), Order.String), [
+          "pipeline/map/.axonometric/.gitignore",
+          dataFile,
+          layoutFile,
+        ]);
+      })
   );
 });
