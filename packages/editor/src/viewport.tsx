@@ -1,3 +1,4 @@
+import { textZoomOf } from "@axonometric/contracts";
 import type { GroundProjection } from "@axonometric/contracts";
 import type { ReactNode } from "react";
 import {
@@ -11,6 +12,7 @@ import {
 
 import type { Bounds } from "./bounds.ts";
 import { controlClass } from "./control-class.ts";
+import { settledScale } from "./settled-scale.ts";
 
 /** Where the drawing sits in the canvas: its zoom and its pan, in pixels. */
 interface Camera {
@@ -42,20 +44,35 @@ const zoomStep = 1.25;
 
 const emptyBounds: Bounds = { minX: -1, minY: -1, maxX: 1, maxY: 1 };
 
-const fitted = (bounds: Bounds, size: Size): Camera => {
-  const width = Math.max(bounds.maxX - bounds.minX, 1);
-  const height = Math.max(bounds.maxY - bounds.minY, 1);
+const noFloor = (scale: number) => scale;
 
-  const scale = Math.max(
+/** The zoom that fits `bounds` in `size`, capped at `maxFitScale`. */
+const scaleToFit = (bounds: Bounds, size: Size) =>
+  Math.max(
     Math.min(
-      (size.width - fitPadding * 2) / width,
-      (size.height - fitPadding * 2) / height,
+      (size.width - fitPadding * 2) / Math.max(bounds.maxX - bounds.minX, 1),
+      (size.height - fitPadding * 2) / Math.max(bounds.maxY - bounds.minY, 1),
       maxFitScale
     ),
     0.01
   );
 
-  // Centring the bounds keeps a capped drawing in the middle of the window.
+const fitted = ({
+  boundsAt,
+  size,
+  floor,
+}: {
+  /** The drawing's bounds when it's drawn at a zoom. */
+  readonly boundsAt: (zoom: number) => Bounds;
+  readonly size: Size;
+  readonly floor: (scale: number) => number;
+}): Camera => {
+  const scale = floor(settledScale((zoom) => scaleToFit(boundsAt(zoom), size)));
+
+  const bounds = boundsAt(scale);
+
+  // Centring the bounds keeps a capped or floored drawing in the middle of
+  // the window.
 
   return {
     scale,
@@ -321,18 +338,34 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
  * fit. The camera lives in a transform on one group, so panning doesn't
  * re-render `children`. When `ground` changes to another view's projection,
  * the ground point in the middle stays in the middle, and a grid unit keeps
- * its length on screen.
+ * its length on screen. `onTextZoom` hears the zoom the text should be
+ * sized for (see `textZoomOf`) whenever it changes step.
  */
 export function Viewport({
   fit = emptyBounds,
+  fitAt,
   fitKey = "",
+  fitFloor = noFloor,
+  onTextZoom,
   ground,
   title,
   children,
 }: {
   readonly fit?: Bounds | undefined;
+  /**
+   * The bounds to fit when the drawing is shown at a zoom, for a drawing
+   * whose text grows as it zooms out. Takes the place of `fit`.
+   */
+  readonly fitAt?: ((zoom: number) => Bounds | undefined) | undefined;
   /** Names what `fit` holds, such as a chapter. A new key refits the view. */
   readonly fitKey?: string;
+  /**
+   * The zoom to fit at, given the zoom that fits `fit`: the same or larger.
+   * Defaults to the zoom that fits.
+   */
+  readonly fitFloor?: (scale: number) => number;
+  /** Called with the zoom text is sized for, each time it changes. */
+  readonly onTextZoom?: ((zoom: number) => void) | undefined;
   /** How the drawing projects the ground, to keep the middle on a switch. */
   readonly ground?: GroundProjection | undefined;
   readonly title: string;
@@ -343,10 +376,19 @@ export function Viewport({
   const camera = useRef<Camera>({ scale: 1, x: 0, y: 0 });
   const fitScale = useRef(1);
   const titleId = useId();
-  const bounds = useRef(fit);
+  const boundsAt = useRef((zoom: number) => fitAt?.(zoom) ?? fit);
+  const floor = useRef(fitFloor);
+  const textZoom = useRef<number | undefined>(undefined);
 
   useLayoutEffect(() => {
-    bounds.current = fit;
+    boundsAt.current = (zoom: number) => fitAt?.(zoom) ?? fit;
+    floor.current = fitFloor;
+  });
+
+  const hearTextZoom = useRef(onTextZoom);
+
+  useLayoutEffect(() => {
+    hearTextZoom.current = onTextZoom;
   });
 
   const show = useCallback((next: Camera) => {
@@ -359,6 +401,13 @@ export function Viewport({
     if (svgRef.current !== null) {
       svgRef.current.dataset.scale = String(next.scale);
     }
+
+    const zoom = textZoomOf(next.scale);
+
+    if (zoom !== textZoom.current) {
+      textZoom.current = zoom;
+      hearTextZoom.current?.(zoom);
+    }
   }, []);
 
   const zoomToFit = useCallback(() => {
@@ -368,9 +417,10 @@ export function Viewport({
       return;
     }
 
-    const next = fitted(bounds.current, {
-      width: svg.clientWidth,
-      height: svg.clientHeight,
+    const next = fitted({
+      boundsAt: boundsAt.current,
+      size: { width: svg.clientWidth, height: svg.clientHeight },
+      floor: floor.current,
     });
 
     fitScale.current = next.scale;

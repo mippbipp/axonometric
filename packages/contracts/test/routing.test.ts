@@ -448,7 +448,13 @@ describe("route checks", () => {
           return fresh;
         };
 
-        const clash = { between: ["route:h", "tag:m"] as const };
+        const clash = {
+          between: ["route:h", "tag:m"] as const,
+          parts: [
+            { kind: "route", id: "h" },
+            { kind: "tag", id: "m" },
+          ] as const,
+        };
 
         const warnings = clashWarnings({
           clashes: [

@@ -1,17 +1,20 @@
 import type {
   MapState,
+  Scene,
   SceneHop,
   SceneStructure,
   View,
 } from "@axonometric/contracts";
 import {
   arrowheadOf,
+  fitFloorOf,
   groundProjections,
   nameTagText,
-  sceneOf,
+  textSizes,
+  textZoomOf,
 } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
-import { use, useId, useMemo, useState } from "react";
+import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { fitOf } from "./fit.ts";
@@ -20,12 +23,21 @@ import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { groundOutline, routesOf, toPoints } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
+import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
 import { Viewport } from "./viewport.tsx";
 import { viewDrawings } from "./views.tsx";
+import type { ViewDrawing } from "./views.tsx";
 import { Zones } from "./zones.tsx";
 
-function NameTag({ placed }: { readonly placed: SceneStructure }) {
+function NameTag({
+  placed,
+  grow,
+}: {
+  readonly placed: SceneStructure;
+  /** How much the text is grown, to match the size the scene placed it at. */
+  readonly grow: number;
+}) {
   const { tag } = placed;
 
   return (
@@ -40,9 +52,10 @@ function NameTag({ placed }: { readonly placed: SceneStructure }) {
       />
       <text
         x={(tag.left + tag.right) / 2}
-        y={tag.top + 13}
+        y={tag.top + textSizes.tag.baseline * grow}
         textAnchor="middle"
-        className="fill-ink stroke-none font-mono text-xs"
+        fontSize={textSizes.tag.font * grow}
+        className="fill-ink stroke-none font-mono"
       >
         {nameTagText(placed.structure)}
       </text>
@@ -200,10 +213,13 @@ function HiddenHop({ routed }: { readonly routed: SceneHop }) {
 function HopLabel({
   routed,
   shown,
+  grow,
 }: {
   readonly routed: SceneHop;
   /** Whether to show the label even where the scene found no room. */
   readonly shown: boolean;
+  /** How much the text is grown, to match the size the scene placed it at. */
+  readonly grow: number;
 }) {
   const { hop, label, hoverLabel } = routed;
   const at = label ?? (shown ? hoverLabel : undefined);
@@ -213,9 +229,10 @@ function HopLabel({
       data-hop-label={hop.id}
       data-hop-label-fits={label !== undefined}
       x={(at.left + at.right) / 2}
-      y={at.bottom - 4}
+      y={at.bottom - textSizes.label.baseline * grow}
       textAnchor="middle"
-      className="fill-ink stroke-paper font-mono text-xs"
+      fontSize={textSizes.label.font * grow}
+      className="fill-ink stroke-paper font-mono"
       strokeWidth={3}
       paintOrder="stroke"
     >
@@ -252,6 +269,29 @@ function NewMarker({
 }
 
 const none: ReadonlySet<string> = new Set();
+
+/** Everything a scene draws, with the structures each belongs to. */
+const drawnIn = (scene: Scene, drawing: ViewDrawing) => [
+  ...Arr.map(scene.structures, (item) => ({
+    ids: [item.structure.id],
+    points: drawing.extentOf(item),
+  })),
+  ...Arr.map(scene.hops, ({ hop, points, label }) => ({
+    ids: [hop.from, hop.to],
+    points:
+      label === undefined
+        ? points
+        : [
+            ...points,
+            { sx: label.left, sy: label.top },
+            { sx: label.right, sy: label.bottom },
+          ],
+  })),
+  ...Arr.map(scene.zones, ({ zone, plate, title }) => ({
+    ids: zone.members,
+    points: [...plate, ...(title ?? [])],
+  })),
+];
 
 /**
  * The hop whose packet is selected, or `undefined` outside a playback
@@ -304,19 +344,26 @@ export function MapView({
   const hatch = `${idPrefix}hatch`;
   const selectedHop = useSelectedHop();
   const [hoveredHop, setHoveredHop] = useState<string | null>(null);
+  // The zoom the text is sized for, which the viewport reports as it zooms.
+  const [textZoom, setTextZoom] = useState(1);
 
-  const scene = useMemo(
-    () =>
-      sceneOf({
+  // Fitting tries a few zooms, and the one it settles on is the one drawn,
+  // so scenes are cached per zoom the text is sized for.
+  const sceneAt = useCallback(
+    (zoom: number) =>
+      cachedSceneOf({
         data: state.data,
         layout: state.layout,
         revealed,
         routes: routesOf({ data: state.data, layout: state.layout, revealed }),
         labelFirst,
         view,
+        zoom,
       }),
     [state.data, state.layout, revealed, labelFirst, view]
   );
+
+  const scene = sceneAt(textZoom);
 
   const drawing = viewDrawings[view];
   const { Structure } = drawing;
@@ -327,36 +374,46 @@ export function MapView({
       )
     : [];
 
-  const fitted = fitOf({
-    drawn: [
-      ...Arr.map(scene.structures, (item) => ({
-        ids: [item.structure.id],
-        points: drawing.extentOf(item),
-      })),
-      ...Arr.map(scene.hops, ({ hop, points, label }) => ({
-        ids: [hop.from, hop.to],
-        points:
-          label === undefined
-            ? points
-            : [
-                ...points,
-                { sx: label.left, sy: label.top },
-                { sx: label.right, sy: label.bottom },
-              ],
-      })),
-      ...Arr.map(scene.zones, ({ zone, plate, title }) => ({
-        ids: zone.members,
-        points: [...plate, ...(title ?? [])],
-      })),
-    ],
-    fitTo: [...fitTo],
-  });
+  const fitIds = useMemo(() => [...fitTo], [fitTo]);
+
+  const fitAt = useCallback(
+    (zoom: number) => {
+      const drawn = drawnIn(sceneAt(textZoomOf(zoom)), drawing);
+
+      return fitOf({ drawn, fitTo: fitIds }).bounds;
+    },
+    [sceneAt, drawing, fitIds]
+  );
+
+  // The floor looks at name tags only, which place quickly.
+  const fitFloor = useCallback(
+    (scale: number) =>
+      fitFloorOf(
+        {
+          data: state.data,
+          layout: state.layout,
+          revealed,
+          routes: routesOf({
+            data: state.data,
+            layout: state.layout,
+            revealed,
+          }),
+          view,
+        },
+        scale
+      ),
+    [state.data, state.layout, revealed, view]
+  );
+
+  const key = fitKey ?? fitOf({ drawn: [], fitTo: fitIds }).key;
 
   return (
     <Viewport
       title={`${drawing.title} of ${state.data.overview.title}`}
-      fit={fitted.bounds}
-      fitKey={fitKey ?? fitted.key}
+      fitAt={fitAt}
+      fitKey={key}
+      fitFloor={fitFloor}
+      onTextZoom={setTextZoom}
       ground={groundProjections[view]}
     >
       <defs>
@@ -413,7 +470,11 @@ export function MapView({
         </g>
         <g>
           {Arr.map(scene.structures, (item) => (
-            <NameTag key={item.structure.id} placed={item} />
+            <NameTag
+              key={item.structure.id}
+              placed={item}
+              grow={scene.growth.tag}
+            />
           ))}
         </g>
         <PendingBadges structures={scene.structures} />
@@ -424,6 +485,7 @@ export function MapView({
             key={item.hop.id}
             routed={item}
             shown={item.hop.id === selectedHop || item.hop.id === hoveredHop}
+            grow={scene.growth.label}
           />
         ))}
       </g>

@@ -1,6 +1,17 @@
-import type { Placement, Step, Structure } from "@axonometric/contracts";
+import {
+  placeMovingNameTags,
+  textSizes,
+  textZoomOf,
+} from "@axonometric/contracts";
+import type {
+  Placement,
+  ScreenRect,
+  Step,
+  Structure,
+} from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
-import { useId, useMemo, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useFrameClock } from "./frame-clock.ts";
@@ -14,6 +25,7 @@ import {
   pointAlong,
 } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
+import { settledScale } from "./settled-scale.ts";
 import { BoxShape } from "./shapes.tsx";
 
 /** Height of a step's box above the ground, in screen units. */
@@ -69,41 +81,76 @@ function StepBox({
 }
 
 /**
- * A step's name tag under its front corner. Tags draw after every box, so the
- * next step's box doesn't hide them.
+ * A step's name tag where the placement put it: under its front corner when
+ * that's clear. Tags draw after every box, so the next step's box doesn't
+ * hide them.
  */
 function StepTag({
-  step,
   index,
+  label,
+  rect,
 }: {
-  readonly step: Step;
   readonly index: number;
+  readonly label: string;
+  readonly rect: ScreenRect;
 }) {
-  const ground = corners(placementOf(index), 0);
-  const label = `${index + 1} · ${step.name}`;
-  const tagWidth = label.length * 7.2 + 12;
+  // The tag's rect is sized for its text, grown to stay readable.
+  const grow = (rect.bottom - rect.top) / textSizes.tag.height;
 
   return (
-    <g className="stroke-ink pointer-events-none">
+    <g data-step-tag={index + 1} className="stroke-ink pointer-events-none">
       <rect
-        x={ground.front.sx - tagWidth / 2}
-        y={ground.front.sy + 9}
-        width={tagWidth}
-        height={18}
+        x={rect.left}
+        y={rect.top}
+        width={rect.right - rect.left}
+        height={rect.bottom - rect.top}
         className="fill-paper"
         strokeWidth={0.9}
       />
       <text
-        x={ground.front.sx}
-        y={ground.front.sy + 22}
+        x={(rect.left + rect.right) / 2}
+        y={rect.top + textSizes.tag.baseline * grow}
         textAnchor="middle"
-        className="fill-ink stroke-none font-mono text-xs"
+        fontSize={textSizes.tag.font * grow}
+        className="fill-ink stroke-none font-mono"
       >
         {label}
       </text>
     </g>
   );
 }
+
+const labelOf = (step: Step, index: number) => `${index + 1} · ${step.name}`;
+
+/** A step box's outline on screen, clockwise from the top back corner. */
+const stepOutline = (index: number) => {
+  const ground = corners(placementOf(index), 0);
+  const top = corners(placementOf(index), boxHeight);
+
+  return [
+    top.back,
+    top.right,
+    ground.right,
+    ground.front,
+    ground.left,
+    top.left,
+  ];
+};
+
+/**
+ * Where each step's tag goes at the size it's drawn at `zoom`: under its
+ * front corner, or the nearest spot clear of every step's box and the
+ * tags before it.
+ */
+const stepTagsAt = (steps: readonly Step[], zoom: number) =>
+  placeMovingNameTags({
+    boxes: Arr.map(steps, (step, index) => ({
+      placement: placementOf(index),
+      outline: stepOutline(index),
+      text: labelOf(step, index),
+    })),
+    zoom,
+  });
 
 /** The routes between consecutive steps, on screen. */
 const routesOf = (steps: readonly Step[]) =>
@@ -114,26 +161,99 @@ const routesOf = (steps: readonly Step[]) =>
     )
   );
 
-const viewBoxOf = (points: readonly ScreenPoint[]) => {
+interface ViewBox {
+  readonly minX: number;
+  readonly minY: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+const viewBoxOf = (points: readonly ScreenPoint[]): ViewBox => {
   const xs = Arr.map(points, (point) => point.sx);
   const ys = Arr.map(points, (point) => point.sy);
   const minX = Math.min(...xs) - margin;
   const minY = Math.min(...ys) - margin;
 
-  return `${minX} ${minY} ${Math.max(...xs) + margin - minX} ${Math.max(...ys) + margin - minY}`;
+  return {
+    minX,
+    minY,
+    width: Math.max(...xs) + margin - minX,
+    height: Math.max(...ys) + margin - minY,
+  };
 };
 
-const extentOf = (index: number) => {
-  const placement = placementOf(index);
-  const ground = corners(placement, 0);
-  const top = corners(placement, boxHeight);
+/** Every point the steps' boxes and `tags` reach. */
+const extentOf = (steps: readonly Step[], tags: readonly ScreenRect[]) => [
+  ...Arr.flatMap(steps, (_, index) => {
+    const top = corners(placementOf(index), boxHeight);
+    const ground = corners(placementOf(index), 0);
 
-  return [
-    top.back,
-    top.left,
-    top.right,
-    { sx: ground.front.sx, sy: ground.front.sy + 30 },
-  ];
+    return [top.back, top.left, top.right, ground.front];
+  }),
+  ...Arr.flatMap(tags, (tag) => [
+    { sx: tag.left, sy: tag.top },
+    { sx: tag.right, sy: tag.bottom },
+  ]),
+];
+
+/**
+ * The inside view's drawing in a canvas of `size`: its viewBox, and where
+ * the step tags go at the zoom that viewBox draws them, grown to stay
+ * readable. The view has no viewport to read a zoom from, so it settles on
+ * one the way a viewport's fit does (see `settledScale`).
+ */
+const insideLayoutOf = (
+  steps: readonly Step[],
+  size: { readonly width: number; readonly height: number }
+) => {
+  const layoutAt = (zoom: number) => {
+    const tags = stepTagsAt(steps, textZoomOf(zoom));
+
+    return { tags, box: viewBoxOf(extentOf(steps, tags)) };
+  };
+
+  const scaleAt = (zoom: number) => {
+    const { box } = layoutAt(zoom);
+
+    return size.width <= 0 || size.height <= 0
+      ? 1
+      : Math.min(size.width / box.width, size.height / box.height);
+  };
+
+  return layoutAt(settledScale(scaleAt));
+};
+
+/** The size of `element` on screen, kept up to date as it's resized. */
+const useSizeOf = (element: RefObject<Element | null>) => {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    const target = element.current;
+
+    if (target === null) {
+      return () => {};
+    }
+
+    const measure = () => {
+      setSize((current) =>
+        current.width === target.clientWidth &&
+        current.height === target.clientHeight
+          ? current
+          : { width: target.clientWidth, height: target.clientHeight }
+      );
+    };
+
+    const observer = new ResizeObserver(measure);
+
+    measure();
+    observer.observe(target);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [element]);
+
+  return size;
 };
 
 interface InsideClock {
@@ -189,9 +309,12 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
   const steps = useMemo(() => structure.steps ?? [], [structure.steps]);
   const routes = useMemo(() => routesOf(steps), [steps]);
 
-  const viewBox = useMemo(
-    () => viewBoxOf(Arr.flatMap(steps, (_, index) => extentOf(index))),
-    [steps]
+  const svgRef = useRef<SVGSVGElement>(null);
+  const size = useSizeOf(svgRef);
+
+  const { box, tags } = useMemo(
+    () => insideLayoutOf(steps, size),
+    [steps, size]
   );
 
   const { clock, playing, reducedMotion, play, pause, step } = useInsideClock(
@@ -207,9 +330,10 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
   return (
     <div data-inside-view={structure.id} className="relative size-full">
       <svg
+        ref={svgRef}
         aria-labelledby={`${idPrefix}title`}
         className="text-ink block size-full"
-        viewBox={viewBox}
+        viewBox={`${box.minX} ${box.minY} ${box.width} ${box.height}`}
         preserveAspectRatio="xMidYMid meet"
       >
         <title id={`${idPrefix}title`}>{`Inside ${structure.name}`}</title>
@@ -261,7 +385,12 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
         </g>
         <g>
           {Arr.map(steps, (item, index) => (
-            <StepTag key={item.name} step={item} index={index} />
+            <StepTag
+              key={item.name}
+              index={index}
+              label={labelOf(item, index)}
+              rect={tags[index] ?? { left: 0, top: 0, right: 0, bottom: 0 }}
+            />
           ))}
         </g>
         {packet === undefined ? null : (

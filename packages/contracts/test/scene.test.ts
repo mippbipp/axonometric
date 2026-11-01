@@ -4,7 +4,6 @@ import {
   Effect,
   Option,
   Record as Rec,
-  Schema,
   String as Str,
 } from "effect";
 import { vi } from "vitest";
@@ -19,8 +18,6 @@ import {
   groundProjections,
   labelGap,
   labelReachLimit,
-  Layout,
-  MapData,
   routeCap,
   routeLength,
   routeRevealed,
@@ -35,53 +32,15 @@ import {
 } from "../src/index.ts";
 import type {
   GridPoint,
+  Layout,
+  MapData,
   SceneClash,
   Placement,
   ScreenPoint,
   ScreenRect,
 } from "../src/index.ts";
+import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
 import { facingEdges, outsideArea, routeArea } from "./route-geometry.ts";
-
-/** A fixture map from the CLI's test fixtures, decoded. */
-const fixture = (name: string) =>
-  Effect.gen(function* () {
-    const folder = new URL(
-      `../../cli/test/fixtures/${name}/map/`,
-      import.meta.url
-    );
-
-    const module: unknown = yield* Effect.promise(
-      () => import(new URL("data.mjs", folder).href)
-    );
-
-    const layoutModule: unknown = yield* Effect.promise(
-      () =>
-        import(new URL("layout.json", folder).href, { with: { type: "json" } })
-    );
-
-    const data = yield* Schema.decodeUnknownEffect(
-      Schema.Struct({ default: MapData })
-    )(module);
-
-    const layout: Layout = yield* Schema.decodeUnknownEffect(
-      Schema.Struct({ default: Layout })
-    )(layoutModule).pipe(Effect.map(({ default: value }) => value));
-
-    return { data: data.default, layout };
-  }).pipe(Effect.orDie);
-
-/** What each chapter shows: its reveals and every earlier chapter's. */
-const chaptersOf = (data: MapData) =>
-  Arr.map(data.chapters, (chapter, index) => ({
-    id: chapter.id,
-    plays: chapter.plays,
-    revealed: new Set(
-      Arr.flatMap(data.chapters.slice(0, index + 1), ({ reveals }) => reveals)
-    ),
-  }));
-
-const everything = (data: MapData) =>
-  new Set(Arr.map(data.structures, ({ id }) => id));
 
 /** Which edge of a footprint a point sits on: +x, +y, -x or -y. */
 /**
