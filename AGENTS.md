@@ -12,8 +12,6 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 
 ## Agent skills
 
-Always use the unslop skill.
-
 ### Issue tracker
 
 Issues live in GitHub Issues (`mippbipp/axonometric`, via `gh`). See `docs/agents/issue-tracker.md`.
