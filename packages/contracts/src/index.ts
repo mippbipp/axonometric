@@ -49,7 +49,6 @@ export {
   placeStructures,
   structureGap,
   zoneGap,
-  zonePadding,
 } from "./placement.ts";
 
 export type { PlacedLayout } from "./placement.ts";
@@ -57,6 +56,10 @@ export type { PlacedLayout } from "./placement.ts";
 export { routeHops } from "./routing.ts";
 
 export type { HopRoute } from "./routing.ts";
+
+export { zonePadding, zonesOf } from "./zones.ts";
+
+export type { Zone, ZoneSource } from "./zones.ts";
 
 export {
   Chapter,

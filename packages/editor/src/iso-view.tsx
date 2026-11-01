@@ -11,6 +11,7 @@ import {
   nameTagRect,
   nameTagText,
   tagDrop,
+  zonesOf,
 } from "@axonometric/contracts";
 import { Array as Arr, Order, String as Str } from "effect";
 import { useId } from "react";
@@ -27,6 +28,8 @@ import {
 import type { HiddenStretch, ScreenPoint } from "./iso.ts";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
+import { drawZones } from "./zone-outline.ts";
+import { Zones } from "./zones.tsx";
 
 interface PlacedStructure {
   readonly structure: Structure;
@@ -280,7 +283,8 @@ const none: ReadonlySet<string> = new Set();
 /**
  * The iso view of a map: each revealed structure as its shape with a name
  * tag, and each hop between revealed structures as an arrow along the
- * ground, in a viewport you can pan and zoom. The view fits the structures in
+ * ground, over each group's zone fitted to its revealed structures, in a
+ * viewport you can pan and zoom. The view fits the structures in
  * `fitTo` and the hops between them, and fits again when `fitKey` changes.
  * `children` draw on top, in the same coordinates, and pan and zoom with the
  * drawing.
@@ -315,6 +319,11 @@ export function IsoView({
   const placed = placeAll(state, revealed);
   const routed = routeAll(state, placed);
 
+  const zones = drawZones({
+    zones: zonesOf({ data: state.data, layout: state.layout, revealed }),
+    structures: placed,
+  });
+
   const marked = Arr.filter(placed, ({ structure }) =>
     newlyRevealed.has(structure.id)
   );
@@ -335,6 +344,10 @@ export function IsoView({
                 { sx: label.left, sy: label.top },
                 { sx: label.right, sy: label.bottom },
               ],
+      })),
+      ...Arr.map(zones, ({ zone, plate }) => ({
+        ids: zone.members,
+        points: plate,
       })),
     ],
     fitTo: [...fitTo],
@@ -375,6 +388,7 @@ export function IsoView({
           <path d="M0,0 L10,5 L0,10 z" className="fill-ink stroke-none" />
         </marker>
       </defs>
+      <Zones zones={zones} />
       <g>
         {Arr.map(marked, (item) => (
           <NewMarker key={item.structure.id} placed={item} />

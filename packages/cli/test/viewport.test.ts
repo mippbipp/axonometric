@@ -46,7 +46,10 @@ const waitForMove = (page: Page, previous: string) =>
 
 /** The box holding every structure and name tag on screen. */
 const drawingOf = Effect.fnUntraced(function* (page: Page) {
-  const drawn = yield* boxesOf(page, "[data-structure], [data-name-tag]");
+  const drawn = yield* boxesOf(
+    page,
+    "[data-structure], [data-name-tag], [data-zone]"
+  );
 
   return {
     left: Math.min(...Arr.map(drawn, (box) => box.x)),
@@ -132,33 +135,37 @@ describe("the viewport", () => {
     )
   );
 
-  it.live("stops zooming at its limits", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* builtPage;
-        const fitted = yield* scaleOf(page);
+  it.live(
+    "stops zooming at its limits",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* builtPage;
+          const fitted = yield* scaleOf(page);
 
-        // Each step zooms by e^3, about 20 times, so a few reach either
-        // limit. Many small steps time out on slower machines.
-        for (let turn = 0; turn < 4; turn += 1) {
-          yield* wheelAtCentre(page, -2000);
-        }
+          // Each step zooms by e^3, about 20 times, so a few reach either
+          // limit. Many small steps time out on slower machines.
+          for (let turn = 0; turn < 4; turn += 1) {
+            yield* wheelAtCentre(page, -2000);
+          }
 
-        yield* waitForScale(page, `> ${fitted * 2}`);
-        const most = yield* scaleOf(page);
+          yield* waitForScale(page, `> ${fitted * 2}`);
+          const most = yield* scaleOf(page);
 
-        for (let turn = 0; turn < 8; turn += 1) {
-          yield* wheelAtCentre(page, 2000);
-        }
+          for (let turn = 0; turn < 8; turn += 1) {
+            yield* wheelAtCentre(page, 2000);
+          }
 
-        yield* waitForScale(page, `< ${fitted}`);
-        const least = yield* scaleOf(page);
+          yield* waitForScale(page, `< ${fitted}`);
+          const least = yield* scaleOf(page);
 
-        assert.isBelow(most, fitted * 10);
-        assert.isAbove(least, fitted / 10);
-        assert.isBelow(least, fitted);
-      })
-    )
+          assert.isBelow(most, fitted * 10);
+          assert.isAbove(least, fitted / 10);
+          assert.isBelow(least, fitted);
+        })
+      ),
+    // Wheel turns through Playwright are slow on some machines.
+    15_000
   );
 
   it.live("pans when dragged on empty space", () =>

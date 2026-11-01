@@ -7,6 +7,7 @@ import type { MapData, Structure } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
 import { routeHops } from "./routing.ts";
+import { zonesOf } from "./zones.ts";
 
 /** A structure and where the layout puts it. */
 export interface PlacedStructure {
@@ -82,6 +83,24 @@ const coveredTags = (placed: readonly PlacedStructure[]) =>
     )
   );
 
+const overlappingZones = (data: MapData, layout: Layout) => {
+  const zones = zonesOf({ data, layout });
+
+  return Arr.flatMap(zones, (first, index) =>
+    Arr.flatMap(zones.slice(index + 1), (second) =>
+      footprintsOverlap(first.box, second.box)
+        ? [
+            mapWarning({
+              file: "layout.json",
+              path: [],
+              message: `the zones of groups "${first.group.id}" and "${second.group.id}" overlap. Move one group's structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.`,
+            }),
+          ]
+        : []
+    )
+  );
+};
+
 const staleEntries = (data: MapData, layout: Layout) => {
   const ids = new Set(Arr.map(data.structures, ({ id }) => id));
 
@@ -149,8 +168,9 @@ const staleRoutes = (data: MapData, layout: Layout) => {
 /**
  * Warnings about how the layout reads: entries for structures that no longer
  * exist, route overrides for hops that no longer exist, footprints that
- * overlap, name tags drawn over other boxes, and routes that run under boxes.
- * A structure with no placement gets nothing, because `build` places it.
+ * overlap, name tags drawn over other boxes, zones that overlap, and routes
+ * that run under boxes. A structure with no placement gets nothing, because
+ * `build` places it.
  */
 export const checkLayout: {
   (layout: Layout): (data: MapData) => readonly MapProblem[];
@@ -163,6 +183,7 @@ export const checkLayout: {
     ...staleRoutes(data, layout),
     ...overlaps(placed),
     ...coveredTags(placed),
+    ...overlappingZones(data, layout),
     ...blockedRoutes(data, layout),
   ];
 });

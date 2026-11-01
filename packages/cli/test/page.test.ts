@@ -76,10 +76,14 @@ describe("the built page", () => {
       Effect.gen(function* () {
         const { page } = yield* builtPage;
         const [svg] = yield* boxesOf(page, "svg");
-        const drawn = yield* boxesOf(page, "[data-structure], [data-name-tag]");
+
+        const drawn = yield* boxesOf(
+          page,
+          "[data-structure], [data-name-tag], [data-zone]"
+        );
 
         assert.isDefined(svg);
-        assert.lengthOf(drawn, 4);
+        assert.lengthOf(drawn, 5);
 
         if (svg === undefined) {
           return;
