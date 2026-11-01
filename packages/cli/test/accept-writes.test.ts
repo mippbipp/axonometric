@@ -129,7 +129,8 @@ const snapshot = Effect.fnUntraced(function* (root: string) {
     const info = yield* fs.stat(path.join(root, entry));
 
     if (info.type === "File") {
-      files[entry] = yield* fs.readFileString(path.join(root, entry));
+      files[Arr.join(Str.split(entry, path.sep), "/")] =
+        yield* fs.readFileString(path.join(root, entry));
     }
   }
 
