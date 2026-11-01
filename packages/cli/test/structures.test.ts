@@ -69,6 +69,14 @@ const pin = Effect.fnUntraced(function* (page: Page, id: string) {
   yield* waitFor(page, `[data-structure-panel="${id}"][data-pinned]`);
 });
 
+/** Waits two animation frames, so a resize has been observed and drawn. */
+const nextFrames = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate(
+      "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+    )
+  );
+
 /** Clicks near the view's top-right corner, where nothing is drawn. */
 const clickEmptySpace = Effect.fnUntraced(function* (page: Page) {
   const surface = page.locator("[data-map-surface]");
@@ -287,6 +295,40 @@ describe("clicking a structure", () => {
           yield* count(page, '[data-structure="page"][data-selected="true"]'),
           1
         );
+      })
+    )
+  );
+
+  it.live("then the map keeps its size and zoom", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+
+        // At this width the hints for a pinned structure would wrap onto a
+        // second line if the hint bar let them.
+        yield* Effect.promise(() =>
+          page.setViewportSize({ width: 900, height: 640 })
+        );
+
+        const scale = () =>
+          Effect.promise(() =>
+            page.evaluate<number>(
+              'Number(document.querySelector("svg[data-scale]").dataset.scale)'
+            )
+          );
+
+        yield* click(page, '[aria-label="Zoom in"]');
+
+        const zoomed = yield* scale();
+        const [before] = yield* boxesOf(page, "svg[data-scale]");
+
+        yield* pin(page, "page");
+        yield* nextFrames(page);
+
+        const [after] = yield* boxesOf(page, "svg[data-scale]");
+
+        assert.deepStrictEqual(after, before);
+        assert.strictEqual(yield* scale(), zoomed);
       })
     )
   );

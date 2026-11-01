@@ -134,7 +134,9 @@ function WalkthroughPage() {
         </MapSurface>
         <SidePanel />
       </div>
-      <footer className="border-ink flex flex-wrap gap-x-4 border-t px-4 py-1 text-xs opacity-70">
+      {/* One line, clipped, so changing hints never resizes the canvas: a
+          resize refits the view and loses the engineer's zoom. */}
+      <footer className="border-ink flex h-6 shrink-0 gap-x-4 overflow-hidden border-t px-4 py-1 text-xs whitespace-nowrap opacity-70">
         {Arr.map(
           hintsOf({
             selected: selected !== null,
