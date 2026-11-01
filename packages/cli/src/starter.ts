@@ -41,6 +41,12 @@ export default {
       oneLiner: "Takes requests from clients and answers them.",
       whatItDoes: "Checks each request, does the work and replies.",
       howItsBuilt: "Name the files, framework and endpoints behind it.",
+      // The files this structure's text describes, from the root of the git
+      // repo. The commit records which version you read. check warns when
+      // the file has changed since, so you know to reread it and update the
+      // text. Leave commit out to follow the current branch. Replace this
+      // example with a real file, or remove it.
+      // sources: [{ path: "src/api/server.ts", commit: "3f2a9c1" }],
       // Questions keep their id forever, even after they're resolved.
       questions: [
         {

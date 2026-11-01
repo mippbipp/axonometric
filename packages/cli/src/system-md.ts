@@ -1,9 +1,15 @@
-import { statusLabels } from "@axonometric/contracts";
+import {
+  normalSourcePath,
+  sourceKey,
+  statusLabels,
+  uniqueSources,
+} from "@axonometric/contracts";
 import type {
   Hop,
   MapData,
   MapState,
   Question,
+  Source,
   Structure,
 } from "@axonometric/contracts";
 import {
@@ -134,9 +140,23 @@ const questionLine = (question: Question, owner: Structure) =>
     ? `- **${question.id}** (${owner.name}) ${question.text}`
     : `- **${question.id}** (${owner.name}) ${question.text} **Answer:** ${question.answer} _(${question.answeredBy}, ${question.answeredOn})_`;
 
-const structureLines = (structure: Structure) => {
+/** Finds the web address `build` worked out for a source, if any. */
+type LinkOf = (source: Source) => string | undefined;
+
+const sourceLine = (source: Source, linkOf: LinkOf) => {
+  const name = code(normalSourcePath(source.path));
+  const url = linkOf(source);
+  const shown = url === undefined ? name : `[${name}](${url})`;
+
+  return source.commit === undefined
+    ? `- ${shown}`
+    : `- ${shown} at ${code(Str.slice(0, 7)(source.commit))}`;
+};
+
+const structureLines = (structure: Structure, linkOf: LinkOf) => {
   const steps = structure.steps ?? [];
   const questions = structure.questions ?? [];
+  const sources = uniqueSources(structure.sources ?? []);
 
   return [
     `#### ${structure.code} · ${structure.name}`,
@@ -149,6 +169,14 @@ const structureLines = (structure: Structure) => {
     "",
     `**How it's built.** ${Str.trim(structure.howItsBuilt)}`,
     "",
+    ...(sources.length === 0
+      ? []
+      : [
+          "**Sources.**",
+          "",
+          ...Arr.map(sources, (source) => sourceLine(source, linkOf)),
+          "",
+        ]),
     ...(steps.length === 0
       ? []
       : [
@@ -175,7 +203,7 @@ const structureLines = (structure: Structure) => {
   ];
 };
 
-const structuresLines = (data: MapData) =>
+const structuresLines = (data: MapData, linkOf: LinkOf) =>
   Arr.flatMap(data.groups, (group) => {
     const members = Arr.filter(
       data.structures,
@@ -184,7 +212,11 @@ const structuresLines = (data: MapData) =>
 
     return members.length === 0
       ? []
-      : [`### ${group.title}`, "", ...Arr.flatMap(members, structureLines)];
+      : [
+          `### ${group.title}`,
+          "",
+          ...Arr.flatMap(members, (member) => structureLines(member, linkOf)),
+        ];
   });
 
 const hopRows = (hops: readonly Hop[], nameOf: (id: string) => string) =>
@@ -204,6 +236,8 @@ export const renderSystemMd: {
   (state: MapState, source: string): string;
 } = dual(2, (state: MapState, source: string): string => {
   const { data } = state;
+  const sourceLinks = state.sourceLinks ?? {};
+  const linkOf: LinkOf = (listed) => sourceLinks[sourceKey(listed)];
 
   const names = new Map(
     Arr.map(data.structures, (structure) => [structure.id, structure.name])
@@ -273,7 +307,7 @@ export const renderSystemMd: {
               ])
             ),
             "",
-            ...structuresLines(data),
+            ...structuresLines(data, linkOf),
           ]
     ),
     ...section(
