@@ -6,7 +6,14 @@ import type {
   Question,
   Structure,
 } from "@axonometric/contracts";
-import { Array as Arr, Result, Schema, String as Str, pipe } from "effect";
+import {
+  Array as Arr,
+  Option,
+  Result,
+  Schema,
+  String as Str,
+  pipe,
+} from "effect";
 import { dual } from "effect/Function";
 
 /** Keeps a value on one line inside a Markdown table cell. */
@@ -39,9 +46,25 @@ const table = (
   rows: readonly (readonly string[])[]
 ) => [row(header), row(Arr.map(header, () => "---")), ...Arr.map(rows, row)];
 
-/** A section: its heading and body, or nothing when the body is empty. */
-const section = (heading: string, body: readonly string[]) =>
-  body.length === 0 ? [] : [heading, "", ...body, ""];
+/** Drops blank lines from the end of `lines`. */
+const trimBlank = (lines: readonly string[]) => {
+  const last = Arr.findLastIndex(lines, (line) => line !== "");
+
+  return Option.match(last, {
+    onNone: () => [],
+    onSome: (index) => lines.slice(0, index + 1),
+  });
+};
+
+/**
+ * A section: its heading, its body and one blank line, or nothing when the
+ * body is empty.
+ */
+const section = (heading: string, body: readonly string[]) => {
+  const trimmed = trimBlank(body);
+
+  return trimmed.length === 0 ? [] : [heading, "", ...trimmed, ""];
+};
 
 const paragraph = (text: string | undefined) =>
   text === undefined ? [] : [Str.trim(text)];
@@ -116,7 +139,7 @@ const structureLines = (structure: Structure) => {
   const questions = structure.questions ?? [];
 
   return [
-    `### ${structure.code} · ${structure.name}`,
+    `#### ${structure.code} · ${structure.name}`,
     "",
     `**Status:** ${statusLabels[structure.status]} · **Shape:** ${structure.shape} · **ID:** ${code(structure.id)}`,
     "",
@@ -161,7 +184,7 @@ const structuresLines = (data: MapData) =>
 
     return members.length === 0
       ? []
-      : [`## ${group.title}`, "", ...Arr.flatMap(members, structureLines)];
+      : [`### ${group.title}`, "", ...Arr.flatMap(members, structureLines)];
   });
 
 const hopRows = (hops: readonly Hop[], nameOf: (id: string) => string) =>
@@ -211,12 +234,12 @@ export const renderSystemMd: {
     const reveals =
       chapter.reveals.length === 0
         ? ""
-        : ` _Reveals ${Arr.join(Arr.map(chapter.reveals, nameOf), ", ")}._`;
+        : ` _Reveals: ${Arr.join(Arr.map(chapter.reveals, nameOf), ", ")}._`;
 
     const plays =
       chapter.plays.length === 0
         ? ""
-        : ` _Plays ${Arr.join(
+        : ` _Plays: ${Arr.join(
             Arr.map(hopsOf(chapter.plays), (hop) => hop.label),
             ", "
           )}._`;
@@ -238,28 +261,31 @@ export const renderSystemMd: {
       "## Structures",
       data.structures.length === 0
         ? []
-        : table(
-            ["ID", "Name", "Code", "Status", "One line"],
-            Arr.map(data.structures, (structure) => [
-              code(structure.id),
-              cell(structure.name),
-              structure.code,
-              statusLabels[structure.status],
-              cell(structure.oneLiner),
-            ])
-          )
+        : [
+            ...table(
+              ["ID", "Name", "Code", "Status", "One line"],
+              Arr.map(data.structures, (structure) => [
+                code(structure.id),
+                cell(structure.name),
+                structure.code,
+                statusLabels[structure.status],
+                cell(structure.oneLiner),
+              ])
+            ),
+            "",
+            ...structuresLines(data),
+          ]
     ),
-    ...structuresLines(data),
     ...section(
       "## Flows",
-      Arr.flatMap(data.flows, (flow) => [
+      Arr.flatMap(data.flows, (flow, index) => [
+        ...(index === 0 ? [] : [""]),
         `### ${flow.name}`,
         "",
         ...table(
           ["ID", "From → To", "Label", "Example payload"],
           hopRows(hopsOf(flow.hops), nameOf)
         ),
-        "",
       ])
     ),
     ...section(
@@ -285,5 +311,5 @@ export const renderSystemMd: {
     ),
   ];
 
-  return Arr.join(lines, "\n");
+  return `${Str.trimEnd(Arr.join(lines, "\n"))}\n`;
 });

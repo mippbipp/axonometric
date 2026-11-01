@@ -68,6 +68,7 @@ export const checkCommand = Command.make(
       )
     ),
     json: Flag.Boolean("json").pipe(
+      Flag.withDefault(false),
       Flag.withDescription(
         "Print { home, ok, errors, warnings } as JSON instead of text"
       )
