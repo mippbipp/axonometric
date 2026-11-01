@@ -10,6 +10,7 @@ import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
 import { SidePanel } from "./side-panel.tsx";
+import { ThemeToggle } from "./theme.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 import { WalkthroughProvider } from "./walkthrough.tsx";
 
@@ -33,8 +34,9 @@ function WalkthroughPage() {
         <h1 className="text-sm font-medium tracking-widest uppercase">
           {state.system}
         </h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-4">
           <PlaybackControls />
+          <ThemeToggle />
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
@@ -43,7 +45,8 @@ function WalkthroughPage() {
             state={state}
             revealed={revealed}
             newlyRevealed={newlyRevealed}
-            fit={fit}
+            fitTo={fit}
+            fitKey={stop.id}
           >
             <PacketLayer routeOf={isoRouteOf} />
           </IsoView>
@@ -55,6 +58,7 @@ function WalkthroughPage() {
       <footer className="border-ink flex flex-wrap gap-x-4 border-t px-4 py-1 text-xs opacity-70">
         <span>→ or ] next chapter</span>
         <span>← or [ back</span>
+        <span>+ and − zoom, 0 fits</span>
         <span>click a packet to read its payload</span>
       </footer>
     </main>

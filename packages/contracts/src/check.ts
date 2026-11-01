@@ -183,7 +183,7 @@ const walkthrough = (data: MapData): readonly MapProblem[] => {
               `hop "${hopId}" touches ${Arr.join(
                 Arr.map(hidden, (id) => `"${id}"`),
                 " and "
-              )}, which no chapter has revealed by chapter "${chapter.id}". Reveal ${hidden.length === 1 ? "it" : "them"} in this chapter or an earlier one, or play the hop later.`
+              )}, which no chapter has revealed by chapter "${chapter.id}". Reveal ${hidden.length === 1 ? "it" : "them"} in this chapter or an earlier one, or move the hop to a chapter that reveals ${hidden.length === 1 ? "it" : "them"}.`
             ),
           ];
     });

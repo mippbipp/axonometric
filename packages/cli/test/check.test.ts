@@ -67,7 +67,7 @@ describe("check", () => {
     Effect.gen(function* () {
       const result = yield* checkWith(
         yield* editData(`data.groups.push({ id: "spare", title: "Spare" });
-data.structures[1].status = "later";`),
+data.structures[1].status = "retired";`),
         ["--json"]
       );
 

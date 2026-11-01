@@ -1,5 +1,6 @@
 import type { Layout, Placement } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
+import { dual } from "effect/Function";
 
 /** A point on the ground grid, in grid units. */
 export interface GridPoint {
@@ -14,9 +15,9 @@ export interface ScreenPoint {
 }
 
 /** One grid unit is a 72 × 36 tile. */
-const tileWidth = 72;
+export const tileWidth = 72;
 
-const tileHeight = 36;
+export const tileHeight = 36;
 
 /**
  * Projects a grid point onto the screen. `z` is a height above the ground in
@@ -30,6 +31,25 @@ export const project = ({
   sx: ((x - y) * tileWidth) / 2,
   sy: ((x + y) * tileHeight) / 2 - z,
 });
+
+/** A footprint's corners on screen, named by where they sit in the iso view. */
+export interface Corners {
+  readonly back: ScreenPoint;
+  readonly right: ScreenPoint;
+  readonly front: ScreenPoint;
+  readonly left: ScreenPoint;
+}
+
+/** The four corners of a footprint, raised to height `z`. */
+export const corners: {
+  (z: number): (placement: Placement) => Corners;
+  (placement: Placement, z: number): Corners;
+} = dual(2, ({ x, y, w, d }: Placement, z: number): Corners => ({
+  back: project({ x, y, z }),
+  right: project({ x: x + w, y, z }),
+  front: project({ x: x + w, y: y + d, z }),
+  left: project({ x, y: y + d, z }),
+}));
 
 /** Formats screen points for an SVG `points` attribute. */
 export const toPoints = (points: readonly ScreenPoint[]) =>
