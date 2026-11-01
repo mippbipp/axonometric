@@ -2,7 +2,9 @@ import { pathToFileURL } from "node:url";
 
 import {
   checkMap,
+  checkProposals,
   describeCause,
+  emptyProposals,
   formatCount,
   formatProblem,
   LayoutFile,
@@ -11,10 +13,11 @@ import {
   mapError,
   MapProblem,
   problemsFromIssue,
+  ProposalsFile,
   sourceKey,
   splitProblems,
 } from "@axonometric/contracts";
-import type { Layout, MapFile } from "@axonometric/contracts";
+import type { Layout, MapFile, Proposals } from "@axonometric/contracts";
 import {
   Array as Arr,
   Effect,
@@ -62,6 +65,8 @@ const decodeData = Schema.decodeUnknownResult(MapData, parseOptions);
 
 const decodeLayout = Schema.decodeUnknownResult(LayoutFile, parseOptions);
 
+const decodeProposals = Schema.decodeUnknownResult(ProposalsFile, parseOptions);
+
 /** An error with a whole file, rather than one field in it. */
 const fileProblem = (file: MapFile, message: string) =>
   mapError({ file, path: [], message });
@@ -73,6 +78,12 @@ const encodeLayoutFile = Schema.encodeEffect(LayoutFile);
 /** The text of `layout.json` for `layout`. */
 export const encodeLayout = (layout: Layout) =>
   encodeLayoutFile(layout).pipe(Effect.orDie);
+
+const encodeProposalsFile = Schema.encodeEffect(ProposalsFile);
+
+/** The text of `proposals.json` for `proposals`. */
+export const encodeProposals = (proposals: Proposals) =>
+  encodeProposalsFile(proposals).pipe(Effect.orDie);
 
 /** Returns the path of `name` in `home`, or a problem when it's missing. */
 const findFile = Effect.fnUntraced(function* (
@@ -141,31 +152,55 @@ const loadData = Effect.fnUntraced(function* (
 /** The layout of a map whose `layout.json` doesn't exist yet. */
 export const emptyLayout: Layout = { format: 1, revision: 0, structures: {} };
 
-/** Reads `layout.json`. A missing file is an empty layout, which `build` fills. */
-const loadLayout = Effect.fnUntraced(function* (
-  home: string
-): Effect.fn.Return<Loaded<Layout>, never, FileSystem.FileSystem | Path.Path> {
+/** A JSON map file: its name, how to decode it, and what a missing one means. */
+interface JsonFile<A> {
+  readonly name: MapFile;
+  readonly decode: (text: string) => Result.Result<A, Schema.SchemaError>;
+  readonly missing: A;
+}
+
+/** Reads the JSON file `name` in `home` with `decode`. */
+const loadJson = Effect.fnUntraced(function* <A>(
+  home: string,
+  { name, decode, missing }: JsonFile<A>
+): Effect.fn.Return<Loaded<A>, never, FileSystem.FileSystem | Path.Path> {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const file = path.join(home, "layout.json");
+  const file = path.join(home, name);
   const exists = yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false));
 
   if (!exists) {
-    return Result.succeed(emptyLayout);
+    return Result.succeed(missing);
   }
 
   const text = yield* fs.readFileString(file).pipe(Effect.result);
 
   if (Result.isFailure(text)) {
     return Result.fail([
-      fileProblem("layout.json", `could not be read: ${text.failure.message}`),
+      fileProblem(name, `could not be read: ${text.failure.message}`),
     ]);
   }
 
-  return Result.mapError(decodeLayout(text.success), (error) =>
-    problemsFromIssue("layout.json", error.issue)
+  return Result.mapError(decode(text.success), (error) =>
+    problemsFromIssue(name, error.issue)
   );
 });
+
+/** Reads `layout.json`. A missing file is an empty layout, which `build` fills. */
+export const loadLayout = (home: string) =>
+  loadJson(home, {
+    name: "layout.json",
+    decode: decodeLayout,
+    missing: emptyLayout,
+  });
+
+/** Reads `proposals.json`. A missing file means nothing is pending. */
+export const loadProposals = (home: string) =>
+  loadJson(home, {
+    name: "proposals.json",
+    decode: decodeProposals,
+    missing: emptyProposals,
+  });
 
 /**
  * Which of the map's relative links resolve to a file next to SYSTEM.md.
@@ -266,6 +301,8 @@ export interface LoadedMap {
   readonly saved: Layout;
   /** The web address of each source that has one, keyed by `sourceKey`. */
   readonly sourceLinks: Readonly<Record<string, string>>;
+  /** What `proposals.json` holds, or nothing pending when there's no file. */
+  readonly proposals: Proposals;
 }
 
 /** A map as loaded: the problems found, and the files when both decoded. */
@@ -290,9 +327,17 @@ export const inspectMap = Effect.fnUntraced(function* (
   output: string,
   arrange: Arrange = (_data, saved) => saved
 ) {
-  const [data, saved] = yield* Effect.all([loadData(home), loadLayout(home)]);
+  const [data, saved, proposals] = yield* Effect.all([
+    loadData(home),
+    loadLayout(home),
+    loadProposals(home),
+  ]);
 
-  if (Result.isSuccess(data) && Result.isSuccess(saved)) {
+  if (
+    Result.isSuccess(data) &&
+    Result.isSuccess(saved) &&
+    Result.isSuccess(proposals)
+  ) {
     const links = yield* existingLinks(output, data.success);
     const layout = arrange(data.success, saved.success);
     const sources = yield* sourceContext(home, data.success);
@@ -301,13 +346,16 @@ export const inspectMap = Effect.fnUntraced(function* (
       ? yield* sources.repo.value.factsOf(data.success)
       : undefined;
 
-    const problems = checkMap(
-      { data: data.success, layout },
-      {
-        linkExists: (target) => links.has(target),
-        sourceFacts,
-      }
-    );
+    const problems = [
+      ...checkMap(
+        { data: data.success, layout },
+        {
+          linkExists: (target) => links.has(target),
+          sourceFacts,
+        }
+      ),
+      ...checkProposals(data.success, layout, proposals.success),
+    ];
 
     return {
       problems,
@@ -316,6 +364,7 @@ export const inspectMap = Effect.fnUntraced(function* (
         layout,
         saved: saved.success,
         sourceLinks: linksOf(data.success, sources.repo),
+        proposals: proposals.success,
       }),
       sourcesSkipped: sources.skipped,
     } satisfies InspectedMap;
@@ -325,6 +374,7 @@ export const inspectMap = Effect.fnUntraced(function* (
     problems: [
       ...(Result.isFailure(data) ? data.failure : []),
       ...(Result.isFailure(saved) ? saved.failure : []),
+      ...(Result.isFailure(proposals) ? proposals.failure : []),
     ],
     map: Option.none(),
     sourcesSkipped: Option.none(),

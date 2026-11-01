@@ -132,6 +132,30 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  applyLayoutChanges,
+  checkProposals,
+  clashOf,
+  emptyProposals,
+  Footprint,
+  LayoutChange,
+  layoutChangeKey,
+  LayoutChanges,
+  layoutRefusal,
+  MoveChange,
+  Proposals,
+  ProposalsFile,
+  replaceChanges,
+  ResizeChange,
+} from "./proposals.ts";
+
+export type { Clash } from "./proposals.ts";
+
+export {
+  LayoutChangeRefused,
+  maxWriteBytes,
+  PendingLayoutWrite,
+  MapFilesUnreadable,
+  StaleProposals,
   ServedPage,
   servedPageElementId,
   ServerEvent,
