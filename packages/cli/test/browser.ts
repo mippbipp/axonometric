@@ -5,8 +5,9 @@ import { chromium } from "playwright";
 import type { Page } from "playwright";
 
 // Browser tests build a map through the CLI, open the HTML file it wrote in
-// Chromium, and check what's on screen. They drive Playwright from Node; see
-// docs/adr/0001-seam-2-drives-playwright-from-node.md for why.
+// Chromium, and check what's on screen. They drive Playwright from Node,
+// because a Vitest browser-mode test page can't read a file:// page, or a
+// page that `serve` serves from another origin.
 
 const launch = Effect.acquireRelease(
   Effect.promise(() => chromium.launch()),
