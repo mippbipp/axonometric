@@ -309,10 +309,14 @@ const longestFirst = Order.combine(
   Order.mapInput(Order.Number, ({ index }: Leg) => index)
 );
 
+/** How far past the first spot a label may move away from its leg. */
+const labelDrifts = [0, 6, 12, 18, 26, 36, 48] as const;
+
 /**
- * The spots beside a point on a leg a label may take. A label sits on the
- * side the leg runs away from, so the line passes its corner and never
- * crosses the text.
+ * The spots beside a point on a leg a label may take, nearest first. A
+ * label sits on the side the leg runs away from, so the line passes its
+ * corner and never crosses the text, and moves further up or down from
+ * there to get clear of boxes.
  */
 const spotsBeside = (segment: Segment, share: number, width: number) => {
   const at = lerp(segment.start, segment.end, share);
@@ -321,28 +325,30 @@ const spotsBeside = (segment: Segment, share: number, width: number) => {
     (segment.end.sx - segment.start.sx) * (segment.end.sy - segment.start.sy) >
     0;
 
-  const above = {
-    top: at.sy - labelGap - labelHeight,
-    bottom: at.sy - labelGap,
-  };
-
-  const below = {
-    top: at.sy + labelGap,
-    bottom: at.sy + labelGap + labelHeight,
-  };
-
   const right = { left: at.sx + labelGap, right: at.sx + labelGap + width };
   const left = { left: at.sx - labelGap - width, right: at.sx - labelGap };
 
-  return fallsRight
-    ? [
-        { ...above, ...right },
-        { ...below, ...left },
-      ]
-    : [
-        { ...above, ...left },
-        { ...below, ...right },
-      ];
+  return Arr.flatMap(labelDrifts, (drift) => {
+    const above = {
+      top: at.sy - labelGap - drift - labelHeight,
+      bottom: at.sy - labelGap - drift,
+    };
+
+    const below = {
+      top: at.sy + labelGap + drift,
+      bottom: at.sy + labelGap + drift + labelHeight,
+    };
+
+    return fallsRight
+      ? [
+          { ...above, ...right },
+          { ...below, ...left },
+        ]
+      : [
+          { ...above, ...left },
+          { ...below, ...right },
+        ];
+  });
 };
 
 /** The width of a hop label's box for `text`, in screen units. */
@@ -354,7 +360,7 @@ export const labelWidth = (text: string) =>
  * first, then the others, longest first, at a few spots along each, and
  * takes the first spot clear of every box outline and of every rect in
  * `taken`, such as name tags and labels placed already. When no spot is
- * clear it takes the middle of the longest leg.
+ * clear it takes the first one that touches the fewest of them.
  */
 export const labelSpot = ({
   points,
@@ -381,14 +387,20 @@ export const labelSpot = ({
     Arr.flatMap(labelShares, (share) => spotsBeside(leg, share, width))
   );
 
-  const clear = Arr.findFirst(
-    candidates,
-    (rect) =>
-      Arr.every(outlines, (outline) => !tagCoversBox(rect, outline)) &&
-      Arr.every(taken, (other) => !rectsOverlap(rect, other))
-  );
+  const clashes = (rect: ScreenRect) =>
+    Arr.filter(outlines, (outline) => tagCoversBox(rect, outline)).length +
+    Arr.filter(taken, (other) => rectsOverlap(rect, other)).length;
 
-  return Option.getOrElse(clear, () => candidates[0]);
+  const clear = Arr.findFirst(candidates, (rect) => clashes(rect) === 0);
+
+  return Option.getOrElse(clear, () =>
+    Arr.isReadonlyArrayNonEmpty(candidates)
+      ? Arr.min(
+          candidates,
+          Order.mapInput(Order.Number, (rect: ScreenRect) => clashes(rect))
+        )
+      : undefined
+  );
 };
 
 /**
