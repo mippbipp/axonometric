@@ -179,6 +179,13 @@ const candidates = (zone: Zone, width: number) => {
   return spots;
 };
 
+/** The ground a zone's title covers on screen, its clear margin included. */
+export const titleOutline = ({
+  zone,
+  titleAt,
+}: ZoneDrawing): readonly ScreenPoint[] =>
+  titleQuad(titleAt, zone.group.title.length * titleCharWidth, titleMargin);
+
 const transformAt = (start: ScreenPoint) =>
   `matrix(${along.sx} ${along.sy} 0 1 ${start.sx} ${start.sy})`;
 

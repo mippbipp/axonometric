@@ -290,106 +290,135 @@ export const labelHeight = 15;
 /** Room left either side of a label's text, in screen units. */
 const labelPadding = 3;
 
-/** How far a label sits from its leg, in screen units. */
-const labelGap = 3;
+/** How far a label's nearest edge may sit from its leg, in screen units. */
+const labelGaps = [3, 7, 12] as const;
 
 /** Where along a leg a label may sit, most preferred first. */
-const labelShares = [0.5, 0.35, 0.65, 0.2, 0.8] as const;
+const labelShares = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8] as const;
 
 const rectsOverlap = (a: ScreenRect, b: ScreenRect) =>
   a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-interface Leg {
+const rectPolygon = (rect: ScreenRect): readonly ScreenPoint[] => [
+  { sx: rect.left, sy: rect.top },
+  { sx: rect.right, sy: rect.top },
+  { sx: rect.right, sy: rect.bottom },
+  { sx: rect.left, sy: rect.bottom },
+];
+
+interface Leg extends Segment {
   readonly index: number;
   readonly length: number;
 }
 
-const longestFirst = Order.combine(
-  Order.mapInput(Order.Number, ({ length }: Leg) => -length),
-  Order.mapInput(Order.Number, ({ index }: Leg) => index)
-);
+/**
+ * The spots a label of `width` may take beside a leg, nearest first: its
+ * centre on the leg's perpendicular through a point `share` of the way
+ * along, on either side, with its nearest edge `gap` from the leg.
+ */
+const spotsBeside = (leg: Leg, share: number, width: number) => {
+  const at = lerp(leg.start, leg.end, share);
+  const unit = Math.max(leg.length, 1e-9);
 
-/** How far past the first spot a label may move away from its leg. */
-const labelDrifts = [0, 6, 12, 18, 26, 36, 48] as const;
+  const normal = {
+    sx: -(leg.end.sy - leg.start.sy) / unit,
+    sy: (leg.end.sx - leg.start.sx) / unit,
+  };
+
+  // How far the label's box reaches along the normal from its centre.
+  const reach =
+    (Math.abs(normal.sx) * width) / 2 + (Math.abs(normal.sy) * labelHeight) / 2;
+
+  return Arr.flatMap(labelGaps, (gap) =>
+    Arr.map([-1, 1] as const, (side) => {
+      const centre = {
+        sx: at.sx + side * normal.sx * (reach + gap),
+        sy: at.sy + side * normal.sy * (reach + gap),
+      };
+
+      return {
+        left: centre.sx - width / 2,
+        right: centre.sx + width / 2,
+        top: centre.sy - labelHeight / 2,
+        bottom: centre.sy + labelHeight / 2,
+      };
+    })
+  );
+};
 
 /**
- * The spots beside a point on a leg a label may take, nearest first. A
- * label sits on the side the leg runs away from, so the line passes its
- * corner and never crosses the text, and moves further up or down from
- * there to get clear of boxes.
+ * How far along itself a label of `width` reaches, so a leg at least this
+ * long has room for it.
  */
-const spotsBeside = (segment: Segment, share: number, width: number) => {
-  const at = lerp(segment.start, segment.end, share);
-
-  const fallsRight =
-    (segment.end.sx - segment.start.sx) * (segment.end.sy - segment.start.sy) >
-    0;
-
-  const right = { left: at.sx + labelGap, right: at.sx + labelGap + width };
-  const left = { left: at.sx - labelGap - width, right: at.sx - labelGap };
-
-  return Arr.flatMap(labelDrifts, (drift) => {
-    const above = {
-      top: at.sy - labelGap - drift - labelHeight,
-      bottom: at.sy - labelGap - drift,
-    };
-
-    const below = {
-      top: at.sy + labelGap + drift,
-      bottom: at.sy + labelGap + drift + labelHeight,
-    };
-
-    return fallsRight
-      ? [
-          { ...above, ...right },
-          { ...below, ...left },
-        ]
-      : [
-          { ...above, ...left },
-          { ...below, ...right },
-        ];
-  });
-};
+const roomNeeded = (leg: Leg, width: number) =>
+  (Math.abs(leg.end.sx - leg.start.sx) * width +
+    Math.abs(leg.end.sy - leg.start.sy) * labelHeight) /
+  Math.max(leg.length, 1e-9);
 
 /** The width of a hop label's box for `text`, in screen units. */
 export const labelWidth = (text: string) =>
   text.length * tagCharWidth + 2 * labelPadding;
 
+/** What a hop label keeps clear of. */
+export interface LabelObstacles {
+  /** Convex outlines: boxes, zone titles and the like. */
+  readonly outlines: readonly (readonly ScreenPoint[])[];
+  /** Rects: name tags and labels placed already. */
+  readonly rects: readonly ScreenRect[];
+  /** Lines: every hop's route, its own included. */
+  readonly routes: readonly (readonly ScreenPoint[])[];
+}
+
 /**
- * Where a hop's label goes, as its box on screen. It tries the longest leg
- * first, then the others, longest first, at a few spots along each, and
- * takes the first spot clear of every box outline and of every rect in
- * `taken`, such as name tags and labels placed already. When no spot is
- * clear it takes the first one that touches the fewest of them.
+ * Where a hop's label goes, as its box on screen. It sits beside one of the
+ * route's legs, centred on the leg's perpendicular. Legs long enough for it
+ * come first, longest first, then the rest; on each it tries the middle
+ * first and spots further along after, close to the leg first. It takes the
+ * first spot clear of every obstacle, or else the one that touches the
+ * fewest.
  */
 export const labelSpot = ({
   points,
   text,
-  outlines,
-  taken,
+  avoid,
 }: {
   readonly points: readonly ScreenPoint[];
   readonly text: string;
-  readonly outlines: readonly (readonly ScreenPoint[])[];
-  readonly taken: readonly ScreenRect[];
+  readonly avoid: LabelObstacles;
 }): ScreenRect | undefined => {
   const width = labelWidth(text);
 
-  const legs = Arr.sort(
-    Arr.map(segmentsOf(points), (segment) => ({
-      ...segment,
-      length: lengthOf(segment),
-    })),
-    longestFirst
+  const legs: readonly Leg[] = Arr.map(segmentsOf(points), (segment) => ({
+    ...segment,
+    length: lengthOf(segment),
+  }));
+
+  const order = Order.combine(
+    Order.mapInput(Order.Number, (leg: Leg) =>
+      leg.length >= roomNeeded(leg, width) ? 0 : 1
+    ),
+    Order.combine(
+      Order.mapInput(Order.Number, (leg: Leg) => -leg.length),
+      Order.mapInput(Order.Number, (leg: Leg) => leg.index)
+    )
   );
 
-  const candidates = Arr.flatMap(legs, (leg) =>
+  const candidates = Arr.flatMap(Arr.sort(legs, order), (leg: Leg) =>
     Arr.flatMap(labelShares, (share) => spotsBeside(leg, share, width))
   );
 
-  const clashes = (rect: ScreenRect) =>
-    Arr.filter(outlines, (outline) => tagCoversBox(rect, outline)).length +
-    Arr.filter(taken, (other) => rectsOverlap(rect, other)).length;
+  const lines = Arr.flatMap(avoid.routes, segmentsOf);
+
+  const clashes = (rect: ScreenRect) => {
+    const box = rectPolygon(rect);
+
+    return (
+      Arr.filter(avoid.outlines, (outline) => tagCoversBox(rect, outline))
+        .length +
+      Arr.filter(avoid.rects, (other) => rectsOverlap(rect, other)).length +
+      Arr.filter(lines, (line) => clipToConvex(line, box) !== undefined).length
+    );
+  };
 
   const clear = Arr.findFirst(candidates, (rect) => clashes(rect) === 0);
 

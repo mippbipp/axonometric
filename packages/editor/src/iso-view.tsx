@@ -13,7 +13,7 @@ import {
   tagDrop,
   zonesOf,
 } from "@axonometric/contracts";
-import { Array as Arr, Order, String as Str } from "effect";
+import { Array as Arr, Option, Order, String as Str } from "effect";
 import { useId } from "react";
 import type { ReactNode } from "react";
 
@@ -28,7 +28,8 @@ import {
 import type { HiddenStretch, ScreenPoint } from "./iso.ts";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
-import { drawZones } from "./zone-outline.ts";
+import { drawZones, titleOutline } from "./zone-outline.ts";
+import type { ZoneDrawing } from "./zone-outline.ts";
 import { Zones } from "./zones.tsx";
 
 interface PlacedStructure {
@@ -45,12 +46,49 @@ interface RoutedHop {
   readonly hidden: readonly HiddenStretch[];
 }
 
-/** Painter's order: boxes further back are drawn first. */
 const byDepth = Order.mapInput(
   Order.Number,
   ({ placement }: PlacedStructure) =>
     placement.x + placement.y + placement.w + placement.d
 );
+
+/**
+ * Whether `a` sits behind `b`, so `b` must be drawn over it: `a` ends
+ * before `b` starts along one axis and they share some of the other. Two
+ * footprints apart along both axes, one ahead on x and the other ahead on
+ * y, land side by side on screen, and neither is behind.
+ */
+const behind = (
+  { placement: a }: PlacedStructure,
+  { placement: b }: PlacedStructure
+) =>
+  (a.x + a.w <= b.x && a.y < b.y + b.d) ||
+  (a.y + a.d <= b.y && a.x < b.x + b.w);
+
+/**
+ * Painter's order: every box is drawn after the boxes it sits in front of.
+ * Of the boxes ready to draw, the one whose front corner is furthest back
+ * goes first. Sorting on that corner alone draws a long box over a box in
+ * front of it.
+ */
+const paintOrder = (
+  items: readonly PlacedStructure[]
+): readonly PlacedStructure[] => {
+  if (!Arr.isReadonlyArrayNonEmpty(items)) {
+    return [];
+  }
+
+  const sorted = Arr.sort(items, byDepth);
+
+  const ready = Arr.findFirst(sorted, (item) =>
+    Arr.every(sorted, (other) => other === item || !behind(other, item))
+  );
+
+  // Overlapping footprints can make a cycle; fall back to depth order.
+  const next = Option.getOrElse(ready, () => sorted[0]);
+
+  return [next, ...paintOrder(Arr.filter(sorted, (item) => item !== next))];
+};
 
 const tagOf = ({ structure, placement }: PlacedStructure) =>
   nameTagRect(placement, nameTagText(structure));
@@ -190,25 +228,26 @@ const placeAll = (
   state: MapState,
   revealed: ReadonlySet<string>
 ): readonly PlacedStructure[] =>
-  Arr.sort(
+  paintOrder(
     Arr.flatMap(state.data.structures, (structure) => {
       const placement = state.layout.structures[structure.id];
 
       return placement === undefined || !revealed.has(structure.id)
         ? []
         : [{ structure, placement }];
-    }),
-    byDepth
+    })
   );
 
 /**
  * Routes every hop between revealed structures, works out which stretches
- * the revealed boxes hide, and places each label clear of the boxes, the
- * name tags and the labels placed before it, in data.mjs order.
+ * the revealed boxes hide, and places each label beside its own route,
+ * clear of the boxes, name tags, zone titles, routes and the labels placed
+ * before it, in data.mjs order.
  */
 const routeAll = (
   state: MapState,
-  placed: readonly PlacedStructure[]
+  placed: readonly PlacedStructure[],
+  zones: readonly ZoneDrawing[]
 ): readonly RoutedHop[] => {
   const revealed = new Set(Arr.map(placed, ({ structure }) => structure.id));
 
@@ -216,6 +255,7 @@ const routeAll = (
     boxOutline(placement, structure.shape)
   );
 
+  const titles = Arr.map(zones, titleOutline);
   const tags = Arr.map(placed, tagOf);
 
   const routes = Arr.flatMap(state.data.hops, (hop) => {
@@ -232,17 +272,22 @@ const routeAll = (
       : [{ hop, points }];
   });
 
+  const lines = Arr.map(routes, ({ points }) => points);
+
   return Arr.reduce(routes, Arr.empty<RoutedHop>(), (done, { hop, points }) => {
     const label = labelSpot({
       points,
       text: hop.label,
-      outlines,
-      taken: [
-        ...tags,
-        ...Arr.flatMap(done, (other) =>
-          other.label === undefined ? [] : [other.label]
-        ),
-      ],
+      avoid: {
+        outlines: [...outlines, ...titles],
+        rects: [
+          ...tags,
+          ...Arr.flatMap(done, (other) =>
+            other.label === undefined ? [] : [other.label]
+          ),
+        ],
+        routes: lines,
+      },
     });
 
     return [
@@ -317,12 +362,13 @@ export function IsoView({
   const hatch = `${idPrefix}hatch`;
   const arrowhead = `${idPrefix}arrowhead`;
   const placed = placeAll(state, revealed);
-  const routed = routeAll(state, placed);
 
   const zones = drawZones({
     zones: zonesOf({ data: state.data, layout: state.layout, revealed }),
     structures: placed,
   });
+
+  const routed = routeAll(state, placed, zones);
 
   const marked = Arr.filter(placed, ({ structure }) =>
     newlyRevealed.has(structure.id)

@@ -100,7 +100,189 @@ const packetOffRoute = `
   })()
 `;
 
+/**
+ * For each hop: how far its first and last points sit from the ground
+ * outlines of its source and target footprints, and how far its label's
+ * centre sits from its own route and from the nearest other route, all in
+ * screen pixels. Footprints come from the map state inlined in the page,
+ * projected the way the iso view projects them.
+ */
+const hopReport = `
+  (() => {
+    const state = JSON.parse(document.getElementById("axonometric-map-state").textContent);
+    const viewport = document.querySelector("[data-viewport]");
+    const matrix = viewport.getScreenCTM();
+    const toScreen = ({ sx, sy }) => {
+      const point = new DOMPoint(sx, sy).matrixTransform(matrix);
+
+      return [point.x, point.y];
+    };
+    const project = (x, y) => toScreen({ sx: ((x - y) * 72) / 2, sy: ((x + y) * 36) / 2 });
+    const outline = (id) => {
+      const { x, y, w, d } = state.layout.structures[id];
+
+      return [project(x, y), project(x + w, y), project(x + w, y + d), project(x, y + d)];
+    };
+    const toSegment = ([ax, ay], [bx, by], [x, y]) => {
+      const length = (bx - ax) ** 2 + (by - ay) ** 2;
+      const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / length));
+
+      return Math.hypot(x - (ax + t * (bx - ax)), y - (ay + t * (by - ay)));
+    };
+    const toPolyline = (points, point, closed) => {
+      let best = Infinity;
+      const count = closed ? points.length : points.length - 1;
+
+      for (let i = 0; i < count; i += 1) {
+        best = Math.min(best, toSegment(points[i], points[(i + 1) % points.length], point));
+      }
+
+      return best;
+    };
+    const routes = new Map(
+      [...document.querySelectorAll("[data-hop] polyline")].map((line) => [
+        line.closest("[data-hop]").dataset.hop,
+        line
+          .getAttribute("points")
+          .split(" ")
+          .map((pair) => {
+            const [sx, sy] = pair.split(",").map(Number);
+
+            return toScreen({ sx, sy });
+          }),
+      ])
+    );
+
+    return [...routes].map(([id, points]) => {
+      const hop = state.data.hops.find((item) => item.id === id);
+      const label = document.querySelector('[data-hop-label="' + id + '"]').getBoundingClientRect();
+      const centre = [label.x + label.width / 2, label.y + label.height / 2];
+      const others = [...routes].filter(([other]) => other !== id);
+
+      return {
+        hop: id,
+        bends: points.length - 2,
+        start: toPolyline(outline(hop.from), points[0], true),
+        end: toPolyline(outline(hop.to), points.at(-1), true),
+        label: toPolyline(points, centre, false),
+        nearestOther: Math.min(Infinity, ...others.map(([, line]) => toPolyline(line, centre, false))),
+      };
+    });
+  })()
+`;
+
+interface HopReport {
+  readonly hop: string;
+  readonly bends: number;
+  readonly start: number;
+  readonly end: number;
+  readonly label: number;
+  readonly nearestOther: number;
+}
+
+const hopsIn = Effect.fnUntraced(function* (page: Page) {
+  return yield* Effect.promise((): Promise<readonly HopReport[]> =>
+    page.evaluate(hopReport)
+  );
+});
+
+/** How far, in pixels at fit, a label's centre may sit from its route. */
+const labelReach = 40;
+
 describe("routed hops", () => {
+  it.live(
+    "start and end on their footprints' ground outlines, in both maps",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          for (const [files, system] of [
+            [yield* fullMap, "review"],
+            [yield* crowdedMap, "crowded"],
+          ] as const) {
+            const { page } = yield* buildAndOpen(files, system);
+
+            yield* goToChapter(page, "c-all");
+
+            for (const hop of yield* hopsIn(page)) {
+              assert.isBelow(
+                hop.start,
+                1.5,
+                `${hop.hop} starts off its source`
+              );
+              assert.isBelow(hop.end, 1.5, `${hop.hop} ends off its target`);
+            }
+          }
+        })
+      ),
+    30_000
+  );
+
+  it.live(
+    "put each label next to its own route, nearer it than any other",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          for (const [files, system] of [
+            [yield* fullMap, "review"],
+            [yield* crowdedMap, "crowded"],
+          ] as const) {
+            const { page } = yield* buildAndOpen(files, system);
+
+            yield* goToChapter(page, "c-all");
+
+            for (const hop of yield* hopsIn(page)) {
+              assert.isBelow(
+                hop.label,
+                labelReach,
+                `${hop.hop}'s label is far from its route`
+              );
+              assert.isBelow(
+                hop.label,
+                hop.nearestOther,
+                `${hop.hop}'s label sits nearer another hop`
+              );
+            }
+          }
+        })
+      ),
+    30_000
+  );
+
+  it.live("draw the crowded map's boxes in front over the ones behind", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* buildAndOpen(yield* crowdedMap, "crowded");
+
+        yield* goToChapter(page, "c-all");
+
+        const order = yield* Effect.promise((): Promise<readonly string[]> =>
+          page.evaluate(
+            '[...document.querySelectorAll("[data-structure]")].map((box) => box.dataset.structure)'
+          )
+        );
+
+        // The west wall ends before the vault and the south wall start
+        // along x, so both are drawn over it.
+        assert.isBelow(order.indexOf("west"), order.indexOf("vault"));
+        assert.isBelow(order.indexOf("west"), order.indexOf("south"));
+      })
+    )
+  );
+
+  it.live("bend every review hop, so its right angle shows", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* buildAndOpen(yield* fullMap, "review");
+
+        yield* goToChapter(page, "c-all");
+
+        for (const hop of yield* hopsIn(page)) {
+          assert.isAtLeast(hop.bends, 1, `${hop.hop} is one straight leg`);
+        }
+      })
+    )
+  );
+
   it.live("draw every label in the review map clear of every box", () =>
     Effect.scoped(
       Effect.gen(function* () {
