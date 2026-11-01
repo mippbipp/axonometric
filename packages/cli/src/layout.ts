@@ -1,4 +1,8 @@
-import { footprintsOverlap, formatProblem } from "@axonometric/contracts";
+import {
+  defaultFootprint,
+  footprintsOverlap,
+  formatProblem,
+} from "@axonometric/contracts";
 import type { Placement } from "@axonometric/contracts";
 import {
   Array as Arr,
@@ -115,7 +119,11 @@ const layout = Effect.fn("layout")(function* (
     );
   }
 
-  const base = Option.getOrElse(before, () => ({ x: 0, y: 0, w: 2, d: 2 }));
+  const base = Option.getOrElse(before, () => ({
+    x: 0,
+    y: 0,
+    ...defaultFootprint,
+  }));
 
   const after: Placement = {
     x: Option.getOrElse(changes.x, () => base.x),

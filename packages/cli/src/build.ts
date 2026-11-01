@@ -1,5 +1,5 @@
 import { formatProblem, placeStructures } from "@axonometric/contracts";
-import { Array as Arr, Console, Effect, Path } from "effect";
+import { Array as Arr, Console, Effect, Path, Record as Rec } from "effect";
 import { Argument, Command } from "effect/cli";
 
 import { withLock } from "./lock.ts";
@@ -30,7 +30,16 @@ const build = Effect.fn("build")(function* (home: string) {
       placeStructures(mapData, savedLayout).layout,
   });
 
-  const { placed, pruned } = placeStructures(data, saved);
+  const placed = Arr.filter(
+    Rec.keys(layout.structures),
+    (id) => !Rec.has(saved.structures, id)
+  );
+
+  const pruned = Arr.filter(
+    Rec.keys(saved.structures),
+    (id) => !Rec.has(layout.structures, id)
+  );
+
   const changed = placed.length > 0 || pruned.length > 0;
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
   const state = { system, data, layout: next };
