@@ -37,6 +37,17 @@ export type { PlacedStructure } from "./layout-checks.ts";
 export { isoHeights } from "./iso-heights.ts";
 
 export {
+  groundProjections,
+  planRect,
+  planTagSpots,
+  planUnit,
+  projectPlan,
+  views,
+} from "./plan.ts";
+
+export type { GroundProjection, View } from "./plan.ts";
+
+export {
   GridPoint,
   Layout,
   LayoutFile,

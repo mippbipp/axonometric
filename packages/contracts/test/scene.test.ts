@@ -23,6 +23,7 @@ import {
   routeRevealed,
   nameTagRect,
   nameTagText,
+  planUnit,
   project,
   sceneClashes,
   sceneOf,
@@ -514,6 +515,97 @@ describe("scene", () => {
       })
     );
   }
+
+  for (const name of [
+    "flake-pipeline",
+    "review",
+    "crowded",
+    "shapes",
+    "pipeline",
+  ]) {
+    it.effect(
+      `draws nothing over anything in Plan view, in any chapter of ${name}`,
+      () =>
+        Effect.gen(function* () {
+          const { data, layout } = yield* fixture(name);
+
+          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+            ? chaptersOf(data)
+            : [{ id: "all", plays: [], revealed: everything(data) }];
+
+          for (const chapter of chapters) {
+            const scene = sceneOf({
+              data,
+              layout,
+              revealed: chapter.revealed,
+              labelFirst: chapter.plays,
+              view: "plan",
+            });
+
+            assert.strictEqual(scene.view, "plan");
+            assert.deepStrictEqual(
+              Arr.map(sceneClashes(scene), clashKey),
+              [],
+              `in chapter ${chapter.id}`
+            );
+          }
+        })
+    );
+  }
+
+  it.effect(
+    "draws Plan view's boxes, routes and zones flat from the layout",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("review");
+
+        const scene = sceneOf({
+          data,
+          layout,
+          revealed: everything(data),
+          view: "plan",
+        });
+
+        const server = Arr.findFirst(
+          scene.structures,
+          ({ structure }) => structure.id === "server"
+        ).pipe(Option.getOrThrow);
+
+        const { x, y, w, d } = placementOf(layout, "server");
+
+        assert.deepStrictEqual(server.outline, [
+          { sx: x * planUnit, sy: y * planUnit },
+          { sx: (x + w) * planUnit, sy: y * planUnit },
+          { sx: (x + w) * planUnit, sy: (y + d) * planUnit },
+          { sx: x * planUnit, sy: (y + d) * planUnit },
+        ]);
+
+        const routes = routeRevealed({
+          data,
+          layout,
+          revealed: everything(data),
+        });
+
+        for (const hop of scene.hops) {
+          assert.deepStrictEqual(
+            hop.points,
+            Arr.map(routes[hop.hop.id]?.points ?? [], ({ x: gx, y: gy }) => ({
+              sx: gx * planUnit,
+              sy: gy * planUnit,
+            }))
+          );
+
+          for (const [a, b] of Arr.zip(hop.points, hop.points.slice(1))) {
+            assert.isTrue(
+              a.sx === b.sx || a.sy === b.sy,
+              `${hop.hop.id} has a leg that isn't at a right angle`
+            );
+          }
+        }
+
+        assert.isNotEmpty(scene.zones);
+      })
+  );
 
   it.effect(
     "puts every arrowhead's tip on its target's outline and its base on the last leg",

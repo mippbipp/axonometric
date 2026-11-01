@@ -22,21 +22,27 @@ import {
   nameTagText,
   project,
   tagCharWidth,
+  tagPadding,
   gridOnScreen,
   tileHeight,
   tileWidth,
 } from "./iso.ts";
-import type { ScreenPoint, ScreenRect } from "./iso.ts";
+import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
+import { planRect, planTagSpots, projectPlan } from "./plan.ts";
+import type { View } from "./plan.ts";
 import { routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
 import { zonesOf } from "./zones.ts";
 import type { Zone } from "./zones.ts";
 
-// The scene: everything the iso view draws for one set of revealed
-// structures, in screen space. The editor draws from it, and `check` runs
-// the same overlap test over it, so the page and `check` can't disagree.
+// The scene: everything a view draws for one set of revealed structures, in
+// screen space, for the iso view or Plan view. The editor draws from it, and
+// `check` runs the same overlap test over both views, so the page and
+// `check` can't disagree. The views differ only in their geometry: how the
+// ground projects, each box's outline, where tags, chips and zone titles may
+// go. Placing text in clear spots is shared.
 
 /** Approximate width of one character of the code chip's font. */
 const chipCharWidth = 6.4;
@@ -55,19 +61,23 @@ const overhang: Partial<Record<Shape, number>> = { external: 0.2 };
 /** How far above its top an external shape's halo reaches. */
 const haloLift = 4;
 
-/** One structure as the iso view draws it. */
+/** One structure as a view draws it. */
 export interface SceneStructure {
   readonly structure: Structure;
   readonly placement: Placement;
   /**
-   * The outline of everything the shape draws, as a convex polygon: its
-   * silhouette to its iso height, halo included.
+   * The outline of everything the shape draws, as a convex polygon: in the
+   * iso view its silhouette to its iso height, in Plan view its footprint's
+   * rectangle, halo included.
    */
   readonly outline: readonly ScreenPoint[];
   readonly tag: ScreenRect;
   /** The code chip's box, or `undefined` when the top has no room for it. */
   readonly chip: ScreenRect | undefined;
 }
+
+/** Room around the code chip inside a box in Plan view. */
+const planChipInset = 6;
 
 /** Approximate width of one character of a zone title, tracking included. */
 const titleCharWidth = 7.2;
@@ -98,10 +108,13 @@ const upFrontRight = {
   sy: -tileHeight / 2 / gridOnScreen,
 };
 
-/** A zone as the iso view draws it. */
+/** A zone as a view draws it. */
 export interface SceneZone {
   readonly zone: Zone;
-  /** The plate's ground corners: back, right, front, left. */
+  /**
+   * The plate's ground corners: in the iso view back, right, front and left;
+   * in Plan view clockwise from the top left.
+   */
   readonly plate: readonly ScreenPoint[];
   /**
    * Where the title's baseline starts, or `undefined` when no spot on the
@@ -127,7 +140,7 @@ const labelHeight = 15;
 /** Room either side of a label's text, in screen units. */
 const labelPadding = 3;
 
-/** One hop as the iso view draws it. */
+/** One hop as a view draws it. */
 export interface SceneHop {
   readonly hop: Hop;
   readonly route: HopRoute;
@@ -149,8 +162,9 @@ export interface SceneHop {
   readonly hidden: readonly HiddenStretch[];
 }
 
-/** Everything the iso view draws for one set of revealed structures. */
+/** Everything a view draws for one set of revealed structures. */
 export interface Scene {
+  readonly view: View;
   /** In painter's order: every box after the boxes it stands in front of. */
   readonly structures: readonly SceneStructure[];
   readonly zones: readonly SceneZone[];
@@ -167,6 +181,31 @@ const centreOf = ({ x, y, w, d }: Placement, z: number) =>
 
 type ChipSource = Pick<Structure, "code" | "shape">;
 
+const chipWidth = (structure: ChipSource) =>
+  structure.code.length * chipCharWidth + chipPadding;
+
+/**
+ * Where a structure's code chip goes in Plan view: inside the box's top
+ * left corner, or nothing when the box is too narrow for it.
+ */
+const planChipRect = (
+  structure: ChipSource,
+  placement: Placement
+): ScreenRect | undefined => {
+  const box = planRect(placement);
+  const width = chipWidth(structure);
+  const left = box.left + planChipInset;
+
+  return box.right - box.left < width * 3
+    ? undefined
+    : {
+        left,
+        right: left + width,
+        top: box.top + planChipInset,
+        bottom: box.top + planChipInset + chipHeight,
+      };
+};
+
 /**
  * Where a structure's code chip goes: the middle of its shape's top, or
  * nothing when the shape has no top or the top is too small for the chip.
@@ -177,7 +216,7 @@ const chipRect: {
 } = dual(
   2,
   (structure: ChipSource, placement: Placement): ScreenRect | undefined => {
-    const width = structure.code.length * chipCharWidth + chipPadding;
+    const width = chipWidth(structure);
     const topWidth = ((placement.w + placement.d) * tileWidth) / 2;
     const at = centreOf(placement, isoHeights[structure.shape]);
 
@@ -222,6 +261,23 @@ export const silhouette: {
     top.left,
   ];
 });
+
+/** The rectangle a shape draws in Plan view, halo included. */
+const planOutline = (
+  placement: Placement,
+  shape: Shape
+): readonly ScreenPoint[] => {
+  const by = overhang[shape] ?? 0;
+
+  return rectPolygon(
+    planRect({
+      x: placement.x - by,
+      y: placement.y - by,
+      w: placement.w + 2 * by,
+      d: placement.d + 2 * by,
+    })
+  );
+};
 
 const byDepth = Order.mapInput(
   Order.Number,
@@ -296,6 +352,9 @@ const plateOf = (zone: Zone): readonly ScreenPoint[] => {
   return [back, right, front, left];
 };
 
+const planPlateOf = (zone: Zone): readonly ScreenPoint[] =>
+  rectPolygon(planRect(zone.box));
+
 /** Whether every point is inside a convex polygon, edges included. */
 const insideConvex = (
   polygon: readonly ScreenPoint[],
@@ -367,55 +426,96 @@ const titleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
   const wide = zone.box.w * gridOnScreen;
   const deep = zone.box.d * gridOnScreen;
 
-  // `inward` is +1 when the plate lies above the edge on screen.
   const fronts = [
-    { start: left, along: alongX, length: wide, inward: 1 },
-    { start: front, along: upFrontRight, length: deep, inward: 1 },
+    { start: left, along: alongX, length: wide, room: wide, inward: 1 },
+    { start: front, along: upFrontRight, length: deep, room: deep, inward: 1 },
   ];
 
   const backs = [
-    { start: left, along: upFrontRight, length: deep, inward: -1 },
-    { start: back, along: alongX, length: wide, inward: -1 },
+    { start: left, along: upFrontRight, length: deep, room: deep, inward: -1 },
+    { start: back, along: alongX, length: wide, room: wide, inward: -1 },
   ];
-
-  const spots = (
-    edges: readonly {
-      readonly start: ScreenPoint;
-      readonly along: ScreenPoint;
-      readonly length: number;
-      readonly inward: number;
-    }[],
-    outside: boolean
-  ) =>
-    Arr.flatMap(edges, (edge) => {
-      const depth = outside ? 3 : Math.floor(edge.length / 2 / titleStep);
-      const up = edge.inward > 0 !== outside;
-      const lifts = up ? liftsAbove(depth) : liftsBelow(depth);
-
-      return Arr.flatMap(lifts, (lift) =>
-        Arr.map(
-          outside
-            ? runsBeside(edge.length, width)
-            : runsAlong(edge.length, width),
-          (run) => ({
-            start: {
-              sx: edge.start.sx + run * edge.along.sx,
-              sy: edge.start.sy + run * edge.along.sy - lift,
-            },
-            along: edge.along,
-            outside,
-          })
-        )
-      );
-    });
 
   return [
-    ...spots(fronts, false),
-    ...spots(backs, false),
-    ...spots(fronts, true),
-    ...spots(backs, true),
+    ...spotsBy(fronts, width, false),
+    ...spotsBy(backs, width, false),
+    ...spotsBy(fronts, width, true),
+    ...spotsBy(backs, width, true),
   ];
 };
+
+/** The screen direction along a horizontal edge in Plan view. */
+const across = { sx: 1, sy: 0 };
+
+/**
+ * Baseline starts for a zone's title in Plan view, best first: inside the
+ * plate along its top edge, then along its bottom edge, then just outside
+ * above the top edge and below the bottom edge.
+ */
+const planTitleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
+  const plate = planRect(zone.box);
+  const wide = plate.right - plate.left;
+  const deep = plate.bottom - plate.top;
+  const topLeft = { sx: plate.left, sy: plate.top };
+  const bottomLeft = { sx: plate.left, sy: plate.bottom };
+
+  const tops = [
+    { start: topLeft, along: across, length: wide, room: deep, inward: -1 },
+  ];
+
+  const bottoms = [
+    { start: bottomLeft, along: across, length: wide, room: deep, inward: 1 },
+  ];
+
+  return [
+    ...spotsBy(tops, width, false),
+    ...spotsBy(bottoms, width, false),
+    ...spotsBy(tops, width, true),
+    ...spotsBy(bottoms, width, true),
+  ];
+};
+
+/** An edge a title may lie along. */
+interface TitleEdge {
+  readonly start: ScreenPoint;
+  readonly along: ScreenPoint;
+  readonly length: number;
+  /** How far into the plate titles may move off the edge, doubled. */
+  readonly room: number;
+  /** +1 when the plate lies above the edge on screen. */
+  readonly inward: number;
+}
+
+/**
+ * Title spots along `edges`: on the plate's strip by each edge, or just
+ * outside it. On each, spots nearest the edge come first.
+ */
+const spotsBy = (
+  edges: readonly TitleEdge[],
+  width: number,
+  outside: boolean
+): readonly TitleSpot[] =>
+  Arr.flatMap(edges, (edge) => {
+    const depth = outside ? 3 : Math.floor(edge.room / 2 / titleStep);
+    const up = edge.inward > 0 !== outside;
+    const lifts = up ? liftsAbove(depth) : liftsBelow(depth);
+
+    return Arr.flatMap(lifts, (lift) =>
+      Arr.map(
+        outside
+          ? runsBeside(edge.length, width)
+          : runsAlong(edge.length, width),
+        (run) => ({
+          start: {
+            sx: edge.start.sx + run * edge.along.sx,
+            sy: edge.start.sy + run * edge.along.sy - lift,
+          },
+          along: edge.along,
+          outside,
+        })
+      )
+    );
+  });
 
 /** Lifts off an edge towards the screen's top, nearest first. */
 const liftsAbove = (count: number) =>
@@ -496,6 +596,54 @@ const withShapes = (
   shapes: [...avoid.shapes, ...Arr.map(polygons, obstacle)],
 });
 
+/** What differs between the iso view and Plan view. */
+interface ViewGeometry {
+  readonly project: (point: GridPosition) => ScreenPoint;
+  readonly outline: (
+    placement: Placement,
+    shape: Shape
+  ) => readonly ScreenPoint[];
+  /** Where the name tag may go, best first. */
+  readonly tagSpots: (
+    placed: Pick<SceneStructure, "placement" | "outline">,
+    text: string
+  ) => readonly ScreenRect[];
+  readonly chip: (
+    structure: ChipSource,
+    placement: Placement
+  ) => ScreenRect | undefined;
+  readonly plate: (zone: Zone) => readonly ScreenPoint[];
+  readonly titleSpots: (zone: Zone, width: number) => readonly TitleSpot[];
+  /** Puts the structures in the order they're drawn. */
+  readonly order: (
+    items: readonly SceneStructure[]
+  ) => readonly SceneStructure[];
+}
+
+const tagWidth = (text: string) => text.length * tagCharWidth + tagPadding;
+
+const geometries: Readonly<Record<View, ViewGeometry>> = {
+  iso: {
+    project,
+    outline: silhouette,
+    tagSpots: ({ placement }, text) => [nameTagRect(placement, text)],
+    chip: chipRect,
+    plate: plateOf,
+    titleSpots,
+    order: paintOrder,
+  },
+  plan: {
+    project: projectPlan,
+    outline: planOutline,
+    tagSpots: ({ outline }, text) =>
+      planTagSpots(boundsOfPoints(outline), tagWidth(text)),
+    chip: planChipRect,
+    plate: planPlateOf,
+    titleSpots: planTitleSpots,
+    order: (items) => items,
+  },
+};
+
 /**
  * Places every zone's title along one of its plate's front edges, in the
  * first spot clear of `avoid`, the other plates and the titles placed
@@ -503,12 +651,13 @@ const withShapes = (
  */
 const placeZones = (
   zones: readonly Zone[],
-  avoid: Obstacles
+  avoid: Obstacles,
+  geometry: ViewGeometry
 ): readonly SceneZone[] => {
-  const plates = Arr.map(zones, plateOf);
+  const plates = Arr.map(zones, geometry.plate);
 
   return Arr.reduce(zones, Arr.empty<SceneZone>(), (done, zone, index) => {
-    const plate = plates[index] ?? plateOf(zone);
+    const plate = plates[index] ?? geometry.plate(zone);
     const width = zone.group.title.length * titleCharWidth;
 
     const around = withShapes(avoid, [
@@ -516,14 +665,17 @@ const placeZones = (
       ...Arr.flatMap(done, ({ title }) => (title === undefined ? [] : [title])),
     ]);
 
-    const spot = Arr.findFirst(titleSpots(zone, width), (candidate) => {
-      const padded = titleQuad(candidate, width, titleMargin);
+    const spot = Arr.findFirst(
+      geometry.titleSpots(zone, width),
+      (candidate) => {
+        const padded = titleQuad(candidate, width, titleMargin);
 
-      return (
-        (candidate.outside || insideConvex(plate, padded)) &&
-        clearOf(padded, around)
-      );
-    });
+        return (
+          (candidate.outside || insideConvex(plate, padded)) &&
+          clearOf(padded, around)
+        );
+      }
+    );
 
     return [
       ...done,
@@ -656,6 +808,9 @@ const labelGaps = [3, 10, 18] as const;
 
 /** Clear space a label keeps from everything but its own line. */
 const labelClearance = 3;
+
+/** Clear space a name tag in Plan view keeps from everything else. */
+const tagClearance = 2;
 
 /** Where along a leg a label may sit, most preferred first: the middle. */
 const labelShares = Arr.sort(
@@ -800,8 +955,6 @@ const labelSpot = (
   return { spot, fallback: spot ?? fallback };
 };
 
-const screenOf = (route: HopRoute) => Arr.map(route.points, project);
-
 /** What a scene is computed from. */
 export interface SceneSource {
   readonly data: MapData;
@@ -818,10 +971,12 @@ export interface SceneSource {
    * in order. The rest follow in data.mjs order.
    */
   readonly labelFirst?: readonly string[] | undefined;
+  /** Which view to draw. Defaults to the iso view. */
+  readonly view?: View | undefined;
 }
 
 /**
- * Lays out everything the iso view draws for `revealed`: the structures in
+ * Lays out everything a view draws for `revealed`: the structures in
  * painter's order with their tags and chips, the zones with their titles,
  * and the hops between revealed structures with their labels. Zone titles
  * are placed first, clear of boxes, tags, chips and routes. Then labels go
@@ -836,26 +991,26 @@ export const sceneOf = ({
   revealed,
   routes = routeRevealed({ data, layout, revealed }),
   labelFirst = [],
+  view = "iso",
 }: SceneSource): Scene => {
-  const structures = paintOrder(
-    Arr.flatMap(data.structures, (structure) => {
-      const placement = layout.structures[structure.id];
+  const geometry = geometries[view];
 
-      return placement === undefined || !revealed.has(structure.id)
-        ? []
-        : [
-            {
-              structure,
-              placement,
-              outline: silhouette(placement, structure.shape),
-              tag: nameTagRect(placement, nameTagText(structure)),
-              chip: chipRect(structure, placement),
-            },
-          ];
-    })
-  );
+  const boxes = Arr.flatMap(data.structures, (structure) => {
+    const placement = layout.structures[structure.id];
 
-  const outlines = Arr.map(structures, ({ outline }) => outline);
+    return placement === undefined || !revealed.has(structure.id)
+      ? []
+      : [
+          {
+            structure,
+            placement,
+            outline: geometry.outline(placement, structure.shape),
+            chip: geometry.chip(structure, placement),
+          },
+        ];
+  });
+
+  const outlines = Arr.map(boxes, ({ outline }) => outline);
 
   const routed = Arr.flatMap(data.hops, (hop) => {
     const route = routes[hop.id];
@@ -864,22 +1019,70 @@ export const sceneOf = ({
       !revealed.has(hop.from) ||
       !revealed.has(hop.to)
       ? []
-      : [{ hop, route, points: screenOf(route) }];
+      : [{ hop, route, points: Arr.map(route.points, geometry.project) }];
   });
-
-  const tagsAndChips = Arr.flatMap(structures, ({ tag, chip }) =>
-    Arr.map(chip === undefined ? [tag] : [tag, chip], rectPolygon)
-  );
 
   const lines = Arr.map(routed, ({ hop, points }) => ({
     id: hop.id,
     segments: Arr.map(segmentsOf(points), lineObstacle),
   }));
 
-  const zones = placeZones(zonesOf({ data, layout, revealed }), {
-    shapes: Arr.map([...outlines, ...tagsAndChips], obstacle),
-    lines: Arr.flatMap(lines, ({ segments }) => segments),
-  });
+  const allLines = Arr.flatMap(lines, ({ segments }) => segments);
+
+  const chips = Arr.flatMap(boxes, ({ chip }) =>
+    chip === undefined ? [] : [rectPolygon(chip)]
+  );
+
+  // Each tag takes its first spot clear of the boxes, chips, routes and the
+  // tags placed before it, or else its first spot. The iso view has one.
+  const tagged = Arr.reduce(
+    boxes,
+    Arr.empty<SceneStructure>(),
+    (done, item) => {
+      const spots = geometry.tagSpots(item, nameTagText(item.structure));
+      const [first = { left: 0, top: 0, right: 0, bottom: 0 }] = spots;
+
+      const avoid = {
+        shapes: Arr.map(
+          [
+            ...outlines,
+            ...chips,
+            ...Arr.map(done, ({ tag }) => rectPolygon(tag)),
+          ],
+          obstacle
+        ),
+        lines: allLines,
+      };
+
+      const tag =
+        spots.length === 1
+          ? first
+          : Option.getOrElse(
+              Arr.findFirst(spots, (spot) =>
+                clearOf(rectPolygon(growRect(spot, tagClearance)), avoid)
+              ),
+              () => first
+            );
+
+      return [...done, { ...item, tag }];
+    }
+  );
+
+  const structures = geometry.order(tagged);
+
+  const tagsAndChips = [
+    ...Arr.map(structures, ({ tag }) => rectPolygon(tag)),
+    ...chips,
+  ];
+
+  const zones = placeZones(
+    zonesOf({ data, layout, revealed }),
+    {
+      shapes: Arr.map([...outlines, ...tagsAndChips], obstacle),
+      lines: allLines,
+    },
+    geometry
+  );
 
   const fixed = Arr.map(
     [
@@ -962,7 +1165,7 @@ export const sceneOf = ({
     Option.toArray(Option.fromNullishOr(byHop.get(hop.id)))
   );
 
-  return { structures, zones, hops };
+  return { view, structures, zones, hops };
 };
 
 /** One way a scene breaks the overlap rule. */

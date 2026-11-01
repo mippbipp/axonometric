@@ -348,6 +348,46 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
     })
   );
 
+  it.effect("warns about text drawn over a box in Plan view", () =>
+    Effect.gen(function* () {
+      // Boxes touching the engineer on every side leave its name tag no
+      // room in Plan view.
+      const result = yield* checkWith(
+        {
+          [layoutFile]: yield* encodeLayout({
+            format: 1,
+            revision: 0,
+            structures: {
+              engineer: { x: 4, y: 4, w: 2, d: 2 },
+              page: { x: 4, y: 6, w: 2, d: 2 },
+              server: { x: 4, y: 2, w: 2, d: 2 },
+              proposals: { x: 6, y: 4, w: 2, d: 2 },
+              "pull-request": { x: 2, y: 4, w: 2, d: 2 },
+              upstream: { x: 16, y: 0, w: 2, d: 2 },
+            },
+          }),
+        },
+        ["--json"]
+      );
+
+      const report = yield* decodeReport(result.stdout);
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+      assert.isTrue(
+        Arr.some(
+          report.warnings,
+          ({ message }) =>
+            Str.includes('the name tag of "engineer"')(message) &&
+            Str.includes("in Plan view")(message)
+        ),
+        Arr.join(
+          Arr.map(report.warnings, ({ message }) => message),
+          "\n"
+        )
+      );
+    })
+  );
+
   it.effect("warns when two groups' zones overlap, naming both groups", () =>
     Effect.gen(function* () {
       // upstream, in the outside group, sits one unit from server, in the
