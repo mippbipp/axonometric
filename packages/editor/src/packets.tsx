@@ -262,41 +262,43 @@ function Packet({
   };
 
   return (
-    <g
-      data-packet={hop.id}
-      data-track={track.id}
-      data-selected={isSelected}
-      role="button"
-      tabIndex={0}
-      aria-label={`Packet: ${hop.label}`}
-      className="cursor-pointer outline-none"
-      onClick={() => {
-        selectPacket(trackIndex);
-      }}
-      onKeyDown={onKeyDown}
-    >
-      {/* A wider, invisible target so the dot is easy to hit. */}
-      <circle cx={sx} cy={sy} r={12} className="fill-transparent" />
-      {isSelected ? (
+    <g>
+      <g
+        data-packet={hop.id}
+        data-track={track.id}
+        data-selected={isSelected}
+        role="button"
+        tabIndex={0}
+        aria-label={`Packet: ${hop.label}`}
+        className="cursor-pointer outline-none"
+        onClick={() => {
+          selectPacket(trackIndex);
+        }}
+        onKeyDown={onKeyDown}
+      >
+        {/* A wider, invisible target so the dot is easy to hit. */}
+        <circle cx={sx} cy={sy} r={12} className="fill-transparent" />
+        {isSelected ? (
+          <circle
+            cx={sx}
+            cy={sy}
+            r={11}
+            fill="none"
+            className="stroke-ink"
+            strokeWidth={1.2}
+            strokeDasharray="2 2"
+          />
+        ) : null}
         <circle
           cx={sx}
           cy={sy}
-          r={11}
-          fill="none"
-          className="stroke-ink"
-          strokeWidth={1.2}
-          strokeDasharray="2 2"
+          r={5.5}
+          className="fill-ink stroke-paper"
+          strokeWidth={1.6}
         />
-      ) : null}
-      <circle
-        cx={sx}
-        cy={sy}
-        r={5.5}
-        className="fill-ink stroke-paper"
-        strokeWidth={1.6}
-      />
+      </g>
       {showLabel || isSelected ? (
-        <g className="pointer-events-none">
+        <g className="pointer-events-none" aria-hidden="true">
           <rect
             x={sx + 8}
             y={sy - 21}
