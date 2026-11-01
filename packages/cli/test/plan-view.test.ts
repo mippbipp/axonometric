@@ -631,6 +631,42 @@ describe("Plan view's routes", () => {
             )
           );
 
+          const heads = yield* inPage<
+            readonly {
+              readonly id: string;
+              readonly left: number;
+              readonly right: number;
+              readonly top: number;
+              readonly bottom: number;
+            }[]
+          >(
+            page,
+            `Array.from(document.querySelectorAll("[data-hop] [data-arrowhead]"), (head) => {
+              const box = head.getBoundingClientRect();
+
+              return {
+                id: head.closest("[data-hop]").dataset.hop,
+                left: box.left,
+                right: box.right,
+                top: box.top,
+                bottom: box.bottom,
+              };
+            })`
+          );
+
+          const touching = Arr.flatMap(heads, (first, index) =>
+            Arr.flatMap(heads.slice(index + 1), (second) =>
+              first.left < second.right &&
+              second.left < first.right &&
+              first.top < second.bottom &&
+              second.top < first.bottom
+                ? [`${first.id} × ${second.id}`]
+                : []
+            )
+          );
+
+          assert.lengthOf(heads, 29);
+          assert.deepStrictEqual(touching, [], "arrowheads touching");
           assert.deepStrictEqual(nearOutlines, [], "routes on outlines");
           assert.deepStrictEqual(closeLines, [], "lines on lines");
         })

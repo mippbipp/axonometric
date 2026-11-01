@@ -1,7 +1,6 @@
 import {
   groundProjections,
-  laneRoutes,
-  laneWidths,
+  drawnRoutes,
   routeRevealed,
 } from "@axonometric/contracts";
 import type {
@@ -171,18 +170,25 @@ export const routesOf = ({
   return routes;
 };
 
-const laneCache = new WeakMap<
+const lineCache = new WeakMap<
   Readonly<Record<string, HopRoute>>,
   Map<View, Readonly<Record<string, readonly GridPosition[]>>>
 >();
 
 /** Each routed hop's own line on the ground in `view`, as the scene draws it. */
-const lanesOf = (
-  routes: Readonly<Record<string, HopRoute>>,
-  view: View
-): Readonly<Record<string, readonly GridPosition[]>> => {
+const linesOf = ({
+  routes,
+  data,
+  layout,
+  view,
+}: {
+  readonly routes: Readonly<Record<string, HopRoute>>;
+  readonly data: MapData;
+  readonly layout: Layout;
+  readonly view: View;
+}): Readonly<Record<string, readonly GridPosition[]>> => {
   const byView =
-    laneCache.get(routes) ??
+    lineCache.get(routes) ??
     new Map<View, Readonly<Record<string, readonly GridPosition[]>>>();
 
   const cached = byView.get(view);
@@ -191,12 +197,17 @@ const lanesOf = (
     return cached;
   }
 
-  const lanes = laneRoutes(routes, laneWidths[view]);
+  const lines = drawnRoutes({
+    routes,
+    hops: data.hops,
+    placements: layout.structures,
+    view,
+  });
 
-  byView.set(view, lanes);
-  laneCache.set(routes, byView);
+  byView.set(view, lines);
+  lineCache.set(routes, byView);
 
-  return lanes;
+  return lines;
 };
 
 /**
@@ -217,7 +228,8 @@ export const screenRouteOf = ({
   readonly hop: { readonly id: string };
   readonly view: View;
 }): readonly ScreenPoint[] | undefined => {
-  const line = lanesOf(routesOf({ data, layout, revealed }), view)[hop.id];
+  const routes = routesOf({ data, layout, revealed });
+  const line = linesOf({ routes, data, layout, view })[hop.id];
 
   return line === undefined
     ? undefined

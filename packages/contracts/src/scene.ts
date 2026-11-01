@@ -7,6 +7,8 @@ import {
 } from "effect";
 import { dual } from "effect/Function";
 
+import { arrowHalfWidth } from "./ends.ts";
+import { drawnRoutes } from "./fans.ts";
 import {
   boundsOfPoints,
   growRect,
@@ -167,6 +169,11 @@ export interface SceneHop {
    * same grid line as another route, so no two hops' lines coincide.
    */
   readonly points: readonly ScreenPoint[];
+  /**
+   * Where the route bends, which the Iso view marks: `points` without the
+   * little jogs that spread its ends along an edge.
+   */
+  readonly bends: readonly ScreenPoint[];
   /**
    * Where the label goes, or `undefined` when no clear spot at the route
    * exists. A hop without a spot shows its label only on hover or while its
@@ -1116,7 +1123,20 @@ export const sceneOf = ({
       revealed.has(hop.to)
   );
 
-  const drawn = laneRoutes(
+  const drawn = drawnRoutes({
+    routes: Rec.fromEntries(
+      Arr.flatMap(shown, ({ id }) => {
+        const route = routes[id];
+
+        return route === undefined ? [] : [[id, route] as const];
+      })
+    ),
+    hops: shown,
+    placements: layout.structures,
+    view,
+  });
+
+  const bent = laneRoutes(
     Rec.fromEntries(
       Arr.flatMap(shown, ({ id }) => {
         const route = routes[id];
@@ -1137,6 +1157,10 @@ export const sceneOf = ({
             hop,
             route,
             points: Arr.map(drawn[hop.id] ?? route.points, geometry.project),
+            bends: Arr.map(
+              (bent[hop.id] ?? route.points).slice(1, -1),
+              geometry.project
+            ),
           },
         ];
   });
@@ -1326,6 +1350,34 @@ export const arrowheadOf = (
       t: arrowLength / Math.max(length, 1e-9),
     }),
   };
+};
+
+/**
+ * The triangle drawn at a route's end: its tip on the last point, its base
+ * `arrowLength` back along the last leg and `arrowHalfWidth` either side.
+ */
+export const arrowPolygon = (
+  points: readonly ScreenPoint[]
+): readonly ScreenPoint[] | undefined => {
+  const head = arrowheadOf(points);
+
+  if (head === undefined) {
+    return undefined;
+  }
+
+  const { tip, base } = head;
+  const length = Math.max(Math.hypot(tip.sx - base.sx, tip.sy - base.sy), 1e-9);
+
+  const wing = {
+    sx: (-(tip.sy - base.sy) / length) * arrowHalfWidth,
+    sy: ((tip.sx - base.sx) / length) * arrowHalfWidth,
+  };
+
+  return [
+    tip,
+    { sx: base.sx + wing.sx, sy: base.sy + wing.sy },
+    { sx: base.sx - wing.sx, sy: base.sy - wing.sy },
+  ];
 };
 
 interface Shape2d {
@@ -1621,6 +1673,23 @@ const groundClashes = (scene: Scene): readonly SceneClash[] => {
   return [...boxes, ...zones, ...nearCorners, ...routes];
 };
 
+/** Every pair of hops whose arrowheads overlap. */
+const arrowClashes = (scene: Scene): readonly SceneClash[] => {
+  const heads = Arr.flatMap(scene.hops, ({ hop, points }) => {
+    const polygon = arrowPolygon(points);
+
+    return polygon === undefined ? [] : [{ id: `arrow:${hop.id}`, polygon }];
+  });
+
+  return Arr.flatMap(heads, (first, index) =>
+    Arr.flatMap(heads.slice(index + 1), (second) =>
+      convexOverlap(first.polygon, second.polygon)
+        ? [{ between: [first.id, second.id] as const }]
+        : []
+    )
+  );
+};
+
 /** Whether a scene item's id names a code chip. */
 const isChip = Str.startsWith("chip:");
 
@@ -1691,7 +1760,12 @@ export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
     )
   );
 
-  return [...pairs, ...crossings, ...groundClashes(scene)];
+  return [
+    ...pairs,
+    ...crossings,
+    ...groundClashes(scene),
+    ...arrowClashes(scene),
+  ];
 };
 
 /** How far a point may sit from where it should be, in screen units. */

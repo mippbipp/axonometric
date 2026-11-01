@@ -1,6 +1,7 @@
 import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
+import { fitsEdge } from "./ends.ts";
 import {
   boundsOfPoints,
   clipToConvex,
@@ -193,6 +194,25 @@ const edgeCosts = {
    * blocked.
    */
   facingAway: 600,
+  /**
+   * An edge facing away that is the far side of a facing edge, a little
+   * more than one at the side: a full facing edge spills to the sides
+   * first, then the back.
+   */
+  facingBack: 100,
+  /**
+   * Taking an edge with no room left for another end at the spacing the
+   * scene needs. It must outweigh a bend and `facingAside`, so the end
+   * takes another facing edge, and stay under `facingAway`, so it never
+   * takes an edge that faces away: a map whose facing edges are all full
+   * crowds the last end in instead.
+   */
+  full: 500,
+  /**
+   * Each end already on an edge, so ends spread over the facing edges
+   * before one fills and a later end has to take another.
+   */
+  perEnd: 6,
 } as const;
 
 /**
@@ -689,7 +709,10 @@ const facingOf = (box: Box, other: Box): readonly number[] => {
 
   const costOf = (edge: number) => {
     if (faces[edge] !== true) {
-      return edgeCosts.facingAway;
+      return (
+        edgeCosts.facingAway +
+        (faces[(edge + 2) % 4] === true ? edgeCosts.facingBack : 0)
+      );
     }
 
     return ranked.indexOf(edge) === 0 ? 0 : edgeCosts.facingAside;
@@ -697,6 +720,40 @@ const facingOf = (box: Box, other: Box): readonly number[] => {
 
   return Arr.map(Arr.range(0, 3), costOf);
 };
+
+const edgeKey = (id: string, out: number) => `${id}:${out}`;
+
+/** Whether an end is a line's start or its arrowhead. */
+type EndKind = "heads" | "starts";
+
+/**
+ * What using an edge as one more end costs: `edgeCosts.full` when the ends
+ * on it already leave no room for one more at the spacing the scene draws
+ * them, so the end spills to the next edge instead.
+ */
+const crowded = (usage: Usage, box: Box, kind: EndKind) => (out: number) => {
+  const placed = usage.edgeEnds.get(edgeKey(box.id, out)) ?? {
+    heads: 0,
+    starts: 0,
+  };
+
+  const length = (alongXAxis(out) ? box.y1 - box.y0 : box.x1 - box.x0) / scale;
+
+  const fits = fitsEdge(length, { ...placed, [kind]: placed[kind] + 1 });
+
+  return (
+    (fits ? 0 : edgeCosts.full) +
+    edgeCosts.perEnd * (placed.heads + placed.starts)
+  );
+};
+
+/** What `edgePoints` adds to an edge's cost. */
+interface EdgeOptions {
+  /** More cost for entering by a back edge (-x or -y). */
+  readonly backCost?: number;
+  /** More cost for using the edge in a direction out of the box. */
+  readonly extra?: (out: number) => number;
+}
 
 /**
  * The half-unit points along an edge from `start` to `end` a route may
@@ -724,7 +781,7 @@ const overlapping = (a: Box, b: Box) =>
 const edgePoints = (
   box: Box,
   other: Box,
-  backCost = 0
+  { backCost = 0, extra = () => 0 }: EdgeOptions = {}
 ): readonly EdgePoint[] => {
   const midX = (box.x0 + box.x1) / 2;
   const midY = (box.y0 + box.y1) / 2;
@@ -732,7 +789,9 @@ const edgePoints = (
   const corners = overlapping(box, other);
 
   const costOf = (out: number) =>
-    (facing[out] ?? 0) + (out === minusX || out === minusY ? backCost : 0);
+    (facing[out] ?? 0) +
+    (out === minusX || out === minusY ? backCost : 0) +
+    extra(out);
 
   return [
     ...Arr.map(alongEdge(box.x0, box.x1, corners), (x) => ({
@@ -785,6 +844,11 @@ interface Usage {
    * Every route so far: its two structures, its steps, and the axes its
    * legs run along at each point it passes, 3 at its ends and bends.
    */
+  /**
+   * How many arrowheads and line starts the routes so far put on each
+   * structure's edge, keyed by structure and the direction out of the edge.
+   */
+  readonly edgeEnds: Map<string, { heads: number; starts: number }>;
   readonly routes: {
     readonly ends: readonly string[];
     readonly steps: ReadonlySet<number>;
@@ -851,6 +915,22 @@ const axesOf = (usage: Usage, structure: string) => {
   return created;
 };
 
+/** Counts a route's end on a structure's edge. */
+const countEnd = (
+  usage: Usage,
+  {
+    id,
+    out,
+    kind,
+  }: { readonly id: string; readonly out: number; readonly kind: EndKind },
+  by = 1
+) => {
+  const key = edgeKey(id, out);
+  const placed = usage.edgeEnds.get(key) ?? { heads: 0, starts: 0 };
+
+  usage.edgeEnds.set(key, { ...placed, [kind]: placed[kind] + by });
+};
+
 const record = (
   grid: Grid,
   {
@@ -893,6 +973,27 @@ const record = (
     pair.steps.add(step);
     pair.points.add(pointIndex(grid, a));
     pair.points.add(pointIndex(grid, b));
+  }
+
+  const corners = cornersOf(points);
+  const [first, second] = corners;
+  const last = corners.at(-1);
+  const before = corners.at(-2);
+
+  if (first !== undefined && second !== undefined) {
+    countEnd(usage, {
+      id: ends[0] ?? "",
+      out: directionOf(first, second),
+      kind: "starts",
+    });
+  }
+
+  if (last !== undefined && before !== undefined) {
+    countEnd(usage, {
+      id: ends[1] ?? "",
+      out: directionOf(last, before),
+      kind: "heads",
+    });
   }
 
   usage.routes.push({ ends, steps, points: passes });
@@ -1146,20 +1247,22 @@ interface Stub {
  * come first and cost less, so a route leaves a box squarely.
  */
 const stubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
-  Arr.flatMap(edgePoints(box, other), (edge) =>
-    Arr.flatMap(stubLengths, (count, index) => {
-      const price = runPrice(search, edge, { direction: edge.out, count });
+  Arr.flatMap(
+    edgePoints(box, other, { extra: crowded(search.usage, box, "starts") }),
+    (edge) =>
+      Arr.flatMap(stubLengths, (count, index) => {
+        const price = runPrice(search, edge, { direction: edge.out, count });
 
-      return price === undefined
-        ? []
-        : [
-            {
-              edge,
-              tip: stepFrom(edge, edge.out, count),
-              cost: edge.cost + price + index * bendCost,
-            },
-          ];
-    })
+        return price === undefined
+          ? []
+          : [
+              {
+                edge,
+                tip: stepFrom(edge, edge.out, count),
+                cost: edge.cost + price + index * bendCost,
+              },
+            ];
+      })
   );
 
 /**
@@ -1168,19 +1271,24 @@ const stubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
  * edge, with what the edge point costs (back edges `backEndCost` more).
  */
 const inwardStubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
-  Arr.flatMap(edgePoints(box, other, backEndCost), (edge) =>
-    Arr.flatMap(stubLengths, (count, index) => {
-      const tip = stepFrom(edge, edge.out, count);
+  Arr.flatMap(
+    edgePoints(box, other, {
+      backCost: backEndCost,
+      extra: crowded(search.usage, box, "heads"),
+    }),
+    (edge) =>
+      Arr.flatMap(stubLengths, (count, index) => {
+        const tip = stepFrom(edge, edge.out, count);
 
-      const price = runPrice(search, tip, {
-        direction: opposite(edge.out),
-        count,
-      });
+        const price = runPrice(search, tip, {
+          direction: opposite(edge.out),
+          count,
+        });
 
-      return price === undefined
-        ? []
-        : [{ edge, tip, cost: edge.cost + price + index * bendCost }];
-    })
+        return price === undefined
+          ? []
+          : [{ edge, tip, cost: edge.cost + price + index * bendCost }];
+      })
   );
 
 /** The best way found so far to finish a route. */
@@ -1345,11 +1453,12 @@ const straightAcross = (
   search: Search,
   { from, to }: { readonly from: Box; readonly to: Box }
 ): readonly Cell[] | undefined => {
+  const entries = edgePoints(to, from, {
+    extra: crowded(search.usage, to, "heads"),
+  });
+
   const targets = new Map(
-    Arr.map(edgePoints(to, from), (edge) => [
-      `${edge.x},${edge.y},${edge.out}`,
-      edge,
-    ])
+    Arr.map(entries, (edge) => [`${edge.x},${edge.y},${edge.out}`, edge])
   );
 
   const straight = Arr.flatMap(stubsOf(search, from, to), (stub) => {
@@ -1548,9 +1657,46 @@ export const routeHops: {
       axes: new Map(),
       pairs: new Map(),
       routes: [],
+      edgeEnds: new Map(),
     };
 
     const routes: Record<string, HopRoute> = {};
+
+    // A hop with one edge facing the other end has no other good way out,
+    // so its end keeps room on that edge, and hops with a choice take
+    // another edge once it fills.
+    const reserved = new Map<string, readonly [string, number, EndKind]>();
+
+    for (const hop of data.hops) {
+      const from = byId.get(hop.from);
+      const to = byId.get(hop.to);
+
+      if (from !== undefined && to !== undefined && hop.from !== hop.to) {
+        for (const [end, box, other, kind] of [
+          [`${hop.id}:from`, from, to, "starts"],
+          [`${hop.id}:to`, to, from, "heads"],
+        ] as const) {
+          const faces = facingEdges(placementOf(box), placementOf(other));
+          const only = faces.indexOf(true);
+
+          if (Arr.filter(faces, Boolean).length === 1) {
+            countEnd(usage, { id: box.id, out: only, kind });
+            reserved.set(end, [box.id, only, kind]);
+          }
+        }
+      }
+    }
+
+    const release = (hop: Hop) => {
+      for (const end of [`${hop.id}:from`, `${hop.id}:to`]) {
+        const held = reserved.get(end);
+
+        if (held !== undefined) {
+          countEnd(usage, { id: held[0], out: held[1], kind: held[2] }, -1);
+          reserved.delete(end);
+        }
+      }
+    };
 
     const routeOne = (hop: Hop) => {
       const from = byId.get(hop.from);
@@ -1559,6 +1705,8 @@ export const routeHops: {
       if (from === undefined || to === undefined || hop.from === hop.to) {
         return;
       }
+
+      release(hop);
 
       const key = pairKey(hop.from, hop.to);
       const ends = new Set([hop.from, hop.to]);

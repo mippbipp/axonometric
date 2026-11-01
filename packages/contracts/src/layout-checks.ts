@@ -265,6 +265,7 @@ const thingNames = {
   title: "the zone title of",
   label: "the label of hop",
   route: "the route of hop",
+  arrow: "the arrowhead of hop",
   corner: "a corner of",
   zone: "the outline of zone",
 } as const satisfies Record<string, string>;

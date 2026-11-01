@@ -12,6 +12,7 @@ import { vi } from "vitest";
 import {
   arrowheadOf,
   arrowLength,
+  arrowPolygon,
   checkLayout,
   corners,
   distanceToPolyline,
@@ -1308,6 +1309,152 @@ describe("ground clashes", () => {
               );
             }
           }
+        }
+      })
+  );
+});
+
+describe("arrowheads", () => {
+  it.effect(
+    "never overlap on any fixture, in any chapter, in either view",
+    () =>
+      Effect.gen(function* () {
+        for (const name of [
+          "flake-pipeline",
+          "review",
+          "crowded",
+          "shapes",
+          "pipeline",
+        ]) {
+          const { data, layout } = yield* fixture(name);
+
+          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+            ? chaptersOf(data)
+            : [{ id: "all", plays: [], revealed: everything(data) }];
+
+          for (const chapter of chapters) {
+            for (const view of views) {
+              const scene = sceneOf({
+                data,
+                layout,
+                revealed: chapter.revealed,
+                labelFirst: chapter.plays,
+                view,
+              });
+
+              const clashes = Arr.filter(
+                Arr.map(sceneClashes(scene), clashKey),
+                (key) => Str.startsWith("arrow:")(key)
+              );
+
+              assert.deepStrictEqual(
+                clashes,
+                [],
+                `${name} ${chapter.id} in ${view}`
+              );
+            }
+          }
+        }
+      })
+  );
+
+  it.effect("reports two arrowheads that overlap", () =>
+    Effect.sync(() => {
+      const map = groundMap(
+        { a: { x: 0, y: 0 }, b: { x: 6, y: 0 }, c: { x: 0, y: 4 } },
+        [
+          { id: "one", from: "a", to: "b" },
+          { id: "two", from: "c", to: "b" },
+        ],
+        {}
+      );
+
+      for (const view of views) {
+        const scene = sceneOf({ ...map, view });
+        const [one, two] = scene.hops;
+
+        assert.isDefined(one);
+        assert.isDefined(two);
+
+        // The router keeps the heads apart, so move the second hop's last
+        // leg 2 px from the first's, where the heads overlap.
+        const [tip, before] = [one.points.at(-1), one.points.at(-2)];
+
+        assert.isDefined(tip);
+        assert.isDefined(before);
+
+        const moved = {
+          ...scene,
+          hops: [
+            one,
+            {
+              ...two,
+              points: [
+                ...two.points.slice(0, -2),
+                { sx: before.sx + 2, sy: before.sy + 2 },
+                { sx: tip.sx + 2, sy: tip.sy + 2 },
+              ],
+            },
+          ],
+        };
+
+        assert.include(
+          Arr.map(sceneClashes(moved), clashKey),
+          "arrow:one × arrow:two",
+          view
+        );
+        assert.notInclude(
+          Arr.map(sceneClashes(scene), clashKey),
+          "arrow:one × arrow:two",
+          view
+        );
+      }
+    })
+  );
+
+  it.effect(
+    "keep 3 px apart at fit where main → Updater and Upstream → Updater meet",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("flake-pipeline");
+
+        // The scale that fits chapter 8 in a 1780×1020 window.
+        const fit = { iso: 0.76, plan: 0.5 };
+
+        for (const view of views) {
+          const { hops } = sceneOf({
+            data,
+            layout,
+            revealed: everything(data),
+            view,
+          });
+
+          const heads = Arr.flatMap(hops, ({ hop, points }) => {
+            const polygon = arrowPolygon(points);
+
+            return polygon === undefined ? [] : [{ id: hop.id, polygon }];
+          });
+
+          const gaps = Arr.flatMap(heads, (first, index) =>
+            Arr.map(heads.slice(index + 1), (second) =>
+              Math.min(
+                ...Arr.map(first.polygon, (point) =>
+                  distanceToPolyline(
+                    [...second.polygon, second.polygon[0] ?? point],
+                    point
+                  )
+                ),
+                ...Arr.map(second.polygon, (point) =>
+                  distanceToPolyline(
+                    [...first.polygon, first.polygon[0] ?? point],
+                    point
+                  )
+                )
+              )
+            )
+          );
+
+          assert.isAtLeast(Math.min(...gaps) * fit[view], 3, view);
         }
       })
   );
