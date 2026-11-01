@@ -1,57 +1,48 @@
-import { formatProblem } from "@axonometric/contracts";
-import { Array as Arr, Console, Effect, FileSystem, Path } from "effect";
+import { formatProblem, placeStructures } from "@axonometric/contracts";
+import { Array as Arr, Console, Effect, Path, Record as Rec } from "effect";
 import { Argument, Command } from "effect/cli";
 
-import { loadMap } from "./map-files.ts";
+import { withLock } from "./lock.ts";
+import { encodeLayout, loadMap } from "./map-files.ts";
 import { renderPage } from "./page.ts";
 import { renderSystemMd } from "./system-md.ts";
+import { writeAll } from "./write-files.ts";
+import type { Output } from "./write-files.ts";
 
-interface Output {
-  readonly file: string;
-  readonly content: string;
-}
-
-/**
- * Writes every output to a temporary file beside it, and only then renames
- * them all into place, so a failed write leaves every old output as it was.
- * On any failure the temporary files are removed.
- */
-const writeAll = Effect.fnUntraced(function* (outputs: readonly Output[]) {
-  const fs = yield* FileSystem.FileSystem;
-
-  const staged = Arr.map(outputs, ({ file, content }) => ({
-    file,
-    content,
-    temporary: `${file}.${process.pid}.tmp`,
-  }));
-
-  const removeTemporaries = Effect.forEach(
-    staged,
-    ({ temporary }) => fs.remove(temporary).pipe(Effect.ignore),
-    { discard: true }
+const quoted = (ids: readonly string[]) =>
+  Arr.join(
+    Arr.map(ids, (id) => `"${id}"`),
+    ", "
   );
-
-  yield* Effect.gen(function* () {
-    yield* Effect.forEach(
-      staged,
-      ({ temporary, content }) => fs.writeFileString(temporary, content),
-      { discard: true }
-    );
-
-    yield* Effect.forEach(
-      staged,
-      ({ temporary, file }) => fs.rename(temporary, file),
-      { discard: true }
-    );
-  }).pipe(Effect.onError(() => removeTemporaries));
-});
 
 const build = Effect.fn("build")(function* (home: string) {
   const path = yield* Path.Path;
   const output = path.dirname(home);
   const system = path.basename(output);
-  const { warnings, ...map } = yield* loadMap(home, output, "build");
-  const state = { system, ...map };
+
+  yield* withLock(home, "build");
+
+  const { warnings, data, layout, saved } = yield* loadMap({
+    home,
+    output,
+    command: "build",
+    arrange: (mapData, savedLayout) =>
+      placeStructures(mapData, savedLayout).layout,
+  });
+
+  const placed = Arr.filter(
+    Rec.keys(layout.structures),
+    (id) => !Rec.has(saved.structures, id)
+  );
+
+  const pruned = Arr.filter(
+    Rec.keys(saved.structures),
+    (id) => !Rec.has(layout.structures, id)
+  );
+
+  const changed = placed.length > 0 || pruned.length > 0;
+  const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
+  const state = { system, data, layout: next };
 
   yield* Effect.forEach(
     warnings,
@@ -61,9 +52,15 @@ const build = Effect.fn("build")(function* (home: string) {
 
   const systemMdFile = path.join(output, "SYSTEM.md");
   const pageFile = path.join(output, `${system}.html`);
+  const layoutFile = path.join(home, "layout.json");
   const page = yield* renderPage(state);
 
+  const layoutOutput: readonly Output[] = changed
+    ? [{ file: layoutFile, content: yield* encodeLayout(next) }]
+    : [];
+
   yield* writeAll([
+    ...layoutOutput,
     {
       file: systemMdFile,
       content: renderSystemMd(state, path.relative(output, home)),
@@ -71,10 +68,22 @@ const build = Effect.fn("build")(function* (home: string) {
     { file: pageFile, content: page },
   ]);
 
+  if (placed.length > 0) {
+    yield* Effect.log(
+      `Placed ${quoted(placed)} in ${layoutFile}. Move any of them with axonometric layout.`
+    );
+  }
+
+  if (pruned.length > 0) {
+    yield* Effect.log(
+      `Removed ${quoted(pruned)} from ${layoutFile}: no structure in data.mjs has ${pruned.length === 1 ? "that id" : "those ids"}.`
+    );
+  }
+
   yield* Effect.log(
-    `Built ${systemMdFile} and ${pageFile}: ${map.data.structures.length} structures, ${map.data.hops.length} hops.`
+    `Built ${systemMdFile} and ${pageFile}: ${data.structures.length} structures, ${data.hops.length} hops.`
   );
-});
+}, Effect.scoped);
 
 export const buildCommand = Command.make(
   "build",
@@ -88,6 +97,6 @@ export const buildCommand = Command.make(
   ({ home }) => build(home)
 ).pipe(
   Command.withDescription(
-    "Validate the map, then write SYSTEM.md and <system>.html to the home folder's parent"
+    "Validate the map, place structures that have no position yet and save them to layout.json, then write SYSTEM.md and <system>.html to the home folder's parent"
   )
 );

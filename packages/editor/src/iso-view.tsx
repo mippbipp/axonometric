@@ -4,7 +4,12 @@ import type {
   Placement,
   Structure,
 } from "@axonometric/contracts";
-import { isoHeights } from "@axonometric/contracts";
+import {
+  isoHeights,
+  nameTagRect,
+  nameTagText,
+  tagDrop,
+} from "@axonometric/contracts";
 import { Array as Arr, Order, String as Str } from "effect";
 import { useId } from "react";
 import type { ReactNode } from "react";
@@ -14,12 +19,6 @@ import { corners, screenRouteOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
-
-/** How far below the front corner a name tag reaches, in screen units. */
-const tagDrop = 28;
-
-/** Approximate width of one character of the name tag's monospace font. */
-const tagCharWidth = 7.2;
 
 interface PlacedStructure {
   readonly structure: Structure;
@@ -38,24 +37,21 @@ const byDepth = Order.mapInput(
     placement.x + placement.y + placement.w + placement.d
 );
 
-/** The text on a structure's name tag: its tag, or else its name. */
-const tagText = (structure: Structure) => structure.tag ?? structure.name;
-
-const tagWidth = (structure: Structure) =>
-  tagText(structure).length * tagCharWidth + 12;
+const tagOf = ({ structure, placement }: PlacedStructure) =>
+  nameTagRect(placement, nameTagText(structure));
 
 function NameTag({ placed }: { readonly placed: PlacedStructure }) {
   const { front } = corners(placed.placement, 0);
-  const width = tagWidth(placed.structure);
-  const top = front.sy + 9;
+  const tag = tagOf(placed);
+  const { top } = tag;
 
   return (
     <g data-name-tag={placed.structure.id} className="pointer-events-none">
       <rect
-        x={front.sx - width / 2}
+        x={tag.left}
         y={top}
-        width={width}
-        height={18}
+        width={tag.right - tag.left}
+        height={tag.bottom - tag.top}
         className="fill-paper stroke-ink"
         strokeWidth={0.9}
       />
@@ -65,7 +61,7 @@ function NameTag({ placed }: { readonly placed: PlacedStructure }) {
         textAnchor="middle"
         className="fill-ink stroke-none font-mono text-xs"
       >
-        {tagText(placed.structure)}
+        {nameTagText(placed.structure)}
       </text>
     </g>
   );
@@ -127,7 +123,7 @@ const extentOf = ({ structure, placement }: PlacedStructure) => {
   const ground = corners(placement, 0);
   const top = corners(placement, isoHeights[structure.shape]);
 
-  const tagHalf = tagWidth(structure) / 2;
+  const tag = tagOf({ structure, placement });
 
   return [
     top.back,
@@ -135,8 +131,8 @@ const extentOf = ({ structure, placement }: PlacedStructure) => {
     top.right,
     ground.left,
     ground.right,
-    { sx: ground.front.sx - tagHalf, sy: ground.front.sy + tagDrop },
-    { sx: ground.front.sx + tagHalf, sy: ground.front.sy + tagDrop },
+    { sx: tag.left, sy: ground.front.sy + tagDrop },
+    { sx: tag.right, sy: ground.front.sy + tagDrop },
   ];
 };
 

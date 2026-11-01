@@ -1,4 +1,4 @@
-import { MapProblem } from "@axonometric/contracts";
+import { LayoutFile, MapProblem } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Schema, String as Str } from "effect";
 
@@ -16,6 +16,8 @@ const CheckReport = Schema.Struct({
   errors: Schema.Array(MapProblem),
   warnings: Schema.Array(MapProblem),
 });
+
+const encodeLayout = Schema.encodeEffect(LayoutFile);
 
 const decodeReport = Schema.decodeUnknownEffect(
   Schema.fromJsonString(CheckReport)
@@ -298,23 +300,49 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
     })
   );
 
-  it.effect("reports problems in both files, and a missing placement", () =>
+  it.effect("reports problems in both files", () =>
     Effect.gen(function* () {
       const result = yield* checkWith({
         ...(yield* editData('data.structures[0].status = "ghost";')),
-        [layoutFile]: '{ "format": 1, "revision": 0, "structures": {} }',
+        [layoutFile]: '{ "format": 1, "revision": 0 }',
       });
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(result.stdout, "error data.mjs structures[0].status:");
+      assert.include(result.stdout, "error layout.json structures: missing.");
+    })
+  );
 
-      const placed = yield* checkWith({
-        [layoutFile]: '{ "format": 1, "revision": 0, "structures": {} }',
-      });
+  it.effect("warns about overlapping footprints and covered name tags", () =>
+    Effect.gen(function* () {
+      const result = yield* checkWith(
+        {
+          [layoutFile]: yield* encodeLayout({
+            format: 1,
+            revision: 0,
+            structures: {
+              engineer: { x: 0, y: 0, w: 2, d: 2 },
+              page: { x: 1, y: 1, w: 2, d: 2 },
+              server: { x: 8, y: 0, w: 2, d: 2 },
+              proposals: { x: 10, y: 2, w: 2, d: 2 },
+              "pull-request": { x: 12, y: 8, w: 2, d: 1.5 },
+              upstream: { x: 16, y: 0, w: 2, d: 2 },
+            },
+          }),
+        },
+        ["--json"]
+      );
 
-      assert.include(
-        placed.stdout,
-        "error layout.json structures.engineer: missing."
+      const report = yield* decodeReport(result.stdout);
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+      assert.deepStrictEqual(
+        Arr.map(report.warnings, ({ path, message }) => `${path}: ${message}`),
+        [
+          'structures.page: footprint overlaps "engineer". Move one of them, for example with axonometric layout <home> page --x <x> --y <y>.',
+          'structures.engineer: name tag is drawn on top of "page". Move one of them apart, so the tag under the front corner has room.',
+          'structures.server: name tag is drawn on top of "proposals". Move one of them apart, so the tag under the front corner has room.',
+        ]
       );
     })
   );
