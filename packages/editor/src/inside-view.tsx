@@ -33,11 +33,9 @@ const corners = ({ x, y, w, d }: Placement, z: number) => ({
 });
 
 function StepBox({
-  step,
   index,
   hatch,
 }: {
-  readonly step: Step;
   readonly index: number;
   readonly hatch: string;
 }) {
@@ -50,9 +48,6 @@ function StepBox({
     y: placement.y + 1,
     z: boxHeight,
   });
-
-  const label = `${index + 1} · ${step.name}`;
-  const tagWidth = label.length * 7.2 + 12;
 
   return (
     <g
@@ -89,6 +84,27 @@ function StepBox({
       >
         {index + 1}
       </text>
+    </g>
+  );
+}
+
+/**
+ * A step's name tag under its front corner. Tags draw after every box, so the
+ * next step's box doesn't hide them.
+ */
+function StepTag({
+  step,
+  index,
+}: {
+  readonly step: Step;
+  readonly index: number;
+}) {
+  const ground = corners(placementOf(index), 0);
+  const label = `${index + 1} · ${step.name}`;
+  const tagWidth = label.length * 7.2 + 12;
+
+  return (
+    <g className="stroke-ink pointer-events-none">
       <rect
         x={ground.front.sx - tagWidth / 2}
         y={ground.front.sy + 9}
@@ -273,7 +289,12 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
         </g>
         <g>
           {Arr.map(steps, (item, index) => (
-            <StepBox key={item.name} step={item} index={index} hatch={hatch} />
+            <StepBox key={item.name} index={index} hatch={hatch} />
+          ))}
+        </g>
+        <g>
+          {Arr.map(steps, (item, index) => (
+            <StepTag key={item.name} step={item} index={index} />
           ))}
         </g>
         {packet === undefined ? null : (

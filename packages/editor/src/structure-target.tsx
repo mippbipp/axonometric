@@ -1,3 +1,4 @@
+import { cn } from "@axonometric/ui/lib/utils";
 import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
 
 import { useSelection } from "./selection-context.ts";
@@ -17,6 +18,7 @@ import { useTooltipActions } from "./tooltip-context.ts";
 export function StructureTarget({
   id,
   children,
+  className,
   ...rest
 }: SVGProps<SVGGElement> & { readonly id: string }) {
   const { selected, select, goInside } = useSelection();
@@ -46,6 +48,10 @@ export function StructureTarget({
   return (
     <g
       {...rest}
+      className={cn(
+        "focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-dashed",
+        className
+      )}
       data-structure={id}
       data-selected={isSelected}
       // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.

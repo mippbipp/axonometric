@@ -80,6 +80,22 @@ The isometric drawing of the map's layout.
 The same layout drawn straight from above.
 _Avoid_: 2D view, flat view
 
+**Inside view**:
+One structure's steps in order, drawn in place of the map until you come out.
+_Avoid_: drill-down, detail view
+
+**Selection**:
+The structure that's selected. Its panel is pinned in the side panel until the selection clears.
+_Avoid_: focus, active structure
+
+**Side index**:
+The list of every structure by group, next to the view.
+_Avoid_: sidebar, legend
+
+**Open questions tab**:
+The side panel tab that lists every question revealed so far, open ones first.
+_Avoid_: issues list
+
 ## Editing and review
 
 **Layout change**:
