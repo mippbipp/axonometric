@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 import type { Bounds } from "./bounds.ts";
 
@@ -352,36 +359,36 @@ export function Viewport({
         });
   }, [show, zoomBy]);
 
+  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      isTyping(event.target)
+    ) {
+      return;
+    }
+
+    if (event.key === "+" || event.key === "=") {
+      zoomBy(zoomStep);
+    } else if (event.key === "-" || event.key === "_") {
+      zoomBy(1 / zoomStep);
+    } else if (event.key === "0") {
+      zoomToFit();
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+  });
+
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.ctrlKey ||
-        event.metaKey ||
-        event.altKey ||
-        isTyping(event.target)
-      ) {
-        return;
-      }
-
-      if (event.key === "+" || event.key === "=") {
-        zoomBy(zoomStep);
-      } else if (event.key === "-" || event.key === "_") {
-        zoomBy(1 / zoomStep);
-      } else if (event.key === "0") {
-        zoomToFit();
-      } else {
-        return;
-      }
-
-      event.preventDefault();
-    };
-
     globalThis.addEventListener("keydown", onKeyDown);
 
     return () => {
       globalThis.removeEventListener("keydown", onKeyDown);
     };
-  }, [zoomBy, zoomToFit]);
+  }, []);
 
   return (
     <div className="relative size-full">
