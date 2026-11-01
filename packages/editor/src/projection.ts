@@ -1,6 +1,12 @@
-import { groundProjections, routeRevealed } from "@axonometric/contracts";
+import {
+  groundProjections,
+  laneRoutes,
+  laneWidths,
+  routeRevealed,
+} from "@axonometric/contracts";
 import type {
   GridPoint,
+  GridPosition,
   GroundProjection,
   HopRoute,
   Layout,
@@ -165,9 +171,38 @@ export const routesOf = ({
   return routes;
 };
 
+const laneCache = new WeakMap<
+  Readonly<Record<string, HopRoute>>,
+  Map<View, Readonly<Record<string, readonly GridPosition[]>>>
+>();
+
+/** Each routed hop's own line on the ground in `view`, as the scene draws it. */
+const lanesOf = (
+  routes: Readonly<Record<string, HopRoute>>,
+  view: View
+): Readonly<Record<string, readonly GridPosition[]>> => {
+  const byView =
+    laneCache.get(routes) ??
+    new Map<View, Readonly<Record<string, readonly GridPosition[]>>>();
+
+  const cached = byView.get(view);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const lanes = laneRoutes(routes, laneWidths[view]);
+
+  byView.set(view, lanes);
+  laneCache.set(routes, byView);
+
+  return lanes;
+};
+
 /**
- * A hop's route on screen in `view`, or `undefined` when it has none, such
- * as when either end isn't revealed. Packets walk along these points.
+ * A hop's line on screen in `view`, its own lane of its route as the scene
+ * draws it, or `undefined` when it has none, such as when either end isn't
+ * revealed. Packets walk along these points.
  */
 export const screenRouteOf = ({
   data,
@@ -182,11 +217,11 @@ export const screenRouteOf = ({
   readonly hop: { readonly id: string };
   readonly view: View;
 }): readonly ScreenPoint[] | undefined => {
-  const route = routesOf({ data, layout, revealed })[hop.id];
+  const line = lanesOf(routesOf({ data, layout, revealed }), view)[hop.id];
 
-  return route === undefined
+  return line === undefined
     ? undefined
-    : Arr.map(route.points, groundProjections[view].toScreen);
+    : Arr.map(line, groundProjections[view].toScreen);
 };
 
 /**
