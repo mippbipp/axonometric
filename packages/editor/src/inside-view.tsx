@@ -3,10 +3,11 @@ import { Array as Arr, String as Str } from "effect";
 import { useEffect, useId, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { project, routeHop, toPoints, pointAlong } from "./iso.ts";
+import { corners, project, routeHop, toPoints, pointAlong } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 import { clockAtHop, packetAt, travelSeconds } from "./packet-schedule.ts";
 import { useReducedMotion } from "./playback.ts";
+import { BoxShape } from "./shapes.tsx";
 
 /** Height of a step's box above the ground, in screen units. */
 const boxHeight = 34;
@@ -25,13 +26,6 @@ const placementOf = (index: number): Placement => ({
   d: 2,
 });
 
-const corners = ({ x, y, w, d }: Placement, z: number) => ({
-  back: project({ x, y, z }),
-  right: project({ x: x + w, y, z }),
-  front: project({ x: x + w, y: y + d, z }),
-  left: project({ x, y: y + d, z }),
-});
-
 function StepBox({
   index,
   hatch,
@@ -40,8 +34,6 @@ function StepBox({
   readonly hatch: string;
 }) {
   const placement = placementOf(index);
-  const ground = corners(placement, 0);
-  const top = corners(placement, boxHeight);
 
   const centre = project({
     x: placement.x + 1,
@@ -56,26 +48,7 @@ function StepBox({
       strokeWidth={1.2}
       strokeLinejoin="round"
     >
-      {Arr.map(
-        [
-          [ground.left, ground.front, top.front, top.left],
-          [ground.front, ground.right, top.right, top.front],
-        ],
-        (face, side) => (
-          <g key={side}>
-            <polygon points={toPoints(face)} className="fill-face" />
-            <polygon
-              points={toPoints(face)}
-              fill={`url(#${hatch})`}
-              stroke="none"
-            />
-          </g>
-        )
-      )}
-      <polygon
-        points={toPoints([top.back, top.right, top.front, top.left])}
-        className="fill-face"
-      />
+      <BoxShape placement={placement} height={boxHeight} hatch={hatch} />
       <text
         x={centre.sx}
         y={centre.sy + 5}

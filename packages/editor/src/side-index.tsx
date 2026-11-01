@@ -102,7 +102,8 @@ function LaterItem({
  * Every structure by group, each with its code and name. Revealed ones
  * select their structure; later ones are dimmed, marked with the chapter that
  * reveals them, and jump to it. ↑ and ↓ move the selection through the
- * revealed ones.
+ * revealed ones. It hides on windows narrower than 1280px, so the map keeps
+ * its room.
  */
 export function SideIndex({ className }: { readonly className?: string }) {
   const { state, revealed, newlyRevealed } = useWalkthrough();
@@ -144,7 +145,7 @@ export function SideIndex({ className }: { readonly className?: string }) {
       aria-label="Structures"
       data-side-index
       className={cn(
-        "border-ink flex w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r py-3",
+        "border-ink hidden w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r py-3 xl:flex",
         className
       )}
     >

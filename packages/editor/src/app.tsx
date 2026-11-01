@@ -19,6 +19,7 @@ import { SelectionProvider } from "./selection.tsx";
 import { SideIndex } from "./side-index.tsx";
 import { SidePanel } from "./side-panel.tsx";
 import { useStructuresById } from "./structures.ts";
+import { ThemeToggle } from "./theme.tsx";
 import { StructureTooltip, TooltipProvider } from "./tooltip.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 import { WalkthroughProvider } from "./walkthrough.tsx";
@@ -41,6 +42,7 @@ const hintsOf = ({
         "← or Esc unpin",
         "] next chapter",
         "[ back",
+        "+ and − zoom, 0 fits",
         "click empty space to unpin",
       ]
     : [
@@ -49,6 +51,7 @@ const hintsOf = ({
         "hover to read",
         "click to pin",
         "double-click to go inside",
+        "+ and − zoom, 0 fits",
         "click a packet to read its payload",
       ];
 };
@@ -77,8 +80,9 @@ function WalkthroughPage() {
         <h1 className="text-sm font-medium tracking-widest uppercase">
           {state.system}
         </h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-4">
           {insideStructure === undefined ? <PlaybackControls /> : null}
+          <ThemeToggle />
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
@@ -90,7 +94,8 @@ function WalkthroughPage() {
                 state={state}
                 revealed={revealed}
                 newlyRevealed={newlyRevealed}
-                fit={fit}
+                fitTo={fit}
+                fitKey={stop.id}
               >
                 <PacketLayer routeOf={isoRouteOf} />
               </IsoView>
@@ -109,6 +114,7 @@ function WalkthroughPage() {
               />
             </>
           )}
+          <StructureTooltip />
         </MapSurface>
         <SidePanel />
       </div>
@@ -123,7 +129,6 @@ function WalkthroughPage() {
           )
         )}
       </footer>
-      <StructureTooltip />
     </main>
   );
 }

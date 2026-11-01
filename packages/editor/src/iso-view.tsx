@@ -4,26 +4,22 @@ import type {
   Placement,
   Structure,
 } from "@axonometric/contracts";
+import {
+  isoHeights,
+  nameTagRect,
+  nameTagText,
+  tagDrop,
+} from "@axonometric/contracts";
 import { Array as Arr, Order, String as Str } from "effect";
 import { useId } from "react";
 import type { ReactNode } from "react";
 
-import { project, screenRouteOf, toPoints } from "./iso.ts";
+import { fitOf } from "./fit.ts";
+import { corners, screenRouteOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
-import { StructureTarget } from "./structure-target.tsx";
-
-/** Height of a box above the ground, in screen units. */
-const boxHeight = 40;
-
-/** Space around the drawing when it's fitted to the window. */
-const margin = 48;
-
-/** How far below the front corner a name tag reaches, in screen units. */
-const tagDrop = 28;
-
-/** Approximate width of one character of the name tag's monospace font. */
-const tagCharWidth = 7.2;
+import { IsoStructure } from "./shapes.tsx";
+import { Viewport } from "./viewport.tsx";
 
 interface PlacedStructure {
   readonly structure: Structure;
@@ -35,13 +31,6 @@ interface RoutedHop {
   readonly points: readonly ScreenPoint[];
 }
 
-const corners = ({ x, y, w, d }: Placement, z: number) => ({
-  back: project({ x, y, z }),
-  right: project({ x: x + w, y, z }),
-  front: project({ x: x + w, y: y + d, z }),
-  left: project({ x, y: y + d, z }),
-});
-
 /** Painter's order: boxes further back are drawn first. */
 const byDepth = Order.mapInput(
   Order.Number,
@@ -49,61 +38,21 @@ const byDepth = Order.mapInput(
     placement.x + placement.y + placement.w + placement.d
 );
 
-function IsoBox({
-  placed,
-  hatch,
-}: {
-  readonly placed: PlacedStructure;
-  readonly hatch: string;
-}) {
-  const { structure, placement } = placed;
-  const ground = corners(placement, 0);
-  const top = corners(placement, boxHeight);
-
-  const sides = [
-    { side: "left", face: [ground.left, ground.front, top.front, top.left] },
-    {
-      side: "right",
-      face: [ground.front, ground.right, top.right, top.front],
-    },
-  ];
-
-  const topFace = [top.back, top.right, top.front, top.left];
-
-  return (
-    <StructureTarget
-      id={structure.id}
-      className="stroke-ink"
-      strokeWidth={1.2}
-      strokeLinejoin="round"
-    >
-      {Arr.map(sides, ({ side, face }) => (
-        <g key={side}>
-          <polygon points={toPoints(face)} className="fill-face" />
-          <polygon
-            points={toPoints(face)}
-            fill={`url(#${hatch})`}
-            stroke="none"
-          />
-        </g>
-      ))}
-      <polygon points={toPoints(topFace)} className="fill-face" />
-    </StructureTarget>
-  );
-}
+const tagOf = ({ structure, placement }: PlacedStructure) =>
+  nameTagRect(placement, nameTagText(structure));
 
 function NameTag({ placed }: { readonly placed: PlacedStructure }) {
   const { front } = corners(placed.placement, 0);
-  const width = placed.structure.name.length * tagCharWidth + 12;
-  const top = front.sy + 9;
+  const tag = tagOf(placed);
+  const { top } = tag;
 
   return (
     <g data-name-tag={placed.structure.id} className="pointer-events-none">
       <rect
-        x={front.sx - width / 2}
+        x={tag.left}
         y={top}
-        width={width}
-        height={18}
+        width={tag.right - tag.left}
+        height={tag.bottom - tag.top}
         className="fill-paper stroke-ink"
         strokeWidth={0.9}
       />
@@ -113,7 +62,7 @@ function NameTag({ placed }: { readonly placed: PlacedStructure }) {
         textAnchor="middle"
         className="fill-ink stroke-none font-mono text-xs"
       >
-        {placed.structure.name}
+        {nameTagText(placed.structure)}
       </text>
     </g>
   );
@@ -170,28 +119,21 @@ function HopArrow({
   );
 }
 
-/** The screen box that holds `points`, plus the margin. */
-const viewBoxOf = (points: readonly ScreenPoint[]) => {
-  const xs = Arr.map(points, (point) => point.sx);
-  const ys = Arr.map(points, (point) => point.sy);
-  const minX = Math.min(0, ...xs) - margin;
-  const minY = Math.min(0, ...ys) - margin;
-  const width = Math.max(0, ...xs) + margin - minX;
-  const height = Math.max(0, ...ys) + margin - minY;
-
-  return `${minX} ${minY} ${width} ${height}`;
-};
-
 /** The screen points a structure's drawing reaches, tag included. */
-const extentOf = ({ placement }: PlacedStructure) => {
+const extentOf = ({ structure, placement }: PlacedStructure) => {
   const ground = corners(placement, 0);
-  const top = corners(placement, boxHeight);
+  const top = corners(placement, isoHeights[structure.shape]);
+
+  const tag = tagOf({ structure, placement });
 
   return [
     top.back,
     top.left,
     top.right,
-    { sx: ground.front.sx, sy: ground.front.sy + tagDrop },
+    ground.left,
+    ground.right,
+    { sx: tag.left, sy: ground.front.sy + tagDrop },
+    { sx: tag.right, sy: ground.front.sy + tagDrop },
   ];
 };
 
@@ -253,16 +195,19 @@ function NewMarker({ placed }: { readonly placed: PlacedStructure }) {
 const none: ReadonlySet<string> = new Set();
 
 /**
- * The iso view of a map: each revealed structure as a hatched box with a name
+ * The iso view of a map: each revealed structure as its shape with a name
  * tag, and each hop between revealed structures as an arrow along the
- * ground. The drawing is scaled to fit the structures in `fit` and the hops
- * between them. `children` draw on top, in the same coordinates.
+ * ground, in a viewport you can pan and zoom. The view fits the structures in
+ * `fitTo` and the hops between them, and fits again when `fitKey` changes.
+ * `children` draw on top, in the same coordinates, and pan and zoom with the
+ * drawing.
  */
 export function IsoView({
   state,
   revealed,
   newlyRevealed = none,
-  fit = revealed,
+  fitTo = revealed,
+  fitKey,
   children,
 }: {
   readonly state: MapState;
@@ -270,8 +215,14 @@ export function IsoView({
   readonly revealed: ReadonlySet<string>;
   /** The structures to mark as new. */
   readonly newlyRevealed?: ReadonlySet<string>;
-  /** The structures to zoom to fit. */
-  readonly fit?: ReadonlySet<string>;
+  /** The structures to zoom to fit. Defaults to every revealed one. */
+  readonly fitTo?: ReadonlySet<string>;
+  /**
+   * Names what `fit` holds, such as the chapter. A new key refits the view;
+   * other changes, such as a moved structure, keep the zoom. Defaults to the
+   * set of ids in `fitTo`.
+   */
+  readonly fitKey?: string;
   readonly children?: ReactNode;
 }) {
   // useId's output can hold characters that don't belong in url(#...).
@@ -285,19 +236,26 @@ export function IsoView({
     newlyRevealed.has(structure.id)
   );
 
-  const viewBox = viewBoxOf([
-    ...Arr.flatMap(placeAll(state, fit), extentOf),
-    ...Arr.flatMap(routeAll(state, fit), ({ points }) => points),
-  ]);
+  const fitted = fitOf({
+    drawn: [
+      ...Arr.map(placed, (item) => ({
+        ids: [item.structure.id],
+        points: extentOf(item),
+      })),
+      ...Arr.map(routed, ({ hop, points }) => ({
+        ids: [hop.from, hop.to],
+        points,
+      })),
+    ],
+    fitTo: [...fitTo],
+  });
 
   return (
-    <svg
-      aria-labelledby={`${idPrefix}title`}
-      className="text-ink block size-full"
-      viewBox={viewBox}
-      preserveAspectRatio="xMidYMid meet"
+    <Viewport
+      title={`Iso view of ${state.system}`}
+      fit={fitted.bounds}
+      fitKey={fitKey ?? fitted.key}
     >
-      <title id={`${idPrefix}title`}>{`Iso view of ${state.system}`}</title>
       <defs>
         <pattern
           id={hatch}
@@ -340,7 +298,12 @@ export function IsoView({
       </g>
       <g>
         {Arr.map(placed, (item) => (
-          <IsoBox key={item.structure.id} placed={item} hatch={hatch} />
+          <IsoStructure
+            key={item.structure.id}
+            structure={item.structure}
+            placement={item.placement}
+            hatch={hatch}
+          />
         ))}
       </g>
       {/* Hops again, faintly, so a hop that runs behind a box stays visible. */}
@@ -362,6 +325,6 @@ export function IsoView({
         ))}
       </g>
       {children}
-    </svg>
+    </Viewport>
   );
 }

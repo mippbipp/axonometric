@@ -187,7 +187,7 @@ jobs:
           node-version: ${{ needs.npm-pack.outputs.node-version }}
           package-manager-cache: false
 
-      # npm stage publish needs npm 11.15.0 or later.
+      # npm stage publish needs npm 11.15.0 or newer.
       - run: npm install -g --ignore-scripts npm@11.21.1
 
       # A pre-release must name its tag, and the tag can't change after

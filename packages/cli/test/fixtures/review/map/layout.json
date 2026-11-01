@@ -5,8 +5,8 @@
     "engineer": { "x": 0, "y": 0, "w": 2, "d": 2 },
     "page": { "x": 4, "y": 0, "w": 2, "d": 2 },
     "server": { "x": 8, "y": 0, "w": 2, "d": 2 },
-    "proposals": { "x": 8, "y": 4, "w": 2, "d": 2 },
-    "pull-request": { "x": 12, "y": 4, "w": 2, "d": 1.5 },
+    "proposals": { "x": 8, "y": 6, "w": 2, "d": 2 },
+    "pull-request": { "x": 12, "y": 6, "w": 2, "d": 1.5 },
     "upstream": { "x": 12, "y": 0, "w": 2, "d": 2 }
   }
 }

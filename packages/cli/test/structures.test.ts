@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf } from "./browser.ts";
+import { attributesOf, boxesOf, literal } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -94,6 +94,47 @@ describe("hovering a structure", () => {
   );
 });
 
+describe("the tooltip", () => {
+  it.live("stays inside the canvas for a structure at its right edge", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+
+        yield* goToChapter(page, "c-all");
+
+        const target = page.locator(structure("upstream"));
+        const box = yield* Effect.promise(() => target.boundingBox());
+
+        assert.isNotNull(box);
+
+        // Hover the structure's right-hand corner, as far right as it goes.
+        yield* Effect.promise(() =>
+          target.hover({
+            position: {
+              x: (box?.width ?? 0) - 6,
+              y: (box?.height ?? 0) / 2,
+            },
+          })
+        );
+        yield* waitFor(page, '[data-tooltip="upstream"]');
+
+        const [canvas] = yield* boxesOf(page, "[data-map-surface]");
+        const [tooltip] = yield* boxesOf(page, "[data-tooltip]");
+
+        assert.isDefined(canvas);
+        assert.isDefined(tooltip);
+
+        if (canvas !== undefined && tooltip !== undefined) {
+          assert.isAtLeast(tooltip.x, canvas.x);
+          assert.isAtLeast(tooltip.y, canvas.y);
+          assert.isAtMost(tooltip.x + tooltip.width, canvas.x + canvas.width);
+          assert.isAtMost(tooltip.y + tooltip.height, canvas.y + canvas.height);
+        }
+      })
+    )
+  );
+});
+
 describe("clicking a structure", () => {
   it.live("pins its panel, and the panel says it's pinned", () =>
     Effect.scoped(
@@ -147,6 +188,49 @@ describe("clicking a structure", () => {
         yield* waitFor(page, "[data-chapter-story]");
 
         assert.strictEqual(yield* count(page, '[data-selected="true"]'), 0);
+      })
+    )
+  );
+
+  it.live("then panning over empty space keeps it pinned", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+
+        yield* pin(page, "page");
+
+        const [canvas] = yield* boxesOf(page, "[data-map-surface]");
+
+        assert.isDefined(canvas);
+
+        const x = (canvas?.x ?? 0) + (canvas?.width ?? 0) - 20;
+        const y = (canvas?.y ?? 0) + 80;
+
+        const before = yield* Effect.promise(() =>
+          page.locator("[data-viewport]").getAttribute("transform")
+        );
+
+        yield* Effect.promise(() => page.mouse.move(x, y));
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() =>
+          page.mouse.move(x - 120, y + 60, { steps: 6 })
+        );
+        yield* Effect.promise(() => page.mouse.up());
+
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `document.querySelector("[data-viewport]").getAttribute("transform") !== ${literal(before ?? "")}`
+          )
+        );
+
+        assert.strictEqual(
+          yield* count(page, '[data-structure-panel="page"][data-pinned]'),
+          1
+        );
+        assert.strictEqual(
+          yield* count(page, '[data-structure="page"][data-selected="true"]'),
+          1
+        );
       })
     )
   );
@@ -375,11 +459,23 @@ describe("the Open questions tab", () => {
   );
 });
 
+/** The review page at 1280 × 800, wide enough to show the side index. */
+const widePage = Effect.gen(function* () {
+  const opened = yield* reviewPage;
+
+  yield* Effect.promise(() =>
+    opened.page.setViewportSize({ width: 1280, height: 800 })
+  );
+  yield* waitFor(opened.page, "[data-side-index]");
+
+  return opened;
+});
+
 describe("the side index", () => {
   it.live("lists the structures by group and dims unrevealed ones", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* reviewPage;
+        const { page } = yield* widePage;
 
         const groups = yield* attributesOf(
           page,
@@ -422,7 +518,7 @@ describe("the side index", () => {
   it.live("selects a structure on click and moves with ↑ and ↓", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* reviewPage;
+        const { page } = yield* widePage;
 
         yield* click(page, indexItem("engineer"));
         yield* waitFor(page, '[data-structure-panel="engineer"][data-pinned]');

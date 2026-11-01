@@ -38,7 +38,11 @@ export function MapSurface({ children }: { readonly children: ReactNode }) {
   }, []);
 
   return (
-    <div ref={ref} data-map-surface className="relative min-w-0 flex-1">
+    <div
+      ref={ref}
+      data-map-surface
+      className="relative min-w-0 flex-1 overflow-hidden"
+    >
       {children}
     </div>
   );

@@ -1,6 +1,7 @@
-import { Array as Arr, Record as Rec } from "effect";
+import { Array as Arr } from "effect";
 import { dual } from "effect/Function";
 
+import { checkLayout } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapError, mapWarning } from "./problems.ts";
@@ -183,7 +184,7 @@ const walkthrough = (data: MapData): readonly MapProblem[] => {
               `hop "${hopId}" touches ${Arr.join(
                 Arr.map(hidden, (id) => `"${id}"`),
                 " and "
-              )}, which no chapter has revealed by chapter "${chapter.id}". Reveal ${hidden.length === 1 ? "it" : "them"} in this chapter or an earlier one, or play the hop later.`
+              )}, which no chapter has revealed by chapter "${chapter.id}". Reveal ${hidden.length === 1 ? "it" : "them"} in this chapter or an earlier one, or move the hop to a chapter that reveals ${hidden.length === 1 ? "it" : "them"}.`
             ),
           ];
     });
@@ -278,19 +279,6 @@ const emptyGroups = (data: MapData) => {
   );
 };
 
-const placements = (data: MapData, layout: Layout): readonly MapProblem[] =>
-  Arr.flatMap(data.structures, (structure, index) =>
-    Rec.has(layout.structures, structure.id)
-      ? []
-      : [
-          mapError({
-            file: "layout.json",
-            path: ["structures", structure.id],
-            message: `missing. structures[${index}] in data.mjs has no placement. Add "${structure.id}": { "x": 0, "y": 0, "w": 2, "d": 2 } to structures, at a free spot.`,
-          }),
-        ]
-  );
-
 export interface CheckOptions {
   /**
    * Whether a relative link, such as `../adr/0001-runtime.md#context`,
@@ -308,8 +296,8 @@ export interface MapFiles {
 
 /**
  * Checks what the schemas can't: references between ids, the walkthrough,
- * links, and that the layout places every structure. Returns errors and
- * warnings together.
+ * links, and how the layout reads. Returns errors and warnings together. A
+ * structure with no placement is fine, because `build` places it.
  */
 export const checkMap: {
   (options: CheckOptions): (files: MapFiles) => readonly MapProblem[];
@@ -324,7 +312,7 @@ export const checkMap: {
     ...references(data),
     ...walkthrough(data),
     ...links(data, options.linkExists),
-    ...placements(data, layout),
+    ...checkLayout(data, layout),
     ...emptyGroups(data),
   ]
 );
