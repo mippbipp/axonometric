@@ -35,7 +35,13 @@ export type { PlacedStructure } from "./layout-checks.ts";
 
 export { isoHeights } from "./iso-heights.ts";
 
-export { Layout, LayoutFile, Placement } from "./layout.ts";
+export {
+  GridPoint,
+  Layout,
+  LayoutFile,
+  Placement,
+  RouteOverride,
+} from "./layout.ts";
 
 export {
   defaultFootprint,
@@ -47,6 +53,10 @@ export {
 } from "./placement.ts";
 
 export type { PlacedLayout } from "./placement.ts";
+
+export { routeHops } from "./routing.ts";
+
+export type { HopRoute } from "./routing.ts";
 
 export {
   Chapter,
