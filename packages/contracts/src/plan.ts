@@ -72,8 +72,46 @@ const planTagGap = 6;
 /** How far apart the sideways tag spots are, in screen units. */
 const planTagStep = 6;
 
+/** Room kept between a tag inside a box and the box's edges. */
+const planTagInset = 6;
+
 /**
- * Where Plan view may draw the name tag of `width` for a box drawn in
+ * How tall a box's hatched strip and icon leave room for a tag inside, in
+ * screen units: below this the tag goes outside.
+ */
+export const planTagInsideHeight = 84;
+
+/** The height of the hatched strip along a box's bottom edge in Plan view. */
+export const planStripHeight = 7;
+
+/**
+ * Where Plan view draws the name tag of `width` inside `footprint`, above
+ * its hatched strip, or `undefined` when the box is too small for it.
+ * Inside, no route can reach the tag.
+ */
+export const planTagInside: {
+  (width: number): (footprint: ScreenRect) => ScreenRect | undefined;
+  (footprint: ScreenRect, width: number): ScreenRect | undefined;
+} = dual(2, (footprint: ScreenRect, width: number): ScreenRect | undefined => {
+  const fits =
+    footprint.right - footprint.left >= width + 2 * planTagInset &&
+    footprint.bottom - footprint.top >= planTagInsideHeight;
+
+  const middle = (footprint.left + footprint.right) / 2;
+  const top = footprint.bottom - planStripHeight - planTagInset / 2 - tagHeight;
+
+  return fits
+    ? {
+        left: middle - width / 2,
+        right: middle + width / 2,
+        top,
+        bottom: top + tagHeight,
+      }
+    : undefined;
+});
+
+/**
+ * Where Plan view may draw the name tag of `width` around a box drawn in
  * `box`, best first: centred under the box, then above it, each sliding
  * sideways while the tag's centre stays over the box, then beside the box.
  * The scene takes the first spot clear of the boxes, the routes and the

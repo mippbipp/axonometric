@@ -438,6 +438,7 @@ export function MapView({
               structure={item.structure}
               outline={item.outline}
               chip={item.chip}
+              tag={item.tag}
               hatch={hatch}
             />
           )

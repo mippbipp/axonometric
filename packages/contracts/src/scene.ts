@@ -30,7 +30,7 @@ import {
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
-import { planRect, planTagSpots, projectPlan } from "./plan.ts";
+import { planRect, planTagInside, planTagSpots, projectPlan } from "./plan.ts";
 import type { View } from "./plan.ts";
 import { routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
@@ -639,8 +639,13 @@ const geometries: Readonly<Record<View, ViewGeometry>> = {
   plan: {
     project: projectPlan,
     outline: planOutline,
-    tagSpots: ({ outline }, text) =>
-      planTagSpots(boundsOfPoints(outline), tagWidth(text)),
+    // Inside the footprint when it fits, else around everything drawn.
+    tagSpots: ({ placement, outline }, text) => [
+      ...Option.toArray(
+        Option.fromNullishOr(planTagInside(planRect(placement), tagWidth(text)))
+      ),
+      ...planTagSpots(boundsOfPoints(outline), tagWidth(text)),
+    ],
     chip: planChipRect,
     plate: planPlateOf,
     titleSpots: planTitleSpots,
@@ -1386,6 +1391,8 @@ const groundClashes = (scene: Scene): readonly SceneClash[] => {
 /** Whether a scene item's id names a code chip. */
 const isChip = Str.startsWith("chip:");
 
+const isBox = Str.startsWith("box:");
+
 /**
  * Every pair of things in a scene drawn over each other, by the overlap
  * rule: no two of the name tags, hop labels, zone titles, code chips and
@@ -1430,12 +1437,19 @@ export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
 
   const pairs = Arr.flatMap(solids, (first, index) =>
     Arr.flatMap(solids.slice(index + 1), (second) => {
-      const ownChip =
+      // A chip sits on its own box, and in Plan view a tag may sit inside
+      // it.
+      const ownPart =
         first.owner !== "" &&
         first.owner === second.owner &&
-        (isChip(first.id) || isChip(second.id));
+        (isChip(first.id) ||
+          isChip(second.id) ||
+          (scene.view === "plan" &&
+            ((isBox(first.id) && insideConvex(first.polygon, second.polygon)) ||
+              (isBox(second.id) &&
+                insideConvex(second.polygon, first.polygon)))));
 
-      return !ownChip && convexOverlap(first.polygon, second.polygon)
+      return !ownPart && convexOverlap(first.polygon, second.polygon)
         ? [{ between: [first.id, second.id] as const }]
         : [];
     })

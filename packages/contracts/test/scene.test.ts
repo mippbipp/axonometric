@@ -176,6 +176,63 @@ const fewestBends = (a: Placement, b: Placement) => {
   return straight ? 0 : 2;
 };
 
+/**
+ * The fewest bends a route needs between the edges it actually leaves and
+ * enters by, with nothing in the way: from the first point heading out of
+ * the source, to the last point heading into the target.
+ */
+const fewestBendsBetween = (
+  points: readonly GridPoint[],
+  source: Placement,
+  target: Placement
+) => {
+  const first = points[0];
+  const second = points[1];
+  const last = points.at(-1);
+  const before = points.at(-2);
+
+  if (
+    first === undefined ||
+    second === undefined ||
+    last === undefined ||
+    before === undefined
+  ) {
+    return fewestBends(source, target);
+  }
+
+  const out = edgeOf(first, second);
+  const into = (edgeOf(last, before) + 2) % 4;
+  const step = [
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 },
+    { x: 0, y: -1 },
+  ] as const;
+
+  const heading = step[out] ?? step[0];
+  const arriving = step[into] ?? step[0];
+  const dx = last.x - first.x;
+  const dy = last.y - first.y;
+  const ahead = heading.x * dx + heading.y * dy;
+  const sameAxis = out % 2 === into % 2;
+
+  if (sameAxis) {
+    if (out !== into) {
+      return 4;
+    }
+
+    const across = out % 2 === 0 ? dy : dx;
+
+    return across === 0 && ahead > 0 ? 0 : 2;
+  }
+
+  // An L: the first leg must head towards the last point, and the last
+  // leg must arrive along its own direction.
+  const along = arriving.x * dx + arriving.y * dy;
+
+  return ahead > 0 && along > 0 ? 1 : 3;
+};
+
 /** One hop routed on its own around the revealed structures. */
 const alone = (
   { data, layout }: { readonly data: MapData; readonly layout: Layout },
@@ -253,6 +310,41 @@ const strayOf = (
       outsideArea(area, project(point))
     )
   );
+};
+
+/** How good each edge of `box` is for an end towards `other`: 0 facing it, 1 a side, 2 the back. */
+const edgeTiers = (box: Placement, other: Placement) => {
+  const faces = facingEdges(box, other);
+
+  return Arr.map(Arr.range(0, 3), (edge) => {
+    if (faces[edge] === true) {
+      return 0;
+    }
+
+    return faces[(edge + 2) % 4] === true ? 2 : 1;
+  });
+};
+
+const tierNames = ["facing", "side", "back"] as const;
+
+/**
+ * The points on one edge of a footprint an end may take, in edge order
+ * +x, +y, -x, -y: on half units, at least a half unit from the corners.
+ */
+const endPointsOn = ({ x, y, w, d }: Placement, edge: number) => {
+  const along = (length: number) =>
+    Arr.map(Arr.range(1, length * 2 - 1), (step) => step / 2);
+
+  switch (edge) {
+    case 0:
+      return Arr.map(along(d), (at) => ({ x: x + w, y: y + at }));
+    case 1:
+      return Arr.map(along(w), (at) => ({ x: x + at, y: y + d }));
+    case 2:
+      return Arr.map(along(d), (at) => ({ x, y: y + at }));
+    default:
+      return Arr.map(along(w), (at) => ({ x: x + at, y }));
+  }
 };
 
 /** The points on a footprint's edges, on half units. */
@@ -775,7 +867,7 @@ describe("scene", () => {
   );
 
   it.effect(
-    "leaves and enters every pipeline route by the edges facing the other end",
+    "leaves and enters every pipeline route by a facing edge, or the next-nearest when they're full",
     () =>
       Effect.gen(function* () {
         const { data, layout } = yield* fixture("flake-pipeline");
@@ -787,30 +879,67 @@ describe("scene", () => {
             revealed: chapter.revealed,
           });
 
-          for (const hop of data.hops) {
+          // Every route's two ends, by the box they're on.
+          const ends = Arr.flatMap(data.hops, (hop) => {
             const route = routes[hop.id];
+            const first = route?.points[0];
+            const second = route?.points[1];
+            const last = route?.points.at(-1);
+            const before = route?.points.at(-2);
 
-            if (route !== undefined) {
-              const source = placementOf(layout, hop.from);
-              const target = placementOf(layout, hop.to);
-              const [first] = route.points;
-              const last = route.points.at(-1);
+            return first === undefined ||
+              second === undefined ||
+              last === undefined ||
+              before === undefined
+              ? []
+              : [
+                  {
+                    hop: hop.id,
+                    box: hop.from,
+                    other: hop.to,
+                    point: first,
+                    edge: edgeOf(first, second),
+                    what: "leaves",
+                  },
+                  {
+                    hop: hop.id,
+                    box: hop.to,
+                    other: hop.from,
+                    point: last,
+                    edge: edgeOf(last, before),
+                    what: "enters",
+                  },
+                ];
+          });
 
-              assert.isDefined(first);
-              assert.isDefined(last);
-              assert.isTrue(
-                facingEdges(source, target)[
-                  edgeOf(first, route.points[1] ?? first)
-                ],
-                `${hop.id} leaves by an edge facing away in ${chapter.id}`
-              );
-              assert.isTrue(
-                facingEdges(target, source)[
-                  edgeOf(last, route.points.at(-2) ?? last)
-                ],
-                `${hop.id} enters by an edge facing away in ${chapter.id}`
-              );
-            }
+          for (const end of ends) {
+            const box = placementOf(layout, end.box);
+            const tierOf = edgeTiers(box, placementOf(layout, end.other));
+            const tier = tierOf[end.edge] ?? 0;
+
+            // Each better edge must be full: every point on it an end may
+            // take is taken by another hop's end on this box.
+            const taken = new Set(
+              Arr.flatMap(ends, (other) =>
+                other.box === end.box && other.hop !== end.hop
+                  ? [`${other.point.x},${other.point.y}`]
+                  : []
+              )
+            );
+
+            const better = Arr.filter(
+              Arr.range(0, 3),
+              (edge) => (tierOf[edge] ?? 0) < tier
+            );
+
+            assert.isTrue(
+              Arr.every(better, (edge) =>
+                Arr.every(endPointsOn(box, edge), ({ x, y }) =>
+                  taken.has(`${x},${y}`)
+                )
+              ),
+              `${end.hop} ${end.what} ${end.box} by a ${tierNames[tier]} edge in ${chapter.id} while a better edge has room`
+            );
           }
         }
       })
@@ -963,7 +1092,7 @@ describe("scene", () => {
             if (route !== undefined) {
               const source = placementOf(layout, hop.from);
               const target = placementOf(layout, hop.to);
-              const fewest = fewestBends(source, target);
+              const fewest = fewestBendsBetween(route.points, source, target);
               const bends = bendsOf(route.points);
 
               // A revealed box in the way can force more: check that

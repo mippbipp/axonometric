@@ -39,6 +39,8 @@ export { isoHeights } from "./iso-heights.ts";
 export {
   groundProjections,
   planRect,
+  planStripHeight,
+  planTagInside,
   planTagSpots,
   planUnit,
   projectPlan,

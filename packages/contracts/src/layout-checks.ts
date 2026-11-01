@@ -302,6 +302,29 @@ const coveredElsewhere = (view: View, first: string, second: string) =>
   structureParts[view].has(kindOf(first)) &&
   structureParts[view].has(kindOf(second));
 
+/**
+ * Whether two routes touch where one is an override sharing a step with
+ * the other, which `sharedSegments` already warns about with a fix.
+ */
+const overrideShares = (
+  routes: Readonly<Record<string, HopRoute>>,
+  first: string,
+  second: string
+) => {
+  const [a, b] = [first, second].map((thing) =>
+    kindOf(thing) === "route" ? routes[thing.slice("route:".length)] : undefined
+  );
+
+  return (
+    a !== undefined &&
+    b !== undefined &&
+    (a.overridden || b.overridden) &&
+    Arr.some([...stepKeysOf(b.points)], (step) =>
+      stepKeysOf(a.points).has(step)
+    )
+  );
+};
+
 /** How a warning names the view it's about. The iso view goes unnamed. */
 const viewNames: Readonly<Record<View, string>> = {
   iso: "",
@@ -411,7 +434,9 @@ const chapterWarnings = (data: MapData, layout: Layout) => {
           sceneOf({ data, layout, revealed, routes, labelFirst: plays, view })
         ),
         ({ between: [first, second] }) =>
-          coveredElsewhere(view, first, second) || !once(`${first} ${second}`)
+          coveredElsewhere(view, first, second) ||
+          overrideShares(routes, first, second) ||
+          !once(`${first} ${second}`)
             ? []
             : [
                 mapWarning({

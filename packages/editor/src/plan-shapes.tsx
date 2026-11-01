@@ -1,3 +1,4 @@
+import { planStripHeight } from "@axonometric/contracts";
 import type {
   ScreenPoint,
   ScreenRect,
@@ -18,8 +19,7 @@ import { StructureTarget } from "./structure-target.tsx";
 // icons keep the iso view's line weights and its `data-face` and
 // `data-hatch` parts, so the status rules in index.css restyle both views.
 
-/** How tall the hatched strip along a box's bottom edge is. */
-const stripHeight = 7;
+const stripHeight = planStripHeight;
 
 /** How big a shape's icon is, from its middle to its edge. */
 const iconSize = 13;
@@ -398,12 +398,15 @@ export function PlanStructure({
   structure,
   outline,
   chip,
+  tag,
   hatch,
 }: {
   readonly structure: Structure;
   /** What the shape draws, from the scene: the footprint, halo included. */
   readonly outline: readonly ScreenPoint[];
   readonly chip: ScreenRect | undefined;
+  /** Where the name tag goes, from the scene, so the icon keeps clear. */
+  readonly tag: ScreenRect;
   readonly hatch: string;
 }) {
   const Icon = icons[structure.shape];
@@ -418,6 +421,11 @@ export function PlanStructure({
 
   const external = structure.shape === "external";
   const box = external ? inset(drawn, haloInset) : drawn;
+
+  // The icon sits in the middle of the room the tag leaves: above the tag
+  // when the tag is inside the box, else above the hatched strip.
+  const tagInside = tag.top >= box.top && tag.bottom <= box.bottom;
+  const iconBottom = tagInside ? tag.top : box.bottom - stripHeight;
 
   return (
     <StructureTarget
@@ -443,7 +451,7 @@ export function PlanStructure({
       <Box rect={box} hatch={hatch} />
       <g
         data-plan-icon={structure.shape}
-        transform={`translate(${(box.left + box.right) / 2} ${(box.top + box.bottom - stripHeight) / 2})`}
+        transform={`translate(${(box.left + box.right) / 2} ${(box.top + iconBottom) / 2})`}
       >
         <Icon hatch={hatch} />
       </g>
