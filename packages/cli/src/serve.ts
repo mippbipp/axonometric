@@ -40,6 +40,7 @@ import {
 } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 
+import { acceptPendingLayout } from "./accept-writes.ts";
 import { printNotes, rebuild } from "./build.ts";
 import { withLock } from "./lock.ts";
 import { loadProposals } from "./map-files.ts";
@@ -408,6 +409,7 @@ const routes = ({
   const served = {
     events: Str.slice(1)(serverPaths.events),
     pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
+    accept: Str.slice(1)(serverPaths.accept),
   };
 
   const mapHandlers = HttpApiBuilder.group(ServerApi, "map", (group) =>
@@ -426,19 +428,42 @@ const routes = ({
     ServerApi,
     "proposals",
     (group) =>
-      group.handle("putLayout", ({ payload }) =>
-        writePendingLayout(home, payload, (proposals) =>
-          SubscriptionRef.update(held, (current) => ({
-            ...current,
-            proposals,
-          }))
-        ).pipe(
-          Effect.catchTag(
-            ["PlatformError", "LockHeld", "SchemaError"],
-            Effect.die
+      group
+        .handle("putLayout", ({ payload }) =>
+          writePendingLayout(home, payload, (proposals) =>
+            SubscriptionRef.update(held, (current) => ({
+              ...current,
+              proposals,
+            }))
+          ).pipe(
+            Effect.catchTag(
+              ["PlatformError", "LockHeld", "SchemaError", "OutputExists"],
+              Effect.die
+            )
           )
         )
-      )
+        .handle("accept", ({ payload }) =>
+          acceptPendingLayout(home, payload, ({ state, proposals }) =>
+            SubscriptionRef.update(held, (current) => ({
+              ...current,
+              good: state,
+              proposals,
+              rejected: Option.none(),
+            }))
+          ).pipe(
+            Effect.catchTag(
+              [
+                "PlatformError",
+                "LockHeld",
+                "SchemaError",
+                "BadArgument",
+                "EditorNotBuilt",
+                "OutputExists",
+              ],
+              Effect.die
+            )
+          )
+        )
   );
 
   const api = HttpApiBuilder.layer(ServerApi).pipe(

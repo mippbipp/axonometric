@@ -2,10 +2,17 @@ import { applyLayoutChanges } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import { useMemo, useSyncExternalStore } from "react";
 
+import { AcceptingContext } from "./accepting-context.ts";
+import type { Accepting } from "./accepting-context.ts";
 import { App } from "./app.tsx";
 import { EditingContext } from "./editing-context.ts";
 import type { Editing } from "./editing-context.ts";
-import type { EditNotice, Rejection, ServedStore } from "./served-store.ts";
+import type {
+  EditNotice,
+  Rejection,
+  SavedRevision,
+  ServedStore,
+} from "./served-store.ts";
 
 /**
  * The served page's notices. The page shows them under the chapter rail, over
@@ -16,13 +23,24 @@ function ServedNotices({
   rejection,
   stopped,
   notice,
+  saved,
 }: {
   readonly rejection: Rejection | null;
   readonly stopped: boolean;
   readonly notice: EditNotice | null;
+  readonly saved: SavedRevision | null;
 }) {
   return (
     <>
+      {saved === null ? null : (
+        <output
+          data-saved-revision={saved.revision}
+          className="border-ink bg-paper text-ink pointer-events-auto max-w-full shrink-0 border px-3 py-1.5 text-xs"
+        >
+          <b className="font-medium">Saved revision {saved.revision}</b>
+          {`: ${saved.message}`}
+        </output>
+      )}
       {stopped ? (
         <output
           data-server-stopped
@@ -96,18 +114,30 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [accepted, pending, view.stopped, store]
   );
 
+  const accepting = useMemo(
+    (): Accepting => ({
+      canAccept: !view.stopped,
+      busy: view.accepting,
+      accept: store.accept,
+    }),
+    [view.stopped, view.accepting, store]
+  );
+
   return (
     <EditingContext value={editing}>
-      <App
-        state={shown}
-        notices={
-          <ServedNotices
-            rejection={view.rejection}
-            stopped={view.stopped}
-            notice={view.notice}
-          />
-        }
-      />
+      <AcceptingContext value={accepting}>
+        <App
+          state={shown}
+          notices={
+            <ServedNotices
+              rejection={view.rejection}
+              stopped={view.stopped}
+              notice={view.notice}
+              saved={view.saved}
+            />
+          }
+        />
+      </AcceptingContext>
     </EditingContext>
   );
 }

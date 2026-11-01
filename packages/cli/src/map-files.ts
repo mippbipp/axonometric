@@ -33,6 +33,7 @@ import { CliError } from "effect/cli";
 
 import { Git } from "./git.ts";
 import type { NoRepo, Repo } from "./git.ts";
+import { checkHistory } from "./history.ts";
 
 /**
  * The map has at least one error. `problems` holds every error and warning
@@ -326,6 +327,12 @@ export interface InspectOptions {
    * pending: `build` and `serve` only need the accepted layout.
    */
   readonly strictProposals?: boolean | undefined;
+  /**
+   * Whether a file in `history/` that isn't a valid revision is an error, as
+   * `check` reports it. Otherwise it's a warning: a damaged old revision
+   * doesn't stop `build` or `serve`.
+   */
+  readonly strictHistory?: boolean | undefined;
 }
 
 /** A problem as a warning, such as an error in a file that can be set aside. */
@@ -353,6 +360,8 @@ export const inspectMap = Effect.fnUntraced(function* (
     loadLayout(home),
     loadProposals(home),
   ]);
+
+  const history = yield* checkHistory(home, options.strictHistory === true);
 
   const noProblems: readonly MapProblem[] = [];
 
@@ -386,6 +395,7 @@ export const inspectMap = Effect.fnUntraced(function* (
       ),
       ...proposals.problems,
       ...checkProposals(data.success, layout, proposals.found),
+      ...history,
     ];
 
     return {
@@ -406,6 +416,7 @@ export const inspectMap = Effect.fnUntraced(function* (
       ...(Result.isFailure(data) ? data.failure : []),
       ...(Result.isFailure(saved) ? saved.failure : []),
       ...proposals.problems,
+      ...history,
     ],
     map: Option.none(),
     sourcesSkipped: Option.none(),
@@ -422,6 +433,7 @@ export interface LoadRequest {
   /** As for `InspectOptions`. */
   readonly arrange?: Arrange;
   readonly strictProposals?: boolean;
+  readonly strictHistory?: boolean;
 }
 
 /**
@@ -434,10 +446,12 @@ export const loadMap = Effect.fnUntraced(function* ({
   command,
   arrange,
   strictProposals,
+  strictHistory,
 }: LoadRequest) {
   const { problems, map, sourcesSkipped } = yield* inspectMap(home, output, {
     arrange,
     strictProposals,
+    strictHistory,
   });
 
   if (splitProblems(problems).errors.length > 0 || Option.isNone(map)) {
