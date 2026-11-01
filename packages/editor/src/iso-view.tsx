@@ -265,7 +265,7 @@ export function IsoView({
 
   return (
     <Viewport
-      title={`Iso view of ${state.system}`}
+      title={`Iso view of ${state.data.overview.title}`}
       fit={fitted.bounds}
       fitKey={fitKey ?? fitted.key}
     >

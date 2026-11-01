@@ -35,7 +35,7 @@ export function Breadcrumb({
       </button>
       <ol className="flex items-center gap-1.5 text-xs tracking-widest uppercase">
         <li className="opacity-70">
-          {state.system} · Chapter {index + 1}
+          {state.data.overview.title} · Chapter {index + 1}
         </li>
         <li aria-hidden="true" className="opacity-70">
           ›
