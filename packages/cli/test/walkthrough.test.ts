@@ -166,8 +166,41 @@ describe("the chapter walkthrough", () => {
         const last = yield* boxesOf(page, '[data-structure="engineer"]');
 
         assert.isDefined(svg);
-        // Two structures fill the view in chapter 1; six share it later.
-        assert.isAbove(first[0]?.width ?? 0, (last[0]?.width ?? 0) * 1.5);
+        // Two structures are drawn larger in chapter 1 than when six share
+        // the view.
+        assert.isAbove(first[0]?.width ?? 0, last[0]?.width ?? 0);
+      })
+    )
+  );
+
+  it.live("caps the fit for a small chapter and centres the drawing", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+        const [svg] = yield* boxesOf(page, "svg[data-scale]");
+        const drawn = yield* boxesOf(page, "[data-structure], [data-name-tag]");
+
+        assert.isAtMost(yield* scaleOf(page), 1.5);
+        assert.isDefined(svg);
+
+        if (svg === undefined) {
+          return;
+        }
+
+        const left = Math.min(...Arr.map(drawn, (box) => box.x));
+        const right = Math.max(...Arr.map(drawn, (box) => box.x + box.width));
+        const top = Math.min(...Arr.map(drawn, (box) => box.y));
+        const bottom = Math.max(...Arr.map(drawn, (box) => box.y + box.height));
+
+        // The fitted bounds use each footprint's full top, which reaches a
+        // little above the engineer's figure, so the vertical check is looser.
+        assert.closeTo((left + right) / 2, svg.x + svg.width / 2, 8);
+        assert.closeTo((top + bottom) / 2, svg.y + svg.height / 2, 40);
+
+        // Zooming by hand still goes past the cap.
+        yield* zoomIn(page);
+        yield* zoomIn(page);
+        yield* waitForScale(page, "> 1.5");
       })
     )
   );

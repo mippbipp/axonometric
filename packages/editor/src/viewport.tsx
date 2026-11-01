@@ -25,6 +25,13 @@ interface Size {
 /** Space left around the bounds when they're fitted, in screen pixels. */
 const fitPadding = 48;
 
+/**
+ * The most that fitting may zoom in. A chapter with one or two structures
+ * would otherwise fill the window at several times real size, with oversized
+ * tags. Zooming by hand can still go further.
+ */
+const maxFitScale = 1.5;
+
 /** How far a press may move before it counts as a drag, in pixels. */
 const dragThreshold = 4;
 
@@ -40,10 +47,13 @@ const fitted = (bounds: Bounds, size: Size): View => {
   const scale = Math.max(
     Math.min(
       (size.width - fitPadding * 2) / width,
-      (size.height - fitPadding * 2) / height
+      (size.height - fitPadding * 2) / height,
+      maxFitScale
     ),
     0.01
   );
+
+  // Centring the bounds keeps a capped drawing in the middle of the window.
 
   return {
     scale,
