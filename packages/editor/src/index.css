@@ -59,34 +59,3 @@
 [data-status="off"] .fill-ink {
   fill: var(--muted);
 }
-
-/* Text keeps a readable size as the view zooms out (see readable-text.ts).
-   Name tags grow about the edge facing their structure; hop labels and code
-   chips hide until they'd be readable. A label shown on hover grows instead. */
-[data-grows],
-[data-hide-hop-labels] [data-hop-label-shown] {
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: scale(var(--tag-grow, 1));
-}
-
-[data-grows="top"] {
-  transform-origin: 50% 0;
-}
-
-[data-grows="bottom"] {
-  transform-origin: 50% 100%;
-}
-
-[data-grows="left"] {
-  transform-origin: 0 50%;
-}
-
-[data-grows="right"] {
-  transform-origin: 100% 50%;
-}
-
-[data-hide-hop-labels] [data-hop-label]:not([data-hop-label-shown]),
-[data-hide-code-chips] [data-code-chip] {
-  visibility: hidden;
-}

@@ -1,206 +1,151 @@
-import { convexOverlap } from "@axonometric/contracts";
-import type {
-  Scene,
-  SceneStructure,
-  ScreenPoint,
-  ScreenRect,
-} from "@axonometric/contracts";
-import { Array as Arr, Option } from "effect";
+import { sceneClashes, sceneOf, textGrowthAt } from "@axonometric/contracts";
+import type { Scene, SceneSource } from "@axonometric/contracts";
+import { Array as Arr, String as Str } from "effect";
 import { dual } from "effect/Function";
 
-// Text on the map is drawn at base scale and zooms with the drawing. Name
-// tags keep a readable size as the view zooms out: each grows about its
-// anchor, the edge that faces its structure. Hop labels and code chips show
-// only at zooms where they'd be readable. Zoom to fit stops zooming out where
-// grown tags would start to collide.
+// The scene places text at the size it's drawn, so the page computes a scene
+// for the zoom it shows. Zoom changes every frame of a pinch, so the zoom
+// the text is sized for moves in steps: it's the zoom rounded down to the
+// nearest of `textZooms`, so text never draws smaller than its minimum.
 
-/** The smallest size a name tag draws at on screen, in pixels. */
-const tagMinimum = 10;
+/** How far apart, as a ratio, the zooms text is sized for are. */
+const textZoomStep = 1.1;
 
-/** A name tag's font size at base scale, Tailwind's text-xs. */
-const tagFont = 12;
+/** The zoom at and above which text draws at its own size. */
+const fullSize = 1;
 
-/** The smallest size a hop label or code chip shows at, in pixels. */
-const detailMinimum = 9;
-
-/** The zoom from which hop labels show: their 12 px font at 9 px. */
-export const hopLabelsFrom = detailMinimum / 12;
-
-/** The zoom from which code chips show: their 10 px font at 9 px. */
-export const codeChipsFrom = detailMinimum / 10;
-
-/** How much a name tag grows at zoom `scale` to stay readable. */
-export const tagGrowthAt = (scale: number) =>
-  Math.max(1, tagMinimum / tagFont / scale);
-
-/** A name tag at base scale and the point it grows about. */
-export interface GrowingTag {
-  readonly rect: ScreenRect;
-  readonly anchor: ScreenPoint;
-}
-
-/** What the grown tags must stay clear of. */
-export interface TagSurroundings {
-  readonly tags: readonly GrowingTag[];
-  /** Boxes, as convex polygons. */
-  readonly shapes: readonly (readonly ScreenPoint[])[];
-  /** Other text and the zoom from which it shows. */
-  readonly text: readonly {
-    readonly polygon: readonly ScreenPoint[];
-    readonly shownFrom: number;
-  }[];
-}
-
-const grown = ({ rect, anchor }: GrowingTag, by: number): ScreenRect => ({
-  left: anchor.sx + (rect.left - anchor.sx) * by,
-  right: anchor.sx + (rect.right - anchor.sx) * by,
-  top: anchor.sy + (rect.top - anchor.sy) * by,
-  bottom: anchor.sy + (rect.bottom - anchor.sy) * by,
-});
-
-const corners = (rect: ScreenRect): readonly ScreenPoint[] => [
-  { sx: rect.left, sy: rect.top },
-  { sx: rect.right, sy: rect.top },
-  { sx: rect.right, sy: rect.bottom },
-  { sx: rect.left, sy: rect.bottom },
-];
-
-/** The most a tag is ever checked growing by, past which nothing changes. */
-const largestGrowth = 64;
+/** The smallest zoom text is ever sized for. */
+const smallestTextZoom = 0.05;
 
 /**
- * The least growth at which `clashes` holds, or none when it holds at
- * no growth or already at full size. Growing a tag about a point inside it
- * only adds to it, so a clash stays once it starts.
+ * The zoom text is sized for at view zoom `zoom`: 1 at and above it, else
+ * the largest of 1, 1 / 1.1, 1 / 1.1² … at or below `zoom`. Text sized for
+ * that zoom draws at least at its minimum.
  */
-const clashFrom = (clashes: (by: number) => boolean): Option.Option<number> => {
-  if (clashes(1) || !clashes(largestGrowth)) {
-    return Option.none();
+export const textZoomOf = (zoom: number) => {
+  if (zoom >= fullSize) {
+    return fullSize;
   }
 
-  let low = 1;
-  let high = largestGrowth;
+  const steps = Math.ceil(
+    Math.log(fullSize / Math.max(zoom, smallestTextZoom)) /
+      Math.log(textZoomStep) -
+      1e-9
+  );
 
-  for (let round = 0; round < 40; round += 1) {
-    const middle = (low + high) / 2;
-
-    if (clashes(middle)) {
-      high = middle;
-    } else {
-      low = middle;
-    }
-  }
-
-  return Option.some(low);
+  return fullSize / textZoomStep ** steps;
 };
 
-/** A range of zooms at which grown tags would collide. */
-interface Blocked {
-  readonly from: number;
-  readonly to: number;
-}
+/** The zooms text is sized for, from `from` up to 1, largest first. */
+const textZoomsFrom = (from: number) => {
+  const zooms: number[] = [];
 
-const blockedBy = (growth: Option.Option<number>, shownFrom = 0) =>
-  Option.match(growth, {
-    onNone: () => [],
-    onSome: (by) => [{ from: shownFrom, to: tagMinimum / tagFont / by }],
-  });
+  for (let zoom = fullSize; zoom >= textZoomOf(from); zoom /= textZoomStep) {
+    zooms.push(zoom);
+  }
 
-const blockedRanges = ({ tags, shapes, text }: TagSurroundings) =>
-  Arr.flatMap(tags, (tag, index): readonly Blocked[] => {
-    const at = (by: number) => corners(grown(tag, by));
+  return zooms;
+};
 
-    return [
-      ...Arr.flatMap(tags.slice(index + 1), (other) =>
-        blockedBy(
-          clashFrom((by) => convexOverlap(at(by), corners(grown(other, by))))
-        )
-      ),
-      ...Arr.flatMap(shapes, (shape) =>
-        blockedBy(clashFrom((by) => convexOverlap(at(by), shape)))
-      ),
-      ...Arr.flatMap(text, ({ polygon, shownFrom }) =>
-        blockedBy(
-          clashFrom((by) => convexOverlap(at(by), polygon)),
-          shownFrom
-        )
-      ),
-    ];
-  });
+/** Whether a clash puts a name tag over another tag or over a box. */
+const tagClash = ({
+  between,
+}: {
+  readonly between: readonly [string, string];
+}) => {
+  const tags = Arr.filter(between, Str.startsWith("tag:")).length;
+  const boxes = Arr.filter(between, Str.startsWith("box:")).length;
+
+  return tags === 2 || (tags === 1 && boxes === 1);
+};
+
+/** The name tag clashes in `source`'s scene at `zoom`, as keys. */
+const tagClashesAt = (source: SceneSource, zoom: number) => {
+  const scene = sceneOf({ ...source, zoom, tagsOnly: true });
+  const clashes = Arr.filter(sceneClashes(scene), tagClash);
+
+  return new Set(Arr.map(clashes, ({ between }) => Arr.join(between, " × ")));
+};
 
 /**
- * The zoom zoom to fit uses, given the zoom `fitScale` that fits: the
- * smallest zoom from `fitScale` up at which no grown tag overlaps another
- * tag, a box or text that's showing. Overlaps the drawing already has at
- * base size don't count.
+ * The zoom zoom to fit uses for `source`'s drawing, given the zoom
+ * `fitScale` that fits: the same, unless its name tags, placed at the size
+ * they're drawn at that zoom, overlap each other or a box where they don't
+ * at full size. Then it's the smallest zoom text is sized for at which they
+ * don't, so the engineer pans for the rest. Hop labels, chips and zone
+ * titles never stop it: they hide where they don't fit.
  */
-export const readableScale: {
-  (fitScale: number): (surroundings: TagSurroundings) => number;
-  (surroundings: TagSurroundings, fitScale: number): number;
-} = dual(2, (surroundings: TagSurroundings, fitScale: number): number => {
-  const blocked = blockedRanges(surroundings);
-  let scale = fitScale;
-  let moved = true;
+export const fitFloorOf: {
+  (fitScale: number): (source: SceneSource) => number;
+  (source: SceneSource, fitScale: number): number;
+} = dual(2, (source: SceneSource, fitScale: number): number => {
+  const atFullSize = tagClashesAt(source, fullSize);
 
-  while (moved) {
-    const current = scale;
-
-    const inside = Arr.filter(
-      blocked,
-      ({ from, to }) => current >= from && current < to
+  const clear = (zoom: number) =>
+    Arr.every([...tagClashesAt(source, zoom)], (clash) =>
+      atFullSize.has(clash)
     );
 
-    moved = inside.length > 0;
-    scale = Math.max(scale, ...Arr.map(inside, ({ to }) => to));
+  if (clear(textZoomOf(fitScale))) {
+    return fitScale;
   }
 
-  return scale;
+  // Tags only grow as the zoom falls, so once they clash they keep clashing.
+  const zooms = textZoomsFrom(fitScale);
+  let floor = fullSize;
+
+  for (const zoom of zooms) {
+    if (!clear(zoom)) {
+      break;
+    }
+
+    floor = zoom;
+  }
+
+  return Math.max(fitScale, floor);
 });
 
-/** The edge of a name tag that faces its structure, which it grows from. */
-export type TagSide = "top" | "bottom" | "left" | "right";
+/** How much each kind of text grows at view zoom `zoom`, for the CSS. */
+export const growthAt = (zoom: number) => textGrowthAt(textZoomOf(zoom));
 
-/** The edge of `placed`'s name tag that faces its box. */
-export const tagSideOf = ({ tag, bounds }: SceneStructure): TagSide => {
-  if (tag.top >= bounds.bottom - 1e-6) {
-    return "top";
+/**
+ * Scenes by what they're drawn from and the zoom their text is sized for.
+ * The page keeps the same data, layout, revealed set and routes objects
+ * until they change, so they key a cache the garbage collector clears.
+ */
+const sceneCache = new WeakMap<
+  object,
+  WeakMap<object, WeakMap<object, Map<string, Scene>>>
+>();
+
+/** `sceneOf(source)`, cached by its inputs. */
+export const sceneAtZoom = (source: SceneSource): Scene => {
+  const byLayout = sceneCache.get(source.data) ?? new WeakMap();
+  const byRevealed = byLayout.get(source.layout) ?? new WeakMap();
+  const byKey = byRevealed.get(source.revealed) ?? new Map<string, Scene>();
+
+  sceneCache.set(source.data, byLayout);
+  byLayout.set(source.layout, byRevealed);
+  byRevealed.set(source.revealed, byKey);
+
+  const key = Arr.join(
+    [
+      source.view ?? "iso",
+      String(source.zoom ?? 1),
+      Arr.join(source.labelFirst ?? [], ","),
+    ],
+    "|"
+  );
+
+  const cached = byKey.get(key);
+
+  if (cached !== undefined) {
+    return cached;
   }
 
-  if (tag.bottom <= bounds.top + 1e-6) {
-    return "bottom";
-  }
+  const made = sceneOf(source);
 
-  return tag.left >= (bounds.left + bounds.right) / 2 ? "left" : "right";
+  byKey.set(key, made);
+
+  return made;
 };
-
-/** The middle of a rect's `side`. */
-const middleOf = (rect: ScreenRect, side: TagSide): ScreenPoint => {
-  const sx = (rect.left + rect.right) / 2;
-  const sy = (rect.top + rect.bottom) / 2;
-
-  return {
-    top: { sx, sy: rect.top },
-    bottom: { sx, sy: rect.bottom },
-    left: { sx: rect.left, sy },
-    right: { sx: rect.right, sy },
-  }[side];
-};
-
-/** What a scene's grown name tags must stay clear of. */
-export const surroundingsOf = (scene: Scene): TagSurroundings => ({
-  tags: Arr.map(scene.structures, (placed) => ({
-    rect: placed.tag,
-    anchor: middleOf(placed.tag, tagSideOf(placed)),
-  })),
-  shapes: Arr.map(scene.structures, ({ outline }) => outline),
-  text: [
-    ...Arr.flatMap(scene.hops, ({ label }) =>
-      label === undefined
-        ? []
-        : [{ polygon: corners(label), shownFrom: hopLabelsFrom }]
-    ),
-    ...Arr.flatMap(scene.zones, ({ title }) =>
-      title === undefined ? [] : [{ polygon: title, shownFrom: 0 }]
-    ),
-  ],
-});
