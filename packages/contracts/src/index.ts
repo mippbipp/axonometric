@@ -4,6 +4,20 @@ export { checkMap, linkTargets } from "./check.ts";
 
 export type { CheckOptions, MapFiles } from "./check.ts";
 
+export { excalidrawIds, excalidrawOf } from "./excalidraw.ts";
+
+export type {
+  ExcalidrawArrow,
+  ExcalidrawBinding,
+  ExcalidrawBound,
+  ExcalidrawElement,
+  ExcalidrawFile,
+  ExcalidrawFrame,
+  ExcalidrawRectangle,
+  ExcalidrawSource,
+  ExcalidrawText,
+} from "./excalidraw.ts";
+
 export { fileVersionFields, formatVersion } from "./fields.ts";
 
 export {
