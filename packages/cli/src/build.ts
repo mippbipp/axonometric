@@ -98,7 +98,8 @@ export const rebuild = Effect.fnUntraced(function* (
   const layoutFile = path.join(home, "layout.json");
   const page = yield* renderPage(state);
 
-  // layout.json is only written when placing added or pruned structures.
+  // layout.json is only written when placing added or pruned structures or
+  // pruned route overrides.
   // Under serve the write is one more watch event, and that rebuild finds
   // every structure placed, so it writes no layout and the loop ends.
   const layoutOutput: readonly Output[] = changed
@@ -120,6 +121,7 @@ export const rebuild = Effect.fnUntraced(function* (
     sourcesSkipped,
     placed,
     pruned,
+    prunedRoutes,
     systemMdFile,
     pageFile,
     layoutFile,
@@ -133,6 +135,7 @@ const build = Effect.fn("build")(function* (home: string) {
     sourcesSkipped,
     placed,
     pruned,
+    prunedRoutes,
     systemMdFile,
     pageFile,
     layoutFile,
