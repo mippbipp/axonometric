@@ -2,7 +2,15 @@ import { Proposals } from "@axonometric/contracts";
 import type { LayoutChange } from "@axonometric/contracts";
 import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Path, Schema, String as Str } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  FileSystem,
+  Path,
+  Schema,
+  Stream,
+  String as Str,
+} from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
@@ -13,15 +21,18 @@ import { makeHome, startServe } from "./harness.ts";
 
 const pendingLayout = "/api/proposals/layout";
 
-/** The review map served on a free port. */
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
+/** The review map served on a free port, with extra `serve` arguments. */
+const servedWith = (args: readonly string[]) =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    const root = yield* makeHome(yield* fullMap);
+    const home = path.join(root, "review", "map");
+    const serve = yield* startServe(home, ["--port", "0", ...args]);
 
-  return { home, url: serve.url };
-}).pipe(Effect.provide(NodeServices.layer));
+    return { home, url: serve.url };
+  }).pipe(Effect.provide(NodeServices.layer));
+
+const served = servedWith([]);
 
 interface Sent {
   readonly status: number;
@@ -83,6 +94,38 @@ const sendText = (
     Effect.orDie,
     Effect.provide(NodeHttpClient.layerNodeHttp)
   );
+
+const chunk = new Uint8Array(64 * 1024).fill(32);
+
+/** Sends a PUT whose body is `count` chunks of 64 KB, with no length. */
+const putChunked = (
+  url: string,
+  headers: Readonly<Record<string, string>>,
+  count: number
+) => {
+  const body = Stream.fromIterable(Arr.replicate(chunk, count));
+
+  return HttpClient.HttpClient.use((client) =>
+    client.execute(
+      HttpClientRequest.put(new URL(pendingLayout, url)).pipe(
+        HttpClientRequest.setHeaders(headers),
+        HttpClientRequest.bodyStream(body, { contentType: "application/json" })
+      )
+    )
+  ).pipe(
+    Effect.map((response): Sent => ({ status: response.status, body: "" })),
+    Effect.scoped,
+    Effect.orDie,
+    Effect.provide(NodeHttpClient.layerNodeHttp)
+  );
+};
+
+/** The headers of a write through a reverse proxy for `map.example.test`. */
+const asProxied = (origin: string) => ({
+  "content-type": "application/json",
+  host: "map.example.test",
+  origin,
+});
 
 /** The headers a page the server served sends. */
 const ownOrigin = (url: string) => ({
@@ -190,6 +233,78 @@ describe("writing pending layout changes over HTTP", () => {
     })
   );
 
+  it.live("refuses Origin: null, which sandboxed frames and files send", () =>
+    Effect.gen(function* () {
+      const { home, url } = yield* served;
+
+      yield* assertRefused(
+        home,
+        403,
+        put(url, { ...ownOrigin(url), origin: "null" }, moveBody(0, 4))
+      );
+    })
+  );
+
+  it.live(
+    "takes Sec-Fetch-Site: same-origin in place of an Origin, and refuses cross-site",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* served;
+        const json = { "content-type": "application/json" };
+
+        yield* assertRefused(
+          home,
+          403,
+          put(url, { ...json, "sec-fetch-site": "cross-site" }, moveBody(0, 4))
+        );
+        yield* assertRefused(
+          home,
+          403,
+          put(url, { ...json, "sec-fetch-site": "same-site" }, moveBody(0, 4))
+        );
+
+        const sent = yield* put(
+          url,
+          { ...json, "sec-fetch-site": "same-origin" },
+          moveBody(0, 4)
+        );
+
+        assert.strictEqual(sent.status, 200, sent.body);
+      })
+  );
+
+  it.live(
+    "matches the Origin to the Host, port included, whatever the scheme",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* servedWith([
+          "--allow-host",
+          "map.example.test",
+        ]);
+
+        // An allowed host name on another port is another origin.
+        yield* assertRefused(
+          home,
+          403,
+          put(url, asProxied("http://map.example.test:9999"), moveBody(0, 4))
+        );
+        yield* assertRefused(
+          home,
+          403,
+          put(url, asProxied("https://other.example.test"), moveBody(0, 4))
+        );
+
+        // A proxy that ends TLS shows the server http, and the page sent https.
+        const sent = yield* put(
+          url,
+          asProxied("https://map.example.test"),
+          moveBody(0, 4)
+        );
+
+        assert.strictEqual(sent.status, 200, sent.body);
+      })
+  );
+
   it.live("refuses a form-encoded write", () =>
     Effect.gen(function* () {
       const { home, url } = yield* served;
@@ -225,6 +340,14 @@ describe("writing pending layout changes over HTTP", () => {
         413,
         put(url, ownOrigin(url), Effect.succeed(body))
       );
+    })
+  );
+
+  it.live("refuses a chunked body over 256 KB that gives no length", () =>
+    Effect.gen(function* () {
+      const { home, url } = yield* served;
+
+      yield* assertRefused(home, 413, putChunked(url, ownOrigin(url), 6));
     })
   );
 

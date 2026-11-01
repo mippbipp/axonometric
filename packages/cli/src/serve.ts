@@ -178,13 +178,13 @@ const urlHost = (host: string) =>
  * Answers 403 to any request whose Host isn't one the server expects. This
  * stops a page on another site from reading the map through DNS rebinding.
  */
-const hostCheck = (allowed: ReadonlySet<string>) =>
+const hostCheck = (answeredHosts: ReadonlySet<string>) =>
   HttpRouter.middleware(
     (httpEffect) =>
       Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
         const header = request.headers.host;
 
-        return header !== undefined && allowed.has(hostName(header))
+        return header !== undefined && answeredHosts.has(hostName(header))
           ? httpEffect
           : Effect.succeed(
               HttpServerResponse.text(
@@ -347,14 +347,13 @@ const routes = ({
   home,
   held,
   stopping,
-  allowed,
-  proxied,
+  answeredHosts,
 }: {
   readonly home: string;
   readonly held: SubscriptionRef.SubscriptionRef<Held>;
   readonly stopping: Latch.Latch;
-  readonly allowed: ReadonlySet<string>;
-  readonly proxied: ReadonlySet<string>;
+  /** The host names the server answers; any other Host gets a 403. */
+  readonly answeredHosts: ReadonlySet<string>;
 }) => {
   const events = SubscriptionRef.changes(held).pipe(
     Stream.flatMap((current) => Stream.fromIterable(eventsOf(current))),
@@ -403,10 +402,10 @@ const routes = ({
 
   const api = HttpApiBuilder.layer(ServerApi).pipe(
     Layer.provide([mapHandlers, proposalHandlers]),
-    Layer.provide(writeGuardLayer(proxied))
+    Layer.provide(writeGuardLayer)
   );
 
-  return Layer.mergeAll(api, hostCheck(allowed)).pipe(
+  return Layer.mergeAll(api, hostCheck(answeredHosts)).pipe(
     Layer.provide(NodeHttpServer.layerHttpServices)
   );
 };
@@ -457,18 +456,16 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   yield* watching.await;
 
-  const proxied = new Set(Arr.map(options.allowHosts, hostName));
-
-  const allowed = new Set([
+  const answeredHosts = new Set([
     ...loopbackHosts,
-    ...proxied,
+    ...Arr.map(options.allowHosts, hostName),
     ...(wildcardHosts.has(host) ? [] : [hostName(urlHost(host))]),
   ]);
 
   const stopping = yield* Latch.make();
 
   const app = yield* HttpRouter.toHttpEffect(
-    routes({ home, held, stopping, allowed, proxied })
+    routes({ home, held, stopping, answeredHosts })
   );
 
   const urlHostName = wildcardHosts.has(host) ? defaultHost : urlHost(host);

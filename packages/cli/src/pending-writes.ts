@@ -37,18 +37,17 @@ const originUrl = (origin: string) =>
   );
 
 /**
- * Whether a write came from a page the server itself served. Its Origin
- * must name the host and port the request is addressed to, which the Host
- * check has already allowed, or a host name given with `--allow-host`,
- * whose reverse proxy may rewrite Host. Browsers send Origin on every
- * cross-site write. Without it, `Sec-Fetch-Site: same-origin` vouches for
- * the request instead. A request with neither, such as from curl, is
- * refused.
+ * Whether a write came from a page the server itself served: its Origin
+ * names the host and port the request is addressed to. The Host check has
+ * already allowed that name, and a page on another site, or on another port
+ * of this one, names a different one. The scheme is ignored, because a
+ * reverse proxy that ends TLS turns https into http.
+ *
+ * Browsers send Origin on every cross-site write. Without it,
+ * `Sec-Fetch-Site: same-origin` vouches for the request instead. A request
+ * with neither, such as from curl, is refused.
  */
-const fromOwnOrigin = (
-  request: HttpServerRequest.HttpServerRequest,
-  proxied: ReadonlySet<string>
-) => {
+const fromOwnOrigin = (request: HttpServerRequest.HttpServerRequest) => {
   const { origin, host } = request.headers;
 
   if (origin === undefined) {
@@ -57,9 +56,7 @@ const fromOwnOrigin = (
 
   return Option.match(originUrl(origin), {
     onNone: () => false,
-    onSome: (url) =>
-      url.host === Str.toLowerCase(Str.trim(host ?? "")) ||
-      proxied.has(url.hostname),
+    onSome: (url) => url.host === Str.toLowerCase(Str.trim(host ?? "")),
   });
 };
 
@@ -69,40 +66,38 @@ const declaredTooLarge = (header: string | undefined) =>
 
 /**
  * The write guard: the origin, the content type and the size limit, checked
- * in that order before the body is read. `proxied` holds the host names
- * given with `--allow-host`.
+ * in that order before the body is read.
  */
-export const writeGuardLayer = (proxied: ReadonlySet<string>) =>
-  Layer.succeed(WriteGuard, (httpEffect) =>
-    Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
-      if (!fromOwnOrigin(request, proxied)) {
-        return reject(
-          403,
-          "Writes must come from a page this server served. Open the map at the URL serve printed."
-        );
-      }
-
-      if (mediaType(request.headers["content-type"]) !== "application/json") {
-        return reject(415, "Send the write as application/json.");
-      }
-
-      if (declaredTooLarge(request.headers["content-length"])) {
-        return reject(
-          413,
-          `The body is over the limit of ${maxWriteBytes} bytes.`
-        );
-      }
-
-      // The limit also stops a body that gives no length, or a false one,
-      // as it's read.
-      return httpEffect.pipe(
-        Effect.provideService(
-          HttpServerRequest.MaxBodySize,
-          BigInt(maxWriteBytes)
-        )
+export const writeGuardLayer = Layer.succeed(WriteGuard, (httpEffect) =>
+  Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
+    if (!fromOwnOrigin(request)) {
+      return reject(
+        403,
+        "Writes must come from a page this server served. Open the map at the URL serve printed."
       );
-    })
-  );
+    }
+
+    if (mediaType(request.headers["content-type"]) !== "application/json") {
+      return reject(415, "Send the write as application/json.");
+    }
+
+    if (declaredTooLarge(request.headers["content-length"])) {
+      return reject(
+        413,
+        `The body is over the limit of ${maxWriteBytes} bytes.`
+      );
+    }
+
+    // The limit also stops a body that gives no length, or a false one,
+    // as it's read.
+    return httpEffect.pipe(
+      Effect.provideService(
+        HttpServerRequest.MaxBodySize,
+        BigInt(maxWriteBytes)
+      )
+    );
+  })
+);
 
 /** The problems in a file that didn't decode, as a write's error. */
 const unreadable = <A>(
