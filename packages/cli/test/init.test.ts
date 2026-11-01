@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { makeHome, runCli } from "./harness.ts";
@@ -27,14 +27,15 @@ describe("init", () => {
     "writes a starter map that builds and checks with no problems",
     () =>
       Effect.gen(function* () {
+        const path = yield* Path.Path;
         const home = yield* makeHome({});
-        const map = `${home}/docs/pipeline/map`;
+        const map = path.join(home, "docs", "pipeline", "map");
         const result = yield* runCli(home, ["init", map]);
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
         assert.isString(result.files["docs/pipeline/map/data.mjs"]);
         assert.isUndefined(result.files["docs/pipeline/map/layout.json"]);
-        assert.include(result.stdout, `Wrote ${map}/data.mjs.`);
+        assert.include(result.stdout, `Wrote ${path.join(map, "data.mjs")}.`);
         assert.include(result.stdout, "axonometric build");
 
         const checked = yield* runCli(home, ["check", map]);
@@ -53,7 +54,7 @@ describe("init", () => {
         const rechecked = yield* runCli(home, ["check", map]);
 
         assert.include(rechecked.stdout, ": 0 errors, 0 warnings.");
-      })
+      }).pipe(Effect.provide(NodeServices.layer))
   );
 
   it.effect("keeps .axonometric out of git with its own .gitignore", () =>
@@ -74,22 +75,25 @@ describe("init", () => {
 
   it.effect("refuses to overwrite an existing map", () =>
     Effect.gen(function* () {
+      const path = yield* Path.Path;
+
       const home = yield* makeHome({
         "pipeline/map/data.mjs": "export default { mine: true };\n",
       });
 
-      const result = yield* runCli(home, ["init", `${home}/pipeline/map`]);
+      const map = path.join(home, "pipeline", "map");
+      const result = yield* runCli(home, ["init", map]);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(
         result.stderr,
-        `${home}/pipeline/map/data.mjs already exists. init never overwrites a map; edit it, or pick another home folder.`
+        `${path.join(map, "data.mjs")} already exists. init never overwrites a map; edit it, or pick another home folder.`
       );
       assert.strictEqual(
         result.files["pipeline/map/data.mjs"],
         "export default { mine: true };\n"
       );
-    })
+    }).pipe(Effect.provide(NodeServices.layer))
   );
 
   it.effect.skipIf(noGit)(
@@ -100,7 +104,8 @@ describe("init", () => {
 
         yield* git(home, ["init", "--quiet"]);
 
-        const map = `${home}/.scratch/pipeline/map`;
+        const path = yield* Path.Path;
+        const map = path.join(home, ".scratch", "pipeline", "map");
         const result = yield* runCli(home, ["init", map]);
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
@@ -108,7 +113,7 @@ describe("init", () => {
           result.stderr,
           `warning: ${map} is under a .scratch/ folder that git doesn't ignore, so the map would be committed. Add .scratch/ to the repo's .gitignore.`
         );
-      })
+      }).pipe(Effect.provide(NodeServices.layer))
   );
 
   it.effect.skipIf(noGit)(
