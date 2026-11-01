@@ -157,8 +157,19 @@ const outsideArea: {
     gridOnScreen
 );
 
-/** Running alongside another hop's route costs this much more per step. */
+/**
+ * Running alongside the route of a hop that shares a structure with this
+ * one costs this much more per step. Such hops form a bundle, which the
+ * scene draws as parallel lines, so sharing a trunk is cheap.
+ */
 const sharedStepCost = 1;
+
+/**
+ * Running alongside or touching the route of a hop that shares no
+ * structure with this one, per step. A short detour beats it, an extra
+ * bend doesn't.
+ */
+const strangerStepCost = 20;
 
 /**
  * Passing through a point a hop between the same two structures already
@@ -202,7 +213,20 @@ const siblingCrossCost = 40;
  * Far less than running under a box, so a route crosses a zone rather than
  * a box.
  */
-const zoneStepCost = 3;
+const zoneStepCost = 100;
+
+/**
+ * Each step that lies on a zone's outline. Like a name tag, it must outweigh
+ * any detour, so a route lies on a zone's outline only when nothing else
+ * gets through; crossing the outline at a right angle costs nothing.
+ */
+const zoneLineCost = 1e4;
+
+/**
+ * Each step onto a box's corner. A route through a corner reads as part of
+ * the box's outline, so it costs as much as a name tag.
+ */
+const cornerCost = 1e4;
 
 /** Each half unit a route's end sits from the middle of its edge. */
 const offCentreCost = 0.25;
@@ -440,6 +464,10 @@ interface Grid {
   readonly inZones: readonly (readonly number[] | undefined)[];
   /** Like `touches`, for steps whose line on screen crosses a name tag. */
   readonly inTags: readonly (readonly number[] | undefined)[];
+  /** Like `touches`, for steps that lie on a zone's outline. */
+  readonly onZoneLines: readonly (readonly number[] | undefined)[];
+  /** The points on a box's corner, by point index. */
+  readonly corners: ReadonlySet<number>;
 }
 
 /** Adds `value` to the list at `index`. */
@@ -491,6 +519,7 @@ const gridOf = (
   const touches: (number[] | undefined)[] = [];
   const inZones: (number[] | undefined)[] = [];
   const inTags: (number[] | undefined)[] = [];
+  const onZoneLines: (number[] | undefined)[] = [];
 
   const keyOf = (x: number, y: number, direction: 0 | 1) =>
     ((y - top) * width + (x - left)) * 2 + direction;
@@ -509,6 +538,33 @@ const gridOf = (
       }
     }
   });
+
+  // A step lies on a zone's outline when it runs along one of its edges.
+  Arr.forEach(zones, (zone, zoneIndex) => {
+    for (let x = zone.x0; x < zone.x1; x++) {
+      push(onZoneLines, keyOf(x, zone.y0, 0), zoneIndex);
+      push(onZoneLines, keyOf(x, zone.y1, 0), zoneIndex);
+    }
+
+    for (let y = zone.y0; y < zone.y1; y++) {
+      push(onZoneLines, keyOf(zone.x0, y, 1), zoneIndex);
+      push(onZoneLines, keyOf(zone.x1, y, 1), zoneIndex);
+    }
+  });
+
+  const corners = new Set(
+    Arr.flatMap(boxes, (box) =>
+      Arr.map(
+        [
+          [box.x0, box.y0],
+          [box.x1, box.y0],
+          [box.x0, box.y1],
+          [box.x1, box.y1],
+        ] as const,
+        ([x, y]) => (y - top) * width + (x - left)
+      )
+    )
+  );
 
   Arr.forEach(boxes, (box, boxIndex) => {
     const mark = (x: number, y: number, direction: 0 | 1) => {
@@ -565,6 +621,8 @@ const gridOf = (
     zones,
     inZones,
     inTags,
+    onZoneLines,
+    corners,
   };
 };
 
@@ -641,9 +699,16 @@ const facingOf = (box: Box, other: Box): readonly number[] => {
 };
 
 /**
- * The points on a footprint's edge a route may start or end at, corners
- * included, so a route may leave a corner along either of its edges'
- * outward directions. Each comes with what it costs to use it: the edge's
+ * The half-unit points along an edge from `start` to `end` a route may
+ * start or end at: every one at least a half unit from both corners, or
+ * every one, corners included, on an edge shorter than a unit.
+ */
+const alongEdge = (start: number, end: number) =>
+  end - start >= 2 ? Arr.range(start + 1, end - 1) : Arr.range(start, end);
+
+/**
+ * The points on a footprint's edge a route may start or end at, kept off
+ * the corners where the edge is long enough. Each comes with what it costs to use it: the edge's
  * facing cost towards `other`, `backCost` more on a back edge (-x or -y),
  * and a little for points away from the middle of their edge, so a lone
  * route leaves from the middle.
@@ -661,25 +726,25 @@ const edgePoints = (
     (facing[out] ?? 0) + (out === minusX || out === minusY ? backCost : 0);
 
   return [
-    ...Arr.map(Arr.range(box.x0, box.x1), (x) => ({
+    ...Arr.map(alongEdge(box.x0, box.x1), (x) => ({
       x,
       y: box.y1,
       out: plusY,
       cost: costOf(plusY) + offCentreCost * Math.abs(x - midX),
     })),
-    ...Arr.map(Arr.range(box.y0, box.y1), (y) => ({
+    ...Arr.map(alongEdge(box.y0, box.y1), (y) => ({
       x: box.x1,
       y,
       out: plusX,
       cost: costOf(plusX) + offCentreCost * Math.abs(y - midY),
     })),
-    ...Arr.map(Arr.range(box.x0, box.x1), (x) => ({
+    ...Arr.map(alongEdge(box.x0, box.x1), (x) => ({
       x,
       y: box.y0,
       out: minusY,
       cost: costOf(minusY) + offCentreCost * Math.abs(x - midX),
     })),
-    ...Arr.map(Arr.range(box.y0, box.y1), (y) => ({
+    ...Arr.map(alongEdge(box.y0, box.y1), (y) => ({
       x: box.x0,
       y,
       out: minusX,
@@ -707,6 +772,15 @@ interface Usage {
     string,
     { readonly steps: Set<number>; readonly points: Set<number> }
   >;
+  /**
+   * Every route so far: its two structures, its steps, and the axes its
+   * legs run along at each point it passes, 3 at its ends and bends.
+   */
+  readonly routes: {
+    readonly ends: readonly string[];
+    readonly steps: ReadonlySet<number>;
+    readonly points: ReadonlyMap<number, number>;
+  }[];
 }
 
 const pairKey = (a: string, b: string) =>
@@ -783,6 +857,12 @@ const record = (
 ) => {
   const pair = pairUsage(usage, key);
   const maps = Arr.map(ends, (end) => axesOf(usage, end));
+  const steps = new Set<number>();
+  const passes = new Map<number, number>();
+
+  Arr.forEach(cornersOf(points), (point) => {
+    passes.set(pointIndex(grid, point), 3);
+  });
 
   for (const { a, b } of stepsAlong(points)) {
     const step = stepKey(grid, a, directionOf(a, b));
@@ -795,10 +875,18 @@ const record = (
     }
 
     usage.steps.add(step);
+    steps.add(step);
+
+    for (const point of [pointIndex(grid, a), pointIndex(grid, b)]) {
+      passes.set(point, (passes.get(point) ?? 0) | axis);
+    }
+
     pair.steps.add(step);
     pair.points.add(pointIndex(grid, a));
     pair.points.add(pointIndex(grid, b));
   }
+
+  usage.routes.push({ ends, steps, points: passes });
 };
 
 /** Keeps a polyline's first and last points and the points where it turns. */
@@ -826,6 +914,14 @@ interface Search {
   readonly to: Box;
   /** Where the routes of the ends' other hops run, and along which axes. */
   readonly siblings: readonly ReadonlyMap<number, number>[];
+  /**
+   * The steps and points of routes that share neither of this hop's
+   * structures, which it must keep off except to cross them squarely.
+   */
+  readonly strangers: {
+    readonly steps: ReadonlySet<number>;
+    readonly points: ReadonlyMap<number, number>;
+  };
   /** When set, steps outside this box aren't allowed at all. */
   readonly window: Box | undefined;
   /** The route's area on screen. */
@@ -899,12 +995,41 @@ const stepPrice = (
   return (
     stepCost +
     bend +
+    outlinePrice(search, { step, next: nextIndex, direction }) +
     touched.length * crossCost +
     zones * zoneStepCost +
     crossings * siblingCrossCost +
     (grid.inTags[step] ?? []).length * tagCost +
     (search.usage.steps.has(step) ? sharedStepCost : 0) +
     (search.pair.points.has(nextIndex) ? pairPointCost : 0)
+  );
+};
+
+/**
+ * What a step costs for running along or onto something it should keep off:
+ * the route of a hop that shares no structure with this one, a zone's
+ * outline, or a box's corner.
+ */
+const outlinePrice = (
+  { grid, strangers }: Search,
+  {
+    step,
+    next,
+    direction,
+  }: {
+    readonly step: number;
+    readonly next: number;
+    readonly direction: number;
+  }
+) => {
+  const stranger =
+    strangers.steps.has(step) ||
+    ((strangers.points.get(next) ?? 0) & (alongXAxis(direction) ? 1 : 2)) !== 0;
+
+  return (
+    (stranger ? strangerStepCost : 0) +
+    (grid.onZoneLines[step] ?? []).length * zoneLineCost +
+    (grid.corners.has(next) ? cornerCost : 0)
   );
 };
 
@@ -1041,6 +1166,26 @@ interface Frontier {
   readonly queue: ReturnType<typeof makeQueue>;
 }
 
+/** The steps and points of the routes that share none of `ends`. */
+const strangersOf = (usage: Usage, ends: ReadonlySet<string>) => {
+  const steps = new Set<number>();
+  const points = new Map<number, number>();
+
+  for (const route of usage.routes) {
+    if (!Arr.some(route.ends, (end) => ends.has(end))) {
+      for (const step of route.steps) {
+        steps.add(step);
+      }
+
+      for (const [point, axes] of route.points) {
+        points.set(point, (points.get(point) ?? 0) | axes);
+      }
+    }
+  }
+
+  return { steps, points };
+};
+
 const searchOf = (
   grid: Grid,
   { usage, key }: { readonly usage: Usage; readonly key: string },
@@ -1064,6 +1209,7 @@ const searchOf = (
   siblings: Arr.flatMap([from.id, to.id], (id) =>
     Option.toArray(Option.fromNullishOr(usage.axes.get(id)))
   ),
+  strangers: strangersOf(usage, new Set([from.id, to.id])),
   window,
   area: routeArea(from, to),
   line: [screenCentre(from), screenCentre(to)],
@@ -1367,6 +1513,7 @@ export const routeHops: {
       steps: new Set(),
       axes: new Map(),
       pairs: new Map(),
+      routes: [],
     };
 
     const routes: Record<string, HopRoute> = {};

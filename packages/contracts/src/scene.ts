@@ -1,4 +1,10 @@
-import { Array as Arr, Option, Order, String as Str } from "effect";
+import {
+  Array as Arr,
+  Option,
+  Order,
+  Record as Rec,
+  String as Str,
+} from "effect";
 import { dual } from "effect/Function";
 
 import {
@@ -28,9 +34,16 @@ import {
   tileWidth,
 } from "./iso.ts";
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
-import type { Layout, Placement } from "./layout.ts";
+import { laneGap, laneRoutes, laneWidths } from "./lanes.ts";
+import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
-import { planRect, planTagSpots, planUnit, projectPlan } from "./plan.ts";
+import {
+  groundProjections,
+  planRect,
+  planTagSpots,
+  planUnit,
+  projectPlan,
+} from "./plan.ts";
 import type { View } from "./plan.ts";
 import { routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
@@ -148,7 +161,11 @@ const labelPadding = 3;
 export interface SceneHop {
   readonly hop: Hop;
   readonly route: HopRoute;
-  /** The route on screen, from the source's edge to the target's edge. */
+  /**
+   * The hop's own line on screen, from the source's edge to the target's
+   * edge: its route, moved sideways into its own lane where it runs on the
+   * same grid line as another route, so no two hops' lines coincide.
+   */
   readonly points: readonly ScreenPoint[];
   /**
    * Where the label goes, or `undefined` when no clear spot at the route
@@ -1091,14 +1108,37 @@ export const sceneOf = ({
 
   const outlines = Arr.map(boxes, ({ outline }) => outline);
 
-  const routed = Arr.flatMap(data.hops, (hop) => {
+  const shown = Arr.filter(
+    data.hops,
+    (hop) =>
+      routes[hop.id] !== undefined &&
+      revealed.has(hop.from) &&
+      revealed.has(hop.to)
+  );
+
+  const drawn = laneRoutes(
+    Rec.fromEntries(
+      Arr.flatMap(shown, ({ id }) => {
+        const route = routes[id];
+
+        return route === undefined ? [] : [[id, route] as const];
+      })
+    ),
+    laneWidths[view]
+  );
+
+  const routed = Arr.flatMap(shown, (hop) => {
     const route = routes[hop.id];
 
-    return route === undefined ||
-      !revealed.has(hop.from) ||
-      !revealed.has(hop.to)
+    return route === undefined
       ? []
-      : [{ hop, route, points: Arr.map(route.points, geometry.project) }];
+      : [
+          {
+            hop,
+            route,
+            points: Arr.map(drawn[hop.id] ?? route.points, geometry.project),
+          },
+        ];
   });
 
   const lines = Arr.map(routed, ({ hop, points }) => ({
@@ -1298,6 +1338,274 @@ const rectShape = (id: string, rect: ScreenRect): Shape2d => ({
   polygon: rectPolygon(rect),
 });
 
+/**
+ * How close a route may come to a box or zone outline on screen, other than
+ * at its own ends, and how far a crossing's lines may run on past each
+ * other. Half the gap between a bundle's lines.
+ */
+const outlineClearance = laneGap / 2;
+
+/**
+ * How far apart two hops' lines must stay, outside a crossing: a little
+ * less than half the bundle gap, which is as close as a line's lanes come
+ * where more lines share it than fit at the full gap.
+ */
+const lineClearance = laneGap * 0.4;
+
+/** How near a route's end may sit to a box's corner, in grid units. */
+const cornerClearance = 0.5;
+
+const pointToSegment = (point: ScreenPoint, { start, end }: Segment) =>
+  distanceToPolyline([start, end], point);
+
+/** Which side of the line from `p` to `q` the point `r` is on, or 0. */
+const side = (p: ScreenPoint, q: ScreenPoint, r: ScreenPoint) =>
+  Math.sign((q.sx - p.sx) * (r.sy - p.sy) - (q.sy - p.sy) * (r.sx - p.sx));
+
+/** Whether two segments cross or touch. */
+const segmentsMeet = (a: Segment, b: Segment) => {
+  const overlap = (pick: (point: ScreenPoint) => number) =>
+    Math.max(
+      Math.min(pick(a.start), pick(a.end)),
+      Math.min(pick(b.start), pick(b.end))
+    ) <=
+    Math.min(
+      Math.max(pick(a.start), pick(a.end)),
+      Math.max(pick(b.start), pick(b.end))
+    ) +
+      1e-9;
+
+  return (
+    overlap(({ sx }) => sx) &&
+    overlap(({ sy }) => sy) &&
+    side(a.start, a.end, b.start) * side(a.start, a.end, b.end) <= 0 &&
+    side(b.start, b.end, a.start) * side(b.start, b.end, a.end) <= 0
+  );
+};
+
+/** The least distance between two segments on screen. */
+const segmentGap = (a: Segment, b: Segment) =>
+  segmentsMeet(a, b)
+    ? 0
+    : Math.min(
+        pointToSegment(a.start, b),
+        pointToSegment(a.end, b),
+        pointToSegment(b.start, a),
+        pointToSegment(b.end, a)
+      );
+
+const unitOf = ({ start, end }: Segment) => {
+  const length = Math.max(
+    Math.hypot(end.sx - start.sx, end.sy - start.sy),
+    1e-9
+  );
+
+  return { sx: (end.sx - start.sx) / length, sy: (end.sy - start.sy) / length };
+};
+
+const parallel = (a: Segment, b: Segment) => {
+  const u = unitOf(a);
+  const v = unitOf(b);
+
+  return Math.abs(u.sx * v.sy - u.sy * v.sx) < 1e-6;
+};
+
+/** How far two parallel segments run alongside each other. */
+const sideBySide = (a: Segment, b: Segment) => {
+  const u = unitOf(a);
+  const along = (point: ScreenPoint) => point.sx * u.sx + point.sy * u.sy;
+  const [a0, a1] = [along(a.start), along(a.end)];
+  const [b0, b1] = [along(b.start), along(b.end)];
+
+  return (
+    Math.min(Math.max(a0, a1), Math.max(b0, b1)) -
+    Math.max(Math.min(a0, a1), Math.min(b0, b1))
+  );
+};
+
+/** A segment with `by` cut off its start, its end, or both. */
+const trim = (
+  { start, end }: Segment,
+  {
+    atStart,
+    atEnd,
+    by,
+  }: { readonly atStart: boolean; readonly atEnd: boolean; readonly by: number }
+): Segment => {
+  const u = unitOf({ start, end });
+
+  return {
+    start: atStart
+      ? { sx: start.sx + u.sx * by, sy: start.sy + u.sy * by }
+      : start,
+    end: atEnd ? { sx: end.sx - u.sx * by, sy: end.sy - u.sy * by } : end,
+  };
+};
+
+const closedEdges = (polygon: readonly ScreenPoint[]): readonly Segment[] =>
+  Arr.map(polygon, (start, index) => ({
+    start,
+    end: polygon[(index + 1) % polygon.length] ?? start,
+  }));
+
+/** The four corners of a footprint on the ground, in a view. */
+const groundCorners = (view: View, { x, y, w, d }: Placement) =>
+  Arr.map(
+    [
+      { x, y },
+      { x: x + w, y },
+      { x: x + w, y: y + d },
+      { x, y: y + d },
+    ],
+    groundProjections[view].toScreen
+  );
+
+/** How far a route's end sits from the nearer corner along its edge, in grid units. */
+const cornerGap = (end: GridPoint, { x, y, w, d }: Placement) => {
+  const onX = end.x === x || end.x === x + w;
+  const onY = end.y === y || end.y === y + d;
+  const fromX = Math.min(Math.abs(end.x - x), Math.abs(end.x - x - w));
+  const fromY = Math.min(Math.abs(end.y - y), Math.abs(end.y - y - d));
+
+  // On a vertical edge (x fixed) the end slides along y, and the reverse.
+  if (onX && !onY) {
+    return d >= 1 ? fromY : Number.POSITIVE_INFINITY;
+  }
+
+  if (onY && !onX) {
+    return w >= 1 ? fromX : Number.POSITIVE_INFINITY;
+  }
+
+  return onX && onY ? 0 : Number.POSITIVE_INFINITY;
+};
+
+/**
+ * The clashes on the ground, in the view's screen space: a route that comes
+ * within `outlineClearance` of a box's outline other than at its own ends,
+ * or lies along a zone's outline; a route's end within half a unit of its
+ * box's corner on an edge at least a unit long; and two hops' lines closer
+ * than `laneGap`, other than where they cross. A route that runs under a
+ * box counts only as running under it, which `check` reports already.
+ */
+const groundClashes = (scene: Scene): readonly SceneClash[] => {
+  const placements = new Map(
+    Arr.map(scene.structures, ({ structure, placement }) => [
+      structure.id,
+      placement,
+    ])
+  );
+
+  const lines = Arr.map(scene.hops, ({ hop, route, points }) => ({
+    hop,
+    route,
+    segments: segmentsOf(points),
+  }));
+
+  const boxes = Arr.flatMap(lines, ({ hop, route, segments }) =>
+    Arr.flatMap(scene.structures, ({ structure, placement }) => {
+      if (route.crosses.includes(structure.id)) {
+        return [];
+      }
+
+      const edges = closedEdges(groundCorners(scene.view, placement));
+
+      const near = Arr.some(segments, (segment, index) => {
+        const trimmed = trim(segment, {
+          atStart: index === 0 && structure.id === hop.from,
+          atEnd: index === segments.length - 1 && structure.id === hop.to,
+          // In the Iso view a leg leaves its edge at a slant on screen, so
+          // it needs to run further to clear it.
+          by: laneGap,
+        });
+
+        return Arr.some(
+          edges,
+          (edge) => segmentGap(trimmed, edge) < outlineClearance - 1e-6
+        );
+      });
+
+      return near
+        ? [{ between: [`route:${hop.id}`, `box:${structure.id}`] as const }]
+        : [];
+    })
+  );
+
+  const zones = Arr.flatMap(lines, ({ hop, segments }) =>
+    Arr.flatMap(scene.zones, ({ zone, plate }) =>
+      Arr.some(segments, (segment) =>
+        Arr.some(
+          closedEdges(plate),
+          (edge) =>
+            parallel(segment, edge) &&
+            segmentGap(segment, edge) < outlineClearance - 1e-6 &&
+            sideBySide(segment, edge) > outlineClearance
+        )
+      )
+        ? [{ between: [`route:${hop.id}`, `zone:${zone.group.id}`] as const }]
+        : []
+    )
+  );
+
+  const nearCorners = Arr.flatMap(lines, ({ hop, route }) =>
+    Arr.flatMap(
+      [
+        [route.points[0], hop.from],
+        [route.points.at(-1), hop.to],
+      ] as const,
+      ([end, id]) => {
+        const placement = placements.get(id);
+
+        return end !== undefined &&
+          placement !== undefined &&
+          cornerGap(end, placement) < cornerClearance - 1e-9
+          ? [{ between: [`route:${hop.id}`, `corner:${id}`] as const }]
+          : [];
+      }
+    )
+  );
+
+  const routes = Arr.flatMap(lines, (first, index) =>
+    Arr.flatMap(lines.slice(index + 1), (second) => {
+      const close = Arr.some(first.segments, (a) =>
+        Arr.some(second.segments, (b) => {
+          if (parallel(a, b)) {
+            return (
+              segmentGap(a, b) < lineClearance &&
+              sideBySide(a, b) > -lineClearance
+            );
+          }
+
+          // Lines that cross may meet, as long as each runs on well past
+          // the other: a crossing, not one ending or turning on the other.
+          if (!segmentsMeet(a, b)) {
+            return segmentGap(a, b) < lineClearance;
+          }
+
+          return (
+            Math.min(pointToSegment(a.start, b), pointToSegment(a.end, b)) <
+              lineClearance ||
+            Math.min(pointToSegment(b.start, a), pointToSegment(b.end, a)) <
+              lineClearance
+          );
+        })
+      );
+
+      return close
+        ? [
+            {
+              between: [
+                `route:${first.hop.id}`,
+                `route:${second.hop.id}`,
+              ] as const,
+            },
+          ]
+        : [];
+    })
+  );
+
+  return [...boxes, ...zones, ...nearCorners, ...routes];
+};
+
 /** Whether a scene item's id names a code chip. */
 const isChip = Str.startsWith("chip:");
 
@@ -1307,7 +1615,10 @@ const isChip = Str.startsWith("chip:");
  * box outlines overlap (a chip sits on its own box), and no route runs
  * through a name tag, a zone title or a label other than its own. A
  * route may run through the tag of a structure it starts or ends at only
- * where it can't avoid it, so that counts too.
+ * where it can't avoid it, so that counts too. On the ground, no route
+ * touches a box's outline other than at its own ends, lies along a zone's
+ * outline, ends near a corner, or comes closer to another hop's line than
+ * a bundle's lines are apart, other than to cross it.
  */
 export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
   const boxes = Arr.map(scene.structures, ({ structure, outline }) => ({
@@ -1365,7 +1676,7 @@ export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
     )
   );
 
-  return [...pairs, ...crossings];
+  return [...pairs, ...crossings, ...groundClashes(scene)];
 };
 
 /** How far a point may sit from where it should be, in screen units. */
