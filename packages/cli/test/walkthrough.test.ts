@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Order } from "effect";
 import type { Page } from "playwright";
 
-import { boxesOf } from "./browser.ts";
+import { attributesOf, boxesOf } from "./browser.ts";
 import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -11,27 +11,13 @@ const reviewPage = Effect.gen(function* () {
 });
 
 const drawnStructures = (page: Page) =>
-  Effect.promise(async () =>
-    Arr.sort(
-      await page
-        .locator("[data-structure]")
-        .evaluateAll((elements) =>
-          elements.map((element) => element.getAttribute("data-structure"))
-        ),
-      Order.String
-    )
+  attributesOf(page, "[data-structure]", "data-structure").pipe(
+    Effect.map((ids) => Arr.sort(ids, Order.String))
   );
 
 const newMarkers = (page: Page) =>
-  Effect.promise(async () =>
-    Arr.sort(
-      await page
-        .locator("[data-new-marker]")
-        .evaluateAll((elements) =>
-          elements.map((element) => element.getAttribute("data-new-marker"))
-        ),
-      Order.String
-    )
+  attributesOf(page, "[data-new-marker]", "data-new-marker").pipe(
+    Effect.map((ids) => Arr.sort(ids, Order.String))
   );
 
 const waitForChapter = (page: Page, id: string) =>

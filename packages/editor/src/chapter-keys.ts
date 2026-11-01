@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent } from "react";
 
-import { useWalkthrough } from "./walkthrough.tsx";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** Keys that move to the next and the previous chapter. */
 const nextKeys = new Set(["ArrowRight", "]"]);
@@ -21,7 +21,7 @@ const isTyping = (target: EventTarget | null) =>
  * modifier, are left alone.
  */
 export const useChapterKeys = (enabled: boolean) => {
-  const { next, back } = useWalkthrough();
+  const { next: nextChapter, back: previousChapter } = useWalkthrough();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (
@@ -37,10 +37,10 @@ export const useChapterKeys = (enabled: boolean) => {
 
     if (nextKeys.has(event.key)) {
       event.preventDefault();
-      next();
+      nextChapter();
     } else if (backKeys.has(event.key)) {
       event.preventDefault();
-      back();
+      previousChapter();
     }
   });
 

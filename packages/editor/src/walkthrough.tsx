@@ -1,41 +1,11 @@
 import type { MapState } from "@axonometric/contracts";
-import { createContext, use, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { chapterStopsOf, defaultFlowChoice, tracksOf } from "./chapters.ts";
-import type { ChapterStop, FlowChoice, Track } from "./chapters.ts";
-
-/**
- * The walkthrough's state, shared by every view of the map. Views read
- * `revealed`, `fresh` and `fit` to decide what to draw, and `tracks` to know
- * what the packets play.
- */
-export interface Walkthrough {
-  readonly state: MapState;
-  readonly stops: readonly ChapterStop[];
-  /** The current chapter's position in `stops`. */
-  readonly index: number;
-  readonly stop: ChapterStop;
-  readonly isLast: boolean;
-  /** Every structure revealed by the current chapter or an earlier one. */
-  readonly revealed: ReadonlySet<string>;
-  /** The structures the current chapter reveals for the first time. */
-  readonly fresh: ReadonlySet<string>;
-  /**
-   * The structures a view should zoom to fit. Today that's everything
-   * revealed so far.
-   */
-  readonly fit: ReadonlySet<string>;
-  readonly flowChoice: FlowChoice;
-  /** The hop lists the packets play, one packet per track. */
-  readonly tracks: readonly Track[];
-  readonly goTo: (index: number) => void;
-  readonly next: () => void;
-  readonly back: () => void;
-  readonly chooseFlow: (choice: FlowChoice) => void;
-}
-
-const WalkthroughContext = createContext<Walkthrough | null>(null);
+import type { FlowChoice } from "./chapters.ts";
+import { WalkthroughContext } from "./walkthrough-context.ts";
+import type { Walkthrough } from "./walkthrough-context.ts";
 
 interface Position {
   readonly index: number;
@@ -52,16 +22,19 @@ export function WalkthroughProvider({
   readonly children: ReactNode;
 }) {
   const stops = useMemo(() => chapterStopsOf(state), [state]);
+
   const [position, setPosition] = useState<Position>({
     index: 0,
     choice: null,
   });
+
   const last = stops.length - 1;
   const index = Math.min(position.index, last);
-  // chapterStopsOf always returns at least one chapter.
-  const stop = stops[index] ?? (stops[0] as ChapterStop);
+  const stop = stops[index] ?? stops[0];
   const isLast = index === last;
-  const flowChoice = position.choice ?? defaultFlowChoice(state, stop, isLast);
+
+  const flowChoice =
+    position.choice ?? defaultFlowChoice({ state, stop, isLast });
 
   const value = useMemo((): Walkthrough => {
     const goTo = (target: number) => {
@@ -84,7 +57,7 @@ export function WalkthroughProvider({
       fresh: new Set(stop.fresh),
       fit: stop.revealed,
       flowChoice,
-      tracks: tracksOf(state, stop, flowChoice),
+      tracks: tracksOf({ state, stop, choice: flowChoice }),
       goTo,
       next: () => {
         setPosition((current) =>
@@ -108,14 +81,3 @@ export function WalkthroughProvider({
 
   return <WalkthroughContext value={value}>{children}</WalkthroughContext>;
 }
-
-/** The walkthrough state. Call it inside a `WalkthroughProvider`. */
-export const useWalkthrough = (): Walkthrough => {
-  const value = use(WalkthroughContext);
-
-  if (value === null) {
-    throw new Error("useWalkthrough needs a WalkthroughProvider above it.");
-  }
-
-  return value;
-};

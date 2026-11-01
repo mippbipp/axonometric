@@ -1,7 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, String as Str } from "effect";
+import { Effect, String as Str } from "effect";
 import type { Page } from "playwright";
 
+import { attributesOf } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -42,13 +43,7 @@ const attribute = (page: Page, selector: string, name: string) =>
   Effect.promise(() => page.locator(selector).first().getAttribute(name));
 
 const packetIds = (page: Page) =>
-  Effect.promise(() =>
-    page
-      .locator("[data-packet]")
-      .evaluateAll((elements) =>
-        elements.map((element) => element.getAttribute("data-packet"))
-      )
-  );
+  attributesOf(page, "[data-packet]", "data-packet");
 
 const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
   yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
@@ -65,27 +60,17 @@ const stepTo = Effect.fnUntraced(function* (page: Page, hop: string) {
 const nextFrames = (page: Page) =>
   Effect.promise(() =>
     page.evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              resolve();
-            });
-          });
-        })
+      "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
     )
   );
 
-const packetCentre = (page: Page) =>
-  Effect.promise(() =>
-    page
-      .locator("[data-packet] circle")
-      .first()
-      .evaluate(
-        (circle) =>
-          `${circle.getAttribute("cx") ?? ""},${circle.getAttribute("cy") ?? ""}`
-      )
-  );
+const packetCentre = Effect.fnUntraced(function* (page: Page) {
+  const dot = page.locator("[data-packet] circle").first();
+  const cx = yield* Effect.promise(() => dot.getAttribute("cx"));
+  const cy = yield* Effect.promise(() => dot.getAttribute("cy"));
+
+  return { cx, cy };
+});
 
 describe("packets", () => {
   it.live("move along the chapter's hops while playing", () =>
@@ -97,19 +82,9 @@ describe("packets", () => {
 
         const start = yield* packetCentre(page);
 
-        yield* Effect.promise(() =>
-          page.waitForFunction(
-            (before) => {
-              const circle = document.querySelector("[data-packet] circle");
-
-              return (
-                `${circle?.getAttribute("cx") ?? ""},${circle?.getAttribute("cy") ?? ""}` !==
-                before
-              );
-            },
-            start
-          )
-        );
+        // Every leg runs along a grid axis, which moves the dot on screen
+        // both across and down, so a new cy means the dot has moved.
+        yield* waitFor(page, `[data-packet] circle:not([cy="${start.cy}"])`);
 
         assert.deepStrictEqual(yield* packetIds(page), ["h-note"]);
       })
@@ -133,11 +108,7 @@ describe("packets", () => {
         yield* waitFor(page, '[data-packets][data-playing="false"]');
         yield* waitFor(page, "[data-packet-panel]");
 
-        const clicked = yield* attribute(
-          page,
-          "[data-packet]",
-          "data-packet"
-        );
+        const clicked = yield* attribute(page, "[data-packet]", "data-packet");
 
         const panel = yield* attribute(
           page,
@@ -153,7 +124,7 @@ describe("packets", () => {
 
         assert.isAtLeast(at, 0);
 
-        for (const offset of Arr.makeBy((1 - at + 3) % 3, (step) => step + 1)) {
+        for (let offset = 1; offset <= (1 - at + 3) % 3; offset++) {
           yield* stepTo(page, order[(at + offset) % 3] ?? "");
         }
 
@@ -168,10 +139,13 @@ describe("packets", () => {
         );
 
         assert.strictEqual(label, "POST /proposals");
-        assert.deepStrictEqual(JSON.parse(payload ?? ""), {
-          kind: "note",
-          target: "server",
-        });
+        assert.strictEqual(
+          payload,
+          `{
+  "kind": "note",
+  "target": "server"
+}`
+        );
 
         yield* click(page, '[data-playback-controls] [data-control="play"]');
         yield* waitFor(page, '[data-packets][data-playing="true"]');
@@ -238,7 +212,7 @@ describe("packets", () => {
             .isDisabled()
         );
 
-        assert.strictEqual(after, before);
+        assert.deepStrictEqual(after, before);
         assert.isTrue(playDisabled);
         // At rest, the packet waits on the chapter's first hop.
         assert.deepStrictEqual(yield* packetIds(page), ["h-note"]);
@@ -295,13 +269,7 @@ describe("the flow picker", () => {
         yield* click(page, '[data-flow-picker] [data-flow="f-accept"]');
         yield* waitFor(page, '[data-flow="f-accept"][aria-pressed="true"]');
 
-        const tracks = yield* Effect.promise(() =>
-          page
-            .locator("[data-packet]")
-            .evaluateAll((elements) =>
-              elements.map((element) => element.getAttribute("data-track"))
-            )
-        );
+        const tracks = yield* attributesOf(page, "[data-packet]", "data-track");
 
         assert.deepStrictEqual(tracks, ["f-accept"]);
 

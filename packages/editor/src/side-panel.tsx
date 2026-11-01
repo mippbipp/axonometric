@@ -1,9 +1,9 @@
 import { Array as Arr } from "effect";
 
-import { controlClass } from "./playback-controls.tsx";
-import { usePlayback } from "./packets.tsx";
-import type { SelectedPacket } from "./packets.tsx";
-import { useWalkthrough } from "./walkthrough.tsx";
+import { controlClass } from "./control-class.ts";
+import { usePlayback } from "./playback.ts";
+import type { SelectedPacket } from "./playback.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 function ChapterStory() {
   const { stop, index, stops, state, back, next, isLast } = useWalkthrough();
@@ -11,7 +11,7 @@ function ChapterStory() {
 
   return (
     <section data-chapter-story className="flex flex-col gap-3">
-      <p className="text-[10px] tracking-widest uppercase opacity-70">
+      <p className="text-xs tracking-widest uppercase opacity-70">
         Chapter {index + 1} of {stops.length}
       </p>
       <h2 className="text-lg leading-tight font-medium">{stop.title}</h2>
@@ -19,14 +19,14 @@ function ChapterStory() {
       <p className="text-sm opacity-80">{stop.story}</p>
       {stop.fresh.length === 0 ? null : (
         <div className="flex flex-col gap-1.5">
-          <p className="text-[10px] tracking-widest uppercase opacity-70">
+          <p className="text-xs tracking-widest uppercase opacity-70">
             New in this chapter
           </p>
           <ul className="flex flex-wrap gap-1.5">
             {Arr.map(stop.fresh, (id) => (
               <li
                 key={id}
-                className="border-ink border border-dashed px-1.5 py-0.5 text-[11px]"
+                className="border-ink border border-dashed px-1.5 py-0.5 text-xs"
               >
                 {names.get(id) ?? id}
               </li>
@@ -60,12 +60,13 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
   const { state } = useWalkthrough();
   const { play, step, reducedMotion } = usePlayback();
   const { track, hop, index } = packet;
-  const nameOf = (id: string) =>
-    state.data.structures.find((s) => s.id === id)?.name ?? id;
+
+  const names = new Map(Arr.map(state.data.structures, (s) => [s.id, s.name]));
+  const nameOf = (id: string) => names.get(id) ?? id;
 
   return (
     <section data-packet-panel={hop.id} className="flex flex-col gap-3">
-      <p className="text-[10px] tracking-widest uppercase opacity-70">
+      <p className="text-xs tracking-widest uppercase opacity-70">
         Packet · {track.name} · hop {index + 1} of {track.hops.length}
       </p>
       <h2 data-packet-label className="text-lg leading-tight font-medium">
@@ -74,7 +75,7 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
       <p className="text-sm">
         {nameOf(hop.from)} → {nameOf(hop.to)}
       </p>
-      <p className="text-[10px] tracking-widest uppercase opacity-70">
+      <p className="text-xs tracking-widest uppercase opacity-70">
         Example payload
       </p>
       {hop.payload === undefined ? (
@@ -82,7 +83,7 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
       ) : (
         <pre
           data-packet-payload
-          className="border-ink bg-face overflow-auto border p-2 text-[11px]"
+          className="border-ink bg-face overflow-auto border p-2 text-xs"
         >
           {JSON.stringify(hop.payload, null, 2)}
         </pre>

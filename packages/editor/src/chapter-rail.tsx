@@ -1,7 +1,7 @@
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
-import { useWalkthrough } from "./walkthrough.tsx";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** Numbered buttons for every chapter, and the current chapter's title. */
 export function ChapterRail({ className }: { readonly className?: string }) {
@@ -22,7 +22,7 @@ export function ChapterRail({ className }: { readonly className?: string }) {
           aria-label={`Chapter ${position + 1}: ${chapter.title}`}
           aria-current={position === index ? "step" : undefined}
           className={cn(
-            "border-ink focus-visible:outline-ink size-6 cursor-pointer border-[1.5px] text-[10px] leading-none focus-visible:outline-2 focus-visible:outline-offset-1",
+            "border-ink focus-visible:outline-ink size-6 cursor-pointer border text-xs leading-none focus-visible:outline-2 focus-visible:outline-offset-1",
             position === index
               ? "bg-ink text-paper"
               : position < index
@@ -36,7 +36,7 @@ export function ChapterRail({ className }: { readonly className?: string }) {
           {position + 1}
         </button>
       ))}
-      <span className="ml-1.5 text-[10px] tracking-widest uppercase opacity-70">
+      <span className="ml-1.5 text-xs tracking-widest uppercase opacity-70">
         Chapter {index + 1} ·{" "}
         <b className="font-medium opacity-100">{stop.title}</b>
       </span>

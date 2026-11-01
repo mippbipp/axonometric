@@ -1,7 +1,7 @@
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
-import { useWalkthrough } from "./walkthrough.tsx";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 /**
  * The last chapter's flow picker: one button per flow, and one for every
@@ -24,7 +24,7 @@ export function FlowPicker({ className }: { readonly className?: string }) {
             key: "chapter",
             label: "This chapter",
             on: flowChoice.kind === "chapter",
-            choose: () => {
+            handleChoose: () => {
               chooseFlow({ kind: "chapter" });
             },
           },
@@ -33,7 +33,7 @@ export function FlowPicker({ className }: { readonly className?: string }) {
       key: flow.id,
       label: flow.name,
       on: flowChoice.kind === "flow" && flowChoice.id === flow.id,
-      choose: () => {
+      handleChoose: () => {
         chooseFlow({ kind: "flow", id: flow.id });
       },
     })),
@@ -41,7 +41,7 @@ export function FlowPicker({ className }: { readonly className?: string }) {
       key: "all",
       label: "All flows",
       on: flowChoice.kind === "all",
-      choose: () => {
+      handleChoose: () => {
         chooseFlow({ kind: "all" });
       },
     },
@@ -53,7 +53,7 @@ export function FlowPicker({ className }: { readonly className?: string }) {
       className={cn("flex flex-wrap items-center gap-1.5", className)}
     >
       <legend className="sr-only">Flow to play</legend>
-      <span className="mr-1 text-[10px] tracking-widest uppercase opacity-70">
+      <span className="mr-1 text-xs tracking-widest uppercase opacity-70">
         Play
       </span>
       {Arr.map(options, (option) => (
@@ -63,10 +63,10 @@ export function FlowPicker({ className }: { readonly className?: string }) {
           data-flow={option.key}
           aria-pressed={option.on}
           className={cn(
-            "border-ink focus-visible:outline-ink cursor-pointer border-[1.5px] px-2 py-0.5 text-[10px] tracking-wider uppercase focus-visible:outline-2 focus-visible:outline-offset-1",
+            "border-ink focus-visible:outline-ink cursor-pointer border px-2 py-0.5 text-xs tracking-wider uppercase focus-visible:outline-2 focus-visible:outline-offset-1",
             option.on ? "bg-ink text-paper" : "bg-paper text-ink"
           )}
-          onClick={option.choose}
+          onClick={option.handleChoose}
         >
           {option.label}
         </button>

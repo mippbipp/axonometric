@@ -57,3 +57,18 @@ export const boxesOf = Effect.fnUntraced(function* (
 
   return Arr.filter(boxes, (box) => box !== null);
 });
+
+/** The `name` attribute of every element matching `selector`, in order. */
+export const attributesOf = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string,
+  name: string
+) {
+  const elements = yield* Effect.promise(() => page.locator(selector).all());
+
+  const values = yield* Effect.forEach(elements, (element) =>
+    Effect.promise(() => element.getAttribute(name))
+  );
+
+  return Arr.filter(values, (value) => value !== null);
+});

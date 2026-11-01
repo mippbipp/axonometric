@@ -214,7 +214,7 @@ const routeAll = (
   revealed: ReadonlySet<string>
 ): readonly RoutedHop[] =>
   Arr.flatMap(state.data.hops, (hop) => {
-    const points = screenRouteOf(state.layout, hop);
+    const points = screenRouteOf({ layout: state.layout, hop });
 
     return points === undefined ||
       !revealed.has(hop.from) ||
@@ -235,7 +235,12 @@ function NewMarker({ placed }: { readonly placed: PlacedStructure }) {
   return (
     <polygon
       data-new-marker={placed.structure.id}
-      points={toPoints([outline.back, outline.right, outline.front, outline.left])}
+      points={toPoints([
+        outline.back,
+        outline.right,
+        outline.front,
+        outline.left,
+      ])}
       fill="none"
       className="stroke-ink motion-safe:animate-pulse"
       strokeWidth={1.4}

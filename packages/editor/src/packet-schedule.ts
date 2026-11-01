@@ -1,5 +1,3 @@
-import { Array as Arr } from "effect";
-
 /** Seconds a packet takes to travel one hop. */
 export const travelSeconds = 1.4;
 
@@ -16,6 +14,13 @@ export interface PacketAt {
   readonly t: number;
 }
 
+/** A playback time, and how many hops the packet's track has. */
+export interface TrackClock {
+  /** Seconds of playback so far. */
+  readonly clock: number;
+  readonly hops: number;
+}
+
 const slotSeconds = (hop: number, hops: number) =>
   travelSeconds + (hop === hops - 1 ? loopPauseSeconds : hopPauseSeconds);
 
@@ -23,11 +28,11 @@ const cycleSeconds = (hops: number) =>
   hops * travelSeconds + (hops - 1) * hopPauseSeconds + loopPauseSeconds;
 
 /**
- * Where a packet on a track of `hops` hops is after `clock` seconds of
- * playback. Every track starts its first hop at 0 and loops on its own
- * cycle. Timing doesn't depend on the drawing, so every view agrees.
+ * Where a packet is after `clock` seconds of playback. Every track starts its
+ * first hop at 0 and loops on its own cycle. Timing doesn't depend on the
+ * drawing, so every view agrees.
  */
-export const packetAt = (clock: number, hops: number): PacketAt => {
+export const packetAt = ({ clock, hops }: TrackClock): PacketAt => {
   if (hops <= 0) {
     return { hop: 0, t: 0 };
   }
@@ -35,31 +40,36 @@ export const packetAt = (clock: number, hops: number): PacketAt => {
   const cycle = cycleSeconds(hops);
   let left = ((clock % cycle) + cycle) % cycle;
 
-  for (const hop of Arr.range(0, hops - 1)) {
-    if (left < slotSeconds(hop, hops)) {
+  for (let hop = 0; hop < hops; hop++) {
+    const slot = slotSeconds(hop, hops);
+
+    if (left < slot) {
       return { hop, t: Math.min(1, left / travelSeconds) };
     }
 
-    left -= slotSeconds(hop, hops);
+    left -= slot;
   }
 
   return { hop: hops - 1, t: 1 };
 };
 
 /**
- * The clock reading at which a packet on a track of `hops` hops is halfway
- * along hop `hop`, in the same cycle as `clock` or the next one. Stepping
- * sets the clock to this.
+ * The first clock reading after `clock` at which the packet is halfway along
+ * hop `hop`. Stepping sets the clock to this.
  */
-export const clockAtHop = (clock: number, hops: number, hop: number) => {
+export const clockAtHop = ({
+  clock,
+  hops,
+  hop,
+}: TrackClock & { readonly hop: number }) => {
   const cycle = cycleSeconds(hops);
   const cycleStart = Math.floor(clock / cycle) * cycle;
 
-  const offset =
-    Arr.reduce(Arr.range(0, hop - 1), 0, (sum, index) =>
-      index < hop ? sum + slotSeconds(index, hops) : sum
-    ) +
-    travelSeconds / 2;
+  let offset = travelSeconds / 2;
+
+  for (let index = 0; index < hop; index++) {
+    offset += slotSeconds(index, hops);
+  }
 
   const inThisCycle = cycleStart + offset;
 

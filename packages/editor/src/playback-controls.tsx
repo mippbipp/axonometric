@@ -1,8 +1,5 @@
-import { usePlayback } from "./packets.tsx";
-
-/** The look of the walkthrough's small bordered buttons. */
-export const controlClass =
-  "border-ink focus-visible:outline-ink cursor-pointer border-[1.5px] bg-paper px-2 py-0.5 text-[11px] focus-visible:outline-2 focus-visible:outline-offset-1 disabled:cursor-default disabled:opacity-40";
+import { controlClass } from "./control-class.ts";
+import { usePlayback } from "./playback.ts";
 
 /** Play or pause, and step one hop. */
 export function PlaybackControls() {
@@ -48,4 +45,3 @@ export function PlaybackControls() {
     </div>
   );
 }
-

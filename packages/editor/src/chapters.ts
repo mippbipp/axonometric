@@ -26,10 +26,12 @@ export const wholeMapChapterId = "whole-map";
  * chapters gets one chapter that shows every structure and plays nothing, so
  * the last-chapter flow picker still offers its flows.
  */
-export const chapterStopsOf = (state: MapState): readonly ChapterStop[] => {
+export const chapterStopsOf = (
+  state: MapState
+): Arr.NonEmptyReadonlyArray<ChapterStop> => {
   const { structures, chapters } = state.data;
 
-  if (chapters.length === 0) {
+  if (!Arr.isReadonlyArrayNonEmpty(chapters)) {
     return [
       {
         id: wholeMapChapterId,
@@ -83,15 +85,21 @@ export interface Track {
   readonly hops: readonly Hop[];
 }
 
+/** A chapter, and the map it belongs to. */
+export interface ChapterOfMap {
+  readonly state: MapState;
+  readonly stop: ChapterStop;
+}
+
 /**
  * What a chapter plays before anyone uses the flow picker: its own hops, or
  * every flow when it's the last chapter and plays none.
  */
-export const defaultFlowChoice = (
-  state: MapState,
-  stop: ChapterStop,
-  isLast: boolean
-): FlowChoice =>
+export const defaultFlowChoice = ({
+  state,
+  stop,
+  isLast,
+}: ChapterOfMap & { readonly isLast: boolean }): FlowChoice =>
   isLast && stop.plays.length === 0 && state.data.flows.length > 0
     ? { kind: "all" }
     : { kind: "chapter" };
@@ -101,22 +109,24 @@ export const defaultFlowChoice = (
  * flow, one per flow for "all". Hops whose ends aren't revealed or placed are
  * left out, and empty tracks are dropped.
  */
-export const tracksOf = (
-  state: MapState,
-  stop: ChapterStop,
-  choice: FlowChoice
-): readonly Track[] => {
+export const tracksOf = ({
+  state,
+  stop,
+  choice,
+}: ChapterOfMap & { readonly choice: FlowChoice }): readonly Track[] => {
   const hops = new Map(Arr.map(state.data.hops, (hop) => [hop.id, hop]));
-  const shown = (id: string) =>
-    stop.revealed.has(id) && state.layout.structures[id] !== undefined;
+
+  const shown = (structure: string) =>
+    stop.revealed.has(structure) &&
+    state.layout.structures[structure] !== undefined;
 
   const track = (
     id: string,
     name: string,
-    ids: readonly string[]
+    hopIds: readonly string[]
   ): readonly Track[] => {
-    const playable = Arr.flatMap(ids, (id) => {
-      const hop = hops.get(id);
+    const playable = Arr.flatMap(hopIds, (hopId) => {
+      const hop = hops.get(hopId);
 
       return hop !== undefined && shown(hop.from) && shown(hop.to) ? [hop] : [];
     });
@@ -124,16 +134,14 @@ export const tracksOf = (
     return playable.length === 0 ? [] : [{ id, name, hops: playable }];
   };
 
-  switch (choice.kind) {
-    case "chapter":
-      return track(stop.id, stop.title, stop.plays);
-    case "flow":
-      return Arr.flatMap(state.data.flows, (flow) =>
-        flow.id === choice.id ? track(flow.id, flow.name, flow.hops) : []
-      );
-    case "all":
-      return Arr.flatMap(state.data.flows, (flow) =>
-        track(flow.id, flow.name, flow.hops)
-      );
+  if (choice.kind === "chapter") {
+    return track(stop.id, stop.title, stop.plays);
   }
+
+  const flows =
+    choice.kind === "flow"
+      ? Arr.filter(state.data.flows, (flow) => flow.id === choice.id)
+      : state.data.flows;
+
+  return Arr.flatMap(flows, (flow) => track(flow.id, flow.name, flow.hops));
 };

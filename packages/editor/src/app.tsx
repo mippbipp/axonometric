@@ -4,10 +4,12 @@ import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
 import { IsoView } from "./iso-view.tsx";
-import { PacketLayer, PlaybackProvider } from "./packets.tsx";
+import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
+import { PlaybackProvider } from "./playback-provider.tsx";
 import { SidePanel } from "./side-panel.tsx";
-import { useWalkthrough, WalkthroughProvider } from "./walkthrough.tsx";
+import { useWalkthrough } from "./walkthrough-context.ts";
+import { WalkthroughProvider } from "./walkthrough.tsx";
 
 function WalkthroughPage() {
   const { state, stop, revealed, fresh, fit } = useWalkthrough();
@@ -38,7 +40,7 @@ function WalkthroughPage() {
         </div>
         <SidePanel />
       </div>
-      <footer className="border-ink flex flex-wrap gap-x-4 border-t px-4 py-1 text-[10px] opacity-70">
+      <footer className="border-ink flex flex-wrap gap-x-4 border-t px-4 py-1 text-xs opacity-70">
         <span>→ or ] next chapter</span>
         <span>← or [ back</span>
         <span>click a dot to read its payload</span>

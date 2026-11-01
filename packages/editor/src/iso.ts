@@ -111,10 +111,13 @@ export const routeHop = ({ from, to }: HopEnds): readonly GridPoint[] => {
  * A hop's route on screen, or `undefined` when either end has no placement.
  * Packets walk along these points.
  */
-export const screenRouteOf = (
-  layout: Layout,
-  hop: { readonly from: string; readonly to: string }
-): readonly ScreenPoint[] | undefined => {
+export const screenRouteOf = ({
+  layout,
+  hop,
+}: {
+  readonly layout: Layout;
+  readonly hop: { readonly from: string; readonly to: string };
+}): readonly ScreenPoint[] | undefined => {
   const from = layout.structures[hop.from];
   const to = layout.structures[hop.to];
 
@@ -127,10 +130,13 @@ export const screenRouteOf = (
  * The point a share `t` of the way along a polyline, by length. `t` runs from
  * 0 at the first point to 1 at the last.
  */
-export const pointAlong = (
-  points: readonly ScreenPoint[],
-  t: number
-): ScreenPoint => {
+export const pointAlong = ({
+  points,
+  t,
+}: {
+  readonly points: readonly ScreenPoint[];
+  readonly t: number;
+}): ScreenPoint => {
   const legs = Arr.flatMap(points, (point, index) => {
     const next = points[index + 1];
 
