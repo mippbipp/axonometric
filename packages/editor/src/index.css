@@ -26,7 +26,6 @@
   --color-face: var(--face);
   --color-muted-ink: var(--muted);
   --text-2xs: 10px;
-  --shadow-hard: 2px 2px 0 var(--ink);
   /* System fonts only: the page must work offline from disk. */
   --font-mono:
     ui-monospace, "SFMono-Regular", "Cascadia Mono", "Liberation Mono", Menlo,

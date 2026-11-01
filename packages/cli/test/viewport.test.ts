@@ -167,18 +167,20 @@ describe("the viewport", () => {
         const before = yield* drawingOf(page);
         const transform = yield* transformOf(page);
 
-        // The top-left corner of the canvas is empty in the fixture.
-        yield* Effect.promise(() => page.mouse.move(svg.x + 10, svg.y + 10));
+        // The top-right corner of the canvas is empty in the fixture.
+        yield* Effect.promise(() =>
+          page.mouse.move(svg.x + svg.width - 10, svg.y + 10)
+        );
         yield* Effect.promise(() => page.mouse.down());
         yield* Effect.promise(() =>
-          page.mouse.move(svg.x + 110, svg.y + 60, { steps: 5 })
+          page.mouse.move(svg.x + svg.width - 110, svg.y + 60, { steps: 5 })
         );
         yield* Effect.promise(() => page.mouse.up());
         yield* waitForMove(page, transform);
 
         const after = yield* drawingOf(page);
 
-        assert.closeTo(after.left - before.left, 100, 1);
+        assert.closeTo(after.left - before.left, -100, 1);
         assert.closeTo(after.top - before.top, 50, 1);
       })
     )
@@ -248,13 +250,15 @@ describe("the viewport", () => {
         yield* Effect.promise(() =>
           cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true })
         );
-        yield* touch("touchStart", 10, 10);
+        const right = svg.width - 10;
+
+        yield* touch("touchStart", right, 10);
 
         for (let step = 1; step <= 5; step += 1) {
-          yield* touch("touchMove", 10 + step * 20, 10 + step * 10);
+          yield* touch("touchMove", right - step * 20, 10 + step * 10);
         }
 
-        yield* touch("touchEnd", 110, 60);
+        yield* touch("touchEnd", right - 100, 60);
         yield* waitForMove(page, transform);
 
         const after = yield* drawingOf(page);
@@ -270,7 +274,7 @@ describe("the viewport", () => {
           page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
         );
 
-        assert.closeTo(after.left - before.left, 100, 1);
+        assert.closeTo(after.left - before.left, -100, 1);
         assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
       })
     )
@@ -284,10 +288,12 @@ describe("the viewport", () => {
         const transform = yield* transformOf(page);
 
         yield* recordClicks(page);
-        yield* Effect.promise(() => page.mouse.move(svg.x + 10, svg.y + 10));
+        yield* Effect.promise(() =>
+          page.mouse.move(svg.x + svg.width - 10, svg.y + 10)
+        );
         yield* Effect.promise(() => page.mouse.down());
         yield* Effect.promise(() =>
-          page.mouse.move(svg.x + 110, svg.y + 60, { steps: 5 })
+          page.mouse.move(svg.x + svg.width - 110, svg.y + 60, { steps: 5 })
         );
         yield* Effect.promise(() => page.mouse.up());
         yield* waitForMove(page, transform);
@@ -336,7 +342,7 @@ describe("the viewport", () => {
         const before = yield* scaleOf(page);
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 600, height: 420 })
+          page.setViewportSize({ width: 800, height: 500 })
         );
         yield* Effect.promise(() =>
           page.waitForFunction(`${scaleExpression} < ${before * 0.8}`)

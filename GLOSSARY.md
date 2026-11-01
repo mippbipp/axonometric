@@ -69,6 +69,10 @@ _Avoid_: issue, diagnostic
 One stop in the walkthrough. It reveals some structures and plays some hops.
 _Avoid_: step, scene, slide
 
+**Packet**:
+A dot that carries one hop's example payload along the hop while a chapter plays.
+_Avoid_: dot, token, pulse
+
 **Iso view**:
 The isometric drawing of the map's layout.
 

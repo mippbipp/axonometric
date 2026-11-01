@@ -1,4 +1,4 @@
-import type { Placement } from "@axonometric/contracts";
+import type { Layout, Placement } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import { dual } from "effect/Function";
 
@@ -125,4 +125,67 @@ export const routeHop = ({ from, to }: HopEnds): readonly GridPoint[] => {
   }
 
   return [toEdge(start, bend, from), bend, toEdge(end, bend, to)];
+};
+
+/**
+ * A hop's route on screen, or `undefined` when either end has no placement.
+ * Packets walk along these points.
+ */
+export const screenRouteOf = ({
+  layout,
+  hop,
+}: {
+  readonly layout: Layout;
+  readonly hop: { readonly from: string; readonly to: string };
+}): readonly ScreenPoint[] | undefined => {
+  const from = layout.structures[hop.from];
+  const to = layout.structures[hop.to];
+
+  return from === undefined || to === undefined
+    ? undefined
+    : Arr.map(routeHop({ from, to }), project);
+};
+
+/**
+ * The point a share `t` of the way along a polyline, by length. `t` runs from
+ * 0 at the first point to 1 at the last.
+ */
+export const pointAlong = ({
+  points,
+  t,
+}: {
+  readonly points: readonly ScreenPoint[];
+  readonly t: number;
+}): ScreenPoint => {
+  const legs = Arr.flatMap(points, (point, index) => {
+    const next = points[index + 1];
+
+    return next === undefined
+      ? []
+      : [
+          {
+            start: point,
+            end: next,
+            length: Math.hypot(next.sx - point.sx, next.sy - point.sy),
+          },
+        ];
+  });
+
+  const total = Arr.reduce(legs, 0, (sum, leg) => sum + leg.length);
+  let left = Math.max(0, Math.min(1, t)) * total;
+
+  for (const leg of legs) {
+    if (left <= leg.length && leg.length > 0) {
+      const share = left / leg.length;
+
+      return {
+        sx: leg.start.sx + (leg.end.sx - leg.start.sx) * share,
+        sy: leg.start.sy + (leg.end.sy - leg.start.sy) * share,
+      };
+    }
+
+    left -= leg.length;
+  }
+
+  return points.at(-1) ?? { sx: 0, sy: 0 };
 };

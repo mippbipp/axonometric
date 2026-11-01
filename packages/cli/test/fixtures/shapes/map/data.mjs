@@ -43,22 +43,6 @@ export default {
     { id: "h-pr", from: "store", to: "document", label: "proposes" },
   ],
   flows: [],
-  chapters: [
-    {
-      id: "c-front",
-      title: "The front",
-      lede: "A person opens the page.",
-      story: "Everything starts with the engineer.",
-      reveals: ["person", "screen", "gate", "tall"],
-      plays: ["h-open", "h-ask", "h-pass"],
-    },
-    {
-      id: "c-all",
-      title: "Everything",
-      lede: "Every shape at once.",
-      story: "The rest of the shapes.",
-      reveals: ["box", "cards", "job", "store", "slab", "document", "external"],
-      plays: ["h-save", "h-remember", "h-pr"],
-    },
-  ],
+  // No chapters, so the page shows every shape at once.
+  chapters: [],
 };

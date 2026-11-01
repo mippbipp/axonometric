@@ -12,8 +12,6 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 
 ## Agent skills
 
-Always use the unslop skill.
-
 ### Issue tracker
 
 Issues live in GitHub Issues (`mippbipp/axonometric`, via `gh`). See `docs/agents/issue-tracker.md`.
@@ -28,4 +26,4 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
 ### Development
 
-Read `CONTRIBUTING.md` before running commands, changing `pnpm-lock.yaml` or releasing.
+Read `CONTRIBUTING.md` before running commands or changing `pnpm-lock.yaml`.

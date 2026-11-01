@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import type { Bounds } from "./bounds.ts";
+import { controlClass } from "./control-class.ts";
 
 interface View {
   readonly scale: number;
@@ -99,9 +100,13 @@ const isTyping = (target: EventTarget | null) =>
     target.tagName === "TEXTAREA" ||
     target.tagName === "SELECT");
 
-/** Presses that start on a structure don't pan, so clicks on it still land. */
+/**
+ * Presses that start on a structure or a packet don't pan, so clicks on them
+ * still land.
+ */
 const startsOnStructure = (target: EventTarget | null) =>
-  target instanceof Element && target.closest("[data-structure]") !== null;
+  target instanceof Element &&
+  target.closest("[data-structure], [data-packet]") !== null;
 
 interface Gestures {
   readonly current: () => View;
@@ -259,9 +264,6 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
   };
 };
 
-const controlClass =
-  "border-ink bg-paper text-ink hover:bg-face focus-visible:outline-ink h-7 min-w-7 border-2 px-2 text-xs shadow-hard focus-visible:outline-2 focus-visible:outline-offset-2 active:translate-px active:shadow-none";
-
 /**
  * An SVG canvas you can pan and zoom. It fits `fit` to its size on first
  * draw, when `fitKey` changes, when it's resized and when the engineer asks.
@@ -381,6 +383,7 @@ export function Viewport({
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (
+      event.defaultPrevented ||
       event.ctrlKey ||
       event.metaKey ||
       event.altKey ||
@@ -422,7 +425,7 @@ export function Viewport({
           {children}
         </g>
       </svg>
-      <div className="absolute right-4 bottom-4 flex gap-2 font-mono">
+      <div className="absolute right-3 bottom-3 flex gap-1.5 font-mono">
         <button
           type="button"
           className={controlClass}

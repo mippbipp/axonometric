@@ -7,9 +7,10 @@ import type {
 import { isoHeights } from "@axonometric/contracts";
 import { Array as Arr, Order, String as Str } from "effect";
 import { useId } from "react";
+import type { ReactNode } from "react";
 
 import { fitOf } from "./fit.ts";
-import { corners, project, routeHop, toPoints } from "./iso.ts";
+import { corners, screenRouteOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
@@ -139,53 +140,106 @@ const extentOf = ({ structure, placement }: PlacedStructure) => {
   ];
 };
 
-const placeAll = (state: MapState): readonly PlacedStructure[] =>
+const placeAll = (
+  state: MapState,
+  revealed: ReadonlySet<string>
+): readonly PlacedStructure[] =>
   Arr.sort(
     Arr.flatMap(state.data.structures, (structure) => {
       const placement = state.layout.structures[structure.id];
 
-      return placement === undefined ? [] : [{ structure, placement }];
+      return placement === undefined || !revealed.has(structure.id)
+        ? []
+        : [{ structure, placement }];
     }),
     byDepth
   );
 
-const routeAll = (state: MapState): readonly RoutedHop[] =>
+const routeAll = (
+  state: MapState,
+  revealed: ReadonlySet<string>
+): readonly RoutedHop[] =>
   Arr.flatMap(state.data.hops, (hop) => {
-    const from = state.layout.structures[hop.from];
-    const to = state.layout.structures[hop.to];
+    const points = screenRouteOf({ layout: state.layout, hop });
 
-    if (from === undefined || to === undefined) {
-      return [];
-    }
-
-    const route = routeHop({ from, to });
-
-    return [{ hop, points: Arr.map(route, project) }];
+    return points === undefined ||
+      !revealed.has(hop.from) ||
+      !revealed.has(hop.to)
+      ? []
+      : [{ hop, points }];
   });
 
+/** A dashed outline around the footprint of a newly revealed structure. */
+function NewMarker({ placed }: { readonly placed: PlacedStructure }) {
+  const { x, y, w, d } = placed.placement;
+
+  const outline = corners(
+    { x: x - 0.2, y: y - 0.2, w: w + 0.4, d: d + 0.4 },
+    0
+  );
+
+  return (
+    <polygon
+      data-new-marker={placed.structure.id}
+      points={toPoints([
+        outline.back,
+        outline.right,
+        outline.front,
+        outline.left,
+      ])}
+      fill="none"
+      className="stroke-ink motion-safe:animate-pulse"
+      strokeWidth={1.4}
+      strokeDasharray="5 4"
+    />
+  );
+}
+
+const none: ReadonlySet<string> = new Set();
+
 /**
- * The iso view of a map: every structure as its shape with a name tag, and
- * every hop as an arrow along the ground, in a viewport you can pan and zoom.
+ * The iso view of a map: each revealed structure as its shape with a name
+ * tag, and each hop between revealed structures as an arrow along the
+ * ground, in a viewport you can pan and zoom. The view fits the structures in
+ * `fitTo` and the hops between them, and fits again when `fitKey` changes.
+ * `children` draw on top, in the same coordinates, and pan and zoom with the
+ * drawing.
  */
 export function IsoView({
   state,
-  fitTo,
+  revealed,
+  newlyRevealed = none,
+  fitTo = revealed,
+  fitKey,
+  children,
 }: {
   readonly state: MapState;
+  /** The structures to draw. */
+  readonly revealed: ReadonlySet<string>;
+  /** The structures to mark as new. */
+  readonly newlyRevealed?: ReadonlySet<string>;
+  /** The structures to zoom to fit. Defaults to every revealed one. */
+  readonly fitTo?: ReadonlySet<string>;
   /**
-   * The ids of the structures to fit to the window. Defaults to all of them.
-   * A new set of ids refits the view; a moved structure doesn't.
+   * Names what `fit` holds, such as the chapter. A new key refits the view;
+   * other changes, such as a moved structure, keep the zoom. Defaults to the
+   * set of ids in `fitTo`.
    */
-  readonly fitTo?: readonly string[];
+  readonly fitKey?: string;
+  readonly children?: ReactNode;
 }) {
   // useId's output can hold characters that don't belong in url(#...).
   const idPrefix = Str.replaceAll(/\W/gu, "")(useId());
   const hatch = `${idPrefix}hatch`;
   const arrowhead = `${idPrefix}arrowhead`;
-  const placed = placeAll(state);
-  const routed = routeAll(state);
+  const placed = placeAll(state, revealed);
+  const routed = routeAll(state, revealed);
 
-  const fit = fitOf({
+  const marked = Arr.filter(placed, ({ structure }) =>
+    newlyRevealed.has(structure.id)
+  );
+
+  const fitted = fitOf({
     drawn: [
       ...Arr.map(placed, (item) => ({
         ids: [item.structure.id],
@@ -196,14 +250,14 @@ export function IsoView({
         points,
       })),
     ],
-    fitTo,
+    fitTo: [...fitTo],
   });
 
   return (
     <Viewport
       title={`Iso view of ${state.system}`}
-      fit={fit.bounds}
-      fitKey={fit.key}
+      fit={fitted.bounds}
+      fitKey={fitKey ?? fitted.key}
     >
       <defs>
         <pattern
@@ -234,6 +288,11 @@ export function IsoView({
           <path d="M0,0 L10,5 L0,10 z" className="fill-ink stroke-none" />
         </marker>
       </defs>
+      <g>
+        {Arr.map(marked, (item) => (
+          <NewMarker key={item.structure.id} placed={item} />
+        ))}
+      </g>
       <g>
         {Arr.map(routed, (item) => (
           <HopArrow key={item.hop.id} routed={item} arrowhead={arrowhead} />
@@ -267,6 +326,7 @@ export function IsoView({
           <NameTag key={item.structure.id} placed={item} />
         ))}
       </g>
+      {children}
     </Viewport>
   );
 }

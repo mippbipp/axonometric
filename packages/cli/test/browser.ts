@@ -66,3 +66,18 @@ export const literal = (value: string | null) =>
   value === null
     ? "null"
     : `"${Str.replaceAll('"', String.raw`\"`)(Str.replaceAll("\\", String.raw`\\`)(value))}"`;
+
+/** The `name` attribute of every element matching `selector`, in order. */
+export const attributesOf = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string,
+  name: string
+) {
+  const elements = yield* Effect.promise(() => page.locator(selector).all());
+
+  const values = yield* Effect.forEach(elements, (element) =>
+    Effect.promise(() => element.getAttribute(name))
+  );
+
+  return Arr.filter(values, (value) => value !== null);
+});

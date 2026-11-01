@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { controlClass } from "./control-class.ts";
+
 type Theme = "light" | "dark";
 
 /** A theme the engineer picked, or `system` to follow the colour scheme. */
@@ -98,7 +100,7 @@ export function ThemeToggle() {
     <button
       type="button"
       data-theme-toggle=""
-      className="border-ink bg-paper text-ink hover:bg-face focus-visible:outline-ink shadow-hard h-7 border-2 px-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 active:translate-px active:shadow-none"
+      className={controlClass}
       onClick={() => {
         choose(nextChoice);
       }}
