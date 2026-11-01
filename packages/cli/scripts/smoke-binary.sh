@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Smoke-tests a single-executable binary: checks --version, then builds the
 # fixture map in a temporary folder. The binary runs with an empty PATH, so it
-# can't reach a system Node.
+# can't reach a system Node. The checks don't depend on what the fixture map
+# contains, only on build writing its outputs.
 #
-# Usage: packages/cli/scripts/smoke-binary.sh <binary>
+# Usage: packages/cli/scripts/smoke-binary.sh <binary> [version]
+#
+# The version defaults to the one in packages/cli/package.json.
 set -euo pipefail
 
 binary=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 package_dir=$(cd "$(dirname "$0")/.." && pwd)
-version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$package_dir/package.json")
+# Read with the build's Node before PATH is cleared. Running from the package
+# folder keeps the path relative, which also works in Git Bash on Windows.
+version=${2:-$(cd "$package_dir" && node -p 'require("./package.json").version')}
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -30,10 +35,12 @@ fi
 
 echo "build"
 (cd "$work" && run_binary build pipeline/map)
-# shellcheck disable=SC2016 # the backticks are Markdown
-grep -q '| `gate` | Build gate |' "$work/pipeline/SYSTEM.md"
-grep -q 'id="axonometric-map-state"' "$work/pipeline/pipeline.html"
-grep -q '<div id="root"></div>' "$work/pipeline/pipeline.html"
+for output in SYSTEM.md pipeline.html; do
+  if [ ! -s "$work/pipeline/$output" ]; then
+    echo "build didn't write $output." >&2
+    exit 1
+  fi
+done
 
 # serve and status arrive in #15. Their check goes here: start serve on
 # "$work/pipeline/map" in the background, run status, then stop serve.

@@ -11,6 +11,7 @@ installer=$(cd "$(dirname "$0")" && pwd)/install.sh
 work=$(mktemp -d)
 server=""
 
+# shellcheck disable=SC2329 # the trap below calls it
 cleanup() {
   [ -z "$server" ] || kill "$server" 2>/dev/null || true
   rm -rf "$work"
