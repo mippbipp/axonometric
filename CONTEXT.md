@@ -13,6 +13,8 @@ The words this project uses for its maps. Use them in code, tests, issues and do
 - **Iso view.** The isometric drawing of the layout.
 - **Plan view.** The same layout drawn straight from above.
 - **Status.** Whether a structure is `live`, `planned` or `off`.
+- **Step.** One stage of a structure's inside view.
+- **Question.** An open or resolved question about a structure, with a stable ID such as `Q-G1`.
 - **Layout change.** A move, resize or reroute.
 - **Meaning change.** Any edit to the map that isn't a layout change.
 - **Pending change.** An edit that hasn't been accepted.
