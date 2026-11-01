@@ -188,15 +188,15 @@ export const layoutCommand = Command.make(
     structure: Argument.String("structure").pipe(
       Argument.withDescription("The id of the structure to move or resize")
     ),
-    x: gridFlag("x", "Position along the grid's x axis, in half units"),
-    y: gridFlag("y", "Position along the grid's y axis, in half units"),
-    w: gridFlag("w", "Footprint width along x, in half units"),
-    d: gridFlag("d", "Footprint depth along y, in half units"),
+    x: gridFlag("x", "Position along the grid's x axis, in grid units"),
+    y: gridFlag("y", "Position along the grid's y axis, in grid units"),
+    w: gridFlag("w", "Footprint width along x, in grid units"),
+    d: gridFlag("d", "Footprint depth along y, in grid units"),
   },
   ({ home, structure, x, y, w, d }) => layout(home, structure, { x, y, w, d })
 ).pipe(
   Command.withDescription(
-    "Move or resize one structure in layout.json, under the map's lock. Fields you leave out keep their value."
+    "Move or resize one structure in layout.json, under the map's lock. Values land on half units, such as 4 or 4.5. Fields you leave out keep their value."
   ),
   Command.withExamples([
     {
