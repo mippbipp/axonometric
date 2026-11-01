@@ -189,25 +189,24 @@ const edgeCosts = {
    */
   facingAside: 2,
   /**
-   * An edge facing away. It must outweigh two bends, the detour round to a
-   * facing edge, so a route takes it only when every facing edge is
-   * blocked.
+   * An edge facing away, a side edge. It must outweigh two bends, the
+   * detour round to a facing edge, so a route takes it only when every
+   * facing edge is blocked or full.
    */
   facingAway: 600,
   /**
-   * An edge facing away that is the far side of a facing edge, a little
-   * more than one at the side: a full facing edge spills to the sides
-   * first, then the back.
+   * An edge facing away that is the far side of a facing edge, the back
+   * edge: a little more than a side edge, so a full facing edge spills to
+   * the sides first, then the back.
    */
   facingBack: 100,
   /**
    * Taking an edge with no room left for another end at the spacing the
-   * scene needs. It must outweigh a bend and `facingAside`, so the end
-   * takes another facing edge, and stay under `facingAway`, so it never
-   * takes an edge that faces away: a map whose facing edges are all full
-   * crowds the last end in instead.
+   * scene needs. It must outweigh `facingAway` and `facingBack`, so an end
+   * leaves a full facing edge for a side edge, then the back edge, and
+   * never crowds into a full one.
    */
-  full: 500,
+  full: 800,
   /**
    * Each end already on an edge, so ends spread over the facing edges
    * before one fills and a later end has to take another.

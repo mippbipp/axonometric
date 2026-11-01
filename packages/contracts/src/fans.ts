@@ -324,6 +324,14 @@ const fanned = (
     );
   };
 
+  // A jog's corner keeps a line gap from any line crossing its leg, by
+  // moving further from the edge, never nearer, so the order between jogs
+  // below holds.
+  const outwards = (jog: number, end: End) =>
+    Arr.reduce(Arr.sort(end.crossings, Order.Number), jog, (depth, cross) =>
+      Math.abs(depth - cross) < near ? cross + near : depth
+    );
+
   // Each pass lets a jog's push reach one more neighbour.
   Arr.forEach(settled, () => {
     Arr.forEach(settled, (_, i) => {
@@ -333,25 +341,18 @@ const fanned = (
         }
       });
     });
-  });
 
-  // A jog's corner keeps a line gap from any line crossing its leg.
-  const apart = (jog: number, end: End) =>
-    Arr.reduce(end.crossings, jog, (depth, cross) =>
-      Math.abs(depth - cross) < near
-        ? cross - near >= jog - 1e-9 || cross - near > 0.05
-          ? cross - near
-          : cross + near
-        : depth
-    );
+    Arr.forEach(settled, ({ end }, index) => {
+      const jog = jogs[index] ?? 0;
+
+      jogs[index] = jog === 0 ? 0 : outwards(jog, end);
+    });
+  });
 
   return Arr.map(settled, ({ end, target }, index) => ({
     end,
     target,
-    jog: Math.min(
-      (jogs[index] ?? 0) === 0 ? 0 : apart(jogs[index] ?? 0, end),
-      end.room
-    ),
+    jog: Math.min(jogs[index] ?? 0, end.room),
   }));
 };
 

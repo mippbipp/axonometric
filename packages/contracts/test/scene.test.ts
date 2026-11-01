@@ -11,6 +11,7 @@ import { vi } from "vitest";
 
 import {
   arrowheadOf,
+  arrowHalfWidth,
   arrowLength,
   arrowPolygon,
   checkLayout,
@@ -41,7 +42,12 @@ import type {
   ScreenPoint,
   ScreenRect,
 } from "../src/index.ts";
-import { facingEdges, outsideArea, routeArea } from "./route-geometry.ts";
+import {
+  facingEdges,
+  facingEdgesFull,
+  outsideArea,
+  routeArea,
+} from "./route-geometry.ts";
 
 /** A fixture map from the CLI's test fixtures, decoded. */
 const fixture = (name: string) =>
@@ -811,7 +817,7 @@ describe("scene", () => {
   );
 
   it.effect(
-    "leaves and enters every pipeline route by the edges facing the other end",
+    "leaves and enters every pipeline route by an edge facing the other end, unless every point on the facing edges is taken by another hop of the same box",
     () =>
       Effect.gen(function* () {
         const { data, layout } = yield* fixture("flake-pipeline");
@@ -823,28 +829,49 @@ describe("scene", () => {
             revealed: chapter.revealed,
           });
 
-          for (const hop of data.hops) {
+          // Every end on every box, with the edge it leaves or enters by.
+          const ends = Arr.flatMap(data.hops, (hop) => {
             const route = routes[hop.id];
+            const [first] = route?.points ?? [];
+            const last = route?.points.at(-1);
 
-            if (route !== undefined) {
-              const source = placementOf(layout, hop.from);
-              const target = placementOf(layout, hop.to);
-              const [first] = route.points;
-              const last = route.points.at(-1);
+            return route === undefined ||
+              first === undefined ||
+              last === undefined
+              ? []
+              : [
+                  {
+                    hop: hop.id,
+                    box: hop.from,
+                    other: hop.to,
+                    head: false,
+                    edge: edgeOf(first, route.points[1] ?? first),
+                  },
+                  {
+                    hop: hop.id,
+                    box: hop.to,
+                    other: hop.from,
+                    head: true,
+                    edge: edgeOf(last, route.points.at(-2) ?? last),
+                  },
+                ];
+          });
 
-              assert.isDefined(first);
-              assert.isDefined(last);
-              assert.isTrue(
-                facingEdges(source, target)[
-                  edgeOf(first, route.points[1] ?? first)
-                ],
-                `${hop.id} leaves by an edge facing away in ${chapter.id}`
+          for (const end of ends) {
+            const box = placementOf(layout, end.box);
+            const other = placementOf(layout, end.other);
+
+            if (facingEdges(box, other)[end.edge] !== true) {
+              const taken = Arr.filter(
+                ends,
+                (item) =>
+                  item.box === end.box &&
+                  !(item.hop === end.hop && item.head === end.head)
               );
+
               assert.isTrue(
-                facingEdges(target, source)[
-                  edgeOf(last, route.points.at(-2) ?? last)
-                ],
-                `${hop.id} enters by an edge facing away in ${chapter.id}`
+                facingEdgesFull(box, other, { taken, extra: end.head }),
+                `${end.hop} ${end.head ? "enters" : "leaves"} ${end.box} by an edge facing away in ${chapter.id} while a facing edge has room`
               );
             }
           }
@@ -1314,6 +1341,22 @@ describe("ground clashes", () => {
   );
 });
 
+/** One arrowhead: its tip, the way it points, and the edge it is on. */
+interface Head {
+  readonly tip: ScreenPoint;
+  readonly along: ScreenPoint;
+}
+
+/**
+ * How far apart two heads' tips are across the direction the first points,
+ * the part of the gap square to it.
+ */
+const acrossGap = (first: Head, second: Head) =>
+  Math.abs(
+    (second.tip.sx - first.tip.sx) * first.along.sy -
+      (second.tip.sy - first.tip.sy) * first.along.sx
+  ) / Math.max(Math.hypot(first.along.sx, first.along.sy), 1e-9);
+
 describe("arrowheads", () => {
   it.effect(
     "never overlap on any fixture, in any chapter, in either view",
@@ -1354,6 +1397,87 @@ describe("arrowheads", () => {
               );
             }
           }
+        }
+      })
+  );
+
+  it.effect(
+    "keep a head width plus 3 px apart across their direction on one edge, on every fixture, in the Iso view",
+    () =>
+      Effect.gen(function* () {
+        // The zoom that fits chapter 8 in a 1780×1020 window is 0.76; 0.4 is
+        // the least a map is shown at, so heads must clear each other there.
+        const fit = 0.4;
+        const need = 2 * arrowHalfWidth * fit + 3;
+        const closest: { readonly gap: number; readonly where: string }[] = [];
+
+        for (const name of [
+          "flake-pipeline",
+          "review",
+          "crowded",
+          "shapes",
+          "pipeline",
+        ]) {
+          const { data, layout } = yield* fixture(name);
+
+          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+            ? chaptersOf(data)
+            : [{ id: "all", plays: [], revealed: everything(data) }];
+
+          for (const chapter of chapters) {
+            const { hops } = sceneOf({
+              data,
+              layout,
+              revealed: chapter.revealed,
+              view: "iso",
+            });
+
+            // Each head: its tip, its direction, and the edge it is on.
+            const heads = Arr.flatMap(hops, ({ hop, route, points }) => {
+              const tip = points.at(-1);
+              const before = points.at(-2);
+              const last = route.points.at(-1);
+              const back = route.points.at(-2);
+
+              return tip === undefined ||
+                before === undefined ||
+                last === undefined ||
+                back === undefined
+                ? []
+                : [
+                    {
+                      id: hop.id,
+                      edge: `${hop.to}:${edgeOf(last, back)}`,
+                      tip,
+                      along: {
+                        sx: tip.sx - before.sx,
+                        sy: tip.sy - before.sy,
+                      },
+                    },
+                  ];
+            });
+
+            closest.push(
+              ...Arr.flatMap(heads, (first, index) =>
+                Arr.flatMap(heads.slice(index + 1), (second) =>
+                  first.edge === second.edge
+                    ? [
+                        {
+                          gap: acrossGap(first, second) * fit,
+                          where: `${name} ${chapter.id}: ${first.id} and ${second.id} on ${first.edge}`,
+                        },
+                      ]
+                    : []
+                )
+              )
+            );
+          }
+        }
+
+        assert.isNotEmpty(closest);
+
+        for (const { gap, where } of closest) {
+          assert.isAtLeast(gap + 1e-6, need, where);
         }
       })
   );

@@ -149,7 +149,7 @@ export interface SceneZone {
 /** A stretch of a route that a box is drawn over. */
 export interface HiddenStretch {
   readonly points: readonly ScreenPoint[];
-  /** Whether the stretch runs to the route's end, so it needs the arrowhead. */
+  /** Whether the stretch runs to the route's end, under its target. */
   readonly reachesEnd: boolean;
 }
 
@@ -170,8 +170,9 @@ export interface SceneHop {
    */
   readonly points: readonly ScreenPoint[];
   /**
-   * Where the route bends, which the Iso view marks: `points` without the
-   * little jogs that spread its ends along an edge.
+   * Where the route turns, which the Iso view marks with diamonds: not the
+   * jogs that spread its ends along an edge, nor any turn within a unit of
+   * either end.
    */
   readonly bends: readonly ScreenPoint[];
   /**
@@ -184,8 +185,9 @@ export interface SceneHop {
   readonly hoverLabel: ScreenRect | undefined;
   /**
    * The stretches of the route that boxes are drawn over and that the view
-   * redraws faintly on top: those under other structures' boxes, and the
-   * last stretch under the target's box when the arrowhead is there.
+   * redraws faintly on top, without an arrowhead: those under other
+   * structures' boxes, and the last stretch under the target's box when
+   * the end is there.
    */
   readonly hidden: readonly HiddenStretch[];
 }
@@ -747,6 +749,30 @@ const placeZones = (
   });
 };
 
+/** How far from a route's end a bend must be to get a diamond, in grid units. */
+const bendMargin = 1;
+
+/**
+ * The turns of a route on the ground that the Iso view marks: its inner
+ * points at least `bendMargin` from both ends. Nearer the box the lanes
+ * and fans spread the lines out, and a diamond there reads as clutter.
+ */
+const farFromEnds = (
+  points: readonly GridPosition[]
+): readonly GridPosition[] => {
+  const [first] = points;
+  const last = points.at(-1);
+
+  return first === undefined || last === undefined
+    ? []
+    : Arr.filter(
+        points.slice(1, -1),
+        (point) =>
+          Math.hypot(point.x - first.x, point.y - first.y) >= bendMargin &&
+          Math.hypot(point.x - last.x, point.y - last.y) >= bendMargin
+      );
+};
+
 /** Stretches shorter than this, in screen units, aren't worth redrawing. */
 const shortestStretch = 1;
 
@@ -1158,7 +1184,7 @@ export const sceneOf = ({
             route,
             points: Arr.map(drawn[hop.id] ?? route.points, geometry.project),
             bends: Arr.map(
-              (bent[hop.id] ?? route.points).slice(1, -1),
+              farFromEnds(bent[hop.id] ?? route.points),
               geometry.project
             ),
           },

@@ -11,26 +11,32 @@ export const arrowLength = 10;
 /** Half the width of a hop's arrowhead at its base, in drawing units. */
 export const arrowHalfWidth = 4;
 
-/** How much clear space neighbouring ends keep on screen at fit, in px. */
+/** How much clear space neighbouring heads keep on screen at fit, in px. */
 export const endClearance = 3;
+
+/** The zoom the spacing is sized for: the smallest a map is shown at. */
+export const fitZoom = 0.4;
 
 /**
  * How much room an end takes along its edge in each view, in grid units.
- * Two neighbouring ends sit half the sum of their widths apart, which on
- * screen at the zoom that fits a 15-structure map in a 1780×1020 window
- * (0.76 px per drawing unit in the Iso view, 0.51 in Plan view) is:
+ * Two neighbouring ends sit half the sum of their widths apart, which at
+ * `fitZoom` is:
  *
- * - two arrowheads: their width plus 3 px;
- * - an arrowhead and a line: the head's half width plus 3 px;
+ * - two arrowheads: their width plus 3 px, measured across the heads'
+ *   direction;
+ * - an arrowhead and a line: a little less, since a line is thin;
  * - two lines: about 4 drawing units, the least `sceneClashes` allows.
  *
- * In the Iso view the edge runs at a slant to the lines, so a grid unit
- * along it separates lines by only 32 drawing units.
+ * In the Iso view the heads point along a diagonal and the edge runs at a
+ * slant to them, so a grid unit along the edge separates two heads by only
+ * 32.2 drawing units across their direction: a head and 3 px at `fitZoom`
+ * (8 + 3 / 0.4 = 15.5 units) takes 0.49 of a unit. In Plan view the heads
+ * are square to the edge and a unit is 60 units.
  */
 export const endWidths: Readonly<
   Record<View, { readonly head: number; readonly start: number }>
 > = {
-  iso: { head: 0.3, start: 0.1 },
+  iso: { head: 0.49, start: 0.14 },
   plan: { head: 0.24, start: 0.09 },
 };
 

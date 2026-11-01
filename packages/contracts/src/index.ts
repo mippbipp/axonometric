@@ -93,6 +93,8 @@ export {
 
 export type { Segment } from "./geometry.ts";
 
+export { arrowHalfWidth } from "./ends.ts";
+
 export { drawnRoutes } from "./fans.ts";
 
 export { laneGap, laneRoutes, laneWidths } from "./lanes.ts";
