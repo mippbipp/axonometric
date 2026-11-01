@@ -1,12 +1,5 @@
-import {
-  applyLayoutChanges,
-  discardChange,
-  layoutRefusal,
-  newChangeId,
-  placeStructure,
-} from "@axonometric/contracts";
-import type { ChangeId, Placement } from "@axonometric/contracts";
-import { Array as Arr, Option } from "effect";
+import { applyLayoutChanges } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
 import { useMemo, useSyncExternalStore } from "react";
 
 import { App } from "./app.tsx";
@@ -91,50 +84,17 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [view.state, accepted, pending]
   );
 
-  const editing = useMemo((): Editing => {
-    const after = (id: string, next: Placement) =>
-      placeStructure({
-        changes: pending,
-        accepted,
-        id,
-        next,
-        newId: newChangeId,
-      });
-
-    const refusalOf = (id: string, next: Placement) =>
-      Option.getOrUndefined(
-        layoutRefusal({ accepted, before: pending, after: after(id, next) })
-      );
-
-    return {
+  const editing = useMemo(
+    (): Editing => ({
       accepted,
       pending,
       canEdit: !view.stopped,
-      refusalOf,
-      place: (id, next) => {
-        const refusal = refusalOf(id, next);
-
-        if (refusal === undefined) {
-          store.writeLayout(after(id, next));
-        }
-
-        return refusal;
-      },
-      discard: (id: ChangeId) => {
-        const remaining = discardChange(pending, id);
-
-        const refusal = Option.getOrUndefined(
-          layoutRefusal({ accepted, before: pending, after: remaining })
-        );
-
-        if (refusal === undefined) {
-          store.writeLayout(remaining);
-        }
-
-        return refusal;
-      },
-    };
-  }, [accepted, pending, view.stopped, store]);
+      refusalOf: store.refusalOf,
+      place: store.place,
+      discard: store.discard,
+    }),
+    [accepted, pending, view.stopped, store]
+  );
 
   return (
     <EditingContext value={editing}>

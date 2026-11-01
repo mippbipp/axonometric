@@ -6,6 +6,7 @@ import {
   Effect,
   FileSystem,
   Latch,
+  Order,
   Option,
   Path,
   Schema,
@@ -169,6 +170,17 @@ const waitGone = (page: Page, selector: string) =>
 /** The changes without their random ids, for comparing what they do. */
 const withoutIds = (layout: Proposals["layout"]) =>
   Arr.map(layout, ({ id: _id, ...rest }) => rest);
+
+/** A move of structure `id` to a spot well clear of the others. */
+const moveOf = (
+  changeId: string,
+  id: string,
+  to: { readonly x: number; readonly y: number }
+) => ({
+  id: changeId,
+  kind: "move",
+  moves: [{ target: { kind: "structure", id }, position: to }],
+});
 
 const onHalfUnit = (value: number) => Number.isInteger(value * 2);
 
@@ -577,67 +589,103 @@ describe("editing off", () => {
     60_000
   );
 
+  /**
+   * Drags `structure` down in Plan view with the page's write held on its
+   * way to the server, and writes `other` from outside the page in the
+   * meantime, so the held write is based on a stale revision. Resolves once
+   * the page has had its answer.
+   */
+  const dragWhileAnotherWrites = Effect.fnUntraced(function* (
+    structure: string,
+    other: { readonly id: string; readonly to: { x: number; y: number } }
+  ) {
+    const { home, serve, page } = yield* servedReview;
+    const held = yield* Latch.make();
+    const reached = yield* Latch.make();
+    const run = Effect.runPromiseWith(yield* Effect.context());
+
+    yield* toPlan(page);
+
+    const holdOnce = (route: Route) =>
+      run(
+        Effect.gen(function* () {
+          yield* reached.open;
+          yield* held.await;
+          yield* Effect.promise(() => route.continue());
+        })
+      );
+
+    yield* Effect.promise(() =>
+      page.route("**/api/proposals/layout", holdOnce, { times: 1 })
+    );
+
+    const unit = yield* unitOnScreen(page, "plan");
+    const from = yield* centreOf(page, `[data-structure="${structure}"]`);
+
+    yield* dragBy(page, from, { x: 0, y: unit * 4 });
+    yield* reached.await;
+
+    const written = yield* Effect.promise(() =>
+      page.request.put(new URL("/api/proposals/layout", serve.url).href, {
+        headers: { origin: serve.url, "content-type": "application/json" },
+        data: {
+          baseRevision: 0,
+          layout: [moveOf("other-writer", other.id, other.to)],
+        },
+      })
+    );
+
+    assert.strictEqual(written.status(), 200);
+    yield* held.open;
+
+    return { home, page };
+  });
+
   it.live(
-    "a stale write is refused, and the page shows what's saved and says the edit conflicted",
+    "a stale write reloads the file and sends the edit again on top of it, keeping both writers' changes",
     () =>
       Effect.gen(function* () {
-        const { home, serve, page } = yield* servedReview;
-        const held = yield* Latch.make();
-        const reached = yield* Latch.make();
-        const run = Effect.runPromiseWith(yield* Effect.context());
+        const { home, page } = yield* dragWhileAnotherWrites("upstream", {
+          id: "page",
+          to: { x: 4, y: 3 },
+        });
 
-        yield* toPlan(page);
-
-        // Hold the page's write on its way to the server, so another write
-        // lands first and the page's is based on a stale revision.
-        const holdWrite = (route: Route) =>
-          run(
-            Effect.gen(function* () {
-              yield* reached.open;
-              yield* held.await;
-              yield* Effect.promise(() => route.continue());
-            })
-          );
-
-        yield* Effect.promise(() =>
-          page.route("**/api/proposals/layout", holdWrite)
+        yield* waitFor(
+          page,
+          '[data-structure="upstream"][data-pending="true"]'
         );
+        yield* waitFor(page, '[data-structure="page"][data-pending="true"]');
 
-        const unit = yield* unitOnScreen(page, "plan");
-        const from = yield* centreOf(page, '[data-structure="upstream"]');
+        const saved = yield* waitForRevision(home, 2);
+        const ids = Arr.flatMap(saved.layout, structuresOf);
 
-        yield* dragBy(page, from, { x: 0, y: unit * 4 });
-        yield* reached.await;
-
-        const other = yield* Effect.promise(() =>
-          page.request.put(new URL("/api/proposals/layout", serve.url).href, {
-            headers: { origin: serve.url, "content-type": "application/json" },
-            data: {
-              baseRevision: 0,
-              layout: [
-                {
-                  id: "other-writer",
-                  kind: "move",
-                  moves: [
-                    {
-                      target: { kind: "structure", id: "page" },
-                      position: { x: 4, y: 3 },
-                    },
-                  ],
-                },
-              ],
-            },
-          })
+        assert.deepStrictEqual(Arr.sort(ids, Order.String), [
+          "page",
+          "upstream",
+        ]);
+        assert.strictEqual(
+          yield* count(page, '[data-edit-notice="conflict"]'),
+          0
         );
+      }),
+    60_000
+  );
 
-        assert.strictEqual(other.status(), 200);
-        yield* held.open;
+  it.live(
+    "a stale write whose edit no longer fits keeps the other writer's changes and says it conflicted",
+    () =>
+      Effect.gen(function* () {
+        // The other writer moves page onto where engineer is dragged to.
+        const { home, page } = yield* dragWhileAnotherWrites("engineer", {
+          id: "page",
+          to: { x: 0, y: 4 },
+        });
 
         yield* waitFor(page, '[data-edit-notice="conflict"]');
         yield* waitFor(page, '[data-structure="page"][data-pending="true"]');
         yield* waitGone(
           page,
-          '[data-structure="upstream"][data-pending="true"]'
+          '[data-structure="engineer"][data-pending="true"]'
         );
 
         const saved = yield* proposalsIn(home);

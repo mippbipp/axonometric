@@ -1,8 +1,12 @@
 import {
+  discardChange,
   emptyProposals,
   LayoutChangeRefused,
+  layoutRefusal,
   MapFilesUnreadable,
+  newChangeId,
   PendingLayoutWrite,
+  placeStructure,
   Proposals,
   ServedPage,
   servedPageElementId,
@@ -10,9 +14,12 @@ import {
   StaleProposals,
 } from "@axonometric/contracts";
 import type {
+  ChangeId,
+  Layout,
   LayoutChange,
   MapProblem,
   MapState,
+  Placement,
 } from "@axonometric/contracts";
 import {
   Array as Arr,
@@ -92,15 +99,75 @@ export interface ServedView {
   readonly notice: EditNotice | null;
 }
 
+/**
+ * An edit to the pending layout changes: the list it makes from `changes`,
+ * given the accepted layout. It must give the same answer each time it's
+ * run, ids included, so it can be run again on a fresher list.
+ */
+export type Edit = (
+  changes: readonly LayoutChange[],
+  accepted: Layout
+) => readonly LayoutChange[];
+
 export interface ServedStore {
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => ServedView;
   /**
-   * Shows `layout` as the pending layout changes at once, and saves it to
-   * `proposals.json`. Writes go one at a time, each based on the revision
-   * the one before it saved.
+   * Why putting structure `id` at `next` would be refused, or `undefined`
+   * when it wouldn't.
    */
-  readonly writeLayout: (layout: readonly LayoutChange[]) => void;
+  readonly refusalOf: (id: string, next: Placement) => string | undefined;
+  /**
+   * Puts structure `id` at `next` as pending changes, shown at once and
+   * saved to `proposals.json`. Returns why it was refused, or `undefined`.
+   */
+  readonly place: (id: string, next: Placement) => string | undefined;
+  /**
+   * Removes the pending change with `id`. Returns why it was refused, or
+   * `undefined`.
+   */
+  readonly discard: (id: ChangeId) => string | undefined;
+}
+
+/** The edits run again on a fresh list: the list so far, or why one failed. */
+interface Rerun {
+  readonly layout: readonly LayoutChange[];
+  readonly reason: Option.Option<string>;
+}
+
+/** An edit that puts `id` at `next`, with change ids fixed up front. */
+const placing = (id: string, next: Placement): Edit => {
+  const ids = [newChangeId(), newChangeId()];
+
+  return (changes, accepted) => {
+    let used = 0;
+
+    return placeStructure({
+      changes,
+      accepted,
+      id,
+      next,
+      newId: () => {
+        const made = ids[used] ?? newChangeId();
+
+        used += 1;
+
+        return made;
+      },
+    });
+  };
+};
+
+/** A write waiting its turn to be sent. */
+interface Queued {
+  /** The edit, to run again on a fresher list. */
+  readonly edit: Edit;
+  /** The file revision the write is based on, fixed when it was made. */
+  readonly base: number;
+  /** The whole list the write sets. */
+  readonly layout: readonly LayoutChange[];
+  /** Whether this is the write sent again after a conflict. */
+  readonly retried: boolean;
 }
 
 /** How long to wait before reconnecting a stream the browser gave up on. */
@@ -113,11 +180,20 @@ export interface ServedSource {
   readonly served: ServedPage;
 }
 
-const savedLayout = (state: MapState) =>
-  (state.proposals ?? emptyProposals).layout;
+/** What `proposals.json` held when `state` was sent. */
+const proposalsOf = (state: MapState): Proposals =>
+  state.proposals ?? emptyProposals;
 
-const conflictMessage =
-  "The pending changes changed on disk before this edit saved, so it wasn't saved. The page now shows what's saved. Make the edit again.";
+const savedLayout = (state: MapState) => proposalsOf(state).layout;
+
+const conflictMessage = (reason: Option.Option<string>) =>
+  `The pending changes changed on disk before this edit saved. The page now shows what's saved. ${Option.match(
+    reason,
+    {
+      onNone: () => "Make the edit again.",
+      onSome: (why) => `Your edit no longer fits: ${why}`,
+    }
+  )}`;
 
 const problemsText = (problems: readonly MapProblem[]) =>
   Arr.join(
@@ -130,7 +206,7 @@ const noticeOf = Match.type<typeof WriteRefusal.Type>().pipe(
   Match.tagsExhaustive({
     StaleProposals: (): EditNotice => ({
       kind: "conflict",
-      message: conflictMessage,
+      message: conflictMessage(Option.none()),
     }),
     LayoutChangeRefused: ({ reason }): EditNotice => ({
       kind: "refused",
@@ -163,8 +239,16 @@ export const connectServed = ({
     notice: null,
   };
 
-  /** How many writes have been asked for and not answered. */
-  let writing = 0;
+  /**
+   * The writes asked for and not answered, oldest first. Each holds the
+   * file revision it was made against and the list it makes, both fixed
+   * when the edit was made, so a write can't be sent against a revision it
+   * wasn't built on.
+   */
+  let queue: readonly Queued[] = [];
+
+  /** Goes up when the queue is dropped, so waiting writes know to skip. */
+  let generation = 0;
 
   const update = (next: Partial<ServedView>) => {
     view = { ...view, ...next };
@@ -179,7 +263,7 @@ export const connectServed = ({
    * saved, unless a write is still on its way.
    */
   const pendingAfter = (state: MapState) =>
-    writing === 0 ? savedLayout(state) : view.pending;
+    queue.length === 0 ? savedLayout(state) : view.pending;
 
   /** Takes the map the server holds. */
   const receive = (state: MapState) => {
@@ -239,31 +323,93 @@ export const connectServed = ({
     Effect.andThen(Effect.sync(connect))
   );
 
-  const one = Semaphore.makeUnsafe(1);
+  /** Writes go to the server one at a time, in the order they were made. */
+  const writeTurn = Semaphore.makeUnsafe(1);
 
-  /** Takes what `proposals.json` holds after a write or a refused one. */
-  const saved = (proposals: Proposals, notice: EditNotice | null) => {
-    writing -= 1;
-
-    const state = { ...view.state, proposals };
-
-    update({ state, pending: pendingAfter(state), notice });
+  /** Shows `proposals` as what's saved, with `notice`, and drops the queue. */
+  const adopt = (proposals: Proposals, notice: EditNotice | null) => {
+    generation += 1;
+    queue = [];
+    update({
+      state: { ...view.state, proposals },
+      pending: proposals.layout,
+      notice,
+    });
   };
 
   const failed = (message: string) => {
-    writing -= 1;
+    generation += 1;
+    queue = [];
     update({
-      pending: pendingAfter(view.state),
+      pending: savedLayout(view.state),
       notice: { kind: "failed", message },
     });
   };
 
-  const send = (layout: readonly LayoutChange[]) =>
-    Effect.gen(function* () {
-      const body = yield* encodeWrite({
-        baseRevision: (view.state.proposals ?? emptyProposals).revision,
-        layout,
+  /** The write at the front of the queue went through. */
+  const confirm = (sent: Queued, proposals: Proposals) => {
+    queue = Arr.filter(queue, (queued) => queued !== sent);
+
+    const state = { ...view.state, proposals };
+
+    update({ state, pending: pendingAfter(state), notice: null });
+  };
+
+  /**
+   * The server's file moved on before a write was sent. Drops the queue, and
+   * runs the edits again on `fresh`, the file as it is now. When they all
+   * still fit, they're sent once more, based on `fresh`'s revision; when one
+   * doesn't, or that write is refused too, the page keeps `fresh` and says
+   * the edit conflicted.
+   */
+  const recover = (stale: Queued, fresh: Proposals) => {
+    const edits = Arr.map(queue, ({ edit }) => edit);
+    const accepted = view.state.layout;
+
+    const start: Rerun = { layout: fresh.layout, reason: Option.none() };
+
+    const rerun = Arr.reduce(edits, start, (so, edit): Rerun => {
+      if (Option.isSome(so.reason)) {
+        return so;
+      }
+
+      const after = edit(so.layout, accepted);
+
+      const refusal = layoutRefusal({ accepted, before: so.layout, after });
+
+      return Option.isNone(refusal)
+        ? { layout: after, reason: Option.none() }
+        : { layout: so.layout, reason: refusal };
+    });
+
+    if (stale.retried || Option.isSome(rerun.reason)) {
+      adopt(fresh, {
+        kind: "conflict",
+        message: conflictMessage(rerun.reason),
       });
+
+      return;
+    }
+
+    adopt(fresh, null);
+    enqueue({
+      edit: (changes) => changes,
+      base: fresh.revision,
+      layout: rerun.layout,
+      retried: true,
+    });
+  };
+
+  const send = (sent: Queued, turn: number) =>
+    Effect.gen(function* () {
+      if (turn !== generation) {
+        return;
+      }
+
+      const body = yield* encodeWrite({
+        baseRevision: sent.base,
+        layout: sent.layout,
+      }).pipe(Effect.orDie);
 
       const client = yield* HttpClient.HttpClient;
 
@@ -278,30 +424,34 @@ export const connectServed = ({
       const text = yield* response.text;
 
       if (ok) {
-        return Option.match(decodeSaved(text), {
+        Option.match(decodeSaved(text), {
           onNone: () => {
             failed("The server's answer didn't make sense. Reload the page.");
           },
           onSome: (proposals) => {
-            saved(proposals, null);
+            confirm(sent, proposals);
           },
         });
+
+        return;
       }
 
-      return Option.match(decodeRefusal(text), {
+      Option.match(decodeRefusal(text), {
         onNone: () => {
           failed(`The server refused the edit (${status}): ${text.trim()}`);
         },
         onSome: (refusal) => {
-          if (Predicate.isTagged(refusal, "MapFilesUnreadable")) {
-            failed(noticeOf(refusal).message);
+          if (Predicate.isTagged(refusal, "StaleProposals")) {
+            recover(sent, refusal.proposals);
+          } else if (Predicate.isTagged(refusal, "LayoutChangeRefused")) {
+            adopt(refusal.proposals, noticeOf(refusal));
           } else {
-            saved(refusal.proposals, noticeOf(refusal));
+            failed(noticeOf(refusal).message);
           }
         },
       });
     }).pipe(
-      Effect.catch(() =>
+      Effect.catchTag("HttpClientError", () =>
         Effect.sync(() => {
           failed(
             "The edit wasn't saved: the server didn't answer. It may have stopped."
@@ -309,6 +459,55 @@ export const connectServed = ({
         })
       )
     );
+
+  /** Queues a write and starts it when the ones before it are done. */
+  const enqueue = (queued: Queued) => {
+    queue = [...queue, queued];
+    update({ pending: queued.layout });
+
+    const turn = generation;
+
+    Effect.runFork(
+      writeTurn
+        .withPermit(send(queued, turn))
+        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
+        .pipe(Effect.provide(FetchHttpClient.layer))
+    );
+  };
+
+  /** Why `edit` would be refused, and the list it would make. */
+  const tryEdit = (edit: Edit) => {
+    const accepted = view.state.layout;
+    const before = view.pending;
+    const after = edit(before, accepted);
+
+    return { after, refusal: layoutRefusal({ accepted, before, after }) };
+  };
+
+  /** Runs `edit`, queues its write, or returns why it was refused. */
+  const run = (edit: Edit): string | undefined => {
+    const { after, refusal } = tryEdit(edit);
+
+    if (Option.isSome(refusal)) {
+      return refusal.value;
+    }
+
+    // The next write is built on the one before it, so it's based on the
+    // revision that one will make. If someone else writes first, the server
+    // refuses it as stale instead.
+    const last = queue.at(-1);
+
+    enqueue({
+      edit,
+      base:
+        last === undefined ? proposalsOf(view.state).revision : last.base + 1,
+      layout: after,
+      retried: false,
+    });
+    update({ notice: null });
+
+    return undefined;
+  };
 
   connect();
 
@@ -321,15 +520,9 @@ export const connectServed = ({
       };
     },
     getSnapshot: () => view,
-    writeLayout: (layout) => {
-      writing += 1;
-      update({ pending: layout, notice: null });
-      Effect.runFork(
-        one
-          .withPermit(send(layout))
-          // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
-          .pipe(Effect.provide(FetchHttpClient.layer))
-      );
-    },
+    refusalOf: (id, next) =>
+      Option.getOrUndefined(tryEdit(placing(id, next)).refusal),
+    place: (id, next) => run(placing(id, next)),
+    discard: (id) => run((changes) => discardChange(changes, id)),
   };
 };

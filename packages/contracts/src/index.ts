@@ -149,6 +149,7 @@ export {
   Proposals,
   ProposalsFile,
   ResizeChange,
+  sameLayoutChanges,
   StructureMove,
   StructureTarget,
   structuresOf,

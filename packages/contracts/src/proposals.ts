@@ -114,6 +114,21 @@ export const structuresOf = (change: LayoutChange): readonly string[] =>
     ? Arr.map(change.moves, ({ target }) => target.id)
     : [change.target.id];
 
+/** Whether two lists make the same changes in the same order. */
+export const sameLayoutChanges: {
+  (b: readonly LayoutChange[]): (a: readonly LayoutChange[]) => boolean;
+  (a: readonly LayoutChange[], b: readonly LayoutChange[]): boolean;
+} = dual(
+  2,
+  (a: readonly LayoutChange[], b: readonly LayoutChange[]) =>
+    a.length === b.length &&
+    Arr.every(a, (change, index) => {
+      const other = b[index];
+
+      return other !== undefined && sameChange(change, other);
+    })
+);
+
 const uniqueIds = (changes: readonly LayoutChange[]) =>
   new Set(Arr.map(changes, layoutChangeKey)).size === changes.length;
 
