@@ -1,6 +1,3 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- see noGit
-import { spawnSync } from "node:child_process";
-
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -12,29 +9,11 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { minimalMap } from "./fixtures.ts";
+import { commitAll, git, initRepo, noGit } from "./git.ts";
 import type { HomeFiles } from "./harness.ts";
 import { makeHome, runCli } from "./harness.ts";
-
-/**
- * These tests need a real git repo, so they skip without git. Vitest decides
- * skips before any test runs, so this check is synchronous.
- */
-// oxlint-disable-next-line node/no-sync -- see above
-const noGit = spawnSync("git", ["--version"]).error !== undefined;
-
-/** Runs git in `cwd` and returns its trimmed output. */
-const git = Effect.fnUntraced(function* (cwd: string, args: readonly string[]) {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-
-  const output = yield* spawner.string(
-    ChildProcess.make("git", args, { cwd, stdin: "ignore" })
-  );
-
-  return Str.trim(output);
-}, Effect.provide(NodeServices.layer));
 
 const dataFile = "pipeline/map/data.mjs";
 
@@ -69,14 +48,6 @@ const writeFile = Effect.fnUntraced(function* (
   yield* fs.writeFileString(absolute, content);
 }, Effect.provide(NodeServices.layer));
 
-/** Commits everything in `home` and returns the commit's hash. */
-const commitAll = Effect.fnUntraced(function* (home: string, message: string) {
-  yield* git(home, ["add", "--all"]);
-  yield* git(home, ["commit", "--quiet", "--no-verify", "-m", message]);
-
-  return yield* git(home, ["rev-parse", "HEAD"]);
-});
-
 /**
  * A home folder that's a git repo on branch main, holding `src/updater.ts`
  * in one commit, whose hash it returns.
@@ -84,10 +55,7 @@ const commitAll = Effect.fnUntraced(function* (home: string, message: string) {
 const repoHome = Effect.fnUntraced(function* () {
   const home = yield* makeHome({ "src/updater.ts": "export const run = 1;\n" });
 
-  yield* git(home, ["init", "--quiet", "--initial-branch=main"]);
-  yield* git(home, ["config", "user.name", "Test"]);
-  yield* git(home, ["config", "user.email", "test@example.com"]);
-  yield* git(home, ["config", "commit.gpgsign", "false"]);
+  yield* initRepo(home);
 
   const commit = yield* commitAll(home, "add the updater");
 
