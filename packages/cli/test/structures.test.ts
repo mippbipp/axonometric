@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Array as Arr, Effect } from "effect";
 import type { Page } from "playwright";
 
 import { attributesOf, boxesOf, literal } from "./browser.ts";
@@ -13,6 +13,18 @@ import { buildAndOpen } from "./harness.ts";
 
 const reviewPage = Effect.gen(function* () {
   return yield* buildAndOpen(yield* fullMap, "review");
+});
+
+/** The review page at 1280 × 800, wide enough to show the side index. */
+const widePage = Effect.gen(function* () {
+  const opened = yield* reviewPage;
+
+  yield* Effect.promise(() =>
+    opened.page.setViewportSize({ width: 1280, height: 800 })
+  );
+  yield* waitFor(opened.page, "[data-side-index]");
+
+  return opened;
 });
 
 const structure = (id: string) => `[data-structure="${id}"]`;
@@ -72,6 +84,14 @@ const clickEmptySpace = Effect.fnUntraced(function* (page: Page) {
   );
 });
 
+/** What has keyboard focus, by its data-structure or data-control. */
+const focusedOn = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<string | null>(
+      "document.activeElement?.getAttribute('data-structure') ?? document.activeElement?.getAttribute('data-control') ?? document.activeElement?.tagName ?? null"
+    )
+  );
+
 describe("hovering a structure", () => {
   it.live("shows its name and one-liner, and hides when the mouse leaves", () =>
     Effect.scoped(
@@ -130,6 +150,42 @@ describe("the tooltip", () => {
           assert.isAtMost(tooltip.x + tooltip.width, canvas.x + canvas.width);
           assert.isAtMost(tooltip.y + tooltip.height, canvas.y + canvas.height);
         }
+      })
+    )
+  );
+});
+
+describe("the tooltip's placement", () => {
+  it.live("keeps clear of the other structures where it can", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* widePage;
+
+        yield* goToChapter(page, "c-save");
+        yield* Effect.promise(() => page.locator(structure("server")).hover());
+        yield* waitFor(page, '[data-tooltip="server"]');
+
+        const [tooltip] = yield* boxesOf(page, "[data-tooltip]");
+
+        const others = yield* boxesOf(
+          page,
+          '[data-structure]:not([data-structure="server"])'
+        );
+
+        assert.isDefined(tooltip);
+
+        // Boxes that touch along an edge, within a pixel, don't count.
+        const covers = Arr.filter(
+          others,
+          (other) =>
+            tooltip !== undefined &&
+            tooltip.x + 1 < other.x + other.width &&
+            other.x + 1 < tooltip.x + tooltip.width &&
+            tooltip.y + 1 < other.y + other.height &&
+            other.y + 1 < tooltip.y + tooltip.height
+        );
+
+        assert.lengthOf(covers, 0);
       })
     )
   );
@@ -291,7 +347,11 @@ describe("the inside view", () => {
 
     assert.lengthOf(steps, 2);
     assert.include(breadcrumb, "Map page");
-    assert.strictEqual(yield* count(page, "[data-chapter-rail]"), 0);
+    assert.isFalse(
+      yield* Effect.promise(() =>
+        page.locator("[data-chapter-rail]").isVisible()
+      )
+    );
 
     const panel = yield* textOf(page, "[data-inside-panel]");
 
@@ -308,8 +368,69 @@ describe("the inside view", () => {
     yield* waitFor(page, `[data-walkthrough][data-chapter="${chapter}"]`);
     yield* waitFor(page, '[data-structure="page"][data-selected="true"]');
     yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
-    yield* waitFor(page, "[data-chapter-rail]");
+    yield* Effect.promise(() =>
+      page.locator("[data-chapter-rail]").waitFor({ state: "visible" })
+    );
   });
+
+  it.live("moves focus to Come out going inside, and back coming out", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+
+        yield* Effect.promise(() => page.locator(structure("page")).focus());
+        yield* press(page, "Enter");
+        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
+        yield* press(page, "ArrowRight");
+        yield* waitFor(page, '[data-inside-view="page"]');
+        assert.strictEqual(yield* focusedOn(page), "come-out");
+
+        yield* press(page, "ArrowLeft");
+        yield* waitGone(page, "[data-inside-view]");
+        assert.strictEqual(yield* focusedOn(page), "page");
+
+        // The button way round lands in the same places.
+        yield* click(page, '[data-control="go-inside"]');
+        yield* waitFor(page, '[data-inside-view="page"]');
+        assert.strictEqual(yield* focusedOn(page), "come-out");
+        yield* press(page, "Enter");
+        yield* waitGone(page, "[data-inside-view]");
+        assert.strictEqual(yield* focusedOn(page), "page");
+      })
+    )
+  );
+
+  it.live("keeps the map's zoom after coming out", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+
+        const scale = () =>
+          Effect.promise(() =>
+            page.evaluate<number>(
+              'Number(document.querySelector("svg[data-scale]").dataset.scale)'
+            )
+          );
+
+        const fitted = yield* scale();
+
+        yield* click(page, '[aria-label="Zoom in"]');
+        yield* click(page, '[aria-label="Zoom in"]');
+
+        const zoomed = yield* scale();
+
+        assert.isAbove(zoomed, fitted * 1.2);
+
+        yield* pin(page, "page");
+        yield* click(page, '[data-control="go-inside"]');
+        yield* waitFor(page, '[data-inside-view="page"]');
+        yield* click(page, '[data-breadcrumb] [data-control="come-out"]');
+        yield* waitGone(page, "[data-inside-view]");
+
+        assert.closeTo(yield* scale(), zoomed, 1e-6);
+      })
+    )
+  );
 
   it.live("opens from the Go inside button, and Come out returns", () =>
     Effect.scoped(
@@ -451,24 +572,12 @@ describe("the Open questions tab", () => {
 
         yield* goToChapter(page, "c-save");
         yield* click(page, '[role="tab"][data-tab="questions"]');
-        yield* click(page, '[data-question="Q-S1"]');
+        yield* click(page, '[data-question="Q-S1"] button');
         yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
         yield* waitFor(page, '[data-structure="server"][data-selected="true"]');
       })
     )
   );
-});
-
-/** The review page at 1280 × 800, wide enough to show the side index. */
-const widePage = Effect.gen(function* () {
-  const opened = yield* reviewPage;
-
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-  yield* waitFor(opened.page, "[data-side-index]");
-
-  return opened;
 });
 
 describe("the side index", () => {
