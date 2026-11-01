@@ -28,13 +28,13 @@ On Windows, in PowerShell, this installs to `%LOCALAPPDATA%\Programs\axonometric
 irm https://github.com/mippbipp/axonometric/releases/latest/download/install.ps1 | iex
 ```
 
-Set `AXONOMETRIC_VERSION` (for example `0.1.0`) to install a version other than the latest, or `AXONOMETRIC_INSTALL_DIR` to install somewhere else. Binaries exist for Linux x64 and arm64 (glibc only), macOS x64 and arm64, and Windows x64. The macOS binaries have an ad-hoc signature and aren't notarized. The Windows binary isn't signed, so SmartScreen may warn the first time you run it.
+Set `AXONOMETRIC_VERSION` (for example `0.1.0`) to install a version other than the latest, or `AXONOMETRIC_INSTALL_DIR` to install somewhere else. Binaries exist for Linux x64 and arm64 (glibc only), macOS x64 and arm64, and Windows x64. The macOS binaries have an ad-hoc signature and aren't notarized. If you download a macOS archive in a browser, macOS quarantines the binary and refuses to open it, so clear that with `xattr -d com.apple.quarantine <path to axonometric>`. The install script downloads with curl, which doesn't set the quarantine. The Windows binary isn't signed, so SmartScreen may warn the first time you run it.
 
 With Nix, run it straight from the flake with `nix run github:mippbipp/axonometric -- --help`, or add `github:mippbipp/axonometric` as a flake input and install `packages.<system>.default`. The package wraps the CLI bundle with Node.
 
 ## Releases
 
-Pushing a tag such as `v0.1.0` runs `.github/workflows/release.yml`. It builds each binary on its own OS's runner, builds the fixture map with it, tests both install scripts, then creates the GitHub Release with the binaries, `SHA256SUMS` and the install scripts. The tag must match the version in `packages/cli/package.json`. A tag with a suffix, such as `v0.1.0-rc.1`, makes a pre-release, so you can test a release before the real one. Pull requests that change the binary build run the same checks without releasing anything.
+Pushing a tag such as `v0.1.0` runs `.github/workflows/release.yml`. It builds each binary on its own OS's runner, builds the fixture map with it, tests both install scripts, then creates the GitHub Release with the binaries, `SHA256SUMS` and the install scripts. The tag must match the version in `packages/cli/package.json`. A tag with a suffix, such as `v0.1.0-rc.1`, makes a pre-release, so you can test a release before the real one. For a pre-release, set the version in `packages/cli/package.json` to the pre-release version, such as `0.1.0-rc.1`, in its own commit, and tag that commit. Pull requests that change the binary build run the same checks without releasing anything.
 
 To build a binary for your own machine, run `pnpm build`, then `pnpm --filter axonometric build:sea`. It writes the binary and its archive to `packages/cli/release/`.
 
