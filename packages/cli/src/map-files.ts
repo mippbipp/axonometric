@@ -316,28 +316,58 @@ export interface InspectedMap {
 /** Changes the saved layout before it's checked, such as by placing structures. */
 export type Arrange = (data: MapData, saved: Layout) => Layout;
 
+/** How `inspectMap` loads and checks a map. */
+export interface InspectOptions {
+  /** As for `LoadRequest.arrange`. */
+  readonly arrange?: Arrange | undefined;
+  /**
+   * Whether a `proposals.json` that doesn't decode is an error, as `check`
+   * reports it. Otherwise it's a warning, and the map loads with nothing
+   * pending: `build` and `serve` only need the accepted layout.
+   */
+  readonly strictProposals?: boolean | undefined;
+}
+
+/** A problem as a warning, such as an error in a file that can be set aside. */
+const asWarning = (problem: MapProblem): MapProblem => ({
+  ...problem,
+  severity: "warning",
+  message: `${problem.message} Pending changes are ignored until this is fixed.`,
+});
+
 /**
  * Loads the map in `home` and finds every error and warning in it. Links
  * resolve against `output`, the folder SYSTEM.md is written to. The problems
- * are those of the layout `arrange` returns, which is the saved layout by
- * default. Writes nothing.
+ * are those of the layout `options.arrange` returns, which is the saved
+ * layout by default. Writes nothing.
  */
 export const inspectMap = Effect.fnUntraced(function* (
   home: string,
   output: string,
-  arrange: Arrange = (_data, saved) => saved
+  options: InspectOptions = {}
 ) {
-  const [data, saved, proposals] = yield* Effect.all([
+  const arrange = options.arrange ?? ((_data, saved: Layout) => saved);
+
+  const [data, saved, loadedProposals] = yield* Effect.all([
     loadData(home),
     loadLayout(home),
     loadProposals(home),
   ]);
 
-  if (
-    Result.isSuccess(data) &&
-    Result.isSuccess(saved) &&
-    Result.isSuccess(proposals)
-  ) {
+  const noProblems: readonly MapProblem[] = [];
+
+  const proposals = Result.match(loadedProposals, {
+    onSuccess: (found) => ({ found, problems: noProblems }),
+    onFailure: (failure) => ({
+      found: emptyProposals,
+      problems:
+        options.strictProposals === true
+          ? failure
+          : Arr.map(failure, asWarning),
+    }),
+  });
+
+  if (Result.isSuccess(data) && Result.isSuccess(saved)) {
     const links = yield* existingLinks(output, data.success);
     const layout = arrange(data.success, saved.success);
     const sources = yield* sourceContext(home, data.success);
@@ -354,7 +384,8 @@ export const inspectMap = Effect.fnUntraced(function* (
           sourceFacts,
         }
       ),
-      ...checkProposals(data.success, layout, proposals.success),
+      ...proposals.problems,
+      ...checkProposals(data.success, layout, proposals.found),
     ];
 
     return {
@@ -364,7 +395,7 @@ export const inspectMap = Effect.fnUntraced(function* (
         layout,
         saved: saved.success,
         sourceLinks: linksOf(data.success, sources.repo),
-        proposals: proposals.success,
+        proposals: proposals.found,
       }),
       sourcesSkipped: sources.skipped,
     } satisfies InspectedMap;
@@ -374,7 +405,7 @@ export const inspectMap = Effect.fnUntraced(function* (
     problems: [
       ...(Result.isFailure(data) ? data.failure : []),
       ...(Result.isFailure(saved) ? saved.failure : []),
-      ...(Result.isFailure(proposals) ? proposals.failure : []),
+      ...proposals.problems,
     ],
     map: Option.none(),
     sourcesSkipped: Option.none(),
@@ -388,8 +419,9 @@ export interface LoadRequest {
   readonly output: string;
   /** The command loading the map, named in the error. */
   readonly command: string;
-  /** As for `inspectMap`. */
+  /** As for `InspectOptions`. */
   readonly arrange?: Arrange;
+  readonly strictProposals?: boolean;
 }
 
 /**
@@ -401,12 +433,12 @@ export const loadMap = Effect.fnUntraced(function* ({
   output,
   command,
   arrange,
+  strictProposals,
 }: LoadRequest) {
-  const { problems, map, sourcesSkipped } = yield* inspectMap(
-    home,
-    output,
-    arrange
-  );
+  const { problems, map, sourcesSkipped } = yield* inspectMap(home, output, {
+    arrange,
+    strictProposals,
+  });
 
   if (splitProblems(problems).errors.length > 0 || Option.isNone(map)) {
     return yield* MapInvalid.make({ home, command, problems });

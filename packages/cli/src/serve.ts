@@ -24,6 +24,7 @@ import {
   Option,
   Path,
   Predicate,
+  Result,
   Schema,
   Scope,
   Stream,
@@ -41,6 +42,7 @@ import { HttpApiBuilder } from "effect/http-api";
 
 import { printNotes, rebuild } from "./build.ts";
 import { withLock } from "./lock.ts";
+import { loadProposals } from "./map-files.ts";
 import type { MapInvalid } from "./map-files.ts";
 import { openBrowser } from "./open-browser.ts";
 import { renderPage } from "./page.ts";
@@ -312,12 +314,48 @@ const rebuildHeld = (home: string) =>
     )
   );
 
-const watchedFiles = new Set(["data.mjs", "layout.json", "proposals.json"]);
+/**
+ * Rereads `proposals.json` alone, and returns how what the server holds
+ * changes. A file that doesn't decode leaves the pending changes as they
+ * were and is printed; the next rebuild, or `check`, reports it.
+ */
+const reloadProposals = (home: string) =>
+  loadProposals(home).pipe(
+    Effect.flatMap(
+      Result.match({
+        onSuccess: (proposals) =>
+          Effect.succeed((held: Held): Held => ({ ...held, proposals })),
+        onFailure: (problems) => {
+          const lines = Arr.map(
+            problems,
+            (problem) => `  ${formatProblem(problem)}`
+          );
+
+          const message = Arr.join(
+            [
+              `${home}: proposals.json doesn't decode, so serve keeps the pending changes it has.`,
+              ...lines,
+            ],
+            "\n"
+          );
+
+          return Effect.as(Console.error(message), (held: Held): Held => held);
+        },
+      })
+    )
+  );
+
+/** Changes to these rebuild the map. */
+const mapFiles = new Set(["data.mjs", "layout.json"]);
+
+const proposalsFileName = "proposals.json";
 
 /**
  * Watches the home folder, not the files in it: editors often save by
  * writing a new file and renaming it over the old one, which a watch on the
- * old file would miss. Resolves `ready` once the watch is in place.
+ * old file would miss. Sends the names of the files that changed in each
+ * burst of saves, once the burst settles. Resolves `ready` once the watch
+ * is in place.
  */
 const watchMap = (home: string, ready: Latch.Latch) =>
   Effect.gen(function* () {
@@ -331,8 +369,12 @@ const watchMap = (home: string, ready: Latch.Latch) =>
         },
       })
       .pipe(
-        Stream.filter((event) => watchedFiles.has(path.basename(event.path))),
-        Stream.debounce(settleTime)
+        Stream.map((event) => path.basename(event.path)),
+        Stream.filter(
+          (name) => mapFiles.has(name) || name === proposalsFileName
+        ),
+        Stream.groupedWithin(Number.MAX_SAFE_INTEGER, settleTime),
+        Stream.map((names) => new Set(names))
       );
   }).pipe(Stream.unwrap);
 
@@ -385,13 +427,12 @@ const routes = ({
     "proposals",
     (group) =>
       group.handle("putLayout", ({ payload }) =>
-        writePendingLayout(home, payload).pipe(
-          Effect.tap((proposals) =>
-            SubscriptionRef.update(held, (current) => ({
-              ...current,
-              proposals,
-            }))
-          ),
+        writePendingLayout(home, payload, (proposals) =>
+          SubscriptionRef.update(held, (current) => ({
+            ...current,
+            proposals,
+          }))
+        ).pipe(
           Effect.catchTag(
             ["PlatformError", "LockHeld", "SchemaError"],
             Effect.die
@@ -437,15 +478,30 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   const watching = yield* Latch.make();
 
-  const onChange = rebuildHeld(home).pipe(
+  const onMapChange = rebuildHeld(home).pipe(
     Effect.flatMap((next) => SubscriptionRef.update(held, next)),
     Effect.catchCause((cause) =>
       Console.error(`serve could not rebuild the map: ${Cause.pretty(cause)}`)
     )
   );
 
+  // Pending changes don't affect the accepted map, SYSTEM.md or the page, so
+  // a change to proposals.json alone is read and broadcast without a rebuild.
+  const onProposalsChange = reloadProposals(home).pipe(
+    Effect.flatMap((next) => SubscriptionRef.update(held, next)),
+    Effect.catchCause((cause) =>
+      Console.error(
+        `serve could not read proposals.json: ${Cause.pretty(cause)}`
+      )
+    )
+  );
+
   yield* watchMap(home, watching).pipe(
-    Stream.runForEach(() => onChange),
+    Stream.runForEach((names) =>
+      Arr.some([...names], (name) => mapFiles.has(name))
+        ? onMapChange
+        : onProposalsChange
+    ),
     Effect.catchCause((cause) =>
       Console.error(
         `serve stopped watching ${home}: ${Cause.pretty(cause)} Restart serve to pick up changes again.`

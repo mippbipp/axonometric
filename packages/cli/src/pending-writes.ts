@@ -113,11 +113,13 @@ const unreadable = <A>(
  * those in `write`, under the lock. The write is refused, and nothing
  * written, when `write.baseRevision` isn't the file's revision, or when a
  * new or changed change would leave footprints overlapping in the layout
- * the page shows. Returns what `proposals.json` holds after the write.
+ * the page shows. `written` runs under the lock, once the file is saved, to
+ * tell the open pages. Returns what `proposals.json` holds after the write.
  */
 export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   home: string,
-  write: PendingLayoutWrite
+  write: PendingLayoutWrite,
+  written: (proposals: Proposals) => Effect.Effect<void>
 ) {
   const path = yield* Path.Path;
 
@@ -155,6 +157,10 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
       content: yield* encodeProposals(next),
     },
   ]);
+
+  // Still under the lock, so two quick writes tell the pages in the order
+  // they were made.
+  yield* written(next);
 
   return next;
 }, Effect.scoped);

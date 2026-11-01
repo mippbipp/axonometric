@@ -1,4 +1,4 @@
-import { Proposals } from "@axonometric/contracts";
+import { MapState, Proposals } from "@axonometric/contracts";
 import type { LayoutChange } from "@axonometric/contracts";
 import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
@@ -14,7 +14,7 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { makeHome, runCli, startServe } from "./harness.ts";
 
 // Plain HTTP writes to a real serve, for the requests a browser won't send.
 // Each refused write must leave every file in the home folder as it was.
@@ -119,6 +119,20 @@ const putChunked = (
     Effect.provide(NodeHttpClient.layerNodeHttp)
   );
 };
+
+const decodeState = Schema.decodeUnknownEffect(Schema.fromJsonString(MapState));
+
+/** The map as the server holds it now, with what's pending. */
+const getState = (url: string) =>
+  HttpClient.HttpClient.use((client) =>
+    client.get(new URL("/api/state", url))
+  ).pipe(
+    Effect.flatMap((response) => response.text),
+    Effect.flatMap(decodeState),
+    Effect.scoped,
+    Effect.orDie,
+    Effect.provide(NodeHttpClient.layerNodeHttp)
+  );
 
 /** The headers of a write through a reverse proxy for `map.example.test`. */
 const asProxied = (origin: string) => ({
@@ -434,5 +448,120 @@ describe("writing pending layout changes over HTTP", () => {
         )
       );
     })
+  );
+
+  it.live(
+    "doesn't rewrite SYSTEM.md or the read-only page for a pending change",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { home, url } = yield* served;
+
+        const outputs = Arr.map(["SYSTEM.md", "review.html"], (name) =>
+          path.join(path.dirname(home), name)
+        );
+
+        const before = yield* Effect.forEach(outputs, (file) =>
+          fs.stat(file).pipe(Effect.map((info) => info.mtime))
+        );
+
+        const sent = yield* put(url, ownOrigin(url), moveBody(0, 4));
+
+        assert.strictEqual(sent.status, 200, sent.body);
+        // Long enough for the watcher to settle and a rebuild to run, if one will.
+        yield* Effect.sleep("1 second");
+
+        const after = yield* Effect.forEach(outputs, (file) =>
+          fs.stat(file).pipe(Effect.map((info) => info.mtime))
+        );
+
+        assert.deepStrictEqual(after, before);
+      }).pipe(Effect.provide(NodeServices.layer))
+  );
+
+  it.live(
+    "keeps both writes when the layout command and a page write at once",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { home, url } = yield* served;
+
+        const [moved, written] = yield* Effect.all(
+          [
+            runCli(home, ["layout", home, "server", "--x", "10"]),
+            put(url, ownOrigin(url), moveBody(0, 4)),
+          ],
+          { concurrency: "unbounded" }
+        );
+
+        assert.strictEqual(moved.exitCode, 0, moved.stderr);
+        assert.strictEqual(written.status, 200, written.body);
+
+        const layout = yield* fs.readFileString(path.join(home, "layout.json"));
+
+        const proposals = yield* fs.readFileString(
+          path.join(home, "proposals.json")
+        );
+
+        assert.include(layout, '"server": {');
+        assert.match(layout, /"server":\s*\{\s*"x": 10,/u);
+        assert.deepStrictEqual((yield* decodeProposals(proposals)).layout, [
+          pageAt(4),
+        ]);
+      }).pipe(Effect.provide(NodeServices.layer))
+  );
+
+  it.live("broadcasts two quick writes in the order they were made", () =>
+    Effect.gen(function* () {
+      const { url } = yield* served;
+
+      const first = yield* put(url, ownOrigin(url), moveBody(0, 4));
+      const second = yield* put(url, ownOrigin(url), moveBody(1, 6));
+
+      assert.strictEqual(first.status, 200, first.body);
+      assert.strictEqual(second.status, 200, second.body);
+
+      const state = yield* getState(url);
+
+      assert.strictEqual(state.proposals?.revision, 2);
+      assert.deepStrictEqual(state.proposals?.layout, [pageAt(6)]);
+    })
+  );
+
+  it.live(
+    "serves the accepted map when proposals.json is broken, and won't write over it",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const map = yield* fullMap;
+
+        const root = yield* makeHome({
+          ...map,
+          "review/map/proposals.json": "{ not json",
+        });
+
+        const home = path.join(root, "review", "map");
+        const serve = yield* startServe(home, ["--port", "0"]);
+        const state = yield* getState(serve.url);
+
+        assert.strictEqual(state.system, "review");
+        assert.deepStrictEqual(state.proposals?.layout, []);
+        assert.include(serve.output.stderr, "proposals.json");
+
+        const sent = yield* put(
+          serve.url,
+          ownOrigin(serve.url),
+          moveBody(0, 4)
+        );
+
+        assert.strictEqual(sent.status, 409, sent.body);
+        assert.strictEqual(
+          yield* fs.readFileString(path.join(home, "proposals.json")),
+          "{ not json"
+        );
+      }).pipe(Effect.provide(NodeServices.layer))
   );
 });

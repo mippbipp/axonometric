@@ -522,5 +522,21 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
           );
         })
     );
+
+    it.effect(
+      "doesn't stop build, which ignores pending changes, but warns",
+      () =>
+        Effect.gen(function* () {
+          const files = { [proposalsFile]: "{ not json" };
+          const home = yield* makeHome({ ...(yield* fullMap), ...files });
+          const result = yield* runCli(home, ["build", `${home}/review/map`]);
+
+          assert.strictEqual(result.exitCode, 0, result.stderr);
+          assert.include(result.stderr, "warning proposals.json");
+          assert.include(result.stderr, "Pending changes are ignored");
+          assert.isDefined(result.files["review/SYSTEM.md"]);
+          assert.strictEqual(result.files[proposalsFile], "{ not json");
+        })
+    );
   });
 });
