@@ -399,11 +399,9 @@ function DocumentShape({ placement, height, hatch }: DrawProps) {
     at(from, height),
   ];
 
-  const flap = [
-    at(to - fold, height),
-    at(to - fold, height - foldSize),
-    at(to, height - foldSize),
-  ];
+  const foldTop = at(to - fold, height);
+  const foldSide = at(to, height - foldSize);
+  const flap = [foldTop, at(to - fold, height - foldSize), foldSide];
 
   const lines = [0.32, 0.48, 0.64, 0.8];
 
@@ -413,7 +411,22 @@ function DocumentShape({ placement, height, hatch }: DrawProps) {
       <Face points={edge} hatch={hatch} />
       <Face points={topEdge} />
       <polygon data-face="" points={toPoints(page)} className="fill-face" />
-      <Face points={flap} hatch={hatch} />
+      <g data-fold="">
+        <polygon
+          data-face=""
+          points={toPoints(flap)}
+          className="fill-face"
+          strokeWidth={1}
+        />
+        <line
+          data-crease=""
+          x1={foldTop.sx}
+          y1={foldTop.sy}
+          x2={foldSide.sx}
+          y2={foldSide.sy}
+          strokeWidth={1.4}
+        />
+      </g>
       <g transform={alongX(at(from, height))}>
         {Arr.map(lines, (line, index) => (
           <line

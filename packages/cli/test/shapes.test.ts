@@ -87,6 +87,27 @@ describe("shapes and statuses", () => {
     )
   );
 
+  it.live("draws the document's folded corner and its crease", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+
+        const fold = yield* inPage<{ flaps: number; creases: number }>(
+          page,
+          `(() => {
+            const fold = document.querySelector('[data-structure="document"] [data-fold]');
+            return {
+              flaps: fold?.querySelectorAll("polygon[data-face]").length ?? 0,
+              creases: fold?.querySelectorAll("line[data-crease]").length ?? 0,
+            };
+          })()`
+        );
+
+        assert.deepStrictEqual(fold, { flaps: 1, creases: 1 });
+      })
+    )
+  );
+
   it.live("gives live, planned and off their own look and label", () =>
     Effect.scoped(
       Effect.gen(function* () {
