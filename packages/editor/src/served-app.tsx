@@ -92,8 +92,15 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       refusalOf: store.refusalOf,
       place: store.place,
       discard: store.discard,
+      refusalOfMoves: store.refusalOfMoves,
+      applyMoves: store.applyMoves,
+      arrange: store.arrange,
+      canUndo: view.canUndo,
+      canRedo: view.canRedo,
+      undo: store.undo,
+      redo: store.redo,
     }),
-    [accepted, pending, view.stopped, store]
+    [accepted, pending, view.stopped, view.canUndo, view.canRedo, store]
   );
 
   return (

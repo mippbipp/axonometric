@@ -1,10 +1,16 @@
 import { groundProjections } from "@axonometric/contracts";
-import type { GridPoint, Placement, View } from "@axonometric/contracts";
+import type {
+  GridPoint,
+  Placement,
+  StructureMove,
+  View,
+} from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 import { useEditing } from "./editing-context.ts";
+import { groundAt } from "./ground-at.ts";
 import { groundOutline, toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
 
@@ -85,7 +91,13 @@ interface Press {
 
 /** A press past the threshold, and where it would put the structure. */
 interface Drag {
+  /** The structure under the pointer. */
   readonly id: string;
+  /**
+   * Every structure that moves with it: the multi-selection when the press
+   * is on one of its structures, else just `id`.
+   */
+  readonly ids: readonly string[];
   readonly start: Placement;
   readonly next: Placement;
   /** Whether a corner handle is resizing the footprint, not moving it. */
@@ -93,28 +105,6 @@ interface Drag {
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
 }
-
-/**
- * Maps a pointer to the ground: through the viewport's transform into
- * drawing units, then through the view's inverse projection.
- */
-const groundAt = (
-  element: SVGGraphicsElement,
-  event: { readonly clientX: number; readonly clientY: number },
-  view: View
-): GridPoint | undefined => {
-  const matrix = element.getScreenCTM();
-
-  if (matrix === null) {
-    return undefined;
-  }
-
-  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(
-    matrix.inverse()
-  );
-
-  return groundProjections[view].toGround({ sx: point.x, sy: point.y });
-};
 
 const samePlacement = (a: Placement, b: Placement) =>
   a.x === b.x && a.y === b.y && a.w === b.w && a.d === b.d;
@@ -146,15 +136,42 @@ const shiftDrawing = (
   const to = ground.toScreen(drag.next);
   const transform = `translate(${to.sx - from.sx} ${to.sy - from.sy})`;
 
-  const id = CSS.escape(drag.id);
+  const selector = Arr.join(
+    Arr.map(drag.ids, (moving) => {
+      const id = CSS.escape(moving);
 
-  for (const element of root.querySelectorAll<SVGElement>(
-    `[data-structure="${id}"], [data-name-tag="${id}"], [data-pending-badge="${id}"]`
-  )) {
+      return `[data-structure="${id}"], [data-name-tag="${id}"], [data-pending-badge="${id}"]`;
+    }),
+    ", "
+  );
+
+  for (const element of root.querySelectorAll<SVGElement>(selector)) {
     element.setAttribute("transform", transform);
     element.dataset.dragShifted = "";
   }
 };
+
+/** Where each of `ids` goes when the pressed structure goes from `start` to `next`. */
+const movesOf = (
+  ids: readonly string[],
+  placements: Readonly<Partial<Record<string, Placement>>>,
+  { start, next }: Pick<Drag, "start" | "next">
+): readonly StructureMove[] =>
+  Arr.flatMap(ids, (id) => {
+    const at = placements[id];
+
+    return at === undefined
+      ? []
+      : [
+          {
+            target: { kind: "structure" as const, id },
+            position: {
+              x: at.x + next.x - start.x,
+              y: at.y + next.y - start.y,
+            },
+          },
+        ];
+  });
 
 /**
  * Moves and resizes structures by dragging, while the page can edit. It
@@ -180,7 +197,7 @@ export function LayoutEditor({
   readonly children: ReactNode;
 }) {
   const editing = useEditing();
-  const { selected } = useSelection();
+  const { selected, marked } = useSelection();
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
   const dragged = useRef(false);
@@ -218,16 +235,19 @@ export function LayoutEditor({
     const start = placements[id];
     const element = root.current;
 
+    // A Shift-press picks structures or starts a selection box, and never
+    // drags.
     if (
       !live ||
       event.button !== 0 ||
+      event.shiftKey ||
       start === undefined ||
       element === null
     ) {
       return;
     }
 
-    const ground = groundAt(element, event, view);
+    const ground = groundAt({ element, event, view });
 
     if (ground === undefined) {
       return;
@@ -285,7 +305,7 @@ export function LayoutEditor({
       return;
     }
 
-    const ground = groundAt(element, event, view);
+    const ground = groundAt({ element, event, view });
 
     if (ground === undefined) {
       return;
@@ -310,15 +330,28 @@ export function LayoutEditor({
         ? moved(current.start, delta)
         : resized(current.start, current.corner, delta);
 
+    // Pressing a structure of the multi-selection moves the whole set.
+    const ids =
+      current.corner === undefined && marked.has(current.id)
+        ? [...marked]
+        : [current.id];
+
+    const together = ids.length > 1;
+
     setDrag((before) =>
       before !== undefined && samePlacement(before.next, next)
         ? before
         : {
             id: current.id,
+            ids,
             start: current.start,
             next,
             resizing: current.corner !== undefined,
-            refusal: editing.refusalOf(current.id, next),
+            refusal: together
+              ? editing.refusalOfMoves(
+                  movesOf(ids, placements, { start: current.start, next })
+                )
+              : editing.refusalOf(current.id, next),
           }
     );
   };
@@ -339,14 +372,18 @@ export function LayoutEditor({
       drag.refusal === undefined &&
       !samePlacement(drag.next, drag.start)
     ) {
-      editing.place(drag.id, drag.next);
+      if (drag.ids.length > 1) {
+        editing.applyMoves(movesOf(drag.ids, placements, drag));
+      } else {
+        editing.place(drag.id, drag.next);
+      }
     }
 
     setDrag(undefined);
   };
 
   const handlesAt =
-    selected === null
+    selected === null || marked.size > 0
       ? undefined
       : drag?.id === selected
         ? drag.next
@@ -370,17 +407,30 @@ export function LayoutEditor({
       }}
     >
       {children}
-      {drag === undefined ? null : <DragOutline drag={drag} view={view} />}
-      {drag === undefined || drag.resizing ? null : (
-        <polygon
-          data-drag-origin={drag.id}
-          aria-hidden="true"
-          points={toPoints(groundOutline(drag.start, groundProjections[view]))}
-          className="stroke-ink pointer-events-none fill-none opacity-40"
-          strokeWidth={1.2}
-          strokeDasharray="3 3"
-        />
+      {drag === undefined ? null : (
+        <DragOutlines drag={drag} placements={placements} view={view} />
       )}
+      {drag === undefined || drag.resizing
+        ? null
+        : Arr.flatMap(drag.ids, (id) => {
+            const at = placements[id];
+
+            return at === undefined
+              ? []
+              : [
+                  <polygon
+                    key={id}
+                    data-drag-origin={id}
+                    aria-hidden="true"
+                    points={toPoints(
+                      groundOutline(at, groundProjections[view])
+                    )}
+                    className="stroke-ink pointer-events-none fill-none opacity-40"
+                    strokeWidth={1.2}
+                    strokeDasharray="3 3"
+                  />,
+                ];
+          })}
       {live && selected !== null && handlesAt !== undefined ? (
         <ResizeHandles
           id={selected}
@@ -395,21 +445,58 @@ export function LayoutEditor({
   );
 }
 
-/** Where a drop would put the footprint, red while the drop is refused. */
-function DragOutline({
+/** Where a drop would put each footprint, red while the drop is refused. */
+function DragOutlines({
   drag,
+  placements,
   view,
 }: {
   readonly drag: Drag;
+  readonly placements: Readonly<Partial<Record<string, Placement>>>;
+  readonly view: View;
+}) {
+  if (drag.ids.length === 1) {
+    return <DragOutline drag={drag} id={drag.id} at={drag.next} view={view} />;
+  }
+
+  return Arr.flatMap(
+    movesOf(drag.ids, placements, drag),
+    ({ target, position }) => {
+      const at = placements[target.id];
+
+      return at === undefined
+        ? []
+        : [
+            <DragOutline
+              key={target.id}
+              drag={drag}
+              id={target.id}
+              at={{ ...at, ...position }}
+              view={view}
+            />,
+          ];
+    }
+  );
+}
+
+function DragOutline({
+  drag,
+  id,
+  at,
+  view,
+}: {
+  readonly drag: Drag;
+  readonly id: string;
+  readonly at: Placement;
   readonly view: View;
 }) {
   const refused = drag.refusal !== undefined;
 
   return (
     <polygon
-      data-drag-outline={drag.id}
+      data-drag-outline={id}
       data-refused={refused}
-      points={toPoints(groundOutline(drag.next, groundProjections[view]))}
+      points={toPoints(groundOutline(at, groundProjections[view]))}
       className={
         refused
           ? "fill-refused/15 stroke-refused pointer-events-none"

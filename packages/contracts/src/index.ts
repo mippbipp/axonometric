@@ -162,6 +162,17 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  alignMoves,
+  alignments,
+  appendMove,
+  distributeMoves,
+  nudgeMoves,
+  structuresInBox,
+} from "./arrange.ts";
+
+export type { Alignment, Axis, GroundBox } from "./arrange.ts";
+
+export {
   applyLayoutChanges,
   ChangeId,
   checkProposals,

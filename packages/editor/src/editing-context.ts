@@ -4,9 +4,12 @@ import type {
   Layout,
   LayoutChange,
   Placement,
+  StructureMove,
 } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import { createContext, use } from "react";
+
+import type { Arrangement } from "./served-store.ts";
 
 /**
  * Editing the layout, for a page that `serve` serves. The read-only file
@@ -32,6 +35,29 @@ export interface Editing {
    * another pending one, or `undefined` when it went ahead.
    */
   readonly discard: (id: ChangeId) => string | undefined;
+  /** Why `applyMoves` would refuse `moves`, without saving anything. */
+  readonly refusalOfMoves: (
+    moves: readonly StructureMove[]
+  ) => string | undefined;
+  /**
+   * Moves several structures together as one pending change, and so one
+   * undo step. Returns why it was refused, or `undefined` when it went ahead.
+   */
+  readonly applyMoves: (moves: readonly StructureMove[]) => string | undefined;
+  /**
+   * Moves, nudges, aligns or distributes a set as one pending change and one
+   * undo step. `plan` gets where the structures sit now and returns the
+   * moves. Returns why it was refused, or `undefined`.
+   */
+  readonly arrange: (plan: Arrangement) => string | undefined;
+  /** Whether there is an edit to undo. */
+  readonly canUndo: boolean;
+  /** Whether there is an undone edit to redo. */
+  readonly canRedo: boolean;
+  /** Takes back the last edit, in the pending changes on disk too. */
+  readonly undo: () => void;
+  /** Redoes the edit that `undo` took back. */
+  readonly redo: () => void;
 }
 
 export const EditingContext = createContext<Editing | null>(null);

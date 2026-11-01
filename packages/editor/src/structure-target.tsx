@@ -8,8 +8,9 @@ import { useTooltipActions } from "./tooltip-context.ts";
 
 /**
  * The `<g>` that draws structure `id` in a view, with `data-structure`,
- * `data-selected` and `data-pending` on it. Hover and keyboard focus show the tooltip, a click
- * pins the structure, a double-click goes inside it, and Enter or Space pin
+ * `data-selected`, `data-marked` and `data-pending` on it. Hover and keyboard
+ * focus show the tooltip, a click pins the structure, a Shift-click adds it
+ * to or takes it out of the multi-selection, a double-click goes inside it, and Enter or Space pin
  * it from the keyboard.
  *
  * Clicks are plain `onClick`, with no pointer capture, so a pan-and-zoom
@@ -22,11 +23,12 @@ export function StructureTarget({
   className,
   ...rest
 }: SVGProps<SVGGElement> & { readonly id: string }) {
-  const { selected, select, goInside } = useSelection();
+  const { selected, marked, select, toggleMarked, goInside } = useSelection();
   const { show, hide } = useTooltipActions();
   const name = useStructuresById().get(id)?.name ?? id;
   const isSelected = selected === id;
   const editing = useEditing();
+  const isMarked = marked.has(id);
 
   const isPending = pendingStructures(editing).has(id);
 
@@ -45,7 +47,12 @@ export function StructureTarget({
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      select(id);
+
+      if (event.shiftKey && editing?.canEdit === true) {
+        toggleMarked(id);
+      } else {
+        select(id);
+      }
     }
   };
 
@@ -58,14 +65,21 @@ export function StructureTarget({
       )}
       data-structure={id}
       data-selected={isSelected}
+      data-marked={isMarked}
       data-pending={isPending}
       // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
       role="button"
       tabIndex={0}
       aria-label={name}
-      aria-pressed={isSelected}
-      onClick={() => {
-        select(id);
+      aria-pressed={isSelected || isMarked}
+      onClick={(event) => {
+        // Shift-click picks several structures to edit together. A page
+        // that can't edit has nothing to do with a set, so it pins.
+        if (event.shiftKey && editing?.canEdit === true) {
+          toggleMarked(id);
+        } else {
+          select(id);
+        }
       }}
       onDoubleClick={() => {
         goInside(id);

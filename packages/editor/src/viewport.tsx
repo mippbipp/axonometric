@@ -235,7 +235,8 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
         span === undefined
           ? undefined
           : { distance: span.distance, camera: gestures.current() };
-    } else if (!startsOnStructure(event.target)) {
+    } else if (!startsOnStructure(event.target) && !event.shiftKey) {
+      // A Shift-drag on empty space draws a selection box instead.
       press = { ...local(event), camera: gestures.current() };
     }
   };
@@ -334,7 +335,7 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
  * draw, when `fitKey` changes, when it's resized and when the engineer asks.
  * Other changes to `fit`, such as a moved structure, keep the current zoom
  * and pan; the next fit uses the new bounds. Drag on empty space
- * to pan; the wheel or a pinch zooms; `+`, `-` and `0` zoom in, out and to
+ * to pan (Shift-drag is left to the selection box); the wheel or a pinch zooms; `+`, `-` and `0` zoom in, out and to
  * fit. The camera lives in a transform on one group, so panning doesn't
  * re-render `children`. When `ground` changes to another view's projection,
  * the ground point in the middle stays in the middle, and a grid unit keeps
