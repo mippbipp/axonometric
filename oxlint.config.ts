@@ -209,6 +209,16 @@ export default defineConfig({
       },
     },
     {
+      files: ["packages/editor/**/*.ts", "packages/editor/**/*.tsx"],
+      rules: {
+        // The editor is a React app, so native array, record and string
+        // methods are fine there.
+        "effecttsgo/prefer-effect-array": "off",
+        "effecttsgo/prefer-effect-record": "off",
+        "effecttsgo/prefer-effect-string": "off",
+      },
+    },
+    {
       // Vite applies CSS through side-effect imports
       files: ["packages/editor/src/main.tsx"],
       rules: {

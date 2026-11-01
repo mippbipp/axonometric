@@ -43,8 +43,6 @@ catalogs:
     "@effect/vitest": 4.1.0
     effect: 4.1.0
 
-minimumReleaseAge: 1440
-
 # @effect/platform-node declares `@effect/platform-node-shared: ^4.1.0`.
 # Keep the shared package on the same release as effect, so a newer shared
 # patch can't target effect APIs the pinned effect doesn't have.
