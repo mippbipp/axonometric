@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "tsdown";
+import type { UserConfig } from "tsdown";
 
 const editorPageModule = /[\\/]cli[\\/]src[\\/]editor-page\.ts$/u;
 
@@ -8,9 +9,7 @@ const editorPageHtml = fileURLToPath(
   new URL("../editor/dist/index.html", import.meta.url)
 );
 
-export default defineConfig({
-  entry: { bin: "src/bin.ts" },
-  format: "esm",
+const shared: UserConfig = {
   platform: "node",
   target: "node24.22",
   dts: false,
@@ -41,4 +40,17 @@ export default defineConfig({
       },
     },
   ],
-});
+};
+
+export default defineConfig([
+  { ...shared, entry: { bin: "src/bin.ts" }, format: "esm" },
+  // Node 24's single executables only run a CommonJS entry script, so the
+  // binaries are built from this copy (see scripts/build-sea.ts).
+  {
+    ...shared,
+    entry: { sea: "src/bin.ts" },
+    format: "cjs",
+    clean: false,
+    outExtensions: () => ({ js: ".cjs" }),
+  },
+]);
