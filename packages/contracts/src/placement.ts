@@ -12,11 +12,23 @@ export const defaultFootprint = { w: 2, d: 2 } as const;
 /** Clear ground between two structures, so name tags and routes have room. */
 export const structureGap = 2;
 
-/** Clear ground between two groups' zones. */
-export const groupGap = 4;
+/**
+ * How far a group's zone reaches past its structures' footprints, on every
+ * side.
+ */
+export const zonePadding = 1;
+
+/** Clear ground left between two zones, for routes to run through. */
+export const zoneGap = 2;
+
+/** Clear ground between the footprints of two groups' structures. */
+export const groupGap = 2 * zonePadding + zoneGap;
 
 /** Distance between neighbouring slots of a group's grid. */
 const pitch = defaultFootprint.w + structureGap;
+
+/** The widest a block's slots are spread to keep name tags clear. */
+const widestPitch = 4 * pitch;
 
 /** How far past the placed structures placement looks for a free slot. */
 const searchMargin = 3 * pitch;
@@ -225,6 +237,162 @@ const choose = (
     : fallback;
 };
 
+/**
+ * Orders a group's members so that structures joined by hops come next to
+ * each other: each next member is the one with the most hops to those
+ * already chosen, ties going to data.mjs order.
+ */
+const connectedOrder = (data: MapData, members: readonly Structure[]) => {
+  const ids = new Set(Arr.map(members, ({ id }) => id));
+
+  const links = (a: string, b: string) =>
+    Arr.filter(
+      data.hops,
+      (hop) =>
+        (hop.from === a && hop.to === b) || (hop.from === b && hop.to === a)
+    ).length;
+
+  const chosen: Structure[] = [];
+  let rest = Arr.filter(members, ({ id }) => ids.has(id));
+
+  while (Arr.isReadonlyArrayNonEmpty(rest)) {
+    const strength = (candidate: Structure) =>
+      Arr.reduce(chosen, 0, (sum, done) => sum + links(candidate.id, done.id));
+
+    const next = Arr.reduce(rest, rest[0], (best, candidate) =>
+      strength(candidate) > strength(best) ? candidate : best
+    );
+
+    chosen.push(next);
+    rest = Arr.filter(rest, (candidate) => candidate.id !== next.id);
+  }
+
+  return chosen;
+};
+
+/** A group's new structures laid out as a block, before it's moved into place. */
+interface Block {
+  readonly members: readonly PlacedStructure[];
+  readonly w: number;
+  readonly d: number;
+}
+
+const shift = (
+  members: readonly PlacedStructure[],
+  offset: Point
+): readonly PlacedStructure[] =>
+  Arr.map(members, ({ structure, placement }) => ({
+    structure,
+    placement: {
+      ...placement,
+      x: placement.x + offset.x,
+      y: placement.y + offset.y,
+    },
+  }));
+
+/** Whether no name tag in `members` is drawn over another member's box. */
+const tagsClear = (members: readonly PlacedStructure[]) =>
+  Arr.every(members, (a) =>
+    Arr.every(
+      members,
+      (b) => a.structure.id === b.structure.id || !tagCovers(a, b)
+    )
+  );
+
+/**
+ * Lays out a new group as a block about as wide as it is deep, filled row by
+ * row in a snake, so each member sits next to the one before it. Slots are
+ * `pitch` apart, widened in half units until no name tag covers a box.
+ */
+const blockOf = (data: MapData, members: readonly Structure[]): Block => {
+  const ordered = connectedOrder(data, members);
+  const columns = Math.ceil(Math.sqrt(ordered.length));
+  const rows = Math.ceil(ordered.length / columns);
+
+  const lay = (spacing: number) =>
+    Arr.map(ordered, (structure, index) => {
+      const row = Math.floor(index / columns);
+      const step = index % columns;
+      const column = row % 2 === 0 ? step : columns - 1 - step;
+
+      return {
+        structure,
+        placement: {
+          x: column * spacing,
+          y: row * spacing,
+          ...defaultFootprint,
+        },
+      };
+    });
+
+  const spacings = Arr.map(
+    Arr.range(0, (widestPitch - pitch) * 2),
+    (step) => pitch + step / 2
+  );
+
+  const spacing = Option.getOrElse(
+    Arr.findFirst(spacings, (candidate) => tagsClear(lay(candidate))),
+    () => widestPitch
+  );
+
+  return {
+    members: lay(spacing),
+    w: (columns - 1) * spacing + defaultFootprint.w,
+    d: (rows - 1) * spacing + defaultFootprint.d,
+  };
+};
+
+/** Where row or column `index` starts, given the sizes of those before it. */
+const startOf = (sizes: readonly number[], index: number) =>
+  Arr.reduce(sizes.slice(0, index), 0, (sum, size) => sum + size + groupGap);
+
+/**
+ * Places the blocks of groups that have nothing placed yet in a grid of
+ * rows and columns, in `groups` order, `groupGap` apart. The grid starts at
+ * the origin, or to the right of everything already placed.
+ */
+const arrangeBlocks = (
+  placed: readonly PlacedStructure[],
+  blocks: readonly Block[]
+): readonly PlacedStructure[] => {
+  const columns = Math.ceil(Math.sqrt(blocks.length));
+
+  const origin = boundsOf(footprints(placed)).pipe(
+    Option.map((all) => ({ x: all.x + all.w + groupGap, y: all.y })),
+    Option.getOrElse(() => ({ x: 0, y: 0 }))
+  );
+
+  const columnOf = (index: number) => index % columns;
+  const rowOf = (index: number) => Math.floor(index / columns);
+
+  const widths = Arr.map(Arr.range(0, columns - 1), (column) =>
+    Math.max(
+      0,
+      ...Arr.flatMap(blocks, (block, index) =>
+        columnOf(index) === column ? [block.w] : []
+      )
+    )
+  );
+
+  const rowCount = Math.ceil(blocks.length / columns);
+
+  const depths = Arr.map(Arr.range(0, rowCount - 1), (row) =>
+    Math.max(
+      0,
+      ...Arr.flatMap(blocks, (block, index) =>
+        rowOf(index) === row ? [block.d] : []
+      )
+    )
+  );
+
+  return Arr.flatMap(blocks, (block, index) =>
+    shift(block.members, {
+      x: origin.x + startOf(widths, columnOf(index)),
+      y: origin.y + startOf(depths, rowOf(index)),
+    })
+  );
+};
+
 /** What placement did to a layout. */
 export interface PlacedLayout {
   /** Every structure's placement, in data.mjs order. */
@@ -240,11 +408,14 @@ export interface PlacedLayout {
  * structures that no longer exist. Structures that already have a placement
  * keep it exactly.
  *
- * New structures are placed one group at a time, in the order of `groups`,
- * and within a group in data.mjs order. Each lands on a half unit with a 2×2
- * footprint, clear of every other footprint, next to its own group and away
- * from other groups' zones. The same input always gives the same result. The
- * revision is left as it is.
+ * A group with nothing placed yet is laid out as a block about as wide as it
+ * is deep, with structures joined by hops next to each other, and the blocks
+ * sit in rows and columns in `groups` order. A new structure in a group that
+ * already has placed members takes the free slot nearest its group and the
+ * structures its hops connect to. Every new placement lands on a half unit
+ * with a 2×2 footprint, clear of every other footprint and name tag, and
+ * keeps its zone `groupGap` away from other groups' structures. The same
+ * input always gives the same result. The revision is left as it is.
  */
 export const placeStructures: {
   (layout: Layout): (data: MapData) => PlacedLayout;
@@ -275,8 +446,41 @@ export const placeStructures: {
     )
   );
 
+  // Groups with nothing placed yet are laid out as blocks. The rest of the
+  // new structures join their group one at a time.
+  const placedGroups = new Set(
+    Arr.map(initial, ({ structure }) => structure.group)
+  );
+
+  const fresh = Arr.filter(
+    Arr.dedupe(Arr.map(unplaced, ({ group }) => group)),
+    (group) => !placedGroups.has(group)
+  );
+
+  const blocks = arrangeBlocks(
+    initial,
+    Arr.map(fresh, (group) =>
+      blockOf(
+        data,
+        Arr.filter(unplaced, (structure) => structure.group === group)
+      )
+    )
+  );
+
+  const blockSpot = new Map(
+    Arr.map(blocks, ({ structure, placement }) => [structure.id, placement])
+  );
+
   const placed = Arr.reduce(unplaced, initial, (sofar, structure) => {
-    const spot = choose(data, sofar, structure);
+    // A block spot is kept unless something placed by hand is in its way.
+    const planned = Option.filter(
+      Option.fromNullishOr(blockSpot.get(structure.id)),
+      (placement) => fits(sofar, { structure, placement })
+    );
+
+    const spot = Option.getOrElse(planned, () =>
+      choose(data, sofar, structure)
+    );
 
     return [
       ...sofar,

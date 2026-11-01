@@ -6,6 +6,8 @@ import {
   footprintsOverlap,
   placeStructures,
   tagCovers,
+  zoneGap,
+  zonePadding,
 } from "../src/index.ts";
 import type {
   Hop,
@@ -68,6 +70,13 @@ const placementOf = (layout: Layout, id: string): Placement => {
   return placement;
 };
 
+const grow = (box: Placement, by: number): Placement => ({
+  x: box.x - by,
+  y: box.y - by,
+  w: box.w + 2 * by,
+  d: box.d + 2 * by,
+});
+
 const centre = (placement: Placement) => ({
   x: placement.x + placement.w / 2,
   y: placement.y + placement.d / 2,
@@ -89,6 +98,13 @@ const zoneOf = (layout: Layout, ids: readonly string[]) => {
     d: Math.max(...Arr.map(boxes, (box) => box.y + box.d)) - top,
   };
 };
+
+/** The ids of `data`'s structures in `group`. */
+const idsIn = (data: MapData, group: string) =>
+  Arr.map(
+    Arr.filter(data.structures, (s) => s.group === group),
+    (s) => s.id
+  );
 
 /** Three groups of four, with hops inside groups and one between groups. */
 const crowded = mapOf(
@@ -229,6 +245,78 @@ describe("placement", () => {
 
         assert.isBelow(gap(added, at(8, 0)), gap(added, at(0, 0)));
       })
+  );
+
+  it.effect(
+    "lays a group of four or more out in more than one row and column",
+    () =>
+      Effect.sync(() => {
+        const { layout } = placeStructures(crowded, layoutOf());
+        const members = ["b1", "b2", "b3", "b4"];
+        const spots = Arr.map(members, (id) => placementOf(layout, id));
+        const xs = Arr.dedupe(Arr.map(spots, (spot) => spot.x));
+        const ys = Arr.dedupe(Arr.map(spots, (spot) => spot.y));
+
+        assert.isAbove(xs.length, 1);
+        assert.isAbove(ys.length, 1);
+      })
+  );
+
+  it.effect("puts groups side by side in rows and columns", () =>
+    Effect.sync(() => {
+      const { layout } = placeStructures(crowded, layoutOf());
+
+      const zones = Arr.map(["a", "b", "c"], (group) =>
+        zoneOf(layout, idsIn(crowded, group))
+      );
+
+      const lefts = Arr.dedupe(Arr.map(zones, (zone) => zone.x));
+      const tops = Arr.dedupe(Arr.map(zones, (zone) => zone.y));
+
+      assert.isAbove(lefts.length, 1);
+      assert.isAbove(tops.length, 1);
+    })
+  );
+
+  it.effect("keeps structures joined by a hop next to each other", () =>
+    Effect.sync(() => {
+      const data = mapOf(
+        Arr.map(["a", "b", "c", "d", "e", "f", "g", "h", "i"], (id) =>
+          structure(id)
+        ),
+        [hop("a", "i")]
+      );
+
+      const { layout } = placeStructures(data, layoutOf());
+      const a = placementOf(layout, "a");
+      const i = placementOf(layout, "i");
+
+      assert.isAtMost(gap(a, i), gap(a, placementOf(layout, "h")));
+    })
+  );
+
+  it.effect("keeps each zone's padding clear of other groups' structures", () =>
+    Effect.sync(() => {
+      const { layout } = placeStructures(crowded, layoutOf());
+
+      for (const group of ["a", "b", "c"]) {
+        const zone = grow(
+          zoneOf(layout, idsIn(crowded, group)),
+          zonePadding + zoneGap / 2
+        );
+
+        const others = Arr.filter(crowded.structures, (s) => s.group !== group);
+
+        for (const other of others) {
+          const footprint = grow(placementOf(layout, other.id), zoneGap / 2);
+
+          assert.isFalse(
+            footprintsOverlap(zone, footprint),
+            `${other.id} is inside ${group}'s zone`
+          );
+        }
+      }
+    })
   );
 
   it.effect("starts a new group's zone next to everything already placed", () =>

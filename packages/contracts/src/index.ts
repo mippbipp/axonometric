@@ -39,6 +39,8 @@ export {
   groupGap,
   placeStructures,
   structureGap,
+  zoneGap,
+  zonePadding,
 } from "./placement.ts";
 
 export type { PlacedLayout } from "./placement.ts";
