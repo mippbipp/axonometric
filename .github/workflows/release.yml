@@ -127,20 +127,14 @@ jobs:
           # The archives are already compressed.
           compression-level: 0
 
-  # Stages the npm package through trusted publishing. npm trusts this
-  # workflow file and the `npm` environment, so no token is stored anywhere.
-  # The staged version goes live once the maintainer approves it with 2FA.
-  # With trusted publishing from a public repo, npm adds provenance.
-  npm:
-    needs: [meta, binary]
+  # Builds, packs and checks the npm tarball, without an OIDC token, so
+  # nothing in the install or build can request one.
+  npm-pack:
+    needs: meta
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-24.04
-    environment: npm
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+    outputs:
+      node-version: ${{ steps.node.outputs.version }}
 
     steps:
       - uses: actions/checkout@v7
@@ -153,19 +147,48 @@ jobs:
 
       - run: pnpm turbo run build --filter axonometric
 
-      # The same pack and check as CI, so the tarball staged below is the one
-      # that passed.
+      # The same pack and check as CI.
       - run: pnpm --filter axonometric pack:npm "$RUNNER_TEMP/axonometric.tgz"
 
-      # The same Node as pnpm's, from devEngines.runtime, with its npm
-      # upgraded. npm stage publish needs npm 11.15.0 or later. No
-      # registry-url, so no .npmrc expects a token.
+      - id: node
+        run: echo "version=$(jq -r .devEngines.runtime.version package.json)" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-tarball
+          path: ${{ runner.temp }}/axonometric.tgz
+          if-no-files-found: error
+
+  # Stages the checked tarball through trusted publishing. npm trusts this
+  # workflow file and the `npm` environment, so no token is stored anywhere.
+  # The staged version goes live once the maintainer approves it with 2FA.
+  # This job has the OIDC token, so it checks out nothing and runs no project
+  # code. `--provenance` requests a provenance statement explicitly.
+  npm:
+    needs: [meta, binary, npm-pack]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-tarball
+          path: ${{ runner.temp }}/npm
+
+      # No registry-url, so no .npmrc expects a token.
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version: ${{ needs.npm-pack.outputs.node-version }}
           package-manager-cache: false
 
-      - run: npm install -g npm@11.21.1
+      # npm stage publish needs npm 11.15.0 or later.
+      - run: npm install -g --ignore-scripts npm@11.21.1
 
       # A pre-release must name its tag, and the tag can't change after
       # staging.
@@ -176,7 +199,7 @@ jobs:
             tag=next
           fi
           npm --version
-          npm stage publish "$RUNNER_TEMP/axonometric.tgz" \
+          npm stage publish "$RUNNER_TEMP/npm/axonometric.tgz" \
             --tag "$tag" \
             --provenance
 
