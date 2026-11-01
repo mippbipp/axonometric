@@ -28,4 +28,4 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
 ### Development
 
-Read `CONTRIBUTING.md` before running commands, changing `pnpm-lock.yaml` or releasing.
+Read `CONTRIBUTING.md` before running commands or changing `pnpm-lock.yaml`.
