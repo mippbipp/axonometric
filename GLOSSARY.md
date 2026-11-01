@@ -36,6 +36,14 @@ _Avoid_: open issue, TODO
 One arrow from a structure to a structure, with a label and an example payload.
 _Avoid_: edge, link, connection
 
+**Route**:
+The right-angle path a hop's arrow takes on the ground grid, from the edge of one footprint to the edge of the other. The router computes it from the layout, around other footprints when it can.
+_Avoid_: path, wire, edge
+
+**Route override**:
+A route saved by hand in `layout.json` as a list of grid points, followed instead of the automatic route.
+_Avoid_: manual route, waypoints
+
 **Flow**:
 A named, ordered list of hops.
 _Avoid_: path, sequence
