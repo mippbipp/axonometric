@@ -1,8 +1,9 @@
 name: Release
 
-# On a version tag, builds the single-executable binaries and publishes them
-# as a GitHub Release. On pull requests that touch the binary build, it runs
-# the same builds and checks without releasing anything.
+# On a version tag, builds the single-executable binaries, stages the npm
+# package and publishes the binaries as a GitHub Release. On pull requests
+# that touch the build, it runs the same builds and checks without releasing
+# anything.
 
 on:
   push:
@@ -126,7 +127,82 @@ jobs:
           # The archives are already compressed.
           compression-level: 0
 
-  # The npm publish job (#29) goes beside this one, after `meta` and `binary`.
+  # Builds, packs and checks the npm tarball, without an OIDC token, so
+  # nothing in the install or build can request one.
+  npm-pack:
+    needs: meta
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    outputs:
+      node-version: ${{ steps.node.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # npm's docs advise against caching in release builds.
+      - uses: pnpm/setup@v3
+        with:
+          cache: false
+          require-lockfile: true
+
+      - run: pnpm turbo run build --filter axonometric
+
+      # The same pack and check as CI.
+      - run: pnpm --filter axonometric pack:npm "$RUNNER_TEMP/axonometric.tgz"
+
+      - id: node
+        run: echo "version=$(jq -r .devEngines.runtime.version package.json)" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-tarball
+          path: ${{ runner.temp }}/axonometric.tgz
+          if-no-files-found: error
+
+  # Stages the checked tarball through trusted publishing. npm trusts this
+  # workflow file and the `npm` environment, so no token is stored anywhere.
+  # The staged version goes live once the maintainer approves it with 2FA.
+  # This job has the OIDC token, so it checks out nothing and runs no project
+  # code. `--provenance` requests a provenance statement explicitly.
+  npm:
+    needs: [meta, binary, npm-pack]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-tarball
+          path: ${{ runner.temp }}/npm
+
+      # No registry-url, so no .npmrc expects a token.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ needs.npm-pack.outputs.node-version }}
+          package-manager-cache: false
+
+      # npm stage publish needs npm 11.15.0 or later.
+      - run: npm install -g --ignore-scripts npm@11.21.1
+
+      # A pre-release must name its tag, and the tag can't change after
+      # staging.
+      - name: Stage the npm package
+        run: |
+          tag=latest
+          if [ "$PRERELEASE" = true ]; then
+            tag=next
+          fi
+          npm --version
+          npm stage publish "$RUNNER_TEMP/npm/axonometric.tgz" \
+            --tag "$tag" \
+            --provenance
+
   release:
     needs: [meta, binary]
     if: github.event_name == 'push' && github.ref_type == 'tag'
@@ -175,6 +251,8 @@ jobs:
             echo
             echo "Each archive holds one binary with Node $node_version built in, so you don't need Node installed. The macOS binaries have an ad-hoc signature and aren't notarized. The Windows binary isn't signed. SHA256SUMS lists every file's checksum."
             echo
+            echo "The npm package \`axonometric@$VERSION\` is staged on npm and goes live once the maintainer approves it."
+            echo
             echo "| Download | Size |"
             echo "| --- | --- |"
             for file in *; do
@@ -184,7 +262,9 @@ jobs:
           } >../notes.md
           cat ../notes.md
 
-      - name: Create the release
+      # A draft until the npm package is staged, so a failed npm job doesn't
+      # leave a public release without its npm package.
+      - name: Create the release as a draft
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -195,6 +275,21 @@ jobs:
           gh release create "v$VERSION" release/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
+            --draft \
             --title "v$VERSION" \
             --notes-file notes.md \
             "${prerelease[@]}"
+
+  publish-release:
+    needs: [meta, release, npm]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
