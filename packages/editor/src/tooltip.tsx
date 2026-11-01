@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { useStructuresById } from "./structures.ts";
 import { HoveredContext, TooltipActionsContext } from "./tooltip-context.ts";
 import type { Hovered, TooltipActions } from "./tooltip-context.ts";
+import { tooltipPlacement } from "./tooltip-placement.ts";
+import type { Box } from "./tooltip-placement.ts";
 
 /**
  * Holds which structure the tooltip shows. The actions sit in their own
@@ -44,12 +46,6 @@ export function TooltipProvider({
   );
 }
 
-/** How far the tooltip sits from the pointer, in pixels. */
-const offset = 14;
-
-/** The gap the tooltip keeps from the canvas's edges, in pixels. */
-const edge = 4;
-
 function TooltipBox({
   hovered,
   children,
@@ -59,10 +55,9 @@ function TooltipBox({
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
-  // Placed through the DOM: the position changes with every structure, and
-  // the lint rules keep inline styles out of JSX. The tooltip sits below and
-  // right of the pointer, flips to the other side where it would leave the
-  // canvas, and is clamped to the canvas as a last resort.
+  // The lint rules keep inline styles out of JSX, and the position depends
+  // on what's drawn, so the effect places the tooltip through the DOM. See
+  // `tooltipPlacement` for where it goes.
   useLayoutEffect(() => {
     const element = ref.current;
     const canvas = element?.offsetParent;
@@ -71,22 +66,38 @@ function TooltipBox({
       return;
     }
 
+    const toBox = (rect: DOMRect): Box => ({
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
+
+    const target = canvas.querySelector(
+      `[data-structure="${CSS.escape(hovered.id)}"]`
+    );
+
+    const boxesOf = (selector: string) =>
+      [...canvas.querySelectorAll(selector)].flatMap((drawn) =>
+        drawn === target ? [] : [toBox(drawn.getBoundingClientRect())]
+      );
+
     const bounds = canvas.getBoundingClientRect();
-    const width = element.offsetWidth;
-    const height = element.offsetHeight;
-    const x = hovered.x - bounds.left;
-    const y = hovered.y - bounds.top;
 
-    const place = (at: number, size: number, room: number) => {
-      const after = at + offset;
-      const before = at - offset - size;
-      const preferred = after + size <= room - edge ? after : before;
+    const at = tooltipPlacement({
+      canvas: toBox(bounds),
+      target:
+        target === null
+          ? { left: hovered.x, top: hovered.y, width: 0, height: 0 }
+          : toBox(target.getBoundingClientRect()),
+      others: boxesOf("[data-structure]"),
+      tags: boxesOf("[data-name-tag]"),
+      size: { width: element.offsetWidth, height: element.offsetHeight },
+      pointerX: hovered.x,
+    });
 
-      return Math.max(edge, Math.min(preferred, room - size - edge));
-    };
-
-    element.style.left = `${place(x, width, bounds.width)}px`;
-    element.style.top = `${place(y, height, bounds.height)}px`;
+    element.style.left = `${at.left - bounds.left}px`;
+    element.style.top = `${at.top - bounds.top}px`;
   }, [hovered]);
 
   return (
@@ -103,7 +114,7 @@ function TooltipBox({
 
 /**
  * The hovered structure's code, name, status and one-liner. Put it inside
- * the positioned element that holds the canvas: it stays within that
+ * the positioned element that holds the canvas, and it stays within that
  * element's box.
  */
 export function StructureTooltip() {
