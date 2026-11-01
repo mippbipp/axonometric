@@ -1,12 +1,12 @@
 // Packs the npm package into the tarball path given as the only argument,
-// then checks what's inside. CI runs it on every pull request, and the
-// release workflow stages the tarball it writes, so the check covers exactly
-// what gets published. Run `pnpm build` first.
+// then checks what's inside with the system tar. CI runs it on every pull
+// request, and the release workflow stages the tarball it writes, so the
+// check covers exactly what gets published. Run `pnpm build` first.
 //
-// The tarball must hold only package.json, README.md, LICENSE and
-// dist/bin.mjs. The editor's HTML is embedded in dist/bin.mjs as a string
-// (see tsdown.config.ts), so it has no file of its own. dist/sea.cjs is only
-// for the single-executable binaries.
+// `expectedFiles` is the one list of what the tarball may hold. The editor's
+// HTML is embedded in dist/bin.mjs as a string (see tsdown.config.ts), so it
+// has no file of its own. dist/sea.cjs is only for the single-executable
+// binaries.
 //
 // pnpm packs it, not npm, because pnpm replaces `workspace:` and `catalog:`
 // specifiers with real versions. The repo's README.md and LICENSE are copied
@@ -21,6 +21,7 @@ import {
   Path,
   Record as Rec,
   Schema,
+  Stream,
   String as Str,
 } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
@@ -38,6 +39,15 @@ const expectedFiles = [
 ] as const;
 
 const repoFiles = ["README.md", "LICENSE"] as const;
+
+const forbidden = Schema.optionalKey(Schema.Never);
+
+const InstallScriptsAbsent = Schema.Struct({
+  preinstall: forbidden,
+  install: forbidden,
+  postinstall: forbidden,
+  prepare: forbidden,
+});
 
 // npm's provenance check compares repository.url with the GitHub repo that
 // published the package.
@@ -63,6 +73,8 @@ const PublishedManifest = Schema.Struct({
   optionalDependencies: Schema.optionalKey(Schema.Never),
   peerDependencies: Schema.optionalKey(Schema.Never),
   bundleDependencies: Schema.optionalKey(Schema.Never),
+  // npm runs these on the user's machine when the package installs.
+  scripts: Schema.optionalKey(InstallScriptsAbsent),
 });
 
 const decodeManifest = Schema.decodeUnknownEffect(
@@ -70,54 +82,43 @@ const decodeManifest = Schema.decodeUnknownEffect(
   { errors: "all" }
 );
 
-interface TarEntry {
-  readonly name: string;
-  readonly content: Uint8Array;
-}
+const PackResult = Schema.Struct({
+  filename: Schema.String,
+  files: Schema.Array(Schema.Struct({ path: Schema.String })),
+});
 
-const blockSize = 512;
+const decodePackResult = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(PackResult)
+);
 
-const readField = (header: Uint8Array, start: number, length: number) =>
-  Str.split(
-    new TextDecoder().decode(header.subarray(start, start + length)),
-    "\0"
-  )[0] ?? "";
+/** Runs a command and returns its stdout, failing on a non-zero exit. */
+const runText = Effect.fnUntraced(function* (
+  command: string,
+  args: readonly string[],
+  cwd: string
+) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
-/**
- * Lists a ustar archive's entries. npm tarballs hold regular files only, with
- * names short enough to need no extension headers, so anything else fails.
- */
-const readTar = Effect.fnUntraced(function* (archive: Uint8Array) {
-  const entries: TarEntry[] = [];
-  let offset = 0;
+  const handle = yield* spawner.spawn(
+    ChildProcess.make(command, args, { cwd, stderr: "inherit" })
+  );
 
-  while (offset + blockSize <= archive.length) {
-    const header = archive.subarray(offset, offset + blockSize);
+  const [stdout, exitCode] = yield* Effect.all(
+    [Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode],
+    { concurrency: "unbounded" }
+  );
 
-    if (header.every((byte) => byte === 0)) {
-      break;
-    }
-
-    const prefix = readField(header, 345, 155);
-    const baseName = readField(header, 0, 100);
-    const name = prefix === "" ? baseName : `${prefix}/${baseName}`;
-    const size = Number.parseInt(Str.trim(readField(header, 124, 12)), 8);
-    const type = readField(header, 156, 1);
-
-    if (type !== "" && type !== "0") {
-      return yield* PackCheckFailed.make({
-        message: `The tarball has an entry of type "${type}" at ${name}. Expected regular files only.`,
-      });
-    }
-
-    const start = offset + blockSize;
-
-    entries.push({ name, content: archive.subarray(start, start + size) });
-    offset = start + Math.ceil(size / blockSize) * blockSize;
+  if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
+    return yield* PackCheckFailed.make({
+      message: `${command} ${Arr.join(args, " ")} exited with code ${exitCode}.`,
+    });
   }
 
-  return entries;
-});
+  return stdout;
+}, Effect.scoped);
+
+const sorted = (paths: readonly string[]) =>
+  Arr.join(Arr.sort(paths, Order.String), "\n  ");
 
 /** Copies the repo's README.md and LICENSE in, and removes them afterwards. */
 const withRepoFiles = Effect.fnUntraced(function* (
@@ -153,7 +154,6 @@ const withRepoFiles = Effect.fnUntraced(function* (
 const packNpm = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const outArgument = Arr.get(process.argv, 2);
 
   if (Option.isNone(outArgument)) {
@@ -168,65 +168,45 @@ const packNpm = Effect.gen(function* () {
 
   yield* fs.remove(tarball, { force: true });
 
-  yield* Effect.scoped(
-    Effect.gen(function* () {
-      yield* withRepoFiles(packageDir, repoDir);
-
-      const exitCode = yield* spawner.exitCode(
-        ChildProcess.make("pnpm", ["pack", "--out", tarball], {
-          cwd: packageDir,
-          stdout: "inherit",
-          stderr: "inherit",
-        })
-      );
-
-      if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
-        return yield* PackCheckFailed.make({
-          message: `pnpm pack exited with code ${exitCode}.`,
-        });
-      }
-
-      return exitCode;
-    })
+  const packOutput = yield* Effect.scoped(
+    Effect.andThen(
+      withRepoFiles(packageDir, repoDir),
+      runText("pnpm", ["pack", "--json", "--out", tarball], packageDir)
+    )
   );
 
-  const archive = yield* fs.readFile(tarball);
-
-  const entries = yield* readTar(
-    yield* Effect.tryPromise({
-      try: () =>
-        new Response(
-          new Blob([new Uint8Array(archive)])
-            .stream()
-            .pipeThrough(new DecompressionStream("gzip"))
-        ).bytes(),
-      catch: (cause) =>
-        PackCheckFailed.make({
-          message: `${tarball} isn't a gzip file: ${String(cause)}`,
-        }),
-    })
+  const packed = yield* decodePackResult(packOutput).pipe(
+    Effect.mapError((error) =>
+      PackCheckFailed.make({
+        message: `Can't read pnpm pack --json output:\n${error.message}`,
+      })
+    )
   );
 
-  const names = Arr.sort(
-    Arr.map(entries, (entry) => Str.replace(/^package\//u, "")(entry.name)),
-    Order.String
-  );
+  const reported = sorted(Arr.map(packed.files, (file) => file.path));
 
-  if (Arr.join(names, "\n") !== Arr.join(expectedFiles, "\n")) {
+  // pnpm's report must match what tar finds in the tarball it wrote.
+  const tarListing = yield* runText("tar", ["-tzf", tarball], packageDir);
+  const tarLines = Arr.filter(Str.split(tarListing, "\n"), Str.isNonEmpty);
+  const listed = sorted(Arr.map(tarLines, Str.replace(/^package\//u, "")));
+
+  if (listed !== reported) {
     return yield* PackCheckFailed.make({
-      message: `The tarball holds:\n  ${Arr.join(names, "\n  ")}\nExpected exactly:\n  ${Arr.join(expectedFiles, "\n  ")}`,
+      message: `pnpm pack reported:\n  ${reported}\nbut ${tarball} holds:\n  ${listed}`,
     });
   }
 
-  const manifestEntry = Arr.findFirst(
-    entries,
-    (entry) => entry.name === "package/package.json"
-  );
+  if (listed !== sorted(expectedFiles)) {
+    return yield* PackCheckFailed.make({
+      message: `The tarball holds:\n  ${listed}\nExpected exactly:\n  ${sorted(expectedFiles)}`,
+    });
+  }
 
-  const manifestText = Option.match(manifestEntry, {
-    onNone: () => "",
-    onSome: (entry) => new TextDecoder().decode(entry.content),
-  });
+  const manifestText = yield* runText(
+    "tar",
+    ["-xzOf", tarball, "package/package.json"],
+    packageDir
+  );
 
   for (const protocol of ["workspace:", "catalog:"]) {
     if (Str.includes(protocol)(manifestText)) {
@@ -244,7 +224,9 @@ const packNpm = Effect.gen(function* () {
     )
   );
 
-  yield* Effect.log(`${tarball} holds ${Arr.join(names, ", ")}.`);
+  yield* Effect.log(
+    `${tarball} holds ${Arr.join(Arr.sort(expectedFiles, Order.String), ", ")}.`
+  );
 
   return tarball;
 });
