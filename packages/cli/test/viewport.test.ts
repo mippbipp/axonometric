@@ -138,15 +138,17 @@ describe("the viewport", () => {
         const { page } = yield* builtPage;
         const fitted = yield* scaleOf(page);
 
-        for (let turn = 0; turn < 20; turn += 1) {
-          yield* wheelAtCentre(page, -1000);
+        // Each step zooms by e^3, about 20 times, so a few reach either
+        // limit. Many small steps time out on slower machines.
+        for (let turn = 0; turn < 4; turn += 1) {
+          yield* wheelAtCentre(page, -2000);
         }
 
         yield* waitForScale(page, `> ${fitted * 2}`);
         const most = yield* scaleOf(page);
 
-        for (let turn = 0; turn < 40; turn += 1) {
-          yield* wheelAtCentre(page, 1000);
+        for (let turn = 0; turn < 8; turn += 1) {
+          yield* wheelAtCentre(page, 2000);
         }
 
         yield* waitForScale(page, `< ${fitted}`);
