@@ -53,7 +53,11 @@ const zoomIn = (page: Page) =>
 /** Asserts that every drawn structure and name tag is inside the canvas. */
 const assertInside = Effect.fnUntraced(function* (page: Page) {
   const [svg] = yield* boxesOf(page, "svg[data-scale]");
-  const drawn = yield* boxesOf(page, "[data-structure], [data-name-tag]");
+
+  const drawn = yield* boxesOf(
+    page,
+    "[data-structure], [data-name-tag], [data-zone]"
+  );
 
   assert.isDefined(svg);
 
@@ -178,7 +182,11 @@ describe("the chapter walkthrough", () => {
       Effect.gen(function* () {
         const { page } = yield* reviewPage;
         const [svg] = yield* boxesOf(page, "svg[data-scale]");
-        const drawn = yield* boxesOf(page, "[data-structure], [data-name-tag]");
+
+        const drawn = yield* boxesOf(
+          page,
+          "[data-structure], [data-name-tag], [data-zone]"
+        );
 
         assert.isAtMost(yield* scaleOf(page), 1.5);
         assert.isDefined(svg);

@@ -5,18 +5,13 @@ import { footprintsOverlap, tagCovers } from "./layout-checks.ts";
 import type { PlacedStructure } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
+import { zonePadding } from "./zones.ts";
 
 /** The footprint a newly placed structure gets. */
 export const defaultFootprint = { w: 2, d: 2 } as const;
 
 /** Clear ground between two structures, so name tags and routes have room. */
 export const structureGap = 2;
-
-/**
- * How far a group's zone reaches past its structures' footprints, on every
- * side.
- */
-export const zonePadding = 1;
 
 /** Clear ground left between two zones, for routes to run through. */
 export const zoneGap = 2;
