@@ -53,7 +53,11 @@ export {
 
 export type { PlacedLayout } from "./placement.ts";
 
-export { convexOverlap, segmentCrosses } from "./geometry.ts";
+export {
+  convexOverlap,
+  distanceToPolyline,
+  segmentCrosses,
+} from "./geometry.ts";
 
 export type { Segment } from "./geometry.ts";
 

@@ -4,6 +4,7 @@ import { dual } from "effect/Function";
 import {
   boundsOfPoints,
   clipToConvex,
+  distanceToPolyline,
   growRect,
   rectPolygon,
 } from "./geometry.ts";
@@ -92,7 +93,7 @@ const stepCost = 1;
  * never to save length, and never turns into a staircase to stay inside its
  * area.
  */
-const bendCost = 160;
+const bendCost = 240;
 
 /**
  * Each bend costs this many half-unit steps more for every grid unit of
@@ -101,6 +102,14 @@ const bendCost = 160;
  * boxes on screen.
  */
 const bendStrayCost = 60;
+
+/**
+ * Each bend costs this many half-unit steps more for the square of its
+ * screen distance, in grid units, from the line between its two boxes'
+ * screen centres. It picks the narrowest of routes with the same bends:
+ * between boxes one above the other, a balanced Z.
+ */
+const bendLineCost = 4;
 
 /** One grid unit along x or y, measured on screen. */
 const gridOnScreen = Math.hypot(tileWidth / 2, tileHeight / 2);
@@ -161,7 +170,7 @@ const pairPointCost = 8;
  * more than a bend, so a route takes it only when the facing edges are
  * blocked.
  */
-const facingCosts = [0, 2, 400, 400] as const;
+const facingCosts = [0, 2, 600, 600] as const;
 
 /**
  * Entering a box by a back edge (-x or -y) costs this much more, because the
@@ -174,14 +183,14 @@ const backEndCost = 16;
  * hop's structures costs as much as this many half-unit steps, so hops from
  * one structure fan out instead of crossing.
  */
-const siblingCrossCost = 10;
+const siblingCrossCost = 40;
 
 /**
  * Each half-unit step inside the zone of a group neither end belongs to.
  * Far less than running under a box, so a route crosses a zone rather than
  * a box.
  */
-const zoneStepCost = 1;
+const zoneStepCost = 3;
 
 /** Each half unit a route's end sits from the middle of its edge. */
 const offCentreCost = 0.25;
@@ -523,9 +532,12 @@ const gridOf = (
   };
 };
 
-/** The points along an edge from `from` to `to`, corners left out if it can. */
-const along = (from: number, to: number) =>
-  to - from >= 2 ? Arr.range(from + 1, to - 1) : [from, to];
+/**
+ * The points along an edge from `from` to `to`, corners included, so a
+ * route may leave a corner along either of its edges' outward directions.
+ * Corners cost a little more than the edge's middle (see `offCentreCost`).
+ */
+const along = (from: number, to: number) => Arr.range(from, to);
 
 /** A point on a footprint's edge a route may start or end at. */
 interface EdgePoint {
@@ -601,8 +613,7 @@ const facingOf = (box: Box, other: Box): readonly number[] => {
  * The points on a footprint's edge a route may start or end at, each with
  * what it costs to use it: the edge's facing cost towards `other`, plus a
  * little for points away from the middle of their edge, so a lone route
- * leaves from the middle. Corners are left out unless an edge has no other
- * points.
+ * leaves from the middle.
  */
 const edgePoints = (
   box: Box,
@@ -786,6 +797,8 @@ interface Search {
   readonly window: Box | undefined;
   /** The route's area on screen. */
   readonly area: ScreenRect;
+  /** The line between the two boxes' screen centres. */
+  readonly line: readonly [ScreenPoint, ScreenPoint];
 }
 
 const inside = (grid: Grid, { x, y }: Cell) =>
@@ -863,9 +876,24 @@ const stepPrice = (
 };
 
 /** What a bend at `cell` costs for sitting outside the route's area. */
-const strayOf = (search: Search, cell: Cell) =>
-  bendStrayCost *
-  outsideArea(search.area, project({ x: cell.x / scale, y: cell.y / scale }));
+const strayOf = (search: Search, cell: Cell) => {
+  const at = project({ x: cell.x / scale, y: cell.y / scale });
+  const fromLine = distanceToPolyline(search.line, at) / gridOnScreen;
+
+  // Squared, so one far bend costs more than two bends half as far: a
+  // balanced Z beats a lopsided one.
+  return (
+    bendStrayCost * outsideArea(search.area, at) +
+    bendLineCost * fromLine * fromLine
+  );
+};
+
+/** The screen point over the middle of a footprint, at ground level. */
+const screenCentre = (box: Box) =>
+  project({
+    x: (box.x0 + box.x1) / 2 / scale,
+    y: (box.y0 + box.y1) / 2 / scale,
+  });
 
 const cellOf = (grid: Grid, state: number): Cell => {
   const point = Math.floor(state / directions);
@@ -1001,6 +1029,7 @@ const searchOf = (
   ),
   window,
   area: routeArea(from, to),
+  line: [screenCentre(from), screenCentre(to)],
 });
 
 /** The stubs into the target, keyed by the point where the search meets them. */

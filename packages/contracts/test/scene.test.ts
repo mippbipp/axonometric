@@ -13,6 +13,7 @@ import {
   arrowLength,
   checkLayout,
   corners,
+  distanceToPolyline,
   endsOnTarget,
   facingEdges,
   Layout,
@@ -78,16 +79,17 @@ const everything = (data: MapData) =>
   new Set(Arr.map(data.structures, ({ id }) => id));
 
 /** Which edge of a footprint a point sits on: +x, +y, -x or -y. */
-const edgeOf = (point: GridPoint, box: Placement) => {
-  if (point.x === box.x + box.w) {
-    return 0;
+/**
+ * Which edge of a footprint a route's end leaves by, from the end and the
+ * next point along the route: +x, +y, -x or -y. A route may leave a corner,
+ * which sits on two edges, so the leg's direction decides.
+ */
+const edgeOf = (point: GridPoint, next: GridPoint) => {
+  if (next.x !== point.x) {
+    return next.x > point.x ? 0 : 2;
   }
 
-  if (point.y === box.y + box.d) {
-    return 1;
-  }
-
-  return point.x === box.x ? 2 : 3;
+  return next.y > point.y ? 1 : 3;
 };
 
 interface Leg {
@@ -187,6 +189,13 @@ const alone = (
   return routes[id]?.points ?? [];
 };
 
+const groundCentreOf = ({ x, y, w, d }: Placement): GridPoint => ({
+  x: x + w / 2,
+  y: y + d / 2,
+});
+
+const centreOf = (placement: Placement) => project(groundCentreOf(placement));
+
 /** How far a bend may sit outside its route's area, in grid units. */
 const strayLimit = 3;
 
@@ -196,12 +205,13 @@ const strayLimit = 3;
  * two bends could stay inside the area, so the exception can't outlive its
  * reason.
  *
- * - h-upstream-updater: Updater's name tag hangs under its front corner, so
- *   the hop comes in at Updater's +x face, and main sits on every way down
- *   Upstream's -x face that would keep the bends inside. The route bends
- *   2.08 units outside its area.
+ * - h-upstream-updater: every 2-bend route that stays inside its area runs
+ *   under main or through Updater's name tag. It bends 1.18 units outside.
+ * - h-main-updater: on its own it stays inside its area, but beside
+ *   h-upstream-updater no pair of routes that don't cross keeps both
+ *   inside. It bends 0.74 units outside.
  */
-const chapterOneExceptions = new Set(["h-upstream-updater"]);
+const chapterOneExceptions = new Set(["h-upstream-updater", "h-main-updater"]);
 
 const hopOf = (data: MapData, id: string) => {
   const hop = Arr.findFirst(data.hops, (item) => item.id === id);
@@ -293,11 +303,11 @@ const legCrossesTag = (leg: Leg, tag: ScreenRect) =>
  * and before its last, and off every revealed name tag. Infinity when no
  * such route exists.
  */
-const fewestStrayClear = (
+const clearRoutes = (
   map: { readonly data: MapData; readonly layout: Layout },
   hop: { readonly from: string; readonly to: string },
   revealed: ReadonlySet<string>
-) => {
+): readonly (readonly GridPoint[])[] => {
   const source = placementOf(map.layout, hop.from);
   const target = placementOf(map.layout, hop.to);
 
@@ -350,12 +360,76 @@ const fewestStrayClear = (
     );
   };
 
-  return Math.min(
+  return Arr.filter(candidates, clear);
+};
+
+/**
+ * The least stray any route with at most two bends could have, clear of
+ * every revealed box and name tag. Infinity when no such route exists.
+ */
+const fewestStrayClear = (
+  map: { readonly data: MapData; readonly layout: Layout },
+  hop: { readonly from: string; readonly to: string },
+  revealed: ReadonlySet<string>
+) =>
+  Math.min(
     Number.POSITIVE_INFINITY,
-    ...Arr.flatMap(candidates, (points) =>
-      clear(points) ? [strayOf(map, hop, points)] : []
+    ...Arr.map(clearRoutes(map, hop, revealed), (points) =>
+      strayOf(map, hop, points)
     )
   );
+
+/** Every half-unit step a route takes, as order-free keys. */
+const stepKeysOf = (points: readonly GridPoint[]) =>
+  new Set(
+    Arr.flatMap(legsOf(points), ({ start, end }) => {
+      const count = Math.abs(end.x - start.x + end.y - start.y) * 2;
+      const dx = Math.sign(end.x - start.x) / 2;
+      const dy = Math.sign(end.y - start.y) / 2;
+
+      return Arr.map(Arr.range(0, count - 1), (step) => {
+        const x = start.x + dx * step;
+        const y = start.y + dy * step;
+
+        return `${Math.min(x, x + dx)},${Math.min(y, y + dy)},${dx === 0 ? "y" : "x"}`;
+      });
+    })
+  );
+
+/** Whether two routes share a half-unit step anywhere. */
+const shareStep = (a: readonly GridPoint[], b: readonly GridPoint[]) => {
+  const first = stepKeysOf(a);
+
+  return Arr.some([...stepKeysOf(b)], (step) => first.has(step));
+};
+
+/**
+ * The least of the two strays that a pair of clear routes with at most two
+ * bends each, neither crossing nor sharing a step with the other, could
+ * have. Infinity when no such pair exists.
+ */
+const fewestPairStray = (
+  map: { readonly data: MapData; readonly layout: Layout },
+  hops: readonly [
+    { readonly from: string; readonly to: string },
+    { readonly from: string; readonly to: string },
+  ],
+  revealed: ReadonlySet<string>
+) => {
+  const [first, second] = hops;
+
+  // Inside the area is all that matters, so keep the routes that are.
+  const inside = (hop: (typeof hops)[number]) =>
+    Arr.filter(
+      clearRoutes(map, hop, revealed),
+      (points) => strayOf(map, hop, points) === 0
+    );
+
+  const pairs = Arr.flatMap(inside(first), (a) =>
+    Arr.filter(inside(second), (b) => !routesCross(a, b) && !shareStep(a, b))
+  );
+
+  return pairs.length > 0 ? 0 : Number.POSITIVE_INFINITY;
 };
 
 const placementOf = (layout: Layout, id: string): Placement => {
@@ -583,11 +657,15 @@ describe("scene", () => {
               assert.isDefined(first);
               assert.isDefined(last);
               assert.isTrue(
-                facingEdges(source, target)[edgeOf(first, source)],
+                facingEdges(source, target)[
+                  edgeOf(first, route.points[1] ?? first)
+                ],
                 `${hop.id} leaves by an edge facing away in ${chapter.id}`
               );
               assert.isTrue(
-                facingEdges(target, source)[edgeOf(last, target)],
+                facingEdges(target, source)[
+                  edgeOf(last, route.points.at(-2) ?? last)
+                ],
                 `${hop.id} enters by an edge facing away in ${chapter.id}`
               );
             }
@@ -618,15 +696,79 @@ describe("scene", () => {
           assert.isAtMost(bendsOf(route.points), 2, id);
 
           if (chapterOneExceptions.has(id)) {
-            // The exception holds only while nothing better exists.
-            assert.isAbove(
-              fewestStrayClear({ data, layout }, hop, first.revealed),
-              0,
+            // The exception holds only while nothing better exists: no
+            // clear route on its own, or no non-crossing pair with the
+            // other hop, stays inside.
+            const others = Arr.filter(routes, ([other]) => other !== id);
+
+            const onItsOwn = fewestStrayClear(
+              { data, layout },
+              hop,
+              first.revealed
+            );
+
+            const together = Arr.every(
+              others,
+              ([other]) =>
+                fewestPairStray(
+                  { data, layout },
+                  [hop, hopOf(data, other)],
+                  first.revealed
+                ) > 0
+            );
+
+            assert.isTrue(
+              onItsOwn > 0 || together,
               `${id} could stay inside its area: drop its exception`
             );
           } else {
             assert.strictEqual(stray, 0, `${id} bends outside its area`);
           }
+        }
+      })
+  );
+
+  it.effect(
+    "swings chapter 1's routes at most 0.6 times as far from their line as an L",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("flake-pipeline");
+        const [first] = chaptersOf(data);
+
+        assert.isDefined(first);
+
+        const routes = Rec.toEntries(
+          routeRevealed({ data, layout, revealed: first.revealed })
+        );
+
+        for (const [id, route] of routes) {
+          const hop = hopOf(data, id);
+          const source = placementOf(layout, hop.from);
+          const target = placementOf(layout, hop.to);
+          const line = [centreOf(source), centreOf(target)] as const;
+
+          const furthest = (points: readonly GridPoint[]) =>
+            Math.max(
+              0,
+              ...Arr.map(points, (point) =>
+                distanceToPolyline(line, project(point))
+              )
+            );
+
+          // The L's single bend, at either corner of the centres' box.
+          const from = groundCentreOf(source);
+          const to = groundCentreOf(target);
+
+          const ell = Math.min(
+            furthest([{ x: to.x, y: from.y }]),
+            furthest([{ x: from.x, y: to.y }])
+          );
+
+          assert.isAtMost(
+            furthest(route.points.slice(1, -1)),
+            0.6 * ell,
+            `${id} swings as far as an L`
+          );
         }
       })
   );
