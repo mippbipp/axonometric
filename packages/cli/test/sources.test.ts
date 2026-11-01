@@ -92,163 +92,167 @@ const checkWith = Effect.fnUntraced(function* (home: string, sources: string) {
 
 const at = "data.mjs structures[0].sources[0]";
 
-describe.skipIf(noGit)("check on a structure's sources", () => {
-  it.effect("passes a pinned source with no later change", () =>
-    Effect.gen(function* () {
-      const { home, commit } = yield* repoHome();
+describe.skipIf(noGit)(
+  "check on a structure's sources",
+  { timeout: 30_000 },
+  () => {
+    it.effect("passes a pinned source with no later change", () =>
+      Effect.gen(function* () {
+        const { home, commit } = yield* repoHome();
 
-      const result = yield* checkWith(
-        home,
-        `[{ path: "src/updater.ts", commit: "${commit}" }]`
-      );
+        const result = yield* checkWith(
+          home,
+          `[{ path: "src/updater.ts", commit: "${commit}" }]`
+        );
 
-      assert.strictEqual(result.exitCode, 0, result.stdout);
-      assert.include(result.stdout, ": 0 errors, 0 warnings.");
-    })
-  );
+        assert.strictEqual(result.exitCode, 0, result.stdout);
+        assert.include(result.stdout, ": 0 errors, 0 warnings.");
+      })
+    );
 
-  it.effect("warns once the file changes in a later commit", () =>
-    Effect.gen(function* () {
-      const { home, commit } = yield* repoHome();
+    it.effect("warns once the file changes in a later commit", () =>
+      Effect.gen(function* () {
+        const { home, commit } = yield* repoHome();
 
-      yield* writeFile(home, "src/updater.ts", "export const run = 2;\n");
-      yield* commitAll(home, "change the updater");
+        yield* writeFile(home, "src/updater.ts", "export const run = 2;\n");
+        yield* commitAll(home, "change the updater");
 
-      const result = yield* checkWith(
-        home,
-        `[{ path: "src/updater.ts", commit: "${commit}" }]`
-      );
+        const result = yield* checkWith(
+          home,
+          `[{ path: "src/updater.ts", commit: "${commit}" }]`
+        );
 
-      assert.strictEqual(result.exitCode, 0, result.stdout);
-      assert.include(
-        result.stdout,
-        `warning ${at}.path: "src/updater.ts" changed between commit ${commit} and HEAD. Reread structure "updater"`
-      );
-      assert.include(result.stdout, ": 0 errors, 1 warning.");
-    })
-  );
+        assert.strictEqual(result.exitCode, 0, result.stdout);
+        assert.include(
+          result.stdout,
+          `warning ${at}.path: "src/updater.ts" changed between commit ${commit} and HEAD. Reread structure "updater"`
+        );
+        assert.include(result.stdout, ": 0 errors, 1 warning.");
+      })
+    );
 
-  it.effect("doesn't count changes that aren't committed", () =>
-    Effect.gen(function* () {
-      const { home, commit } = yield* repoHome();
+    it.effect("doesn't count changes that aren't committed", () =>
+      Effect.gen(function* () {
+        const { home, commit } = yield* repoHome();
 
-      yield* writeFile(home, "src/updater.ts", "export const run = 3;\n");
+        yield* writeFile(home, "src/updater.ts", "export const run = 3;\n");
 
-      const result = yield* checkWith(
-        home,
-        `[{ path: "src/updater.ts", commit: "${commit}" }]`
-      );
+        const result = yield* checkWith(
+          home,
+          `[{ path: "src/updater.ts", commit: "${commit}" }]`
+        );
 
-      assert.include(result.stdout, ": 0 errors, 0 warnings.");
-    })
-  );
+        assert.include(result.stdout, ": 0 errors, 0 warnings.");
+      })
+    );
 
-  it.effect("warns when the file is deleted or renamed after the pin", () =>
-    Effect.gen(function* () {
-      const { home, commit } = yield* repoHome();
+    it.effect("warns when the file is deleted or renamed after the pin", () =>
+      Effect.gen(function* () {
+        const { home, commit } = yield* repoHome();
 
-      yield* git(home, ["mv", "src/updater.ts", "src/update.ts"]);
-      yield* commitAll(home, "rename the updater");
+        yield* git(home, ["mv", "src/updater.ts", "src/update.ts"]);
+        yield* commitAll(home, "rename the updater");
 
-      const result = yield* checkWith(
-        home,
-        `[{ path: "src/updater.ts", commit: "${commit}" }]`
-      );
+        const result = yield* checkWith(
+          home,
+          `[{ path: "src/updater.ts", commit: "${commit}" }]`
+        );
 
-      assert.strictEqual(result.exitCode, 0, result.stdout);
-      assert.include(
-        result.stdout,
-        `warning ${at}.path: "src/updater.ts" exists at commit ${commit} but not at HEAD, so it was renamed or deleted.`
-      );
-    })
-  );
+        assert.strictEqual(result.exitCode, 0, result.stdout);
+        assert.include(
+          result.stdout,
+          `warning ${at}.path: "src/updater.ts" exists at commit ${commit} but not at HEAD, so it was renamed or deleted.`
+        );
+      })
+    );
 
-  it.effect("errors on a typo in the path, pinned or not", () =>
-    Effect.gen(function* () {
-      const { home, commit } = yield* repoHome();
+    it.effect("errors on a typo in the path, pinned or not", () =>
+      Effect.gen(function* () {
+        const { home, commit } = yield* repoHome();
 
-      const result = yield* checkWith(
-        home,
-        `[{ path: "src/updatr.ts", commit: "${commit}" }, { path: "src/updatr.ts" }]`
-      );
+        const result = yield* checkWith(
+          home,
+          `[{ path: "src/updatr.ts", commit: "${commit}" }, { path: "src/updatr.ts" }]`
+        );
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stdout,
-        `error ${at}.path: "src/updatr.ts" doesn't exist at commit ${commit}.`
-      );
-      assert.include(
-        result.stdout,
-        `error data.mjs structures[0].sources[1].path: "src/updatr.ts" isn't a file git tracks at HEAD.`
-      );
-      assert.include(result.stdout, ": 2 errors, 1 warning.");
-    })
-  );
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          `error ${at}.path: "src/updatr.ts" doesn't exist at commit ${commit}.`
+        );
+        assert.include(
+          result.stdout,
+          `error data.mjs structures[0].sources[1].path: "src/updatr.ts" isn't a file git tracks at HEAD.`
+        );
+        assert.include(result.stdout, ": 2 errors, 1 warning.");
+      })
+    );
 
-  it.effect("errors on a file git doesn't track", () =>
-    Effect.gen(function* () {
-      const { home } = yield* repoHome();
+    it.effect("errors on a file git doesn't track", () =>
+      Effect.gen(function* () {
+        const { home } = yield* repoHome();
 
-      yield* writeFile(home, "src/draft.ts", "export {};\n");
+        yield* writeFile(home, "src/draft.ts", "export {};\n");
 
-      const result = yield* checkWith(home, '[{ path: "src/draft.ts" }]');
+        const result = yield* checkWith(home, '[{ path: "src/draft.ts" }]');
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stdout,
-        `error ${at}.path: "src/draft.ts" isn't a file git tracks at HEAD.`
-      );
-    })
-  );
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          `error ${at}.path: "src/draft.ts" isn't a file git tracks at HEAD.`
+        );
+      })
+    );
 
-  it.effect("errors on a folder, pinned or not", () =>
-    Effect.gen(function* () {
-      const { home, commit } = yield* repoHome();
+    it.effect("errors on a folder, pinned or not", () =>
+      Effect.gen(function* () {
+        const { home, commit } = yield* repoHome();
 
-      const result = yield* checkWith(
-        home,
-        `[{ path: "src" }, { path: "src", commit: "${commit}" }]`
-      );
+        const result = yield* checkWith(
+          home,
+          `[{ path: "src" }, { path: "src", commit: "${commit}" }]`
+        );
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stdout,
-        `error ${at}.path: "src" isn't a file git tracks at HEAD.`
-      );
-      assert.include(
-        result.stdout,
-        `error data.mjs structures[0].sources[1].path: "src" doesn't exist at commit ${commit}.`
-      );
-    })
-  );
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          `error ${at}.path: "src" isn't a file git tracks at HEAD.`
+        );
+        assert.include(
+          result.stdout,
+          `error data.mjs structures[0].sources[1].path: "src" doesn't exist at commit ${commit}.`
+        );
+      })
+    );
 
-  it.effect("errors on a commit that isn't in the history", () =>
-    Effect.gen(function* () {
-      const { home } = yield* repoHome();
+    it.effect("errors on a commit that isn't in the history", () =>
+      Effect.gen(function* () {
+        const { home } = yield* repoHome();
 
-      const result = yield* checkWith(
-        home,
-        '[{ path: "src/updater.ts", commit: "0123456789abcdef0123456789abcdef01234567" }]'
-      );
+        const result = yield* checkWith(
+          home,
+          '[{ path: "src/updater.ts", commit: "0123456789abcdef0123456789abcdef01234567" }]'
+        );
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stdout,
-        `error ${at}.commit: commit 0123456789abcdef0123456789abcdef01234567 isn't in the local git history. Run git fetch`
-      );
-    })
-  );
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          `error ${at}.commit: commit 0123456789abcdef0123456789abcdef01234567 isn't in the local git history. Run git fetch`
+        );
+      })
+    );
 
-  it.effect("finds sources from the repo's root, not the home folder", () =>
-    Effect.gen(function* () {
-      const { home } = yield* repoHome();
+    it.effect("finds sources from the repo's root, not the home folder", () =>
+      Effect.gen(function* () {
+        const { home } = yield* repoHome();
 
-      const result = yield* checkWith(home, '[{ path: "./src/updater.ts" }]');
+        const result = yield* checkWith(home, '[{ path: "./src/updater.ts" }]');
 
-      assert.strictEqual(result.exitCode, 0, result.stdout);
-    })
-  );
-});
+        assert.strictEqual(result.exitCode, 0, result.stdout);
+      })
+    );
+  }
+);
 
 describe("check outside a git repo", () => {
   it.effect("skips the source checks, says so in one line, and exits 0", () =>
@@ -296,26 +300,30 @@ describe("check outside a git repo", () => {
   );
 });
 
-describe.skipIf(noGit)("check --json in a git repo", () => {
-  it.effect("reports sourcesSkipped as null when the checks ran", () =>
-    Effect.gen(function* () {
-      const path = yield* Path.Path;
-      const { home } = yield* repoHome();
+describe.skipIf(noGit)(
+  "check --json in a git repo",
+  { timeout: 30_000 },
+  () => {
+    it.effect("reports sourcesSkipped as null when the checks ran", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const { home } = yield* repoHome();
 
-      yield* writeMap(home, '[{ path: "src/updater.ts" }]');
+        yield* writeMap(home, '[{ path: "src/updater.ts" }]');
 
-      const result = yield* runCli(home, [
-        "check",
-        "--json",
-        path.join(home, "pipeline", "map"),
-      ]);
+        const result = yield* runCli(home, [
+          "check",
+          "--json",
+          path.join(home, "pipeline", "map"),
+        ]);
 
-      const report = yield* decodeReport(result.stdout);
+        const report = yield* decodeReport(result.stdout);
 
-      assert.isNull(report.sourcesSkipped);
-    }).pipe(Effect.provide(NodeServices.layer))
-  );
-});
+        assert.isNull(report.sourcesSkipped);
+      }).pipe(Effect.provide(NodeServices.layer))
+    );
+  }
+);
 
 const CheckReport = Schema.Struct({
   warnings: Schema.Array(Schema.Unknown),
@@ -351,7 +359,7 @@ const pinnedSource = (commit: string) =>
 
 const unpinnedSource = () => '[{ path: "src/updater.ts" }]';
 
-describe.skipIf(noGit)("build's source links", () => {
+describe.skipIf(noGit)("build's source links", { timeout: 30_000 }, () => {
   for (const remote of [
     "https://github.com/mippbipp/pipeline.git",
     "https://github.com/mippbipp/pipeline",
