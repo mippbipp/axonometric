@@ -174,10 +174,24 @@ const describeError = (cause: unknown) =>
  * current scope does.
  */
 const listenOn = (host: string, port: number) =>
-  NodeHttpServer.make(createServer, {
-    host,
-    port,
-    gracefulShutdownTimeout: Duration.seconds(1),
+  Effect.suspend(() => {
+    const node = createServer();
+
+    // Once the server stops answering, a browser may still send a request
+    // down a kept-alive connection, which would then hang. Closing every
+    // connection makes the page see the server go, and reconnect to the
+    // next one.
+    const closeConnections = Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        node.closeAllConnections();
+      })
+    );
+
+    return NodeHttpServer.make(() => node, {
+      host,
+      port,
+      gracefulShutdownTimeout: Duration.seconds(1),
+    }).pipe(Effect.tap(() => closeConnections));
   }).pipe(
     Effect.asSome,
     Effect.catchTag("ServeError", (error) =>
