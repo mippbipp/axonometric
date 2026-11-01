@@ -1,4 +1,4 @@
-import type { View } from "@axonometric/contracts";
+import { whiteBackground } from "@axonometric/contracts";
 import { Effect, Schema } from "effect";
 import { dual } from "effect/Function";
 
@@ -19,20 +19,10 @@ export const exportFontStack =
 const margin = 16;
 
 /**
- * The id prefix for one export: the system, the view and the chapter's
- * number, so exports of other maps, views or chapters can be inlined in one
- * page without clashing.
+ * Where the measuring copy sits while it's drawn, far enough left to be out
+ * of sight.
  */
-export const exportIdPrefix = ({
-  system,
-  view,
-  chapter,
-}: {
-  readonly system: string;
-  readonly view: View;
-  /** The chapter's number, from 1. */
-  readonly chapter: number;
-}) => `${system.replaceAll(/[^\w-]/gu, "-")}-${view}-ch${chapter}-`;
+const offscreen = "-100000px";
 
 /** Elements the export leaves out: things that move, select or only show on hover. */
 const strippedSelector = [
@@ -295,18 +285,23 @@ const inlineStyles = (live: Element, clone: Element) => {
 const referenceAttributes = new Set(["aria-labelledby", "aria-describedby"]);
 
 /**
- * Prefixes every id under `root` with `prefix`, and every `url(#id)`,
- * `#id` link and id list that points at one, so the file's ids can't clash
- * with another export's in the same page.
+ * Gives every id under `root` the name `rename` returns, and updates every
+ * `url(#id)`, `#id` link and id list that points at one.
  */
-const prefixIds = (root: Element, prefix: string) => {
+const renameIds = (
+  root: Element,
+  rename: (element: Element, index: number) => string
+) => {
   const elements = [root, ...root.querySelectorAll("*")];
+  const names = new Map<string, string>();
 
-  const ids = new Set(
-    elements.flatMap((element) => (element.id === "" ? [] : [element.id]))
-  );
+  elements.forEach((element, index) => {
+    if (element.id !== "") {
+      names.set(element.id, rename(element, index));
+    }
+  });
 
-  const renamed = (id: string) => (ids.has(id) ? `${prefix}${id}` : id);
+  const renamed = (id: string) => names.get(id) ?? id;
 
   for (const element of elements) {
     if (element.id !== "") {
@@ -333,6 +328,22 @@ const prefixIds = (root: Element, prefix: string) => {
       }
     }
   }
+};
+
+/**
+ * Replaces the ids React made with ones that depend only on what the
+ * element is and where it sits, so two exports of the same map match.
+ */
+const stableIds = (root: Element) => {
+  const counts = new Map<string, number>();
+
+  renameIds(root, (element) => {
+    const count = (counts.get(element.localName) ?? 0) + 1;
+
+    counts.set(element.localName, count);
+
+    return `${element.localName}-${count}`;
+  });
 };
 
 /** What the export says about itself, for assistive technology. */
@@ -388,6 +399,8 @@ export const cleanSvg = ({
     element.prepend(name);
   }
 
+  stableIds(clone);
+
   for (const [attribute, kind] of namedParts) {
     for (const element of clone.querySelectorAll(`[${attribute}]`)) {
       element.id = `${kind}-${element.getAttribute(attribute) ?? ""}`;
@@ -436,7 +449,7 @@ export const cleanSvg = ({
   clone.setAttribute("role", "img");
   clone.setAttribute("aria-labelledby", "title desc");
   clone.setAttribute("font-family", exportFontStack);
-  prefixIds(clone, label.prefix);
+  renameIds(clone, (element) => `${label.prefix}${element.id}`);
 
   return clone;
 };
@@ -482,13 +495,15 @@ export const exportSvg = ({
 }: {
   readonly world: SVGGElement;
   readonly label: ExportLabel;
-}): SvgFile => {
+}): Effect.Effect<SvgFile, ExportFailed> => {
   const { ownerDocument: document } = world;
   const clone = document.createElementNS(svgNs, "svg");
   const copy = world.cloneNode(true);
 
   if (!(copy instanceof SVGGElement)) {
-    return { text: "", width: 0, height: 0 };
+    return Effect.fail(
+      ExportFailed.make({ reason: "The browser couldn't copy the drawing." })
+    );
   }
 
   const paper = inTheme(document, label.background === "white", () => {
@@ -503,7 +518,7 @@ export const exportSvg = ({
   });
 
   const background =
-    label.background === "white" ? "#ffffff" : (paper ?? "#ffffff");
+    label.background === "white" ? whiteBackground : (paper ?? whiteBackground);
 
   copy.removeAttribute("transform");
   clone.append(copy);
@@ -516,7 +531,7 @@ export const exportSvg = ({
   const holder = document.createElement("div");
 
   holder.style.position = "absolute";
-  holder.style.left = "-100000px";
+  holder.style.left = offscreen;
   holder.style.top = "0";
   holder.append(clone);
   document.body.append(holder);
@@ -526,50 +541,41 @@ export const exportSvg = ({
   holder.remove();
   cleanSvg({ clone, label: { ...label, background }, bounds: box });
 
-  return {
+  return Effect.succeed({
     text: `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(clone)}\n`,
     width: Number(clone.getAttribute("width")),
     height: Number(clone.getAttribute("height")),
-  };
+  });
 };
 
-/** The browser couldn't turn the drawing into a PNG. */
-export class PngFailed extends Schema.TaggedError<
-  PngFailed,
+/** An export couldn't be made, for a reason the engineer can read. */
+export class ExportFailed extends Schema.TaggedError<
+  ExportFailed,
   { readonly brand: unique symbol }
->()("PngFailed", {
+>()("ExportFailed", {
   reason: Schema.String,
 }) {}
 
-/** A text file as a `data:` URL. */
-export const textUrl: {
-  (type: string): (text: string) => string;
-  (text: string, type: string): string;
-} = dual(
-  2,
-  (text: string, type: string) =>
-    `data:${type};charset=utf-8,${encodeURIComponent(text)}`
-);
-
 /**
- * Draws an SVG file to a canvas at `scale` and returns it as a PNG, in a
- * `data:` URL.
+ * Draws an SVG file to a canvas at `scale` and returns it as a PNG. The SVG
+ * goes to the image as a `data:` URL, which doesn't taint the canvas the way
+ * a `blob:` URL can on a page opened from disk.
  */
 export const pngOf: {
-  (scale: number): (svg: SvgFile) => Effect.Effect<string, PngFailed>;
-  (svg: SvgFile, scale: number): Effect.Effect<string, PngFailed>;
+  (scale: number): (svg: SvgFile) => Effect.Effect<Blob, ExportFailed>;
+  (svg: SvgFile, scale: number): Effect.Effect<Blob, ExportFailed>;
 } = dual(2, (svg: SvgFile, scale: number) =>
   Effect.gen(function* () {
     const image = new Image();
 
     image.width = svg.width;
     image.height = svg.height;
-    image.src = textUrl(svg.text, "image/svg+xml");
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.text)}`;
 
     yield* Effect.tryPromise({
       try: () => image.decode(),
       catch: () =>
-        PngFailed.make({ reason: "The browser couldn't draw the SVG." }),
+        ExportFailed.make({ reason: "The browser couldn't draw the SVG." }),
     });
 
     const canvas = document.createElement("canvas");
@@ -580,19 +586,34 @@ export const pngOf: {
       .getContext("2d")
       ?.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    return canvas.toDataURL("image/png");
+    return yield* Effect.callback<Blob, ExportFailed>((resume) => {
+      canvas.toBlob((blob) => {
+        resume(
+          blob === null
+            ? Effect.fail(
+                ExportFailed.make({
+                  reason: "The browser couldn't make a PNG of the map.",
+                })
+              )
+            : Effect.succeed(blob)
+        );
+      }, "image/png");
+    });
   })
 );
 
+/** How long a download link's object URL lives, so the save can start. */
+const revokeAfterMs = 10_000;
+
 /**
- * Saves the file at `url`, a `data:` URL, as `name` through a download link.
- * That works in the read-only file opened from disk as well as the served
- * page, and leaves no object URL to revoke.
+ * Saves `blob` as `name` through a download link, which works in the
+ * read-only file opened from disk as well as the served page.
  */
 export const download: {
-  (name: string): (url: string) => void;
-  (url: string, name: string): void;
-} = dual(2, (url: string, name: string): void => {
+  (name: string): (blob: Blob) => void;
+  (blob: Blob, name: string): void;
+} = dual(2, (blob: Blob, name: string): void => {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
 
   link.href = url;
@@ -601,4 +622,9 @@ export const download: {
   document.body.append(link);
   link.click();
   link.remove();
+  // Revoking at once can cancel the save in some browsers.
+  // oxlint-disable-next-line effecttsgo/global-timers -- the download link is plain DOM, outside any Effect runtime
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, revokeAfterMs);
 });

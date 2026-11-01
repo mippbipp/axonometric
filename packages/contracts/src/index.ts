@@ -18,6 +18,10 @@ export type {
   ExcalidrawText,
 } from "./excalidraw.ts";
 
+export { exportName } from "./export-name.ts";
+
+export { palette, whiteBackground } from "./palette.ts";
+
 export { fileVersionFields, formatVersion } from "./fields.ts";
 
 export {

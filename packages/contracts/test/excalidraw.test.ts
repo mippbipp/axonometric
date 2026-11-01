@@ -1,5 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Record as Rec, Schema } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Record as Rec,
+  Schema,
+  String as Str,
+} from "effect";
 
 import {
   excalidrawOf,
@@ -189,5 +195,83 @@ describe("excalidraw export", () => {
       assert.strictEqual(ofType(elements, "rectangle").length, 1);
       assert.strictEqual(ofType(elements, "arrow").length, 0);
     })
+  );
+
+  it.effect(
+    "wraps every name and label to fit, and keeps text in its frame",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("flake-pipeline");
+        const { elements } = excalidrawOf({ data, layout });
+
+        const byId = new Map(
+          Arr.map(elements, (element) => [element.id, element])
+        );
+
+        const texts = ofType(elements, "text");
+
+        assert.isAbove(texts.length, 0);
+
+        for (const text of texts) {
+          const container = byId.get(text.containerId);
+
+          // A name with no space to break at is cut, so compare without spaces.
+          assert.strictEqual(
+            Str.replaceAll(/\s/gu, "")(text.text),
+            Str.replaceAll(/\s/gu, "")(text.originalText)
+          );
+
+          const longest = Math.max(
+            ...Arr.map(Str.split(text.text, "\n"), Str.length)
+          );
+
+          assert.isAtMost(longest * text.fontSize * 0.6, text.width + 0.001);
+
+          if (container?.type === "rectangle") {
+            assert.isAtMost(text.width, container.width, text.originalText);
+            assert.isAtMost(text.height, container.height, text.originalText);
+          }
+
+          if (text.frameId !== null) {
+            const frame = byId.get(text.frameId);
+
+            assert.isDefined(frame);
+            assert.isAtLeast(text.x, frame?.x ?? Number.NaN, text.originalText);
+            assert.isAtLeast(text.y, frame?.y ?? Number.NaN, text.originalText);
+            assert.isAtMost(
+              text.x + text.width,
+              (frame?.x ?? Number.NaN) + (frame?.width ?? Number.NaN),
+              text.originalText
+            );
+            assert.isAtMost(
+              text.y + text.height,
+              (frame?.y ?? Number.NaN) + (frame?.height ?? Number.NaN),
+              text.originalText
+            );
+          }
+        }
+
+        const long = byId.get("structure-name:workspace");
+
+        assert.isDefined(long);
+        assert.include(long?.type === "text" ? long.text : "", "\n");
+      })
+  );
+
+  it.effect(
+    "stamps every element with created, and text with baseFontSize",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("pipeline");
+        const { elements } = excalidrawOf({ data, layout });
+
+        for (const element of elements) {
+          assert.isNumber(element.created);
+
+          if (element.type === "text") {
+            assert.isNull(element.baseFontSize);
+          }
+        }
+      })
   );
 });

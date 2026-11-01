@@ -9,7 +9,7 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
-import { pipelineMap } from "./fixtures.ts";
+import { minimalMap, pipelineMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 /** `value` as a JavaScript string literal, newlines and all. */
@@ -28,7 +28,7 @@ const press = (page: Page, key: string) =>
 const focusedControl = (page: Page) =>
   inPage<string | null>(
     page,
-    `document.activeElement?.dataset.control ?? document.activeElement?.dataset.export ?? document.activeElement?.dataset.exportOption ?? null`
+    `document.activeElement?.dataset.control ?? document.activeElement?.dataset.exportItem ?? null`
   );
 
 /** The pipeline map's read-only file, at its last chapter. */
@@ -53,7 +53,7 @@ const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
   const [download] = yield* Effect.promise(() =>
     Promise.all([
       page.waitForEvent("download"),
-      page.locator(`[data-export="${item}"]`).click(),
+      page.locator(`[data-export-item="${item}"]`).click(),
     ])
   );
 
@@ -66,7 +66,7 @@ const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
 
 const chooseWhite = Effect.fnUntraced(function* (page: Page) {
   yield* click(page, '[data-control="export"]');
-  yield* click(page, '[data-export-option="white"]');
+  yield* click(page, '[data-export-item="background"]');
   yield* press(page, "Escape");
 });
 
@@ -223,7 +223,7 @@ describe("export", () => {
 
           const { name, bytes } = yield* exportFile(page, "svg");
           const report = yield* svgReport(page, decoder.decode(bytes));
-          const prefix = "flake-pipeline-iso-ch8-";
+          const prefix = "flake-pipeline-iso-chapter-8-";
 
           assert.strictEqual(name, "flake-pipeline-iso-chapter-8.svg");
           assert.strictEqual(report.rootRole, "img");
@@ -299,7 +299,7 @@ describe("export", () => {
 
             const exported = yield* relativeCentres(
               opened,
-              (id) => `#flake-pipeline-${view}-ch8-structure-${id}`
+              (id) => `#flake-pipeline-${view}-chapter-8-structure-${id}`
             );
 
             for (const [id, at] of Rec.toEntries(onScreen)) {
@@ -452,12 +452,12 @@ describe("export", () => {
           yield* press(page, "ArrowDown");
           assert.strictEqual(yield* focusedControl(page), "png");
           yield* press(page, "End");
-          assert.strictEqual(yield* focusedControl(page), "white");
+          assert.strictEqual(yield* focusedControl(page), "background");
           yield* press(page, " ");
 
           const checked = yield* Effect.promise(() =>
             page
-              .locator('[data-export-option="white"]')
+              .locator('[data-export-item="background"]')
               .getAttribute("aria-checked")
           );
 
@@ -465,7 +465,7 @@ describe("export", () => {
           yield* press(page, "ArrowDown");
           assert.strictEqual(yield* focusedControl(page), "svg");
           yield* press(page, "ArrowUp");
-          assert.strictEqual(yield* focusedControl(page), "white");
+          assert.strictEqual(yield* focusedControl(page), "background");
 
           // The map's keys stay off while the menu has focus.
           yield* press(page, "v");
@@ -484,5 +484,140 @@ describe("export", () => {
         })
       ),
     60_000
+  );
+
+  it.live(
+    "writes map text with <, & and quotes literally, in a file that parses",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const files = yield* minimalMap;
+          const data = files["pipeline/map/data.mjs"] ?? "";
+
+          const opened = yield* buildAndOpen(
+            {
+              ...files,
+              "pipeline/map/data.mjs": Arr.reduce(
+                [
+                  ['name: "Flake updater"', `name: 'Fish & "chips" <1>'`],
+                  ['label: "update → build"', `label: 'a < b & "c"'`],
+                  [
+                    'title: "Flake update pipeline"',
+                    `title: 'Q&A "live" <draft>'`,
+                  ],
+                ] as const,
+                data,
+                (text, [from, to]) => Str.replace(from, to)(text)
+              ),
+            },
+            "pipeline"
+          );
+
+          const { name, bytes } = yield* exportFile(opened.page, "svg");
+          const text = decoder.decode(bytes);
+          const report = yield* svgReport(opened.page, text);
+
+          assert.strictEqual(name, "pipeline-iso-chapter-1.svg");
+          assert.include(report.titleText, 'Q&A "live" <draft>');
+          assert.include(report.text, 'Fish & "chips" <1>');
+          assert.include(report.text, 'a < b & "c"');
+          assert.notInclude(text, "<draft>");
+          assert.notInclude(text, "<1>");
+        })
+      ),
+    60_000
+  );
+
+  it.live("gives the SVG ids that depend only on the map, not on React", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* lastChapter;
+        const { bytes } = yield* exportFile(page, "svg");
+        const report = yield* svgReport(page, decoder.decode(bytes));
+
+        assert.isTrue(
+          Arr.some(report.ids, Str.endsWith("pattern-1")),
+          "the hatch pattern has a plain id"
+        );
+        assert.isFalse(
+          Arr.some(report.ids, Str.includes("_r_")),
+          "no id comes from useId"
+        );
+      })
+    )
+  );
+
+  it.live("draws the background option as a checkbox in both states", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* lastChapter;
+        const row = page.locator('[data-export-item="background"]');
+
+        yield* click(page, '[data-control="export"]');
+        assert.include(yield* Effect.promise(() => row.textContent()), "☐");
+        yield* click(page, '[data-export-item="background"]');
+        assert.include(yield* Effect.promise(() => row.textContent()), "☑");
+      })
+    )
+  );
+
+  it.live("Tab hands focus to the Export button, then moves on from it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* lastChapter;
+
+        yield* click(page, '[data-control="export"]');
+        yield* press(page, "Tab");
+        assert.strictEqual(
+          yield* Effect.promise(() =>
+            page.locator("[data-export-menu]").count()
+          ),
+          0
+        );
+        assert.strictEqual(
+          yield* inPage<string>(
+            page,
+            `document.activeElement === document.body ? "body" : document.activeElement.hasAttribute("data-theme-toggle") ? "next" : document.activeElement.tagName`
+          ),
+          "next"
+        );
+      })
+    )
+  );
+
+  it.live("says so and saves nothing when an export fails", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* lastChapter;
+
+        yield* inPage<undefined>(
+          page,
+          `document.querySelector("[data-map-layer] [data-viewport]").removeAttribute("data-viewport")`
+        );
+        yield* Effect.promise(() =>
+          page.evaluate(
+            `window.__saved = 0; document.addEventListener("click", (event) => { if (event.target instanceof HTMLAnchorElement && event.target.download) window.__saved += 1; }, true)`
+          )
+        );
+
+        for (const item of ["svg", "png"]) {
+          yield* click(page, '[data-control="export"]');
+          yield* click(page, `[data-export-item="${item}"]`);
+          yield* Effect.promise(() =>
+            page
+              .locator("[data-export-problem]")
+              .filter({ hasText: "Nothing was saved" })
+              .waitFor()
+          );
+
+          const live = yield* Effect.promise(() =>
+            page.locator("[data-export-problem]").getAttribute("aria-live")
+          );
+
+          assert.strictEqual(live, "polite");
+          assert.strictEqual(yield* inPage<number>(page, "window.__saved"), 0);
+        }
+      })
+    )
   );
 });

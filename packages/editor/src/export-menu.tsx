@@ -1,19 +1,17 @@
-import { excalidrawOf } from "@axonometric/contracts";
+import {
+  excalidrawOf,
+  exportName,
+  whiteBackground,
+} from "@axonometric/contracts";
 import type { View } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Effect } from "effect";
 import { useEffect, useId, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode, Ref } from "react";
 
 import { controlClass } from "./control-class.ts";
-import {
-  download,
-  exportIdPrefix,
-  exportSvg,
-  pngOf,
-  textUrl,
-} from "./svg-export.ts";
-import type { ExportLabel, PngFailed } from "./svg-export.ts";
+import { download, ExportFailed, exportSvg, pngOf } from "./svg-export.ts";
+import type { ExportLabel } from "./svg-export.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** How much larger than the SVG the PNG is drawn. */
@@ -31,9 +29,53 @@ const drawnMap = () => {
   return world instanceof SVGGElement ? world : null;
 };
 
-const items = ["svg", "png", "excalidraw", "white"] as const;
+const items = ["svg", "png", "excalidraw", "background"] as const;
 
 type Item = (typeof items)[number];
+
+/** The items that save a file. */
+type Export = Exclude<Item, "background">;
+
+const itemClass =
+  "focus-visible:bg-ink focus-visible:text-paper hover:bg-ink hover:text-paper flex w-full cursor-pointer items-center gap-2 px-3 py-1 text-left text-xs outline-none";
+
+/** One row of the menu. A `checked` row is a checkbox, drawn as one. */
+function MenuItem({
+  item,
+  itemRef,
+  checked,
+  onChoose,
+  children,
+}: {
+  readonly item: Item;
+  readonly itemRef: Ref<HTMLButtonElement>;
+  /** Whether a checkbox row is checked. Leave out for a row that saves. */
+  readonly checked?: boolean;
+  readonly onChoose: () => void;
+  readonly children: ReactNode;
+}) {
+  const isCheckbox = checked !== undefined;
+
+  return (
+    <button
+      ref={itemRef}
+      type="button"
+      role={isCheckbox ? "menuitemcheckbox" : "menuitem"}
+      aria-checked={checked}
+      tabIndex={-1}
+      data-export-item={item}
+      className={itemClass}
+      onClick={onChoose}
+    >
+      {isCheckbox ? (
+        <span aria-hidden="true" className="w-3 text-sm leading-none">
+          {checked ? "☑" : "☐"}
+        </span>
+      ) : null}
+      {children}
+    </button>
+  );
+}
 
 /**
  * The header's Export button and its menu: the current view and chapter as
@@ -41,18 +83,20 @@ type Item = (typeof items)[number];
  * checkbox that replaces the paper colour. The arrow keys, Home and End move
  * through the menu, and Escape or Tab closes it, with focus back on the
  * button. Files save through a download link, so export works in the
- * read-only file too.
+ * read-only file too. A failed export says so in a live region and saves
+ * nothing.
  */
 export function ExportMenu({ view }: { readonly view: View }) {
   const { state, stop, index, stops } = useWalkthrough();
   const [open, setOpen] = useState(false);
-  const [white, setWhite] = useState(false);
+  const [onWhite, setOnWhite] = useState(false);
+  const [problem, setProblem] = useState("");
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef(new Map<Item, HTMLElement>());
   const menuId = useId();
   const chapter = index + 1;
-  const base = `${state.system}-${view}-chapter-${chapter}`;
+  const name = exportName({ system: state.system, view, chapter });
 
   const close = (refocus: boolean) => {
     setOpen(false);
@@ -90,64 +134,75 @@ export function ExportMenu({ view }: { readonly view: View }) {
   }, []);
 
   const label = (): ExportLabel => ({
-    prefix: exportIdPrefix({ system: state.system, view, chapter }),
+    prefix: `${name}-`,
     title: `${state.data.overview.title}: ${viewNames[view]}, chapter ${chapter}`,
     description: `${viewNames[view]} of ${state.data.overview.title}, at chapter ${chapter} of ${stops.length}, ${stop.title}. ${stop.lede}`,
-    background: white ? "white" : "paper",
+    background: onWhite ? "white" : "paper",
   });
 
   const svgFile = () => {
     const world = drawnMap();
 
-    return world === null ? null : exportSvg({ world, label: label() });
+    return world === null
+      ? Effect.fail(
+          ExportFailed.make({ reason: "The map isn't on the page to export." })
+        )
+      : exportSvg({ world, label: label() });
   };
 
   const actions: Readonly<
-    Record<Exclude<Item, "white">, () => Effect.Effect<void, PngFailed>>
+    Record<Export, () => Effect.Effect<void, ExportFailed>>
   > = {
     svg: () =>
-      Effect.sync(() => {
-        const file = svgFile();
-
-        if (file !== null) {
-          download(textUrl(file.text, "image/svg+xml"), `${base}.svg`);
-        }
-      }),
-    png: () => {
-      const file = svgFile();
-
-      return file === null
-        ? Effect.void
-        : pngOf(file, pngScale).pipe(
-            Effect.tap((png) =>
-              Effect.sync(() => {
-                download(png, `${base}.png`);
-              })
-            ),
-            Effect.asVoid
-          );
-    },
+      svgFile().pipe(
+        Effect.tap((file) =>
+          Effect.sync(() => {
+            download(
+              new Blob([file.text], { type: "image/svg+xml" }),
+              `${name}.svg`
+            );
+          })
+        ),
+        Effect.asVoid
+      ),
+    png: () =>
+      svgFile().pipe(
+        Effect.flatMap((file) => pngOf(file, pngScale)),
+        Effect.tap((png) =>
+          Effect.sync(() => {
+            download(png, `${name}.png`);
+          })
+        ),
+        Effect.asVoid
+      ),
     excalidraw: () =>
       Effect.sync(() => {
         const file = excalidrawOf({
           data: state.data,
           layout: state.layout,
-          background: white ? "#ffffff" : undefined,
+          background: onWhite ? whiteBackground : undefined,
         });
 
         download(
           // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- excalidrawOf's output is plain JSON data by construction
-          textUrl(`${JSON.stringify(file, null, 2)}\n`, "application/json"),
+          new Blob([`${JSON.stringify(file, null, 2)}\n`], {
+            type: "application/json",
+          }),
           `${state.system}.excalidraw`
         );
       }),
   };
 
-  const run = (item: Exclude<Item, "white">) => {
+  const run = (item: Export) => {
     close(true);
+    setProblem("");
     Effect.runFork(
       actions[item]().pipe(
-        Effect.catch((error) => Effect.logError(error.reason))
+        Effect.catchCause(() =>
+          Effect.sync(() => {
+            setProblem(`Couldn't export the ${item}. Nothing was saved.`);
+          })
+        )
       )
     );
   };
@@ -174,7 +229,9 @@ export function ExportMenu({ view }: { readonly view: View }) {
       event.preventDefault();
       close(true);
     } else if (event.key === "Tab") {
-      close(false);
+      // Focus goes back to the button first, so Tab moves on from there
+      // instead of from a menu that's about to disappear.
+      close(true);
     } else if (current === undefined) {
       // Only the items below move focus.
     } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
@@ -208,9 +265,6 @@ export function ExportMenu({ view }: { readonly view: View }) {
     }
   };
 
-  const itemClass =
-    "focus-visible:bg-ink focus-visible:text-paper hover:bg-ink hover:text-paper flex w-full cursor-pointer items-center gap-2 px-3 py-1 text-left text-xs outline-none";
-
   return (
     <div className="relative">
       <button
@@ -232,6 +286,16 @@ export function ExportMenu({ view }: { readonly view: View }) {
       >
         Export
       </button>
+      <output
+        aria-live="polite"
+        data-export-problem=""
+        className={cn(
+          "border-ink bg-paper text-ink absolute top-full right-0 z-30 mt-1 w-56 border px-3 py-1 text-xs",
+          problem === "" && "sr-only"
+        )}
+      >
+        {problem}
+      </output>
       {open ? (
         <div
           ref={menuRef}
@@ -243,63 +307,44 @@ export function ExportMenu({ view }: { readonly view: View }) {
           className="border-ink bg-paper text-ink absolute top-full right-0 z-30 mt-1 flex w-56 flex-col border py-1"
           onKeyDown={onMenuKey}
         >
-          <button
-            ref={itemRef("svg")}
-            type="button"
-            role="menuitem"
-            tabIndex={-1}
-            data-export="svg"
-            className={itemClass}
-            onClick={() => {
+          <MenuItem
+            item="svg"
+            itemRef={itemRef("svg")}
+            onChoose={() => {
               run("svg");
             }}
           >
             SVG of this view and chapter
-          </button>
-          <button
-            ref={itemRef("png")}
-            type="button"
-            role="menuitem"
-            tabIndex={-1}
-            data-export="png"
-            className={itemClass}
-            onClick={() => {
+          </MenuItem>
+          <MenuItem
+            item="png"
+            itemRef={itemRef("png")}
+            onChoose={() => {
               run("png");
             }}
           >
             PNG of this view and chapter
-          </button>
-          <button
-            ref={itemRef("excalidraw")}
-            type="button"
-            role="menuitem"
-            tabIndex={-1}
-            data-export="excalidraw"
-            className={itemClass}
-            onClick={() => {
+          </MenuItem>
+          <MenuItem
+            item="excalidraw"
+            itemRef={itemRef("excalidraw")}
+            onChoose={() => {
               run("excalidraw");
             }}
           >
             Excalidraw file of the whole map
-          </button>
+          </MenuItem>
           <hr className="border-ink my-1" />
-          <button
-            ref={itemRef("white")}
-            type="button"
-            role="menuitemcheckbox"
-            tabIndex={-1}
-            aria-checked={white}
-            data-export-option="white"
-            className={itemClass}
-            onClick={() => {
-              setWhite((current) => !current);
+          <MenuItem
+            item="background"
+            itemRef={itemRef("background")}
+            checked={onWhite}
+            onChoose={() => {
+              setOnWhite((current) => !current);
             }}
           >
-            <span aria-hidden="true" className="w-3">
-              {white ? "✓" : ""}
-            </span>
             White background
-          </button>
+          </MenuItem>
         </div>
       ) : null}
     </div>
