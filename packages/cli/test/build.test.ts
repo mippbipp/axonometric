@@ -230,7 +230,10 @@ describe("build", () => {
     })
   );
 
-  it.effect("leaves no temporary files behind when a write fails", () =>
+  // Live clock: on Windows, renaming over a folder fails with EPERM, which
+  // writeAll retries for about 2 s, and the test clock would never let those
+  // delays pass.
+  it.live("leaves no temporary files behind when a write fails", () =>
     Effect.gen(function* () {
       // A folder where the page should go makes renaming the page fail.
       const result = yield* buildWith({

@@ -525,6 +525,7 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   );
 
   const urlHostName = wildcardHosts.has(host) ? defaultHost : urlHost(host);
+  const bound = hostName(urlHost(host));
 
   // The lock keeps two servers starting at once from both getting past the
   // check above.
@@ -548,6 +549,14 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
     // server waits for its connections to close.
     yield* Scope.addFinalizer(scope, stopping.open);
 
+    // Printed before the state file is written: whatever waits for the file
+    // has then already seen the warning.
+    if (!Arr.some(loopbackHosts, (name) => name === bound)) {
+      yield* Console.error(
+        `serve is listening on ${host}, so other machines on the network can reach it. It still only answers requests addressed to ${loopbackList}${wildcardHosts.has(host) ? "" : `, ${host}`} or a host given with --allow-host.`
+      );
+    }
+
     const recorded: ServerState = {
       url: `http://${urlHostName}:${portOf(server)}`,
       pid: process.pid,
@@ -558,14 +567,6 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
     return recorded;
   }).pipe(Effect.scoped);
-
-  const bound = hostName(urlHost(host));
-
-  if (!Arr.some(loopbackHosts, (name) => name === bound)) {
-    yield* Console.error(
-      `serve is listening on ${host}, so other machines on the network can reach it. It still only answers requests addressed to ${loopbackList}${wildcardHosts.has(host) ? "" : `, ${host}`} or a host given with --allow-host.`
-    );
-  }
 
   yield* Console.log(`Serving ${home} at ${state.url}. Press Ctrl-C to stop.`);
 
