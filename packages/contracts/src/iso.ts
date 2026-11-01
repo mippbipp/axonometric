@@ -23,6 +23,9 @@ export const tileWidth = 72;
 
 export const tileHeight = 36;
 
+/** One grid unit along x or y, measured on screen: a tile's edge. */
+export const gridOnScreen = Math.hypot(tileWidth / 2, tileHeight / 2);
+
 /** Approximate width of one character of the name tag's monospace font. */
 export const tagCharWidth = 7.2;
 

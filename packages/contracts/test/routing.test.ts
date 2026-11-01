@@ -1,13 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
 
-import {
-  checkLayout,
-  facingEdges,
-  routeCap,
-  routeHops,
-  routeLength,
-} from "../src/index.ts";
+import { checkLayout, routeCap, routeHops, routeLength } from "../src/index.ts";
 import type {
   GridPoint,
   Hop,
@@ -17,6 +11,7 @@ import type {
   Placement,
   Structure,
 } from "../src/index.ts";
+import { facingEdges } from "./route-geometry.ts";
 
 const structure = (id: string): Structure => ({
   id,

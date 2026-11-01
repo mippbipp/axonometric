@@ -16,7 +16,6 @@ import {
   corners,
   distanceToPolyline,
   endsOnTarget,
-  facingEdges,
   Layout,
   MapData,
   routeCap,
@@ -24,9 +23,7 @@ import {
   routeRevealed,
   nameTagRect,
   nameTagText,
-  outsideArea,
   project,
-  routeArea,
   sceneClashes,
   sceneOf,
   segmentCrosses,
@@ -37,6 +34,7 @@ import type {
   ScreenPoint,
   ScreenRect,
 } from "../src/index.ts";
+import { facingEdges, outsideArea, routeArea } from "./route-geometry.ts";
 
 /** A fixture map from the CLI's test fixtures, decoded. */
 const fixture = (name: string) =>

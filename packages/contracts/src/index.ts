@@ -9,6 +9,7 @@ export { fileVersionFields, formatVersion } from "./fields.ts";
 export {
   boxOutline,
   corners,
+  gridOnScreen,
   nameTagRect,
   nameTagText,
   project,
@@ -61,27 +62,13 @@ export {
 
 export type { Segment } from "./geometry.ts";
 
-export {
-  areaMargin,
-  facingEdges,
-  outsideArea,
-  routeArea,
-  routeCap,
-  routeHops,
-  routeLength,
-  routeRevealed,
-} from "./routing.ts";
+export { routeCap, routeHops, routeLength, routeRevealed } from "./routing.ts";
 
 export {
   arrowheadOf,
   arrowLength,
-  chipHeight,
-  chipRect,
   endsOnTarget,
-  hiddenStretches,
-  labelHeight,
   labelReach,
-  labelWidth,
   sceneClashes,
   sceneOf,
   silhouette,
@@ -97,7 +84,7 @@ export type {
   SceneZone,
 } from "./scene.ts";
 
-export type { AreaEnd, HopRoute, RevealedSource } from "./routing.ts";
+export type { HopRoute } from "./routing.ts";
 
 export { zonePadding, zonesOf } from "./zones.ts";
 

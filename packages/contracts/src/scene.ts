@@ -22,6 +22,7 @@ import {
   nameTagText,
   project,
   tagCharWidth,
+  gridOnScreen,
   tileHeight,
   tileWidth,
 } from "./iso.ts";
@@ -43,7 +44,7 @@ const chipCharWidth = 6.4;
 /** The code chip is this much wider than its text. */
 const chipPadding = 8;
 
-export const chipHeight = 14;
+const chipHeight = 14;
 
 /** Shapes with no flat top to hold the code chip. */
 const chipless: ReadonlySet<Shape> = new Set(["person", "document"]);
@@ -82,19 +83,19 @@ const titleMargin = 3;
 /** How far apart the candidate title spots are, in screen units. */
 const titleStep = 3;
 
-/** One grid unit along x, measured on screen. */
-const gridStep = Math.hypot(tileWidth / 2, tileHeight / 2);
-
 /** The screen direction of a grid unit along x: the front-left edge. */
-const alongX = { sx: tileWidth / 2 / gridStep, sy: tileHeight / 2 / gridStep };
+const alongX = {
+  sx: tileWidth / 2 / gridOnScreen,
+  sy: tileHeight / 2 / gridOnScreen,
+};
 
 /**
  * The screen direction up the front-right edge, from the front corner
  * towards the right corner: a grid unit along -y.
  */
 const upFrontRight = {
-  sx: tileWidth / 2 / gridStep,
-  sy: -tileHeight / 2 / gridStep,
+  sx: tileWidth / 2 / gridOnScreen,
+  sy: -tileHeight / 2 / gridOnScreen,
 };
 
 /** A zone as the iso view draws it. */
@@ -121,7 +122,7 @@ export interface HiddenStretch {
 }
 
 /** How tall a hop label's box is, in screen units. */
-export const labelHeight = 15;
+const labelHeight = 15;
 
 /** Room either side of a label's text, in screen units. */
 const labelPadding = 3;
@@ -158,7 +159,7 @@ export interface Scene {
 }
 
 /** The width of a hop label's box for `text`, in screen units. */
-export const labelWidth = (text: string) =>
+const labelWidth = (text: string) =>
   text.length * tagCharWidth + 2 * labelPadding;
 
 const centreOf = ({ x, y, w, d }: Placement, z: number) =>
@@ -170,7 +171,7 @@ type ChipSource = Pick<Structure, "code" | "shape">;
  * Where a structure's code chip goes: the middle of its shape's top, or
  * nothing when the shape has no top or the top is too small for the chip.
  */
-export const chipRect: {
+const chipRect: {
   (placement: Placement): (structure: ChipSource) => ScreenRect | undefined;
   (structure: ChipSource, placement: Placement): ScreenRect | undefined;
 } = dual(
@@ -363,8 +364,8 @@ const runsBeside = (length: number, width: number) => {
  */
 const titleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
   const { back, front, left } = corners(zone.box, 0);
-  const wide = zone.box.w * gridStep;
-  const deep = zone.box.d * gridStep;
+  const wide = zone.box.w * gridOnScreen;
+  const deep = zone.box.d * gridOnScreen;
 
   // `inward` is +1 when the plate lies above the edge on screen.
   const fronts = [
@@ -611,7 +612,7 @@ const joinPieces = (pieces: readonly Piece[]) =>
  * ground before every box, so in the painter's order any box whose outline
  * reaches over a stretch hides it.
  */
-export const hiddenStretches = ({
+const hiddenStretches = ({
   points,
   outlines,
 }: {
@@ -824,10 +825,10 @@ export interface SceneSource {
  * painter's order with their tags and chips, the zones with their titles,
  * and the hops between revealed structures with their labels. Zone titles
  * are placed first, clear of boxes, tags, chips and routes. Then labels go
- * one by one, `labelFirst` first and the rest in data.mjs order, each in the first free spot at its own
- * route: clear of every box, tag, chip, zone title, other route and label
- * placed before it. A label with no free spot is hidden, and shows on hover
- * at `hoverLabel`.
+ * one by one, `labelFirst` first and the rest in data.mjs order, each in
+ * the first free spot at its own route: clear of every box, tag, chip,
+ * zone title, other route and label placed before it. A label with no free
+ * spot is hidden, and shows on hover at `hoverLabel`.
  */
 export const sceneOf = ({
   data,
@@ -1010,6 +1011,9 @@ const rectShape = (id: string, rect: ScreenRect): Shape2d => ({
   polygon: rectPolygon(rect),
 });
 
+/** Whether a scene item's id names a code chip. */
+const isChip = Str.startsWith("chip:");
+
 /**
  * Every pair of things in a scene drawn over each other, by the overlap
  * rule: no two of the name tags, hop labels, zone titles, code chips and
@@ -1018,8 +1022,6 @@ const rectShape = (id: string, rect: ScreenRect): Shape2d => ({
  * route may run through the tag of a structure it starts or ends at only
  * where it can't avoid it, so that counts too.
  */
-const isChip = Str.startsWith("chip:");
-
 export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
   const boxes = Arr.map(scene.structures, ({ structure, outline }) => ({
     id: `box:${structure.id}`,

@@ -10,11 +10,10 @@ import {
 } from "./geometry.ts";
 import {
   boxOutline,
+  gridOnScreen,
   nameTagRect,
   nameTagText,
   project,
-  tileHeight,
-  tileWidth,
 } from "./iso.ts";
 import type { ScreenPoint, ScreenRect } from "./iso.ts";
 import type { GridPoint, Layout, Placement } from "./layout.ts";
@@ -88,37 +87,36 @@ const margin = 4;
 const stepCost = 1;
 
 /**
- * Each bend costs as much as this many half-unit steps: 80 grid units. A
- * route only adds a bend to get around a box or to keep out of a name tag,
- * never to save length, and never turns into a staircase to stay inside its
- * area.
+ * Each bend costs as much as this many half-unit steps: 120 grid units. It
+ * must outweigh the extra length of any detour on a map, so a route adds a
+ * bend only to get around a box or out of a name tag, and never turns into
+ * a staircase to stay inside its area.
  */
 const bendCost = 240;
 
 /**
  * Each bend costs this many half-unit steps more for every grid unit of
- * screen distance it sits outside its route's area (see `routeArea`). With
- * the same number of bends, a route picks the one that stays between its
- * boxes on screen.
+ * screen distance it sits outside its route's area (see `routeArea`). It
+ * must outweigh a few grid units of extra length, so of routes with the
+ * same bends one inside the area wins, but stay well below `bendCost`, so
+ * it never buys an extra bend.
  */
 const bendStrayCost = 60;
 
 /**
  * Each bend costs this many half-unit steps more for the square of its
  * screen distance, in grid units, from the line between its two boxes'
- * screen centres. It picks the narrowest of routes with the same bends:
- * between boxes one above the other, a balanced Z.
+ * screen centres. Squared, a far bend outweighs two near ones, so between
+ * boxes one above the other a balanced Z beats a lopsided one; small, it
+ * only chooses among routes `bendStrayCost` already ranks equal.
  */
 const bendLineCost = 4;
 
-/** One grid unit along x or y, measured on screen. */
-const gridOnScreen = Math.hypot(tileWidth / 2, tileHeight / 2);
-
 /** How far past its two boxes' silhouettes a route's area reaches, in grid units. */
-export const areaMargin = 1.5;
+const areaMargin = 1.5;
 
 /** One end of a hop, as `routeArea` needs it. */
-export interface AreaEnd {
+interface AreaEnd {
   readonly placement: Placement;
   readonly shape: Shape;
 }
@@ -129,7 +127,7 @@ export interface AreaEnd {
  * `areaMargin` grid units on each side. It's what the reader sees the hop
  * join.
  */
-export const routeArea: {
+const routeArea: {
   (to: AreaEnd): (from: AreaEnd) => ScreenRect;
   (from: AreaEnd, to: AreaEnd): ScreenRect;
 } = dual(2, (from: AreaEnd, to: AreaEnd): ScreenRect =>
@@ -143,7 +141,7 @@ export const routeArea: {
 );
 
 /** How far a screen point sits outside an area, in grid units. */
-export const outsideArea: {
+const outsideArea: {
   (point: ScreenPoint): (area: ScreenRect) => number;
   (area: ScreenRect, point: ScreenPoint): number;
 } = dual(
@@ -164,13 +162,22 @@ const sharedStepCost = 1;
 const pairPointCost = 8;
 
 /**
- * What leaving or entering a box by an edge costs: an edge facing the other
- * end costs nothing, or a little when the other end lies beyond two edges
- * and this one faces it less directly on screen; an edge facing away costs
- * more than a bend, so a route takes it only when the facing edges are
- * blocked.
+ * What leaving or entering a box by an edge costs, on top of the route. An
+ * edge facing the other end straight on costs nothing.
  */
-const facingCosts = [0, 2, 600, 600] as const;
+const edgeCosts = {
+  /**
+   * The other of two facing edges, when the other end lies beyond both: a
+   * little, so the more direct one wins a tie.
+   */
+  facingAside: 2,
+  /**
+   * An edge facing away. It must outweigh two bends, the detour round to a
+   * facing edge, so a route takes it only when every facing edge is
+   * blocked.
+   */
+  facingAway: 600,
+} as const;
 
 /**
  * Entering a box by a back edge (-x or -y) costs this much more, because the
@@ -195,12 +202,17 @@ const zoneStepCost = 3;
 /** Each half unit a route's end sits from the middle of its edge. */
 const offCentreCost = 0.25;
 
-/** Running under a box costs more than any clear route could. */
+/**
+ * Each half-unit step under a box. It must outweigh every other cost a
+ * clear route can add up on a map, bends and detours included, so a route
+ * runs under a box only when no clear route exists.
+ */
 const crossCost = 1e6;
 
 /**
- * Running through a name tag costs more than any detour, but less than
- * running under a box.
+ * Each step through a name tag. It must outweigh any detour, bends
+ * included, so a route crosses a tag only when nothing goes round; and stay
+ * far below `crossCost`, so it crosses a tag rather than run under a box.
  */
 const tagCost = 1e4;
 
@@ -378,14 +390,33 @@ const makeQueue = () => {
   return { push, pop, size: () => items.length };
 };
 
-/** +x, +y, -x, -y, and "no direction yet" for a route's first point. */
+/**
+ * The four directions on the ground, as numbers so they key arrays and the
+ * search's states: along +x, +y, -x and -y. Opposite directions are two
+ * apart, and the axis is the number's parity (even along x, odd along y).
+ */
+const plusX = 0;
+
+const plusY = 1;
+
+const minusX = 2;
+
+const minusY = 3;
+
 const dx = [1, 0, -1, 0] as const;
 
 const dy = [0, 1, 0, -1] as const;
 
+/** The heading of a route's first point, which has no direction yet. */
 const noDirection = 4;
 
+/** How many headings a search state can have, `noDirection` included. */
 const directions = 5;
+
+const opposite = (direction: number) => (direction + 2) % 4;
+
+/** Whether a direction runs along x. */
+const alongXAxis = (direction: number) => direction % 2 === 0;
 
 /** The router's grid: every half-unit point in the routed area. */
 interface Grid {
@@ -532,13 +563,6 @@ const gridOf = (
   };
 };
 
-/**
- * The points along an edge from `from` to `to`, corners included, so a
- * route may leave a corner along either of its edges' outward directions.
- * Corners cost a little more than the edge's middle (see `offCentreCost`).
- */
-const along = (from: number, to: number) => Arr.range(from, to);
-
 /** A point on a footprint's edge a route may start or end at. */
 interface EdgePoint {
   readonly x: number;
@@ -561,7 +585,7 @@ const edgeNormals = [
  * -x, -y: an edge faces the other end when the other footprint starts past
  * it. Ends apart on both axes have two facing edges.
  */
-export const facingEdges: {
+const facingEdges: {
   (other: Placement): (box: Placement) => readonly boolean[];
   (box: Placement, other: Placement): readonly boolean[];
 } = dual(2, (box: Placement, other: Placement): readonly boolean[] => [
@@ -600,20 +624,24 @@ const facingOf = (box: Box, other: Box): readonly number[] => {
 
   const faces = facingEdges(placementOf(box), placementOf(other));
 
-  return Arr.map(Arr.range(0, 3), (edge) =>
-    faces[edge] === true
-      ? ranked.indexOf(edge) === 0
-        ? 0
-        : facingCosts[1]
-      : facingCosts[2]
-  );
+  const costOf = (edge: number) => {
+    if (faces[edge] !== true) {
+      return edgeCosts.facingAway;
+    }
+
+    return ranked.indexOf(edge) === 0 ? 0 : edgeCosts.facingAside;
+  };
+
+  return Arr.map(Arr.range(0, 3), costOf);
 };
 
 /**
- * The points on a footprint's edge a route may start or end at, each with
- * what it costs to use it: the edge's facing cost towards `other`, plus a
- * little for points away from the middle of their edge, so a lone route
- * leaves from the middle.
+ * The points on a footprint's edge a route may start or end at, corners
+ * included, so a route may leave a corner along either of its edges'
+ * outward directions. Each comes with what it costs to use it: the edge's
+ * facing cost towards `other`, `backCost` more on a back edge (-x or -y),
+ * and a little for points away from the middle of their edge, so a lone
+ * route leaves from the middle.
  */
 const edgePoints = (
   box: Box,
@@ -625,32 +653,32 @@ const edgePoints = (
   const facing = facingOf(box, other);
 
   const costOf = (out: number) =>
-    (facing[out] ?? 0) + (out >= 2 ? backCost : 0);
+    (facing[out] ?? 0) + (out === minusX || out === minusY ? backCost : 0);
 
   return [
-    ...Arr.map(along(box.x0, box.x1), (x) => ({
+    ...Arr.map(Arr.range(box.x0, box.x1), (x) => ({
       x,
       y: box.y1,
-      out: 1,
-      cost: costOf(1) + offCentreCost * Math.abs(x - midX),
+      out: plusY,
+      cost: costOf(plusY) + offCentreCost * Math.abs(x - midX),
     })),
-    ...Arr.map(along(box.y0, box.y1), (y) => ({
+    ...Arr.map(Arr.range(box.y0, box.y1), (y) => ({
       x: box.x1,
       y,
-      out: 0,
-      cost: costOf(0) + offCentreCost * Math.abs(y - midY),
+      out: plusX,
+      cost: costOf(plusX) + offCentreCost * Math.abs(y - midY),
     })),
-    ...Arr.map(along(box.x0, box.x1), (x) => ({
+    ...Arr.map(Arr.range(box.x0, box.x1), (x) => ({
       x,
       y: box.y0,
-      out: 3,
-      cost: costOf(3) + offCentreCost * Math.abs(x - midX),
+      out: minusY,
+      cost: costOf(minusY) + offCentreCost * Math.abs(x - midX),
     })),
-    ...Arr.map(along(box.y0, box.y1), (y) => ({
+    ...Arr.map(Arr.range(box.y0, box.y1), (y) => ({
       x: box.x0,
       y,
-      out: 2,
-      cost: costOf(2) + offCentreCost * Math.abs(y - midY),
+      out: minusX,
+      cost: costOf(minusX) + offCentreCost * Math.abs(y - midY),
     })),
   ];
 };
@@ -707,18 +735,18 @@ const pointIndex = (grid: Grid, { x, y }: Cell) =>
  */
 const stepKey = (grid: Grid, from: Cell, direction: number) =>
   pointIndex(grid, {
-    x: direction === 2 ? from.x - 1 : from.x,
-    y: direction === 3 ? from.y - 1 : from.y,
+    x: direction === minusX ? from.x - 1 : from.x,
+    y: direction === minusY ? from.y - 1 : from.y,
   }) *
     2 +
   (direction % 2);
 
 const directionOf = (a: Cell, b: Cell) => {
   if (b.x !== a.x) {
-    return b.x > a.x ? 0 : 2;
+    return b.x > a.x ? plusX : minusX;
   }
 
-  return b.y > a.y ? 1 : 3;
+  return b.y > a.y ? plusY : minusY;
 };
 
 const axesOf = (usage: Usage, structure: string) => {
@@ -753,7 +781,7 @@ const record = (
 
   for (const { a, b } of stepsAlong(points)) {
     const step = stepKey(grid, a, directionOf(a, b));
-    const axis = directionOf(a, b) % 2 === 0 ? 1 : 2;
+    const axis = alongXAxis(directionOf(a, b)) ? 1 : 2;
 
     for (const map of maps) {
       for (const point of [pointIndex(grid, a), pointIndex(grid, b)]) {
@@ -832,7 +860,7 @@ const stepPrice = (
     search.ends.has(grid.boxes[boxIndex]?.id ?? "")
   );
 
-  const reverse = heading !== noDirection && (heading + 2) % 4 === direction;
+  const reverse = heading !== noDirection && opposite(heading) === direction;
 
   const outside =
     search.window !== undefined && distanceTo(search.window, next) > 0;
@@ -851,7 +879,7 @@ const stepPrice = (
   const bend = turns ? bendCost + strayOf(search, from) : 0;
   const nextIndex = pointIndex(grid, next);
 
-  const across = direction % 2 === 0 ? 2 : 1;
+  const across = alongXAxis(direction) ? 2 : 1;
 
   const crossings = Arr.filter(
     search.siblings,
@@ -971,14 +999,18 @@ const stubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
     })
   );
 
-/** The price of a step back into a box, for a stub at the route's end. */
+/**
+ * Every stub into `box`, for a route's end: from each edge point, straight
+ * out for each of `stubLengths`, priced for the run back in towards the
+ * edge, with what the edge point costs (back edges `backEndCost` more).
+ */
 const inwardStubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
   Arr.flatMap(edgePoints(box, other, backEndCost), (edge) =>
     Arr.flatMap(stubLengths, (count, index) => {
       const tip = stepFrom(edge, edge.out, count);
 
       const price = runPrice(search, tip, {
-        direction: (edge.out + 2) % 4,
+        direction: opposite(edge.out),
         count,
       });
 
@@ -1064,7 +1096,7 @@ const finishFrom = (
     best,
     (sofar, stub) => {
       const turn =
-        heading === (stub.edge.out + 2) % 4
+        heading === opposite(stub.edge.out)
           ? 0
           : bendCost + strayOf(search, cellOf(search.grid, state));
 
@@ -1231,24 +1263,25 @@ const cappedRoute = (
 
 /**
  * Routes every hop whose ends both have a placement. A hop with a route
- * override in `layout.routes` follows it. Every other hop gets a route at
- * right angles on the half-unit grid, from the edge of one footprint to the
- * edge of the other, going around every footprint whenever a clear route
- * exists. A route costs its length, a fixed cost per bend, and more for each
- * bend outside `routeArea`, the screen area its two boxes span, so routes
- * stay between their boxes as the reader sees them. Each end
- * leaves or enters by an edge facing the other end, unless something
- * blocks it: every
- * end runs straight out of its box for at least one unit, routes keep out
- * of name tags whenever they can, and hops sharing a structure avoid
- * crossing each other. A route longer than `routeCap` allows is searched
- * again close to its ends. Routes stay inside the zones' bounds plus a
- * margin, and keep out of the zones of
- * groups neither end belongs to when they can. Hops between the same two
- * structures, in either direction, never share a step, so they run side by
- * side. Overrides go first, then the longest hops, then data.mjs order for
- * ties, and the same map always gives
- * the same routes. A hop from a structure to itself gets no route.
+ * override in `layout.routes` follows it as given. Every other hop gets a
+ * route at right angles on the half-unit grid, from the edge of one
+ * footprint to the edge of the other, going around every footprint
+ * whenever a clear route exists.
+ *
+ * A route costs its length, a fixed cost per bend, more for each bend
+ * outside the screen area its two boxes span, and a little for each bend's
+ * distance from the line between them, so routes stay between their boxes
+ * as the reader sees them. Each end leaves or enters by an edge facing the
+ * other end unless something blocks it, and runs straight out of its box
+ * for at least a half unit. Routes keep out of name tags and other groups'
+ * zones when they can, stay inside the zones' bounds plus a margin, and
+ * hops sharing a structure avoid crossing each other. A route longer than
+ * `routeCap` allows is searched again close to its ends.
+ *
+ * Hops between the same two structures, in either direction, never share a
+ * step, so they run side by side. Overrides go first, then the longest
+ * hops, then data.mjs order for ties, and the same map always gives the
+ * same routes. A hop from a structure to itself gets no route.
  */
 export const routeHops: {
   (layout: Layout): (data: MapData) => Readonly<Record<string, HopRoute>>;
@@ -1370,7 +1403,7 @@ export const routeHops: {
 );
 
 /** What `routeRevealed` routes. */
-export interface RevealedSource {
+interface RevealedSource {
   readonly data: MapData;
   readonly layout: Layout;
   /** The structures drawn, such as those a chapter has revealed so far. */
