@@ -1,4 +1,3 @@
-import { cn } from "@axonometric/ui/lib/utils";
 import type { ReactNode } from "react";
 
 /**
@@ -12,14 +11,12 @@ import type { ReactNode } from "react";
 export function MapLink({
   href,
   children,
-  className,
 }: {
   readonly href?: string | undefined;
   readonly children: ReactNode;
-  readonly className?: string;
 }) {
   if (href === undefined) {
-    return <code className={cn("wrap-anywhere", className)}>{children}</code>;
+    return <code className="wrap-anywhere">{children}</code>;
   }
 
   return (
@@ -27,10 +24,7 @@ export function MapLink({
       href={href}
       target="_blank"
       rel="noreferrer"
-      className={cn(
-        "focus-visible:outline-ink wrap-anywhere underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-1",
-        className
-      )}
+      className="focus-visible:outline-ink wrap-anywhere underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-1"
     >
       {children}
     </a>

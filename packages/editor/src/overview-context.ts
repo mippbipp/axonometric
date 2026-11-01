@@ -18,12 +18,12 @@ export const OverviewPageContext = createContext<OverviewPageState | null>(
   null
 );
 
-/** The "How it's built" page's state. Call it inside an `OverviewProvider`. */
+/** The "How it's built" page's state. Call it inside an `OverviewPageProvider`. */
 export const useOverviewPage = (): OverviewPageState => {
   const value = use(OverviewPageContext);
 
   if (value === null) {
-    throw new Error("useOverviewPage needs an OverviewProvider above it.");
+    throw new Error("useOverviewPage needs an OverviewPageProvider above it.");
   }
 
   return value;

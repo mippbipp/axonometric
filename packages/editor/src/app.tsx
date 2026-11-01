@@ -16,7 +16,7 @@ import { useOverviewPage } from "./overview-context.ts";
 import {
   OverviewButton,
   OverviewPage,
-  OverviewProvider,
+  OverviewPageProvider,
 } from "./overview-page.tsx";
 import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
@@ -34,19 +34,19 @@ import { WalkthroughProvider } from "./walkthrough.tsx";
 
 /** The keys the hint bar lists, for what's on screen. */
 const hintsOf = ({
-  overview,
+  overviewOpen,
   selected,
   inside,
   canGoInside,
 }: {
   /** Whether the How it's built page is open. */
-  readonly overview: boolean;
+  readonly overviewOpen: boolean;
   readonly selected: boolean;
   readonly inside: boolean;
   /** Whether the selected structure has steps. */
   readonly canGoInside: boolean;
 }) => {
-  if (overview) {
+  if (overviewOpen) {
     return ["Esc closes this page"];
   }
 
@@ -168,7 +168,7 @@ function WalkthroughPage() {
         <ul className="flex h-4 min-w-0 flex-wrap gap-x-4 gap-y-2 overflow-hidden">
           {Arr.map(
             hintsOf({
-              overview: overviewOpen,
+              overviewOpen,
               selected: selected !== null,
               inside: insideStructure !== undefined,
               canGoInside: hasSteps(selectedStructure),
@@ -195,9 +195,9 @@ export function App({ state }: { readonly state: MapState }) {
       <PlaybackProvider>
         <SelectionProvider>
           <TooltipProvider>
-            <OverviewProvider>
+            <OverviewPageProvider>
               <WalkthroughPage />
-            </OverviewProvider>
+            </OverviewPageProvider>
           </TooltipProvider>
         </SelectionProvider>
       </PlaybackProvider>

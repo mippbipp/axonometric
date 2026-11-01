@@ -20,7 +20,7 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 const pageTitle = "How it's built";
 
 /** Holds whether the "How it's built" page is open. */
-export function OverviewProvider({
+export function OverviewPageProvider({
   children,
 }: {
   readonly children: ReactNode;
@@ -35,9 +35,12 @@ export function OverviewProvider({
   }, []);
 
   const toggle = useCallback(() => {
-    setOpen((was) => !was);
-    buttonRef.current?.focus();
-  }, []);
+    if (open) {
+      close();
+    } else {
+      setOpen(true);
+    }
+  }, [open, close]);
 
   const value = useMemo(
     () => ({ open, toggle, close, buttonRef, pageId }),
@@ -97,6 +100,26 @@ function TextSection({
   );
 }
 
+/**
+ * A unique key for each item, from its text. The schema allows repeats, so
+ * a repeat gets its count after it, such as "Server 2".
+ */
+const keysOf = <A,>(
+  items: readonly A[],
+  textOf: (item: A) => string
+): readonly string[] => {
+  const seen = new Map<string, number>();
+
+  return Arr.map(items, (item) => {
+    const text = textOf(item);
+    const count = (seen.get(text) ?? 0) + 1;
+
+    seen.set(text, count);
+
+    return count === 1 ? text : `${text} ${count}`;
+  });
+};
+
 const cellClass = "border-ink border-t py-1.5 pr-4 align-top";
 
 function Decisions({
@@ -150,8 +173,11 @@ function DeepDives({
   return (
     <Section title="Deep dives">
       <ul className="flex flex-col gap-2 text-sm">
-        {Arr.map(deepDives, (deepDive) => (
-          <li key={deepDive.title} data-deep-dive>
+        {Arr.zip(
+          deepDives,
+          keysOf(deepDives, (deepDive) => deepDive.title)
+        ).map(([deepDive, key]) => (
+          <li key={key} data-deep-dive>
             <b className="font-medium">
               {deepDive.link === undefined ? (
                 deepDive.title
@@ -182,9 +208,12 @@ function OverviewContents({ overview }: { readonly overview: Overview }) {
       <p className="text-sm">{overview.summary}</p>
       {stats.length === 0 ? null : (
         <dl className="flex flex-wrap gap-2">
-          {Arr.map(stats, (stat) => (
+          {Arr.zip(
+            stats,
+            keysOf(stats, (stat) => stat.label)
+          ).map(([stat, key]) => (
             <div
-              key={stat.label}
+              key={key}
               className="border-ink flex flex-col border px-3 py-1.5"
             >
               <dt className="text-2xs tracking-widest uppercase opacity-70">
