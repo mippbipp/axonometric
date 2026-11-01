@@ -414,6 +414,32 @@ describe("placement", () => {
       })
   );
 
+  it.effect(
+    "puts hop-linked structures of neighbouring groups on a shared row or column",
+    () =>
+      Effect.sync(() => {
+        const data = mapOf(
+          Arr.flatMap(["a", "b", "c", "d"], (group) =>
+            Arr.map([1, 2], (n) => structure(`${group}${n}`, group))
+          ),
+          [hop("b2", "a1"), hop("a1", "b1")]
+        );
+
+        const { layout } = placeStructures(data, layoutOf());
+        const a1 = placementOf(layout, "a1");
+
+        for (const id of ["b1", "b2"]) {
+          const other = placementOf(layout, id);
+
+          assert.isTrue(
+            centre(a1).x === centre(other).x ||
+              centre(a1).y === centre(other).y,
+            `a1 and ${id} sit diagonally apart`
+          );
+        }
+      })
+  );
+
   it.effect("works around a hand-placed structure in the way", () =>
     Effect.sync(() => {
       const data = mapOf([structure("a"), structure("b"), structure("c")]);
