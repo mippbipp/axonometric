@@ -61,6 +61,26 @@ const wheelAtCentre = Effect.fnUntraced(function* (page: Page, deltaY: number) {
   yield* Effect.promise(() => page.mouse.wheel(0, deltaY));
 });
 
+/**
+ * Records every click that reaches the document, as the id of the structure
+ * it landed on, or null.
+ */
+const recordClicks = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate(`
+      window.clicked = [];
+      document.addEventListener("click", (event) => {
+        const structure = event.target.closest("[data-structure]");
+        window.clicked.push(structure?.dataset.structure ?? null);
+      });
+    `)
+  );
+
+const clickedOf = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<readonly (string | null)[]>("window.clicked")
+  );
+
 describe("the viewport", () => {
   it.live("zooms in with the wheel, around the cursor", () =>
     Effect.scoped(
@@ -131,15 +151,7 @@ describe("the viewport", () => {
         const { page } = yield* builtPage;
         const before = yield* drawingOf(page);
 
-        yield* Effect.promise(() =>
-          page.evaluate(`
-            window.clicked = [];
-            document.addEventListener("click", (event) => {
-              const structure = event.target.closest("[data-structure]");
-              window.clicked.push(structure?.dataset.structure ?? null);
-            });
-          `)
-        );
+        yield* recordClicks(page);
 
         const [box] = yield* boxesOf(page, '[data-structure="box"]');
 
@@ -160,12 +172,97 @@ describe("the viewport", () => {
         yield* Effect.promise(() => page.mouse.move(x, y, { steps: 4 }));
         yield* Effect.promise(() => page.mouse.up());
 
-        const clicked = yield* Effect.promise(() =>
-          page.evaluate<readonly (string | null)[]>("window.clicked")
+        assert.deepStrictEqual(yield* drawingOf(page), before);
+        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
+      })
+    )
+  );
+
+  it.live("lets the next click land after a touch pan", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+        const svg = yield* canvasOf(page);
+        const before = yield* drawingOf(page);
+
+        yield* recordClicks(page);
+
+        // A touch pan fires pointer events but no click afterwards.
+        const cdp = yield* Effect.promise(() =>
+          page.context().newCDPSession(page)
         );
 
-        assert.deepStrictEqual(yield* drawingOf(page), before);
-        assert.deepStrictEqual(clicked, ["box"]);
+        const touch = (
+          type: "touchStart" | "touchMove" | "touchEnd",
+          x: number,
+          y: number
+        ) =>
+          Effect.promise(() =>
+            cdp.send("Input.dispatchTouchEvent", {
+              type,
+              touchPoints:
+                type === "touchEnd" ? [] : [{ x: svg.x + x, y: svg.y + y }],
+            })
+          );
+
+        yield* Effect.promise(() =>
+          cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true })
+        );
+        yield* touch("touchStart", 10, 10);
+
+        for (let step = 1; step <= 5; step += 1) {
+          yield* touch("touchMove", 10 + step * 20, 10 + step * 10);
+        }
+
+        yield* touch("touchEnd", 110, 60);
+
+        const after = yield* drawingOf(page);
+        const [box] = yield* boxesOf(page, '[data-structure="box"]');
+
+        assert.isDefined(box);
+
+        if (box === undefined) {
+          return;
+        }
+
+        yield* Effect.promise(() =>
+          page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+        );
+
+        assert.closeTo(after.left - before.left, 100, 1);
+        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
+      })
+    )
+  );
+
+  it.live("lets a click on a structure land after a mouse pan", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+        const svg = yield* canvasOf(page);
+
+        yield* recordClicks(page);
+        yield* Effect.promise(() => page.mouse.move(svg.x + 10, svg.y + 10));
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() =>
+          page.mouse.move(svg.x + 110, svg.y + 60, { steps: 5 })
+        );
+        yield* Effect.promise(() => page.mouse.up());
+
+        const [box] = yield* boxesOf(page, '[data-structure="box"]');
+
+        assert.isDefined(box);
+
+        if (box === undefined) {
+          return;
+        }
+
+        yield* Effect.promise(() =>
+          page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+        );
+
+        // The drag's own click is swallowed; the real one lands.
+        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
       })
     )
   );

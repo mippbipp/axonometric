@@ -147,6 +147,10 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
   };
 
   const onPointerDown = (event: PointerEvent) => {
+    // Every press starts fresh. A touch pan fires no click, so waiting for
+    // one to clear the flag would swallow the next real click.
+    dragging = false;
+
     if (event.button !== 0) {
       return;
     }
@@ -163,7 +167,6 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
           : { distance: span.distance, view: gestures.current() };
     } else if (!startsOnStructure(event.target)) {
       press = { ...local(event), view: gestures.current() };
-      dragging = false;
     }
   };
 
@@ -229,7 +232,8 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
     }
   };
 
-  // A drag ends with a click on whatever is under the pointer; swallow it.
+  // A mouse drag ends with a click on whatever is under the pointer; swallow
+  // it.
   const onClick = (event: MouseEvent) => {
     if (dragging) {
       dragging = false;
@@ -260,17 +264,22 @@ const controlClass =
 
 /**
  * An SVG canvas you can pan and zoom. It fits `fit` to its size on first
- * draw, whenever `fit` changes and whenever it's resized. Drag on empty space
+ * draw, when `fitKey` changes, when it's resized and when the engineer asks.
+ * Other changes to `fit`, such as a moved structure, keep the current zoom
+ * and pan; the next fit uses the new bounds. Drag on empty space
  * to pan; the wheel or a pinch zooms; `+`, `-` and `0` zoom in, out and to
  * fit. The view lives in a transform on one group, so panning doesn't
  * re-render `children`.
  */
 export function Viewport({
   fit = emptyBounds,
+  fitKey = "",
   title,
   children,
 }: {
   readonly fit?: Bounds | undefined;
+  /** Names what `fit` holds, such as a chapter. A new key refits the view. */
+  readonly fitKey?: string;
   readonly title: string;
   readonly children: ReactNode;
 }) {
@@ -279,7 +288,11 @@ export function Viewport({
   const view = useRef<View>({ scale: 1, x: 0, y: 0 });
   const fitScale = useRef(1);
   const titleId = useId();
-  const { minX, minY, maxX, maxY } = fit;
+  const bounds = useRef(fit);
+
+  useLayoutEffect(() => {
+    bounds.current = fit;
+  });
 
   const show = useCallback((next: View) => {
     view.current = next;
@@ -300,14 +313,14 @@ export function Viewport({
       return;
     }
 
-    const next = fitted(
-      { minX, minY, maxX, maxY },
-      { width: svg.clientWidth, height: svg.clientHeight }
-    );
+    const next = fitted(bounds.current, {
+      width: svg.clientWidth,
+      height: svg.clientHeight,
+    });
 
     fitScale.current = next.scale;
     show(next);
-  }, [minX, minY, maxX, maxY, show]);
+  }, [show]);
 
   const zoomBy = useCallback(
     (factor: number, at?: { readonly x: number; readonly y: number }) => {
@@ -331,8 +344,15 @@ export function Viewport({
     [show]
   );
 
-  // Fit before the first paint, and again when the bounds change.
-  useLayoutEffect(zoomToFit, [zoomToFit]);
+  const fittedFor = useRef<string | undefined>(undefined);
+
+  // Fit before the first paint, and again when the key changes.
+  useLayoutEffect(() => {
+    if (fittedFor.current !== fitKey) {
+      fittedFor.current = fitKey;
+      zoomToFit();
+    }
+  }, [fitKey, zoomToFit]);
 
   useEffect(() => {
     const observer = new ResizeObserver(zoomToFit);

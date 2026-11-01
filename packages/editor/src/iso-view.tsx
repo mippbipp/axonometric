@@ -8,8 +8,8 @@ import { isoHeights } from "@axonometric/contracts";
 import { Array as Arr, Order, String as Str } from "effect";
 import { useId } from "react";
 
-import { boundsOf } from "./bounds.ts";
-import { project, routeHop, toPoints } from "./iso.ts";
+import { fitOf } from "./fit.ts";
+import { corners, project, routeHop, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
@@ -29,13 +29,6 @@ interface RoutedHop {
   readonly hop: Hop;
   readonly points: readonly ScreenPoint[];
 }
-
-const corners = ({ x, y, w, d }: Placement, z: number) => ({
-  back: project({ x, y, z }),
-  right: project({ x: x + w, y, z }),
-  front: project({ x: x + w, y: y + d, z }),
-  left: project({ x, y: y + d, z }),
-});
 
 /** Painter's order: boxes further back are drawn first. */
 const byDepth = Order.mapInput(
@@ -179,7 +172,10 @@ export function IsoView({
   fitTo,
 }: {
   readonly state: MapState;
-  /** The ids of the structures to fit to the window. Defaults to all of them. */
+  /**
+   * The ids of the structures to fit to the window. Defaults to all of them.
+   * A new set of ids refits the view; a moved structure doesn't.
+   */
   readonly fitTo?: readonly string[];
 }) {
   // useId's output can hold characters that don't belong in url(#...).
@@ -189,20 +185,26 @@ export function IsoView({
   const placed = placeAll(state);
   const routed = routeAll(state);
 
-  const fitting = fitTo === undefined ? undefined : new Set(fitTo);
-  const inFit = (id: string) => fitting === undefined || fitting.has(id);
-
-  const fit = boundsOf([
-    ...Arr.flatMap(placed, (item) =>
-      inFit(item.structure.id) ? extentOf(item) : []
-    ),
-    ...Arr.flatMap(routed, ({ hop, points }) =>
-      inFit(hop.from) && inFit(hop.to) ? points : []
-    ),
-  ]);
+  const fit = fitOf({
+    drawn: [
+      ...Arr.map(placed, (item) => ({
+        ids: [item.structure.id],
+        points: extentOf(item),
+      })),
+      ...Arr.map(routed, ({ hop, points }) => ({
+        ids: [hop.from, hop.to],
+        points,
+      })),
+    ],
+    fitTo,
+  });
 
   return (
-    <Viewport title={`Iso view of ${state.system}`} fit={fit}>
+    <Viewport
+      title={`Iso view of ${state.system}`}
+      fit={fit.bounds}
+      fitKey={fit.key}
+    >
       <defs>
         <pattern
           id={hatch}
