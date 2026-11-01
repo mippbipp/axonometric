@@ -1,3 +1,4 @@
+# scratch: workspace config change for the #68 demo
 packages:
   - packages/*
 
