@@ -1,7 +1,7 @@
 import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
-import { fitsEdge } from "./ends.ts";
+import { fitsEdge, trunkSteps } from "./ends.ts";
 import {
   boundsOfPoints,
   clipToConvex,
@@ -166,9 +166,69 @@ const outsideArea: {
 const sharedStepCost = 1;
 
 /**
+ * How many steps and points of a route a stranger's route also uses: a step
+ * both run along, and a point where the axes meet or either turns or ends.
+ * Crossing squarely shares nothing.
+ */
+const sharedWith = (
+  grid: Grid,
+  strangers: ReturnType<typeof strangersOf>,
+  cells: readonly Cell[]
+) => {
+  const steps = new Set(
+    Arr.map(stepsAlong(cells), ({ a, b }) =>
+      stepKey(grid, a, directionOf(a, b))
+    )
+  );
+
+  const points = new Map<number, number>();
+
+  Arr.forEach(cornersOf(cells), (point) => {
+    points.set(pointIndex(grid, point), 3);
+  });
+
+  for (const { a, b } of stepsAlong(cells)) {
+    const axis = alongXAxis(directionOf(a, b)) ? 1 : 2;
+
+    for (const point of [pointIndex(grid, a), pointIndex(grid, b)]) {
+      points.set(point, (points.get(point) ?? 0) | axis);
+    }
+  }
+
+  return (
+    Arr.filter([...steps], (step) => strangers.steps.has(step)).length +
+    Arr.filter(
+      [...points],
+      ([point, axes]) => ((strangers.points.get(point) ?? 0) & axes) !== 0
+    ).length
+  );
+};
+
+/** The steps and points a route runs along its first steps from one end. */
+interface Trunk {
+  readonly steps: ReadonlySet<number>;
+  readonly points: ReadonlySet<number>;
+}
+
+/**
+ * More length, in grid units, that a route which keeps off every stranger's
+ * steps may have than the cheapest route, which may share them.
+ */
+const apartLength = 6;
+
+/** How many times the hops that share with strangers are routed again. */
+const ripUpRounds = 2;
+
+/**
+ * How many hops are routed again in a round: the ones that share the most.
+ * It bounds the work on a big map, where most hops share something.
+ */
+const ripUpHops = 10;
+
+/**
  * Running alongside or touching the route of a hop that shares no
- * structure with this one, per step. A short detour beats it, an extra
- * bend doesn't.
+ * structure with this one, or past the trunk of one that does, per step. A
+ * short detour beats it, an extra bend doesn't.
  */
 const strangerStepCost = 20;
 
@@ -858,6 +918,12 @@ interface Usage {
     readonly ends: readonly string[];
     readonly steps: ReadonlySet<number>;
     readonly points: ReadonlyMap<number, number>;
+    /**
+     * The route's trunk at each of its two ends: the steps and points of
+     * its first `trunkSteps` steps from that end, which a hop sharing the
+     * end's structure may run along cheaply.
+     */
+    readonly trunks: readonly [Trunk, Trunk];
   }[];
 }
 
@@ -1001,7 +1067,28 @@ const record = (
     });
   }
 
-  usage.routes.push({ ends, steps, points: passes });
+  const trunkFrom = (cells: readonly Cell[]): Trunk => {
+    const run = stepsAlong(cells).slice(0, trunkSteps);
+
+    return {
+      steps: new Set(
+        Arr.map(run, ({ a, b }) => stepKey(grid, a, directionOf(a, b)))
+      ),
+      points: new Set(
+        Arr.flatMap(run, ({ a, b }) => [
+          pointIndex(grid, a),
+          pointIndex(grid, b),
+        ])
+      ),
+    };
+  };
+
+  usage.routes.push({
+    ends,
+    steps,
+    points: passes,
+    trunks: [trunkFrom(points), trunkFrom(Arr.reverse(points))],
+  });
 };
 
 /** Keeps a polyline's first and last points and the points where it turns. */
@@ -1043,6 +1130,12 @@ interface Search {
    * outline. `check` warns about the overlap instead.
    */
   readonly cornersFree: boolean;
+  /**
+   * Whether the steps strangers' routes use are off limits, not just dear:
+   * the first try for every hop. A hop with no route that way within the cap
+   * and `apartLength`, is searched again with them dear.
+   */
+  readonly apart: boolean;
   /**
    * When set, steps outside this box aren't allowed at all, and bends cost
    * nothing for straying from the route's area: the search is after a route
@@ -1095,12 +1188,17 @@ const stepPrice = (
   // structures: the scene still draws the two as separate lines.
   const pairStep = search.pair.steps.has(step);
 
+  // Strangers' steps are off limits on the first try, so no two routes
+  // share a step but a bundle's, along its trunk.
+  const taken = search.apart && search.strangers.steps.has(step);
+
   if (
     !inside(grid, next) ||
     outside ||
     (pairStep && search.window === undefined) ||
     ownEnd ||
-    reverse
+    reverse ||
+    taken
   ) {
     return undefined;
   }
@@ -1318,12 +1416,19 @@ const strangersOf = (usage: Usage, ends: ReadonlySet<string>) => {
   const points = new Map<number, number>();
 
   for (const route of usage.routes) {
-    if (!Arr.some(route.ends, (end) => ends.has(end))) {
-      for (const step of route.steps) {
+    // Along a trunk at a structure the two hops share, a step is cheap.
+    const shared = Arr.filter(route.trunks, (_, side) =>
+      ends.has(route.ends[side] ?? "")
+    );
+
+    for (const step of route.steps) {
+      if (!Arr.some(shared, (trunk) => trunk.steps.has(step))) {
         steps.add(step);
       }
+    }
 
-      for (const [point, axes] of route.points) {
+    for (const [point, axes] of route.points) {
+      if (!Arr.some(shared, (trunk) => trunk.points.has(point))) {
         points.set(point, (points.get(point) ?? 0) | axes);
       }
     }
@@ -1339,10 +1444,12 @@ const searchOf = (
     from,
     to,
     window,
+    apart = false,
   }: {
     readonly from: Box;
     readonly to: Box;
     readonly window: Box | undefined;
+    readonly apart?: boolean;
   }
 ): Search => ({
   grid,
@@ -1357,6 +1464,7 @@ const searchOf = (
   ),
   strangers: strangersOf(usage, new Set([from.id, to.id])),
   cornersFree: overlapping(from, to),
+  apart,
   window,
   area: routeArea(from, to),
   line: [screenCentre(from), screenCentre(to)],
@@ -1499,6 +1607,7 @@ const searchRoute = (
     readonly from: Box;
     readonly to: Box;
     readonly window: Box | undefined;
+    readonly apart?: boolean;
   }
 ): readonly Cell[] => {
   const search = searchOf(grid, pair, ends);
@@ -1576,7 +1685,32 @@ const cappedRoute = (
   pair: { readonly usage: Usage; readonly key: string },
   { from, to }: { readonly from: Box; readonly to: Box }
 ): readonly Cell[] => {
-  const free = searchRoute(grid, pair, { from, to, window: undefined });
+  const clear = searchRoute(grid, pair, {
+    from,
+    to,
+    window: undefined,
+    apart: true,
+  });
+
+  // A clear route as short as the shortest possible one needs no rival: it
+  // can't lose to a route that shares steps. Otherwise the cheapest route,
+  // which may share them, is searched for too, and the clear route wins
+  // unless it is much longer.
+  const { distance } = lengthOfCells(clear);
+  const shortest =
+    clear.length > 0 && lengthOfCells(clear).length <= distance + 1;
+
+  const soft =
+    shortest && withinCap(clear)
+      ? clear
+      : searchRoute(grid, pair, { from, to, window: undefined });
+
+  const free =
+    clear.length > 0 &&
+    withinCap(clear) &&
+    lengthOfCells(clear).length <= lengthOfCells(soft).length + apartLength
+      ? clear
+      : soft;
 
   if (free.length === 0 || withinCap(free)) {
     return free;
@@ -1657,13 +1791,16 @@ export const routeHops: {
 
     const grid = gridOf(boxes, zones, { tags, extra: overridePoints });
 
-    const usage: Usage = {
+    const freshUsage = (): Usage => ({
       steps: new Set(),
       axes: new Map(),
       pairs: new Map(),
       routes: [],
       edgeEnds: new Map(),
-    };
+    });
+
+    const usage = freshUsage();
+    const chosen = new Map<string, readonly Cell[]>();
 
     const routes: Record<string, HopRoute> = {};
 
@@ -1703,6 +1840,26 @@ export const routeHops: {
       }
     };
 
+    const routeFrom = (hop: Hop, halfUnits: readonly Cell[]): HopRoute => {
+      const override = overrides[hop.id];
+
+      const points =
+        override ??
+        Arr.map(halfUnits, (point) => ({
+          x: point.x / scale,
+          y: point.y / scale,
+        }));
+
+      const { length, distance } = routeLength(points);
+
+      return {
+        points,
+        crosses: crossesOf(boxes, new Set([hop.from, hop.to]), halfUnits),
+        overridden: override !== undefined,
+        tooLong: length > routeCap(distance),
+      };
+    };
+
     const routeOne = (hop: Hop) => {
       const from = byId.get(hop.from);
       const to = byId.get(hop.to);
@@ -1714,7 +1871,6 @@ export const routeHops: {
       release(hop);
 
       const key = pairKey(hop.from, hop.to);
-      const ends = new Set([hop.from, hop.to]);
       const override = overrides[hop.id];
 
       const halfUnits =
@@ -1728,21 +1884,8 @@ export const routeHops: {
 
       record(grid, { usage, key, ends: [hop.from, hop.to] }, halfUnits);
 
-      const points =
-        override ??
-        Arr.map(halfUnits, (point) => ({
-          x: point.x / scale,
-          y: point.y / scale,
-        }));
-
-      const { length, distance } = routeLength(points);
-
-      routes[hop.id] = {
-        points,
-        crosses: crossesOf(boxes, ends, halfUnits),
-        overridden: override !== undefined,
-        tooLong: length > routeCap(distance),
-      };
+      chosen.set(hop.id, halfUnits);
+      routes[hop.id] = routeFrom(hop, halfUnits);
     };
 
     // Overrides go first, so automatic routes keep clear of them.
@@ -1771,6 +1914,90 @@ export const routeHops: {
 
     for (const hop of automatic) {
       routeOne(hop);
+    }
+
+    // A hop routed early can't know the routes after it. Each hop that
+    // shares steps with a stranger's route is routed again around everyone
+    // else's routes as they stand, and keeps the new route if it shares
+    // less, stays within the cap, and has no more than a bend extra. Only
+    // hops that share anything are looked at, so a map whose routes already
+    // keep apart pays for one scan.
+    const everyoneBut = (hop: Hop) => {
+      const others = freshUsage();
+
+      for (const other of data.hops) {
+        const cells = chosen.get(other.id);
+
+        if (other.id !== hop.id && cells !== undefined) {
+          record(
+            grid,
+            {
+              usage: others,
+              key: pairKey(other.from, other.to),
+              ends: [other.from, other.to],
+            },
+            cells
+          );
+        }
+      }
+
+      return others;
+    };
+
+    const sharing = (hop: Hop) => {
+      const cells = chosen.get(hop.id);
+
+      return cells === undefined
+        ? 0
+        : sharedWith(
+            grid,
+            strangersOf(everyoneBut(hop), new Set([hop.from, hop.to])),
+            cells
+          );
+    };
+
+    for (let round = 0; round < ripUpRounds; round++) {
+      const crowded = Arr.take(
+        Arr.sort(
+          Arr.filter(
+            Arr.map(automatic, (hop) => ({ hop, shared: sharing(hop) })),
+            ({ shared }) => shared > 0
+          ),
+          Order.mapInput(
+            Order.Number,
+            ({ shared }: { shared: number }) => -shared
+          )
+        ),
+        ripUpHops
+      ).map(({ hop }) => hop);
+
+      for (const hop of crowded) {
+        const from = byId.get(hop.from);
+        const to = byId.get(hop.to);
+        const old = chosen.get(hop.id);
+
+        if (from !== undefined && to !== undefined && old !== undefined) {
+          const others = everyoneBut(hop);
+          const strangers = strangersOf(others, new Set([hop.from, hop.to]));
+          const before = sharedWith(grid, strangers, old);
+
+          const next = cappedRoute(
+            grid,
+            { usage: others, key: pairKey(hop.from, hop.to) },
+            { from, to }
+          );
+
+          if (
+            next.length > 0 &&
+            sharedWith(grid, strangers, next) < before &&
+            withinCap(next) &&
+            cornersOf(next).length <= cornersOf(old).length + 1
+          ) {
+            chosen.set(hop.id, next);
+            routes[hop.id] = routeFrom(hop, next);
+          }
+        }
+      }
     }
 
     return Rec.fromEntries(

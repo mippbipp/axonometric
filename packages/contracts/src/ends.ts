@@ -40,6 +40,14 @@ export const endWidths: Readonly<
   plan: { head: 0.24, start: 0.09 },
 };
 
+/**
+ * How far from a structure a bundle's trunk may run cheaply in the router,
+ * in half-unit steps. Hops that share a structure share steps cheaply only
+ * this far along their routes from it, so a bundle parts soon after the
+ * structure. Past it the router prices a shared step like a stranger's.
+ */
+export const trunkSteps = 8;
+
 /** How far an end stays from a corner on an edge long enough, in grid units. */
 export const cornerMargin = 0.5;
 
