@@ -197,7 +197,7 @@ export function LayoutEditor({
   readonly children: ReactNode;
 }) {
   const editing = useEditing();
-  const { selected, marked } = useSelection();
+  const { selected, multiSelection } = useSelection();
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
   const dragged = useRef(false);
@@ -332,8 +332,8 @@ export function LayoutEditor({
 
     // Pressing a structure of the multi-selection moves the whole set.
     const ids =
-      current.corner === undefined && marked.has(current.id)
-        ? [...marked]
+      current.corner === undefined && multiSelection.has(current.id)
+        ? [...multiSelection]
         : [current.id];
 
     const together = ids.length > 1;
@@ -373,7 +373,7 @@ export function LayoutEditor({
       !samePlacement(drag.next, drag.start)
     ) {
       if (drag.ids.length > 1) {
-        editing.applyMoves(movesOf(drag.ids, placements, drag));
+        editing.arrange(() => movesOf(drag.ids, placements, drag));
       } else {
         editing.place(drag.id, drag.next);
       }
@@ -383,7 +383,7 @@ export function LayoutEditor({
   };
 
   const handlesAt =
-    selected === null || marked.size > 0
+    selected === null || multiSelection.size > 0
       ? undefined
       : drag?.id === selected
         ? drag.next

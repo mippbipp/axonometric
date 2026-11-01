@@ -75,7 +75,7 @@ export function BoxSelect({
   readonly revealed: ReadonlySet<string>;
 }) {
   const editing = useEditing();
-  const { marked, mark } = useSelection();
+  const { multiSelection, setMultiSelection } = useSelection();
   const anchor = useRef<SVGGElement>(null);
   const [box, setBox] = useState<Box | undefined>();
   const live = editing?.canEdit === true;
@@ -108,7 +108,7 @@ export function BoxSelect({
         x: event.clientX,
         y: event.clientY,
         from,
-        kept: marked,
+        kept: multiSelection,
       };
     }
   });
@@ -157,8 +157,8 @@ export function BoxSelect({
       }),
     ]);
 
-    if (!sameIds(hit, marked)) {
-      mark([...hit]);
+    if (!sameIds(hit, multiSelection)) {
+      setMultiSelection([...hit]);
     }
   });
 
@@ -210,7 +210,7 @@ export function BoxSelect({
               groundProjections[view]
             )
           )}
-          className="fill-pending/10 stroke-pending"
+          className="fill-multi/10 stroke-multi"
           strokeWidth={1.5}
           strokeDasharray="5 3"
         />

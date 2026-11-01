@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
-import { useEditKeys, useNudging } from "./edit-keys.ts";
+import { useArrowOwner, useEditKeys } from "./edit-keys.ts";
 import { EditToolbar } from "./edit-toolbar.tsx";
 import { useEditing } from "./editing-context.ts";
 import { ExportMenu } from "./export-menu.tsx";
@@ -46,7 +46,7 @@ const hintsOf = ({
   inside,
   canGoInside,
   editing,
-  marked,
+  multiSelected,
 }: {
   /** Whether the How it's built page is open. */
   readonly overviewOpen: boolean;
@@ -57,7 +57,7 @@ const hintsOf = ({
   /** Whether the page can edit the layout. */
   readonly editing: boolean;
   /** How many structures are in the multi-selection. */
-  readonly marked: number;
+  readonly multiSelected: number;
 }) => {
   if (overviewOpen) {
     return ["Esc closes this page"];
@@ -67,7 +67,7 @@ const hintsOf = ({
     return ["← or Esc come out", "click Step to move the packet"];
   }
 
-  if (marked > 0) {
+  if (multiSelected > 0) {
     return [
       "arrows nudge half a unit",
       "drag to move them together",
@@ -111,7 +111,7 @@ interface Notices {
 
 function WalkthroughPage({ notices }: Notices) {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
-  const { selected, inside, marked } = useSelection();
+  const { selected, inside, multiSelection } = useSelection();
   const editing = useEditing();
   const { open: overviewOpen } = useOverviewPage();
   const byId = useStructuresById();
@@ -121,11 +121,11 @@ function WalkthroughPage({ notices }: Notices) {
   // state: the chapter, the selection and the packets.
   const [view, setView] = useState<View>("iso");
 
-  const nudging = useNudging();
+  const arrowOwner = useArrowOwner();
 
-  useChapterKeys(selected === null && !nudging);
-  useSelectionKeys(nudging);
-  useEditKeys();
+  useChapterKeys(arrowOwner === "chapter");
+  useSelectionKeys(arrowOwner === "selection");
+  useEditKeys(arrowOwner);
   useInsideFocus(inside);
 
   // Switching views while a page covers the map would change what's under
@@ -209,9 +209,12 @@ function WalkthroughPage({ notices }: Notices) {
               {/* The inside view shows the notices instead, while it's open. */}
               {insideStructure === undefined ? notices : null}
             </div>
+            <EditToolbar
+              view={view}
+              className="pointer-events-auto absolute top-3 right-3"
+            />
             {/* Stops short of the zoom controls at the bottom right, and wraps
                 upward when the flows don't fit on one line. */}
-            <EditToolbar className="pointer-events-auto absolute top-3 right-3" />
             <div
               data-playback-bar
               className="absolute bottom-3 left-3 flex max-w-[calc(100%-13rem)] flex-wrap items-center gap-x-3 gap-y-1.5"
@@ -256,7 +259,7 @@ function WalkthroughPage({ notices }: Notices) {
               inside: insideStructure !== undefined,
               canGoInside: hasSteps(selectedStructure),
               editing: editing?.canEdit === true,
-              marked: nudging ? marked.size : 0,
+              multiSelected: arrowOwner === "nudge" ? multiSelection.size : 0,
             }),
             (hint) => (
               <li key={hint} data-hint className="shrink-0 whitespace-nowrap">

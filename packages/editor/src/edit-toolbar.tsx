@@ -1,5 +1,5 @@
 import { alignMoves, distributeMoves } from "@axonometric/contracts";
-import type { Alignment, Axis } from "@axonometric/contracts";
+import type { Alignment, Axis, View } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useState } from "react";
@@ -9,18 +9,31 @@ import { controlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
 import { useSelection } from "./selection-context.ts";
 
-/** What the page tells the engineer about the arrange buttons. */
-const alignments: readonly {
-  readonly how: Alignment;
-  readonly label: string;
-  readonly title: string;
-  /** A 16 by 16 icon: bars and boxes lined up the way the button does it. */
+/**
+ * What a button is called in each view. Plan view draws x to the right and
+ * y down, so the names are the usual ones. The Iso view turns the ground a
+ * quarter turn: x runs down and to the right, y down and to the left. There
+ * "left" would line things up on a diagonal, so the buttons say which
+ * diagonal edge of the ground they use instead, with the axis in brackets.
+ */
+interface Names {
+  readonly plan: string;
+  readonly iso: string;
+}
+
+/** One button's icon, drawn on a 16 by 16 plan of the ground. */
+interface Control {
+  readonly label: Names;
   readonly icon: ReactNode;
-}[] = [
+}
+
+const alignments: readonly (Control & { readonly how: Alignment })[] = [
   {
     how: "left",
-    label: "Align left edges",
-    title: "Align left edges: every structure starts at the smallest x",
+    label: {
+      plan: "Align left edges",
+      iso: "Align to the upper-left edge (smallest x)",
+    },
     icon: (
       <>
         <path d="M2 1v14" />
@@ -31,8 +44,10 @@ const alignments: readonly {
   },
   {
     how: "centre-x",
-    label: "Align centres on x",
-    title: "Align centres on x: every centre at the middle of the set's x",
+    label: {
+      plan: "Align centres on x (a vertical line)",
+      iso: "Align centres on x (a line from lower-left to upper-right)",
+    },
     icon: (
       <>
         <path d="M8 1v14" />
@@ -43,8 +58,10 @@ const alignments: readonly {
   },
   {
     how: "right",
-    label: "Align right edges",
-    title: "Align right edges: every structure ends at the largest x",
+    label: {
+      plan: "Align right edges",
+      iso: "Align to the lower-right edge (largest x)",
+    },
     icon: (
       <>
         <path d="M14 1v14" />
@@ -55,8 +72,10 @@ const alignments: readonly {
   },
   {
     how: "top",
-    label: "Align top edges",
-    title: "Align top edges: every structure starts at the smallest y",
+    label: {
+      plan: "Align top edges",
+      iso: "Align to the upper-right edge (smallest y)",
+    },
     icon: (
       <>
         <path d="M1 2h14" />
@@ -67,8 +86,10 @@ const alignments: readonly {
   },
   {
     how: "centre-y",
-    label: "Align centres on y",
-    title: "Align centres on y: every centre at the middle of the set's y",
+    label: {
+      plan: "Align centres on y (a horizontal line)",
+      iso: "Align centres on y (a line from upper-left to lower-right)",
+    },
     icon: (
       <>
         <path d="M1 8h14" />
@@ -79,8 +100,10 @@ const alignments: readonly {
   },
   {
     how: "bottom",
-    label: "Align bottom edges",
-    title: "Align bottom edges: every structure ends at the largest y",
+    label: {
+      plan: "Align bottom edges",
+      iso: "Align to the lower-left edge (largest y)",
+    },
     icon: (
       <>
         <path d="M1 14h14" />
@@ -91,17 +114,13 @@ const alignments: readonly {
   },
 ];
 
-const distributions: readonly {
-  readonly axis: Axis;
-  readonly label: string;
-  readonly title: string;
-  readonly icon: ReactNode;
-}[] = [
+const distributions: readonly (Control & { readonly axis: Axis })[] = [
   {
     axis: "x",
-    label: "Distribute horizontally",
-    title:
-      "Distribute along x: equal gaps between the structures, the outer two stay put. Needs three.",
+    label: {
+      plan: "Distribute horizontally",
+      iso: "Distribute along x (down and to the right)",
+    },
     icon: (
       <>
         <path d="M1 1v14M15 1v14" />
@@ -111,9 +130,10 @@ const distributions: readonly {
   },
   {
     axis: "y",
-    label: "Distribute vertically",
-    title:
-      "Distribute along y: equal gaps between the structures, the outer two stay put. Needs three.",
+    label: {
+      plan: "Distribute vertically",
+      iso: "Distribute along y (down and to the left)",
+    },
     icon: (
       <>
         <path d="M1 1h14M1 15h14" />
@@ -123,7 +143,21 @@ const distributions: readonly {
   },
 ];
 
-function Icon({ children }: { readonly children: ReactNode }) {
+/** Why Distribute is off, where the engineer can read it. */
+const distributeNeedsThree = "Select three or more to distribute";
+
+/**
+ * An icon drawn on the ground. In the Iso view the same drawing goes
+ * through the Iso projection (x to the lower right, y to the lower left, at
+ * half height), so the icon shows the diagonal the button works along.
+ */
+function Icon({
+  view,
+  children,
+}: {
+  readonly view: View;
+  readonly children: ReactNode;
+}) {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -131,7 +165,16 @@ function Icon({ children }: { readonly children: ReactNode }) {
       strokeWidth={1.2}
       aria-hidden="true"
     >
-      {children}
+      <g
+        transform={
+          view === "iso"
+            ? "translate(8 8) matrix(0.5 0.25 -0.5 0.25 0 0) translate(-8 -8)"
+            : undefined
+        }
+        vectorEffect="non-scaling-stroke"
+      >
+        {children}
+      </g>
     </svg>
   );
 }
@@ -145,23 +188,52 @@ const iconButton = cn(
  * The editing controls over the map, shown only while the page can edit:
  * Undo and Redo, and, when two or more structures are selected, Align and
  * Distribute for them. Each button is one change and one undo step.
+ *
+ * A button's name shows as text under the toolbar while the pointer is on
+ * it or it has focus, so touch and keyboard users read it too. `view` picks
+ * the icons and names: in the Iso view they say which diagonal of the ground
+ * each button works along.
  */
-export function EditToolbar({ className }: { readonly className?: string }) {
+export function EditToolbar({
+  view,
+  className,
+}: {
+  readonly view: View;
+  readonly className?: string;
+}) {
   const editing = useEditing();
-  const { marked } = useSelection();
+  const { multiSelection } = useSelection();
   const [refusal, setRefusal] = useState<string | undefined>();
+  const [hint, setHint] = useState<string | undefined>();
 
   if (editing === null || !editing.canEdit) {
     return null;
   }
 
   const { canUndo, canRedo, undo, redo, arrange } = editing;
-  const ids = [...marked];
+  const ids = [...multiSelection];
   const many = ids.length >= 2;
+  const canDistribute = ids.length >= 3;
 
   const run = (plan: Parameters<typeof arrange>[0]) => {
     setRefusal(arrange(plan));
   };
+
+  /** Shows `label` while the pointer or focus is on a button. */
+  const hintFor = (label: string) => ({
+    onPointerEnter: () => {
+      setHint(label);
+    },
+    onFocus: () => {
+      setHint(label);
+    },
+    onPointerLeave: () => {
+      setHint(undefined);
+    },
+    onBlur: () => {
+      setHint(undefined);
+    },
+  });
 
   return (
     <div
@@ -179,26 +251,28 @@ export function EditToolbar({ className }: { readonly className?: string }) {
           data-control="undo"
           className={controlClass}
           disabled={!canUndo}
+          aria-label="Undo"
           title="Undo (Ctrl+Z)"
           onClick={() => {
             setRefusal(undefined);
             undo();
           }}
         >
-          ↶ Undo
+          <span aria-hidden="true">↶ Undo</span>
         </button>
         <button
           type="button"
           data-control="redo"
           className={controlClass}
           disabled={!canRedo}
+          aria-label="Redo"
           title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
           onClick={() => {
             setRefusal(undefined);
             redo();
           }}
         >
-          Redo ↷
+          <span aria-hidden="true">Redo ↷</span>
         </button>
       </div>
       {many ? (
@@ -206,43 +280,55 @@ export function EditToolbar({ className }: { readonly className?: string }) {
           role="toolbar"
           aria-label={`Arrange ${ids.length} selected structures`}
           data-arrange-toolbar
-          className="border-ink bg-paper flex flex-wrap items-center justify-end gap-1.5 border p-1.5"
+          className="border-ink bg-paper flex flex-col items-end gap-1 border p-1.5"
         >
-          <span className="px-1 text-xs tracking-widest uppercase opacity-70">
-            {ids.length} selected
-          </span>
-          {Arr.map(alignments, ({ how, label, title, icon }) => (
-            <button
-              key={how}
-              type="button"
-              data-align={how}
-              className={iconButton}
-              aria-label={label}
-              title={title}
-              onClick={() => {
-                run((placements) => alignMoves({ placements, ids, how }));
-              }}
-            >
-              <Icon>{icon}</Icon>
-            </button>
-          ))}
-          <span aria-hidden="true" className="bg-ink h-4 w-px opacity-40" />
-          {Arr.map(distributions, ({ axis, label, title, icon }) => (
-            <button
-              key={axis}
-              type="button"
-              data-distribute={axis}
-              className={iconButton}
-              aria-label={label}
-              title={title}
-              disabled={ids.length < 3}
-              onClick={() => {
-                run((placements) => distributeMoves({ placements, ids, axis }));
-              }}
-            >
-              <Icon>{icon}</Icon>
-            </button>
-          ))}
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <span className="px-1 text-xs tracking-widest uppercase opacity-70">
+              {ids.length} selected
+            </span>
+            {Arr.map(alignments, ({ how, label, icon }) => (
+              <button
+                key={how}
+                type="button"
+                data-align={how}
+                className={iconButton}
+                aria-label={label[view]}
+                title={label[view]}
+                {...hintFor(label[view])}
+                onClick={() => {
+                  run((placements) => alignMoves({ placements, ids, how }));
+                }}
+              >
+                <Icon view={view}>{icon}</Icon>
+              </button>
+            ))}
+            <span aria-hidden="true" className="bg-ink h-4 w-px opacity-40" />
+            {Arr.map(distributions, ({ axis, label, icon }) => (
+              <button
+                key={axis}
+                type="button"
+                data-distribute={axis}
+                className={iconButton}
+                aria-label={label[view]}
+                title={canDistribute ? label[view] : distributeNeedsThree}
+                disabled={!canDistribute}
+                {...hintFor(label[view])}
+                onClick={() => {
+                  run((placements) =>
+                    distributeMoves({ placements, ids, axis })
+                  );
+                }}
+              >
+                <Icon view={view}>{icon}</Icon>
+              </button>
+            ))}
+          </div>
+          <p
+            data-toolbar-hint
+            className="min-h-4 max-w-80 text-right text-xs opacity-80"
+          >
+            {hint ?? (canDistribute ? "" : distributeNeedsThree)}
+          </p>
         </div>
       ) : null}
       {refusal === undefined ? null : (

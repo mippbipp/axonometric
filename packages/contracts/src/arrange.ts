@@ -4,7 +4,7 @@ import type { GridPoint, Placement } from "./layout.ts";
 import type { LayoutChange, StructureMove } from "./proposals.ts";
 
 /** Where each structure sits, by id. Ids the layout doesn't place are skipped. */
-type Placements = Readonly<Partial<Record<string, Placement>>>;
+export type Placements = Readonly<Partial<Record<string, Placement>>>;
 
 /**
  * How `alignMoves` lines structures up, in ground terms. Left and right act
@@ -24,15 +24,6 @@ export type Alignment =
   | "bottom"
   | "centre-x"
   | "centre-y";
-
-export const alignments: readonly Alignment[] = [
-  "left",
-  "right",
-  "top",
-  "bottom",
-  "centre-x",
-  "centre-y",
-];
 
 /** The ground axis `distributeMoves` spreads structures along. */
 export type Axis = "x" | "y";
@@ -94,39 +85,40 @@ export const alignMoves = ({
   const top = smallest(Arr.map(at, ({ y }) => y));
   const bottom = largest(Arr.map(at, ({ y, d }) => y + d));
 
-  return movesTo(structures, ({ x, y, w, d }) => {
-    switch (how) {
-      case "left":
-        return { x: left, y };
-      case "right":
-        return { x: snap(right - w), y };
-      case "top":
-        return { x, y: top };
-      case "bottom":
-        return { x, y: snap(bottom - d) };
-      case "centre-x":
-        return { x: snap((left + right) / 2 - w / 2), y };
-      case "centre-y":
-        return { x, y: snap((top + bottom) / 2 - d / 2) };
-      default:
-        return { x, y };
-    }
-  });
+  const positions: Readonly<Record<Alignment, (at: Placement) => GridPoint>> = {
+    left: ({ y }) => ({ x: left, y }),
+    right: ({ y, w }) => ({ x: snap(right - w), y }),
+    top: ({ x }) => ({ x, y: top }),
+    bottom: ({ x, d }) => ({ x, y: snap(bottom - d) }),
+    "centre-x": ({ y, w }) => ({ x: snap((left + right) / 2 - w / 2), y }),
+    "centre-y": ({ x, d }) => ({ x, y: snap((top + bottom) / 2 - d / 2) }),
+  };
+
+  return movesTo(structures, positions[how]);
 };
 
 type Entry = readonly [string, Placement];
 
-/** By position along `axis`, then by id, so equal positions order the same each time. */
-const byStart = (axis: Axis): Order.Order<Entry> =>
-  Order.combine(
-    Order.mapInput(Order.Number, ([, placement]: Entry) =>
-      axis === "x" ? placement.x : placement.y
-    ),
-    Order.mapInput(Order.String, ([id]: Entry) => id)
-  );
+/** What `distributeMoves` reads and writes along one ground axis. */
+interface Along {
+  readonly start: (placement: Placement) => number;
+  readonly size: (placement: Placement) => number;
+  /** `placement`'s position with its start along the axis set to `start`. */
+  readonly setStart: (placement: Placement, start: number) => GridPoint;
+}
 
-const sizeOf = (placement: Placement, axis: Axis) =>
-  axis === "x" ? placement.w : placement.d;
+const along: Readonly<Record<Axis, Along>> = {
+  x: {
+    start: ({ x }) => x,
+    size: ({ w }) => w,
+    setStart: ({ y }, start) => ({ x: start, y }),
+  },
+  y: {
+    start: ({ y }) => y,
+    size: ({ d }) => d,
+    setStart: ({ x }, start) => ({ x, y: start }),
+  },
+};
 
 /**
  * The moves that spread `ids` evenly along `axis`: the first and last by
@@ -143,7 +135,16 @@ export const distributeMoves = ({
   readonly ids: readonly string[];
   readonly axis: Axis;
 }): readonly StructureMove[] => {
-  const ordered = Arr.sort(placed(placements, ids), byStart(axis));
+  const { start, size, setStart } = along[axis];
+
+  // By position along the axis, then by id, so equal positions order the
+  // same each time.
+  const byStart: Order.Order<Entry> = Order.combine(
+    Order.mapInput(Order.Number, ([, placement]: Entry) => start(placement)),
+    Order.mapInput(Order.String, ([id]: Entry) => id)
+  );
+
+  const ordered = Arr.sort(placed(placements, ids), byStart);
 
   const first = Arr.head(ordered);
   const last = Arr.last(ordered);
@@ -152,28 +153,20 @@ export const distributeMoves = ({
     return [];
   }
 
-  const origin = axis === "x" ? first.value[1].x : first.value[1].y;
-
-  const end =
-    (axis === "x" ? last.value[1].x : last.value[1].y) +
-    sizeOf(last.value[1], axis);
-
-  const sizes = Arr.map(ordered, ([, placement]) => sizeOf(placement, axis));
+  const origin = start(first.value[1]);
+  const end = start(last.value[1]) + size(last.value[1]);
+  const sizes = Arr.map(ordered, ([, placement]) => size(placement));
   const gap = (end - origin - Number.sumAll(sizes)) / (ordered.length - 1);
 
   const starts = Arr.scan(
     sizes.slice(0, -1),
     origin,
-    (at, size) => at + size + gap
+    (at, extent) => at + extent + gap
   );
 
-  return movesTo(ordered, (placement, index) => {
-    const along = snap(starts[index] ?? origin);
-
-    return axis === "x"
-      ? { x: along, y: placement.y }
-      : { x: placement.x, y: along };
-  });
+  return movesTo(ordered, (placement, index) =>
+    setStart(placement, snap(starts[index] ?? origin))
+  );
 };
 
 /**
@@ -201,9 +194,10 @@ export interface GroundBox {
 }
 
 /**
- * The structures, among `ids`, whose footprints share ground with `box`. A footprint the box only touches
- * along an edge doesn't count. In the Iso view the box is the ground
- * rectangle between the two corners, which is a diamond on screen.
+ * The structures, among `ids`, whose footprints share ground with `box`. A
+ * footprint the box only touches along an edge doesn't count. In the Iso
+ * view the box is the ground rectangle between the two corners, which is a
+ * diamond on screen.
  */
 export const structuresInBox = ({
   placements,
@@ -212,7 +206,7 @@ export const structuresInBox = ({
 }: {
   readonly placements: Placements;
   readonly box: GroundBox;
-  /** The structures to look at. Defaults to every one `placements` places. */
+  /** The structures to look at. */
   readonly ids: readonly string[];
 }): readonly string[] => {
   const left = Math.min(from.x, to.x);

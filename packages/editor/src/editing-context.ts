@@ -40,14 +40,10 @@ export interface Editing {
     moves: readonly StructureMove[]
   ) => string | undefined;
   /**
-   * Moves several structures together as one pending change, and so one
-   * undo step. Returns why it was refused, or `undefined` when it went ahead.
-   */
-  readonly applyMoves: (moves: readonly StructureMove[]) => string | undefined;
-  /**
    * Moves, nudges, aligns or distributes a set as one pending change and one
    * undo step. `plan` gets where the structures sit now and returns the
-   * moves. Returns why it was refused, or `undefined`.
+   * moves. A group drag passes the moves it already knows. Returns why it
+   * was refused, or `undefined`.
    */
   readonly arrange: (plan: Arrangement) => string | undefined;
   /** Whether there is an edit to undo. */

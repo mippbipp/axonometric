@@ -17,8 +17,8 @@ const outlineOf = (placement: Placement) => ({
 
 /**
  * A solid outline on the ground around the selected structure's footprint,
- * and a dashed one around each structure in the multi-selection, drawn under
- * the structures.
+ * and a solid one in the multi-selection colour around each structure in the
+ * multi-selection, drawn under the structures.
  */
 export function SelectionMarker({
   placements,
@@ -27,7 +27,7 @@ export function SelectionMarker({
   readonly placements: Readonly<Partial<Record<string, Placement>>>;
   readonly view: View;
 }) {
-  const { selected, marked } = useSelection();
+  const { selected, multiSelection } = useSelection();
   const placement = selected === null ? undefined : placements[selected];
   const ground = groundProjections[view];
 
@@ -41,7 +41,7 @@ export function SelectionMarker({
           strokeWidth={2}
         />
       )}
-      {Arr.flatMap([...marked], (id) => {
+      {Arr.flatMap([...multiSelection], (id) => {
         const at = placements[id];
 
         return at === undefined
@@ -49,11 +49,10 @@ export function SelectionMarker({
           : [
               <polygon
                 key={id}
-                data-marked-marker={id}
+                data-multi-selection-marker={id}
                 points={toPoints(groundOutline(outlineOf(at), ground))}
-                className="fill-pending/15 stroke-pending pointer-events-none"
-                strokeWidth={2}
-                strokeDasharray="6 3"
+                className="fill-multi/15 stroke-multi pointer-events-none"
+                strokeWidth={2.5}
               />,
             ];
       })}

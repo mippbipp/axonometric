@@ -2,19 +2,25 @@ import {
   appendMove,
   applyLayoutChanges,
   discardChange,
+  emptyHistory,
   emptyProposals,
   LayoutChangeRefused,
   layoutRefusal,
   MapFilesUnreadable,
   newChangeId,
+  observeFile,
   PendingLayoutWrite,
   placeStructure,
   Proposals,
+  pushStep,
+  redoStep,
   sameLayoutChanges,
   ServedPage,
   servedPageElementId,
   ServerEvent,
   StaleProposals,
+  undoStep,
+  wroteFile,
 } from "@axonometric/contracts";
 import type {
   ChangeId,
@@ -23,7 +29,9 @@ import type {
   MapProblem,
   MapState,
   Placement,
+  Placements,
   StructureMove,
+  UndoHistory,
 } from "@axonometric/contracts";
 import {
   Array as Arr,
@@ -82,7 +90,7 @@ export interface Rejection {
 
 /** Why the last edit didn't save, as the page tells the engineer. */
 export interface EditNotice {
-  readonly kind: "conflict" | "refused" | "failed";
+  readonly kind: "conflict" | "refused" | "failed" | "info";
   readonly message: string;
 }
 
@@ -143,16 +151,11 @@ export interface ServedStore {
     moves: readonly StructureMove[]
   ) => string | undefined;
   /**
-   * Moves the structures in `moves` together as one pending change, shown at
-   * once and saved to `proposals.json`. Returns why it was refused, which
-   * the page also shows as a notice, or `undefined`.
-   */
-  readonly applyMoves: (moves: readonly StructureMove[]) => string | undefined;
-  /**
    * Moves, nudges, aligns or distributes a set as one pending change: `plan`
    * is given where the structures sit once every pending change is applied,
    * and returns the moves. It runs on the latest list each time, so quick
-   * repeats add up. Returns why it was refused, or `undefined`.
+   * repeats add up. A refusal also shows as a notice. Returns why it was
+   * refused, or `undefined`.
    */
   readonly arrange: (plan: Arrangement) => string | undefined;
   /**
@@ -164,24 +167,11 @@ export interface ServedStore {
   readonly redo: () => void;
 }
 
-/** Where each structure sits, by id. */
-export type Placements = Readonly<Partial<Record<string, Placement>>>;
-
 /** The moves that arrange a set, given where its structures sit now. */
 export type Arrangement = (placements: Placements) => readonly StructureMove[];
 
-/**
- * The pending lists the session has been through. `past` ends with the list
- * before the latest edit; `future` ends with the list the latest undo left.
- * Each step re-sends a whole list, so it is only valid while the file is as
- * the session left it.
- */
-interface History {
-  readonly past: readonly (readonly LayoutChange[])[];
-  readonly future: readonly (readonly LayoutChange[])[];
-}
-
-const noHistory: History = { past: [], future: [] };
+/** The pending lists the session has been through, for undo and redo. */
+type History = UndoHistory<readonly LayoutChange[]>;
 
 /** How many edits the session remembers. */
 const historyDepth = 100;
@@ -267,7 +257,23 @@ export interface ServedSource {
 const proposalsOf = (state: MapState): Proposals =>
   state.proposals ?? emptyProposals;
 
+/**
+ * `incoming`, unless the file it carries is older than the one `current`
+ * holds. Events and answers can arrive out of order, and an older file must
+ * not take the page back.
+ */
+const withFreshestProposals = (
+  current: MapState,
+  incoming: MapState
+): MapState =>
+  proposalsOf(incoming).revision < proposalsOf(current).revision
+    ? { ...incoming, proposals: proposalsOf(current) }
+    : incoming;
+
 const savedLayout = (state: MapState) => proposalsOf(state).layout;
+
+const clearedHistoryMessage =
+  "Accepted changes can't be undone. Edits before this point are cleared from undo.";
 
 const stepConflictMessage =
   "The pending changes changed on disk since your last edit, so nothing was undone or redone. The page shows what's saved, and your steps are kept. Make an edit to start the history again.";
@@ -327,13 +333,7 @@ export const connectServed = ({
     canRedo: false,
   };
 
-  let history = noHistory;
-
-  /**
-   * The file revision the history is good for: the one the session's last
-   * write made. A file at another revision was written by someone else.
-   */
-  let ownRevision = proposalsOf(initial).revision;
+  let history: History = emptyHistory(proposalsOf(initial).revision);
 
   /** The accepted layout's revision. Accepting a change moves it. */
   let acceptedRevision = initial.layout.revision;
@@ -349,10 +349,42 @@ export const connectServed = ({
   /** Goes up when the queue is dropped, so waiting writes know to skip. */
   let generation = 0;
 
+  /**
+   * Shows `next`. Whenever it brings a map, however it got here, the history
+   * hears of it: accepting a change makes the accepted layout's revision go
+   * up, undo doesn't reach past that, and the engineer is told.
+   */
   const update = (next: Partial<ServedView>) => {
+    const { state } = next;
+
+    const observed =
+      state === undefined
+        ? undefined
+        : observeFile({
+            history,
+            fileRevision: proposalsOf(state).revision,
+            acceptedChanged: state.layout.revision !== acceptedRevision,
+          });
+
+    if (state !== undefined) {
+      ({ revision: acceptedRevision } = state.layout);
+    }
+
+    if (observed !== undefined) {
+      ({ history } = observed);
+    }
+
+    const told: EditNotice | null =
+      observed?.cleared === true && (next.notice ?? null) === null
+        ? { kind: "info", message: clearedHistoryMessage }
+        : next.notice === undefined
+          ? view.notice
+          : next.notice;
+
     view = {
       ...view,
       ...next,
+      notice: told,
       canUndo: history.past.length > 0,
       canRedo: history.future.length > 0,
     };
@@ -369,30 +401,14 @@ export const connectServed = ({
   const pendingAfter = (state: MapState) =>
     queue.length === 0 ? savedLayout(state) : view.pending;
 
-  /**
-   * Keeps the history honest about a map the server sent. Accepting a change
-   * moves the accepted layout's revision, and undo doesn't reach past that,
-   * so the history ends. With no history there is nothing to protect, so the
-   * file's revision becomes the one to expect.
-   */
-  const syncHistory = (state: MapState) => {
-    if (state.layout.revision !== acceptedRevision) {
-      acceptedRevision = state.layout.revision;
-      history = noHistory;
-    }
-
-    if (history.past.length === 0 && history.future.length === 0) {
-      ownRevision = proposalsOf(state).revision;
-    }
-  };
-
   /** Whether someone else has written the file since the session's last write. */
   const outdated = () =>
-    queue.length === 0 && proposalsOf(view.state).revision !== ownRevision;
+    queue.length === 0 && proposalsOf(view.state).revision !== history.revision;
 
   /** Takes the map the server holds. */
-  const receive = (state: MapState) => {
-    syncHistory(state);
+  const receive = (incoming: MapState) => {
+    const state = withFreshestProposals(view.state, incoming);
+
     update({
       state,
       rejection: null,
@@ -425,9 +441,11 @@ export const connectServed = ({
           update({ rejection: { summary, problems }, stopped: false });
         },
         PendingUpdated: ({ proposals }) => {
-          const state = { ...view.state, proposals };
+          const state = withFreshestProposals(view.state, {
+            ...view.state,
+            proposals,
+          });
 
-          syncHistory(state);
           update({ state, pending: pendingAfter(state) });
         },
         Heartbeat: () => {},
@@ -488,11 +506,15 @@ export const connectServed = ({
 
     // The events stream can deliver a later revision before this answer
     // does. The older file must not replace it.
-    const newer = proposalsOf(view.state).revision > proposals.revision;
-    const state = newer ? view.state : { ...view.state, proposals };
+    const state = withFreshestProposals(view.state, {
+      ...view.state,
+      proposals,
+    });
 
-    ownRevision = proposals.revision;
-    update({ state, pending: pendingAfter(state), notice: null });
+    // The notice stays: a late answer to an earlier write must not wipe a
+    // refusal shown since. The next edit clears it.
+    history = wroteFile({ history, revision: proposals.revision });
+    update({ state, pending: pendingAfter(state) });
   };
 
   /**
@@ -557,6 +579,7 @@ export const connectServed = ({
     const rebuilt: History = {
       past: rerun.trail.slice(-historyDepth),
       future: [],
+      revision: fresh.revision,
     };
 
     adopt(fresh, null, rebuilt);
@@ -701,15 +724,19 @@ export const connectServed = ({
       return refusal.value;
     }
 
-    const before = view.pending;
-
     // An edit after someone else's write starts the history again: the
     // earlier steps would put back a list that lacks their change.
-    const kept = outdated() ? noHistory : history;
-
-    const next: History = sameLayoutChanges(before, after)
-      ? kept
-      : { past: [...kept.past, before].slice(-historyDepth), future: [] };
+    const next = sameLayoutChanges(view.pending, after)
+      ? history
+      : pushStep({
+          history,
+          before: view.pending,
+          fileRevision:
+            queue.length === 0
+              ? proposalsOf(view.state).revision
+              : history.revision,
+          cap: historyDepth,
+        });
 
     submit({ edit, after, step: false, next });
 
@@ -733,10 +760,14 @@ export const connectServed = ({
 
   /** Undoes or redoes one step: sets the pending list to the one it holds. */
   const stepThrough = (direction: "undo" | "redo") => {
-    const target =
-      direction === "undo" ? history.past.at(-1) : history.future.at(-1);
+    const before = view.pending;
 
-    if (target === undefined) {
+    const stepped = (direction === "undo" ? undoStep : redoStep)({
+      history,
+      current: before,
+    });
+
+    if (Option.isNone(stepped)) {
       return;
     }
 
@@ -746,7 +777,7 @@ export const connectServed = ({
       return;
     }
 
-    const before = view.pending;
+    const { target, history: next } = stepped.value;
 
     const refusal = layoutRefusal({
       accepted: view.state.layout,
@@ -759,17 +790,6 @@ export const connectServed = ({
 
       return;
     }
-
-    const next: History =
-      direction === "undo"
-        ? {
-            past: history.past.slice(0, -1),
-            future: [...history.future, before],
-          }
-        : {
-            past: [...history.past, before],
-            future: history.future.slice(0, -1),
-          };
 
     submit({ edit: () => target, after: target, step: true, next });
   };
@@ -791,7 +811,6 @@ export const connectServed = ({
     discard: (id) => run((changes) => discardChange(changes, id)),
     refusalOfMoves: (moves) =>
       Option.getOrUndefined(tryEdit(moving(moves)).refusal),
-    applyMoves: (moves) => runShowingRefusal(moving(moves)),
     arrange: (plan) => runShowingRefusal(arranging(plan)),
     undo: () => {
       stepThrough("undo");

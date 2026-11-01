@@ -24,19 +24,22 @@ export interface Selection {
    * The structures in the multi-selection, all revealed in the current
    * chapter. A chapter that hides one drops it.
    */
-  readonly marked: ReadonlySet<string>;
-  /** Selects a structure, or clears the selection with `null`. Empties the multi-selection too. */
+  readonly multiSelection: ReadonlySet<string>;
+  /**
+   * Selects a structure, or clears the selection with `null`. Empties the
+   * multi-selection too.
+   */
   readonly select: (id: string | null) => void;
   /**
    * Adds structure `id` to the multi-selection, or takes it out when it's
    * there. When the multi-selection is empty and another structure is
    * selected, that one joins it first.
    */
-  readonly toggleMarked: (id: string) => void;
+  readonly toggleMultiSelected: (id: string) => void;
   /** Makes the multi-selection exactly `ids`. */
-  readonly mark: (ids: readonly string[]) => void;
+  readonly setMultiSelection: (ids: readonly string[]) => void;
   /** Empties the multi-selection. The selection stays. */
-  readonly clearMarked: () => void;
+  readonly clearMultiSelection: () => void;
   /** Selects a structure and opens its inside view, if it has steps. */
   readonly goInside: (id: string) => void;
   /** Closes the inside view. The structure stays selected. */

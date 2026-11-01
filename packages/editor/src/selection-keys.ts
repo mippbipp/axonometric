@@ -10,12 +10,19 @@ import { useSelection } from "./selection-context.ts";
  * only when nothing is selected.
  *
  * Escape first empties the multi-selection, and a second press clears the
- * selection. While the multi-selection can be nudged (`nudging`), the arrow
- * keys are the nudge's and go unhandled here.
+ * selection. The arrow keys are handled only when `arrows` is true, which
+ * is when this is their owner (see `useArrowOwner`).
  */
-export const useSelectionKeys = (nudging: boolean) => {
-  const { selected, inside, marked, select, goInside, comeOut, clearMarked } =
-    useSelection();
+export const useSelectionKeys = (arrows: boolean) => {
+  const {
+    selected,
+    inside,
+    multiSelection,
+    select,
+    goInside,
+    comeOut,
+    clearMultiSelection,
+  } = useSelection();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (
@@ -28,14 +35,14 @@ export const useSelectionKeys = (nudging: boolean) => {
       return;
     }
 
-    if (event.key === "Escape" && marked.size > 0) {
+    if (event.key === "Escape" && multiSelection.size > 0) {
       event.preventDefault();
-      clearMarked();
+      clearMultiSelection();
 
       return;
     }
 
-    if (selected === null || (nudging && event.key.startsWith("Arrow"))) {
+    if (selected === null || (!arrows && event.key.startsWith("Arrow"))) {
       return;
     }
 

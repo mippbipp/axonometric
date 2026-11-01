@@ -117,7 +117,7 @@ The structure that's selected. Its panel is pinned in the side panel until the s
 _Avoid_: focus, active structure
 
 **Multi-selection**:
-The structures picked together with Shift-click or a selection box, to move, nudge, align and distribute as one. It opens no panel, and it is separate from the selection.
+The set of structures that move, nudge, align and distribute together. It is separate from the selection, which pins one structure's panel, and it opens no panel.
 _Avoid_: group selection, marquee
 
 **Side index**:

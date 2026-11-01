@@ -1,4 +1,5 @@
 import { applyLayoutChanges } from "@axonometric/contracts";
+import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useMemo, useSyncExternalStore } from "react";
 
@@ -36,7 +37,10 @@ function ServedNotices({
       {notice === null ? null : (
         <output
           data-edit-notice={notice.kind}
-          className="border-refused bg-paper text-ink pointer-events-auto max-w-full shrink-0 border-2 px-3 py-1.5 text-xs"
+          className={cn(
+            "bg-paper text-ink pointer-events-auto max-w-full shrink-0 border-2 px-3 py-1.5 text-xs",
+            notice.kind === "info" ? "border-ink" : "border-refused"
+          )}
         >
           {notice.message}
         </output>
@@ -93,7 +97,6 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       place: store.place,
       discard: store.discard,
       refusalOfMoves: store.refusalOfMoves,
-      applyMoves: store.applyMoves,
       arrange: store.arrange,
       canUndo: view.canUndo,
       canRedo: view.canRedo,

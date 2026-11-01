@@ -29,16 +29,29 @@ const stepOf = (key: string): GridPoint | undefined =>
     Option.getOrUndefined
   );
 
-/**
- * Whether the arrow keys belong to the multi-selection: the page can edit
- * and some structures are picked. Chapters and the selection's own keys
- * give the arrows up while this holds.
- */
-export const useNudging = () => {
-  const editing = useEditing();
-  const { marked } = useSelection();
+/** What the arrow keys do now. */
+export type ArrowOwner = "nudge" | "selection" | "chapter";
 
-  return editing?.canEdit === true && marked.size > 0;
+/**
+ * The one place that decides what the arrow keys do:
+ *
+ * - `nudge` moves the multi-selection, while the page can edit and some
+ *   structures are picked.
+ * - `selection` takes → inside the pinned structure and ← out of it.
+ * - `chapter` changes chapter, when nothing is picked.
+ *
+ * The chapter, selection and edit keys each act on the arrows only when
+ * they are the owner.
+ */
+export const useArrowOwner = (): ArrowOwner => {
+  const editing = useEditing();
+  const { selected, multiSelection } = useSelection();
+
+  if (editing?.canEdit === true && multiSelection.size > 0) {
+    return "nudge";
+  }
+
+  return selected === null ? "chapter" : "selection";
 };
 
 const isUndo = (event: KeyboardEvent) =>
@@ -56,16 +69,17 @@ const isRedo = (event: KeyboardEvent) =>
 /**
  * The keys that edit the layout while the page can edit:
  *
- * - The arrow keys nudge the multi-selection by half a unit. Each press is
- *   one change and one undo step. A held key's repeats are ignored, so
- *   holding an arrow doesn't write a change per repeat; drag to go far.
+ * - While `owner` is `nudge`, the arrow keys nudge the multi-selection by
+ *   half a unit. Each press is one change and one undo step. A held key's
+ *   repeats are ignored, so holding an arrow doesn't write a change per
+ *   repeat; drag to go far.
  * - Ctrl or Cmd+Z undoes, and Ctrl or Cmd+Shift+Z or Ctrl+Y redoes.
  *
  * Keys typed into a field are left alone, so a field keeps its own undo.
  */
-export const useEditKeys = () => {
+export const useEditKeys = (owner: ArrowOwner) => {
   const editing = useEditing();
-  const { marked } = useSelection();
+  const { multiSelection } = useSelection();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (
@@ -95,7 +109,7 @@ export const useEditKeys = () => {
 
     if (
       step === undefined ||
-      marked.size === 0 ||
+      owner !== "nudge" ||
       event.ctrlKey ||
       event.metaKey ||
       event.altKey ||
@@ -108,7 +122,7 @@ export const useEditKeys = () => {
 
     if (!event.repeat) {
       editing.arrange((placements) =>
-        nudgeMoves({ placements, ids: [...marked], delta: step })
+        nudgeMoves({ placements, ids: [...multiSelection], delta: step })
       );
     }
   });

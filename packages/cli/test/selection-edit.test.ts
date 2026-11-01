@@ -137,10 +137,10 @@ const shiftClick = Effect.fnUntraced(function* (
 });
 
 /** The ids of the structures in the multi-selection, sorted. */
-const markedIds = (page: Page) =>
+const multiSelectedIds = (page: Page) =>
   Effect.promise(() =>
     page.evaluate<string[]>(
-      `[...document.querySelectorAll('[data-structure][data-marked="true"]')].map((e) => e.dataset.structure).sort()`
+      `[...document.querySelectorAll('[data-structure][data-multi-selected="true"]')].map((e) => e.dataset.structure).sort()`
     )
   );
 
@@ -272,14 +272,20 @@ describe("selecting several structures", () => {
 
           yield* toView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
-          assert.deepStrictEqual(yield* markedIds(page), ["engineer", "page"]);
-          assert.strictEqual(yield* count(page, "[data-marked-marker]"), 2);
+          assert.deepStrictEqual(yield* multiSelectedIds(page), [
+            "engineer",
+            "page",
+          ]);
+          assert.strictEqual(
+            yield* count(page, "[data-multi-selection-marker]"),
+            2
+          );
 
           yield* shiftClick(page, ["engineer"]);
-          assert.deepStrictEqual(yield* markedIds(page), ["page"]);
+          assert.deepStrictEqual(yield* multiSelectedIds(page), ["page"]);
 
           yield* press(page, "Escape");
-          assert.deepStrictEqual(yield* markedIds(page), []);
+          assert.deepStrictEqual(yield* multiSelectedIds(page), []);
           assert.deepStrictEqual(errors, []);
         }),
       60_000
@@ -304,7 +310,7 @@ describe("selecting several structures", () => {
           });
 
           yield* waitFor(page, "[data-selection-box]");
-          assert.deepStrictEqual(yield* markedIds(page), [
+          assert.deepStrictEqual(yield* multiSelectedIds(page), [
             "engineer",
             "page",
             "server",
@@ -314,7 +320,7 @@ describe("selecting several structures", () => {
           yield* Effect.promise(() => page.keyboard.up("Shift"));
           yield* waitGone(page, "[data-selection-box]");
 
-          assert.deepStrictEqual(yield* markedIds(page), [
+          assert.deepStrictEqual(yield* multiSelectedIds(page), [
             "engineer",
             "page",
             "server",
@@ -341,7 +347,7 @@ describe("selecting several structures", () => {
         yield* attribute(page, "[data-viewport]", "transform"),
         before
       );
-      assert.deepStrictEqual(yield* markedIds(page), []);
+      assert.deepStrictEqual(yield* multiSelectedIds(page), []);
     })
   );
 });
@@ -857,6 +863,272 @@ describe("undo and redo", () => {
   );
 });
 
+/** What a structure looks like on screen: its outline, face, badge and ring. */
+interface Look {
+  readonly stroke: string;
+  readonly face: string;
+  readonly badge: boolean;
+  readonly ring: string | null;
+  readonly ringDash: string | null;
+}
+
+const LookJson = Schema.fromJsonString(
+  Schema.Struct({
+    stroke: Schema.String,
+    face: Schema.String,
+    badge: Schema.Boolean,
+    ring: Schema.NullOr(Schema.String),
+    ringDash: Schema.NullOr(Schema.String),
+  })
+);
+
+const decodeLook = Schema.decodeUnknownEffect(LookJson);
+
+/** A look as one line, for telling looks apart. */
+const lookKey = (look: Look) =>
+  Arr.join(
+    [look.stroke, look.face, String(look.badge), look.ring ?? "none"],
+    "|"
+  );
+
+const lookOf = (page: Page, id: string) =>
+  Effect.promise(() =>
+    page.evaluate<string>(`(() => {
+      const box = document.querySelector('[data-structure="${id}"]');
+      const face = box.querySelector("[data-face]");
+      const badge = document.querySelector('[data-pending-badge="${id}"]');
+      const ring = document.querySelector('[data-multi-selection-marker="${id}"]');
+
+      return JSON.stringify({
+        stroke: getComputedStyle(box).stroke,
+        face: getComputedStyle(face).fill,
+        badge: badge !== null,
+        ring: ring === null ? null : getComputedStyle(ring).stroke,
+        ringDash: ring === null ? null : getComputedStyle(ring).strokeDasharray,
+      });
+    })()`)
+  ).pipe(Effect.flatMap(decodeLook));
+
+describe("how the multi-selection looks", () => {
+  for (const view of views) {
+    it.live(
+      `a multi-selected, a pending and a both structure look different from each other, in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { page, home } = yield* servedAll;
+
+          yield* toView(page, view);
+
+          // Upstream moves on its own, so it is pending.
+          const unit = yield* unitOnScreen(page, view);
+          const from = yield* centreOf(page, '[data-structure="upstream"]');
+
+          yield* dragBy(page, from, {
+            x: 0,
+            y: unit * (view === "plan" ? 3 : 2),
+          });
+          yield* waitForRevision(home, 1);
+          yield* waitFor(
+            page,
+            '[data-structure="upstream"][data-pending="true"]'
+          );
+
+          const pendingOnly = yield* lookOf(page, "upstream");
+          const plain = yield* lookOf(page, "server");
+
+          // Engineer and upstream are picked: engineer is multi-selected
+          // only, and upstream is both.
+          yield* shiftClick(page, ["engineer", "upstream"]);
+          yield* waitFor(page, '[data-multi-selected="true"]');
+
+          const multiOnly = yield* lookOf(page, "engineer");
+          const both = yield* lookOf(page, "upstream");
+
+          const keys = Arr.map([plain, pendingOnly, multiOnly, both], lookKey);
+
+          assert.strictEqual(new Set(keys).size, 4, Arr.join(keys, "\n"));
+
+          // The ring is solid, and not the pending blue.
+          assert.notStrictEqual(multiOnly.ring, pendingOnly.stroke);
+          assert.strictEqual(multiOnly.ringDash, "none");
+          assert.notStrictEqual(multiOnly.stroke, pendingOnly.stroke);
+        }),
+      60_000
+    );
+  }
+});
+
+describe("the toolbar", () => {
+  it.live(
+    "shows a button's name as text on focus and hover, and says why Distribute is off",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedAll;
+
+        yield* toView(page, "plan");
+        yield* shiftClick(page, ["engineer", "page"]);
+        yield* waitFor(page, "[data-arrange-toolbar]");
+
+        const hint = () =>
+          Effect.promise(() =>
+            page.locator("[data-toolbar-hint]").first().textContent()
+          );
+
+        assert.strictEqual(yield* hint(), "Select three or more to distribute");
+
+        yield* Effect.promise(() => page.locator("[data-align='top']").focus());
+        assert.include(yield* hint(), "Align top edges");
+
+        yield* Effect.promise(() => page.locator("[data-align='top']").blur());
+        yield* Effect.promise(() =>
+          page.locator("[data-align='left']").hover()
+        );
+        assert.include(yield* hint(), "Align left edges");
+
+        yield* Effect.promise(() => page.mouse.move(5, 5));
+        yield* Effect.promise(() =>
+          page.locator("[data-align='left']").focus()
+        );
+        assert.include(yield* hint(), "Align left edges");
+
+        // Undo and Redo are named without their arrows.
+        assert.strictEqual(
+          yield* attribute(page, "[data-control='undo']", "aria-label"),
+          "Undo"
+        );
+        assert.strictEqual(
+          yield* attribute(page, "[data-control='redo']", "aria-label"),
+          "Redo"
+        );
+      }),
+    60_000
+  );
+
+  it.live("names the Iso view's buttons by the ground edge they use", () =>
+    Effect.gen(function* () {
+      const { page } = yield* servedAll;
+
+      yield* toView(page, "iso");
+      yield* shiftClick(page, ["engineer", "page"]);
+      yield* waitFor(page, "[data-arrange-toolbar]");
+
+      assert.include(
+        (yield* attribute(page, "[data-align='left']", "aria-label")) ?? "",
+        "smallest x"
+      );
+      assert.include(
+        (yield* attribute(page, "[data-align='top']", "aria-label")) ?? "",
+        "smallest y"
+      );
+
+      yield* toView(page, "plan");
+      assert.strictEqual(
+        yield* attribute(page, "[data-align='left']", "aria-label"),
+        "Align left edges"
+      );
+    })
+  );
+});
+
+describe("older news from the server", () => {
+  it.live(
+    "a PendingUpdated event for an older file does not take the page back",
+    () =>
+      Effect.gen(function* () {
+        const { page, home } = yield* servedAll;
+
+        // Keep the page's event sources, so the test can deliver an event.
+        yield* Effect.promise(() =>
+          page.addInitScript(`(() => {
+            const Real = globalThis.EventSource;
+            globalThis.__sources = [];
+            globalThis.EventSource = class extends Real {
+              constructor(...args) {
+                super(...args);
+                globalThis.__sources.push(this);
+              }
+            };
+          })()`)
+        );
+        yield* Effect.promise(() => page.reload());
+        yield* waitFor(page, "[data-structure]");
+        yield* Effect.promise(() =>
+          page
+            .locator('[data-chapter-rail] button[data-chapter="c-all"]')
+            .click()
+        );
+
+        yield* shiftClick(page, ["engineer", "page"]);
+        yield* press(page, "ArrowDown");
+        yield* waitForRevision(home, 1);
+        yield* waitFor(
+          page,
+          '[data-structure="engineer"][data-pending="true"]'
+        );
+
+        // The server said revision 0 with nothing pending, late.
+        yield* Effect.promise(() =>
+          page.evaluate(`(() => {
+            const data = JSON.stringify({
+              _tag: "PendingUpdated",
+              proposals: { format: 1, revision: 0, layout: [] },
+            });
+            for (const source of globalThis.__sources) {
+              source.dispatchEvent(new MessageEvent("message", { data }));
+            }
+          })()`)
+        );
+        yield* Effect.sleep("400 millis");
+
+        assert.strictEqual(
+          yield* count(page, '[data-structure][data-pending="true"]'),
+          2
+        );
+      }),
+    60_000
+  );
+});
+
+describe("accepting a change", () => {
+  it.live(
+    "clears the undo history and says so, when the accepted layout moves on",
+    () =>
+      Effect.gen(function* () {
+        const { page, home } = yield* servedAll;
+
+        yield* shiftClick(page, ["engineer", "page"]);
+        yield* press(page, "ArrowDown");
+        yield* waitForRevision(home, 1);
+        yield* waitFor(page, "[data-control='undo']:not([disabled])");
+
+        // Accepting writes layout.json, which raises its revision. The
+        // layout command does the same, so the page hears of it alike.
+        const done = yield* runCli(home, [
+          "layout",
+          home,
+          "upstream",
+          "--x",
+          "19",
+        ]);
+
+        assert.strictEqual(done.exitCode, 0, done.stderr);
+        yield* waitFor(page, "[data-edit-notice='info']");
+        assert.include(
+          yield* Effect.promise(() =>
+            page.locator("[data-edit-notice='info']").textContent()
+          ),
+          "can't be undone"
+        );
+        assert.isTrue(
+          yield* Effect.promise(() =>
+            page.locator("[data-control='undo']").isDisabled()
+          )
+        );
+      }),
+    60_000
+  );
+});
+
 describe("editing off", () => {
   it.live(
     "hides the toolbar, the set and the nudge when the server is stopped",
@@ -905,8 +1177,11 @@ describe("editing off", () => {
         yield* shiftClick(page, ["engineer", "page"]);
 
         assert.strictEqual(yield* count(page, "[data-edit-toolbar]"), 0);
-        assert.strictEqual(yield* count(page, "[data-marked-marker]"), 0);
-        assert.deepStrictEqual(yield* markedIds(page), []);
+        assert.strictEqual(
+          yield* count(page, "[data-multi-selection-marker]"),
+          0
+        );
+        assert.deepStrictEqual(yield* multiSelectedIds(page), []);
         assert.strictEqual(
           yield* count(page, '[data-structure][data-selected="true"]'),
           1
