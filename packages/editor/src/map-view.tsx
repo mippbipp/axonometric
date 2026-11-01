@@ -7,8 +7,11 @@ import type {
 } from "@axonometric/contracts";
 import {
   arrowheadOf,
+  fitFloorOf,
   groundProjections,
   nameTagText,
+  textSizes,
+  textZoomOf,
 } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
 import { use, useCallback, useId, useMemo, useState } from "react";
@@ -18,7 +21,7 @@ import { fitOf } from "./fit.ts";
 import { PlaybackContext } from "./playback.ts";
 import { groundOutline, routesOf, toPoints } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
-import { fitFloorOf, sceneAtZoom, textZoomOf } from "./readable-text.ts";
+import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
 import { Viewport } from "./viewport.tsx";
 import { viewDrawings } from "./views.tsx";
@@ -47,9 +50,9 @@ function NameTag({
       />
       <text
         x={(tag.left + tag.right) / 2}
-        y={tag.top + 13 * grow}
+        y={tag.top + textSizes.tag.baseline * grow}
         textAnchor="middle"
-        fontSize={12 * grow}
+        fontSize={textSizes.tag.font * grow}
         className="fill-ink stroke-none font-mono"
       >
         {nameTagText(placed.structure)}
@@ -224,9 +227,9 @@ function HopLabel({
       data-hop-label={hop.id}
       data-hop-label-fits={label !== undefined}
       x={(at.left + at.right) / 2}
-      y={at.bottom - 4 * grow}
+      y={at.bottom - textSizes.label.baseline * grow}
       textAnchor="middle"
-      fontSize={12 * grow}
+      fontSize={textSizes.label.font * grow}
       className="fill-ink stroke-paper font-mono"
       strokeWidth={3}
       paintOrder="stroke"
@@ -346,7 +349,7 @@ export function MapView({
   // so scenes are cached per zoom the text is sized for.
   const sceneAt = useCallback(
     (zoom: number) =>
-      sceneAtZoom({
+      cachedSceneOf({
         data: state.data,
         layout: state.layout,
         revealed,

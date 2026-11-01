@@ -1,4 +1,8 @@
-import { placeNameTags } from "@axonometric/contracts";
+import {
+  placeMovingNameTags,
+  textSizes,
+  textZoomOf,
+} from "@axonometric/contracts";
 import type {
   Placement,
   ScreenRect,
@@ -21,7 +25,7 @@ import {
   pointAlong,
 } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
-import { textZoomOf } from "./readable-text.ts";
+import { settledScale } from "./settled-scale.ts";
 import { BoxShape } from "./shapes.tsx";
 
 /** Height of a step's box above the ground, in screen units. */
@@ -91,7 +95,7 @@ function StepTag({
   readonly rect: ScreenRect;
 }) {
   // The tag's rect is sized for its text, grown to stay readable.
-  const grow = (rect.bottom - rect.top) / 18;
+  const grow = (rect.bottom - rect.top) / textSizes.tag.height;
 
   return (
     <g data-step-tag={index + 1} className="stroke-ink pointer-events-none">
@@ -105,9 +109,9 @@ function StepTag({
       />
       <text
         x={(rect.left + rect.right) / 2}
-        y={rect.top + 13 * grow}
+        y={rect.top + textSizes.tag.baseline * grow}
         textAnchor="middle"
-        fontSize={12 * grow}
+        fontSize={textSizes.tag.font * grow}
         className="fill-ink stroke-none font-mono"
       >
         {label}
@@ -139,14 +143,13 @@ const stepOutline = (index: number) => {
  * tags before it.
  */
 const stepTagsAt = (steps: readonly Step[], zoom: number) =>
-  placeNameTags({
+  placeMovingNameTags({
     boxes: Arr.map(steps, (step, index) => ({
       placement: placementOf(index),
       outline: stepOutline(index),
       text: labelOf(step, index),
     })),
     zoom,
-    alwaysMove: true,
   });
 
 /** The routes between consecutive steps, on screen. */
@@ -193,41 +196,31 @@ const extentOf = (steps: readonly Step[], tags: readonly ScreenRect[]) => [
   ]),
 ];
 
-/** How many times the view re-measures the steps as their tags grow. */
-const fitRounds = 4;
-
 /**
  * The inside view's drawing in a canvas of `size`: its viewBox, and where
  * the step tags go at the zoom that viewBox draws them, grown to stay
- * readable. Grown tags reach further, which zooms the view out, so it fits
- * again at that zoom until it settles.
+ * readable. The view has no viewport to read a zoom from, so it settles on
+ * one the way a viewport's fit does (see `settledScale`).
  */
 const insideLayoutOf = (
   steps: readonly Step[],
   size: { readonly width: number; readonly height: number }
 ) => {
-  const zoomOf = (box: ViewBox) =>
-    size.width <= 0 || size.height <= 0
+  const layoutAt = (zoom: number) => {
+    const tags = stepTagsAt(steps, textZoomOf(zoom));
+
+    return { tags, box: viewBoxOf(extentOf(steps, tags)) };
+  };
+
+  const scaleAt = (zoom: number) => {
+    const { box } = layoutAt(zoom);
+
+    return size.width <= 0 || size.height <= 0
       ? 1
       : Math.min(size.width / box.width, size.height / box.height);
+  };
 
-  let zoom = 1;
-  let tags = stepTagsAt(steps, zoom);
-  let box = viewBoxOf(extentOf(steps, tags));
-
-  for (let round = 0; round < fitRounds; round += 1) {
-    const next = textZoomOf(Math.min(zoom, zoomOf(box)));
-
-    if (next === zoom) {
-      break;
-    }
-
-    zoom = next;
-    tags = stepTagsAt(steps, zoom);
-    box = viewBoxOf(extentOf(steps, tags));
-  }
-
-  return { box, tags };
+  return layoutAt(settledScale(scaleAt));
 };
 
 /** The size of `element` on screen, kept up to date as it's resized. */

@@ -1,4 +1,4 @@
-import { isoHeights } from "@axonometric/contracts";
+import { isoHeights, textSizes } from "@axonometric/contracts";
 import type {
   Placement,
   ScreenRect,
@@ -502,9 +502,6 @@ const drawings = {
   external: ExternalShape,
 } as const satisfies Record<Shape, (props: DrawProps) => ReactNode>;
 
-/** A code chip's height at base size, as the scene places it. */
-const chipHeight = 14;
-
 export function CodeChip({
   code,
   rect,
@@ -513,7 +510,7 @@ export function CodeChip({
   readonly rect: ScreenRect;
 }) {
   // The scene sizes the chip for its text, grown to stay readable.
-  const grow = (rect.bottom - rect.top) / chipHeight;
+  const grow = (rect.bottom - rect.top) / textSizes.chip.height;
 
   return (
     <g data-code-chip="">
@@ -527,9 +524,9 @@ export function CodeChip({
       />
       <text
         x={(rect.left + rect.right) / 2}
-        y={(rect.top + rect.bottom) / 2 + 3.5 * grow}
+        y={(rect.top + rect.bottom) / 2 + textSizes.chip.baseline * grow}
         textAnchor="middle"
-        fontSize={10 * grow}
+        fontSize={textSizes.chip.font * grow}
         className="fill-ink stroke-none font-mono font-semibold"
       >
         {code}

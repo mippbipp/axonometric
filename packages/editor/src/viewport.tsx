@@ -1,3 +1,4 @@
+import { textZoomOf } from "@axonometric/contracts";
 import type { GroundProjection } from "@axonometric/contracts";
 import type { ReactNode } from "react";
 import {
@@ -11,7 +12,7 @@ import {
 
 import type { Bounds } from "./bounds.ts";
 import { controlClass } from "./control-class.ts";
-import { textZoomOf } from "./readable-text.ts";
+import { settledScale } from "./settled-scale.ts";
 
 /** Where the drawing sits in the canvas: its zoom and its pan, in pixels. */
 interface Camera {
@@ -56,9 +57,6 @@ const scaleToFit = (bounds: Bounds, size: Size) =>
     0.01
   );
 
-/** How many times fitting re-measures a drawing whose text grows. */
-const fitRounds = 4;
-
 const fitted = ({
   boundsAt,
   size,
@@ -69,15 +67,7 @@ const fitted = ({
   readonly size: Size;
   readonly floor: (scale: number) => number;
 }): Camera => {
-  // Zoomed out, text grows, so the drawing reaches further: fit again at the
-  // zoom the last fit found until it settles.
-  let scale = scaleToFit(boundsAt(1), size);
-
-  for (let round = 0; round < fitRounds; round += 1) {
-    scale = Math.min(scale, scaleToFit(boundsAt(scale), size));
-  }
-
-  scale = floor(scale);
+  const scale = floor(settledScale((zoom) => scaleToFit(boundsAt(zoom), size)));
 
   const bounds = boundsAt(scale);
 
@@ -348,7 +338,7 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
  * re-render `children`. When `ground` changes to another view's projection,
  * the ground point in the middle stays in the middle, and a grid unit keeps
  * its length on screen. `onTextZoom` hears the zoom the text should be
- * sized for (see `readable-text.ts`) whenever it changes step.
+ * sized for (see `textZoomOf`) whenever it changes step.
  */
 export function Viewport({
   fit = emptyBounds,

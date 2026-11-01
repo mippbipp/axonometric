@@ -318,6 +318,52 @@ describe("grown text at fit, at 1280×800", () => {
   );
 });
 
+describe("hidden hop labels on the pipeline map at fit", () => {
+  it.live("can be read in the panel of a packet on the hop", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const page = yield* openAt1280(yield* pipelineMap, "flake-pipeline");
+
+        yield* goToChapter(page, "c-all");
+
+        // A packet on a hop whose label the scene hid, and that hop's label
+        // from the map state.
+        const hidden = yield* inPage<{ hop: string; label: string }[]>(
+          page,
+          `(() => {
+            const state = JSON.parse(document.getElementById("axonometric-map-state").textContent);
+            const labelOf = new Map(state.data.hops.map((hop) => [hop.id, hop.label]));
+
+            return [...document.querySelectorAll("[data-packet]")]
+              .map((packet) => packet.dataset.packet)
+              .filter((hop) => document.querySelector('[data-hop-label="' + hop + '"]') === null)
+              .map((hop) => ({ hop, label: labelOf.get(hop) }));
+          })()`
+        );
+
+        assert.isNotEmpty(hidden, "no packet is on a hop with a hidden label");
+
+        for (const { hop, label } of hidden.slice(0, 2)) {
+          yield* Effect.promise(() =>
+            page
+              .locator(`[data-packet="${hop}"]`)
+              .first()
+              .dispatchEvent("click")
+          );
+          yield* waitFor(page, `[data-packet-panel="${hop}"]`);
+
+          assert.strictEqual(
+            yield* Effect.promise(() =>
+              page.locator("[data-packet-label]").textContent()
+            ),
+            label
+          );
+        }
+      })
+    )
+  );
+});
+
 describe("text on the review map at 1280×800", () => {
   it.live("fits at the same zoom as before name tags kept their size", () =>
     Effect.scoped(

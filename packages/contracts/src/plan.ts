@@ -1,6 +1,7 @@
-import { Array as Arr, Order } from "effect";
+import { Array as Arr } from "effect";
 import { dual } from "effect/Function";
 
+import { slideOffsets } from "./geometry.ts";
 import { gridOnScreen, project, tileHeight, tileWidth } from "./iso.ts";
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 import type { GridPoint, Placement } from "./layout.ts";
@@ -63,9 +64,6 @@ export const planRect = ({ x, y, w, d }: Placement): ScreenRect => ({
 /** The gap between a box and its name tag in Plan view. */
 const planTagGap = 6;
 
-/** How far apart the sideways tag spots are, in screen units. */
-const planTagStep = 6;
-
 /** A name tag's size on screen. */
 export interface TagSize {
   readonly width: number;
@@ -88,12 +86,7 @@ export const planTagSpots: {
     const middle = (box.left + box.right) / 2;
     const reach = (box.right - box.left) / 2;
 
-    const steps = Math.floor(reach / planTagStep);
-
-    const shifts = Arr.sort(
-      Arr.map(Arr.range(-steps, steps), (step) => step * planTagStep),
-      Order.mapInput(Order.Number, Math.abs)
-    );
+    const shifts = slideOffsets(reach);
 
     const at = (centre: number, top: number): ScreenRect => ({
       left: centre - width / 2,
