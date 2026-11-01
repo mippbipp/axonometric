@@ -87,8 +87,7 @@ function WalkthroughPage() {
         <h1 className="text-sm font-medium tracking-widest uppercase">
           {state.system}
         </h1>
-        <div className="ml-auto flex items-center gap-4">
-          {insideStructure === undefined ? <PlaybackControls /> : null}
+        <div className="ml-auto">
           <ThemeToggle />
         </div>
       </header>
@@ -116,7 +115,15 @@ function WalkthroughPage() {
               <PacketLayer routeOf={isoRouteOf} />
             </IsoView>
             <ChapterRail className="absolute top-3 left-3" />
-            <FlowPicker className="absolute bottom-3 left-3" />
+            {/* Stops short of the zoom controls at the bottom right, and wraps
+                upward when the flows don't fit on one line. */}
+            <div
+              data-playback-bar
+              className="absolute bottom-3 left-3 flex max-w-[calc(100%-13rem)] flex-wrap items-center gap-x-3 gap-y-1.5"
+            >
+              <PlaybackControls />
+              <FlowPicker className="border-ink border-l pl-3" />
+            </div>
           </div>
           {insideStructure === undefined ? null : (
             <div className="bg-paper absolute inset-0">
