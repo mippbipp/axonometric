@@ -10,6 +10,8 @@ import type { ReactNode } from "react";
 
 import { project, screenRouteOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
+import { SelectionMarker } from "./selection-marker.tsx";
+import { StructureTarget } from "./structure-target.tsx";
 
 /** Height of a box above the ground, in screen units. */
 const boxHeight = 40;
@@ -69,13 +71,12 @@ function IsoBox({
   const topFace = [top.back, top.right, top.front, top.left];
 
   return (
-    <g
-      data-structure={structure.id}
+    <StructureTarget
+      id={structure.id}
       className="stroke-ink"
       strokeWidth={1.2}
       strokeLinejoin="round"
     >
-      <title>{structure.name}</title>
       {Arr.map(sides, ({ side, face }) => (
         <g key={side}>
           <polygon points={toPoints(face)} className="fill-face" />
@@ -87,7 +88,7 @@ function IsoBox({
         </g>
       ))}
       <polygon points={toPoints(topFace)} className="fill-face" />
-    </g>
+    </StructureTarget>
   );
 }
 
@@ -330,6 +331,7 @@ export function IsoView({
         {Arr.map(marked, (item) => (
           <NewMarker key={item.structure.id} placed={item} />
         ))}
+        <SelectionMarker placements={state.layout.structures} />
       </g>
       <g>
         {Arr.map(routed, (item) => (

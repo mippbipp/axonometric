@@ -1,22 +1,66 @@
 import type { Hop, MapState } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
 import { useCallback } from "react";
 
+import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
+import { InsideView } from "./inside-view.tsx";
 import { IsoView } from "./iso-view.tsx";
 import { screenRouteOf } from "./iso.ts";
+import { MapSurface } from "./map-surface.tsx";
 import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
+import { useSelection } from "./selection-context.ts";
+import { useSelectionKeys } from "./selection-keys.ts";
+import { SelectionProvider } from "./selection.tsx";
+import { SideIndex } from "./side-index.tsx";
 import { SidePanel } from "./side-panel.tsx";
+import { useStructuresById } from "./structures.ts";
+import { StructureTooltip, TooltipProvider } from "./tooltip.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 import { WalkthroughProvider } from "./walkthrough.tsx";
 
+/** The keys the hint bar lists, for what's on screen. */
+const hintsOf = ({
+  selected,
+  inside,
+}: {
+  readonly selected: boolean;
+  readonly inside: boolean;
+}) => {
+  if (inside) {
+    return ["← or Esc come out", "click Step to move the packet"];
+  }
+
+  return selected
+    ? [
+        "→ go inside",
+        "← or Esc unpin",
+        "] next chapter",
+        "[ back",
+        "click empty space to unpin",
+      ]
+    : [
+        "→ or ] next chapter",
+        "← or [ back",
+        "hover to read",
+        "click to pin",
+        "double-click to go inside",
+        "click a packet to read its payload",
+      ];
+};
+
 function WalkthroughPage() {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
+  const { selected, inside } = useSelection();
+  const byId = useStructuresById();
+  const insideStructure = inside === null ? undefined : byId.get(inside);
 
-  useChapterKeys(true);
+  useChapterKeys(selected === null);
+  useSelectionKeys();
 
   const isoRouteOf = useCallback(
     (hop: Hop) => screenRouteOf({ layout: state.layout, hop }),
@@ -34,29 +78,52 @@ function WalkthroughPage() {
           {state.system}
         </h1>
         <div className="ml-auto">
-          <PlaybackControls />
+          {insideStructure === undefined ? <PlaybackControls /> : null}
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">
-          <IsoView
-            state={state}
-            revealed={revealed}
-            newlyRevealed={newlyRevealed}
-            fit={fit}
-          >
-            <PacketLayer routeOf={isoRouteOf} />
-          </IsoView>
-          <ChapterRail className="absolute top-3 left-3" />
-          <FlowPicker className="absolute bottom-3 left-3" />
-        </div>
+        <SideIndex />
+        <MapSurface>
+          {insideStructure === undefined ? (
+            <>
+              <IsoView
+                state={state}
+                revealed={revealed}
+                newlyRevealed={newlyRevealed}
+                fit={fit}
+              >
+                <PacketLayer routeOf={isoRouteOf} />
+              </IsoView>
+              <ChapterRail className="absolute top-3 left-3" />
+              <FlowPicker className="absolute bottom-3 left-3" />
+            </>
+          ) : (
+            <>
+              <InsideView
+                key={insideStructure.id}
+                structure={insideStructure}
+              />
+              <Breadcrumb
+                structure={insideStructure}
+                className="absolute top-3 left-3"
+              />
+            </>
+          )}
+        </MapSurface>
         <SidePanel />
       </div>
       <footer className="border-ink flex flex-wrap gap-x-4 border-t px-4 py-1 text-xs opacity-70">
-        <span>→ or ] next chapter</span>
-        <span>← or [ back</span>
-        <span>click a packet to read its payload</span>
+        {Arr.map(
+          hintsOf({
+            selected: selected !== null,
+            inside: insideStructure !== undefined,
+          }),
+          (hint) => (
+            <span key={hint}>{hint}</span>
+          )
+        )}
       </footer>
+      <StructureTooltip />
     </main>
   );
 }
@@ -69,7 +136,11 @@ export function App({ state }: { readonly state: MapState }) {
   return (
     <WalkthroughProvider state={state}>
       <PlaybackProvider>
-        <WalkthroughPage />
+        <SelectionProvider>
+          <TooltipProvider>
+            <WalkthroughPage />
+          </TooltipProvider>
+        </SelectionProvider>
       </PlaybackProvider>
     </WalkthroughProvider>
   );

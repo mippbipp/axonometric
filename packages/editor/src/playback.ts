@@ -54,6 +54,8 @@ export interface Playback {
   readonly step: () => void;
   /** Pauses and selects the packet on `run`, the index into `runs`. */
   readonly selectPacket: (run: number) => void;
+  /** Closes the packet panel and stays paused. */
+  readonly closePacket: () => void;
 }
 
 export const PlaybackContext = createContext<Playback | null>(null);

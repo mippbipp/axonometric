@@ -90,6 +90,11 @@ export function PlaybackProvider({
           selected: index,
         }));
       },
+      closePacket: () => {
+        update((current) =>
+          current.selected === null ? current : { ...current, selected: null }
+        );
+      },
     };
   }, [key, reducedMotion, runs]);
 
@@ -134,6 +139,7 @@ export function PlaybackProvider({
       pause: actions.pause,
       step: actions.step,
       selectPacket: actions.selectPacket,
+      closePacket: actions.closePacket,
     };
   }, [runs, playing, reducedMotion, run, selectedHop, actions]);
 
