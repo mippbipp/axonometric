@@ -1,4 +1,5 @@
 import { NodeServices } from "@effect/platform-node";
+import { assert } from "@effect/vitest";
 import {
   Array as Arr,
   Console,
@@ -13,6 +14,7 @@ import {
 import { TerminalCapabilities } from "effect/cli";
 
 import { run } from "../src/cli.ts";
+import { openPage } from "./browser.ts";
 
 /** Files keyed by their `/`-separated path relative to the home folder. */
 export type HomeFiles = Readonly<Partial<Record<string, string>>>;
@@ -125,4 +127,21 @@ export const runCli = Effect.fnUntraced(function* (
     stderr: output.stderr,
     files,
   } satisfies CliResult;
+}, Effect.provide(NodeServices.layer));
+
+/**
+ * Builds the map in `files` whose home folder is `<system>/map/`, then opens
+ * the page that `build` wrote.
+ */
+export const buildAndOpen = Effect.fnUntraced(function* (
+  files: HomeFiles,
+  system: string
+) {
+  const path = yield* Path.Path;
+  const home = yield* makeHome(files);
+  const result = yield* runCli(home, ["build", path.join(home, system, "map")]);
+
+  assert.strictEqual(result.exitCode, 0, result.stderr);
+
+  return yield* openPage(path.join(home, system, `${system}.html`));
 }, Effect.provide(NodeServices.layer));
