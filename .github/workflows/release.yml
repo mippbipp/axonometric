@@ -1,0 +1,167 @@
+name: Release
+
+# On a version tag, builds the single-executable binaries and publishes them
+# as a GitHub Release. On pull requests that touch the binary build, it runs
+# the same builds and checks without releasing anything.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - packages/cli/**
+      - scripts/**
+      - package.json
+      - pnpm-lock.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  binary:
+    name: binary (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64, runner: ubuntu-24.04, archive: tar.gz }
+          - { target: linux-arm64, runner: ubuntu-24.04-arm, archive: tar.gz }
+          - { target: darwin-x64, runner: macos-15-intel, archive: tar.gz }
+          - { target: darwin-arm64, runner: macos-15, archive: tar.gz }
+          - { target: windows-x64, runner: windows-2025, archive: zip }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      ARCHIVE: axonometric-${{ matrix.target }}.${{ matrix.archive }}
+      BINARY: axonometric-${{ matrix.target }}/axonometric${{ matrix.archive == 'zip' && '.exe' || '' }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Installs pnpm from `packageManager` and Node from `devEngines.runtime`,
+      # then runs `pnpm install --frozen-lockfile`. The binary is a copy of
+      # that Node.
+      - uses: pnpm/setup@v3
+        with:
+          cache: true
+          require-lockfile: true
+
+      - name: Check the tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(node -p 'require("./packages/cli/package.json").version')
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "The tag is $GITHUB_REF_NAME, but packages/cli/package.json says $version." >&2
+            exit 1
+          fi
+
+      - run: pnpm turbo run build --filter axonometric
+
+      - run: pnpm --filter axonometric build:sea
+
+      - name: Smoke-test the binary
+        run: packages/cli/scripts/smoke-binary.sh "packages/cli/release/$BINARY"
+
+      - name: Write a checksum for the install test
+        working-directory: packages/cli/release
+        run: |
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$ARCHIVE" >SHA256SUMS
+          else
+            shasum -a 256 "$ARCHIVE" >SHA256SUMS
+          fi
+
+      - name: Test install.sh
+        if: runner.os != 'Windows'
+        run: scripts/test-install.sh packages/cli/release
+
+      - name: Test install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-install.ps1 packages/cli/release
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: axonometric-${{ matrix.target }}
+          path: packages/cli/release/${{ env.ARCHIVE }}
+          if-no-files-found: error
+          # The archives are already compressed.
+          compression-level: 0
+
+  # The npm publish job (#29) goes beside this one, also after `binary`.
+  release:
+    needs: binary
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: axonometric-*
+          path: release
+          merge-multiple: true
+
+      - name: Add the install scripts and checksums
+        working-directory: release
+        run: |
+          cp ../scripts/install.sh ../scripts/install.ps1 .
+          sha256sum axonometric-* install.sh install.ps1 >SHA256SUMS
+          cat SHA256SUMS
+
+      # The install commands pin this release's version, because GitHub's
+      # "latest" release skips pre-releases.
+      - name: Write the release notes
+        working-directory: release
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          node_version=$(jq -r .devEngines.runtime.version ../package.json)
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          {
+            echo "Install on Linux or macOS:"
+            echo
+            echo '```sh'
+            echo "curl -fsSL $base/install.sh | AXONOMETRIC_VERSION=$version sh"
+            echo '```'
+            echo
+            echo "Install on Windows, in PowerShell:"
+            echo
+            echo '```powershell'
+            echo "\$env:AXONOMETRIC_VERSION = '$version'; irm $base/install.ps1 | iex"
+            echo '```'
+            echo
+            echo "Each archive holds one binary with Node $node_version built in, so you don't need Node installed. The macOS binaries have an ad-hoc signature and aren't notarized. The Windows binary isn't signed. SHA256SUMS lists every file's checksum."
+            echo
+            echo "| Download | Size |"
+            echo "| --- | --- |"
+            for file in *; do
+              bytes=$(stat -c %s "$file")
+              echo "| \`$file\` | $(awk -v b="$bytes" 'BEGIN { if (b < 1000000) printf "%.1f KB", b / 1000; else printf "%.1f MB", b / 1000000 }') |"
+            done
+          } >../notes.md
+          cat ../notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=()
+          case $GITHUB_REF_NAME in
+            *-*) prerelease=(--prerelease) ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            "${prerelease[@]}"
