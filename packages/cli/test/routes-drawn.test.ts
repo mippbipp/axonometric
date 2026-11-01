@@ -279,28 +279,32 @@ describe("routed hops", () => {
     )
   );
 
-  it.live("bend every hop between structures offset on both axes", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(
-          yield* pipelineMap,
-          "flake-pipeline"
-        );
+  it.live(
+    "bend every hop between structures offset on both axes",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* buildAndOpen(
+            yield* pipelineMap,
+            "flake-pipeline"
+          );
 
-        yield* goToChapter(page, "c-all");
+          yield* goToChapter(page, "c-all");
 
-        const offset = Arr.filter(yield* hopsIn(page), (hop) => hop.offset);
+          const offset = Arr.filter(yield* hopsIn(page), (hop) => hop.offset);
 
-        assert.isNotEmpty(offset);
+          assert.isNotEmpty(offset);
 
-        for (const hop of offset) {
-          assert.isAtLeast(hop.bends, 1, `${hop.hop} is one straight leg`);
-        }
-      })
-    )
+          for (const hop of offset) {
+            assert.isAtLeast(hop.bends, 1, `${hop.hop} is one straight leg`);
+          }
+        })
+      ),
+    // The pipeline map routes 29 hops for each of its eight chapters.
+    30_000
   );
 
-  it.live("draw every label in the review map clear of every box", () =>
+  it.live("draw every shown label in the review map clear of every box", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { page } = yield* buildAndOpen(yield* fullMap, "review");
@@ -311,7 +315,25 @@ describe("routed hops", () => {
           (): Promise<readonly LabelReport[]> => page.evaluate(labelReport)
         );
 
-        assert.lengthOf(labels, 4);
+        // A label with no clear spot beside its hop is hidden, and shows
+        // while the pointer is on the hop.
+        const hidden = Arr.filter(
+          ["h-note", "h-save", "h-store", "h-pr"],
+          (hop) => !Arr.some(labels, (label) => label.hop === hop)
+        );
+
+        for (const hop of hidden) {
+          // Packets move over the line, so dispatch the hover on the hop
+          // rather than aiming the mouse at it.
+          yield* Effect.promise(() =>
+            page.locator(`[data-hop="${hop}"]`).dispatchEvent("pointerover")
+          );
+          yield* Effect.promise(() =>
+            page.locator(`[data-hop-label="${hop}"]`).waitFor()
+          );
+        }
+
+        assert.isAtLeast(labels.length, 2);
 
         for (const label of labels) {
           assert.isTrue(label.onTop, `${label.hop} is drawn under a box`);
@@ -346,10 +368,10 @@ describe("routed hops", () => {
           `)
         );
 
-        // h-query leaves the API's front edge and reaches the database's
-        // front edge, running in front of the cache, so no box hides it.
+        // h-reply runs straight back from the API to the client, in front
+        // of everything, so no box hides it.
         const clear = yield* Effect.promise(() =>
-          page.locator('[data-hidden-hop="h-query"] polyline').count()
+          page.locator('[data-hidden-hop="h-reply"] polyline').count()
         );
 
         assert.isAbove(stretches, 0);

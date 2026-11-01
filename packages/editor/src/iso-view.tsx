@@ -317,7 +317,7 @@ export function IsoView({
         data: state.data,
         layout: state.layout,
         revealed,
-        routes: routesOf({ data: state.data, layout: state.layout }),
+        routes: routesOf({ data: state.data, layout: state.layout, revealed }),
         labelFirst,
       }),
     [state.data, state.layout, revealed, labelFirst]

@@ -74,8 +74,8 @@ function WalkthroughPage() {
 
   const isoRouteOf = useCallback(
     (hop: Hop) =>
-      screenRouteOf({ data: state.data, layout: state.layout, hop }),
-    [state.data, state.layout]
+      screenRouteOf({ data: state.data, layout: state.layout, revealed, hop }),
+    [state.data, state.layout, revealed]
   );
 
   return (

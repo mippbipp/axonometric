@@ -6,7 +6,7 @@ import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
-import { routeHops } from "./routing.ts";
+import { routeLength, routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
 import { sceneClashes, sceneOf } from "./scene.ts";
 import type { SceneClash } from "./scene.ts";
@@ -126,31 +126,41 @@ const quotedList = (ids: readonly string[]) =>
     ", "
   );
 
-const blockedRoutes = (
-  data: MapData,
-  routes: Readonly<Record<string, HopRoute>>
-) =>
-  Arr.flatMap(data.hops, (hop) => {
-    const route = routes[hop.id];
+/** The warnings about one hop's route, if it runs under a box or too far. */
+const routeWarnings = (
+  hop: MapData["hops"][number],
+  route: HopRoute
+): readonly MapProblem[] => {
+  const one = route.crosses.length === 1;
 
-    if (route === undefined || !Arr.isReadonlyArrayNonEmpty(route.crosses)) {
-      return [];
-    }
+  const why = route.overridden
+    ? `its route override passes through ${one ? "that box" : "those boxes"}. Change the override's points so it goes around, or delete it so the hop routes itself.`
+    : `no clear route goes around ${one ? "it" : "them"}. Move the structures apart to open a gap, or write a route override.`;
 
-    const one = route.crosses.length === 1;
+  const under = Arr.isReadonlyArrayNonEmpty(route.crosses)
+    ? [
+        mapWarning({
+          file: "layout.json",
+          path: ["routes", hop.id],
+          message: `hop "${hop.id}" from "${hop.from}" to "${hop.to}" runs under ${quotedList(route.crosses)}: ${why}`,
+        }),
+      ]
+    : [];
 
-    const why = route.overridden
-      ? `its route override passes through ${one ? "that box" : "those boxes"}. Change the override's points so it goes around, or delete it so the hop routes itself.`
-      : `no clear route goes around ${one ? "it" : "them"}. Move the structures apart to open a gap, or write a route override.`;
+  const { length, distance } = routeLength(route.points);
 
-    return [
-      mapWarning({
-        file: "layout.json",
-        path: ["routes", hop.id],
-        message: `hop "${hop.id}" from "${hop.from}" to "${hop.to}" runs under ${quotedList(route.crosses)}: ${why}`,
-      }),
-    ];
-  });
+  const long = route.tooLong
+    ? [
+        mapWarning({
+          file: "layout.json",
+          path: ["routes", hop.id],
+          message: `hop "${hop.id}" from "${hop.from}" to "${hop.to}" takes a long way round: ${length} units for ends ${distance} apart. Move the structures so nothing stands between them, or write a route override.`,
+        }),
+      ]
+    : [];
+
+  return [...under, ...long];
+};
 
 const staleRoutes = (data: MapData, layout: Layout) => {
   const ids = new Set(Arr.map(data.hops, ({ id }) => id));
@@ -233,43 +243,53 @@ const coveredElsewhere = (first: string, second: string) =>
   structureParts.has(kindOf(first)) && structureParts.has(kindOf(second));
 
 /**
- * Warnings for everything else the iso view would draw over something, by
- * the scene's overlap rule, in any chapter: chips, zone titles, labels and
- * routes. Each clash is reported once, at the first chapter it shows in.
+ * Warnings about each chapter's drawing, as the walkthrough draws it: hops
+ * routed around the structures revealed so far, and everything else the
+ * iso view would draw over something by the scene's overlap rule (chips,
+ * zone titles, labels and routes). Each warning is reported once, at the
+ * first chapter it shows in.
  */
-const sceneWarnings = (
-  data: MapData,
-  layout: Layout,
-  routes: Readonly<Record<string, HopRoute>>
-) => {
+const chapterWarnings = (data: MapData, layout: Layout) => {
   const seen = new Set<string>();
 
-  return Arr.flatMap(chapterViews(data), ({ id, revealed, plays }) =>
-    Arr.flatMap<SceneClash, MapProblem>(
+  const once = (key: string) => {
+    const fresh = !seen.has(key);
+
+    seen.add(key);
+
+    return fresh;
+  };
+
+  return Arr.flatMap(chapterViews(data), ({ id, revealed, plays }) => {
+    const routes = routeRevealed({ data, layout, revealed });
+    const where = id === undefined ? "" : ` in chapter "${id}"`;
+
+    const routing = Arr.flatMap(data.hops, (hop) => {
+      const route = routes[hop.id];
+
+      return route === undefined
+        ? []
+        : Arr.filter(routeWarnings(hop, route), ({ message }) => once(message));
+    });
+
+    const clashes = Arr.flatMap<SceneClash, MapProblem>(
       sceneClashes(
         sceneOf({ data, layout, revealed, routes, labelFirst: plays })
       ),
-      ({ between: [first, second] }) => {
-        const key = `${first} ${second}`;
+      ({ between: [first, second] }) =>
+        coveredElsewhere(first, second) || !once(`${first} ${second}`)
+          ? []
+          : [
+              mapWarning({
+                file: "layout.json",
+                path: ["structures"],
+                message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}. Move the structures apart, so the drawing has room.`,
+              }),
+            ]
+    );
 
-        if (seen.has(key) || coveredElsewhere(first, second)) {
-          return [];
-        }
-
-        seen.add(key);
-
-        const where = id === undefined ? "" : ` in chapter "${id}"`;
-
-        return [
-          mapWarning({
-            file: "layout.json",
-            path: ["structures"],
-            message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}. Move the structures apart, so the drawing has room.`,
-          }),
-        ];
-      }
-    )
-  );
+    return [...routing, ...clashes];
+  });
 };
 
 /**
@@ -285,7 +305,6 @@ export const checkLayout: {
   (data: MapData, layout: Layout): readonly MapProblem[];
 } = dual(2, (data: MapData, layout: Layout): readonly MapProblem[] => {
   const placed = placedStructures(data, layout);
-  const routes = routeHops(data, layout);
 
   return [
     ...staleEntries(data, layout),
@@ -293,7 +312,6 @@ export const checkLayout: {
     ...overlaps(placed),
     ...coveredTags(placed),
     ...overlappingZones(data, layout),
-    ...blockedRoutes(data, routes),
-    ...sceneWarnings(data, layout, routes),
+    ...chapterWarnings(data, layout),
   ];
 });

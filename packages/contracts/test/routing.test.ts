@@ -1,7 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
 
-import { checkLayout, routeHops } from "../src/index.ts";
+import {
+  checkLayout,
+  facingEdges,
+  routeCap,
+  routeHops,
+  routeLength,
+} from "../src/index.ts";
 import type {
   GridPoint,
   Hop,
@@ -132,9 +138,18 @@ const onEdge = (point: GridPoint, box: Placement) => {
   return (onX && insideY) || (onY && insideX);
 };
 
-/** Whether a point sits on a footprint's +x or +y edge. */
-const frontOf = (point: GridPoint, box: Placement) =>
-  point.x === box.x + box.w || point.y === box.y + box.d;
+/** Which edge of a footprint a point sits on: +x, +y, -x or -y. */
+const edgeOf = (point: GridPoint, box: Placement) => {
+  if (point.x === box.x + box.w) {
+    return 0;
+  }
+
+  if (point.y === box.y + box.d) {
+    return 1;
+  }
+
+  return point.x === box.x ? 2 : 3;
+};
 
 /** A between two connected structures, with M in the way. */
 const blocked = mapOf({ a: at(0, 0), m: at(4, 0), b: at(8, 0) }, [
@@ -209,11 +224,11 @@ describe("routing", () => {
   );
 
   it.effect(
-    "bends at least once between structures offset along both axes",
+    "bends at least once between structures apart along both axes",
     () =>
       Effect.sync(() => {
         const { data, layout } = mapOf(
-          { a: at(0, 0), b: at(6, 1), c: at(-1, 7), d: at(4, -6) },
+          { a: at(0, 0), b: at(6, 4), c: at(-5, 7), d: at(4, -6) },
           [hop("a", "b"), hop("b", "c"), hop("a", "c"), hop("d", "a")]
         );
 
@@ -223,24 +238,59 @@ describe("routing", () => {
       })
   );
 
-  it.effect("ends on front edges, where boxes don't hide the arrowhead", () =>
+  it.effect("leaves and enters by the edges facing the other end", () =>
     Effect.sync(() => {
-      const placements = { a: at(0, 0), b: at(6, 0), c: at(0, 6) };
+      // b is down-right of a on the grid, c down-left, d straight ahead.
+      const placements = {
+        a: at(0, 0),
+        b: at(6, 5),
+        c: at(-6, 6),
+        d: at(7, 0),
+      };
 
       const { data, layout } = mapOf(placements, [
         hop("a", "b"),
-        hop("b", "c"),
         hop("c", "a"),
+        hop("a", "d"),
       ]);
 
-      for (const route of Rec.values(routeHops(data, layout))) {
+      const routes = routeHops(data, layout);
+
+      for (const { id, from, to } of data.hops) {
+        const route = routeOf(routes, id);
+        const source = layout.structures[from];
+        const target = layout.structures[to];
+        const [first] = route.points;
         const last = route.points.at(-1);
 
+        assert.isDefined(source);
+        assert.isDefined(target);
+        assert.isDefined(first);
         assert.isDefined(last);
         assert.isTrue(
-          Arr.some(Rec.values(placements), (box) => frontOf(last, box)),
-          "ends on a back edge"
+          facingEdges(source, target)[edgeOf(first, source)],
+          `${id} leaves by an edge facing away`
         );
+        assert.isTrue(
+          facingEdges(target, source)[edgeOf(last, target)],
+          `${id} enters by an edge facing away`
+        );
+      }
+    })
+  );
+
+  it.effect("keeps each route within its cap when nothing blocks it", () =>
+    Effect.sync(() => {
+      const { data, layout } = mapOf(
+        { a: at(0, 0), b: at(9, 7), c: at(-4, 12), d: at(12, -3) },
+        [hop("a", "b"), hop("b", "c"), hop("c", "d"), hop("d", "a")]
+      );
+
+      for (const [id, route] of Rec.toEntries(routeHops(data, layout))) {
+        const { length, distance } = routeLength(route.points);
+
+        assert.isAtMost(length, routeCap(distance), `${id} is too long`);
+        assert.isFalse(route.tooLong);
       }
     })
   );

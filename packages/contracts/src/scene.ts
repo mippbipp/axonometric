@@ -28,7 +28,7 @@ import {
 import type { ScreenPoint, ScreenRect } from "./iso.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
-import { routeHops } from "./routing.ts";
+import { routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
 import { zonesOf } from "./zones.ts";
 import type { Zone } from "./zones.ts";
@@ -140,7 +140,11 @@ export interface SceneHop {
   readonly label: ScreenRect | undefined;
   /** Where the label shows on hover or when its packet is selected. */
   readonly hoverLabel: ScreenRect | undefined;
-  /** The stretches of the route that boxes are drawn over. */
+  /**
+   * The stretches of the route that boxes are drawn over and that the view
+   * redraws faintly on top: those under other structures' boxes, and the
+   * last stretch under the target's box when the arrowhead is there.
+   */
   readonly hidden: readonly HiddenStretch[];
 }
 
@@ -681,6 +685,28 @@ const spotsAt = (leg: Leg, share: number, width: number) => {
   const reach =
     (Math.abs(normal.sx) * width) / 2 + (Math.abs(normal.sy) * labelHeight) / 2;
 
+  const rectAround = (centre: ScreenPoint) => ({
+    left: centre.sx - width / 2,
+    right: centre.sx + width / 2,
+    top: centre.sy - labelHeight / 2,
+    bottom: centre.sy + labelHeight / 2,
+  });
+
+  // A leg's slope on screen and which way it leans, for the spots straight
+  // above and below it, whose nearest corner sits `gap` from the line.
+  const slope =
+    (leg.end.sy - leg.start.sy) / (leg.end.sx - leg.start.sx || 1e-9);
+
+  const lean = Math.sign(slope);
+
+  const upright = (gap: number, side: -1 | 1) => {
+    // How far the label's centre sits above or below the line so that its
+    // corner nearest the line clears it by `gap` along the vertical.
+    const lift = labelHeight / 2 + (Math.abs(slope) * width) / 2 + gap;
+
+    return rectAround({ sx: at.sx, sy: at.sy + side * lift });
+  };
+
   const rectAt = (offset: number) => {
     const centre = {
       sx: at.sx + normal.sx * offset,
@@ -696,11 +722,15 @@ const spotsAt = (leg: Leg, share: number, width: number) => {
   };
 
   return {
-    beside: Arr.flatMap(labelGaps, (gap) => [
-      rectAt(-(reach + gap)),
-      rectAt(reach + gap),
-    ]),
+    beside: [
+      ...Arr.flatMap(labelGaps, (gap) => [
+        rectAt(-(reach + gap)),
+        rectAt(reach + gap),
+      ]),
+      ...Arr.flatMap(labelGaps, (gap) => [upright(gap, -1), upright(gap, 1)]),
+    ],
     on: rectAt(0),
+    lean,
   };
 };
 
@@ -777,7 +807,10 @@ export interface SceneSource {
   readonly layout: Layout;
   /** The structures drawn, such as those revealed so far. */
   readonly revealed: ReadonlySet<string>;
-  /** The routes, when the caller has them already. */
+  /**
+   * The routes, when the caller has them already. Defaults to the hops
+   * routed around the revealed structures only.
+   */
   readonly routes?: Readonly<Record<string, HopRoute>> | undefined;
   /**
    * Hops whose labels are placed first, such as the hops the chapter plays,
@@ -800,7 +833,7 @@ export const sceneOf = ({
   data,
   layout,
   revealed,
-  routes = routeHops(data, layout),
+  routes = routeRevealed({ data, layout, revealed }),
   labelFirst = [],
 }: SceneSource): Scene => {
   const structures = paintOrder(
@@ -858,6 +891,31 @@ export const sceneOf = ({
     obstacle
   );
 
+  const outlineOf = new Map(
+    Arr.map(structures, ({ structure, outline }) => [structure.id, outline])
+  );
+
+  // A route is drawn behind its own source box where it leaves a back edge,
+  // which reads as leaving from behind, so that stretch isn't redrawn. Over
+  // the target box only the stretch carrying the arrowhead is redrawn.
+  const hiddenOf = (hop: Hop, points: readonly ScreenPoint[]) => {
+    const others = Arr.flatMap(structures, ({ structure, outline }) =>
+      structure.id === hop.from || structure.id === hop.to ? [] : [outline]
+    );
+
+    const target = outlineOf.get(hop.to);
+
+    const atHead =
+      target === undefined
+        ? []
+        : Arr.filter(
+            hiddenStretches({ points, outlines: [target] }),
+            ({ reachesEnd }) => reachesEnd
+          );
+
+    return [...hiddenStretches({ points, outlines: others }), ...atHead];
+  };
+
   const rank = new Map(Arr.map(labelFirst, (id, index) => [id, index]));
 
   const labelOrder = Arr.sort(
@@ -891,7 +949,7 @@ export const sceneOf = ({
           ...item,
           label: spot,
           hoverLabel: fallback,
-          hidden: hiddenStretches({ points: item.points, outlines }),
+          hidden: hiddenOf(item.hop, item.points),
         },
       ];
     }

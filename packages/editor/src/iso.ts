@@ -1,4 +1,4 @@
-import { project, routeHops } from "@axonometric/contracts";
+import { project, routeRevealed } from "@axonometric/contracts";
 import type {
   GridPoint,
   HopRoute,
@@ -7,7 +7,7 @@ import type {
   Placement,
   ScreenPoint,
 } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import { Array as Arr, Order } from "effect";
 
 export {
   corners,
@@ -97,34 +97,46 @@ export const routeHop = ({ from, to }: HopEnds): readonly GridPoint[] => {
 
 const routeCache = new WeakMap<
   MapData,
-  WeakMap<Layout, Readonly<Record<string, HopRoute>>>
+  WeakMap<Layout, Map<string, Readonly<Record<string, HopRoute>>>>
 >();
 
+const keyOf = (revealed: ReadonlySet<string>) =>
+  Arr.join(Arr.sort([...revealed], Order.String), "\n");
+
 /**
- * Every hop's route on the ground, from the contracts router. Routing the
- * same data and layout again returns the same object, so the iso view and
- * the packets share one routing pass.
+ * Every revealed hop's route on the ground, routed around the revealed
+ * structures only, from the contracts router. Routing the same data, layout
+ * and set again returns the same object, so the iso view and the packets
+ * share one routing pass.
  */
 export const routesOf = ({
   data,
   layout,
+  revealed,
 }: {
   readonly data: MapData;
   readonly layout: Layout;
+  readonly revealed: ReadonlySet<string>;
 }): Readonly<Record<string, HopRoute>> => {
   const byLayout =
     routeCache.get(data) ??
-    new WeakMap<Layout, Readonly<Record<string, HopRoute>>>();
+    new WeakMap<Layout, Map<string, Readonly<Record<string, HopRoute>>>>();
 
-  const cached = byLayout.get(layout);
+  const bySet =
+    byLayout.get(layout) ??
+    new Map<string, Readonly<Record<string, HopRoute>>>();
+
+  const key = keyOf(revealed);
+  const cached = bySet.get(key);
 
   if (cached !== undefined) {
     return cached;
   }
 
-  const routes = routeHops(data, layout);
+  const routes = routeRevealed({ data, layout, revealed });
 
-  byLayout.set(layout, routes);
+  bySet.set(key, routes);
+  byLayout.set(layout, bySet);
   routeCache.set(data, byLayout);
 
   return routes;
@@ -132,18 +144,20 @@ export const routesOf = ({
 
 /**
  * A hop's route on screen, or `undefined` when it has none, such as when
- * either end has no placement. Packets walk along these points.
+ * either end isn't revealed. Packets walk along these points.
  */
 export const screenRouteOf = ({
   data,
   layout,
+  revealed,
   hop,
 }: {
   readonly data: MapData;
   readonly layout: Layout;
+  readonly revealed: ReadonlySet<string>;
   readonly hop: { readonly id: string };
 }): readonly ScreenPoint[] | undefined => {
-  const route = routesOf({ data, layout })[hop.id];
+  const route = routesOf({ data, layout, revealed })[hop.id];
 
   return route === undefined ? undefined : Arr.map(route.points, project);
 };
