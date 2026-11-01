@@ -76,7 +76,12 @@ export {
 
 export { MapState, mapStateElementId } from "./map-state.ts";
 
-export { normalSourcePath, SourceFact, sourceKey } from "./sources.ts";
+export {
+  normalSourcePath,
+  SourceFact,
+  sourceKey,
+  uniqueSources,
+} from "./sources.ts";
 
 export type { SourceFacts } from "./sources.ts";
 

@@ -60,7 +60,7 @@ const build = Effect.fn("build")(function* (home: string) {
 
   yield* Option.match(sourcesSkipped, {
     onNone: () => Effect.void,
-    onSome: (line) => Effect.log(line),
+    onSome: (line) => Console.error(line),
   });
 
   const systemMdFile = path.join(output, "SYSTEM.md");

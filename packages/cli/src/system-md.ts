@@ -2,6 +2,7 @@ import {
   normalSourcePath,
   sourceKey,
   statusLabels,
+  uniqueSources,
 } from "@axonometric/contracts";
 import type {
   Hop,
@@ -142,20 +143,20 @@ const questionLine = (question: Question, owner: Structure) =>
 /** Finds the web address `build` worked out for a source, if any. */
 type LinkOf = (source: Source) => string | undefined;
 
-const sourceLine = (file: Source, linkOf: LinkOf) => {
-  const name = code(normalSourcePath(file.path));
-  const url = linkOf(file);
+const sourceLine = (source: Source, linkOf: LinkOf) => {
+  const name = code(normalSourcePath(source.path));
+  const url = linkOf(source);
   const shown = url === undefined ? name : `[${name}](${url})`;
 
-  return file.commit === undefined
+  return source.commit === undefined
     ? `- ${shown}`
-    : `- ${shown} at ${code(file.commit)}`;
+    : `- ${shown} at ${code(Str.slice(0, 7)(source.commit))}`;
 };
 
 const structureLines = (structure: Structure, linkOf: LinkOf) => {
   const steps = structure.steps ?? [];
   const questions = structure.questions ?? [];
-  const sources = structure.sources ?? [];
+  const sources = uniqueSources(structure.sources ?? []);
 
   return [
     `#### ${structure.code} · ${structure.name}`,
@@ -173,7 +174,7 @@ const structureLines = (structure: Structure, linkOf: LinkOf) => {
       : [
           "**Sources.**",
           "",
-          ...Arr.map(sources, (file) => sourceLine(file, linkOf)),
+          ...Arr.map(sources, (source) => sourceLine(source, linkOf)),
           "",
         ]),
     ...(steps.length === 0
@@ -236,7 +237,7 @@ export const renderSystemMd: {
 } = dual(2, (state: MapState, source: string): string => {
   const { data } = state;
   const sourceLinks = state.sourceLinks ?? {};
-  const linkOf: LinkOf = (file) => sourceLinks[sourceKey(file)];
+  const linkOf: LinkOf = (listed) => sourceLinks[sourceKey(listed)];
 
   const names = new Map(
     Arr.map(data.structures, (structure) => [structure.id, structure.name])

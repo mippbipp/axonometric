@@ -6,7 +6,7 @@ import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapError, mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
-import { checkSources } from "./sources.ts";
+import { checkSources, repeatedSources } from "./sources.ts";
 import type { SourceFacts } from "./sources.ts";
 
 type Path = readonly PropertyKey[];
@@ -322,6 +322,7 @@ export const checkMap: {
     ...(options.sourceFacts === undefined
       ? []
       : checkSources(data, options.sourceFacts)),
+    ...repeatedSources(data),
     ...checkLayout(data, layout),
     ...emptyGroups(data),
   ]

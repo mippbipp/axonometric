@@ -69,6 +69,20 @@ describe("structure sources", () => {
       })
   );
 
+  it.effect("rejects a path that names the repo's root, not a file", () =>
+    Effect.sync(() => {
+      for (const path of [".", "./", "src/..", "a/./b/../.."]) {
+        const problems = sourceProblems([{ path }]);
+
+        assert.lengthOf(problems, 1, path);
+        assert.include(
+          problems[0],
+          `sources[0].path: expected a path to a file, but "${path}" is the repo's root.`
+        );
+      }
+    })
+  );
+
   it.effect("rejects a path whose .. segments leave the repo", () =>
     Effect.sync(() => {
       const problems = sourceProblems([{ path: "src/../../outside.ts" }]);
@@ -149,7 +163,12 @@ describe("checkMap's source checks", () => {
       assert.deepStrictEqual(
         check(
           pinned,
-          SourceFact.Pinned({ atCommit: true, atHead: true, changed: false })
+          SourceFact.cases.Pinned.make({
+            commit: "3f2a9c1",
+            atCommit: true,
+            atHead: true,
+            changed: false,
+          })
         ),
         []
       );
@@ -160,7 +179,12 @@ describe("checkMap's source checks", () => {
     Effect.sync(() => {
       const [problem, ...rest] = check(
         pinned,
-        SourceFact.Pinned({ atCommit: false, atHead: false, changed: false })
+        SourceFact.cases.Pinned.make({
+          commit: "3f2a9c1",
+          atCommit: false,
+          atHead: false,
+          changed: false,
+        })
       );
 
       assert.deepStrictEqual(rest, []);
@@ -172,27 +196,29 @@ describe("checkMap's source checks", () => {
     })
   );
 
-  it.effect("errors on an unpinned path missing from the working tree", () =>
-    Effect.sync(() => {
-      const [problem] = check(
-        { path: "src/servr.ts" },
-        SourceFact.Unpinned({ inWorkingTree: false })
-      );
+  it.effect(
+    "errors on an unpinned path that isn't a tracked file at HEAD",
+    () =>
+      Effect.sync(() => {
+        const [problem] = check(
+          { path: "src/servr.ts" },
+          SourceFact.cases.Unpinned.make({ atHead: false })
+        );
 
-      assert.include(
-        problem,
-        "error structures[0].sources[0].path: \"src/servr.ts\" isn't in the git repo's working tree."
-      );
-      assert.include(problem, 'structure "api"');
-    })
+        assert.include(
+          problem,
+          'error structures[0].sources[0].path: "src/servr.ts" isn\'t a file git tracks at HEAD.'
+        );
+        assert.include(problem, 'structure "api"');
+      })
   );
 
-  it.effect("passes an unpinned path that's in the working tree", () =>
+  it.effect("passes an unpinned path that's a tracked file at HEAD", () =>
     Effect.sync(() => {
       assert.deepStrictEqual(
         check(
           { path: "src/server.ts" },
-          SourceFact.Unpinned({ inWorkingTree: true })
+          SourceFact.cases.Unpinned.make({ atHead: true })
         ),
         []
       );
@@ -205,7 +231,7 @@ describe("checkMap's source checks", () => {
       Effect.sync(() => {
         const [problem] = check(
           pinned,
-          SourceFact.UnknownCommit({ commit: "3f2a9c1" })
+          SourceFact.cases.UnknownCommit.make({ commit: "3f2a9c1" })
         );
 
         assert.include(
@@ -222,7 +248,12 @@ describe("checkMap's source checks", () => {
       Effect.sync(() => {
         const [problem] = check(
           pinned,
-          SourceFact.Pinned({ atCommit: true, atHead: true, changed: true })
+          SourceFact.cases.Pinned.make({
+            commit: "3f2a9c1",
+            atCommit: true,
+            atHead: true,
+            changed: true,
+          })
         );
 
         assert.include(
@@ -236,12 +267,45 @@ describe("checkMap's source checks", () => {
     Effect.sync(() => {
       const [problem] = check(
         pinned,
-        SourceFact.Pinned({ atCommit: true, atHead: false, changed: false })
+        SourceFact.cases.Pinned.make({
+          commit: "3f2a9c1",
+          atCommit: true,
+          atHead: false,
+          changed: false,
+        })
       );
 
       assert.include(
         problem,
         'warning structures[0].sources[0].path: "src/server.ts" exists at commit 3f2a9c1 but not at HEAD, so it was renamed or deleted. Reread structure "api"'
+      );
+    })
+  );
+
+  it.effect("warns about a structure that lists one file twice", () =>
+    Effect.sync(() => {
+      const problems = Arr.map(
+        checkMap(
+          {
+            data: mapWith([
+              pinned,
+              { path: "./src/server.ts" },
+              { path: "src/other.ts" },
+            ]),
+            layout,
+          },
+          {
+            linkExists: () => true,
+            sourceFacts: () => SourceFact.cases.Unpinned.make({ atHead: true }),
+          }
+        ),
+        ({ severity, path, message }) => `${severity} ${path}: ${message}`
+      );
+
+      assert.lengthOf(problems, 1);
+      assert.include(
+        problems[0],
+        'warning structures[0].sources[1].path: structure "api" already lists "src/server.ts", so the page and SYSTEM.md show it once.'
       );
     })
   );

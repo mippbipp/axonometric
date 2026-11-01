@@ -8,7 +8,6 @@ import {
   Array as Arr,
   Context,
   Effect,
-  FileSystem,
   Layer,
   Option,
   Path,
@@ -45,7 +44,7 @@ const githubRemote = [
  * The `blob` URL prefix for a GitHub `origin`, such as
  * `https://github.com/o/r/blob`. None for any other remote.
  */
-export const githubBlobBase = (remote: string): Option.Option<string> =>
+const githubBlobBase = (remote: string): Option.Option<string> =>
   Arr.findFirst(githubRemote, (pattern) => {
     const match = pattern.exec(Str.trim(remote));
 
@@ -84,7 +83,6 @@ export class Git extends Context.Service<
     Git,
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
 
       /** Whether git exits 0. False when it can't start. */
@@ -95,21 +93,28 @@ export class Git extends Context.Service<
         );
 
       /** git's output, trimmed, when it exits 0. */
-      const output = (cwd: string, args: readonly string[]) =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const handle = yield* spawner.spawn(command(cwd, args));
+      const output = Effect.fnUntraced(function* (
+        cwd: string,
+        args: readonly string[]
+      ) {
+        const handle = yield* spawner.spawn(command(cwd, args));
 
-            const [text, code] = yield* Effect.all(
-              [
-                Stream.mkString(Stream.decodeText(handle.stdout)),
-                handle.exitCode,
-              ],
-              { concurrency: 2 }
-            );
+        const [text, code] = yield* Effect.all(
+          [Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode],
+          { concurrency: 2 }
+        );
 
-            return code === 0 ? Option.some(Str.trim(text)) : Option.none();
-          })
+        return code === 0 ? Option.some(Str.trim(text)) : Option.none();
+      }, Effect.scoped);
+
+      /**
+       * Whether `file` is a file git tracks at `ref`. A folder is a tree,
+       * not a blob, and an untracked file has no object at all.
+       */
+      const isFileAt = (root: string, ref: string, file: string) =>
+        output(root, ["cat-file", "-t", `${ref}:${file}`]).pipe(
+          Effect.map(Option.contains("blob")),
+          Effect.orElseSucceed(() => false)
         );
 
       const factOf = Effect.fnUntraced(function* (
@@ -119,11 +124,9 @@ export class Git extends Context.Service<
         const file = normalSourcePath(source.path);
 
         if (source.commit === undefined) {
-          const inWorkingTree = yield* fs
-            .exists(path.join(root, ...Str.split(file, "/")))
-            .pipe(Effect.orElseSucceed(() => false));
-
-          return SourceFact.Unpinned({ inWorkingTree });
+          return SourceFact.cases.Unpinned.make({
+            atHead: yield* isFileAt(root, "HEAD", file),
+          });
         }
 
         const { commit } = source;
@@ -135,14 +138,11 @@ export class Git extends Context.Service<
         ]);
 
         if (!known) {
-          return SourceFact.UnknownCommit({ commit });
+          return SourceFact.cases.UnknownCommit.make({ commit });
         }
 
         const [atCommit, atHead] = yield* Effect.all(
-          [
-            succeeds(root, ["cat-file", "-e", `${commit}:${file}`]),
-            succeeds(root, ["cat-file", "-e", `HEAD:${file}`]),
-          ],
+          [isFileAt(root, commit, file), isFileAt(root, "HEAD", file)],
           { concurrency: 2 }
         );
 
@@ -158,7 +158,12 @@ export class Git extends Context.Service<
               ]))
             : false;
 
-        return SourceFact.Pinned({ atCommit, atHead, changed });
+        return SourceFact.cases.Pinned.make({
+          commit,
+          atCommit,
+          atHead,
+          changed,
+        });
       });
 
       const repoOf = Effect.fn("Git.repoOf")(function* (folder: string) {
@@ -231,9 +236,17 @@ export class Git extends Context.Service<
 
           const byKey = new Map(facts);
 
-          return (source: Source): SourceFact =>
-            byKey.get(sourceKey(source)) ??
-            SourceFact.Unpinned({ inWorkingTree: false });
+          return (source: Source): SourceFact => {
+            const fact = byKey.get(sourceKey(source));
+
+            if (fact === undefined) {
+              throw new Error(
+                `No git facts for source "${source.path}". factsOf only answers for the map it was given.`
+              );
+            }
+
+            return fact;
+          };
         });
 
         return Result.succeed<Repo>({ root, linkOf, factsOf });

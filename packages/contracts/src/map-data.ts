@@ -176,13 +176,17 @@ const sourcePath = requiredText(sourcePathFix).check(
       return `expected / between folders, not \\. ${sourcePathFix}`;
     }
 
-    return Option.isNone(sourceSegments(path))
-      ? `expected a path inside the git repo, but the ".." segments climb out of it. ${sourcePathFix}`
-      : undefined;
+    return Option.match(sourceSegments(path), {
+      onNone: () =>
+        `expected a path inside the git repo, but the ".." segments climb out of it. ${sourcePathFix}`,
+      onSome: (segments) =>
+        segments.length === 0
+          ? `expected a path to a file, but "${path}" is the repo's root. ${sourcePathFix}`
+          : undefined,
+    });
   })
 );
 
-/** A file behind a structure, optionally pinned to the commit its text describes. */
 const commitHash = Schema.String.annotate({
   message:
     "expected a string. Set commit to the hash of the commit the structure's text describes, or leave it out.",
@@ -193,6 +197,7 @@ const commitHash = Schema.String.annotate({
   })
 );
 
+/** A file behind a structure, optionally pinned to the commit its text describes. */
 export const Source = Schema.Struct({
   path: sourcePath,
   commit: Schema.optionalKey(commitHash),

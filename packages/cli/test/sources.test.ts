@@ -179,9 +179,46 @@ describe.skipIf(noGit)("check on a structure's sources", () => {
       );
       assert.include(
         result.stdout,
-        `error data.mjs structures[0].sources[1].path: "src/updatr.ts" isn't in the git repo's working tree.`
+        `error data.mjs structures[0].sources[1].path: "src/updatr.ts" isn't a file git tracks at HEAD.`
       );
-      assert.include(result.stdout, ": 2 errors, 0 warnings.");
+      assert.include(result.stdout, ": 2 errors, 1 warning.");
+    })
+  );
+
+  it.effect("errors on a file git doesn't track", () =>
+    Effect.gen(function* () {
+      const { home } = yield* repoHome();
+
+      yield* writeFile(home, "src/draft.ts", "export {};\n");
+
+      const result = yield* checkWith(home, '[{ path: "src/draft.ts" }]');
+
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(
+        result.stdout,
+        `error ${at}.path: "src/draft.ts" isn't a file git tracks at HEAD.`
+      );
+    })
+  );
+
+  it.effect("errors on a folder, pinned or not", () =>
+    Effect.gen(function* () {
+      const { home, commit } = yield* repoHome();
+
+      const result = yield* checkWith(
+        home,
+        `[{ path: "src" }, { path: "src", commit: "${commit}" }]`
+      );
+
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(
+        result.stdout,
+        `error ${at}.path: "src" isn't a file git tracks at HEAD.`
+      );
+      assert.include(
+        result.stdout,
+        `error data.mjs structures[0].sources[1].path: "src" doesn't exist at commit ${commit}.`
+      );
     })
   );
 
@@ -236,26 +273,58 @@ describe("check outside a git repo", () => {
       assert.include(result.stdout, ": 0 errors, 0 warnings.");
     })
   );
-});
 
-const Links = Schema.Record(Schema.String, Schema.String);
+  it.effect("says why in check --json, without counting a warning", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const home = yield* makeHome({});
 
-const MapStateJson = Schema.fromJsonString(
-  Schema.Struct({ sourceLinks: Schema.optionalKey(Links) })
-);
+      yield* writeMap(home, '[{ path: "src/updater.ts" }]');
 
-const decodeState = Schema.decodeUnknownEffect(MapStateJson);
+      const result = yield* runCli(home, [
+        "check",
+        "--json",
+        path.join(home, "pipeline", "map"),
+      ]);
 
-/** The source links in the map state that `build` inlined into the page. */
-const pageLinks = Effect.fnUntraced(function* (page: string) {
-  const match = /id="axonometric-map-state">(?<json>.*?)<\/script>/su.exec(
-    page
+      const report = yield* decodeReport(result.stdout);
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+      assert.deepStrictEqual(report.warnings, []);
+      assert.match(report.sourcesSkipped ?? "", /^Skipped the source checks/u);
+    }).pipe(Effect.provide(NodeServices.layer))
   );
-
-  const state = yield* decodeState(match?.groups?.json ?? "");
-
-  return state.sourceLinks ?? {};
 });
+
+describe.skipIf(noGit)("check --json in a git repo", () => {
+  it.effect("reports sourcesSkipped as null when the checks ran", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const { home } = yield* repoHome();
+
+      yield* writeMap(home, '[{ path: "src/updater.ts" }]');
+
+      const result = yield* runCli(home, [
+        "check",
+        "--json",
+        path.join(home, "pipeline", "map"),
+      ]);
+
+      const report = yield* decodeReport(result.stdout);
+
+      assert.isNull(report.sourcesSkipped);
+    }).pipe(Effect.provide(NodeServices.layer))
+  );
+});
+
+const CheckReport = Schema.Struct({
+  warnings: Schema.Array(Schema.Unknown),
+  sourcesSkipped: Schema.NullOr(Schema.String),
+});
+
+const decodeReport = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(CheckReport)
+);
 
 /** Builds the map in a repo whose origin is `remote`, if any. */
 const buildWith = Effect.fnUntraced(function* (
@@ -274,15 +343,13 @@ const buildWith = Effect.fnUntraced(function* (
 
   assert.strictEqual(result.exitCode, 0, result.stderr);
 
-  return {
-    commit,
-    systemMd: result.files["pipeline/SYSTEM.md"] ?? "",
-    links: yield* pageLinks(result.files["pipeline/pipeline.html"] ?? ""),
-  };
+  return { commit, systemMd: result.files["pipeline/SYSTEM.md"] ?? "" };
 }, Effect.provide(NodeServices.layer));
 
-const both = (commit: string) =>
-  `[{ path: "src/updater.ts", commit: "${commit}" }, { path: "src/updater.ts" }]`;
+const pinnedSource = (commit: string) =>
+  `[{ path: "src/updater.ts", commit: "${commit}" }]`;
+
+const unpinnedSource = () => '[{ path: "src/updater.ts" }]';
 
 describe.skipIf(noGit)("build's source links", () => {
   for (const remote of [
@@ -293,41 +360,39 @@ describe.skipIf(noGit)("build's source links", () => {
   ]) {
     it.effect(`links to GitHub's blob URL for ${remote}`, () =>
       Effect.gen(function* () {
-        const { commit, systemMd, links } = yield* buildWith(remote, both);
+        const pinned = yield* buildWith(remote, pinnedSource);
+        const unpinned = yield* buildWith(remote, unpinnedSource);
 
-        const pinnedUrl = `https://github.com/mippbipp/pipeline/blob/${commit}/src/updater.ts`;
-
-        const branchUrl =
-          "https://github.com/mippbipp/pipeline/blob/main/src/updater.ts";
-
-        assert.deepStrictEqual(links, {
-          [`${commit}:src/updater.ts`]: pinnedUrl,
-          ":src/updater.ts": branchUrl,
-        });
-        assert.include(systemMd, `[\`src/updater.ts\`](${pinnedUrl})`);
-        assert.include(systemMd, `[\`src/updater.ts\`](${branchUrl})`);
+        assert.include(
+          pinned.systemMd,
+          `- [\`src/updater.ts\`](https://github.com/mippbipp/pipeline/blob/${pinned.commit}/src/updater.ts) at \`${Str.slice(0, 7)(pinned.commit)}\``
+        );
+        assert.include(
+          unpinned.systemMd,
+          "- [`src/updater.ts`](https://github.com/mippbipp/pipeline/blob/main/src/updater.ts)\n"
+        );
       })
     );
   }
 
   it.effect("shows plain paths with no remote", () =>
     Effect.gen(function* () {
-      const { systemMd, links } = yield* buildWith(undefined, both);
+      const { systemMd } = yield* buildWith(undefined, unpinnedSource);
 
-      assert.deepStrictEqual(links, {});
-      assert.include(systemMd, "- `src/updater.ts`");
+      assert.include(systemMd, "- `src/updater.ts`\n");
       assert.notInclude(systemMd, "](https://");
     })
   );
 
   it.effect("shows plain paths for a host it doesn't know", () =>
     Effect.gen(function* () {
-      const { links } = yield* buildWith(
+      const { systemMd } = yield* buildWith(
         "https://gitlab.com/mippbipp/pipeline.git",
-        both
+        pinnedSource
       );
 
-      assert.deepStrictEqual(links, {});
+      assert.match(systemMd, /^- `src\/updater\.ts` at `[0-9a-f]{7}`$/mu);
+      assert.notInclude(systemMd, "](https://");
     })
   );
 

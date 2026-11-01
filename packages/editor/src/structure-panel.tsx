@@ -2,6 +2,7 @@ import {
   normalSourcePath,
   sourceKey,
   statusLabels,
+  uniqueSources,
 } from "@axonometric/contracts";
 import type { Source, Structure } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
@@ -52,20 +53,16 @@ function SourceList({ sources }: { readonly sources: readonly Source[] }) {
   const { state } = useWalkthrough();
   const links = state.sourceLinks ?? {};
 
-  // A source listed twice shows once, so each row has its own key.
-  const listed = Arr.dedupeWith(
-    sources,
-    (a, b) => sourceKey(a) === sourceKey(b)
-  );
+  const listed = uniqueSources(sources);
 
   return (
     <ul className="flex flex-col gap-1 text-xs">
       {Arr.map(listed, (source) => {
-        const key = sourceKey(source);
+        const file = normalSourcePath(source.path);
 
         return (
-          <li key={key} data-source={normalSourcePath(source.path)}>
-            <MapLink href={links[key]}>{normalSourcePath(source.path)}</MapLink>
+          <li key={file} data-source={file}>
+            <MapLink href={links[sourceKey(source)]}>{file}</MapLink>
             {source.commit === undefined ? null : (
               <span className="opacity-70">
                 {" "}

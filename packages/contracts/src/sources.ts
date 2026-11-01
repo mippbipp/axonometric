@@ -1,4 +1,4 @@
-import { Array as Arr, Data, Option, String as Str } from "effect";
+import { Array as Arr, Option, Schema, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import type { MapData, Source } from "./map-data.ts";
@@ -7,25 +7,29 @@ import type { MapProblem } from "./problems.ts";
 
 /**
  * What git knows about one source. `checkMap` reads these and never runs
- * git itself, so the CLI gathers them first.
+ * git itself, so the CLI gathers them first. "A file" means a blob that git
+ * tracks: a folder or an untracked file doesn't count.
  */
-export type SourceFact = Data.TaggedEnum<{
-  /** The source has no commit, so only the working tree matters. */
-  readonly Unpinned: { readonly inWorkingTree: boolean };
+export const SourceFact = Schema.TaggedUnion({
+  /** The source has no commit, so only `HEAD` matters. */
+  Unpinned: {
+    /** Whether the path is a file at `HEAD`. */
+    atHead: Schema.Boolean,
+  },
   /** The source's commit isn't in the local history. */
-  readonly UnknownCommit: { readonly commit: string };
-  readonly Pinned: {
-    /** Whether the path exists at the pinned commit. */
-    readonly atCommit: boolean;
-    /** Whether the path exists at `HEAD`. */
-    readonly atHead: boolean;
+  UnknownCommit: { commit: Schema.String },
+  Pinned: {
+    commit: Schema.String,
+    /** Whether the path is a file at the pinned commit. */
+    atCommit: Schema.Boolean,
+    /** Whether the path is a file at `HEAD`. */
+    atHead: Schema.Boolean,
     /** Whether the file differs between the pinned commit and `HEAD`. */
-    readonly changed: boolean;
-  };
-}>;
+    changed: Schema.Boolean,
+  },
+});
 
-/** Constructors and a matcher for `SourceFact`. */
-export const SourceFact = Data.taggedEnum<SourceFact>();
+export type SourceFact = typeof SourceFact.Type;
 
 /** Looks up the git facts for one source. */
 export type SourceFacts = (source: Source) => SourceFact;
@@ -74,27 +78,26 @@ const problemsOf = (
 ): readonly MapProblem[] => {
   const path = at(where.structure, where.source, "path");
   const named = `"${source.path}"`;
-  const commit = source.commit ?? "";
 
-  return SourceFact.$match(fact, {
-    Unpinned: ({ inWorkingTree }) =>
-      inWorkingTree
+  return SourceFact.match(fact, {
+    Unpinned: ({ atHead }) =>
+      atHead
         ? []
         : [
             mapError({
               file: "data.mjs",
               path,
-              message: `${named} isn't in the git repo's working tree. Source paths are from the root of the repo that holds the home folder. Fix the path in structure "${id}", or remove the source.`,
+              message: `${named} isn't a file git tracks at HEAD. Source paths are from the root of the repo that holds the home folder. Fix the path in structure "${id}", or remove the source.`,
             }),
           ],
-    UnknownCommit: ({ commit: missing }) => [
+    UnknownCommit: ({ commit }) => [
       mapError({
         file: "data.mjs",
         path: at(where.structure, where.source, "commit"),
-        message: `commit ${missing} isn't in the local git history. Run git fetch if it's on a branch you don't have, or fix the hash in structure "${id}".`,
+        message: `commit ${commit} isn't in the local git history. Run git fetch if it's on a branch you don't have, or fix the hash in structure "${id}".`,
       }),
     ],
-    Pinned: ({ atCommit, atHead, changed }) => {
+    Pinned: ({ commit, atCommit, atHead, changed }) => {
       if (!atCommit) {
         return [
           mapError({
@@ -127,6 +130,40 @@ const problemsOf = (
     },
   });
 };
+
+/**
+ * A structure's sources with repeats dropped. Two sources repeat when their
+ * paths name the same file, whatever their commits. The page and SYSTEM.md
+ * show these, and `check` warns about the rest.
+ */
+export const uniqueSources = (sources: readonly Source[]): readonly Source[] =>
+  Arr.dedupeWith(
+    sources,
+    (a, b) => normalSourcePath(a.path) === normalSourcePath(b.path)
+  );
+
+/** A warning for every source that repeats an earlier one in its structure. */
+export const repeatedSources = (data: MapData): readonly MapProblem[] =>
+  Arr.flatMap(data.structures, (structure, index) => {
+    const seen = new Set<string>();
+
+    return Arr.flatMap(structure.sources ?? [], (source, sourceIndex) => {
+      const file = normalSourcePath(source.path);
+      const repeated = seen.has(file);
+
+      seen.add(file);
+
+      return repeated
+        ? [
+            mapWarning({
+              file: "data.mjs",
+              path: at(index, sourceIndex, "path"),
+              message: `structure "${structure.id}" already lists "${file}", so the page and SYSTEM.md show it once. Remove this source, or merge the two into one with the commit the text describes.`,
+            }),
+          ]
+        : [];
+    });
+  });
 
 /** Errors and warnings for every structure's sources, from git's facts. */
 export const checkSources: {

@@ -15,6 +15,8 @@ const CheckReport = Schema.Struct({
   ok: Schema.Boolean,
   errors: Schema.Array(MapProblem),
   warnings: Schema.Array(MapProblem),
+  /** Why the source checks were skipped, or null when they ran. */
+  sourcesSkipped: Schema.NullOr(Schema.String),
 });
 
 const encodeReport = Schema.encodeEffect(Schema.fromJsonString(CheckReport));
@@ -41,7 +43,13 @@ const check = Effect.fn("check")(function* (home: string, json: boolean) {
 
   if (json) {
     yield* Console.log(
-      yield* encodeReport({ home, ok: errors.length === 0, errors, warnings })
+      yield* encodeReport({
+        home,
+        ok: errors.length === 0,
+        errors,
+        warnings,
+        sourcesSkipped: Option.getOrNull(sourcesSkipped),
+      })
     );
   } else {
     yield* Option.match(sourcesSkipped, {
