@@ -1,13 +1,14 @@
 import { cn } from "@axonometric/ui/lib/utils";
 import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
 
+import { pendingStructures, useEditing } from "./editing-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useTooltipActions } from "./tooltip-context.ts";
 
 /**
- * The `<g>` that draws structure `id` in a view, with `data-structure` and
- * `data-selected` on it. Hover and keyboard focus show the tooltip, a click
+ * The `<g>` that draws structure `id` in a view, with `data-structure`,
+ * `data-selected` and `data-pending` on it. Hover and keyboard focus show the tooltip, a click
  * pins the structure, a double-click goes inside it, and Enter or Space pin
  * it from the keyboard.
  *
@@ -25,6 +26,9 @@ export function StructureTarget({
   const { show, hide } = useTooltipActions();
   const name = useStructuresById().get(id)?.name ?? id;
   const isSelected = selected === id;
+  const editing = useEditing();
+
+  const isPending = pendingStructures(editing).has(id);
 
   const showAtPointer = (event: PointerEvent) => {
     show({ id, x: event.clientX, y: event.clientY });
@@ -54,6 +58,7 @@ export function StructureTarget({
       )}
       data-structure={id}
       data-selected={isSelected}
+      data-pending={isPending}
       // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
       role="button"
       tabIndex={0}

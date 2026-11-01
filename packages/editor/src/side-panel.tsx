@@ -4,6 +4,8 @@ import { useId, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { useEditing } from "./editing-context.ts";
+import { PendingTab } from "./pending-tab.tsx";
 import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
 import { QuestionsTab } from "./questions.tsx";
@@ -175,15 +177,16 @@ const renderContent = Match.type<PanelContent>().pipe(
   })
 );
 
-type Tab = "details" | "questions";
+type Tab = "details" | "questions" | "pending";
 
 const tabClass =
-  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-2 py-1 text-xs tracking-widest uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-2 py-1 text-xs tracking-wider whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
 
 /**
- * The side panel next to the view, with two tabs. Details shows one of the
- * `PanelContent` kinds; Open questions lists every question revealed so far.
- * Selecting a structure anywhere switches back to Details.
+ * The side panel next to the view. Details shows one of the `PanelContent`
+ * kinds; Open questions lists every question revealed so far; on a page
+ * `serve` serves, Pending lists the pending layout changes. Selecting a
+ * structure anywhere switches back to Details.
  */
 export function SidePanel() {
   const { selected: packet } = usePlayback();
@@ -198,24 +201,36 @@ export function SidePanel() {
   );
 
   const idPrefix = useId();
+  const editing = useEditing();
 
-  // The Questions tab stays open until the selection changes.
-  const [questionsFor, setQuestionsFor] = useState<{
+  // A tab other than Details stays open until the selection changes.
+  const [otherTab, setOtherTab] = useState<{
+    readonly tab: Tab;
     readonly selected: string | null;
   } | null>(null);
 
-  const tab: Tab =
-    questionsFor !== null && questionsFor.selected === selected
-      ? "questions"
-      : "details";
-
   const tabs: readonly { readonly id: Tab; readonly label: string }[] = [
     { id: "details", label: "Details" },
-    { id: "questions", label: `Open questions · ${openCount}` },
+    { id: "questions", label: `Questions · ${openCount}` },
+    ...(editing === null
+      ? []
+      : [
+          {
+            id: "pending" as const,
+            label: `Pending · ${editing.pending.length}`,
+          },
+        ]),
   ];
 
+  const tab: Tab =
+    otherTab !== null &&
+    otherTab.selected === selected &&
+    Arr.some(tabs, ({ id }) => id === otherTab.tab)
+      ? otherTab.tab
+      : "details";
+
   const choose = (next: Tab) => {
-    setQuestionsFor(next === "questions" ? { selected } : null);
+    setOtherTab(next === "details" ? null : { tab: next, selected });
   };
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -227,7 +242,9 @@ export function SidePanel() {
     event.preventDefault();
     event.stopPropagation();
 
-    const next = tab === "details" ? "questions" : "details";
+    const at = tabs.findIndex(({ id }) => id === tab);
+    const step = event.key === "ArrowRight" ? 1 : -1;
+    const next = tabs[(at + step + tabs.length) % tabs.length]?.id ?? "details";
 
     choose(next);
     event.currentTarget
@@ -244,7 +261,7 @@ export function SidePanel() {
         tabIndex={0}
         role="tablist"
         aria-label="Side panel"
-        className="border-ink flex gap-1 border-b px-3 pt-2"
+        className="border-ink flex gap-0.5 border-b px-2 pt-2"
         onKeyDown={onTabKeyDown}
       >
         {Arr.map(tabs, ({ id, label }) => (
@@ -298,6 +315,17 @@ export function SidePanel() {
           />
         ) : null}
       </div>
+      {editing === null ? null : (
+        <div
+          role="tabpanel"
+          id={`${idPrefix}-pending`}
+          aria-labelledby={`${idPrefix}-pending-tab`}
+          hidden={tab !== "pending"}
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          {tab === "pending" ? <PendingTab /> : null}
+        </div>
+      )}
     </aside>
   );
 }

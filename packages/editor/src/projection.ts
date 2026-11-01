@@ -1,6 +1,11 @@
-import { groundProjections, routeRevealed } from "@axonometric/contracts";
+import {
+  groundProjections,
+  drawnRoutes,
+  routeRevealed,
+} from "@axonometric/contracts";
 import type {
   GridPoint,
+  GridPosition,
   GroundProjection,
   HopRoute,
   Layout,
@@ -165,9 +170,50 @@ export const routesOf = ({
   return routes;
 };
 
+const lineCache = new WeakMap<
+  Readonly<Record<string, HopRoute>>,
+  Map<View, Readonly<Record<string, readonly GridPosition[]>>>
+>();
+
+/** Each routed hop's own line on the ground in `view`, as the scene draws it. */
+const linesOf = ({
+  routes,
+  data,
+  layout,
+  view,
+}: {
+  readonly routes: Readonly<Record<string, HopRoute>>;
+  readonly data: MapData;
+  readonly layout: Layout;
+  readonly view: View;
+}): Readonly<Record<string, readonly GridPosition[]>> => {
+  const byView =
+    lineCache.get(routes) ??
+    new Map<View, Readonly<Record<string, readonly GridPosition[]>>>();
+
+  const cached = byView.get(view);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const lines = drawnRoutes({
+    routes,
+    hops: data.hops,
+    placements: layout.structures,
+    view,
+  });
+
+  byView.set(view, lines);
+  lineCache.set(routes, byView);
+
+  return lines;
+};
+
 /**
- * A hop's route on screen in `view`, or `undefined` when it has none, such
- * as when either end isn't revealed. Packets walk along these points.
+ * A hop's line on screen in `view`, its own lane of its route as the scene
+ * draws it, or `undefined` when it has none, such as when either end isn't
+ * revealed. Packets walk along these points.
  */
 export const screenRouteOf = ({
   data,
@@ -182,11 +228,12 @@ export const screenRouteOf = ({
   readonly hop: { readonly id: string };
   readonly view: View;
 }): readonly ScreenPoint[] | undefined => {
-  const route = routesOf({ data, layout, revealed })[hop.id];
+  const routes = routesOf({ data, layout, revealed });
+  const line = linesOf({ routes, data, layout, view })[hop.id];
 
-  return route === undefined
+  return line === undefined
     ? undefined
-    : Arr.map(route.points, groundProjections[view].toScreen);
+    : Arr.map(line, groundProjections[view].toScreen);
 };
 
 /**

@@ -1,4 +1,4 @@
-import { Array as Arr } from "effect";
+import { Array as Arr, Order } from "effect";
 import { dual } from "effect/Function";
 
 import type { ScreenPoint, ScreenRect } from "./iso.ts";
@@ -18,6 +18,28 @@ export interface Interval {
 /** Overlaps thinner than this, in screen units, don't count. */
 const tolerance = 1e-6;
 
+/** Keeps a division by a length that may be zero finite. */
+export const tiny = 1e-9;
+
+/** A rect with no size, at the origin: where a missing rect stands in. */
+export const emptyRect: ScreenRect = { left: 0, top: 0, right: 0, bottom: 0 };
+
+/** How far apart the sideways spots for a name tag are, in screen units. */
+const slideStep = 6;
+
+/**
+ * How far a name tag may slide sideways, up to `reach` either way, the
+ * smallest slide first.
+ */
+export const slideOffsets = (reach: number): readonly number[] => {
+  const steps = Math.floor(reach / slideStep);
+
+  return Arr.sort(
+    Arr.map(Arr.range(-steps, steps), (step) => step * slideStep),
+    Order.mapInput(Order.Number, Math.abs)
+  );
+};
+
 /** A rect's corners, clockwise from the top left. */
 export const rectPolygon = (rect: ScreenRect): readonly ScreenPoint[] => [
   { sx: rect.left, sy: rect.top },
@@ -26,13 +48,26 @@ export const rectPolygon = (rect: ScreenRect): readonly ScreenPoint[] => [
   { sx: rect.left, sy: rect.bottom },
 ];
 
+// The functions below loop by hand instead of building arrays: text
+// placement calls them for every candidate spot, and with plain loops
+// `sceneOf` went from 930 ms to 130 ms on the pipeline map.
+
 /** The smallest rect holding every point. */
-export const boundsOfPoints = (points: readonly ScreenPoint[]): ScreenRect => ({
-  left: Math.min(...Arr.map(points, ({ sx }) => sx)),
-  top: Math.min(...Arr.map(points, ({ sy }) => sy)),
-  right: Math.max(...Arr.map(points, ({ sx }) => sx)),
-  bottom: Math.max(...Arr.map(points, ({ sy }) => sy)),
-});
+export const boundsOfPoints = (points: readonly ScreenPoint[]): ScreenRect => {
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  for (const { sx, sy } of points) {
+    left = Math.min(left, sx);
+    top = Math.min(top, sy);
+    right = Math.max(right, sx);
+    bottom = Math.max(bottom, sy);
+  }
+
+  return { left, top, right, bottom };
+};
 
 /** A rect grown by `by` on every side. */
 export const growRect: {
@@ -45,20 +80,49 @@ export const growRect: {
   bottom: rect.bottom + by,
 }));
 
-const edgeNormals = (polygon: readonly ScreenPoint[]) =>
-  Arr.map(polygon, (point, index) => {
-    const next = polygon[(index + 1) % polygon.length] ?? point;
+const origin: ScreenPoint = { sx: 0, sy: 0 };
 
-    return { sx: next.sy - point.sy, sy: point.sx - next.sx };
-  });
+/** The least and greatest of `polygon`'s points along the axis (ax, ay). */
+const extentAlong = (
+  polygon: readonly ScreenPoint[],
+  { ax, ay }: { readonly ax: number; readonly ay: number }
+) => {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
 
-const extentAlong = (polygon: readonly ScreenPoint[], axis: ScreenPoint) => {
-  const values = Arr.map(
-    polygon,
-    (point) => point.sx * axis.sx + point.sy * axis.sy
-  );
+  for (const { sx, sy } of polygon) {
+    const along = sx * ax + sy * ay;
 
-  return { min: Math.min(...values), max: Math.max(...values) };
+    min = Math.min(min, along);
+    max = Math.max(max, along);
+  }
+
+  return { min, max };
+};
+
+/**
+ * Whether some edge normal of `edges` separates `a` from `b`: their
+ * projections onto it are apart, or only touch.
+ */
+const separatedByEdgeOf = (
+  edges: readonly ScreenPoint[],
+  a: readonly ScreenPoint[],
+  b: readonly ScreenPoint[]
+) => {
+  for (let index = 0; index < edges.length; index += 1) {
+    const point = edges[index] ?? origin;
+    const next = edges[(index + 1) % edges.length] ?? point;
+    const axis = { ax: next.sy - point.sy, ay: point.sx - next.sx };
+    const slack = Math.hypot(axis.ax, axis.ay) * tolerance;
+    const first = extentAlong(a, axis);
+    const second = extentAlong(b, axis);
+
+    if (!(first.min < second.max - slack && second.min < first.max - slack)) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 /**
@@ -68,45 +132,11 @@ const extentAlong = (polygon: readonly ScreenPoint[], axis: ScreenPoint) => {
 export const convexOverlap: {
   (b: readonly ScreenPoint[]): (a: readonly ScreenPoint[]) => boolean;
   (a: readonly ScreenPoint[], b: readonly ScreenPoint[]): boolean;
-} = dual(2, (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
-  Arr.every([...edgeNormals(a), ...edgeNormals(b)], (axis) => {
-    const first = extentAlong(a, axis);
-    const second = extentAlong(b, axis);
-    const scale = Math.hypot(axis.sx, axis.sy) * tolerance;
-
-    return first.min < second.max - scale && second.min < first.max - scale;
-  })
+} = dual(
+  2,
+  (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
+    !separatedByEdgeOf(a, a, b) && !separatedByEdgeOf(b, a, b)
 );
-
-const centreOf = (polygon: readonly ScreenPoint[]): ScreenPoint => ({
-  sx: Arr.reduce(polygon, 0, (sum, point) => sum + point.sx) / polygon.length,
-  sy: Arr.reduce(polygon, 0, (sum, point) => sum + point.sy) / polygon.length,
-});
-
-/**
- * One edge's limit on a segment being clipped: how far inside the edge the
- * segment's start sits, and how that changes along the segment, measured
- * towards the polygon's inside.
- */
-const edgeLimit = (
-  { start, end }: Segment,
-  edge: Segment,
-  centre: ScreenPoint
-) => {
-  const normal = {
-    sx: edge.end.sy - edge.start.sy,
-    sy: edge.start.sx - edge.end.sx,
-  };
-
-  const along = (point: ScreenPoint) =>
-    normal.sx * (point.sx - edge.start.sx) +
-    normal.sy * (point.sy - edge.start.sy);
-
-  const inwards = along(centre) > 0 ? 1 : -1;
-  const offset = inwards * along(start);
-
-  return { offset, rate: inwards * along(end) - offset };
-};
 
 /**
  * The share of a segment inside a convex polygon, by Cyrus-Beck clipping, or
@@ -118,36 +148,48 @@ export const clipToConvex: {
 } = dual(
   2,
   (segment: Segment, polygon: readonly ScreenPoint[]): Interval | undefined => {
-    const centre = centreOf(polygon);
+    // A plain loop over the edges: it runs for every candidate spot.
+    let cx = 0;
+    let cy = 0;
 
-    const limits = Arr.map(polygon, (start, index) =>
-      edgeLimit(
-        segment,
-        { start, end: polygon[(index + 1) % polygon.length] ?? start },
-        centre
-      )
-    );
+    for (const { sx, sy } of polygon) {
+      cx += sx;
+      cy += sy;
+    }
 
-    const outside = Arr.some(
-      limits,
-      ({ offset, rate }) => rate === 0 && offset <= 0
-    );
+    cx /= polygon.length;
+    cy /= polygon.length;
 
-    const from = Math.max(
-      0,
-      ...Arr.flatMap(limits, ({ offset, rate }) =>
-        rate > 0 ? [-offset / rate] : []
-      )
-    );
+    let from = 0;
+    let to = 1;
 
-    const to = Math.min(
-      1,
-      ...Arr.flatMap(limits, ({ offset, rate }) =>
-        rate < 0 ? [-offset / rate] : []
-      )
-    );
+    // Each edge limits the segment: how far inside the edge its start sits,
+    // and how that changes along it, measured towards the inside.
+    for (let index = 0; index < polygon.length; index += 1) {
+      const start = polygon[index] ?? origin;
+      const end = polygon[(index + 1) % polygon.length] ?? start;
+      const nx = end.sy - start.sy;
+      const ny = start.sx - end.sx;
 
-    return !outside && from < to ? { from, to } : undefined;
+      const along = (sx: number, sy: number) =>
+        nx * (sx - start.sx) + ny * (sy - start.sy);
+
+      const inwards = along(cx, cy) > 0 ? 1 : -1;
+      const offset = inwards * along(segment.start.sx, segment.start.sy);
+      const rate = inwards * along(segment.end.sx, segment.end.sy) - offset;
+
+      if (rate === 0) {
+        if (offset <= 0) {
+          return undefined;
+        }
+      } else if (rate > 0) {
+        from = Math.max(from, -offset / rate);
+      } else {
+        to = Math.min(to, -offset / rate);
+      }
+    }
+
+    return from < to ? { from, to } : undefined;
   }
 );
 
@@ -194,32 +236,65 @@ export const lerp = ({
   sy: from.sy + (to.sy - from.sy) * t,
 });
 
+/** How far a point sits from a rect, 0 inside it. */
+const distanceToRect = (rect: ScreenRect, { sx, sy }: ScreenPoint) =>
+  Math.hypot(
+    Math.max(rect.left - sx, 0, sx - rect.right),
+    Math.max(rect.top - sy, 0, sy - rect.bottom)
+  );
+
+/**
+ * How far apart a rect and a convex polygon are: the gap between their
+ * nearest points, 0 where they overlap.
+ */
+export const gapBetween: {
+  (polygon: readonly ScreenPoint[]): (rect: ScreenRect) => number;
+  (rect: ScreenRect, polygon: readonly ScreenPoint[]): number;
+} = dual(2, (rect: ScreenRect, polygon: readonly ScreenPoint[]) => {
+  if (convexOverlap(rectPolygon(rect), polygon)) {
+    return 0;
+  }
+
+  // Two convex shapes that don't overlap are nearest at a corner of one.
+  const ring = [...polygon, ...Arr.take(polygon, 1)];
+
+  return Math.min(
+    ...Arr.map(rectPolygon(rect), (corner) => distanceToPolyline(ring, corner)),
+    ...Arr.map(polygon, (corner) => distanceToRect(rect, corner))
+  );
+});
+
 /** How far a point sits from a polyline. */
 export const distanceToPolyline: {
   (point: ScreenPoint): (points: readonly ScreenPoint[]) => number;
   (points: readonly ScreenPoint[], point: ScreenPoint): number;
-} = dual(2, (points: readonly ScreenPoint[], point: ScreenPoint) =>
-  Math.min(
-    Number.POSITIVE_INFINITY,
-    ...Arr.map(segmentsOf(points), ({ start, end }) => {
-      const length = (end.sx - start.sx) ** 2 + (end.sy - start.sy) ** 2;
+} = dual(2, (points: readonly ScreenPoint[], point: ScreenPoint) => {
+  // A plain loop: label placement measures every candidate spot with it.
+  let best = Number.POSITIVE_INFINITY;
 
-      const t =
-        length === 0
-          ? 0
-          : Math.max(
-              0,
-              Math.min(
-                1,
-                ((point.sx - start.sx) * (end.sx - start.sx) +
-                  (point.sy - start.sy) * (end.sy - start.sy)) /
-                  length
-              )
-            );
+  for (let index = 0; index + 1 < points.length; index += 1) {
+    const start = points[index] ?? origin;
+    const end = points[index + 1] ?? start;
+    const dx = end.sx - start.sx;
+    const dy = end.sy - start.sy;
+    const length = dx * dx + dy * dy;
 
-      const near = lerp({ from: start, to: end, t });
+    const t =
+      length === 0
+        ? 0
+        : Math.max(
+            0,
+            Math.min(
+              1,
+              ((point.sx - start.sx) * dx + (point.sy - start.sy) * dy) / length
+            )
+          );
 
-      return Math.hypot(point.sx - near.sx, point.sy - near.sy);
-    })
-  )
-);
+    best = Math.min(
+      best,
+      Math.hypot(point.sx - (start.sx + dx * t), point.sy - (start.sy + dy * t))
+    );
+  }
+
+  return best;
+});

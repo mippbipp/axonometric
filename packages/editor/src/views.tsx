@@ -49,6 +49,9 @@ export const viewDrawings: Readonly<Record<View, ViewDrawing>> = {
         ground.right,
         { sx: tag.left, sy: ground.front.sy + tagDrop },
         { sx: tag.right, sy: ground.front.sy + tagDrop },
+        // A grown tag may move off the front corner and reach further.
+        { sx: tag.left, sy: tag.top },
+        { sx: tag.right, sy: tag.bottom },
       ];
     },
   },

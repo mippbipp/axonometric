@@ -10,6 +10,11 @@
   --ink: light-dark(#17170f, #e6dfbe);
   --face: light-dark(#efe9cc, #2a2920);
   --muted: light-dark(#8e8a70, #6e6b54);
+  /* Pending changes: a blue that no status uses, and that stays clear of
+     the ink the "new" marker is drawn in. */
+  --pending: light-dark(#1d4ed8, #7aa7ff);
+  /* A drop that would be refused, such as onto another footprint. */
+  --refused: light-dark(#b91c1c, #ff7b72);
 }
 
 :root[data-theme="light"] {
@@ -25,6 +30,8 @@
   --color-ink: var(--ink);
   --color-face: var(--face);
   --color-muted-ink: var(--muted);
+  --color-pending: var(--pending);
+  --color-refused: var(--refused);
   --text-2xs: 10px;
   /* System fonts only: the page must work offline from disk. */
   --font-mono:
@@ -58,4 +65,21 @@
 
 [data-status="off"] .fill-ink {
   fill: var(--muted);
+}
+
+/* A structure with a pending change, which hasn't been accepted: outlined in
+   the pending blue, with its faces tinted towards it. The status rules above
+   still dash a planned structure and fade an off one. */
+[data-structure][data-pending="true"] {
+  stroke: var(--pending);
+}
+
+[data-structure][data-pending="true"] [data-face] {
+  fill: color-mix(in oklab, var(--face), var(--pending) 14%);
+}
+
+/* A structure being dragged, with its name tag and badge, is see-through, so
+   what it's dragged over shows. */
+[data-drag-shifted] {
+  opacity: 0.55;
 }

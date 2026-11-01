@@ -2,7 +2,9 @@ import { pathToFileURL } from "node:url";
 
 import {
   checkMap,
+  checkProposals,
   describeCause,
+  emptyProposals,
   formatCount,
   formatProblem,
   LayoutFile,
@@ -11,10 +13,11 @@ import {
   mapError,
   MapProblem,
   problemsFromIssue,
+  ProposalsFile,
   sourceKey,
   splitProblems,
 } from "@axonometric/contracts";
-import type { Layout, MapFile } from "@axonometric/contracts";
+import type { Layout, MapFile, Proposals } from "@axonometric/contracts";
 import {
   Array as Arr,
   Effect,
@@ -62,6 +65,8 @@ const decodeData = Schema.decodeUnknownResult(MapData, parseOptions);
 
 const decodeLayout = Schema.decodeUnknownResult(LayoutFile, parseOptions);
 
+const decodeProposals = Schema.decodeUnknownResult(ProposalsFile, parseOptions);
+
 /** An error with a whole file, rather than one field in it. */
 const fileProblem = (file: MapFile, message: string) =>
   mapError({ file, path: [], message });
@@ -73,6 +78,12 @@ const encodeLayoutFile = Schema.encodeEffect(LayoutFile);
 /** The text of `layout.json` for `layout`. */
 export const encodeLayout = (layout: Layout) =>
   encodeLayoutFile(layout).pipe(Effect.orDie);
+
+const encodeProposalsFile = Schema.encodeEffect(ProposalsFile);
+
+/** The text of `proposals.json` for `proposals`. */
+export const encodeProposals = (proposals: Proposals) =>
+  encodeProposalsFile(proposals).pipe(Effect.orDie);
 
 /** Returns the path of `name` in `home`, or a problem when it's missing. */
 const findFile = Effect.fnUntraced(function* (
@@ -141,31 +152,55 @@ const loadData = Effect.fnUntraced(function* (
 /** The layout of a map whose `layout.json` doesn't exist yet. */
 export const emptyLayout: Layout = { format: 1, revision: 0, structures: {} };
 
-/** Reads `layout.json`. A missing file is an empty layout, which `build` fills. */
-const loadLayout = Effect.fnUntraced(function* (
-  home: string
-): Effect.fn.Return<Loaded<Layout>, never, FileSystem.FileSystem | Path.Path> {
+/** A JSON map file: its name, how to decode it, and what a missing one means. */
+interface JsonFile<A> {
+  readonly name: MapFile;
+  readonly decode: (text: string) => Result.Result<A, Schema.SchemaError>;
+  readonly missing: A;
+}
+
+/** Reads the JSON file `name` in `home` with `decode`. */
+const loadJson = Effect.fnUntraced(function* <A>(
+  home: string,
+  { name, decode, missing }: JsonFile<A>
+): Effect.fn.Return<Loaded<A>, never, FileSystem.FileSystem | Path.Path> {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const file = path.join(home, "layout.json");
+  const file = path.join(home, name);
   const exists = yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false));
 
   if (!exists) {
-    return Result.succeed(emptyLayout);
+    return Result.succeed(missing);
   }
 
   const text = yield* fs.readFileString(file).pipe(Effect.result);
 
   if (Result.isFailure(text)) {
     return Result.fail([
-      fileProblem("layout.json", `could not be read: ${text.failure.message}`),
+      fileProblem(name, `could not be read: ${text.failure.message}`),
     ]);
   }
 
-  return Result.mapError(decodeLayout(text.success), (error) =>
-    problemsFromIssue("layout.json", error.issue)
+  return Result.mapError(decode(text.success), (error) =>
+    problemsFromIssue(name, error.issue)
   );
 });
+
+/** Reads `layout.json`. A missing file is an empty layout, which `build` fills. */
+export const loadLayout = (home: string) =>
+  loadJson(home, {
+    name: "layout.json",
+    decode: decodeLayout,
+    missing: emptyLayout,
+  });
+
+/** Reads `proposals.json`. A missing file means nothing is pending. */
+export const loadProposals = (home: string) =>
+  loadJson(home, {
+    name: "proposals.json",
+    decode: decodeProposals,
+    missing: emptyProposals,
+  });
 
 /**
  * Which of the map's relative links resolve to a file next to SYSTEM.md.
@@ -266,6 +301,8 @@ export interface LoadedMap {
   readonly saved: Layout;
   /** The web address of each source that has one, keyed by `sourceKey`. */
   readonly sourceLinks: Readonly<Record<string, string>>;
+  /** What `proposals.json` holds, or nothing pending when there's no file. */
+  readonly proposals: Proposals;
 }
 
 /** A map as loaded: the problems found, and the files when both decoded. */
@@ -279,18 +316,56 @@ export interface InspectedMap {
 /** Changes the saved layout before it's checked, such as by placing structures. */
 export type Arrange = (data: MapData, saved: Layout) => Layout;
 
+/** How `inspectMap` loads and checks a map. */
+export interface InspectOptions {
+  /** As for `LoadRequest.arrange`. */
+  readonly arrange?: Arrange | undefined;
+  /**
+   * Whether a `proposals.json` that doesn't decode is an error, as `check`
+   * reports it. Otherwise it's a warning, and the map loads with nothing
+   * pending: `build` and `serve` only need the accepted layout.
+   */
+  readonly strictProposals?: boolean | undefined;
+}
+
+/** A problem as a warning, such as an error in a file that can be set aside. */
+const asWarning = (problem: MapProblem): MapProblem => ({
+  ...problem,
+  severity: "warning",
+  message: `${problem.message} Pending changes are ignored until this is fixed.`,
+});
+
 /**
  * Loads the map in `home` and finds every error and warning in it. Links
  * resolve against `output`, the folder SYSTEM.md is written to. The problems
- * are those of the layout `arrange` returns, which is the saved layout by
- * default. Writes nothing.
+ * are those of the layout `options.arrange` returns, which is the saved
+ * layout by default. Writes nothing.
  */
 export const inspectMap = Effect.fnUntraced(function* (
   home: string,
   output: string,
-  arrange: Arrange = (_data, saved) => saved
+  options: InspectOptions = {}
 ) {
-  const [data, saved] = yield* Effect.all([loadData(home), loadLayout(home)]);
+  const arrange = options.arrange ?? ((_data, saved: Layout) => saved);
+
+  const [data, saved, loadedProposals] = yield* Effect.all([
+    loadData(home),
+    loadLayout(home),
+    loadProposals(home),
+  ]);
+
+  const noProblems: readonly MapProblem[] = [];
+
+  const proposals = Result.match(loadedProposals, {
+    onSuccess: (found) => ({ found, problems: noProblems }),
+    onFailure: (failure) => ({
+      found: emptyProposals,
+      problems:
+        options.strictProposals === true
+          ? failure
+          : Arr.map(failure, asWarning),
+    }),
+  });
 
   if (Result.isSuccess(data) && Result.isSuccess(saved)) {
     const links = yield* existingLinks(output, data.success);
@@ -301,13 +376,17 @@ export const inspectMap = Effect.fnUntraced(function* (
       ? yield* sources.repo.value.factsOf(data.success)
       : undefined;
 
-    const problems = checkMap(
-      { data: data.success, layout },
-      {
-        linkExists: (target) => links.has(target),
-        sourceFacts,
-      }
-    );
+    const problems = [
+      ...checkMap(
+        { data: data.success, layout },
+        {
+          linkExists: (target) => links.has(target),
+          sourceFacts,
+        }
+      ),
+      ...proposals.problems,
+      ...checkProposals(data.success, layout, proposals.found),
+    ];
 
     return {
       problems,
@@ -316,6 +395,7 @@ export const inspectMap = Effect.fnUntraced(function* (
         layout,
         saved: saved.success,
         sourceLinks: linksOf(data.success, sources.repo),
+        proposals: proposals.found,
       }),
       sourcesSkipped: sources.skipped,
     } satisfies InspectedMap;
@@ -325,6 +405,7 @@ export const inspectMap = Effect.fnUntraced(function* (
     problems: [
       ...(Result.isFailure(data) ? data.failure : []),
       ...(Result.isFailure(saved) ? saved.failure : []),
+      ...proposals.problems,
     ],
     map: Option.none(),
     sourcesSkipped: Option.none(),
@@ -338,8 +419,9 @@ export interface LoadRequest {
   readonly output: string;
   /** The command loading the map, named in the error. */
   readonly command: string;
-  /** As for `inspectMap`. */
+  /** As for `InspectOptions`. */
   readonly arrange?: Arrange;
+  readonly strictProposals?: boolean;
 }
 
 /**
@@ -351,12 +433,12 @@ export const loadMap = Effect.fnUntraced(function* ({
   output,
   command,
   arrange,
+  strictProposals,
 }: LoadRequest) {
-  const { problems, map, sourcesSkipped } = yield* inspectMap(
-    home,
-    output,
-    arrange
-  );
+  const { problems, map, sourcesSkipped } = yield* inspectMap(home, output, {
+    arrange,
+    strictProposals,
+  });
 
   if (splitProblems(problems).errors.length > 0 || Option.isNone(map)) {
     return yield* MapInvalid.make({ home, command, problems });

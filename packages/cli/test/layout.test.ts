@@ -60,18 +60,12 @@ const liveProcess = Effect.gen(function* () {
   return Number(handle.pid);
 }).pipe(Effect.provide(NodeServices.layer));
 
-/** The PID of a process that has exited. */
-const deadPid = Effect.gen(function* () {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-
-  const handle = yield* spawner.spawn(
-    ChildProcess.make(process.execPath, ["-e", ""])
-  );
-
-  yield* handle.exitCode;
-
-  return Number(handle.pid);
-}).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+/**
+ * A PID no process has or will have. A real process's PID won't do: Windows
+ * hands a freed PID to the next process it starts, so the "dead" process
+ * could be running again by the time the lock is checked.
+ */
+const deadPid = Effect.succeed(2 ** 31 - 1);
 
 describe("layout", () => {
   it.effect("moves a structure, bumps the revision and prints the change", () =>

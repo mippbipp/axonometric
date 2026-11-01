@@ -1,8 +1,14 @@
-import { Array as Arr, Option, Order, String as Str } from "effect";
+import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
+import { arrowHalfWidth } from "./ends.ts";
+import { drawnRoutes } from "./fans.ts";
 import {
   boundsOfPoints,
+  emptyRect,
+  gapBetween,
+  slideOffsets,
+  tiny,
   growRect,
   clipToConvex,
   convexOverlap,
@@ -18,22 +24,31 @@ import { isoHeights } from "./iso-heights.ts";
 import {
   boxOutline,
   corners,
-  nameTagRect,
   nameTagText,
   project,
   tagCharWidth,
+  tagOffset,
   tagPadding,
   gridOnScreen,
   tileHeight,
   tileWidth,
 } from "./iso.ts";
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
-import type { Layout, Placement } from "./layout.ts";
+import { laneGap, laneRoutes, laneWidths, routeCorners } from "./lanes.ts";
+import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
-import { planRect, planTagSpots, planUnit, projectPlan } from "./plan.ts";
-import type { View } from "./plan.ts";
+import {
+  groundProjections,
+  planRect,
+  planTagSpots,
+  planUnit,
+  projectPlan,
+} from "./plan.ts";
+import type { TagSize, View } from "./plan.ts";
 import { routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
+import { textGrowthAt, textSizes } from "./text-size.ts";
+import type { TextGrowth } from "./text-size.ts";
 import { zonesOf } from "./zones.ts";
 import type { Zone } from "./zones.ts";
 
@@ -50,7 +65,7 @@ const chipCharWidth = 6.4;
 /** The code chip is this much wider than its text. */
 const chipPadding = 8;
 
-const chipHeight = 14;
+const chipHeight = textSizes.chip.height;
 
 /** Shapes with no flat top to hold the code chip. */
 const chipless: ReadonlySet<Shape> = new Set(["person", "document"]);
@@ -134,12 +149,16 @@ export interface SceneZone {
 /** A stretch of a route that a box is drawn over. */
 export interface HiddenStretch {
   readonly points: readonly ScreenPoint[];
-  /** Whether the stretch runs to the route's end, so it needs the arrowhead. */
+  /**
+   * Whether the stretch runs to the route's end, which is hidden under a
+   * box, so the stretch carries a faint arrowhead. At most one stretch of a
+   * hop does.
+   */
   readonly reachesEnd: boolean;
 }
 
 /** How tall a hop label's box is, in screen units. */
-const labelHeight = 15;
+const labelHeight = textSizes.label.height;
 
 /** Room either side of a label's text, in screen units. */
 const labelPadding = 3;
@@ -148,8 +167,19 @@ const labelPadding = 3;
 export interface SceneHop {
   readonly hop: Hop;
   readonly route: HopRoute;
-  /** The route on screen, from the source's edge to the target's edge. */
+  /**
+   * The hop's own line on screen, from the source's edge to the target's
+   * edge: its route, moved sideways into its own lane where it runs on the
+   * same grid line as another route, so no two hops' lines coincide.
+   */
   readonly points: readonly ScreenPoint[];
+  /**
+   * Where the route turns, which the Iso view marks with diamonds: one per
+   * turn a bundle's hops share, drawn by the first of them, and none for the
+   * jogs that spread its ends along an edge or for any turn within a unit of
+   * either end.
+   */
+  readonly bends: readonly ScreenPoint[];
   /**
    * Where the label goes, or `undefined` when no clear spot at the route
    * exists. A hop without a spot shows its label only on hover or while its
@@ -161,7 +191,9 @@ export interface SceneHop {
   /**
    * The stretches of the route that boxes are drawn over and that the view
    * redraws faintly on top: those under other structures' boxes, and the
-   * last stretch under the target's box when the arrowhead is there.
+   * last stretch under the target's box when the end is there. The stretch
+   * that reaches a hidden end carries a faint arrowhead, so every hop shows
+   * one head, solid where its end is visible and faint where it is not.
    */
   readonly hidden: readonly HiddenStretch[];
 }
@@ -169,6 +201,8 @@ export interface SceneHop {
 /** Everything a view draws for one set of revealed structures. */
 export interface Scene {
   readonly view: View;
+  /** How much the text is grown, from the zoom the scene is drawn for. */
+  readonly growth: TextGrowth;
   /** In painter's order: every box after the boxes it stands in front of. */
   readonly structures: readonly SceneStructure[];
   readonly zones: readonly SceneZone[];
@@ -177,16 +211,16 @@ export interface Scene {
 }
 
 /** The width of a hop label's box for `text`, in screen units. */
-const labelWidth = (text: string) =>
-  text.length * tagCharWidth + 2 * labelPadding;
+const labelWidth = (text: string, grow: number) =>
+  (text.length * tagCharWidth + 2 * labelPadding) * grow;
 
 const centreOf = ({ x, y, w, d }: Placement, z: number) =>
   project({ x: x + w / 2, y: y + d / 2, z });
 
 type ChipSource = Pick<Structure, "code" | "shape">;
 
-const chipWidth = (structure: ChipSource) =>
-  structure.code.length * chipCharWidth + chipPadding;
+const chipWidth = (structure: ChipSource, grow: number) =>
+  (structure.code.length * chipCharWidth + chipPadding) * grow;
 
 /**
  * Where a structure's code chip goes in Plan view: inside the box's top
@@ -194,10 +228,11 @@ const chipWidth = (structure: ChipSource) =>
  */
 const planChipRect = (
   structure: ChipSource,
-  placement: Placement
+  placement: Placement,
+  grow: number
 ): ScreenRect | undefined => {
   const box = planRect(placement);
-  const width = chipWidth(structure);
+  const width = chipWidth(structure, grow);
   const left = box.left + planChipInset;
 
   return box.right - box.left < width * 3
@@ -206,7 +241,7 @@ const planChipRect = (
         left,
         right: left + width,
         top: box.top + planChipInset,
-        bottom: box.top + planChipInset + chipHeight,
+        bottom: box.top + planChipInset + chipHeight * grow,
       };
 };
 
@@ -214,26 +249,25 @@ const planChipRect = (
  * Where a structure's code chip goes: the middle of its shape's top, or
  * nothing when the shape has no top or the top is too small for the chip.
  */
-const chipRect: {
-  (placement: Placement): (structure: ChipSource) => ScreenRect | undefined;
-  (structure: ChipSource, placement: Placement): ScreenRect | undefined;
-} = dual(
-  2,
-  (structure: ChipSource, placement: Placement): ScreenRect | undefined => {
-    const width = chipWidth(structure);
-    const topWidth = ((placement.w + placement.d) * tileWidth) / 2;
-    const at = centreOf(placement, isoHeights[structure.shape]);
+const chipRect = (
+  structure: ChipSource,
+  placement: Placement,
+  grow: number
+): ScreenRect | undefined => {
+  const width = chipWidth(structure, grow);
+  const height = chipHeight * grow;
+  const topWidth = ((placement.w + placement.d) * tileWidth) / 2;
+  const at = centreOf(placement, isoHeights[structure.shape]);
 
-    return chipless.has(structure.shape) || topWidth < width * 1.6
-      ? undefined
-      : {
-          left: at.sx - width / 2,
-          right: at.sx + width / 2,
-          top: at.sy - chipHeight / 2,
-          bottom: at.sy + chipHeight / 2,
-        };
-  }
-);
+  return chipless.has(structure.shape) || topWidth < width * 1.6
+    ? undefined
+    : {
+        left: at.sx - width / 2,
+        right: at.sx + width / 2,
+        top: at.sy - height / 2,
+        bottom: at.sy + height / 2,
+      };
+};
 
 /** The full silhouette a shape draws, halo included. */
 export const silhouette: {
@@ -331,7 +365,7 @@ const paintOrder = (
  */
 const titleQuad = (
   { start, along }: Pick<TitleSpot, "start" | "along">,
-  width: number,
+  { width, grow }: TitleSize,
   margin: number
 ): readonly ScreenPoint[] => {
   const at = (x: number, y: number) => ({
@@ -339,8 +373,8 @@ const titleQuad = (
     sy: start.sy + x * along.sy + y,
   });
 
-  const top = -titleAscent - margin;
-  const bottom = titleDescent + margin;
+  const top = -titleAscent * grow - margin;
+  const bottom = titleDescent * grow + margin;
 
   return [
     at(-margin, top),
@@ -381,6 +415,12 @@ const insideConvex = (
     );
   });
 };
+
+/** A zone title's width on screen, and how much its text is grown. */
+interface TitleSize {
+  readonly width: number;
+  readonly grow: number;
+}
 
 /** Where a title's baseline starts and the way it runs. */
 interface TitleSpot {
@@ -425,7 +465,7 @@ const runsBeside = (length: number, width: number) => {
  * outside the plate beyond a front edge and beyond a back edge. On each,
  * spots nearest the edge come first.
  */
-const titleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
+const titleSpots = (zone: Zone, size: TitleSize): readonly TitleSpot[] => {
   const { back, front, left } = corners(zone.box, 0);
   const wide = zone.box.w * gridOnScreen;
   const deep = zone.box.d * gridOnScreen;
@@ -441,10 +481,10 @@ const titleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
   ];
 
   return [
-    ...spotsBy(fronts, width, false),
-    ...spotsBy(backs, width, false),
-    ...spotsBy(fronts, width, true),
-    ...spotsBy(backs, width, true),
+    ...spotsBy(fronts, size, false),
+    ...spotsBy(backs, size, false),
+    ...spotsBy(fronts, size, true),
+    ...spotsBy(backs, size, true),
   ];
 };
 
@@ -459,7 +499,7 @@ const across = { sx: 1, sy: 0 };
  * plate along its top edge, then along its bottom edge, then just outside
  * above the top edge and below the bottom edge.
  */
-const planTitleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
+const planTitleSpots = (zone: Zone, size: TitleSize): readonly TitleSpot[] => {
   const plate = planRect(zone.box);
   // Titles keep off the plate's rounded corners.
   const wide = plate.right - plate.left - 2 * planZoneRadius;
@@ -476,10 +516,10 @@ const planTitleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
   ];
 
   return [
-    ...spotsBy(tops, width, false),
-    ...spotsBy(bottoms, width, false),
-    ...spotsBy(tops, width, true),
-    ...spotsBy(bottoms, width, true),
+    ...spotsBy(tops, size, false),
+    ...spotsBy(bottoms, size, false),
+    ...spotsBy(tops, size, true),
+    ...spotsBy(bottoms, size, true),
   ];
 };
 
@@ -500,13 +540,13 @@ interface TitleEdge {
  */
 const spotsBy = (
   edges: readonly TitleEdge[],
-  width: number,
+  { width, grow }: TitleSize,
   outside: boolean
 ): readonly TitleSpot[] =>
   Arr.flatMap(edges, (edge) => {
     const depth = outside ? 3 : Math.floor(edge.room / 2 / titleStep);
     const up = edge.inward > 0 !== outside;
-    const lifts = up ? liftsAbove(depth) : liftsBelow(depth);
+    const lifts = up ? liftsAbove(depth, grow) : liftsBelow(depth, grow);
 
     return Arr.flatMap(lifts, (lift) =>
       Arr.map(
@@ -526,22 +566,25 @@ const spotsBy = (
   });
 
 /** Lifts off an edge towards the screen's top, nearest first. */
-const liftsAbove = (count: number) =>
+const liftsAbove = (count: number, grow: number) =>
   Arr.map(
     Arr.range(0, count),
-    (step) => titleDescent + titleMargin + step * titleStep
+    (step) => titleDescent * grow + titleMargin + step * titleStep
   );
 
 /** Lifts off an edge towards the screen's bottom, nearest first. */
-const liftsBelow = (count: number) =>
+const liftsBelow = (count: number, grow: number) =>
   Arr.map(
     Arr.range(0, count),
-    (step) => -(titleAscent + titleMargin) - step * titleStep
+    (step) => -(titleAscent * grow + titleMargin) - step * titleStep
   );
 
-/** The SVG transform that skews a title's baseline onto its edge. */
-const transformOf = ({ start, along }: TitleSpot) =>
-  `matrix(${along.sx} ${along.sy} 0 1 ${start.sx} ${start.sy})`;
+/**
+ * The SVG transform that skews a title's baseline onto its edge, and grows
+ * its text by `grow`.
+ */
+const transformOf = ({ start, along }: TitleSpot, grow: number) =>
+  `matrix(${along.sx * grow} ${along.sy * grow} 0 ${grow} ${start.sx} ${start.sy})`;
 
 /** Something text must keep clear of, with its bounds for a quick test. */
 interface Obstacle {
@@ -613,21 +656,23 @@ interface ViewGeometry {
   ) => readonly ScreenPoint[];
   /**
    * Whether the tag goes in the first of `tagSpots` that's clear, or always
-   * in the first. The Iso view keeps every tag under its box's front corner,
-   * where `check` warns about it; Plan view moves tags to find room.
+   * in the first. At base size the Iso view keeps every tag under its box's
+   * front corner, where `check` warns about it; grown, it moves tags to find
+   * room, as Plan view always does.
    */
   readonly tagPlacement: "fixed" | "first-clear";
   /** Where the name tag may go, best first. */
   readonly tagSpots: (
     placed: Pick<SceneStructure, "placement" | "outline">,
-    text: string
+    size: TagSize
   ) => readonly ScreenRect[];
   readonly chip: (
     structure: ChipSource,
-    placement: Placement
+    placement: Placement,
+    grow: number
   ) => ScreenRect | undefined;
   readonly plate: (zone: Zone) => readonly ScreenPoint[];
-  readonly titleSpots: (zone: Zone, width: number) => readonly TitleSpot[];
+  readonly titleSpots: (zone: Zone, size: TitleSize) => readonly TitleSpot[];
   /** Puts the structures in the order they're drawn. */
   readonly order: (
     items: readonly SceneStructure[]
@@ -640,14 +685,61 @@ const groundUnit: Readonly<Record<View, number>> = {
   plan: planUnit,
 };
 
-const tagWidth = (text: string) => text.length * tagCharWidth + tagPadding;
+/** A name tag's size for `text`, grown by `grow`. */
+const tagSizeOf = (text: string, grow: number): TagSize => ({
+  width: (text.length * tagCharWidth + tagPadding) * grow,
+  height: textSizes.tag.height * grow,
+});
+
+/**
+ * How many tag heights further down a grown Iso tag may drop below its
+ * front corner, nearest first, to clear a neighbour.
+ */
+const isoTagRows = [0, 0.5, 1] as const;
+
+/**
+ * Where a grown name tag may go in the Iso view, best first: under the
+ * front corner, as at base size, sliding sideways while it still spans the
+ * corner, then a little lower; then under the left and right corners; then
+ * beside them; then above the box.
+ */
+const isoTagSpots = (
+  { placement, outline }: Pick<SceneStructure, "placement" | "outline">,
+  { width, height }: TagSize
+): readonly ScreenRect[] => {
+  const ground = corners(placement, 0);
+  const under = ground.front.sy + tagOffset;
+  const shifts = slideOffsets(width / 2);
+
+  const rectAt = (left: number, top: number): ScreenRect => ({
+    left,
+    right: left + width,
+    top,
+    bottom: top + height,
+  });
+
+  const highest = boundsOfPoints(outline).top;
+
+  return [
+    ...Arr.flatMap(isoTagRows, (row) =>
+      Arr.map(shifts, (shift) =>
+        rectAt(ground.front.sx - width / 2 + shift, under + row * height)
+      )
+    ),
+    rectAt(ground.left.sx - width / 2, ground.left.sy + tagOffset),
+    rectAt(ground.right.sx - width / 2, ground.right.sy + tagOffset),
+    rectAt(ground.left.sx - width - tagOffset, ground.left.sy - height / 2),
+    rectAt(ground.right.sx + tagOffset, ground.right.sy - height / 2),
+    rectAt(ground.back.sx - width / 2, highest - tagOffset - height),
+  ];
+};
 
 const geometries: Readonly<Record<View, ViewGeometry>> = {
   iso: {
     project,
     outline: silhouette,
     tagPlacement: "fixed",
-    tagSpots: ({ placement }, text) => [nameTagRect(placement, text)],
+    tagSpots: isoTagSpots,
     chip: chipRect,
     plate: plateOf,
     titleSpots,
@@ -657,8 +749,8 @@ const geometries: Readonly<Record<View, ViewGeometry>> = {
     project: projectPlan,
     outline: planOutline,
     tagPlacement: "first-clear",
-    tagSpots: ({ outline }, text) =>
-      planTagSpots(boundsOfPoints(outline), tagWidth(text)),
+    tagSpots: ({ outline }, size) =>
+      planTagSpots(boundsOfPoints(outline), size),
     chip: planChipRect,
     plate: planPlateOf,
     titleSpots: planTitleSpots,
@@ -671,33 +763,41 @@ const geometries: Readonly<Record<View, ViewGeometry>> = {
  * first spot clear of `avoid`, the other plates and the titles placed
  * before it. A title with no clear spot is left out.
  */
-const placeZones = (
-  zones: readonly Zone[],
-  avoid: Obstacles,
-  geometry: ViewGeometry
-): readonly SceneZone[] => {
+const placeZones = ({
+  zones,
+  avoid,
+  geometry,
+  grow,
+}: {
+  readonly zones: readonly Zone[];
+  readonly avoid: Obstacles;
+  readonly geometry: ViewGeometry;
+  /** How much the titles' text is grown. */
+  readonly grow: number;
+}): readonly SceneZone[] => {
   const plates = Arr.map(zones, geometry.plate);
 
   return Arr.reduce(zones, Arr.empty<SceneZone>(), (done, zone, index) => {
     const plate = plates[index] ?? geometry.plate(zone);
-    const width = zone.group.title.length * titleCharWidth;
+
+    const size = {
+      width: zone.group.title.length * titleCharWidth * grow,
+      grow,
+    };
 
     const around = withShapes(avoid, [
       ...Arr.filter(plates, (_, other) => other !== index),
       ...Arr.flatMap(done, ({ title }) => (title === undefined ? [] : [title])),
     ]);
 
-    const spot = Arr.findFirst(
-      geometry.titleSpots(zone, width),
-      (candidate) => {
-        const padded = titleQuad(candidate, width, titleMargin);
+    const spot = Arr.findFirst(geometry.titleSpots(zone, size), (candidate) => {
+      const padded = titleQuad(candidate, size, titleMargin);
 
-        return (
-          (candidate.outside || insideConvex(plate, padded)) &&
-          clearOf(padded, around)
-        );
-      }
-    );
+      return (
+        (candidate.outside || insideConvex(plate, padded)) &&
+        clearOf(padded, around)
+      );
+    });
 
     return [
       ...done,
@@ -715,13 +815,96 @@ const placeZones = (
           plate,
           bounds: boundsOfPoints(plate),
           titleAt: found.start,
-          title: titleQuad(found, width, 0),
-          titleTransform: transformOf(found),
+          title: titleQuad(found, size, 0),
+          titleTransform: transformOf(found, size.grow),
         }),
       }),
     ];
   });
 };
+
+/** A hop's turns on the ground, as its grid corners and its laned ones. */
+interface Turning {
+  readonly id: string;
+  readonly corners: readonly GridPoint[];
+  readonly laned: readonly GridPosition[];
+}
+
+/**
+ * The turns the Iso view marks with a diamond, by hop id. Hops that turn the
+ * same way at the same grid corner, as the lanes of a bundle do, share one
+ * diamond: the first of them draws it, on the middle of their lanes. A lone
+ * hop's diamond sits on its own line. Turns within `bendMargin` of either
+ * end of a route get none.
+ */
+const turnsOf = ({
+  hops,
+}: {
+  readonly hops: readonly Turning[];
+}): ReadonlyMap<string, readonly GridPosition[]> => {
+  const turns = Arr.flatMap(hops, ({ id, corners: grid, laned }) => {
+    const [first] = grid;
+    const last = grid.at(-1);
+
+    return Arr.flatMap(grid.slice(1, -1), (corner, index) => {
+      const at = laned[index + 1];
+      const before = grid[index];
+      const after = grid[index + 2];
+
+      return first === undefined ||
+        last === undefined ||
+        at === undefined ||
+        before === undefined ||
+        after === undefined ||
+        Math.hypot(corner.x - first.x, corner.y - first.y) < bendMargin ||
+        Math.hypot(corner.x - last.x, corner.y - last.y) < bendMargin
+        ? []
+        : [
+            {
+              id,
+              at,
+              key: `${Arr.join(
+                Arr.sort(
+                  [
+                    `${Math.sign(before.x - corner.x)},${Math.sign(before.y - corner.y)}`,
+                    `${Math.sign(after.x - corner.x)},${Math.sign(after.y - corner.y)}`,
+                  ],
+                  Order.String
+                ),
+                "|"
+              )}@${corner.x},${corner.y}`,
+            },
+          ];
+    });
+  });
+
+  const groups = Arr.groupBy(turns, ({ key }) => key);
+
+  return new Map(
+    Arr.map(hops, ({ id }) => [
+      id,
+      Arr.flatMap(Rec.values(groups), (group) => {
+        const [owner] = group;
+
+        return owner?.id === id
+          ? [
+              {
+                x:
+                  Arr.reduce(group, 0, (sum, { at }) => sum + at.x) /
+                  group.length,
+                y:
+                  Arr.reduce(group, 0, (sum, { at }) => sum + at.y) /
+                  group.length,
+              },
+            ]
+          : [];
+      }),
+    ])
+  );
+};
+
+/** How far from a route's end a bend must be to get a diamond, in grid units. */
+const bendMargin = 1;
 
 /** Stretches shorter than this, in screen units, aren't worth redrawing. */
 const shortestStretch = 1;
@@ -853,9 +1036,9 @@ interface Leg extends Segment {
  * edge one of `labelGaps` from the line, on either side; or on the line itself,
  * centred on it, where its paper backing breaks the line.
  */
-const spotsAt = (leg: Leg, share: number, width: number) => {
+const spotsAt = (leg: Leg, share: number, { width, height: tall }: TagSize) => {
   const at = lerp({ from: leg.start, to: leg.end, t: share });
-  const unit = Math.max(leg.length, 1e-9);
+  const unit = Math.max(leg.length, tiny);
 
   const normal = {
     sx: -(leg.end.sy - leg.start.sy) / unit,
@@ -863,26 +1046,26 @@ const spotsAt = (leg: Leg, share: number, width: number) => {
   };
 
   const reach =
-    (Math.abs(normal.sx) * width) / 2 + (Math.abs(normal.sy) * labelHeight) / 2;
+    (Math.abs(normal.sx) * width) / 2 + (Math.abs(normal.sy) * tall) / 2;
 
   const rectAround = (centre: ScreenPoint) => ({
     left: centre.sx - width / 2,
     right: centre.sx + width / 2,
-    top: centre.sy - labelHeight / 2,
-    bottom: centre.sy + labelHeight / 2,
+    top: centre.sy - tall / 2,
+    bottom: centre.sy + tall / 2,
   });
 
   // A leg's slope on screen and which way it leans, for the spots straight
   // above and below it, whose nearest corner sits `gap` from the line.
   const slope =
-    (leg.end.sy - leg.start.sy) / (leg.end.sx - leg.start.sx || 1e-9);
+    (leg.end.sy - leg.start.sy) / (leg.end.sx - leg.start.sx || tiny);
 
   const lean = Math.sign(slope);
 
   const upright = (gap: number, side: -1 | 1) => {
     // How far the label's centre sits above or below the line so that its
     // corner nearest the line clears it by `gap` along the vertical.
-    const lift = labelHeight / 2 + (Math.abs(slope) * width) / 2 + gap;
+    const lift = tall / 2 + (Math.abs(slope) * width) / 2 + gap;
 
     return rectAround({ sx: at.sx, sy: at.sy + side * lift });
   };
@@ -896,8 +1079,8 @@ const spotsAt = (leg: Leg, share: number, width: number) => {
     return {
       left: centre.sx - width / 2,
       right: centre.sx + width / 2,
-      top: centre.sy - labelHeight / 2,
-      bottom: centre.sy + labelHeight / 2,
+      top: centre.sy - tall / 2,
+      bottom: centre.sy + tall / 2,
     };
   };
 
@@ -919,10 +1102,10 @@ const spotsAt = (leg: Leg, share: number, width: number) => {
 };
 
 /** How far along itself a label of `width` reaches. */
-const roomNeeded = (leg: Leg, width: number) =>
+const roomNeeded = (leg: Leg, { width, height }: TagSize) =>
   (Math.abs(leg.end.sx - leg.start.sx) * width +
-    Math.abs(leg.end.sy - leg.start.sy) * labelHeight) /
-  Math.max(leg.length, 1e-9);
+    Math.abs(leg.end.sy - leg.start.sy) * height) /
+  Math.max(leg.length, tiny);
 
 /**
  * How far a label's box sits from its route, in screen units: from the
@@ -978,14 +1161,17 @@ const labelSpot = ({
   text,
   avoid,
   reach,
+  grow,
 }: {
   readonly points: readonly ScreenPoint[];
   readonly text: string;
   readonly avoid: Obstacles;
   /** How far the label may sit from the route, in screen units. */
   readonly reach: number;
+  /** How much the label's text is grown. */
+  readonly grow: number;
 }): LabelPlacement => {
-  const width = labelWidth(text);
+  const size = { width: labelWidth(text, grow), height: labelHeight * grow };
 
   const legs: readonly Leg[] = Arr.map(segmentsOf(points), (segment) => ({
     ...segment,
@@ -994,7 +1180,7 @@ const labelSpot = ({
 
   const order = Order.combine(
     Order.mapInput(Order.Number, (leg: Leg) =>
-      leg.length >= roomNeeded(leg, width) ? 0 : 1
+      leg.length >= roomNeeded(leg, size) ? 0 : 1
     ),
     Order.combine(
       Order.mapInput(Order.Number, (leg: Leg) => -leg.length),
@@ -1006,7 +1192,7 @@ const labelSpot = ({
 
   const candidates = Arr.flatMap(sorted, (leg: Leg) =>
     Arr.flatMap(labelShares, (share) => {
-      const { beside, on } = spotsAt(leg, share, width);
+      const { beside, on } = spotsAt(leg, share, size);
 
       return [...beside, on];
     })
@@ -1024,10 +1210,118 @@ const labelSpot = ({
   const [longest] = sorted;
 
   const fallback =
-    longest === undefined ? undefined : spotsAt(longest, 0.5, width).on;
+    longest === undefined ? undefined : spotsAt(longest, 0.5, size).on;
 
   return { spot, fallback: spot ?? fallback };
 };
+
+/** Whether a name tag at a spot keeps clear of `around`. */
+const tagClearIn = (around: Obstacles) => (spot: ScreenRect) =>
+  clearOf(rectPolygon(growRect(spot, tagClearance)), around);
+
+/** A box that gets a name tag. */
+export interface TaggedBox {
+  readonly placement: Placement;
+  /** Everything the box draws, as a convex polygon. */
+  readonly outline: readonly ScreenPoint[];
+  readonly text: string;
+}
+
+/** What placing name tags is given, besides the boxes. */
+interface TagPlacing {
+  readonly boxes: readonly TaggedBox[];
+  readonly chips?: readonly ScreenRect[] | undefined;
+  readonly lines?: readonly Segment[] | undefined;
+  readonly view?: View | undefined;
+  readonly zoom?: number | undefined;
+}
+
+/**
+ * Places each box's name tag at the size it's drawn at `zoom` (see
+ * `textGrowthAt`), in `boxes`' order. A tag prefers the first spot that is
+ * nearer its own box than any other, clear of the boxes, `chips`, `lines`
+ * and the tags placed before it; then such a spot clear of all but the
+ * lines; then those two again wherever it sits; then its first spot.
+ * `moves` is false to keep every tag in its first spot.
+ */
+const placeTags = (
+  { boxes, chips = [], lines = [], view = "iso", zoom = 1 }: TagPlacing,
+  moves: boolean
+): readonly ScreenRect[] => {
+  const geometry = geometries[view];
+  const grow = textGrowthAt(zoom).tag;
+
+  const fixed = Arr.map(
+    [
+      ...Arr.map(boxes, ({ outline }) => outline),
+      ...Arr.map(chips, rectPolygon),
+    ],
+    obstacle
+  );
+
+  const segments = Arr.map(lines, lineObstacle);
+
+  return Arr.reduce(boxes, Arr.empty<ScreenRect>(), (done, box, index) => {
+    const spots = geometry.tagSpots(box, tagSizeOf(box.text, grow));
+    const [first = emptyRect] = spots;
+
+    if (!moves) {
+      return [...done, first];
+    }
+
+    const avoid = {
+      shapes: [...fixed, ...Arr.map(done, (tag) => obstacle(rectPolygon(tag)))],
+      lines: segments,
+    };
+
+    const ownBox = (spot: ScreenRect) =>
+      Arr.every(
+        boxes,
+        (other, at) =>
+          at === index ||
+          gapBetween(spot, box.outline) <= gapBetween(spot, other.outline)
+      );
+
+    const shapesOnly = { ...avoid, lines: [] };
+
+    const preferences = [
+      (spot: ScreenRect) => ownBox(spot) && tagClearIn(avoid)(spot),
+      (spot: ScreenRect) => ownBox(spot) && tagClearIn(shapesOnly)(spot),
+      tagClearIn(avoid),
+      tagClearIn(shapesOnly),
+    ];
+
+    // Each preference is tried over every spot before the next is.
+    const tag = Option.getOrElse(
+      Arr.reduce(preferences, Option.none<ScreenRect>(), (found, prefer) =>
+        Option.orElse(found, () => Arr.findFirst(spots, prefer))
+      ),
+      () => first
+    );
+
+    return [...done, tag];
+  });
+};
+
+/**
+ * Where each box's name tag goes at `zoom`. At base size the Iso view keeps
+ * every tag in its first spot, under the front corner, where `check` warns
+ * about it; Plan view, and any view with grown text, moves tags to find room.
+ */
+export const placeNameTags = (placing: TagPlacing): readonly ScreenRect[] => {
+  const view = placing.view ?? "iso";
+
+  return placeTags(
+    placing,
+    geometries[view].tagPlacement === "first-clear" ||
+      textGrowthAt(placing.zoom ?? 1).tag > 1
+  );
+};
+
+/** Like `placeNameTags`, with tags looking for room even at base size. */
+export const placeMovingNameTags = (
+  placing: TagPlacing
+): readonly ScreenRect[] => placeTags(placing, true);
 
 /** What a scene is computed from. */
 export interface SceneSource {
@@ -1047,27 +1341,49 @@ export interface SceneSource {
   readonly labelFirst?: readonly string[] | undefined;
   /** Which view to draw. Defaults to the Iso view. */
   readonly view?: View | undefined;
+  /**
+   * The zoom the view is drawn at on screen, so text is placed at the size
+   * it's drawn: zoomed out, each kind of text grows to stay readable (see
+   * `textGrowthAt`). Defaults to 1, at which nothing grows, as `check`
+   * measures.
+   */
+  readonly zoom?: number | undefined;
 }
 
-/**
- * Lays out everything a view draws for `revealed`: the structures in
- * painter's order with their tags and chips, the zones with their titles,
- * and the hops between revealed structures with their labels. Zone titles
- * are placed first, clear of boxes, tags, chips and routes. Then labels go
- * one by one, `labelFirst` first and the rest in data.mjs order, each in
- * the first free spot at its own route: clear of every box, tag, chip,
- * zone title, other route and label placed before it. A label with no free
- * spot is hidden, and shows on hover at `hoverLabel`.
- */
-export const sceneOf = ({
+/** A hop that has a route, with its route on screen. */
+interface RoutedHop {
+  readonly hop: Hop;
+  readonly route: HopRoute;
+  readonly points: readonly ScreenPoint[];
+  readonly bends: readonly ScreenPoint[];
+}
+
+interface Frame {
+  readonly geometry: ViewGeometry;
+  readonly growth: TextGrowth;
+  readonly structures: readonly SceneStructure[];
+  readonly outlines: readonly (readonly ScreenPoint[])[];
+  readonly chips: readonly (readonly ScreenPoint[])[];
+  readonly routed: readonly RoutedHop[];
+  readonly lines: readonly {
+    readonly id: string;
+    readonly segments: readonly LineObstacle[];
+  }[];
+  readonly allLines: readonly LineObstacle[];
+  readonly zoneList: readonly Zone[];
+}
+
+/** What a scene is built on: boxes with tags and chips, and routes. */
+const frameOf = ({
   data,
   layout,
   revealed,
   routes = routeRevealed({ data, layout, revealed }),
-  labelFirst = [],
   view = "iso",
-}: SceneSource): Scene => {
+  zoom = 1,
+}: SceneSource): Frame => {
   const geometry = geometries[view];
+  const growth = textGrowthAt(zoom);
 
   const boxes = Arr.flatMap(data.structures, (structure) => {
     const placement = layout.structures[structure.id];
@@ -1084,21 +1400,82 @@ export const sceneOf = ({
         placement,
         outline,
         bounds: boundsOfPoints(outline),
-        chip: geometry.chip(structure, placement),
+        chip: geometry.chip(structure, placement, growth.chip),
       },
     ];
   });
 
   const outlines = Arr.map(boxes, ({ outline }) => outline);
 
-  const routed = Arr.flatMap(data.hops, (hop) => {
+  // A grown chip that reaches over another box doesn't fit, and is left out.
+  const fitted = Arr.map(boxes, (item, index) =>
+    item.chip === undefined ||
+    growth.chip === 1 ||
+    Arr.every(
+      outlines,
+      (other, at) =>
+        at === index ||
+        !convexOverlap(rectPolygon(item.chip ?? emptyRect), other)
+    )
+      ? item
+      : { ...item, chip: undefined }
+  );
+
+  const shown = Arr.filter(
+    data.hops,
+    (hop) =>
+      routes[hop.id] !== undefined &&
+      revealed.has(hop.from) &&
+      revealed.has(hop.to)
+  );
+
+  const drawn = drawnRoutes({
+    routes: Rec.fromEntries(
+      Arr.flatMap(shown, ({ id }) => {
+        const route = routes[id];
+
+        return route === undefined ? [] : [[id, route] as const];
+      })
+    ),
+    hops: shown,
+    placements: layout.structures,
+    view,
+  });
+
+  const bent = laneRoutes(
+    Rec.fromEntries(
+      Arr.flatMap(shown, ({ id }) => {
+        const route = routes[id];
+
+        return route === undefined ? [] : [[id, route] as const];
+      })
+    ),
+    laneWidths[view]
+  );
+
+  const turns = turnsOf({
+    hops: Arr.flatMap(shown, ({ id }) => {
+      const route = routes[id];
+
+      return route === undefined
+        ? []
+        : [{ id, corners: routeCorners(route.points), laned: bent[id] ?? [] }];
+    }),
+  });
+
+  const routed = Arr.flatMap(shown, (hop) => {
     const route = routes[hop.id];
 
-    return route === undefined ||
-      !revealed.has(hop.from) ||
-      !revealed.has(hop.to)
+    return route === undefined
       ? []
-      : [{ hop, route, points: Arr.map(route.points, geometry.project) }];
+      : [
+          {
+            hop,
+            route,
+            points: Arr.map(drawn[hop.id] ?? route.points, geometry.project),
+            bends: Arr.map(turns.get(hop.id) ?? [], geometry.project),
+          },
+        ];
   });
 
   const lines = Arr.map(routed, ({ hop, points }) => ({
@@ -1108,60 +1485,116 @@ export const sceneOf = ({
 
   const allLines = Arr.flatMap(lines, ({ segments }) => segments);
 
-  const chips = Arr.flatMap(boxes, ({ chip }) =>
+  const chips = Arr.flatMap(fitted, ({ chip }) =>
     chip === undefined ? [] : [rectPolygon(chip)]
   );
 
-  // Each tag takes its first spot clear of the boxes, chips, routes and the
-  // tags placed before it, or else its first spot.
-  const tagged = Arr.reduce(
-    boxes,
-    Arr.empty<SceneStructure>(),
-    (done, item) => {
-      const spots = geometry.tagSpots(item, nameTagText(item.structure));
-      const [first = { left: 0, top: 0, right: 0, bottom: 0 }] = spots;
+  const tags = placeNameTags({
+    boxes: Arr.map(fitted, (item) => ({
+      ...item,
+      text: nameTagText(item.structure),
+    })),
+    chips: Arr.flatMap(fitted, ({ chip }) =>
+      chip === undefined ? [] : [chip]
+    ),
+    lines: allLines,
+    view,
+    zoom,
+  });
 
-      const avoid = {
-        shapes: Arr.map(
-          [
-            ...outlines,
-            ...chips,
-            ...Arr.map(done, ({ tag }) => rectPolygon(tag)),
-          ],
-          obstacle
-        ),
-        lines: allLines,
-      };
-
-      const tag =
-        geometry.tagPlacement === "fixed"
-          ? first
-          : Option.getOrElse(
-              Arr.findFirst(spots, (spot) =>
-                clearOf(rectPolygon(growRect(spot, tagClearance)), avoid)
-              ),
-              () => first
-            );
-
-      return [...done, { ...item, tag }];
-    }
-  );
+  const tagged = Arr.map(fitted, (item, index) => ({
+    ...item,
+    tag: tags[index] ?? emptyRect,
+  }));
 
   const structures = geometry.order(tagged);
+
+  return {
+    geometry,
+    growth,
+    structures,
+    outlines,
+    chips,
+    routed,
+    lines,
+    allLines,
+    zoneList: zonesOf({ data, layout, revealed }),
+  };
+};
+
+/**
+ * The scene's bare drawing, `frame`: the boxes with their tags and chips,
+ * the zones as plates and the hops as routes, with no zone titles, hop
+ * labels or hidden stretches. It places quickly, so callers can try many
+ * zooms to see where tags go and how far the drawing reaches.
+ */
+export const tagScene = (source: SceneSource): Scene => {
+  const { geometry, growth, structures, routed, zoneList } = frameOf(source);
+
+  return {
+    view: source.view ?? "iso",
+    growth,
+    structures,
+    zones: Arr.map(zoneList, (zone) => {
+      const plate = geometry.plate(zone);
+
+      return {
+        zone,
+        plate,
+        bounds: boundsOfPoints(plate),
+        titleAt: undefined,
+        title: undefined,
+        titleTransform: undefined,
+      };
+    }),
+    hops: Arr.map(routed, (item) => ({
+      ...item,
+      label: undefined,
+      hoverLabel: undefined,
+      hidden: [],
+    })),
+  };
+};
+
+/**
+ * Lays out everything a view draws for `revealed`: the structures in
+ * painter's order with their tags and chips, the zones with their titles,
+ * and the hops between revealed structures with their labels. Zone titles
+ * are placed first, clear of boxes, tags, chips and routes. Then labels go
+ * one by one, `labelFirst` first and the rest in data.mjs order, each in
+ * the first free spot at its own route: clear of every box, tag, chip,
+ * zone title, other route and label placed before it. A label with no free
+ * spot is hidden, and shows on hover at `hoverLabel`.
+ */
+export const sceneOf = (source: SceneSource): Scene => {
+  const { labelFirst = [], view = "iso" } = source;
+
+  const {
+    geometry,
+    growth,
+    structures,
+    outlines,
+    chips,
+    routed,
+    lines,
+    allLines,
+    zoneList,
+  } = frameOf(source);
 
   const tagsAndChips = [
     ...Arr.map(structures, ({ tag }) => rectPolygon(tag)),
     ...chips,
   ];
 
-  const zones = placeZones(
-    zonesOf({ data, layout, revealed }),
-    {
+  const zones = placeZones({
+    zones: zoneList,
+    avoid: {
       shapes: Arr.map([...outlines, ...tagsAndChips], obstacle),
       lines: allLines,
     },
-    geometry
-  );
+    geometry,
+    grow: growth.title,
+  });
 
   const fixed = Arr.map(
     [
@@ -1180,7 +1613,10 @@ export const sceneOf = ({
 
   // A route is drawn behind its own source box where it leaves a back edge,
   // which reads as leaving from behind, so that stretch isn't redrawn. Over
-  // the target box only the stretch carrying the arrowhead is redrawn.
+  // the target box only the stretch that reaches the route's end is
+  // redrawn. Routes are drawn under every box, so a solid head whose tip is
+  // inside a box's outline is hidden; the stretch that reaches the end then
+  // carries a faint head, once. A head on a visible edge is solid already.
   const hiddenOf = (hop: Hop, points: readonly ScreenPoint[]) => {
     const others = Arr.flatMap(structures, ({ structure, outline }) =>
       structure.id === hop.from || structure.id === hop.to ? [] : [outline]
@@ -1196,7 +1632,20 @@ export const sceneOf = ({
             ({ reachesEnd }) => reachesEnd
           );
 
-    return [...hiddenStretches({ points, outlines: others }), ...atHead];
+    const stretches = [
+      ...hiddenStretches({ points, outlines: others }),
+      ...atHead,
+    ];
+
+    const carrier = Arr.findLastIndex(
+      stretches,
+      ({ reachesEnd }) => reachesEnd
+    );
+
+    return Arr.map(stretches, (stretch, index) => ({
+      ...stretch,
+      reachesEnd: Option.contains(carrier, index),
+    }));
   };
 
   const rank = new Map(Arr.map(labelFirst, (id, index) => [id, index]));
@@ -1229,6 +1678,7 @@ export const sceneOf = ({
           ),
         },
         reach: labelReachLimit * groundUnit[view],
+        grow: growth.label,
       });
 
       return [
@@ -1249,13 +1699,31 @@ export const sceneOf = ({
     Option.toArray(Option.fromNullishOr(byHop.get(hop.id)))
   );
 
-  return { view, structures, zones, hops };
+  return { view, growth, structures, zones, hops };
 };
 
 /** One way a scene breaks the overlap rule. */
 export interface SceneClash {
   /** What's drawn over what, such as `["tag:a", "box:b"]`. */
   readonly between: readonly [string, string];
+  /** The same two things, by kind and the id of what they belong to. */
+  readonly parts: readonly [ClashPart, ClashPart];
+}
+
+/** One side of a clash. */
+export interface ClashPart {
+  readonly kind:
+    | "box"
+    | "tag"
+    | "chip"
+    | "title"
+    | "label"
+    | "route"
+    | "zone"
+    | "corner"
+    | "arrow";
+  /** The structure, group or hop it belongs to. */
+  readonly id: string;
 }
 
 /** How long a hop's arrowhead is, from its base to its tip, on screen. */
@@ -1283,23 +1751,365 @@ export const arrowheadOf = (
     base: lerp({
       from: tip,
       to: before,
-      t: arrowLength / Math.max(length, 1e-9),
+      t: arrowLength / Math.max(length, tiny),
     }),
   };
 };
 
-interface Shape2d {
-  readonly id: string;
+/**
+ * The triangle drawn at a route's end: its tip on the last point, its base
+ * `arrowLength` back along the last leg and `arrowHalfWidth` either side.
+ */
+export const arrowPolygon = (
+  points: readonly ScreenPoint[]
+): readonly ScreenPoint[] | undefined => {
+  const head = arrowheadOf(points);
+
+  if (head === undefined) {
+    return undefined;
+  }
+
+  const { tip, base } = head;
+  const length = Math.max(Math.hypot(tip.sx - base.sx, tip.sy - base.sy), 1e-9);
+
+  const wing = {
+    sx: (-(tip.sy - base.sy) / length) * arrowHalfWidth,
+    sy: ((tip.sx - base.sx) / length) * arrowHalfWidth,
+  };
+
+  return [
+    tip,
+    { sx: base.sx + wing.sx, sy: base.sy + wing.sy },
+    { sx: base.sx - wing.sx, sy: base.sy - wing.sy },
+  ];
+};
+
+interface Shape2d extends ClashPart {
   readonly polygon: readonly ScreenPoint[];
 }
 
-const rectShape = (id: string, rect: ScreenRect): Shape2d => ({
-  id,
+const rectShape = (part: ClashPart, rect: ScreenRect): Shape2d => ({
+  ...part,
   polygon: rectPolygon(rect),
 });
 
-/** Whether a scene item's id names a code chip. */
-const isChip = Str.startsWith("chip:");
+/**
+ * How close a route may come to a box or zone outline on screen, other than
+ * at its own ends, and how far a crossing's lines may run on past each
+ * other. Half the gap between a bundle's lines.
+ */
+const outlineClearance = laneGap * 0.75;
+
+/**
+ * How far apart two hops' lines must stay, outside a crossing: a little
+ * less than half the bundle gap, which is as close as a line's lanes come
+ * where more lines share it than fit at the full gap.
+ */
+const lineClearance = laneGap * 0.4;
+
+/** How near a route's end may sit to a box's corner, in grid units. */
+const cornerClearance = 0.5;
+
+const pointToSegment = (point: ScreenPoint, { start, end }: Segment) =>
+  distanceToPolyline([start, end], point);
+
+/** Which side of the line from `p` to `q` the point `r` is on, or 0. */
+const side = (p: ScreenPoint, q: ScreenPoint, r: ScreenPoint) =>
+  Math.sign((q.sx - p.sx) * (r.sy - p.sy) - (q.sy - p.sy) * (r.sx - p.sx));
+
+/** Whether two segments cross or touch. */
+const segmentsMeet = (a: Segment, b: Segment) => {
+  const overlap = (pick: (point: ScreenPoint) => number) =>
+    Math.max(
+      Math.min(pick(a.start), pick(a.end)),
+      Math.min(pick(b.start), pick(b.end))
+    ) <=
+    Math.min(
+      Math.max(pick(a.start), pick(a.end)),
+      Math.max(pick(b.start), pick(b.end))
+    ) +
+      1e-9;
+
+  return (
+    overlap(({ sx }) => sx) &&
+    overlap(({ sy }) => sy) &&
+    side(a.start, a.end, b.start) * side(a.start, a.end, b.end) <= 0 &&
+    side(b.start, b.end, a.start) * side(b.start, b.end, a.end) <= 0
+  );
+};
+
+/** The least distance between two segments on screen. */
+const segmentGap = (a: Segment, b: Segment) =>
+  segmentsMeet(a, b)
+    ? 0
+    : Math.min(
+        pointToSegment(a.start, b),
+        pointToSegment(a.end, b),
+        pointToSegment(b.start, a),
+        pointToSegment(b.end, a)
+      );
+
+const unitOf = ({ start, end }: Segment) => {
+  const length = Math.max(
+    Math.hypot(end.sx - start.sx, end.sy - start.sy),
+    1e-9
+  );
+
+  return { sx: (end.sx - start.sx) / length, sy: (end.sy - start.sy) / length };
+};
+
+const parallel = (a: Segment, b: Segment) => {
+  const u = unitOf(a);
+  const v = unitOf(b);
+
+  return Math.abs(u.sx * v.sy - u.sy * v.sx) < 1e-6;
+};
+
+/** How far two parallel segments run alongside each other. */
+const sideBySide = (a: Segment, b: Segment) => {
+  const u = unitOf(a);
+  const along = (point: ScreenPoint) => point.sx * u.sx + point.sy * u.sy;
+  const [a0, a1] = [along(a.start), along(a.end)];
+  const [b0, b1] = [along(b.start), along(b.end)];
+
+  return (
+    Math.min(Math.max(a0, a1), Math.max(b0, b1)) -
+    Math.max(Math.min(a0, a1), Math.min(b0, b1))
+  );
+};
+
+/** A segment with `by` cut off its start, its end, or both. */
+const trim = (
+  { start, end }: Segment,
+  {
+    atStart,
+    atEnd,
+    by,
+  }: { readonly atStart: boolean; readonly atEnd: boolean; readonly by: number }
+): Segment => {
+  const u = unitOf({ start, end });
+
+  return {
+    start: atStart
+      ? { sx: start.sx + u.sx * by, sy: start.sy + u.sy * by }
+      : start,
+    end: atEnd ? { sx: end.sx - u.sx * by, sy: end.sy - u.sy * by } : end,
+  };
+};
+
+const closedEdges = (polygon: readonly ScreenPoint[]): readonly Segment[] =>
+  Arr.map(polygon, (start, index) => ({
+    start,
+    end: polygon[(index + 1) % polygon.length] ?? start,
+  }));
+
+/** The four corners of a footprint on the ground, in a view. */
+const groundCorners = (view: View, { x, y, w, d }: Placement) =>
+  Arr.map(
+    [
+      { x, y },
+      { x: x + w, y },
+      { x: x + w, y: y + d },
+      { x, y: y + d },
+    ],
+    groundProjections[view].toScreen
+  );
+
+/** How far a route's end sits from the nearer corner along its edge, in grid units. */
+const cornerGap = (end: GridPoint, { x, y, w, d }: Placement) => {
+  const onX = end.x === x || end.x === x + w;
+  const onY = end.y === y || end.y === y + d;
+  const fromX = Math.min(Math.abs(end.x - x), Math.abs(end.x - x - w));
+  const fromY = Math.min(Math.abs(end.y - y), Math.abs(end.y - y - d));
+
+  // On a vertical edge (x fixed) the end slides along y, and the reverse.
+  if (onX && !onY) {
+    return d >= 1 ? fromY : Number.POSITIVE_INFINITY;
+  }
+
+  if (onY && !onX) {
+    return w >= 1 ? fromX : Number.POSITIVE_INFINITY;
+  }
+
+  return onX && onY ? 0 : Number.POSITIVE_INFINITY;
+};
+
+/**
+ * The clashes on the ground, in the view's screen space: a route that comes
+ * within `outlineClearance` of a box's outline other than at its own ends,
+ * or lies along a zone's outline; a route's end within half a unit of its
+ * box's corner on an edge at least a unit long; and two hops' lines closer
+ * than `laneGap`, other than where they cross. A route that runs under a
+ * box counts only as running under it, and a hop between overlapping
+ * footprints not at all: `check` reports both already.
+ */
+const groundClashes = (scene: Scene): readonly SceneClash[] => {
+  const placements = new Map(
+    Arr.map(scene.structures, ({ structure, placement }) => [
+      structure.id,
+      placement,
+    ])
+  );
+
+  // Overlapping footprints leave a hop between them no clear way out,
+  // and `check` warns about the overlap itself.
+  const apart = ({ from, to }: Hop) => {
+    const a = placements.get(from);
+    const b = placements.get(to);
+
+    return (
+      a === undefined ||
+      b === undefined ||
+      a.x >= b.x + b.w ||
+      b.x >= a.x + a.w ||
+      a.y >= b.y + b.d ||
+      b.y >= a.y + a.d
+    );
+  };
+
+  const lines = Arr.flatMap(scene.hops, ({ hop, route, points }) =>
+    apart(hop) ? [{ hop, route, segments: segmentsOf(points) }] : []
+  );
+
+  const boxes = Arr.flatMap(lines, ({ hop, route, segments }) =>
+    Arr.flatMap(scene.structures, ({ structure, placement }) => {
+      if (route.crosses.includes(structure.id)) {
+        return [];
+      }
+
+      const edges = closedEdges(groundCorners(scene.view, placement));
+
+      const near = Arr.some(segments, (segment, index) => {
+        const trimmed = trim(segment, {
+          atStart: index === 0 && structure.id === hop.from,
+          atEnd: index === segments.length - 1 && structure.id === hop.to,
+          // In the Iso view a leg leaves its edge at a slant on screen, so
+          // it needs to run further to clear it.
+          by: laneGap,
+        });
+
+        return Arr.some(
+          edges,
+          (edge) => segmentGap(trimmed, edge) < outlineClearance - 1e-6
+        );
+      });
+
+      return near
+        ? [
+            clashOf(
+              { kind: "route", id: hop.id },
+              { kind: "box", id: structure.id }
+            ),
+          ]
+        : [];
+    })
+  );
+
+  const zones = Arr.flatMap(lines, ({ hop, segments }) =>
+    Arr.flatMap(scene.zones, ({ zone, plate }) =>
+      Arr.some(segments, (segment) =>
+        Arr.some(
+          closedEdges(plate),
+          (edge) =>
+            parallel(segment, edge) &&
+            segmentGap(segment, edge) < outlineClearance - 1e-6 &&
+            sideBySide(segment, edge) > outlineClearance
+        )
+      )
+        ? [
+            clashOf(
+              { kind: "route", id: hop.id },
+              { kind: "zone", id: zone.group.id }
+            ),
+          ]
+        : []
+    )
+  );
+
+  const nearCorners = Arr.flatMap(lines, ({ hop, route }) =>
+    Arr.flatMap(
+      [
+        [route.points[0], hop.from],
+        [route.points.at(-1), hop.to],
+      ] as const,
+      ([end, id]) => {
+        const placement = placements.get(id);
+
+        return end !== undefined &&
+          placement !== undefined &&
+          cornerGap(end, placement) < cornerClearance - 1e-9
+          ? [clashOf({ kind: "route", id: hop.id }, { kind: "corner", id })]
+          : [];
+      }
+    )
+  );
+
+  const routes = Arr.flatMap(lines, (first, index) =>
+    Arr.flatMap(lines.slice(index + 1), (second) => {
+      const close = Arr.some(first.segments, (a) =>
+        Arr.some(second.segments, (b) => {
+          if (parallel(a, b)) {
+            return (
+              segmentGap(a, b) < lineClearance &&
+              sideBySide(a, b) > -lineClearance
+            );
+          }
+
+          // Lines that cross may meet, as long as each runs on well past
+          // the other: a crossing, not one ending or turning on the other.
+          if (!segmentsMeet(a, b)) {
+            return segmentGap(a, b) < lineClearance;
+          }
+
+          return (
+            Math.min(pointToSegment(a.start, b), pointToSegment(a.end, b)) <
+              lineClearance ||
+            Math.min(pointToSegment(b.start, a), pointToSegment(b.end, a)) <
+              lineClearance
+          );
+        })
+      );
+
+      return close
+        ? [
+            clashOf(
+              { kind: "route", id: first.hop.id },
+              { kind: "route", id: second.hop.id }
+            ),
+          ]
+        : [];
+    })
+  );
+
+  return [...boxes, ...zones, ...nearCorners, ...routes];
+};
+
+/** Every pair of hops whose arrowheads overlap. */
+const arrowClashes = (scene: Scene): readonly SceneClash[] => {
+  const heads = Arr.flatMap(scene.hops, ({ hop, points }) => {
+    const polygon = arrowPolygon(points);
+
+    return polygon === undefined
+      ? []
+      : [{ part: { kind: "arrow" as const, id: hop.id }, polygon }];
+  });
+
+  return Arr.flatMap(heads, (first, index) =>
+    Arr.flatMap(heads.slice(index + 1), (second) =>
+      convexOverlap(first.polygon, second.polygon)
+        ? [clashOf(first.part, second.part)]
+        : []
+    )
+  );
+};
+
+/** A shape's name in a clash, such as `tag:a`. */
+const nameOf = ({ kind, id }: ClashPart) => `${kind}:${id}`;
+
+const clashOf = (first: ClashPart, second: ClashPart): SceneClash => ({
+  between: [nameOf(first), nameOf(second)],
+  parts: [first, second],
+});
 
 /**
  * Every pair of things in a scene drawn over each other, by the overlap
@@ -1307,34 +2117,55 @@ const isChip = Str.startsWith("chip:");
  * box outlines overlap (a chip sits on its own box), and no route runs
  * through a name tag, a zone title or a label other than its own. A
  * route may run through the tag of a structure it starts or ends at only
- * where it can't avoid it, so that counts too.
+ * where it can't avoid it, so that counts too. On the ground, no route
+ * touches a box's outline other than at its own ends, lies along a zone's
+ * outline, ends near a corner, or comes closer to another hop's line than
+ * a bundle's lines are apart, other than to cross it.
  */
 export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
   const boxes = Arr.map(scene.structures, ({ structure, outline }) => ({
-    id: `box:${structure.id}`,
+    kind: "box" as const,
+    id: structure.id,
     polygon: outline,
     owner: structure.id,
   }));
 
   const text = [
     ...Arr.map(scene.structures, ({ structure, tag }) => ({
-      ...rectShape(`tag:${structure.id}`, tag),
+      ...rectShape({ kind: "tag", id: structure.id }, tag),
       owner: structure.id,
     })),
     ...Arr.flatMap(scene.structures, ({ structure, chip }) =>
       chip === undefined
         ? []
-        : [{ ...rectShape(`chip:${structure.id}`, chip), owner: structure.id }]
+        : [
+            {
+              ...rectShape({ kind: "chip", id: structure.id }, chip),
+              owner: structure.id,
+            },
+          ]
     ),
     ...Arr.flatMap(scene.zones, ({ zone, title }) =>
       title === undefined
         ? []
-        : [{ id: `title:${zone.group.id}`, polygon: title, owner: "" }]
+        : [
+            {
+              kind: "title" as const,
+              id: zone.group.id,
+              polygon: title,
+              owner: "",
+            },
+          ]
     ),
     ...Arr.flatMap(scene.hops, ({ hop, label }) =>
       label === undefined
         ? []
-        : [{ ...rectShape(`label:${hop.id}`, label), owner: "" }]
+        : [
+            {
+              ...rectShape({ kind: "label", id: hop.id }, label),
+              owner: "",
+            },
+          ]
     ),
   ];
 
@@ -1345,27 +2176,32 @@ export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
       const ownChip =
         first.owner !== "" &&
         first.owner === second.owner &&
-        (isChip(first.id) || isChip(second.id));
+        (first.kind === "chip" || second.kind === "chip");
 
       return !ownChip && convexOverlap(first.polygon, second.polygon)
-        ? [{ between: [first.id, second.id] as const }]
+        ? [clashOf(first, second)]
         : [];
     })
   );
 
   const crossings = Arr.flatMap(scene.hops, ({ hop, points }) =>
     Arr.flatMap(text, (shape) =>
-      shape.id === `label:${hop.id}` ||
-      isChip(shape.id) ||
+      (shape.kind === "label" && shape.id === hop.id) ||
+      shape.kind === "chip" ||
       !Arr.some(segmentsOf(points), (segment) =>
         segmentCrosses(segment, shape.polygon)
       )
         ? []
-        : [{ between: [`route:${hop.id}`, shape.id] as const }]
+        : [clashOf({ kind: "route", id: hop.id }, shape)]
     )
   );
 
-  return [...pairs, ...crossings];
+  return [
+    ...pairs,
+    ...crossings,
+    ...groundClashes(scene),
+    ...arrowClashes(scene),
+  ];
 };
 
 /** How far a point may sit from where it should be, in screen units. */

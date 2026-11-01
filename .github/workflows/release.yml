@@ -1,27 +1,25 @@
 name: Release
 
 # On a version tag, builds the single-executable binaries, stages the npm
-# package and publishes the binaries as a GitHub Release. On pull requests
-# that touch the build, it runs the same builds and checks without releasing
-# anything.
+# package and publishes the binaries as a GitHub Release. On a push to main,
+# and on a pull request that changes how the binaries are built or installed,
+# it runs the same builds and checks without releasing anything. Other pull
+# requests skip it, and the push to main catches whatever they break.
 
 on:
   push:
     tags: ["v*"]
+    branches: [main]
   pull_request:
     paths:
       - .github/workflows/release.yml
-      - packages/cli/**
-      - packages/contracts/**
-      - packages/editor/**
-      - packages/ui/**
-      - packages/config/**
+      - packages/cli/tsdown.config.ts
+      - packages/cli/scripts/**
+      - packages/cli/package.json
       - scripts/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
-      - turbo.jsonc
-      - tsconfig.json
 
 permissions:
   contents: read

@@ -223,11 +223,17 @@ describe("build", () => {
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(result.stderr, "data.mjs structures: missing.");
-      assert.include(result.stderr, "layout.json format: expected 1.");
+      assert.include(
+        result.stderr,
+        "layout.json format: format 2 is newer than this axonometric reads (format 1). Upgrade axonometric, then try again."
+      );
     })
   );
 
-  it.effect("leaves no temporary files behind when a write fails", () =>
+  // Live clock: on Windows, renaming over a folder fails with EPERM, which
+  // writeAll retries for about 2 s, and the test clock would never let those
+  // delays pass.
+  it.live("leaves no temporary files behind when a write fails", () =>
     Effect.gen(function* () {
       // A folder where the page should go makes renaming the page fail.
       const result = yield* buildWith({

@@ -62,18 +62,14 @@ const liveProcess = Effect.gen(function* () {
   return Number(handle.pid);
 }).pipe(Effect.provide(NodeServices.layer));
 
-/** The PID of a process that has exited. */
-const deadPid = Effect.gen(function* () {
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-
-  const handle = yield* spawner.spawn(
-    ChildProcess.make(process.execPath, ["-e", ""])
-  );
-
-  yield* handle.exitCode;
-
-  return Number(handle.pid);
-}).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+/**
+ * A PID no process has or will have. A real process's PID won't do: Windows
+ * hands a freed PID to the next process it starts, so the "dead" process
+ * could be running again, as one of the other test files' processes, by the
+ * time `serve` checks. Node reports a PID that can't exist as missing, the
+ * same as one that has exited.
+ */
+const deadPid = Effect.succeed(2 ** 31 - 1);
 
 /**
  * Sends a GET for `pathname` to the server at `url` with the Host header set

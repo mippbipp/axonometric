@@ -3,9 +3,11 @@ import { NodeServices } from "@effect/platform-node";
 import { assert } from "@effect/vitest";
 import {
   Array as Arr,
+  Cause,
   Console,
   Duration,
   Effect,
+  Exit,
   Fiber,
   FileSystem,
   Layer,
@@ -18,7 +20,6 @@ import {
   Stdio,
   String as Str,
 } from "effect";
-import type { Exit } from "effect";
 import { TerminalCapabilities } from "effect/cli";
 
 import { run } from "../src/cli.ts";
@@ -216,9 +217,11 @@ export const startServe = Effect.fnUntraced(function* (
   const state = yield* Effect.raceFirst(
     waitForServer(home, Option.getOrUndefined(previous)),
     Fiber.join(fiber).pipe(
-      Effect.flatMap(() =>
+      Effect.flatMap((ended) =>
         Effect.die(
-          new Error(`serve exited before it started:\n${output.stderr}`)
+          new Error(
+            `serve exited before it started, with exit code ${exitCodeOf(ended)}.\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}\nexit:\n${Exit.isFailure(ended) ? Cause.pretty(ended.cause) : "success"}`
+          )
         )
       )
     )

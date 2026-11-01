@@ -112,7 +112,7 @@ export type Layout = typeof Layout.Type;
  * JSON text, decoded to a JSON value. Unlike `Schema.fromJsonString`, a
  * syntax error reports Node's message, which gives the line and column.
  */
-const JsonText = Schema.String.pipe(
+export const JsonText = Schema.String.pipe(
   Schema.decodeTo(
     Schema.Unknown,
     SchemaTransformation.transformEffect({

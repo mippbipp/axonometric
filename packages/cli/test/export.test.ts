@@ -285,10 +285,8 @@ describe("export", () => {
 
             const { bytes } = yield* exportFile(page, "svg");
 
-            const opened = yield* Effect.promise(
-              () =>
-                page.context().browser()?.newPage() ??
-                Promise.reject(new Error("The page has no browser."))
+            const opened = yield* Effect.promise(() =>
+              page.context().newPage()
             );
 
             yield* Effect.promise(() =>

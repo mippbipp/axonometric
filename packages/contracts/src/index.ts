@@ -96,35 +96,54 @@ export type { PlacedLayout } from "./placement.ts";
 export {
   convexOverlap,
   distanceToPolyline,
+  gapBetween,
   growRect,
   segmentCrosses,
 } from "./geometry.ts";
 
 export type { Segment } from "./geometry.ts";
 
+export { arrowHalfWidth } from "./ends.ts";
+
+export { drawnRoutes } from "./fans.ts";
+
+export { laneGap, laneRoutes, laneWidths } from "./lanes.ts";
+
 export { routeCap, routeHops, routeLength, routeRevealed } from "./routing.ts";
 
 export {
   arrowheadOf,
   arrowLength,
+  arrowPolygon,
   endsOnTarget,
   labelGap,
   labelReach,
   labelReachLimit,
   planZoneRadius,
   sceneClashes,
+  placeMovingNameTags,
+  placeNameTags,
+  tagScene,
   sceneOf,
   silhouette,
 } from "./scene.ts";
 
+export { fitFloorOf, textZoomOf } from "./fit-floor.ts";
+
+export { textGrowthAt, textSizes } from "./text-size.ts";
+
+export type { TextGrowth } from "./text-size.ts";
+
 export type {
   HiddenStretch,
   Scene,
+  ClashPart,
   SceneClash,
   SceneHop,
   SceneSource,
   SceneStructure,
   SceneZone,
+  TaggedBox,
 } from "./scene.ts";
 
 export type { HopRoute } from "./routing.ts";
@@ -159,6 +178,38 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  applyLayoutChanges,
+  ChangeId,
+  checkProposals,
+  clashOf,
+  discardChange,
+  emptyProposals,
+  Footprint,
+  LayoutChange,
+  layoutChangeKey,
+  LayoutChanges,
+  layoutRefusal,
+  MoveChange,
+  newChangeId,
+  placeStructure,
+  Proposals,
+  ProposalsFile,
+  ResizeChange,
+  sameLayoutChanges,
+  StructureMove,
+  StructureTarget,
+  structuresOf,
+  Target,
+} from "./proposals.ts";
+
+export type { Clash, Placing } from "./proposals.ts";
+
+export {
+  LayoutChangeRefused,
+  maxWriteBytes,
+  PendingLayoutWrite,
+  MapFilesUnreadable,
+  StaleProposals,
   ServedPage,
   servedPageElementId,
   ServerEvent,

@@ -344,6 +344,8 @@ describe("the viewport", () => {
     )
   );
 
+  // Growing the window: at 1024×640 the shapes map already fits at the
+  // smallest zoom its name tags allow, so a smaller window keeps it.
   it.live("fits again when the window is resized", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -351,10 +353,10 @@ describe("the viewport", () => {
         const before = yield* scaleOf(page);
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 800, height: 500 })
+          page.setViewportSize({ width: 1600, height: 1000 })
         );
         yield* Effect.promise(() =>
-          page.waitForFunction(`${scaleExpression} < ${before * 0.8}`)
+          page.waitForFunction(`${scaleExpression} > ${before * 1.2}`)
         );
 
         const { svg, drawing } = yield* assertFitted(page);
