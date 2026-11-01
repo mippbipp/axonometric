@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";
 import type { Page } from "playwright";
 
-import { boxesOf } from "./browser.ts";
+import { boxesOf, literal } from "./browser.ts";
 import { shapesMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -10,11 +10,37 @@ const builtPage = Effect.gen(function* () {
   return yield* buildAndOpen(yield* shapesMap, "shapes");
 });
 
+const scaleExpression =
+  'Number(document.querySelector("svg[data-scale]").dataset.scale)';
+
 /** The viewport's current zoom, as the `data-scale` on the canvas. */
 const scaleOf = (page: Page) =>
+  Effect.promise(() => page.evaluate<number>(scaleExpression));
+
+/**
+ * Waits until the zoom passes `test`, such as `> 2`. Input reaches the page
+ * asynchronously, so a test waits for the new state instead of reading once.
+ */
+const waitForScale = (page: Page, test: string) =>
   Effect.promise(() =>
-    page.evaluate<number>(
-      'Number(document.querySelector("svg[data-scale]").dataset.scale)'
+    page.waitForFunction(`${scaleExpression} ${test}`, undefined, {
+      timeout: 5000,
+    })
+  );
+
+const transformExpression =
+  'document.querySelector("[data-viewport]").getAttribute("transform")';
+
+const transformOf = (page: Page) =>
+  Effect.promise(() => page.evaluate<string>(transformExpression));
+
+/** Waits until the pan or zoom differs from `previous`. */
+const waitForMove = (page: Page, previous: string) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `${transformExpression} !== ${literal(previous)}`,
+      undefined,
+      { timeout: 5000 }
     )
   );
 
@@ -76,10 +102,18 @@ const recordClicks = (page: Page) =>
     `)
   );
 
-const clickedOf = (page: Page) =>
-  Effect.promise(() =>
+/** The clicks recorded so far, once there are `count` of them. */
+const clickedOf = Effect.fnUntraced(function* (page: Page, count = 1) {
+  yield* Effect.promise(() =>
+    page.waitForFunction(`window.clicked.length >= ${count}`, undefined, {
+      timeout: 5000,
+    })
+  );
+
+  return yield* Effect.promise(() =>
     page.evaluate<readonly (string | null)[]>("window.clicked")
   );
+});
 
 describe("the viewport", () => {
   it.live("zooms in with the wheel, around the cursor", () =>
@@ -89,6 +123,7 @@ describe("the viewport", () => {
         const before = yield* scaleOf(page);
 
         yield* wheelAtCentre(page, -300);
+        yield* waitForScale(page, `> ${before * 1.3}`);
 
         const after = yield* scaleOf(page);
 
@@ -107,12 +142,14 @@ describe("the viewport", () => {
           yield* wheelAtCentre(page, -1000);
         }
 
+        yield* waitForScale(page, `> ${fitted * 2}`);
         const most = yield* scaleOf(page);
 
         for (let turn = 0; turn < 40; turn += 1) {
           yield* wheelAtCentre(page, 1000);
         }
 
+        yield* waitForScale(page, `< ${fitted}`);
         const least = yield* scaleOf(page);
 
         assert.isBelow(most, fitted * 10);
@@ -128,6 +165,7 @@ describe("the viewport", () => {
         const { page } = yield* builtPage;
         const svg = yield* canvasOf(page);
         const before = yield* drawingOf(page);
+        const transform = yield* transformOf(page);
 
         // The top-left corner of the canvas is empty in the fixture.
         yield* Effect.promise(() => page.mouse.move(svg.x + 10, svg.y + 10));
@@ -136,6 +174,7 @@ describe("the viewport", () => {
           page.mouse.move(svg.x + 110, svg.y + 60, { steps: 5 })
         );
         yield* Effect.promise(() => page.mouse.up());
+        yield* waitForMove(page, transform);
 
         const after = yield* drawingOf(page);
 
@@ -184,6 +223,7 @@ describe("the viewport", () => {
         const { page } = yield* builtPage;
         const svg = yield* canvasOf(page);
         const before = yield* drawingOf(page);
+        const transform = yield* transformOf(page);
 
         yield* recordClicks(page);
 
@@ -215,6 +255,7 @@ describe("the viewport", () => {
         }
 
         yield* touch("touchEnd", 110, 60);
+        yield* waitForMove(page, transform);
 
         const after = yield* drawingOf(page);
         const [box] = yield* boxesOf(page, '[data-structure="box"]');
@@ -240,6 +281,7 @@ describe("the viewport", () => {
       Effect.gen(function* () {
         const { page } = yield* builtPage;
         const svg = yield* canvasOf(page);
+        const transform = yield* transformOf(page);
 
         yield* recordClicks(page);
         yield* Effect.promise(() => page.mouse.move(svg.x + 10, svg.y + 10));
@@ -248,6 +290,7 @@ describe("the viewport", () => {
           page.mouse.move(svg.x + 110, svg.y + 60, { steps: 5 })
         );
         yield* Effect.promise(() => page.mouse.up());
+        yield* waitForMove(page, transform);
 
         const [box] = yield* boxesOf(page, '[data-structure="box"]');
 
@@ -274,9 +317,11 @@ describe("the viewport", () => {
         const fitted = yield* scaleOf(page);
 
         yield* wheelAtCentre(page, -600);
+        yield* waitForScale(page, `> ${fitted * 1.3}`);
         yield* Effect.promise(() =>
           page.getByRole("button", { name: "Zoom to fit" }).click()
         );
+        yield* waitForScale(page, `=== ${fitted}`);
 
         assert.closeTo(yield* scaleOf(page), fitted, 1e-6);
         yield* assertFitted(page);
@@ -294,9 +339,7 @@ describe("the viewport", () => {
           page.setViewportSize({ width: 600, height: 420 })
         );
         yield* Effect.promise(() =>
-          page.waitForFunction(
-            `Number(document.querySelector("svg[data-scale]").dataset.scale) < ${before * 0.8}`
-          )
+          page.waitForFunction(`${scaleExpression} < ${before * 0.8}`)
         );
 
         const { svg, drawing } = yield* assertFitted(page);

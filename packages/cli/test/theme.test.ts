@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { Page } from "playwright";
 
+import { literal } from "./browser.ts";
 import { minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -9,42 +10,74 @@ const builtPage = Effect.gen(function* () {
   return yield* buildAndOpen(yield* minimalMap, "pipeline");
 });
 
-const themeOf = (page: Page) =>
+const paper =
+  "getComputedStyle(document.querySelector('main')).backgroundColor";
+
+const label = 'document.querySelector("[data-theme-toggle]").textContent';
+
+const theme = 'document.documentElement.getAttribute("data-theme")';
+
+/**
+ * Waits until `expression` evaluates to `expected` in the page. Theme
+ * changes reach the page asynchronously (a matchMedia change event, then a
+ * React render), so a test waits for each new state instead of reading once.
+ */
+const waitFor = (page: Page, expression: string, expected: string | null) =>
   Effect.promise(() =>
-    page.evaluate<string | null>(
-      'document.documentElement.getAttribute("data-theme")'
+    page.waitForFunction(
+      `(${expression}) === ${literal(expected)}`,
+      undefined,
+      {
+        timeout: 5000,
+      }
     )
   );
 
-const paperOf = (page: Page) =>
+/** Waits until `expression` evaluates to anything but `previous`. */
+const waitForChange = (page: Page, expression: string, previous: string) =>
   Effect.promise(() =>
-    page.evaluate<string>(
-      "getComputedStyle(document.querySelector('main')).backgroundColor"
+    page.waitForFunction(
+      `(${expression}) !== ${literal(previous)}`,
+      undefined,
+      {
+        timeout: 5000,
+      }
     )
   );
+
+const read = (page: Page, expression: string) =>
+  Effect.promise(() => page.evaluate<string>(expression));
 
 const toggle = (page: Page) =>
   Effect.promise(() => page.locator("[data-theme-toggle]").click());
 
-const toggleLabel = (page: Page) =>
-  Effect.promise(() => page.locator("[data-theme-toggle]").textContent());
-
 const prefer = (page: Page, colorScheme: "light" | "dark") =>
   Effect.promise(() => page.emulateMedia({ colorScheme }));
+
+/** Follows the system in `colorScheme`, once the page shows it. */
+const onSystem = Effect.fnUntraced(function* (
+  page: Page,
+  colorScheme: "light" | "dark"
+) {
+  yield* prefer(page, colorScheme);
+  yield* waitFor(page, theme, null);
+  yield* waitFor(
+    page,
+    label,
+    colorScheme === "light" ? "Use dark theme" : "Use light theme"
+  );
+
+  return yield* read(page, paper);
+});
 
 describe("the theme", () => {
   it.live("follows the system's colour scheme by default", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { page } = yield* builtPage;
+        const light = yield* onSystem(page, "light");
+        const dark = yield* onSystem(page, "dark");
 
-        yield* prefer(page, "light");
-        const light = yield* paperOf(page);
-
-        yield* prefer(page, "dark");
-        const dark = yield* paperOf(page);
-
-        assert.strictEqual(yield* themeOf(page), null);
         assert.notStrictEqual(light, dark);
       })
     )
@@ -54,32 +87,22 @@ describe("the theme", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { page } = yield* builtPage;
-
-        yield* prefer(page, "light");
-        const lightSystem = yield* paperOf(page);
-        const lightLabel = yield* toggleLabel(page);
+        const lightSystem = yield* onSystem(page, "light");
 
         yield* toggle(page);
-        const fromLight = yield* paperOf(page);
-        const fromLightTheme = yield* themeOf(page);
+        yield* waitFor(page, theme, "dark");
+        yield* waitForChange(page, paper, lightSystem);
+        yield* waitFor(page, label, "Follow system theme");
 
         // Back to following the system, which is now dark.
         yield* toggle(page);
-        yield* prefer(page, "dark");
-        const darkSystem = yield* paperOf(page);
-        const darkLabel = yield* toggleLabel(page);
+        const darkSystem = yield* onSystem(page, "dark");
 
         yield* toggle(page);
-        const fromDark = yield* paperOf(page);
-        const fromDarkTheme = yield* themeOf(page);
+        yield* waitFor(page, theme, "light");
+        yield* waitFor(page, paper, lightSystem);
 
-        assert.strictEqual(lightLabel, "Use dark theme");
-        assert.strictEqual(fromLightTheme, "dark");
-        assert.notStrictEqual(fromLight, lightSystem);
-        assert.strictEqual(darkLabel, "Use light theme");
-        assert.strictEqual(fromDarkTheme, "light");
-        assert.notStrictEqual(fromDark, darkSystem);
-        assert.strictEqual(fromDark, lightSystem);
+        assert.notStrictEqual(darkSystem, lightSystem);
       })
     )
   );
@@ -89,20 +112,20 @@ describe("the theme", () => {
       Effect.gen(function* () {
         const { page } = yield* builtPage;
 
-        yield* prefer(page, "light");
+        yield* onSystem(page, "light");
         yield* toggle(page);
+        yield* waitFor(page, theme, "dark");
 
-        // Reloading keeps the choice, and sets it before the page draws.
+        // Reloading keeps the choice. The inline script sets it before the
+        // page draws, so it's there as soon as the page loads.
         yield* Effect.promise(() => page.reload());
-        const kept = yield* themeOf(page);
-        const label = yield* toggleLabel(page);
+        const kept = yield* read(page, theme);
 
+        yield* waitFor(page, label, "Follow system theme");
         yield* toggle(page);
-        const back = yield* themeOf(page);
+        yield* waitFor(page, theme, null);
 
         assert.strictEqual(kept, "dark");
-        assert.strictEqual(label, "Follow system theme");
-        assert.strictEqual(back, null);
       })
     )
   );
