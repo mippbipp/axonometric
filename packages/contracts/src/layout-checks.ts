@@ -6,6 +6,7 @@ import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
+import { routeHops } from "./routing.ts";
 
 /** A structure and where the layout puts it. */
 export interface PlacedStructure {
@@ -97,10 +98,59 @@ const staleEntries = (data: MapData, layout: Layout) => {
   );
 };
 
+const quotedList = (ids: readonly string[]) =>
+  Arr.join(
+    Arr.map(ids, (id) => `"${id}"`),
+    ", "
+  );
+
+const blockedRoutes = (data: MapData, layout: Layout) => {
+  const routes = routeHops(data, layout);
+
+  return Arr.flatMap(data.hops, (hop) => {
+    const route = routes[hop.id];
+
+    if (route === undefined || !Arr.isReadonlyArrayNonEmpty(route.crosses)) {
+      return [];
+    }
+
+    const one = route.crosses.length === 1;
+
+    const why = route.overridden
+      ? `its route override passes through ${one ? "that box" : "those boxes"}. Change the override's points so it goes around, or delete it so the hop routes itself.`
+      : `no clear route goes around ${one ? "it" : "them"}. Move the structures apart to open a gap, or write a route override.`;
+
+    return [
+      mapWarning({
+        file: "layout.json",
+        path: ["routes", hop.id],
+        message: `hop "${hop.id}" from "${hop.from}" to "${hop.to}" runs under ${quotedList(route.crosses)}: ${why}`,
+      }),
+    ];
+  });
+};
+
+const staleRoutes = (data: MapData, layout: Layout) => {
+  const ids = new Set(Arr.map(data.hops, ({ id }) => id));
+
+  return Arr.flatMap(Rec.keys(layout.routes ?? {}), (id) =>
+    ids.has(id)
+      ? []
+      : [
+          mapWarning({
+            file: "layout.json",
+            path: ["routes", id],
+            message: `no hop in data.mjs has the id "${id}". build removes this route override.`,
+          }),
+        ]
+  );
+};
+
 /**
  * Warnings about how the layout reads: entries for structures that no longer
- * exist, footprints that overlap, and name tags drawn over other boxes. A
- * structure with no placement gets nothing, because `build` places it.
+ * exist, route overrides for hops that no longer exist, footprints that
+ * overlap, name tags drawn over other boxes, and routes that run under boxes.
+ * A structure with no placement gets nothing, because `build` places it.
  */
 export const checkLayout: {
   (layout: Layout): (data: MapData) => readonly MapProblem[];
@@ -110,7 +160,9 @@ export const checkLayout: {
 
   return [
     ...staleEntries(data, layout),
+    ...staleRoutes(data, layout),
     ...overlaps(placed),
     ...coveredTags(placed),
+    ...blockedRoutes(data, layout),
   ];
 });

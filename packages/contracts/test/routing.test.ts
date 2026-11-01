@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Record as Rec } from "effect";
+import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
 
-import { routeHops } from "../src/index.ts";
+import { checkLayout, routeHops } from "../src/index.ts";
 import type {
   GridPoint,
   Hop,
@@ -303,6 +303,98 @@ describe("routing", () => {
 
       assert.isBelow(performance.now() - started, 2000);
       assert.lengthOf(Rec.keys(routes), 60);
+    })
+  );
+});
+
+describe("route checks", () => {
+  it.effect("warns about a hop that can't avoid a box, naming it", () =>
+    Effect.sync(() => {
+      const { data, layout } = mapOf(
+        {
+          s: at(-6, 2),
+          t: at(2, 2),
+          n: sized(1.5, -0.5, { w: 3, d: 2 }),
+          w: sized(-0.5, 1.5, { w: 2, d: 3 }),
+          e: sized(4.5, 1.5, { w: 2, d: 3 }),
+          south: sized(1.5, 4.5, { w: 3, d: 2 }),
+        },
+        [hop("s", "t")]
+      );
+
+      const warnings = Arr.filter(checkLayout(data, layout), ({ message }) =>
+        Str.includes("runs under")(message)
+      );
+
+      assert.lengthOf(warnings, 1);
+      assert.strictEqual(warnings[0]?.file, "layout.json");
+      assert.strictEqual(warnings[0]?.path, 'routes["s-t"]');
+      assert.match(
+        warnings[0]?.message ?? "",
+        /^hop "s-t" from "s" to "t" runs under "(?:n|w|e|south)": no clear route goes around it\. Move the structures apart to open a gap, or write a route override\.$/u
+      );
+    })
+  );
+
+  it.effect("gives an override that runs through a box the same warning", () =>
+    Effect.sync(() => {
+      const { data, layout } = mapOf(
+        { a: at(0, 0), m: at(4, 0), b: at(8, 0) },
+        [hop("a", "b")],
+        {
+          "a-b": [
+            { x: 2, y: 1 },
+            { x: 8, y: 1 },
+          ],
+        }
+      );
+
+      assert.deepStrictEqual(
+        Arr.map(checkLayout(data, layout), ({ file, path, message }) => ({
+          file,
+          path,
+          message,
+        })),
+        [
+          {
+            file: "layout.json",
+            path: 'routes["a-b"]',
+            message:
+              'hop "a-b" from "a" to "b" runs under "m": its route override passes through that box. Change the override\'s points so it goes around, or delete it so the hop routes itself.',
+          },
+        ]
+      );
+    })
+  );
+
+  it.effect("warns about an override for a hop that no longer exists", () =>
+    Effect.sync(() => {
+      const { data, layout } = mapOf({ a: at(0, 0), b: at(4, 0) }, [], {
+        gone: [
+          { x: 2, y: 1 },
+          { x: 4, y: 1 },
+        ],
+      });
+
+      assert.deepStrictEqual(
+        Arr.map(checkLayout(data, layout), ({ path, message }) => ({
+          path,
+          message,
+        })),
+        [
+          {
+            path: "routes.gone",
+            message:
+              'no hop in data.mjs has the id "gone". build removes this route override.',
+          },
+        ]
+      );
+    })
+  );
+
+  it.effect("is quiet when every route is clear", () =>
+    Effect.sync(() => {
+      assert.deepStrictEqual(checkLayout(blocked.data, blocked.layout), []);
     })
   );
 });
