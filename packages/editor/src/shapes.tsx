@@ -1,5 +1,10 @@
 import { isoHeights, statusLabels } from "@axonometric/contracts";
-import type { Placement, Shape, Structure } from "@axonometric/contracts";
+import type {
+  Placement,
+  ScreenRect,
+  Shape,
+  Structure,
+} from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
@@ -17,9 +22,6 @@ const halfTileHeight = tileHeight / 2;
 
 /** One grid unit along x or y, measured on screen. */
 const gridStep = Math.hypot(halfTileWidth, halfTileHeight);
-
-/** Approximate width of one character of the code chip's font. */
-const chipCharWidth = 6.4;
 
 interface DrawProps {
   readonly placement: Placement;
@@ -496,44 +498,26 @@ const drawings = {
   external: ExternalShape,
 } as const satisfies Record<Shape, (props: DrawProps) => ReactNode>;
 
-/** Shapes with no flat top to hold the code chip. */
-const chipless: ReadonlySet<Shape> = new Set(["person", "document"]);
-
-/**
- * Where the code chip sits: the middle of the shape's top, or nothing when
- * the shape has no top or the top is too small for the chip.
- */
-const chipAt = (structure: Structure, placement: Placement) => {
-  const width = structure.code.length * chipCharWidth + 8;
-  const topWidth = (placement.w + placement.d) * halfTileWidth;
-
-  return chipless.has(structure.shape) || topWidth < width * 1.6
-    ? undefined
-    : { at: centreOf(placement, isoHeights[structure.shape]), width };
-};
-
 function CodeChip({
   code,
-  at,
-  width,
+  rect,
 }: {
   readonly code: string;
-  readonly at: ScreenPoint;
-  readonly width: number;
+  readonly rect: ScreenRect;
 }) {
   return (
     <g data-code-chip="">
       <rect
-        x={at.sx - width / 2}
-        y={at.sy - 7}
-        width={width}
-        height={14}
+        x={rect.left}
+        y={rect.top}
+        width={rect.right - rect.left}
+        height={rect.bottom - rect.top}
         className="fill-paper"
         strokeWidth={1}
       />
       <text
-        x={at.sx}
-        y={at.sy + 3.5}
+        x={(rect.left + rect.right) / 2}
+        y={(rect.top + rect.bottom) / 2 + 3.5}
         textAnchor="middle"
         className="fill-ink text-2xs stroke-none font-mono font-semibold"
       >
@@ -593,14 +577,16 @@ function OffMark({ at }: { readonly at: ScreenPoint }) {
 export function IsoStructure({
   structure,
   placement,
+  chip,
   hatch,
 }: {
   readonly structure: Structure;
   readonly placement: Placement;
+  /** Where the code chip goes, from the scene. */
+  readonly chip: ScreenRect | undefined;
   readonly hatch: string;
 }) {
   const Drawing = drawings[structure.shape];
-  const chip = chipAt(structure, placement);
 
   return (
     <g
@@ -618,7 +604,7 @@ export function IsoStructure({
         hatch={hatch}
       />
       {chip === undefined ? null : (
-        <CodeChip code={structure.code} at={chip.at} width={chip.width} />
+        <CodeChip code={structure.code} rect={chip} />
       )}
       {structure.status === "off" ? (
         <OffMark at={offMarkAt(structure, placement, chip !== undefined)} />

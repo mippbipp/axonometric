@@ -48,6 +48,7 @@ function WalkthroughPage() {
             newlyRevealed={newlyRevealed}
             fitTo={fit}
             fitKey={stop.id}
+            labelFirst={stop.plays}
           >
             <PacketLayer routeOf={isoRouteOf} />
           </IsoView>

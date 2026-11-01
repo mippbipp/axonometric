@@ -1,4 +1,4 @@
-import { Array as Arr, Record as Rec } from "effect";
+import { Array as Arr, Record as Rec, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import { boxOutline, nameTagRect, nameTagText, tagCoversBox } from "./iso.ts";
@@ -7,6 +7,9 @@ import type { MapData, Structure } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
 import { routeHops } from "./routing.ts";
+import type { HopRoute } from "./routing.ts";
+import { sceneClashes, sceneOf } from "./scene.ts";
+import type { SceneClash } from "./scene.ts";
 import { zonesOf } from "./zones.ts";
 
 /** A structure and where the layout puts it. */
@@ -123,10 +126,11 @@ const quotedList = (ids: readonly string[]) =>
     ", "
   );
 
-const blockedRoutes = (data: MapData, layout: Layout) => {
-  const routes = routeHops(data, layout);
-
-  return Arr.flatMap(data.hops, (hop) => {
+const blockedRoutes = (
+  data: MapData,
+  routes: Readonly<Record<string, HopRoute>>
+) =>
+  Arr.flatMap(data.hops, (hop) => {
     const route = routes[hop.id];
 
     if (route === undefined || !Arr.isReadonlyArrayNonEmpty(route.crosses)) {
@@ -147,7 +151,6 @@ const blockedRoutes = (data: MapData, layout: Layout) => {
       }),
     ];
   });
-};
 
 const staleRoutes = (data: MapData, layout: Layout) => {
   const ids = new Set(Arr.map(data.hops, ({ id }) => id));
@@ -166,10 +169,115 @@ const staleRoutes = (data: MapData, layout: Layout) => {
 };
 
 /**
+ * What each chapter reveals, with every earlier chapter's reveals, and the
+ * hops it plays. A map with no chapters shows everything at once.
+ */
+interface ChapterView {
+  readonly id: string | undefined;
+  readonly revealed: ReadonlySet<string>;
+  readonly plays: readonly string[];
+}
+
+const chapterViews = (data: MapData): readonly ChapterView[] => {
+  if (!Arr.isReadonlyArrayNonEmpty(data.chapters)) {
+    return [
+      {
+        id: undefined,
+        revealed: new Set(Arr.map(data.structures, ({ id }) => id)),
+        plays: Arr.empty<string>(),
+      },
+    ];
+  }
+
+  return Arr.map(data.chapters, (chapter, index) => ({
+    id: chapter.id,
+    revealed: new Set(
+      Arr.flatMap(data.chapters.slice(0, index + 1), ({ reveals }) => reveals)
+    ),
+    plays: chapter.plays,
+  }));
+};
+
+const thingNames = {
+  box: "the box of",
+  tag: "the name tag of",
+  chip: "the code chip of",
+  title: "the zone title of",
+  label: "the label of hop",
+  route: "the route of hop",
+} as const satisfies Record<string, string>;
+
+const kindOf = (thing: string) => Str.split(":")(thing)[0];
+
+const thingKinds: ReadonlySet<string> = new Set(Rec.keys(thingNames));
+
+const isKind = (kind: string): kind is keyof typeof thingNames =>
+  thingKinds.has(kind);
+
+const describeThing = (thing: string) => {
+  const [kind, ...rest] = Str.split(":")(thing);
+  const name = isKind(kind) ? thingNames[kind] : kind;
+
+  return `${name} "${Arr.join(rest, ":")}"`;
+};
+
+/** What the footprint and name tag checks cover between them. */
+const structureParts: ReadonlySet<string> = new Set(["box", "tag", "chip"]);
+
+/**
+ * Whether the older checks already warn about a clash: boxes, tags and
+ * chips drawn over each other come from overlapping footprints or a tag on
+ * a box, which `overlaps` and `coveredTags` report.
+ */
+const coveredElsewhere = (first: string, second: string) =>
+  structureParts.has(kindOf(first)) && structureParts.has(kindOf(second));
+
+/**
+ * Warnings for everything else the iso view would draw over something, by
+ * the scene's overlap rule, in any chapter: chips, zone titles, labels and
+ * routes. Each clash is reported once, at the first chapter it shows in.
+ */
+const sceneWarnings = (
+  data: MapData,
+  layout: Layout,
+  routes: Readonly<Record<string, HopRoute>>
+) => {
+  const seen = new Set<string>();
+
+  return Arr.flatMap(chapterViews(data), ({ id, revealed, plays }) =>
+    Arr.flatMap<SceneClash, MapProblem>(
+      sceneClashes(
+        sceneOf({ data, layout, revealed, routes, labelFirst: plays })
+      ),
+      ({ between: [first, second] }) => {
+        const key = `${first} ${second}`;
+
+        if (seen.has(key) || coveredElsewhere(first, second)) {
+          return [];
+        }
+
+        seen.add(key);
+
+        const where = id === undefined ? "" : ` in chapter "${id}"`;
+
+        return [
+          mapWarning({
+            file: "layout.json",
+            path: ["structures"],
+            message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}. Move the structures apart, so the drawing has room.`,
+          }),
+        ];
+      }
+    )
+  );
+};
+
+/**
  * Warnings about how the layout reads: entries for structures that no longer
  * exist, route overrides for hops that no longer exist, footprints that
- * overlap, name tags drawn over other boxes, zones that overlap, and routes
- * that run under boxes. A structure with no placement gets nothing, because
+ * overlap, name tags drawn over other boxes, zones that overlap, routes that
+ * run under boxes, and anything else the iso view would draw over something
+ * in some chapter. A structure with no placement gets nothing, because
  * `build` places it.
  */
 export const checkLayout: {
@@ -177,6 +285,7 @@ export const checkLayout: {
   (data: MapData, layout: Layout): readonly MapProblem[];
 } = dual(2, (data: MapData, layout: Layout): readonly MapProblem[] => {
   const placed = placedStructures(data, layout);
+  const routes = routeHops(data, layout);
 
   return [
     ...staleEntries(data, layout),
@@ -184,6 +293,7 @@ export const checkLayout: {
     ...overlaps(placed),
     ...coveredTags(placed),
     ...overlappingZones(data, layout),
-    ...blockedRoutes(data, layout),
+    ...blockedRoutes(data, routes),
+    ...sceneWarnings(data, layout, routes),
   ];
 });

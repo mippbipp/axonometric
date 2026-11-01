@@ -1,8 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Array as Arr, Effect } from "effect";
 import type { Page } from "playwright";
 
-import { crowdedMap, fullMap } from "./fixtures.ts";
+import { crowdedMap, fullMap, pipelineMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
@@ -76,10 +76,10 @@ const packetOffRoute = `
     const x = Number(dot.getAttribute("cx"));
     const y = Number(dot.getAttribute("cy"));
     const line = document.querySelector(
-      '[data-hop="' + packet.dataset.packet + '"] polyline'
+      '[data-hop="' + packet.dataset.packet + '"]'
     );
     const points = line
-      .getAttribute("points")
+      .dataset.route
       .split(" ")
       .map((pair) => pair.split(",").map(Number));
     let best = Infinity;
@@ -140,10 +140,9 @@ const hopReport = `
       return best;
     };
     const routes = new Map(
-      [...document.querySelectorAll("[data-hop] polyline")].map((line) => [
-        line.closest("[data-hop]").dataset.hop,
-        line
-          .getAttribute("points")
+      [...document.querySelectorAll("[data-hop]")].map((line) => [
+        line.dataset.hop,
+        line.dataset.route
           .split(" ")
           .map((pair) => {
             const [sx, sy] = pair.split(",").map(Number);
@@ -155,17 +154,26 @@ const hopReport = `
 
     return [...routes].map(([id, points]) => {
       const hop = state.data.hops.find((item) => item.id === id);
-      const label = document.querySelector('[data-hop-label="' + id + '"]').getBoundingClientRect();
-      const centre = [label.x + label.width / 2, label.y + label.height / 2];
+      const element = document.querySelector('[data-hop-label="' + id + '"]');
+      const label = element === null ? undefined : element.getBoundingClientRect();
+      const centre = label === undefined ? undefined : [label.x + label.width / 2, label.y + label.height / 2];
       const others = [...routes].filter(([other]) => other !== id);
 
       return {
         hop: id,
         bends: points.length - 2,
+        offset: (() => {
+          const a = state.layout.structures[hop.from];
+          const b = state.layout.structures[hop.to];
+          const overlapX = a.x < b.x + b.w && b.x < a.x + a.w;
+          const overlapY = a.y < b.y + b.d && b.y < a.y + a.d;
+
+          return !overlapX && !overlapY;
+        })(),
         start: toPolyline(outline(hop.from), points[0], true),
         end: toPolyline(outline(hop.to), points.at(-1), true),
-        label: toPolyline(points, centre, false),
-        nearestOther: Math.min(Infinity, ...others.map(([, line]) => toPolyline(line, centre, false))),
+        label: centre === undefined ? 0 : toPolyline(points, centre, false),
+        nearestOther: centre === undefined ? Infinity : Math.min(Infinity, ...others.map(([, line]) => toPolyline(line, centre, false))),
       };
     });
   })()
@@ -174,6 +182,8 @@ const hopReport = `
 interface HopReport {
   readonly hop: string;
   readonly bends: number;
+  /** Whether the hop's ends are apart along both axes. */
+  readonly offset: boolean;
   readonly start: number;
   readonly end: number;
   readonly label: number;
@@ -269,14 +279,21 @@ describe("routed hops", () => {
     )
   );
 
-  it.live("bend every review hop, so its right angle shows", () =>
+  it.live("bend every hop between structures offset on both axes", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* fullMap, "review");
+        const { page } = yield* buildAndOpen(
+          yield* pipelineMap,
+          "flake-pipeline"
+        );
 
         yield* goToChapter(page, "c-all");
 
-        for (const hop of yield* hopsIn(page)) {
+        const offset = Arr.filter(yield* hopsIn(page), (hop) => hop.offset);
+
+        assert.isNotEmpty(offset);
+
+        for (const hop of offset) {
           assert.isAtLeast(hop.bends, 1, `${hop.hop} is one straight leg`);
         }
       })

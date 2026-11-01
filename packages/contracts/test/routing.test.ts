@@ -223,7 +223,7 @@ describe("routing", () => {
       })
   );
 
-  it.effect("ends on front edges, where boxes don't hide them", () =>
+  it.effect("ends on front edges, where boxes don't hide the arrowhead", () =>
     Effect.sync(() => {
       const placements = { a: at(0, 0), b: at(6, 0), c: at(0, 6) };
 
@@ -234,15 +234,9 @@ describe("routing", () => {
       ]);
 
       for (const route of Rec.values(routeHops(data, layout))) {
-        const [first] = route.points;
         const last = route.points.at(-1);
 
-        assert.isDefined(first);
         assert.isDefined(last);
-        assert.isTrue(
-          Arr.some(Rec.values(placements), (box) => frontOf(first, box)),
-          "starts on a back edge"
-        );
         assert.isTrue(
           Arr.some(Rec.values(placements), (box) => frontOf(last, box)),
           "ends on a back edge"

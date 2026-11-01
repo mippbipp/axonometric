@@ -1,6 +1,9 @@
 import { Array as Arr, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
+import { clipToConvex, growRect, rectPolygon } from "./geometry.ts";
+import { nameTagRect, nameTagText, project } from "./iso.ts";
+import type { ScreenRect } from "./iso.ts";
 import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { Hop, MapData } from "./map-data.ts";
 import { zonesOf } from "./zones.ts";
@@ -25,13 +28,24 @@ export interface HopRoute {
 /** The router works in half units, so every grid value is a whole number. */
 const scale = 2;
 
-/** How far past every footprint the router may go, in half units. */
-const margin = 8;
+/**
+ * How far past every footprint and zone the router may go, in half units.
+ */
+const margin = 4;
+
+/**
+ * How far past the box around a hop's two ends a route may go before each
+ * step costs extra, in half units.
+ */
+const reach = 6;
+
+/** Each half-unit step past `reach` costs this much more. */
+const strayCost = 1;
 
 const stepCost = 1;
 
 /** Each bend costs as much as this many half-unit steps. */
-const bendCost = 3;
+const bendCost = 6;
 
 /** Running alongside another hop's route costs this much more per step. */
 const sharedStepCost = 2;
@@ -43,25 +57,44 @@ const sharedStepCost = 2;
 const pairPointCost = 8;
 
 /**
- * Starting or ending on a back edge (-x or -y), where the box hides the
- * route's end, costs as much as this many half-unit steps. It's more than a
- * detour round to a front edge costs, so a route takes a back edge only
- * when no front edge is free.
+ * Starting on a back edge (-x or -y) costs a little more than a front edge,
+ * because the box is drawn over the route's first stretch there. It's kept
+ * small: the name tag hangs under the front corner, so back edges are often
+ * the clearer way out.
  */
-const backEdgeCost = 24;
+const backStartCost = 2;
+
+/**
+ * Ending on a back edge costs more, because the box is drawn over the
+ * arrowhead there. It's still less than running through a name tag, so a
+ * route whose front way in is blocked by the tag comes in from the back.
+ */
+const backEndCost = 24;
 
 /**
  * Each half-unit step inside the zone of a group neither end belongs to.
  * Far less than running under a box, so a route crosses a zone rather than
  * a box.
  */
-const zoneStepCost = 2;
+const zoneStepCost = 0.5;
 
 /** Each half unit a route's end sits from the middle of its edge. */
 const offCentreCost = 0.25;
 
 /** Running under a box costs more than any clear route could. */
 const crossCost = 1e6;
+
+/**
+ * Running through a name tag costs more than any detour, but less than
+ * running under a box.
+ */
+const tagCost = 1e4;
+
+/** How far a route's first and last legs run straight out, in half units. */
+const stubLengths = [2, 1] as const;
+
+/** Room kept around a name tag, in screen units. */
+const tagMargin = 3;
 
 interface Box {
   readonly id: string;
@@ -247,6 +280,8 @@ interface Grid {
   readonly zones: readonly Box[];
   /** Like `touches`, for steps inside a zone, keyed the same way. */
   readonly inZones: readonly (readonly number[] | undefined)[];
+  /** Like `touches`, for steps whose line on screen crosses a name tag. */
+  readonly inTags: readonly (readonly number[] | undefined)[];
 }
 
 /** Adds `value` to the list at `index`. */
@@ -261,10 +296,25 @@ const push = (
   lists[index] = list;
 };
 
+/** A step's line on screen. */
+const stepOnScreen = (x: number, y: number, direction: 0 | 1) => ({
+  start: project({ x: x / scale, y: y / scale }),
+  end: project({
+    x: (x + (direction === 0 ? 1 : 0)) / scale,
+    y: (y + (direction === 1 ? 1 : 0)) / scale,
+  }),
+});
+
 const gridOf = (
   boxes: readonly Box[],
   zones: readonly Box[],
-  extra: readonly { x: number; y: number }[]
+  {
+    tags,
+    extra,
+  }: {
+    readonly tags: readonly ScreenRect[];
+    readonly extra: readonly { x: number; y: number }[];
+  }
 ): Grid => {
   const xs = [
     ...Arr.flatMap([...boxes, ...zones], (box) => [box.x0, box.x1]),
@@ -282,6 +332,7 @@ const gridOf = (
   const height = Math.max(0, ...ys) + margin - top + 1;
   const touches: (number[] | undefined)[] = [];
   const inZones: (number[] | undefined)[] = [];
+  const inTags: (number[] | undefined)[] = [];
 
   const keyOf = (x: number, y: number, direction: 0 | 1) =>
     ((y - top) * width + (x - left)) * 2 + direction;
@@ -319,22 +370,67 @@ const gridOf = (
     }
   });
 
-  return { left, top, width, height, boxes, touches, zones, inZones };
+  const tagShapes = Arr.map(tags, (tag) =>
+    rectPolygon(growRect(tag, tagMargin))
+  );
+
+  for (let y = top; y < top + height; y++) {
+    for (let x = left; x < left + width; x++) {
+      for (const direction of [0, 1] as const) {
+        const line = stepOnScreen(x, y, direction);
+
+        Arr.forEach(tagShapes, (shape, tagIndex) => {
+          const tag = tags[tagIndex];
+
+          const near =
+            tag !== undefined &&
+            Math.max(line.start.sx, line.end.sx) >= tag.left - tagMargin &&
+            Math.min(line.start.sx, line.end.sx) <= tag.right + tagMargin &&
+            Math.max(line.start.sy, line.end.sy) >= tag.top - tagMargin &&
+            Math.min(line.start.sy, line.end.sy) <= tag.bottom + tagMargin;
+
+          if (near && clipToConvex(line, shape) !== undefined) {
+            push(inTags, keyOf(x, y, direction), tagIndex);
+          }
+        });
+      }
+    }
+  }
+
+  return {
+    left,
+    top,
+    width,
+    height,
+    boxes,
+    touches,
+    zones,
+    inZones,
+    inTags,
+  };
 };
 
 /** The points along an edge from `from` to `to`, corners left out if it can. */
 const along = (from: number, to: number) =>
   to - from >= 2 ? Arr.range(from + 1, to - 1) : [from, to];
 
+/** A point on a footprint's edge a route may start or end at. */
+interface EdgePoint {
+  readonly x: number;
+  readonly y: number;
+  /** The direction pointing out of the footprint. */
+  readonly out: number;
+  readonly cost: number;
+}
+
 /**
  * The points on a footprint's edge a route may start or end at, each with
  * what it costs to use it. Corners are left out unless an edge has no other
  * points. Points away from the middle of their edge cost a little more, so
  * a lone route leaves from the middle. Points on the back edges (-x and -y)
- * cost `backEdgeCost` more, because the box hides a route that ends there.
+ * cost `backCost` more.
  */
-const edgePoints = (box: Box) => {
-  const backCost = backEdgeCost;
+const edgePoints = (box: Box, backCost: number): readonly EdgePoint[] => {
   const midX = (box.x0 + box.x1) / 2;
   const midY = (box.y0 + box.y1) / 2;
 
@@ -342,21 +438,25 @@ const edgePoints = (box: Box) => {
     ...Arr.map(along(box.x0, box.x1), (x) => ({
       x,
       y: box.y1,
+      out: 1,
       cost: offCentreCost * Math.abs(x - midX),
     })),
     ...Arr.map(along(box.y0, box.y1), (y) => ({
       x: box.x1,
       y,
+      out: 0,
       cost: offCentreCost * Math.abs(y - midY),
     })),
     ...Arr.map(along(box.x0, box.x1), (x) => ({
       x,
       y: box.y0,
+      out: 3,
       cost: backCost + offCentreCost * Math.abs(x - midX),
     })),
     ...Arr.map(along(box.y0, box.y1), (y) => ({
       x: box.x0,
       y,
+      out: 2,
       cost: backCost + offCentreCost * Math.abs(y - midY),
     })),
   ];
@@ -462,8 +562,11 @@ interface Search {
   /** The groups of the hop's ends, whose zones cost nothing to cross. */
   readonly groups: ReadonlySet<string>;
   readonly to: Box;
-  /** Extra cost of ending at each of the target's edge points. */
-  readonly goals: ReadonlyMap<number, number>;
+  /**
+   * The box around both ends grown by `reach`, in half units. Steps outside
+   * it cost extra, so routes stay near the straight path.
+   */
+  readonly near: Box;
 }
 
 const inside = (grid: Grid, { x, y }: Cell) =>
@@ -497,11 +600,14 @@ const stepPrice = (
     search.ends.has(grid.boxes[boxIndex]?.id ?? "")
   );
 
-  if (!inside(grid, next) || search.pair.steps.has(step) || ownEnd) {
+  const reverse = heading !== noDirection && (heading + 2) % 4 === direction;
+
+  if (!inside(grid, next) || search.pair.steps.has(step) || ownEnd || reverse) {
     return undefined;
   }
 
   const bend = heading === noDirection || heading === direction ? 0 : 1;
+  const stray = distanceTo(search.near, next) > 0 ? strayCost : 0;
   const nextIndex = pointIndex(grid, next);
 
   const zones = Arr.filter(
@@ -514,9 +620,10 @@ const stepPrice = (
     bend * bendCost +
     touched.length * crossCost +
     zones * zoneStepCost +
+    (grid.inTags[step] ?? []).length * tagCost +
+    stray +
     (search.usage.steps.has(step) ? sharedStepCost : 0) +
-    (search.pair.points.has(nextIndex) ? pairPointCost : 0) +
-    (search.goals.get(nextIndex) ?? 0)
+    (search.pair.points.has(nextIndex) ? pairPointCost : 0)
   );
 };
 
@@ -536,81 +643,253 @@ const pathTo = (grid: Grid, parent: Int32Array, state: number) => {
     path.push(cellOf(grid, at));
   }
 
-  return cornersOf(Arr.reverse(path));
+  return Arr.reverse(path);
+};
+
+const stepFrom = (cell: Cell, direction: number, count = 1): Cell => ({
+  x: cell.x + (dx[direction] ?? 0) * count,
+  y: cell.y + (dy[direction] ?? 0) * count,
+});
+
+/** The start of a running total that may turn out blocked. */
+const noPrice = (): number | undefined => 0;
+
+/**
+ * What it costs to run straight from `from` for `count` steps in
+ * `direction`, or `undefined` when a step is blocked.
+ */
+const runPrice = (
+  search: Search,
+  from: Cell,
+  { direction, count }: { readonly direction: number; readonly count: number }
+) =>
+  Arr.reduce(Arr.range(0, count - 1), noPrice(), (sum, step) => {
+    const price = stepPrice(
+      search,
+      { from: stepFrom(from, direction, step), heading: direction },
+      direction
+    );
+
+    return sum === undefined || price === undefined ? undefined : sum + price;
+  });
+
+/** A stub: a straight run out from an edge point, where the search meets it. */
+interface Stub {
+  readonly edge: EdgePoint;
+  /** The stub's far end, away from the box. */
+  readonly tip: Cell;
+  readonly cost: number;
+}
+
+/**
+ * Every stub out of `box`: from each edge point, straight out for each of
+ * `stubLengths`, with what the edge point and the run cost. Longer stubs
+ * come first and cost less, so a route leaves a box squarely.
+ */
+const stubsOf = (search: Search, box: Box): readonly Stub[] =>
+  Arr.flatMap(edgePoints(box, backStartCost), (edge) =>
+    Arr.flatMap(stubLengths, (count, index) => {
+      const price = runPrice(search, edge, { direction: edge.out, count });
+
+      return price === undefined
+        ? []
+        : [
+            {
+              edge,
+              tip: stepFrom(edge, edge.out, count),
+              cost: edge.cost + price + index * bendCost,
+            },
+          ];
+    })
+  );
+
+/** The price of a step back into a box, for a stub at the route's end. */
+const inwardStubsOf = (search: Search, box: Box): readonly Stub[] =>
+  Arr.flatMap(edgePoints(box, backEndCost), (edge) =>
+    Arr.flatMap(stubLengths, (count, index) => {
+      const tip = stepFrom(edge, edge.out, count);
+
+      const price = runPrice(search, tip, {
+        direction: (edge.out + 2) % 4,
+        count,
+      });
+
+      return price === undefined
+        ? []
+        : [{ edge, tip, cost: edge.cost + price + index * bendCost }];
+    })
+  );
+
+/** The best way found so far to finish a route. */
+interface Finish {
+  readonly cost: number;
+  readonly state: number;
+  readonly stub: Stub;
+}
+
+/** One search's working state. */
+interface Frontier {
+  readonly cost: Float64Array;
+  readonly parent: Int32Array;
+  readonly done: Uint8Array;
+  readonly origin: Map<number, Cell>;
+  readonly queue: ReturnType<typeof makeQueue>;
+}
+
+const searchOf = (
+  grid: Grid,
+  { usage, key }: { readonly usage: Usage; readonly key: string },
+  { from, to }: { readonly from: Box; readonly to: Box }
+): Search => ({
+  grid,
+  usage,
+  pair: pairUsage(usage, key),
+  ends: new Set([from.id, to.id]),
+  groups: new Set([from.group, to.group]),
+  to,
+  near: {
+    id: "",
+    group: "",
+    x0: Math.min(from.x0, to.x0) - reach,
+    y0: Math.min(from.y0, to.y0) - reach,
+    x1: Math.max(from.x1, to.x1) + reach,
+    y1: Math.max(from.y1, to.y1) + reach,
+  },
+});
+
+/** The stubs into the target, keyed by the point where the search meets them. */
+const goalsOf = (search: Search) => {
+  const goals = new Map<number, Stub[]>();
+
+  for (const stub of inwardStubsOf(search, search.to)) {
+    const index = pointIndex(search.grid, stub.tip);
+
+    goals.set(index, [...(goals.get(index) ?? []), stub]);
+  }
+
+  return goals;
+};
+
+/** The cheapest way to finish from `state` into one of the goal stubs. */
+const finishFrom = (
+  goals: ReadonlyMap<number, readonly Stub[]>,
+  { state, g }: { readonly state: number; readonly g: number },
+  best: Finish | undefined
+): Finish | undefined => {
+  const heading = state % directions;
+
+  return Arr.reduce(
+    goals.get(Math.floor(state / directions)) ?? [],
+    best,
+    (sofar, stub) => {
+      const turn = heading === (stub.edge.out + 2) % 4 ? 0 : bendCost;
+
+      const total =
+        heading === stub.edge.out
+          ? Number.POSITIVE_INFINITY
+          : g + stub.cost + turn;
+
+      return sofar === undefined || total < sofar.cost
+        ? { cost: total, state, stub }
+        : sofar;
+    }
+  );
+};
+
+/** Pushes every step out of `state` that improves on what's known. */
+const expand = (search: Search, frontier: Frontier, state: number) => {
+  const { grid, to } = search;
+  const heading = state % directions;
+  const here = cellOf(grid, state);
+  const g = frontier.cost[state] ?? 0;
+
+  for (const direction of [0, 1, 2, 3]) {
+    const price = stepPrice(search, { from: here, heading }, direction);
+    const next = stepFrom(here, direction);
+    const total = g + (price ?? Number.POSITIVE_INFINITY);
+    const nextState = pointIndex(grid, next) * directions + direction;
+
+    if (total < (frontier.cost[nextState] ?? Number.POSITIVE_INFINITY)) {
+      frontier.cost[nextState] = total;
+      frontier.parent[nextState] = state;
+      frontier.queue.push(nextState, total + distanceTo(to, next));
+    }
+  }
+};
+
+/** The route a finished search found, from edge to edge, corners only. */
+const routeOf = (grid: Grid, frontier: Frontier, best: Finish) => {
+  const path = pathTo(grid, frontier.parent, best.state);
+  let seed = best.state;
+
+  while ((frontier.parent[seed] ?? -1) !== -1) {
+    seed = frontier.parent[seed] ?? -1;
+  }
+
+  const start = frontier.origin.get(seed);
+
+  return cornersOf([
+    ...(start === undefined ? [] : [start]),
+    ...path,
+    { x: best.stub.edge.x, y: best.stub.edge.y },
+  ]);
 };
 
 /**
  * The cheapest route from `from`'s edge to `to`'s edge, by A* over the
- * half-unit grid with a cost for each bend. Running under a box costs more
+ * half-unit grid with a cost for each bend. Each end runs straight out of
+ * its box for a stub before it may turn. Running under a box costs more
  * than any clear route, so the route runs under the fewest boxes it can.
  */
 const searchRoute = (
   grid: Grid,
-  { usage, key }: { readonly usage: Usage; readonly key: string },
-  { from, to }: { readonly from: Box; readonly to: Box }
+  pair: { readonly usage: Usage; readonly key: string },
+  ends: { readonly from: Box; readonly to: Box }
 ): readonly Cell[] => {
-  const search: Search = {
-    grid,
-    usage,
-    pair: pairUsage(usage, key),
-    ends: new Set([from.id, to.id]),
-    groups: new Set([from.group, to.group]),
-    to,
-    goals: new Map(
-      Arr.map(edgePoints(to), (point) => [pointIndex(grid, point), point.cost])
-    ),
+  const search = searchOf(grid, pair, ends);
+  const goals = goalsOf(search);
+  const size = grid.width * grid.height * directions;
+
+  const frontier: Frontier = {
+    cost: new Float64Array(size).fill(Number.POSITIVE_INFINITY),
+    parent: new Int32Array(size).fill(-1),
+    done: new Uint8Array(size),
+    origin: new Map(),
+    queue: makeQueue(),
   };
 
-  const size = grid.width * grid.height * directions;
-  const cost = new Float64Array(size).fill(Number.POSITIVE_INFINITY);
-  const parent = new Int32Array(size).fill(-1);
-  const done = new Uint8Array(size);
-  const queue = makeQueue();
+  for (const stub of stubsOf(search, ends.from)) {
+    const state = pointIndex(grid, stub.tip) * directions + stub.edge.out;
 
-  for (const start of edgePoints(from)) {
-    const state = pointIndex(grid, start) * directions + noDirection;
-
-    cost[state] = start.cost;
-    queue.push(state, start.cost + distanceTo(to, start));
-  }
-
-  for (let state = queue.pop(); state !== undefined; state = queue.pop()) {
-    const heading = state % directions;
-    const here = cellOf(grid, state);
-    const fresh = done[state] !== 1;
-
-    if (
-      fresh &&
-      heading !== noDirection &&
-      search.goals.has(Math.floor(state / directions))
-    ) {
-      return pathTo(grid, parent, state);
-    }
-
-    done[state] = 1;
-
-    const moves = fresh ? [0, 1, 2, 3] : [];
-
-    for (const direction of moves) {
-      const price = stepPrice(search, { from: here, heading }, direction);
-
-      const next = {
-        x: here.x + (dx[direction] ?? 0),
-        y: here.y + (dy[direction] ?? 0),
-      };
-
-      const total = (cost[state] ?? 0) + (price ?? Number.POSITIVE_INFINITY);
-      const nextState = pointIndex(grid, next) * directions + direction;
-
-      if (total < (cost[nextState] ?? Number.POSITIVE_INFINITY)) {
-        cost[nextState] = total;
-        parent[nextState] = state;
-        queue.push(nextState, total + distanceTo(to, next));
-      }
+    if (stub.cost < (frontier.cost[state] ?? Number.POSITIVE_INFINITY)) {
+      frontier.cost[state] = stub.cost;
+      frontier.origin.set(state, stub.edge);
+      frontier.queue.push(state, stub.cost + distanceTo(ends.to, stub.tip));
     }
   }
 
-  return [];
+  let best: Finish | undefined;
+
+  for (
+    let state = frontier.queue.pop();
+    state !== undefined;
+    state = frontier.queue.pop()
+  ) {
+    const g = frontier.cost[state] ?? 0;
+    const bound = g + distanceTo(ends.to, cellOf(grid, state));
+
+    if (best !== undefined && bound >= best.cost) {
+      break;
+    }
+
+    if (frontier.done[state] !== 1) {
+      frontier.done[state] = 1;
+      best = finishFrom(goals, { state, g }, best);
+      expand(search, frontier, state);
+    }
+  }
+
+  return best === undefined ? [] : routeOf(grid, frontier, best);
 };
 
 /**
@@ -619,8 +898,11 @@ const searchRoute = (
  * right angles on the half-unit grid, from the edge of one footprint to the
  * edge of the other, with as few bends as it can manage, going around every
  * footprint whenever a clear route exists. Its ends sit on front edges (+x
- * and +y), where the boxes don't hide them, unless none is free, and it
- * keeps out of the zones of groups neither end belongs to when it can. Hops between the same two
+ * and +y) or back edges, wherever the name tags leave room: every end runs
+ * straight out of its box for at least one unit, and routes keep out of
+ * name tags whenever they can. Routes stay near the box around their two
+ * ends, inside the zones' bounds plus a margin, and keep out of the zones of
+ * groups neither end belongs to when they can. Hops between the same two
  * structures, in either direction, never share a step, so they run side by
  * side. Hops are routed in data.mjs order, and the same map always gives
  * the same routes. A hop from a structure to itself gets no route.
@@ -648,7 +930,15 @@ export const routeHops: {
       Arr.map(points, toHalfUnits)
     );
 
-    const grid = gridOf(boxes, zones, overridePoints);
+    const tags = Arr.flatMap(data.structures, (structure) => {
+      const placement = layout.structures[structure.id];
+
+      return placement === undefined
+        ? []
+        : [nameTagRect(placement, nameTagText(structure))];
+    });
+
+    const grid = gridOf(boxes, zones, { tags, extra: overridePoints });
     const usage: Usage = { steps: new Set(), pairs: new Map() };
     const routes: Record<string, HopRoute> = {};
 

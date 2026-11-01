@@ -55,6 +55,31 @@ export type { PlacedLayout } from "./placement.ts";
 
 export { routeHops } from "./routing.ts";
 
+export {
+  arrowheadOf,
+  arrowLength,
+  chipHeight,
+  chipRect,
+  endsOnTarget,
+  hiddenStretches,
+  labelHeight,
+  labelReach,
+  labelWidth,
+  sceneClashes,
+  sceneOf,
+  silhouette,
+} from "./scene.ts";
+
+export type {
+  HiddenStretch,
+  Scene,
+  SceneClash,
+  SceneHop,
+  SceneSource,
+  SceneStructure,
+  SceneZone,
+} from "./scene.ts";
+
 export type { HopRoute } from "./routing.ts";
 
 export { zonePadding, zonesOf } from "./zones.ts";
