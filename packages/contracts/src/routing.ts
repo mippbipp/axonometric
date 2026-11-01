@@ -2106,7 +2106,7 @@ export const routeHops: {
       Arr.filter(data.hops, (hop) => !Rec.has(overrides, hop.id)),
       Order.combine(
         Order.mapInput(Order.Number, facingCount),
-        Order.mapInput(Order.Number, (hop: Hop) => -span(hop))
+        Order.mapInput(Order.Number, span)
       )
     );
 
