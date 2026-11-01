@@ -16,7 +16,9 @@ import {
   corners,
   distanceToPolyline,
   endsOnTarget,
-  labelReach,
+  groundProjections,
+  labelGap,
+  labelReachLimit,
   Layout,
   MapData,
   routeCap,
@@ -26,6 +28,7 @@ import {
   nameTagText,
   planUnit,
   project,
+  views,
   sceneClashes,
   sceneOf,
   segmentCrosses,
@@ -545,20 +548,6 @@ describe("scene", () => {
 
             assert.strictEqual(scene.view, "plan");
 
-            // Every label sits by its own route: its centre no further off
-            // than half its width plus the widest gap.
-            for (const hop of scene.hops) {
-              const reach = labelReach(hop);
-              const { label } = hop;
-
-              assert.isTrue(
-                reach === undefined ||
-                  label === undefined ||
-                  reach <= (label.right - label.left) / 2 + 20,
-                `${hop.hop.id}'s label sits ${reach} from its route in ${chapter.id}`
-              );
-            }
-
             assert.deepStrictEqual(
               Arr.map(sceneClashes(scene), clashKey),
               [],
@@ -622,6 +611,52 @@ describe("scene", () => {
         assert.isNotEmpty(scene.zones);
       })
   );
+
+  for (const view of views) {
+    it.effect(
+      `keeps every label within ${labelReachLimit} grid units of its route in ${view === "iso" ? "the Iso view" : "Plan view"}`,
+      () =>
+        Effect.gen(function* () {
+          const { unit } = groundProjections[view];
+
+          for (const name of [
+            "flake-pipeline",
+            "review",
+            "crowded",
+            "shapes",
+            "pipeline",
+          ]) {
+            const { data, layout } = yield* fixture(name);
+
+            const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+              ? chaptersOf(data)
+              : [{ id: "all", plays: [], revealed: everything(data) }];
+
+            for (const chapter of chapters) {
+              const scene = sceneOf({
+                data,
+                layout,
+                revealed: chapter.revealed,
+                labelFirst: chapter.plays,
+                view,
+              });
+
+              for (const { hop, points, label } of scene.hops) {
+                if (label !== undefined) {
+                  const gap = labelGap(points, label) / unit;
+
+                  assert.isAtMost(
+                    gap,
+                    labelReachLimit + 1e-9,
+                    `${hop.id}'s label in ${name} ${chapter.id}`
+                  );
+                }
+              }
+            }
+          }
+        })
+    );
+  }
 
   it.effect(
     "puts every arrowhead's tip on its target's outline and its base on the last leg",

@@ -30,7 +30,7 @@ import {
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
-import { planRect, planTagSpots, projectPlan } from "./plan.ts";
+import { planRect, planTagSpots, planUnit, projectPlan } from "./plan.ts";
 import type { View } from "./plan.ts";
 import { routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
@@ -71,6 +71,8 @@ export interface SceneStructure {
    * rectangle, halo included.
    */
   readonly outline: readonly ScreenPoint[];
+  /** The smallest rect holding `outline`. */
+  readonly bounds: ScreenRect;
   readonly tag: ScreenRect;
   /** The code chip's box, or `undefined` when the top has no room for it. */
   readonly chip: ScreenRect | undefined;
@@ -116,6 +118,8 @@ export interface SceneZone {
    * in Plan view clockwise from the top left.
    */
   readonly plate: readonly ScreenPoint[];
+  /** The smallest rect holding `plate`: in Plan view, the plate itself. */
+  readonly bounds: ScreenRect;
   /**
    * Where the title's baseline starts, or `undefined` when no spot on the
    * plate is clear and the title is left out.
@@ -607,6 +611,12 @@ interface ViewGeometry {
     placement: Placement,
     shape: Shape
   ) => readonly ScreenPoint[];
+  /**
+   * Whether the tag goes in the first of `tagSpots` that's clear, or always
+   * in the first. The iso view keeps every tag under its box's front corner,
+   * where `check` warns about it; Plan view moves tags to find room.
+   */
+  readonly tagPlacement: "fixed" | "first-clear";
   /** Where the name tag may go, best first. */
   readonly tagSpots: (
     placed: Pick<SceneStructure, "placement" | "outline">,
@@ -624,12 +634,19 @@ interface ViewGeometry {
   ) => readonly SceneStructure[];
 }
 
+/** How long one grid unit is on screen, in each view. */
+const groundUnit: Readonly<Record<View, number>> = {
+  iso: gridOnScreen,
+  plan: planUnit,
+};
+
 const tagWidth = (text: string) => text.length * tagCharWidth + tagPadding;
 
 const geometries: Readonly<Record<View, ViewGeometry>> = {
   iso: {
     project,
     outline: silhouette,
+    tagPlacement: "fixed",
     tagSpots: ({ placement }, text) => [nameTagRect(placement, text)],
     chip: chipRect,
     plate: plateOf,
@@ -639,6 +656,7 @@ const geometries: Readonly<Record<View, ViewGeometry>> = {
   plan: {
     project: projectPlan,
     outline: planOutline,
+    tagPlacement: "first-clear",
     tagSpots: ({ outline }, text) =>
       planTagSpots(boundsOfPoints(outline), tagWidth(text)),
     chip: planChipRect,
@@ -687,6 +705,7 @@ const placeZones = (
         onNone: () => ({
           zone,
           plate,
+          bounds: boundsOfPoints(plate),
           titleAt: undefined,
           title: undefined,
           titleTransform: undefined,
@@ -694,6 +713,7 @@ const placeZones = (
         onSome: (found) => ({
           zone,
           plate,
+          bounds: boundsOfPoints(plate),
           titleAt: found.start,
           title: titleQuad(found, width, 0),
           titleTransform: transformOf(found),
@@ -904,6 +924,42 @@ const roomNeeded = (leg: Leg, width: number) =>
     Math.abs(leg.end.sy - leg.start.sy) * labelHeight) /
   Math.max(leg.length, 1e-9);
 
+/**
+ * How far a label's box sits from its route, in screen units: from the
+ * nearest point on the box's edge, 0 when the route runs through it.
+ */
+export const labelGap: {
+  (label: ScreenRect): (points: readonly ScreenPoint[]) => number;
+  (points: readonly ScreenPoint[], label: ScreenRect): number;
+} = dual(2, (points: readonly ScreenPoint[], label: ScreenRect): number => {
+  const middle = {
+    sx: (label.left + label.right) / 2,
+    sy: (label.top + label.bottom) / 2,
+  };
+
+  const edge = [
+    ...rectPolygon(label),
+    { sx: middle.sx, sy: label.top },
+    { sx: middle.sx, sy: label.bottom },
+    { sx: label.left, sy: middle.sy },
+    { sx: label.right, sy: middle.sy },
+  ];
+
+  const crosses = Arr.some(segmentsOf(points), (segment) =>
+    segmentCrosses(segment, rectPolygon(label))
+  );
+
+  return crosses
+    ? 0
+    : Math.min(...Arr.map(edge, (point) => distanceToPolyline(points, point)));
+});
+
+/**
+ * The farthest a label's box may sit from its own route, in grid units.
+ * A label with no clear spot that close shows only on hover.
+ */
+export const labelReachLimit = 1.5;
+
 /** Where a hop's label goes, and whether it fits there. */
 interface LabelPlacement {
   /** The clear spot, or `undefined` when there's none. */
@@ -917,11 +973,18 @@ interface LabelPlacement {
  * enough for it come first, longest first; on each, spots nearest the
  * middle first, beside the line before on it.
  */
-const labelSpot = (
-  points: readonly ScreenPoint[],
-  text: string,
-  avoid: Obstacles
-): LabelPlacement => {
+const labelSpot = ({
+  points,
+  text,
+  avoid,
+  reach,
+}: {
+  readonly points: readonly ScreenPoint[];
+  readonly text: string;
+  readonly avoid: Obstacles;
+  /** How far the label may sit from the route, in screen units. */
+  readonly reach: number;
+}): LabelPlacement => {
   const width = labelWidth(text);
 
   const legs: readonly Leg[] = Arr.map(segmentsOf(points), (segment) => ({
@@ -950,8 +1013,11 @@ const labelSpot = (
   );
 
   const spot = Option.getOrUndefined(
-    Arr.findFirst(candidates, (rect) =>
-      clearOf(rectPolygon(growRect(rect, labelClearance)), avoid)
+    Arr.findFirst(
+      candidates,
+      (rect) =>
+        labelGap(points, rect) <= reach &&
+        clearOf(rectPolygon(growRect(rect, labelClearance)), avoid)
     )
   );
 
@@ -1006,16 +1072,21 @@ export const sceneOf = ({
   const boxes = Arr.flatMap(data.structures, (structure) => {
     const placement = layout.structures[structure.id];
 
-    return placement === undefined || !revealed.has(structure.id)
-      ? []
-      : [
-          {
-            structure,
-            placement,
-            outline: geometry.outline(placement, structure.shape),
-            chip: geometry.chip(structure, placement),
-          },
-        ];
+    if (placement === undefined || !revealed.has(structure.id)) {
+      return [];
+    }
+
+    const outline = geometry.outline(placement, structure.shape);
+
+    return [
+      {
+        structure,
+        placement,
+        outline,
+        bounds: boundsOfPoints(outline),
+        chip: geometry.chip(structure, placement),
+      },
+    ];
   });
 
   const outlines = Arr.map(boxes, ({ outline }) => outline);
@@ -1042,7 +1113,7 @@ export const sceneOf = ({
   );
 
   // Each tag takes its first spot clear of the boxes, chips, routes and the
-  // tags placed before it, or else its first spot. The iso view has one.
+  // tags placed before it, or else its first spot.
   const tagged = Arr.reduce(
     boxes,
     Arr.empty<SceneStructure>(),
@@ -1063,7 +1134,7 @@ export const sceneOf = ({
       };
 
       const tag =
-        spots.length === 1
+        geometry.tagPlacement === "fixed"
           ? first
           : Option.getOrElse(
               Arr.findFirst(spots, (spot) =>
@@ -1143,16 +1214,21 @@ export const sceneOf = ({
     labelOrder,
     Arr.empty<SceneHop>(),
     (done, item) => {
-      const { spot, fallback } = labelSpot(item.points, item.hop.label, {
-        shapes: [
-          ...fixed,
-          ...Arr.flatMap(done, ({ label }) =>
-            label === undefined ? [] : [obstacle(rectPolygon(label))]
+      const { spot, fallback } = labelSpot({
+        points: item.points,
+        text: item.hop.label,
+        avoid: {
+          shapes: [
+            ...fixed,
+            ...Arr.flatMap(done, ({ label }) =>
+              label === undefined ? [] : [obstacle(rectPolygon(label))]
+            ),
+          ],
+          lines: Arr.flatMap(lines, ({ id, segments }) =>
+            id === item.hop.id ? [] : segments
           ),
-        ],
-        lines: Arr.flatMap(lines, ({ id, segments }) =>
-          id === item.hop.id ? [] : segments
-        ),
+        },
+        reach: labelReachLimit * groundUnit[view],
       });
 
       return [

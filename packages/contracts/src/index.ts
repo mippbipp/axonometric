@@ -27,6 +27,7 @@ export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 
 export {
   checkLayout,
+  clashWarnings,
   footprintsOverlap,
   placedStructures,
   tagCovers,
@@ -79,7 +80,9 @@ export {
   arrowheadOf,
   arrowLength,
   endsOnTarget,
+  labelGap,
   labelReach,
+  labelReachLimit,
   planZoneRadius,
   sceneClashes,
   sceneOf,

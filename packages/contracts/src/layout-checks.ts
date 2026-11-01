@@ -373,11 +373,45 @@ const sharedSegments = (
 };
 
 /**
+ * A warning for each clash in each view's scene of one chapter, except
+ * those the older checks cover. `once` keys by the view as well as the
+ * pair, so a pair that clashes in both views warns in both.
+ */
+export const clashWarnings = ({
+  clashes,
+  where,
+  once,
+}: {
+  readonly clashes: readonly {
+    readonly view: View;
+    readonly clashes: readonly SceneClash[];
+  }[];
+  /** Where the clashes are, such as ` in chapter "c-all"`. */
+  readonly where: string;
+  /** Whether a key is seen for the first time, across chapters. */
+  readonly once: (key: string) => boolean;
+}): readonly MapProblem[] =>
+  Arr.flatMap(clashes, ({ view, clashes: drawn }) =>
+    Arr.flatMap(drawn, ({ between: [first, second] }) =>
+      coveredElsewhere(view, first, second) ||
+      !once(`${view} ${first} ${second}`)
+        ? []
+        : [
+            mapWarning({
+              file: "layout.json",
+              path: ["structures"],
+              message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}${viewNames[view]}. Move the structures apart, so the drawing has room.`,
+            }),
+          ]
+    )
+  );
+
+/**
  * Warnings about each chapter's drawing, as the walkthrough draws it: hops
  * routed around the structures revealed so far, and everything else the
  * iso view or Plan view would draw over something by the scene's overlap
  * rule (chips, zone titles, labels and routes). Each warning is reported
- * once, at the first chapter and view it shows in.
+ * once per view, at the first chapter it shows in.
  */
 const chapterWarnings = (data: MapData, layout: Layout) => {
   const seen = new Set<string>();
@@ -402,23 +436,16 @@ const chapterWarnings = (data: MapData, layout: Layout) => {
         : Arr.filter(routeWarnings(hop, route), ({ message }) => once(message));
     });
 
-    const clashes = Arr.flatMap(views, (view) =>
-      Arr.flatMap<SceneClash, MapProblem>(
-        sceneClashes(
+    const clashes = clashWarnings({
+      clashes: Arr.map(views, (view) => ({
+        view,
+        clashes: sceneClashes(
           sceneOf({ data, layout, revealed, routes, labelFirst: plays, view })
         ),
-        ({ between: [first, second] }) =>
-          coveredElsewhere(view, first, second) || !once(`${first} ${second}`)
-            ? []
-            : [
-                mapWarning({
-                  file: "layout.json",
-                  path: ["structures"],
-                  message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}${viewNames[view]}. Move the structures apart, so the drawing has room.`,
-                }),
-              ]
-      )
-    );
+      })),
+      where,
+      once,
+    });
 
     const shared = Arr.filter(sharedSegments(data, routes), ({ message }) =>
       once(message)
