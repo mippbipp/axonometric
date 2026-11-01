@@ -9,6 +9,11 @@ export const MapState = Schema.Struct({
   system: Schema.String,
   data: MapData,
   layout: Layout,
+  /**
+   * The web address of each structure's sources, keyed by `sourceKey`. A
+   * source with no entry shows as a plain path.
+   */
+  sourceLinks: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 
 export type MapState = typeof MapState.Type;

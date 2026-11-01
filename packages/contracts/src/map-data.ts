@@ -1,4 +1,4 @@
-import { Array as Arr, Schema } from "effect";
+import { Array as Arr, Option, Schema, String as Str } from "effect";
 
 import {
   fileVersionFields,
@@ -6,6 +6,7 @@ import {
   requiredList,
   requiredText,
 } from "./fields.ts";
+import { sourceSegments } from "./sources.ts";
 
 /** A text field that may be left out, but isn't empty when it's there. */
 const optionalText = (fix: string) =>
@@ -162,6 +163,47 @@ export const Question = Schema.Union([OpenQuestion, ResolvedQuestion])
 
 export type Question = typeof Question.Type;
 
+const sourcePathFix =
+  "Write the path from the root of the git repo that holds the home folder, with / between folders, such as src/server.ts.";
+
+const sourcePath = requiredText(sourcePathFix).check(
+  Schema.makeFilter((path: string) => {
+    if (Str.startsWith("/")(path) || /^[A-Za-z]:/u.test(path)) {
+      return `expected a path from the repo's root, not an absolute path. Drop everything up to and including the repo's folder. ${sourcePathFix}`;
+    }
+
+    if (Str.includes("\\")(path)) {
+      return `expected / between folders, not \\. ${sourcePathFix}`;
+    }
+
+    return Option.isNone(sourceSegments(path))
+      ? `expected a path inside the git repo, but the ".." segments climb out of it. ${sourcePathFix}`
+      : undefined;
+  })
+);
+
+/** A file behind a structure, optionally pinned to the commit its text describes. */
+const commitHash = Schema.String.annotate({
+  message:
+    "expected a string. Set commit to the hash of the commit the structure's text describes, or leave it out.",
+}).check(
+  Schema.isPattern(/^[0-9a-fA-F]{7,64}$/u, {
+    message:
+      "expected a commit hash of 7 to 64 hex digits, such as the output of git rev-parse --short HEAD. Leave commit out to follow the current branch.",
+  })
+);
+
+export const Source = Schema.Struct({
+  path: sourcePath,
+  commit: Schema.optionalKey(commitHash),
+}).annotate(
+  objectMessages(
+    'A source has only path and commit, such as { path: "src/server.ts", commit: "3f2a9c1" }.'
+  )
+);
+
+export type Source = typeof Source.Type;
+
 export const Structure = Schema.Struct({
   id: requiredText("Give every structure an id."),
   code: requiredText(
@@ -193,6 +235,10 @@ export const Structure = Schema.Struct({
     "List the steps of the inside view as { name, detail }."
   ),
   questions: optionalList(Question, "List the structure's questions."),
+  sources: optionalList(
+    Source,
+    "List the files behind the structure as { path, commit }, with paths from the root of the git repo."
+  ),
   ghost: forbidden(
     'ghost was replaced by status. Remove ghost and set status: "planned" for a structure that is designed but not built, or "off" for one that is switched off.'
   ),
@@ -205,7 +251,7 @@ export const Structure = Schema.Struct({
   gy: inLayout("gy"),
 }).annotate(
   objectMessages(
-    "A structure has only id, code, name, tag, shape, group, status, oneLiner, whatItDoes, howItsBuilt, steps and questions. Positions and sizes go in layout.json."
+    "A structure has only id, code, name, tag, shape, group, status, oneLiner, whatItDoes, howItsBuilt, steps, questions and sources. Positions and sizes go in layout.json."
   )
 );
 

@@ -6,6 +6,8 @@ import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapError, mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
+import { checkSources } from "./sources.ts";
+import type { SourceFacts } from "./sources.ts";
 
 type Path = readonly PropertyKey[];
 
@@ -286,6 +288,11 @@ export interface CheckOptions {
    * names a place in the file.
    */
   readonly linkExists: (link: string) => boolean;
+  /**
+   * What git knows about each structure's sources. Leave it out to skip the
+   * source checks, such as when the home folder isn't in a git repo.
+   */
+  readonly sourceFacts?: SourceFacts | undefined;
 }
 
 /** The two map files, each already decoded by its own schema. */
@@ -312,6 +319,9 @@ export const checkMap: {
     ...references(data),
     ...walkthrough(data),
     ...links(data, options.linkExists),
+    ...(options.sourceFacts === undefined
+      ? []
+      : checkSources(data, options.sourceFacts)),
     ...checkLayout(data, layout),
     ...emptyGroups(data),
   ]
