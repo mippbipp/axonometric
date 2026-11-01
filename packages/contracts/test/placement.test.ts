@@ -125,6 +125,18 @@ const crowded = mapOf(
   [hop("a1", "a2"), hop("a2", "b1"), hop("b1", "b2"), hop("c1", "a4")]
 );
 
+/**
+ * Groups a, b, c and d, listed in that order, with structures a1, a2 and so
+ * on up to `size` in each, and `hops` between them.
+ */
+const fourGroupsOf = (size: number, hops: readonly Hop[]) =>
+  mapOf(
+    Arr.flatMap(["a", "b", "c", "d"], (group) =>
+      Arr.map(Arr.range(1, size), (n) => structure(`${group}${n}`, group))
+    ),
+    hops
+  );
+
 const assertTidy = (data: MapData, layout: Layout) => {
   const placements = Rec.toEntries(layout.structures);
 
@@ -347,6 +359,93 @@ describe("placement", () => {
       assert.deepStrictEqual(pruned, ["gone"]);
       assert.deepStrictEqual(layout.structures, { kept: at(0, 0) });
     })
+  );
+
+  it.effect(
+    "puts a structure whose only hop leaves its group on the side facing that group",
+    () =>
+      Effect.sync(() => {
+        const data = fourGroupsOf(4, [
+          hop("a4", "b1"),
+          hop("c1", "d1"),
+          hop("a1", "a2"),
+        ]);
+
+        const { layout } = placeStructures(data, layoutOf());
+        const own = zoneOf(layout, idsIn(data, "a"));
+        const other = zoneOf(layout, idsIn(data, "b"));
+        const spot = centre(placementOf(layout, "a4"));
+
+        const middle = centre(own);
+        const right = other.x >= own.x + own.w;
+        const left = other.x + other.w <= own.x;
+        const below = other.y >= own.y + own.d;
+        const above = other.y + other.d <= own.y;
+
+        assert.isTrue(right || left || below || above, "zones overlap");
+
+        if (right) {
+          assert.isAbove(spot.x, middle.x);
+        }
+
+        if (left) {
+          assert.isBelow(spot.x, middle.x);
+        }
+
+        if (below) {
+          assert.isAbove(spot.y, middle.y);
+        }
+
+        if (above) {
+          assert.isBelow(spot.y, middle.y);
+        }
+
+        assertTidy(data, layout);
+      })
+  );
+
+  it.effect(
+    "puts the two most connected groups side by side when groups lists them first and last",
+    () =>
+      Effect.sync(() => {
+        const data = fourGroupsOf(4, [
+          hop("a1", "d1"),
+          hop("a2", "d2"),
+          hop("d3", "a3"),
+          hop("b1", "c1"),
+        ]);
+
+        const { layout } = placeStructures(data, layoutOf());
+        const a = zoneOf(layout, idsIn(data, "a"));
+        const d = zoneOf(layout, idsIn(data, "d"));
+
+        const sameColumn = a.x < d.x + d.w && d.x < a.x + a.w;
+        const sameRow = a.y < d.y + d.d && d.y < a.y + a.d;
+
+        assert.isTrue(sameColumn || sameRow, "a and d sit diagonally apart");
+        assertTidy(data, layout);
+      })
+  );
+
+  it.effect(
+    "puts hop-linked structures of neighbouring groups on a shared row or column",
+    () =>
+      Effect.sync(() => {
+        const data = fourGroupsOf(2, [hop("b2", "a1"), hop("a1", "b1")]);
+
+        const { layout } = placeStructures(data, layoutOf());
+        const a1 = placementOf(layout, "a1");
+
+        for (const id of ["b1", "b2"]) {
+          const other = placementOf(layout, id);
+
+          assert.isTrue(
+            centre(a1).x === centre(other).x ||
+              centre(a1).y === centre(other).y,
+            `a1 and ${id} sit diagonally apart`
+          );
+        }
+      })
   );
 
   it.effect("works around a hand-placed structure in the way", () =>
