@@ -157,9 +157,6 @@ const outsideArea: {
     gridOnScreen
 );
 
-/** Running alongside another hop's route costs this much more per step. */
-const sharedStepCost = 1;
-
 /**
  * Passing through a point a hop between the same two structures already
  * uses. Steps they use can't be shared at all.
@@ -202,7 +199,7 @@ const siblingCrossCost = 40;
  * Far less than running under a box, so a route crosses a zone rather than
  * a box.
  */
-const zoneStepCost = 3;
+const zoneStepCost = 20;
 
 /** Each half unit a route's end sits from the middle of its edge. */
 const offCentreCost = 0.25;
@@ -219,7 +216,40 @@ const crossCost = 1e6;
  * included, so a route crosses a tag only when nothing goes round; and stay
  * far below `crossCost`, so it crosses a tag rather than run under a box.
  */
-const tagCost = 1e4;
+const tagCost = 3e5;
+
+/**
+ * Each point on a box's outline a route passes, other than its own ends,
+ * and each step along a zone's outline. Each step or point another route
+ * already uses, other than a crossing at right angles. Each is drawn as a
+ * clash, so it must outweigh any detour; it stays below `tagCost`, so a
+ * route touches an outline rather than run through a name tag.
+ */
+const touchCost = 1e5;
+
+/**
+ * Each step or point another route already uses, other than a crossing at
+ * right angles. It's drawn as one line, so it must outweigh any detour,
+ * leaving by a back edge included.
+ */
+const shareCost = 1e5;
+
+/**
+ * Each point a half unit from a box's outline, and each step running a half
+ * unit beside a zone's outline, other than an end's stub. A zone reaches
+ * only a unit past its boxes, so a route round a box inside its own zone
+ * has one lane, a half unit from both outlines. Blocking it would push
+ * routes out of their zones and past `routeCap`, so it only breaks ties
+ * towards a lane further out.
+ */
+const nearCost = 0.5;
+
+/**
+ * What a stub of a half unit costs more than one of a whole unit. Less than
+ * a bend, so a route takes a short stub to keep a half unit off another
+ * zone's outline rather than cross the zone.
+ */
+const shortStubCost = 60;
 
 /** How far a route's first and last legs run straight out, in half units. */
 const stubLengths = [2, 1] as const;
@@ -440,6 +470,20 @@ interface Grid {
   readonly inZones: readonly (readonly number[] | undefined)[];
   /** Like `touches`, for steps whose line on screen crosses a name tag. */
   readonly inTags: readonly (readonly number[] | undefined)[];
+  /** For each point, the indexes of the boxes whose outline it's on. */
+  readonly onOutline: readonly (readonly number[] | undefined)[];
+  /**
+   * For each point, the indexes of the boxes whose outline it's a half
+   * unit from, outside the box.
+   */
+  readonly nearOutline: readonly (readonly number[] | undefined)[];
+  /** Like `touches`, for steps along a zone's outline. */
+  readonly alongZones: readonly (readonly number[] | undefined)[];
+  /**
+   * Like `touches`, for steps running beside a zone's outline, a half unit
+   * inside or outside it.
+   */
+  readonly besideZones: readonly (readonly number[] | undefined)[];
 }
 
 /** Adds `value` to the list at `index`. */
@@ -491,9 +535,50 @@ const gridOf = (
   const touches: (number[] | undefined)[] = [];
   const inZones: (number[] | undefined)[] = [];
   const inTags: (number[] | undefined)[] = [];
+  const onOutline: (number[] | undefined)[] = [];
+  const nearOutline: (number[] | undefined)[] = [];
+  const alongZones: (number[] | undefined)[] = [];
+  const besideZones: (number[] | undefined)[] = [];
 
   const keyOf = (x: number, y: number, direction: 0 | 1) =>
     ((y - top) * width + (x - left)) * 2 + direction;
+
+  const pointOf = (x: number, y: number) => (y - top) * width + (x - left);
+
+  // A box's outline, and the ring a half unit outside it.
+  Arr.forEach(boxes, (box, boxIndex) => {
+    for (let y = box.y0 - 1; y <= box.y1 + 1; y++) {
+      for (let x = box.x0 - 1; x <= box.x1 + 1; x++) {
+        const inner = x > box.x0 && x < box.x1 && y > box.y0 && y < box.y1;
+        const outer = x < box.x0 || x > box.x1 || y < box.y0 || y > box.y1;
+
+        if (outer) {
+          push(nearOutline, pointOf(x, y), boxIndex);
+        } else if (!inner) {
+          push(onOutline, pointOf(x, y), boxIndex);
+        }
+      }
+    }
+  });
+
+  // Steps along a zone's outline, and beside it a half unit either way.
+  Arr.forEach(zones, (zone, zoneIndex) => {
+    for (const offset of [-1, 0, 1]) {
+      const lists = offset === 0 ? alongZones : besideZones;
+
+      for (const y of [zone.y0 + offset, zone.y1 + offset]) {
+        for (let x = zone.x0 - 1; x <= zone.x1; x++) {
+          push(lists, keyOf(x, y, 0), zoneIndex);
+        }
+      }
+
+      for (const x of [zone.x0 + offset, zone.x1 + offset]) {
+        for (let y = zone.y0 - 1; y <= zone.y1; y++) {
+          push(lists, keyOf(x, y, 1), zoneIndex);
+        }
+      }
+    }
+  });
 
   // A step is inside a zone when its midpoint is strictly inside.
   Arr.forEach(zones, (zone, zoneIndex) => {
@@ -565,6 +650,10 @@ const gridOf = (
     zones,
     inZones,
     inTags,
+    onOutline,
+    nearOutline,
+    alongZones,
+    besideZones,
   };
 };
 
@@ -641,9 +730,9 @@ const facingOf = (box: Box, other: Box): readonly number[] => {
 };
 
 /**
- * The points on a footprint's edge a route may start or end at, corners
- * included, so a route may leave a corner along either of its edges'
- * outward directions. Each comes with what it costs to use it: the edge's
+ * The points on a footprint's edge a route may start or end at: at least a
+ * half unit from the edge's corners, or anywhere on an edge too short for
+ * that. Each comes with what it costs to use it: the edge's
  * facing cost towards `other`, `backCost` more on a back edge (-x or -y),
  * and a little for points away from the middle of their edge, so a lone
  * route leaves from the middle.
@@ -657,29 +746,33 @@ const edgePoints = (
   const midY = (box.y0 + box.y1) / 2;
   const facing = facingOf(box, other);
 
+  // A half unit in from each corner, on an edge long enough for it.
+  const along = (from: number, to: number) =>
+    to - from >= 2 ? Arr.range(from + 1, to - 1) : Arr.range(from, to);
+
   const costOf = (out: number) =>
     (facing[out] ?? 0) + (out === minusX || out === minusY ? backCost : 0);
 
   return [
-    ...Arr.map(Arr.range(box.x0, box.x1), (x) => ({
+    ...Arr.map(along(box.x0, box.x1), (x) => ({
       x,
       y: box.y1,
       out: plusY,
       cost: costOf(plusY) + offCentreCost * Math.abs(x - midX),
     })),
-    ...Arr.map(Arr.range(box.y0, box.y1), (y) => ({
+    ...Arr.map(along(box.y0, box.y1), (y) => ({
       x: box.x1,
       y,
       out: plusX,
       cost: costOf(plusX) + offCentreCost * Math.abs(y - midY),
     })),
-    ...Arr.map(Arr.range(box.x0, box.x1), (x) => ({
+    ...Arr.map(along(box.x0, box.x1), (x) => ({
       x,
       y: box.y0,
       out: minusY,
       cost: costOf(minusY) + offCentreCost * Math.abs(x - midX),
     })),
-    ...Arr.map(Arr.range(box.y0, box.y1), (y) => ({
+    ...Arr.map(along(box.y0, box.y1), (y) => ({
       x: box.x0,
       y,
       out: minusX,
@@ -698,6 +791,11 @@ interface Usage {
   /** Steps any route uses, keyed by step. */
   readonly steps: Set<number>;
   /**
+   * Points any route uses: the axes routes run straight through them along
+   * (1 for x, 2 for y), or `bendsHere` where a route bends or ends.
+   */
+  readonly points: Map<number, number>;
+  /**
    * For each structure, the points the routes of its hops pass and the axes
    * their legs run along there: 1 for x, 2 for y.
    */
@@ -708,6 +806,9 @@ interface Usage {
     { readonly steps: Set<number>; readonly points: Set<number> }
   >;
 }
+
+/** A point where a route bends or ends, which no other route may touch. */
+const bendsHere = 4;
 
 const pairKey = (a: string, b: string) =>
   a < b ? JSON.stringify([a, b]) : JSON.stringify([b, a]);
@@ -799,6 +900,28 @@ const record = (
     pair.points.add(pointIndex(grid, a));
     pair.points.add(pointIndex(grid, b));
   }
+
+  const cells = Arr.flatMap(stepsAlong(points), ({ a }) => [a]);
+  const last = points.at(-1);
+  const all = last === undefined ? cells : [...cells, last];
+
+  Arr.forEach(all, (cell, index) => {
+    const before = all[index - 1];
+    const after = all[index + 1];
+    const point = pointIndex(grid, cell);
+
+    const role =
+      before === undefined ||
+      after === undefined ||
+      alongXAxis(directionOf(before, cell)) !==
+        alongXAxis(directionOf(cell, after))
+        ? bendsHere
+        : alongXAxis(directionOf(cell, after))
+          ? 1
+          : 2;
+
+    usage.points.set(point, (usage.points.get(point) ?? 0) | role);
+  });
 };
 
 /** Keeps a polyline's first and last points and the points where it turns. */
@@ -848,7 +971,16 @@ const inside = (grid: Grid, { x, y }: Cell) =>
  */
 const stepPrice = (
   search: Search,
-  { from, heading }: { readonly from: Cell; readonly heading: number },
+  {
+    from,
+    heading,
+    stub = false,
+  }: {
+    readonly from: Cell;
+    readonly heading: number;
+    /** Whether the step is part of an end's stub, by its own box. */
+    readonly stub?: boolean;
+  },
   direction: number
 ): number | undefined => {
   const { grid } = search;
@@ -896,14 +1028,35 @@ const stepPrice = (
     (zoneIndex) => !search.groups.has(grid.zones[zoneIndex]?.group ?? "")
   ).length;
 
+  const counted = (boxIndexes: readonly number[] | undefined) =>
+    Arr.filter(
+      boxIndexes ?? [],
+      (boxIndex) => !stub || !search.ends.has(grid.boxes[boxIndex]?.id ?? "")
+    ).length;
+
+  // Two routes may share a point only where both run straight through it
+  // at right angles: not another route's bend or end, not along it, and
+  // not where this route bends.
+  const used = search.usage.points.get(nextIndex) ?? 0;
+  const sameAxis = alongXAxis(direction) ? 1 : 2;
+
+  const touchesRoute =
+    (used & (bendsHere | sameAxis)) !== 0 ||
+    (turns && search.usage.points.has(pointIndex(grid, from)));
+
   return (
     stepCost +
+    counted(grid.onOutline[nextIndex]) * touchCost +
+    counted(grid.nearOutline[nextIndex]) * nearCost +
+    (grid.alongZones[step] ?? []).length * touchCost +
+    (stub ? 0 : (grid.besideZones[step] ?? []).length * nearCost) +
+    (touchesRoute ? shareCost : 0) +
     bend +
     touched.length * crossCost +
     zones * zoneStepCost +
     crossings * siblingCrossCost +
     (grid.inTags[step] ?? []).length * tagCost +
-    (search.usage.steps.has(step) ? sharedStepCost : 0) +
+    (search.usage.steps.has(step) ? shareCost : 0) +
     (search.pair.points.has(nextIndex) ? pairPointCost : 0)
   );
 };
@@ -967,7 +1120,7 @@ const runPrice = (
   Arr.reduce(Arr.range(0, count - 1), noPrice(), (sum, step) => {
     const price = stepPrice(
       search,
-      { from: stepFrom(from, direction, step), heading: direction },
+      { from: stepFrom(from, direction, step), heading: direction, stub: true },
       direction
     );
 
@@ -998,7 +1151,13 @@ const stubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
             {
               edge,
               tip: stepFrom(edge, edge.out, count),
-              cost: edge.cost + price + index * bendCost,
+              cost:
+                edge.cost +
+                price +
+                index * shortStubCost +
+                (search.usage.points.has(pointIndex(search.grid, edge))
+                  ? shareCost
+                  : 0),
             },
           ];
     })
@@ -1021,7 +1180,7 @@ const inwardStubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
 
       return price === undefined
         ? []
-        : [{ edge, tip, cost: edge.cost + price + index * bendCost }];
+        : [{ edge, tip, cost: edge.cost + price + index * shortStubCost }];
     })
   );
 
@@ -1100,10 +1259,16 @@ const finishFrom = (
     goals.get(Math.floor(state / directions)) ?? [],
     best,
     (sofar, stub) => {
+      const cell = cellOf(search.grid, state);
+
       const turn =
         heading === opposite(stub.edge.out)
           ? 0
-          : bendCost + strayOf(search, cellOf(search.grid, state));
+          : bendCost +
+            strayOf(search, cell) +
+            (search.usage.points.has(pointIndex(search.grid, cell))
+              ? shareCost
+              : 0);
 
       const total =
         heading === stub.edge.out
@@ -1192,6 +1357,12 @@ const straightAcross = (
   return [{ x: stub.edge.x, y: stub.edge.y }, stub.tip];
 };
 
+/** A route a search found, and what it cost. */
+interface Found {
+  readonly points: readonly Cell[];
+  readonly cost: number;
+}
+
 /**
  * The cheapest route from `from`'s edge to `to`'s edge, by A* over the
  * half-unit grid with a cost for each bend. Each end runs straight out of
@@ -1206,12 +1377,12 @@ const searchRoute = (
     readonly to: Box;
     readonly window: Box | undefined;
   }
-): readonly Cell[] => {
+): Found => {
   const search = searchOf(grid, pair, ends);
   const across = straightAcross(search, ends);
 
   if (across !== undefined) {
-    return across;
+    return { points: across, cost: 0 };
   }
 
   const goals = goalsOf(search);
@@ -1256,8 +1427,13 @@ const searchRoute = (
     }
   }
 
-  return best === undefined ? [] : routeOf(grid, frontier, best);
+  return best === undefined
+    ? { points: [], cost: Number.POSITIVE_INFINITY }
+    : { points: routeOf(grid, frontier, best), cost: best.cost };
 };
+
+/** How many times clashing routes are routed again around the others. */
+const reroutePasses = 3;
 
 /** How far past the box around both ends a capped route may go. */
 const windowMargin = 4;
@@ -1274,17 +1450,17 @@ const withinCap = (points: readonly Cell[]) => {
 /**
  * The cheapest route, unless it's longer than `routeCap` allows. Then the
  * route is searched again inside the box around both ends, grown by
- * `windowMargin`, which may mean running under a box; the shorter of the
- * two is kept.
+ * `windowMargin`. The shorter of the two is kept, unless only the shorter
+ * one touches an outline or another route, or runs under a box.
  */
 const cappedRoute = (
   grid: Grid,
   pair: { readonly usage: Usage; readonly key: string },
   { from, to }: { readonly from: Box; readonly to: Box }
-): readonly Cell[] => {
+): Found => {
   const free = searchRoute(grid, pair, { from, to, window: undefined });
 
-  if (free.length === 0 || withinCap(free)) {
+  if (free.points.length === 0 || withinCap(free.points)) {
     return free;
   }
 
@@ -1302,10 +1478,15 @@ const cappedRoute = (
     },
   });
 
-  return tight.length > 0 &&
-    lengthOfCells(tight).length < lengthOfCells(free).length
-    ? tight
-    : free;
+  // A shorter route that only fits by touching an outline or another
+  // route, or running under a box, reads worse than a long clear one.
+  const shorter =
+    tight.points.length > 0 &&
+    lengthOfCells(tight.points).length < lengthOfCells(free.points).length;
+
+  const clashes = (found: Found) => found.cost >= touchCost;
+
+  return shorter && (clashes(free) || !clashes(tight)) ? tight : free;
 };
 
 /**
@@ -1365,11 +1546,62 @@ export const routeHops: {
 
     const usage: Usage = {
       steps: new Set(),
+      points: new Map(),
       axes: new Map(),
       pairs: new Map(),
     };
 
     const routes: Record<string, HopRoute> = {};
+
+    /** Each routed hop's points in half units, and what its search cost. */
+    const found = new Map<string, Found>();
+
+    const recordAll = (except: string) => {
+      usage.steps.clear();
+      usage.points.clear();
+      usage.axes.clear();
+      usage.pairs.clear();
+
+      for (const hop of data.hops) {
+        const points = found.get(hop.id)?.points;
+
+        if (hop.id !== except && points !== undefined) {
+          record(
+            grid,
+            { usage, key: pairKey(hop.from, hop.to), ends: [hop.from, hop.to] },
+            points
+          );
+        }
+      }
+    };
+
+    const keep = (hop: Hop, result: Found) => {
+      const from = byId.get(hop.from);
+      const to = byId.get(hop.to);
+      const override = overrides[hop.id];
+
+      if (from === undefined || to === undefined) {
+        return;
+      }
+
+      found.set(hop.id, result);
+
+      const points =
+        override ??
+        Arr.map(result.points, (point) => ({
+          x: point.x / scale,
+          y: point.y / scale,
+        }));
+
+      const { length, distance } = routeLength(points);
+
+      routes[hop.id] = {
+        points,
+        crosses: crossesOf(boxes, new Set([hop.from, hop.to]), result.points),
+        overridden: override !== undefined,
+        tooLong: length > routeCap(distance),
+      };
+    };
 
     const routeOne = (hop: Hop) => {
       const from = byId.get(hop.from);
@@ -1380,35 +1612,19 @@ export const routeHops: {
       }
 
       const key = pairKey(hop.from, hop.to);
-      const ends = new Set([hop.from, hop.to]);
       const override = overrides[hop.id];
 
-      const halfUnits =
+      const result =
         override === undefined
           ? cappedRoute(grid, { usage, key }, { from, to })
-          : Arr.map(override, toHalfUnits);
+          : { points: Arr.map(override, toHalfUnits), cost: 0 };
 
-      if (halfUnits.length === 0) {
+      if (result.points.length === 0) {
         return;
       }
 
-      record(grid, { usage, key, ends: [hop.from, hop.to] }, halfUnits);
-
-      const points =
-        override ??
-        Arr.map(halfUnits, (point) => ({
-          x: point.x / scale,
-          y: point.y / scale,
-        }));
-
-      const { length, distance } = routeLength(points);
-
-      routes[hop.id] = {
-        points,
-        crosses: crossesOf(boxes, ends, halfUnits),
-        overridden: override !== undefined,
-        tooLong: length > routeCap(distance),
-      };
+      record(grid, { usage, key, ends: [hop.from, hop.to] }, result.points);
+      keep(hop, result);
     };
 
     // Overrides go first, so automatic routes keep clear of them.
@@ -1430,13 +1646,68 @@ export const routeHops: {
             Math.abs(from.y0 + from.y1 - to.y0 - to.y1);
     };
 
+    // Hops whose ends face each other by one edge each have the fewest
+    // edge points to choose from, so they go before diagonal ones.
+    const facingCount = (hop: Hop) => {
+      const from = byId.get(hop.from);
+      const to = byId.get(hop.to);
+
+      return from === undefined || to === undefined
+        ? 0
+        : Arr.filter(
+            facingEdges(placementOf(from), placementOf(to)),
+            (faces) => faces
+          ).length;
+    };
+
     const automatic = Arr.sort(
       Arr.filter(data.hops, (hop) => !Rec.has(overrides, hop.id)),
-      Order.mapInput(Order.Number, (hop: Hop) => -span(hop))
+      Order.combine(
+        Order.mapInput(Order.Number, facingCount),
+        Order.mapInput(Order.Number, (hop: Hop) => -span(hop))
+      )
     );
 
     for (const hop of automatic) {
       routeOne(hop);
+    }
+
+    // A route placed early can take the only clear way for one placed
+    // later. So each route that had to touch an outline or another route
+    // is routed again around all the others, and keeps the new route when
+    // it costs less, until nothing improves or `reroutePasses` run out.
+    for (let pass = 0; pass < reroutePasses; pass++) {
+      let improved = false;
+
+      for (const hop of automatic) {
+        const before = found.get(hop.id);
+        const from = byId.get(hop.from);
+        const to = byId.get(hop.to);
+
+        if (
+          before !== undefined &&
+          before.cost >= touchCost &&
+          from !== undefined &&
+          to !== undefined
+        ) {
+          recordAll(hop.id);
+
+          const after = cappedRoute(
+            grid,
+            { usage, key: pairKey(hop.from, hop.to) },
+            { from, to }
+          );
+
+          if (after.points.length > 0 && after.cost < before.cost) {
+            keep(hop, after);
+            improved = true;
+          }
+        }
+      }
+
+      if (!improved) {
+        break;
+      }
     }
 
     return Rec.fromEntries(

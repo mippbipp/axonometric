@@ -28,7 +28,7 @@ import {
   tileWidth,
 } from "./iso.ts";
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
-import type { Layout, Placement } from "./layout.ts";
+import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
 import { planRect, planTagSpots, projectPlan } from "./plan.ts";
 import type { View } from "./plan.ts";
@@ -1222,6 +1222,167 @@ const rectShape = (id: string, rect: ScreenRect): Shape2d => ({
   polygon: rectPolygon(rect),
 });
 
+/** One straight leg of a route on the ground, in grid units. */
+interface GroundLeg {
+  readonly start: GridPoint;
+  readonly end: GridPoint;
+}
+
+const groundLegs = (points: readonly GridPoint[]): readonly GroundLeg[] =>
+  Arr.flatMap(points, (start, index) => {
+    const end = points[index + 1];
+
+    return end === undefined ? [] : [{ start, end }];
+  });
+
+/** A rectangle's four edges on the ground. */
+const edgesOf = ({ x, y, w, d }: Placement): readonly GroundLeg[] => [
+  { start: { x, y }, end: { x: x + w, y } },
+  { start: { x: x + w, y }, end: { x: x + w, y: y + d } },
+  { start: { x, y: y + d }, end: { x: x + w, y: y + d } },
+  { start: { x, y }, end: { x, y: y + d } },
+];
+
+/** How long two legs run along each other, on the same line. */
+const sharedLength = (a: GroundLeg, b: GroundLeg) => {
+  const flatA = a.start.y === a.end.y;
+  const flatB = b.start.y === b.end.y;
+
+  if (flatA !== flatB) {
+    return 0;
+  }
+
+  const [lineA, lineB, from, to] = flatA
+    ? [a.start.y, b.start.y, "x", "x"]
+    : [a.start.x, b.start.x, "y", "y"];
+
+  if (lineA !== lineB) {
+    return 0;
+  }
+
+  const spanA = [a.start[from as "x"], a.end[from as "x"]];
+  const spanB = [b.start[to as "x"], b.end[to as "x"]];
+
+  return (
+    Math.min(Math.max(...spanA), Math.max(...spanB)) -
+    Math.max(Math.min(...spanA), Math.min(...spanB))
+  );
+};
+
+/** How close to a corner a route's end may sit, in grid units. */
+const cornerClearance = 0.5;
+
+/**
+ * How far a route's end sits from the nearer corner of the edge it's on,
+ * or `undefined` when the edge is too short to keep `cornerClearance`
+ * from both corners.
+ */
+const cornerGap = (end: GridPoint, { x, y, w, d }: Placement) => {
+  const onSide = end.x === x || end.x === x + w;
+  const along = onSide ? d : w;
+  const at = onSide ? end.y - y : end.x - x;
+
+  return along < 2 * cornerClearance ? undefined : Math.min(at, along - at);
+};
+
+/**
+ * Every half-unit point a route passes, keyed, with how: 1 straight along
+ * x, 2 straight along y, 4 at a bend or an end.
+ */
+const pointsOf = (points: readonly GridPoint[]) => {
+  const passes = new Map<string, number>();
+
+  for (const { start, end } of groundLegs(points)) {
+    const steps = Math.abs(end.x - start.x + end.y - start.y) * 2;
+    const axis = start.y === end.y ? 1 : 2;
+
+    for (let step = 0; step <= steps; step++) {
+      const key = `${start.x + ((end.x - start.x) * step) / steps},${start.y + ((end.y - start.y) * step) / steps}`;
+      const how = step === 0 || step === steps ? 4 : axis;
+
+      passes.set(key, (passes.get(key) ?? 0) | how);
+    }
+  }
+
+  return passes;
+};
+
+/**
+ * Clashes between routes and outlines on the ground, the same in both
+ * views: a route running along a box's outline or a zone's, its own boxes
+ * included; a route's end within `cornerClearance` of its box's corner; and
+ * two routes sharing a stretch or a point, other than crossing straight
+ * through each other.
+ */
+const groundClashes = (scene: Scene): readonly SceneClash[] => {
+  const outlines = [
+    ...Arr.map(scene.structures, ({ structure, placement }) => ({
+      id: `outline:${structure.id}`,
+      edges: edgesOf(placement),
+    })),
+    ...Arr.map(scene.zones, ({ zone }) => ({
+      id: `zone:${zone.group.id}`,
+      edges: edgesOf(zone.box),
+    })),
+  ];
+
+  const placements = new Map(
+    Arr.map(scene.structures, ({ structure, placement }) => [
+      structure.id,
+      placement,
+    ])
+  );
+
+  const along = Arr.flatMap(scene.hops, ({ hop, route }) =>
+    Arr.flatMap(outlines, ({ id, edges }) =>
+      Arr.some(groundLegs(route.points), (leg) =>
+        Arr.some(edges, (edge) => sharedLength(leg, edge) > 1e-9)
+      )
+        ? [{ between: [`route:${hop.id}`, id] as const }]
+        : []
+    )
+  );
+
+  const corners = Arr.flatMap(scene.hops, ({ hop, route }) =>
+    Arr.flatMap(
+      [
+        [route.points[0], hop.from],
+        [route.points.at(-1), hop.to],
+      ] as const,
+      ([end, id]) => {
+        const placement = placements.get(id);
+        const gap =
+          end === undefined || placement === undefined
+            ? undefined
+            : cornerGap(end, placement);
+
+        return gap !== undefined && gap < cornerClearance - 1e-9
+          ? [{ between: [`route:${hop.id}`, `corner:${id}`] as const }]
+          : [];
+      }
+    )
+  );
+
+  const passes = Arr.map(scene.hops, ({ hop, route }) => ({
+    id: hop.id,
+    points: pointsOf(route.points),
+  }));
+
+  const shared = Arr.flatMap(passes, (first, index) =>
+    Arr.flatMap(passes.slice(index + 1), (second) =>
+      Arr.some([...first.points], ([key, how]) => {
+        const other = second.points.get(key);
+
+        return other !== undefined && ((how | other) & 4 || how & other) !== 0;
+      })
+        ? [{ between: [`route:${first.id}`, `route:${second.id}`] as const }]
+        : []
+    )
+  );
+
+  return [...along, ...corners, ...shared];
+};
+
 /** Whether a scene item's id names a code chip. */
 const isChip = Str.startsWith("chip:");
 
@@ -1231,7 +1392,10 @@ const isChip = Str.startsWith("chip:");
  * box outlines overlap (a chip sits on its own box), and no route runs
  * through a name tag, a zone title or a label other than its own. A
  * route may run through the tag of a structure it starts or ends at only
- * where it can't avoid it, so that counts too.
+ * where it can't avoid it, so that counts too. On the ground, the same in
+ * both views, no route runs along a box's or a zone's outline, ends near
+ * its box's corner, or shares a stretch or a point with another route
+ * other than crossing it.
  */
 export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
   const boxes = Arr.map(scene.structures, ({ structure, outline }) => ({
@@ -1289,7 +1453,7 @@ export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
     )
   );
 
-  return [...pairs, ...crossings];
+  return [...pairs, ...crossings, ...groundClashes(scene)];
 };
 
 /** How far a point may sit from where it should be, in screen units. */
