@@ -1,4 +1,5 @@
 import { Proposals } from "@axonometric/contracts";
+import type { LayoutChange } from "@axonometric/contracts";
 import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path, Schema, String as Str } from "effect";
@@ -89,10 +90,10 @@ const ownOrigin = (url: string) => ({
   "content-type": "application/json",
 });
 
-const pageAt = (x: number) => ({
-  kind: "move" as const,
-  structureId: "page",
-  position: { x, y: 3 },
+const pageAt = (x: number, y = 3): LayoutChange => ({
+  id: "m1",
+  kind: "move",
+  moves: [{ target: { kind: "structure", id: "page" }, position: { x, y } }],
 });
 
 const moveBody = (baseRevision: number, x: number) =>
@@ -279,7 +280,7 @@ describe("writing pending layout changes over HTTP", () => {
 
       const onServer = toJson({
         baseRevision: 0,
-        layout: [{ ...pageAt(8), position: { x: 8, y: 0 } }],
+        layout: [pageAt(8, 0)],
       });
 
       const refused = yield* assertRefused(

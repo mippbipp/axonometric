@@ -2,7 +2,7 @@ import { groundProjections } from "@axonometric/contracts";
 import type { SceneStructure, View } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
-import { useEditing } from "./editing-context.ts";
+import { pendingStructures, useEditing } from "./editing-context.ts";
 import { groundOutline, toPoints } from "./projection.ts";
 
 /**
@@ -22,9 +22,7 @@ export function AcceptedOutlines({
     return null;
   }
 
-  const changed = new Set(
-    Arr.map(editing.pending, (change) => change.structureId)
-  );
+  const changed = pendingStructures(editing);
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
@@ -72,9 +70,7 @@ export function PendingBadges({
     return null;
   }
 
-  const changed = new Set(
-    Arr.map(editing.pending, (change) => change.structureId)
-  );
+  const changed = pendingStructures(editing);
 
   return (
     <g className="pointer-events-none">

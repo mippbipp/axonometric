@@ -1,7 +1,7 @@
 import { cn } from "@axonometric/ui/lib/utils";
 import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
 
-import { useEditing } from "./editing-context.ts";
+import { pendingStructures, useEditing } from "./editing-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useTooltipActions } from "./tooltip-context.ts";
@@ -28,8 +28,7 @@ export function StructureTarget({
   const isSelected = selected === id;
   const editing = useEditing();
 
-  const isPending =
-    editing?.pending.some((change) => change.structureId === id) ?? false;
+  const isPending = pendingStructures(editing).has(id);
 
   const showAtPointer = (event: PointerEvent) => {
     show({ id, x: event.clientX, y: event.clientY });

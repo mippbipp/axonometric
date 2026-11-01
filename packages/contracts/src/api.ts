@@ -44,10 +44,16 @@ export class WriteGuard extends HttpApiMiddleware.Service<WriteGuard>()(
 ) {}
 
 /**
- * Writing the map's pending changes. Each write names the revision it was
- * based on, and the server takes the lock, checks it, and writes
+ * Writing the map's pending changes. Each write names the file revision it
+ * was based on, and the server takes the lock, checks it, and writes
  * `proposals.json` atomically. Accepting changes and undo join this group as
  * their own endpoints.
+ *
+ * A write replaces the whole list of layout changes, because undo needs to
+ * put an earlier list back. When #21 freezes items into batches, it must
+ * make the server refuse any write that adds, changes or removes a frozen
+ * item: replacing the whole list would otherwise let a page rewrite what the
+ * agent is reviewing.
  */
 export class ProposalsApiGroup extends HttpApiGroup.make("proposals")
   .add(

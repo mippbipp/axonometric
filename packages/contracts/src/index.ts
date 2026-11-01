@@ -133,8 +133,10 @@ export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
   applyLayoutChanges,
+  ChangeId,
   checkProposals,
   clashOf,
+  discardChange,
   emptyProposals,
   Footprint,
   LayoutChange,
@@ -142,13 +144,18 @@ export {
   LayoutChanges,
   layoutRefusal,
   MoveChange,
+  newChangeId,
+  placeStructure,
   Proposals,
   ProposalsFile,
-  replaceChanges,
   ResizeChange,
+  StructureMove,
+  StructureTarget,
+  structuresOf,
+  Target,
 } from "./proposals.ts";
 
-export type { Clash } from "./proposals.ts";
+export type { Clash, Placing } from "./proposals.ts";
 
 export {
   LayoutChangeRefused,

@@ -440,7 +440,7 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
       Effect.gen(function* () {
         const files = {
           [proposalsFile]: proposals(
-            '[{ "kind": "move", "structureId": "page", "position": { "x": 4, "y": 3 } }]'
+            '[{ "id": "m1", "kind": "move", "moves": [{ "target": { "kind": "structure", "id": "page" }, "position": { "x": 4, "y": 3 } }] }]'
           ),
         };
 
@@ -459,14 +459,14 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
         Effect.gen(function* () {
           const result = yield* checkWith({
             [proposalsFile]: proposals(
-              '[{ "kind": "move", "structureId": "page", "position": { "x": 4.2, "y": 3 } }]'
+              '[{ "id": "m1", "kind": "move", "moves": [{ "target": { "kind": "structure", "id": "page" }, "position": { "x": 4.2, "y": 3 } }] }]'
             ),
           });
 
           assert.strictEqual(result.exitCode, 1);
           assert.include(
             result.stdout,
-            "error proposals.json layout[0].position.x: expected a whole or half grid unit"
+            "error proposals.json layout[0].moves[0].position.x: expected a whole or half grid unit"
           );
         })
     );
@@ -477,14 +477,14 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
         Effect.gen(function* () {
           const result = yield* checkWith({
             [proposalsFile]: proposals(
-              '[{ "kind": "resize", "structureId": "gone", "footprint": { "w": 3, "d": 3 } }]'
+              '[{ "id": "r1", "kind": "resize", "target": { "kind": "structure", "id": "gone" }, "footprint": { "w": 3, "d": 3 } }]'
             ),
           });
 
           assert.strictEqual(result.exitCode, 0, result.stdout);
           assert.include(
             result.stdout,
-            'warning proposals.json layout[0].structureId: no structure in data.mjs has the id "gone"'
+            'warning proposals.json layout[0].target.id: no structure in data.mjs has the id "gone"'
           );
         })
     );
@@ -493,7 +493,7 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
       Effect.gen(function* () {
         const result = yield* checkWith({
           [proposalsFile]: proposals(
-            '[{ "kind": "move", "structureId": "page", "position": { "x": 8.5, "y": 0 } }]'
+            '[{ "id": "m1", "kind": "move", "moves": [{ "target": { "kind": "structure", "id": "page" }, "position": { "x": 8.5, "y": 0 } }] }]'
           ),
         });
 
@@ -505,6 +505,22 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
         // The accepted layout's own checks don't see the pending move.
         assert.notInclude(result.stdout, "warning layout.json");
       })
+    );
+
+    it.effect(
+      "tells you to upgrade for a proposals.json with a newer format",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* checkWith({
+            [proposalsFile]: '{ "format": 2, "revision": 1, "layout": [] }\n',
+          });
+
+          assert.strictEqual(result.exitCode, 1);
+          assert.include(
+            result.stdout,
+            "error proposals.json format: format 2 is newer than this axonometric reads (format 1). Upgrade axonometric, then try again."
+          );
+        })
     );
   });
 });

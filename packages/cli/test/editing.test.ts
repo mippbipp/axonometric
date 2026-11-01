@@ -1,4 +1,4 @@
-import { LayoutFile, Proposals } from "@axonometric/contracts";
+import { LayoutFile, Proposals, structuresOf } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -166,6 +166,10 @@ const waitGone = (page: Page, selector: string) =>
       .waitFor({ state: "detached", ...waitTimeout })
   );
 
+/** The changes without their random ids, for comparing what they do. */
+const withoutIds = (layout: Proposals["layout"]) =>
+  Arr.map(layout, ({ id: _id, ...rest }) => rest);
+
 const onHalfUnit = (value: number) => Number.isInteger(value * 2);
 
 describe("moving structures", () => {
@@ -185,13 +189,18 @@ describe("moving structures", () => {
 
         const saved = yield* waitForRevision(home, 1);
 
-        assert.deepStrictEqual(saved.layout, [
+        assert.deepStrictEqual(withoutIds(saved.layout), [
           {
             kind: "move",
-            structureId: "engineer",
-            position: { x: 0.5, y: 3.5 },
+            moves: [
+              {
+                target: { kind: "structure", id: "engineer" },
+                position: { x: 0.5, y: 3.5 },
+              },
+            ],
           },
         ]);
+        assert.match(saved.layout[0]?.id ?? "", /^[0-9a-f]{12}$/u);
         yield* waitFor(
           page,
           '[data-structure="engineer"][data-pending="true"]'
@@ -219,10 +228,12 @@ describe("moving structures", () => {
         assert.isDefined(change);
 
         if (change?.kind === "move") {
-          assert.isTrue(onHalfUnit(change.position.x));
-          assert.isTrue(onHalfUnit(change.position.y));
-          assert.isAbove(change.position.x, 0);
-          assert.isAbove(change.position.y, 0);
+          const position = change.moves[0]?.position ?? { x: 0, y: 0 };
+
+          assert.isTrue(onHalfUnit(position.x));
+          assert.isTrue(onHalfUnit(position.y));
+          assert.isAbove(position.x, 0);
+          assert.isAbove(position.y, 0);
         } else {
           assert.fail("expected a move");
         }
@@ -367,10 +378,10 @@ describe("resizing structures", () => {
 
         const saved = yield* waitForRevision(home, 1);
 
-        assert.deepStrictEqual(saved.layout, [
+        assert.deepStrictEqual(withoutIds(saved.layout), [
           {
             kind: "resize",
-            structureId: "engineer",
+            target: { kind: "structure", id: "engineer" },
             footprint: { w: 2.5, d: 3 },
           },
         ]);
@@ -605,9 +616,14 @@ describe("editing off", () => {
               baseRevision: 0,
               layout: [
                 {
+                  id: "other-writer",
                   kind: "move",
-                  structureId: "page",
-                  position: { x: 4, y: 3 },
+                  moves: [
+                    {
+                      target: { kind: "structure", id: "page" },
+                      position: { x: 4, y: 3 },
+                    },
+                  ],
                 },
               ],
             },
@@ -628,7 +644,7 @@ describe("editing off", () => {
 
         assert.deepStrictEqual(
           Option.map(saved, ({ layout }) =>
-            Arr.map(layout, (change) => change.structureId)
+            Arr.map(layout, (change) => structuresOf(change)[0])
           ),
           Option.some(["page"])
         );

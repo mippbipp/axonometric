@@ -1,9 +1,11 @@
 import {
   applyLayoutChanges,
+  discardChange,
   layoutRefusal,
-  replaceChanges,
+  newChangeId,
+  placeStructure,
 } from "@axonometric/contracts";
-import type { LayoutChange, Placement } from "@axonometric/contracts";
+import type { ChangeId, Placement } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { useMemo, useSyncExternalStore } from "react";
 
@@ -91,7 +93,13 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
 
   const editing = useMemo((): Editing => {
     const after = (id: string, next: Placement) =>
-      replaceChanges({ changes: pending, accepted, id, next });
+      placeStructure({
+        changes: pending,
+        accepted,
+        id,
+        next,
+        newId: newChangeId,
+      });
 
     const refusalOf = (id: string, next: Placement) =>
       Option.getOrUndefined(
@@ -112,15 +120,18 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
 
         return refusal;
       },
-      discard: (change: LayoutChange) => {
-        store.writeLayout(
-          Arr.filter(
-            pending,
-            (other) =>
-              other.kind !== change.kind ||
-              other.structureId !== change.structureId
-          )
+      discard: (id: ChangeId) => {
+        const remaining = discardChange(pending, id);
+
+        const refusal = Option.getOrUndefined(
+          layoutRefusal({ accepted, before: pending, after: remaining })
         );
+
+        if (refusal === undefined) {
+          store.writeLayout(remaining);
+        }
+
+        return refusal;
       },
     };
   }, [accepted, pending, view.stopped, store]);
