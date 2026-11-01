@@ -16,6 +16,7 @@
   "type": "module",
   "scripts": {
     "build": "tsdown",
+    "build:sea": "node scripts/build-sea.ts",
     "dev": "node src/bin.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -29,6 +30,7 @@
     "@types/node": "catalog:",
     "effect": "catalog:effect",
     "playwright": "catalog:",
+    "postject": "1.0.0-alpha.6",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

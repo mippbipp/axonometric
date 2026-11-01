@@ -22,3 +22,6 @@ coverage
 .idea
 *.swp
 .DS_Store
+
+# Single-executable binaries (packages/cli/scripts/build-sea.ts)
+/packages/cli/release

@@ -191,12 +191,19 @@ export default defineConfig({
   },
   overrides: [
     {
-      // CLI entrypoint: the top-level runMain launches the process,
+      // CLI and script entrypoints: the top-level runMain launches the process,
       // it is not test setup code
-      files: ["packages/cli/src/bin.ts"],
+      files: ["packages/cli/src/bin.ts", "packages/cli/scripts/*.ts"],
       rules: {
         "vitest/require-hook": "off",
         "effecttsgo/strict-effect-provide": "off",
+      },
+    },
+    {
+      // An ambient module declaration has no imports or exports.
+      files: ["**/*.d.ts"],
+      rules: {
+        "import/unambiguous": "off",
       },
     },
     {

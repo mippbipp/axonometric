@@ -3,6 +3,6 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "*.config.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "*.config.ts"],
   "exclude": ["node_modules"]
 }
