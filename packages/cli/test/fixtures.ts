@@ -32,6 +32,15 @@ export const minimalMap: Effect.Effect<HomeFiles> = readFixtures([
 ]);
 
 /**
+ * A map at `shapes/map/` with one structure of each shape, covering every
+ * status, for checking how structures are drawn.
+ */
+export const shapesMap: Effect.Effect<HomeFiles> = readFixtures([
+  "shapes/map/data.mjs",
+  "shapes/map/layout.json",
+]);
+
+/**
  * A map at `review/map/` that uses every status, every optional field and
  * every kind of link: an ADR and a deep dive next to SYSTEM.md, and a URL.
  */

@@ -6,6 +6,8 @@ export type { CheckOptions, MapFiles } from "./check.ts";
 
 export { fileVersionFields, formatVersion } from "./fields.ts";
 
+export { isoHeights } from "./iso-heights.ts";
+
 export { Layout, LayoutFile, Placement } from "./layout.ts";
 
 export {

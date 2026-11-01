@@ -1,27 +1,76 @@
 @import "@axonometric/ui/globals.css";
 
 /* The map's palette: dark ink on khaki paper, taken from inkboard/system-atlas,
-   the MIT project axonometric grew out of. */
+   the MIT project axonometric grew out of. The page follows the system's
+   colour scheme unless <html data-theme> picks one. */
 :root {
+  color-scheme: light;
   --paper: #e6dfbe;
   --ink: #17170f;
   --face: #efe9cc;
+  --muted: #8e8a70;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --paper: #1e1d15;
     --ink: #e6dfbe;
     --face: #2a2920;
+    --muted: #6e6b54;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #1e1d15;
+  --ink: #e6dfbe;
+  --face: #2a2920;
+  --muted: #6e6b54;
 }
 
 @theme inline {
   --color-paper: var(--paper);
   --color-ink: var(--ink);
   --color-face: var(--face);
+  --color-muted-ink: var(--muted);
+  --text-2xs: 10px;
+  --shadow-hard: 2px 2px 0 var(--ink);
   /* System fonts only: the page must work offline from disk. */
   --font-mono:
     ui-monospace, "SFMono-Regular", "Cascadia Mono", "Liberation Mono", Menlo,
     Consolas, monospace;
+}
+
+/* Status looks. Live is the plain drawing. Planned is designed but not
+   built: a dashed outline over paper, with no hatching. Off is built but
+   switched off: faded, in the muted ink, with a power mark. */
+[data-status="planned"] {
+  stroke-dasharray: 4 3;
+}
+
+[data-status="planned"] [data-face] {
+  fill: var(--paper);
+}
+
+[data-status="planned"] [data-hatch] {
+  display: none;
+}
+
+[data-status="off"] {
+  color: var(--muted);
+  stroke: var(--muted);
+  opacity: 0.6;
+}
+
+[data-status="off"] [data-face] {
+  fill: color-mix(in oklab, var(--face), var(--paper) 50%);
+}
+
+[data-status="off"] [data-hatch] {
+  opacity: 0.35;
+}
+
+[data-status="off"] .fill-ink {
+  fill: var(--muted);
 }

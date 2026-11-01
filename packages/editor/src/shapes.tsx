@@ -1,0 +1,613 @@
+import { isoHeights, statusLabels } from "@axonometric/contracts";
+import type { Placement, Shape, Structure } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
+import type { ReactNode } from "react";
+
+import { project, toPoints } from "./iso.ts";
+import type { ScreenPoint } from "./iso.ts";
+
+// How each shape is drawn in the iso view. Every shape stands on its
+// footprint and reaches `isoHeights[shape]` at its highest point. Faces that
+// face the viewer carry the shared hatch; `data-face` and `data-hatch` let the
+// status looks in index.css restyle them.
+
+/** One grid unit along x or y, measured on screen. */
+const gridStep = Math.hypot(36, 18);
+
+/** Approximate width of one character of the code chip's font. */
+const chipCharWidth = 6.4;
+
+interface DrawProps {
+  readonly placement: Placement;
+  readonly height: number;
+  readonly hatch: string;
+}
+
+const corners = ({ x, y, w, d }: Placement, z: number) => ({
+  back: project({ x, y, z }),
+  right: project({ x: x + w, y, z }),
+  front: project({ x: x + w, y: y + d, z }),
+  left: project({ x, y: y + d, z }),
+});
+
+const centreOf = ({ x, y, w, d }: Placement, z: number) =>
+  project({ x: x + w / 2, y: y + d / 2, z });
+
+const inset = ({ x, y, w, d }: Placement, by: number): Placement => ({
+  x: x + by,
+  y: y + by,
+  w: w - 2 * by,
+  d: d - 2 * by,
+});
+
+/**
+ * A transform onto the vertical face that runs along x at the footprint's
+ * front `y`: local x runs along the face in screen units, local y runs down.
+ */
+const alongX = (at: ScreenPoint) =>
+  `matrix(${36 / gridStep} ${18 / gridStep} 0 1 ${at.sx} ${at.sy})`;
+
+function Face({
+  points,
+  hatch,
+}: {
+  readonly points: readonly ScreenPoint[];
+  readonly hatch?: string;
+}) {
+  return (
+    <>
+      <polygon data-face="" points={toPoints(points)} className="fill-face" />
+      {hatch === undefined ? null : (
+        <polygon
+          data-hatch=""
+          points={toPoints(points)}
+          fill={`url(#${hatch})`}
+          stroke="none"
+        />
+      )}
+    </>
+  );
+}
+
+/** A box from `z0` to `z1` over `placement`, sides hatched. */
+function Prism({
+  placement,
+  z0,
+  z1,
+  hatch,
+  hatchTop = false,
+}: {
+  readonly placement: Placement;
+  readonly z0: number;
+  readonly z1: number;
+  readonly hatch: string;
+  readonly hatchTop?: boolean;
+}) {
+  const low = corners(placement, z0);
+  const top = corners(placement, z1);
+
+  return (
+    <>
+      <Face points={[low.left, low.front, top.front, top.left]} hatch={hatch} />
+      <Face
+        points={[low.front, low.right, top.right, top.front]}
+        hatch={hatch}
+      />
+      <Face
+        points={[top.back, top.right, top.front, top.left]}
+        hatch={hatchTop ? hatch : undefined}
+      />
+    </>
+  );
+}
+
+/** The footprint's outline on the ground, for shapes that don't fill it. */
+function Footprint({ placement }: { readonly placement: Placement }) {
+  const ground = corners(placement, 0);
+
+  return (
+    <polygon
+      points={toPoints([ground.back, ground.right, ground.front, ground.left])}
+      fill="none"
+      strokeWidth={0.8}
+      opacity={0.45}
+    />
+  );
+}
+
+/**
+ * The screen radii of a circle of `radius` grid units lying flat: the
+ * projection squashes it to a 2:1 ellipse.
+ */
+const flatRadii = (radius: number) => ({
+  rx: radius * Math.SQRT2 * 36,
+  ry: radius * Math.SQRT2 * 18,
+});
+
+/** An upright cylinder from `z0` to `z1`, standing on `at`. */
+function Drum({
+  at,
+  radius,
+  z0,
+  z1,
+  hatch,
+}: {
+  readonly at: ScreenPoint;
+  readonly radius: number;
+  readonly z0: number;
+  readonly z1: number;
+  readonly hatch: string;
+}) {
+  const { rx, ry } = flatRadii(radius);
+  const left = at.sx - rx;
+  const right = at.sx + rx;
+  const low = at.sy - z0;
+  const high = at.sy - z1;
+  const side = `M${left},${high} L${left},${low} A${rx},${ry} 0 0 0 ${right},${low} L${right},${high} A${rx},${ry} 0 0 1 ${left},${high} Z`;
+
+  return (
+    <>
+      <path data-face="" d={side} className="fill-face" />
+      <path data-hatch="" d={side} fill={`url(#${hatch})`} stroke="none" />
+      <ellipse
+        data-face=""
+        cx={at.sx}
+        cy={high}
+        rx={rx}
+        ry={ry}
+        className="fill-face"
+      />
+    </>
+  );
+}
+
+function BoxShape({ placement, height, hatch }: DrawProps) {
+  return <Prism placement={placement} z0={0} z1={height} hatch={hatch} />;
+}
+
+const roofRise = 16;
+
+/** A block with a hipped roof: the system's brain. */
+function TallShape({ placement, height, hatch }: DrawProps) {
+  const eaves = height - roofRise;
+  const top = corners(placement, eaves);
+  const apex = centreOf(placement, height);
+
+  const slopes = [
+    [top.back, top.right],
+    [top.left, top.back],
+    [top.front, top.left],
+    [top.right, top.front],
+  ] as const;
+
+  return (
+    <>
+      <Prism placement={placement} z0={0} z1={eaves} hatch={hatch} />
+      {Arr.map(slopes, ([from, to]) => (
+        <polygon
+          key={`${from.sx},${from.sy}`}
+          data-face=""
+          points={toPoints([from, to, apex])}
+          className="fill-face"
+        />
+      ))}
+    </>
+  );
+}
+
+const drumGap = 3;
+
+/** Three stacked drums: memory, ledgers, directories. */
+function StoreShape({ placement, height, hatch }: DrawProps) {
+  const radius = (Math.min(placement.w, placement.d) / 2) * 0.92;
+  const at = centreOf(placement, 0);
+  const layer = (height - drumGap * 2) / 3;
+
+  return (
+    <>
+      {Arr.map([0, 1, 2], (index) => (
+        <Drum
+          key={index}
+          at={at}
+          radius={radius}
+          z0={index * (layer + drumGap)}
+          z1={index * (layer + drumGap) + layer}
+          hatch={hatch}
+        />
+      ))}
+    </>
+  );
+}
+
+const cardCount = 5;
+
+const cardGap = 2;
+
+const cardShift = 0.1;
+
+/** A fanned deck of thin cards: tools. */
+function CardsShape({ placement, height, hatch }: DrawProps) {
+  const spread = cardShift * (cardCount - 1);
+  const thickness = (height - cardGap * (cardCount - 1)) / cardCount;
+
+  return (
+    <>
+      {Arr.map(Arr.range(0, cardCount - 1), (index) => (
+        <Prism
+          key={index}
+          placement={{
+            x: placement.x + cardShift * index,
+            y: placement.y + spread - cardShift * index,
+            w: placement.w - spread,
+            d: placement.d - spread,
+          }}
+          z0={index * (thickness + cardGap)}
+          z1={index * (thickness + cardGap) + thickness}
+          hatch={hatch}
+        />
+      ))}
+    </>
+  );
+}
+
+/** A wide, flat block with a hatched top: an existing backend. */
+function SlabShape({ placement, height, hatch }: DrawProps) {
+  return (
+    <Prism placement={placement} z0={0} z1={height} hatch={hatch} hatchTop />
+  );
+}
+
+/** A thin slab with a screen and lines of text on top. */
+function ScreenShape({ placement, height, hatch }: DrawProps) {
+  const glass = inset(placement, Math.min(placement.w, placement.d) * 0.14);
+  const panel = corners(glass, height);
+  const lines = [0.3, 0.5, 0.7];
+
+  return (
+    <>
+      <Prism placement={placement} z0={0} z1={height} hatch={hatch} />
+      <polygon
+        points={toPoints([panel.back, panel.right, panel.front, panel.left])}
+        className="fill-paper"
+        strokeWidth={0.9}
+      />
+      {Arr.map(lines, (at, index) => {
+        const y = glass.y + glass.d * at;
+        const start = project({ x: glass.x + glass.w * 0.12, y, z: height });
+
+        const end = project({
+          x: glass.x + glass.w * (index === 2 ? 0.55 : 0.85),
+          y,
+          z: height,
+        });
+
+        return (
+          <line
+            key={at}
+            x1={start.sx}
+            y1={start.sy}
+            x2={end.sx}
+            y2={end.sy}
+            strokeWidth={1.4}
+            opacity={0.7}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/** A box with a dark band around it: approval or confirmation. */
+function GateShape({ placement, height, hatch }: DrawProps) {
+  const low = corners(placement, height * 0.5);
+  const high = corners(placement, height * 0.74);
+
+  return (
+    <>
+      <Prism placement={placement} z0={0} z1={height} hatch={hatch} />
+      <polygon
+        points={toPoints([low.left, low.front, high.front, high.left])}
+        className="fill-ink"
+      />
+      <polygon
+        points={toPoints([low.front, low.right, high.right, high.front])}
+        className="fill-ink"
+      />
+    </>
+  );
+}
+
+/** A box with a hatched top and a clock on its face: a scheduled pass. */
+function JobShape({ placement, height, hatch }: DrawProps) {
+  const radius = Math.min(height * 0.3, placement.w * gridStep * 0.18);
+
+  const at = project({
+    x: placement.x + placement.w * 0.5,
+    y: placement.y + placement.d,
+    z: height * 0.5,
+  });
+
+  return (
+    <>
+      <Prism placement={placement} z0={0} z1={height} hatch={hatch} hatchTop />
+      <g transform={alongX(at)}>
+        <circle r={radius} className="fill-paper" strokeWidth={1} />
+        <path
+          d={`M0,${-radius * 0.7} L0,0 L${radius * 0.55},0`}
+          fill="none"
+          strokeWidth={1.2}
+        />
+      </g>
+    </>
+  );
+}
+
+const headRadius = 11;
+
+/** A standing figure: a body and a head. */
+function PersonShape({ placement, height, hatch }: DrawProps) {
+  const at = centreOf(placement, 0);
+  const radius = Math.min(placement.w, placement.d) * 0.26;
+  const shoulders = height - headRadius * 2 - 2;
+
+  return (
+    <>
+      <Footprint placement={placement} />
+      <Drum at={at} radius={radius} z0={0} z1={shoulders} hatch={hatch} />
+      <circle
+        data-face=""
+        cx={at.sx}
+        cy={at.sy - height + headRadius}
+        r={headRadius}
+        className="fill-face"
+      />
+    </>
+  );
+}
+
+const pageThickness = 0.1;
+
+const foldSize = 12;
+
+/** An upright page with a folded corner: a pull request or a report. */
+function DocumentShape({ placement, height, hatch }: DrawProps) {
+  const from = placement.x + placement.w * 0.12;
+  const to = placement.x + placement.w * 0.88;
+  const plane = placement.y + placement.d * 0.55;
+  const fold = foldSize / gridStep;
+  const at = (x: number, z: number, y = plane) => project({ x, y, z });
+  const width = (to - from) * gridStep;
+
+  const edge = [
+    at(to, 0),
+    at(to, 0, plane - pageThickness),
+    at(to, height - foldSize, plane - pageThickness),
+    at(to, height - foldSize),
+  ];
+
+  const topEdge = [
+    at(from, height),
+    at(from, height, plane - pageThickness),
+    at(to - fold, height, plane - pageThickness),
+    at(to - fold, height),
+  ];
+
+  const page = [
+    at(from, 0),
+    at(to, 0),
+    at(to, height - foldSize),
+    at(to - fold, height),
+    at(from, height),
+  ];
+
+  const flap = [
+    at(to - fold, height),
+    at(to - fold, height - foldSize),
+    at(to, height - foldSize),
+  ];
+
+  const lines = [0.32, 0.48, 0.64, 0.8];
+
+  return (
+    <>
+      <Footprint placement={placement} />
+      <Face points={edge} hatch={hatch} />
+      <Face points={topEdge} />
+      <polygon data-face="" points={toPoints(page)} className="fill-face" />
+      <Face points={flap} hatch={hatch} />
+      <g transform={alongX(at(from, height))}>
+        {Arr.map(lines, (line, index) => (
+          <line
+            key={line}
+            x1={width * 0.14}
+            y1={height * line}
+            x2={width * (index === lines.length - 1 ? 0.55 : 0.86)}
+            y2={height * line}
+            strokeWidth={1.2}
+            opacity={0.7}
+          />
+        ))}
+      </g>
+    </>
+  );
+}
+
+const haloSize = 0.2;
+
+/**
+ * A box with a second outline around it and an arrow coming in: a source
+ * outside the system.
+ */
+function ExternalShape({ placement, height, hatch }: DrawProps) {
+  const halo = inset(placement, -haloSize);
+  const ground = corners(halo, -4);
+  const top = corners(halo, height + 4);
+  const length = placement.w * gridStep * 0.5;
+
+  const outline = [
+    top.back,
+    top.right,
+    ground.right,
+    ground.front,
+    ground.left,
+    top.left,
+  ];
+
+  const at = project({
+    x: placement.x,
+    y: placement.y + placement.d,
+    z: height * 0.5,
+  });
+
+  return (
+    <>
+      <polygon
+        points={toPoints(outline)}
+        className="fill-paper"
+        strokeWidth={0.9}
+      />
+      <Prism placement={placement} z0={0} z1={height} hatch={hatch} />
+      <g transform={alongX(at)}>
+        <line
+          x1={-gridStep * haloSize - 6}
+          y1={0}
+          x2={length - 4}
+          y2={0}
+          strokeWidth={1.6}
+        />
+        <path
+          d={`M${length - 8},-5 L${length},0 L${length - 8},5 z`}
+          className="fill-ink"
+          stroke="none"
+        />
+      </g>
+    </>
+  );
+}
+
+const drawings = {
+  box: BoxShape,
+  tall: TallShape,
+  store: StoreShape,
+  cards: CardsShape,
+  slab: SlabShape,
+  screen: ScreenShape,
+  gate: GateShape,
+  job: JobShape,
+  person: PersonShape,
+  document: DocumentShape,
+  external: ExternalShape,
+} as const satisfies Record<Shape, (props: DrawProps) => ReactNode>;
+
+/** Shapes with no flat top to hold the code chip. */
+const chipless: ReadonlySet<Shape> = new Set(["person", "document"]);
+
+/**
+ * Where the code chip sits: the middle of the shape's top, or nothing when
+ * the shape has no top or the top is too small for the chip.
+ */
+const chipAt = (structure: Structure, placement: Placement) => {
+  const width = structure.code.length * chipCharWidth + 8;
+  const topWidth = (placement.w + placement.d) * 36;
+
+  return chipless.has(structure.shape) || topWidth < width * 1.6
+    ? undefined
+    : { at: centreOf(placement, isoHeights[structure.shape]), width };
+};
+
+function CodeChip({
+  code,
+  at,
+  width,
+}: {
+  readonly code: string;
+  readonly at: ScreenPoint;
+  readonly width: number;
+}) {
+  return (
+    <g data-code-chip="">
+      <rect
+        x={at.sx - width / 2}
+        y={at.sy - 7}
+        width={width}
+        height={14}
+        className="fill-paper"
+        strokeWidth={1}
+      />
+      <text
+        x={at.sx}
+        y={at.sy + 3.5}
+        textAnchor="middle"
+        className="fill-ink text-2xs stroke-none font-mono font-semibold"
+      >
+        {code}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * A power symbol floating above a switched-off structure, so "off" doesn't
+ * rest on colour alone.
+ */
+function OffMark({ at }: { readonly at: ScreenPoint }) {
+  return (
+    <g
+      data-off-mark=""
+      transform={`translate(${at.sx} ${at.sy - 16})`}
+      strokeWidth={1.4}
+      strokeLinecap="round"
+    >
+      <circle r={8} className="fill-paper" strokeWidth={1} />
+      <path d="M-3.2,-2.6 A4.2,4.2 0 1 0 3.2,-2.6" fill="none" />
+      <line x1={0} y1={-4.8} x2={0} y2={-0.6} />
+    </g>
+  );
+}
+
+/**
+ * One structure in the iso view, drawn as its shape in its status's look,
+ * with its code chip on top when it fits.
+ */
+export function IsoStructure({
+  structure,
+  placement,
+  hatch,
+}: {
+  readonly structure: Structure;
+  readonly placement: Placement;
+  readonly hatch: string;
+}) {
+  const Drawing = drawings[structure.shape];
+  const chip = chipAt(structure, placement);
+
+  return (
+    <g
+      data-structure={structure.id}
+      data-shape={structure.shape}
+      data-status={structure.status}
+      className="stroke-ink"
+      strokeWidth={1.2}
+      strokeLinejoin="round"
+    >
+      <title>{`${structure.name} · ${statusLabels[structure.status]}`}</title>
+      <Drawing
+        placement={placement}
+        height={isoHeights[structure.shape]}
+        hatch={hatch}
+      />
+      {chip === undefined ? null : (
+        <CodeChip code={structure.code} at={chip.at} width={chip.width} />
+      )}
+      {structure.status === "off" ? (
+        <OffMark
+          at={project({
+            x: placement.x + placement.w,
+            y: placement.y,
+            z: isoHeights[structure.shape],
+          })}
+        />
+      ) : null}
+    </g>
+  );
+}
