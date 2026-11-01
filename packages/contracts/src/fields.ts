@@ -40,10 +40,23 @@ export const formatVersion = 1;
  * in and the revision it was last saved at.
  */
 export const fileVersionFields = {
-  format: Schema.Literal(formatVersion)
-    .annotate({
-      message: `expected ${formatVersion}. Set format to ${formatVersion}, the only format this CLI reads.`,
-    })
+  format: Schema.Int.annotate({
+    message: `expected ${formatVersion}. Set format to ${formatVersion}, the only format this CLI reads.`,
+  })
+    .check(
+      Schema.makeFilter(
+        (version: number) => {
+          if (version === formatVersion) {
+            return true;
+          }
+
+          return version > formatVersion
+            ? `format ${version} is newer than this axonometric reads (format ${formatVersion}). Upgrade axonometric, then try again.`
+            : `expected ${formatVersion}. Set format to ${formatVersion}, the only format this CLI reads.`;
+        },
+        { expected: `format ${formatVersion}` }
+      )
+    )
     .pipe(
       Schema.annotateKey({
         messageMissingKey: `missing. Add format: ${formatVersion}.`,

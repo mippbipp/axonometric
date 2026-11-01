@@ -4,6 +4,24 @@ export { checkMap, linkTargets } from "./check.ts";
 
 export type { CheckOptions, MapFiles } from "./check.ts";
 
+export { excalidrawIds, excalidrawOf } from "./excalidraw.ts";
+
+export type {
+  ExcalidrawArrow,
+  ExcalidrawBinding,
+  ExcalidrawBound,
+  ExcalidrawElement,
+  ExcalidrawFile,
+  ExcalidrawFrame,
+  ExcalidrawRectangle,
+  ExcalidrawSource,
+  ExcalidrawText,
+} from "./excalidraw.ts";
+
+export { exportName } from "./export-name.ts";
+
+export { palette, whiteBackground } from "./palette.ts";
+
 export { fileVersionFields, formatVersion } from "./fields.ts";
 
 export {
@@ -137,6 +155,38 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  applyLayoutChanges,
+  ChangeId,
+  checkProposals,
+  clashOf,
+  discardChange,
+  emptyProposals,
+  Footprint,
+  LayoutChange,
+  layoutChangeKey,
+  LayoutChanges,
+  layoutRefusal,
+  MoveChange,
+  newChangeId,
+  placeStructure,
+  Proposals,
+  ProposalsFile,
+  ResizeChange,
+  sameLayoutChanges,
+  StructureMove,
+  StructureTarget,
+  structuresOf,
+  Target,
+} from "./proposals.ts";
+
+export type { Clash, Placing } from "./proposals.ts";
+
+export {
+  LayoutChangeRefused,
+  maxWriteBytes,
+  PendingLayoutWrite,
+  MapFilesUnreadable,
+  StaleProposals,
   ServedPage,
   servedPageElementId,
   ServerEvent,

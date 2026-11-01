@@ -149,5 +149,9 @@ The agent's decision on one proposal: accepted, changed or rejected, with a reas
 _Avoid_: decision
 
 **Revision**:
-An accepted state of the map, saved in its history.
+An accepted state of the map, saved in its history. Not to be confused with a file revision.
 _Avoid_: version, commit
+
+**File revision**:
+The number in a map file that goes up by one each time the file is written. A write names the file revision it was based on, and is refused if the file has moved on.
+_Avoid_: version, revision number

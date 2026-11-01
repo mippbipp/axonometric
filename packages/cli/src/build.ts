@@ -63,14 +63,21 @@ export const rebuild = Effect.fnUntraced(function* (
 
   yield* withLock(home, command);
 
-  const { warnings, data, layout, saved, sourceLinks, sourcesSkipped } =
-    yield* loadMap({
-      home,
-      output,
-      command,
-      arrange: (mapData, savedLayout) =>
-        placeStructures(mapData, savedLayout).layout,
-    });
+  const {
+    warnings,
+    data,
+    layout,
+    saved,
+    sourceLinks,
+    sourcesSkipped,
+    proposals,
+  } = yield* loadMap({
+    home,
+    output,
+    command,
+    arrange: (mapData, savedLayout) =>
+      placeStructures(mapData, savedLayout).layout,
+  });
 
   const placed = Arr.filter(
     Rec.keys(layout.structures),
@@ -98,6 +105,9 @@ export const rebuild = Effect.fnUntraced(function* (
   const layoutFile = path.join(home, "layout.json");
   const page = yield* renderPage(state);
 
+  // The state holds the accepted layout only. Pending changes reach served
+  // pages through serve, never SYSTEM.md or the read-only page.
+
   // layout.json is only written when placing added or pruned structures or
   // pruned route overrides.
   // Under serve the write is one more watch event, and that rebuild finds
@@ -117,6 +127,7 @@ export const rebuild = Effect.fnUntraced(function* (
 
   return {
     state,
+    proposals,
     warnings,
     sourcesSkipped,
     placed,

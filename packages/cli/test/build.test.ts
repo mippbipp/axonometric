@@ -223,7 +223,10 @@ describe("build", () => {
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(result.stderr, "data.mjs structures: missing.");
-      assert.include(result.stderr, "layout.json format: expected 1.");
+      assert.include(
+        result.stderr,
+        "layout.json format: format 2 is newer than this axonometric reads (format 1). Upgrade axonometric, then try again."
+      );
     })
   );
 

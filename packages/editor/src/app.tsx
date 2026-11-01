@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
+import { ExportMenu } from "./export-menu.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
 import { useInsideFocus } from "./inside-focus.ts";
 import { InsideView } from "./inside-view.tsx";
@@ -150,6 +151,7 @@ function WalkthroughPage({ notices }: Notices) {
             disabledBecause={switchBlocked}
           />
           <OverviewButton />
+          <ExportMenu view={view} />
           <ThemeToggle />
         </div>
       </header>
