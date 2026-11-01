@@ -7,7 +7,7 @@ import { useFrameClock } from "./frame-clock.ts";
 import { corners, project, routeHop, toPoints, pointAlong } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 import { clockAtNextHop, packetAt, travelSeconds } from "./packet-schedule.ts";
-import { useReducedMotion } from "./playback.ts";
+import { reducedMotionNote, useReducedMotion } from "./playback.ts";
 import { BoxShape } from "./shapes.tsx";
 
 /** Height of a step's box above the ground, in screen units. */
@@ -281,6 +281,7 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
               type="button"
               className={controlClass}
               disabled={reducedMotion}
+              title={reducedMotion ? reducedMotionNote : undefined}
               onClick={play}
             >
               ▸ Play

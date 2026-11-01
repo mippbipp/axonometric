@@ -255,8 +255,16 @@ describe("packets", () => {
             .isDisabled()
         );
 
+        const playTitle = yield* attribute(
+          page,
+          '[data-playback-controls] [data-control="play"]',
+          "title"
+        );
+
         assert.deepStrictEqual(after, before);
         assert.isTrue(playDisabled);
+        assert.include(playTitle ?? "", "reduced motion");
+        assert.include(playTitle ?? "", "Step");
         // At rest, the packet waits on the chapter's first hop.
         assert.deepStrictEqual(yield* packetIds(page), ["h-note"]);
 

@@ -110,3 +110,46 @@ describe("the playback bar", () => {
     );
   }
 });
+
+describe("the hint footer", () => {
+  it.live("shows only whole hints at 900×800", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+
+        yield* Effect.promise(() =>
+          page.setViewportSize({ width: 900, height: 800 })
+        );
+
+        const [footer] = yield* boxesOf(page, "[data-hints]");
+        const [list] = yield* boxesOf(page, "[data-hints] ul");
+        const hints = yield* boxesOf(page, "[data-hints] [data-hint]");
+
+        assert.isDefined(footer);
+        assert.isDefined(list);
+
+        const footerBox = footer ?? { x: 0, y: 0, width: 0, height: 0 };
+        const listBox = list ?? footerBox;
+
+        // A hint that doesn't fit wraps below the list, where it's clipped
+        // whole. The ones left on the first line must fit inside the footer.
+        const visible = Arr.filter(
+          hints,
+          (hint) => hint.y < listBox.y + listBox.height
+        );
+
+        assert.isAbove(visible.length, 0);
+        assert.isBelow(visible.length, hints.length);
+
+        for (const hint of visible) {
+          assert.isAtMost(hint.x + hint.width, footerBox.x + footerBox.width);
+          assert.isAtMost(hint.y + hint.height, listBox.y + listBox.height);
+        }
+
+        for (const hint of Arr.filter(hints, (h) => !visible.includes(h))) {
+          assert.isAtLeast(hint.y, listBox.y + listBox.height);
+        }
+      })
+    )
+  );
+});
