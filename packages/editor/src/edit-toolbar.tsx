@@ -148,8 +148,9 @@ const distributeNeedsThree = "Select three or more to distribute";
 
 /**
  * An icon drawn on the ground. In the Iso view the same drawing goes
- * through the Iso projection (x to the lower right, y to the lower left, at
- * half height), so the icon shows the diagonal the button works along.
+ * through a 2:1 Iso projection (x to the lower right, y to the lower left),
+ * on a wider canvas, so the icon shows the diagonal the button works along.
+ * Strokes keep their width under the projection.
  */
 function Icon({
   view,
@@ -158,20 +159,24 @@ function Icon({
   readonly view: View;
   readonly children: ReactNode;
 }) {
+  const iso = view === "iso";
+
   return (
     <svg
-      viewBox="0 0 16 16"
-      className="size-4 fill-none stroke-current"
+      viewBox={iso ? "0 0 24 16" : "0 0 16 16"}
+      className={cn(
+        "h-4 fill-none stroke-current **:[vector-effect:non-scaling-stroke]",
+        iso ? "w-6" : "w-4"
+      )}
       strokeWidth={1.2}
       aria-hidden="true"
     >
       <g
         transform={
-          view === "iso"
-            ? "translate(8 8) matrix(0.5 0.25 -0.5 0.25 0 0) translate(-8 -8)"
+          iso
+            ? "translate(12 8) matrix(0.75 0.375 -0.75 0.375 0 0) translate(-8 -8)"
             : undefined
         }
-        vectorEffect="non-scaling-stroke"
       >
         {children}
       </g>
@@ -181,7 +186,7 @@ function Icon({
 
 const iconButton = cn(
   controlClass,
-  "flex size-6 items-center justify-center p-0"
+  "flex h-6 min-w-6 items-center justify-center px-0.5 py-0"
 );
 
 /**
