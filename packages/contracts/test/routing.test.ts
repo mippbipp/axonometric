@@ -132,6 +132,10 @@ const onEdge = (point: GridPoint, box: Placement) => {
   return (onX && insideY) || (onY && insideX);
 };
 
+/** Whether a point sits on a footprint's +x or +y edge. */
+const frontOf = (point: GridPoint, box: Placement) =>
+  point.x === box.x + box.w || point.y === box.y + box.d;
+
 /** A between two connected structures, with M in the way. */
 const blocked = mapOf({ a: at(0, 0), m: at(4, 0), b: at(8, 0) }, [
   hop("a", "b"),
@@ -202,6 +206,74 @@ describe("routing", () => {
         assert.deepStrictEqual(Arr.intersection(request, again), []);
         assert.deepStrictEqual(Arr.intersection(reply, again), []);
       })
+  );
+
+  it.effect(
+    "bends at least once between structures offset along both axes",
+    () =>
+      Effect.sync(() => {
+        const { data, layout } = mapOf(
+          { a: at(0, 0), b: at(6, 1), c: at(-1, 7), d: at(4, -6) },
+          [hop("a", "b"), hop("b", "c"), hop("a", "c"), hop("d", "a")]
+        );
+
+        for (const [id, route] of Rec.toEntries(routeHops(data, layout))) {
+          assert.isAtLeast(route.points.length, 3, `${id} has no bend`);
+        }
+      })
+  );
+
+  it.effect("ends on front edges, where boxes don't hide them", () =>
+    Effect.sync(() => {
+      const placements = { a: at(0, 0), b: at(6, 0), c: at(0, 6) };
+
+      const { data, layout } = mapOf(placements, [
+        hop("a", "b"),
+        hop("b", "c"),
+        hop("c", "a"),
+      ]);
+
+      for (const route of Rec.values(routeHops(data, layout))) {
+        const [first] = route.points;
+        const last = route.points.at(-1);
+
+        assert.isDefined(first);
+        assert.isDefined(last);
+        assert.isTrue(
+          Arr.some(Rec.values(placements), (box) => frontOf(first, box)),
+          "starts on a back edge"
+        );
+        assert.isTrue(
+          Arr.some(Rec.values(placements), (box) => frontOf(last, box)),
+          "ends on a back edge"
+        );
+      }
+    })
+  );
+
+  it.effect("keeps out of other groups' zones when it can", () =>
+    Effect.sync(() => {
+      // z sits between a and b in its own group, so its zone, one unit past
+      // its footprint, blocks the straight route.
+      const base = mapOf({ a: at(0, 0), z: at(4, 0), b: at(8, 0) }, [
+        hop("a", "b"),
+      ]);
+
+      const data: MapData = {
+        ...base.data,
+        groups: [...base.data.groups, { id: "other", title: "Other" }],
+        structures: Arr.map(base.data.structures, (item) =>
+          item.id === "z" ? { ...item, group: "other" } : item
+        ),
+      };
+
+      const route = routeOf(routeHops(data, base.layout), "a-b");
+      const zone = { x: 3, y: -1, w: 4, d: 4 };
+
+      for (const leg of legsOf(route.points)) {
+        assert.isFalse(legCrosses(leg, zone), "runs through z's zone");
+      }
+    })
   );
 
   it.effect("gives the same routes for the same layout", () =>

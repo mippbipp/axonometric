@@ -3,6 +3,7 @@ import { dual } from "effect/Function";
 
 import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { Hop, MapData } from "./map-data.ts";
+import { zonesOf } from "./zones.ts";
 
 /** Where a hop runs on the ground, from one footprint's edge to the other's. */
 export interface HopRoute {
@@ -42,10 +43,19 @@ const sharedStepCost = 2;
 const pairPointCost = 8;
 
 /**
- * Ending on the target's back edge, where its box hides the arrowhead,
- * costs this much more than ending on a front edge.
+ * Starting or ending on a back edge (-x or -y), where the box hides the
+ * route's end, costs as much as this many half-unit steps. It's more than a
+ * detour round to a front edge costs, so a route takes a back edge only
+ * when no front edge is free.
  */
-const backEdgeCost = 4;
+const backEdgeCost = 24;
+
+/**
+ * Each half-unit step inside the zone of a group neither end belongs to.
+ * Far less than running under a box, so a route crosses a zone rather than
+ * a box.
+ */
+const zoneStepCost = 2;
 
 /** Each half unit a route's end sits from the middle of its edge. */
 const offCentreCost = 0.25;
@@ -55,14 +65,19 @@ const crossCost = 1e6;
 
 interface Box {
   readonly id: string;
+  readonly group: string;
   readonly x0: number;
   readonly y0: number;
   readonly x1: number;
   readonly y1: number;
 }
 
-const toBox = (id: string, placement: Placement): Box => ({
+const toBox = (
+  { id, group }: { readonly id: string; readonly group: string },
+  placement: Placement
+): Box => ({
   id,
+  group,
   x0: placement.x * scale,
   y0: placement.y * scale,
   x1: (placement.x + placement.w) * scale,
@@ -229,19 +244,35 @@ interface Grid {
    * from that point touches, or `undefined` for none.
    */
   readonly touches: readonly (readonly number[] | undefined)[];
+  readonly zones: readonly Box[];
+  /** Like `touches`, for steps inside a zone, keyed the same way. */
+  readonly inZones: readonly (readonly number[] | undefined)[];
 }
+
+/** Adds `value` to the list at `index`. */
+const push = (
+  lists: (number[] | undefined)[],
+  index: number,
+  value: number
+) => {
+  const list = lists[index] ?? [];
+
+  list.push(value);
+  lists[index] = list;
+};
 
 const gridOf = (
   boxes: readonly Box[],
+  zones: readonly Box[],
   extra: readonly { x: number; y: number }[]
 ): Grid => {
   const xs = [
-    ...Arr.flatMap(boxes, (box) => [box.x0, box.x1]),
+    ...Arr.flatMap([...boxes, ...zones], (box) => [box.x0, box.x1]),
     ...Arr.map(extra, (point) => point.x),
   ];
 
   const ys = [
-    ...Arr.flatMap(boxes, (box) => [box.y0, box.y1]),
+    ...Arr.flatMap([...boxes, ...zones], (box) => [box.y0, box.y1]),
     ...Arr.map(extra, (point) => point.y),
   ];
 
@@ -250,14 +281,29 @@ const gridOf = (
   const width = Math.max(0, ...xs) + margin - left + 1;
   const height = Math.max(0, ...ys) + margin - top + 1;
   const touches: (number[] | undefined)[] = [];
+  const inZones: (number[] | undefined)[] = [];
+
+  const keyOf = (x: number, y: number, direction: 0 | 1) =>
+    ((y - top) * width + (x - left)) * 2 + direction;
+
+  // A step is inside a zone when its midpoint is strictly inside.
+  Arr.forEach(zones, (zone, zoneIndex) => {
+    for (let y = zone.y0 + 1; y < zone.y1; y++) {
+      for (let x = zone.x0; x < zone.x1; x++) {
+        push(inZones, keyOf(x, y, 0), zoneIndex);
+      }
+    }
+
+    for (let y = zone.y0; y < zone.y1; y++) {
+      for (let x = zone.x0 + 1; x < zone.x1; x++) {
+        push(inZones, keyOf(x, y, 1), zoneIndex);
+      }
+    }
+  });
 
   Arr.forEach(boxes, (box, boxIndex) => {
     const mark = (x: number, y: number, direction: 0 | 1) => {
-      const index = ((y - top) * width + (x - left)) * 2 + direction;
-      const list = touches[index] ?? [];
-
-      list.push(boxIndex);
-      touches[index] = list;
+      push(touches, keyOf(x, y, direction), boxIndex);
     };
 
     for (let y = box.y0; y <= box.y1; y++) {
@@ -273,7 +319,7 @@ const gridOf = (
     }
   });
 
-  return { left, top, width, height, boxes, touches };
+  return { left, top, width, height, boxes, touches, zones, inZones };
 };
 
 /** The points along an edge from `from` to `to`, corners left out if it can. */
@@ -285,10 +331,10 @@ const along = (from: number, to: number) =>
  * what it costs to use it. Corners are left out unless an edge has no other
  * points. Points away from the middle of their edge cost a little more, so
  * a lone route leaves from the middle. Points on the back edges (-x and -y)
- * cost more again when `backCost` is set, because the box hides a route that
- * ends there.
+ * cost `backEdgeCost` more, because the box hides a route that ends there.
  */
-const edgePoints = (box: Box, backCost: number) => {
+const edgePoints = (box: Box) => {
+  const backCost = backEdgeCost;
   const midX = (box.x0 + box.x1) / 2;
   const midY = (box.y0 + box.y1) / 2;
 
@@ -413,6 +459,8 @@ interface Search {
   readonly usage: Usage;
   readonly pair: ReturnType<typeof pairUsage>;
   readonly ends: ReadonlySet<string>;
+  /** The groups of the hop's ends, whose zones cost nothing to cross. */
+  readonly groups: ReadonlySet<string>;
   readonly to: Box;
   /** Extra cost of ending at each of the target's edge points. */
   readonly goals: ReadonlyMap<number, number>;
@@ -456,10 +504,16 @@ const stepPrice = (
   const bend = heading === noDirection || heading === direction ? 0 : 1;
   const nextIndex = pointIndex(grid, next);
 
+  const zones = Arr.filter(
+    grid.inZones[step] ?? [],
+    (zoneIndex) => !search.groups.has(grid.zones[zoneIndex]?.group ?? "")
+  ).length;
+
   return (
     stepCost +
     bend * bendCost +
     touched.length * crossCost +
+    zones * zoneStepCost +
     (search.usage.steps.has(step) ? sharedStepCost : 0) +
     (search.pair.points.has(nextIndex) ? pairPointCost : 0) +
     (search.goals.get(nextIndex) ?? 0)
@@ -500,12 +554,10 @@ const searchRoute = (
     usage,
     pair: pairUsage(usage, key),
     ends: new Set([from.id, to.id]),
+    groups: new Set([from.group, to.group]),
     to,
     goals: new Map(
-      Arr.map(edgePoints(to, backEdgeCost), (point) => [
-        pointIndex(grid, point),
-        point.cost,
-      ])
+      Arr.map(edgePoints(to), (point) => [pointIndex(grid, point), point.cost])
     ),
   };
 
@@ -515,7 +567,7 @@ const searchRoute = (
   const done = new Uint8Array(size);
   const queue = makeQueue();
 
-  for (const start of edgePoints(from, 0)) {
+  for (const start of edgePoints(from)) {
     const state = pointIndex(grid, start) * directions + noDirection;
 
     cost[state] = start.cost;
@@ -566,7 +618,9 @@ const searchRoute = (
  * override in `layout.routes` follows it. Every other hop gets a route at
  * right angles on the half-unit grid, from the edge of one footprint to the
  * edge of the other, with as few bends as it can manage, going around every
- * footprint whenever a clear route exists. Hops between the same two
+ * footprint whenever a clear route exists. Its ends sit on front edges (+x
+ * and +y), where the boxes don't hide them, unless none is free, and it
+ * keeps out of the zones of groups neither end belongs to when it can. Hops between the same two
  * structures, in either direction, never share a step, so they run side by
  * side. Hops are routed in data.mjs order, and the same map always gives
  * the same routes. A hop from a structure to itself gets no route.
@@ -577,11 +631,15 @@ export const routeHops: {
 } = dual(
   2,
   (data: MapData, layout: Layout): Readonly<Record<string, HopRoute>> => {
-    const boxes = Arr.flatMap(data.structures, ({ id }) => {
-      const placement = layout.structures[id];
+    const boxes = Arr.flatMap(data.structures, (structure) => {
+      const placement = layout.structures[structure.id];
 
-      return placement === undefined ? [] : [toBox(id, placement)];
+      return placement === undefined ? [] : [toBox(structure, placement)];
     });
+
+    const zones = Arr.map(zonesOf({ data, layout }), (zone) =>
+      toBox({ id: zone.group.id, group: zone.group.id }, zone.box)
+    );
 
     const byId = new Map(Arr.map(boxes, (box) => [box.id, box]));
     const overrides = layout.routes ?? {};
@@ -590,7 +648,7 @@ export const routeHops: {
       Arr.map(points, toHalfUnits)
     );
 
-    const grid = gridOf(boxes, overridePoints);
+    const grid = gridOf(boxes, zones, overridePoints);
     const usage: Usage = { steps: new Set(), pairs: new Map() };
     const routes: Record<string, HopRoute> = {};
 
