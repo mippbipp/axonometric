@@ -46,6 +46,27 @@ jobs:
           node packages/cli/dist/bin.mjs --version
           node packages/cli/dist/bin.mjs --help
 
+      # Packs the npm tarball the same way the release workflow does, then
+      # checks its files and package.json. See packages/cli/scripts/pack-npm.ts.
+      - name: Check the npm tarball
+        if: runner.os == 'Linux'
+        run: pnpm --filter axonometric pack:npm "$RUNNER_TEMP/axonometric.tgz"
+
+  # npm trusted publishing needs no token, so no workflow may pass one. The
+  # pattern is split so this file doesn't match itself.
+  no-npm-token:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check that no workflow uses an npm token
+        run: |
+          if grep -rnE 'N(PM|ODE_AUTH)_TOKEN' .github; then
+            echo "A workflow refers to an npm token. Releases stage through trusted publishing instead." >&2
+            exit 1
+          fi
+
   nix:
     strategy:
       fail-fast: false
