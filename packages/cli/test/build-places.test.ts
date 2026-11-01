@@ -9,7 +9,7 @@ import {
   String as Str,
 } from "effect";
 
-import { minimalMap } from "./fixtures.ts";
+import { minimalMap, pipelineMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
 
 const dataFile = "pipeline/map/data.mjs";
@@ -254,6 +254,59 @@ describe("build places structures", () => {
           'Removed the route override for "h-gone"'
         );
       })
+  );
+
+  it.effect(
+    "places the pipeline map with shorter hops than blocks in groups order, and no warnings",
+    () =>
+      Effect.gen(function* () {
+        const pipeline = "flake-pipeline/map";
+
+        const home = yield* makeHome(
+          Rec.remove(yield* pipelineMap, `${pipeline}/layout.json`)
+        );
+
+        const built = yield* runCli(home, ["build", `${home}/${pipeline}`]);
+
+        assert.strictEqual(built.exitCode, 0, built.stderr);
+
+        const layout = yield* decodeLayout(
+          built.files[`${pipeline}/layout.json`] ?? ""
+        );
+
+        const { default: data } = yield* Effect.promise(
+          (): Promise<{
+            readonly default: {
+              readonly hops: readonly { from: string; to: string }[];
+            };
+          }> => import(`${home}/${pipeline}/data.mjs`)
+        );
+
+        const centre = (id: string) => {
+          const box = layout.structures[id];
+
+          assert.isDefined(box, `${id} has no placement`);
+
+          return { x: box.x + box.w / 2, y: box.y + box.d / 2 };
+        };
+
+        const total = Arr.reduce(data.hops, 0, (sum, { from, to }) => {
+          const a = centre(from);
+          const b = centre(to);
+
+          return sum + Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+        });
+
+        // Placing the blocks in `groups` order gave a total of 495.
+        assert.isBelow(total, 495);
+
+        const checked = yield* runCli(home, ["check", `${home}/${pipeline}`]);
+
+        assert.strictEqual(checked.exitCode, 0, checked.stdout);
+        assert.include(checked.stdout, ": 0 errors, 0 warnings.");
+      }),
+    // build and check route and lay out every chapter of a 29-hop map.
+    30_000
   );
 
   it.effect("takes and releases the lock", () =>

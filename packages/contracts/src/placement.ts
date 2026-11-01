@@ -33,6 +33,8 @@ interface Point {
   readonly y: number;
 }
 
+const origin: Point = { x: 0, y: 0 };
+
 const grow = (box: Placement, by: number): Placement => ({
   x: box.x - by,
   y: box.y - by,
@@ -206,7 +208,7 @@ const choose = (
 
   const beside = boundsOf(footprints(placed)).pipe(
     Option.map((all) => ({ x: all.x + all.w + groupGap, y: all.y })),
-    Option.getOrElse(() => ({ x: 0, y: 0 }))
+    Option.getOrElse(() => origin)
   );
 
   const fallback: Placement = { ...beside, ...defaultFootprint };
@@ -232,6 +234,9 @@ const choose = (
     : fallback;
 };
 
+/** The same key for two ids whichever comes first. */
+const pairKey = (a: string, b: string) => (a < b ? `${a}\n${b}` : `${b}\n${a}`);
+
 /**
  * Orders a group's members so that structures joined by hops come next to
  * each other: each next member is the one with the most hops to those
@@ -240,12 +245,17 @@ const choose = (
 const connectedOrder = (data: MapData, members: readonly Structure[]) => {
   const ids = new Set(Arr.map(members, ({ id }) => id));
 
-  const links = (a: string, b: string) =>
-    Arr.filter(
-      data.hops,
-      (hop) =>
-        (hop.from === a && hop.to === b) || (hop.from === b && hop.to === a)
-    ).length;
+  const counts = new Map<string, number>();
+
+  for (const hop of data.hops) {
+    if (ids.has(hop.from) && ids.has(hop.to)) {
+      const key = pairKey(hop.from, hop.to);
+
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const links = (a: string, b: string) => counts.get(pairKey(a, b)) ?? 0;
 
   const chosen: Structure[] = [];
   let rest = Arr.filter(members, ({ id }) => ids.has(id));
@@ -288,15 +298,18 @@ const sizeOf = (block: Block) => ({
   d: (block.rows - 1) * block.spacing + defaultFootprint.d,
 });
 
+/** Where `slot` of a block with its top left corner at `offset` lies. */
+const slotSpot = (block: Block, offset: Point, slot: Slot): Placement => ({
+  x: offset.x + slot.column * block.spacing,
+  y: offset.y + slot.row * block.spacing,
+  ...defaultFootprint,
+});
+
 /** A block's members placed with the block's top left corner at `offset`. */
 const layBlock = (block: Block, offset: Point): readonly PlacedStructure[] =>
   Arr.map(block.members, ({ structure, slot }) => ({
     structure,
-    placement: {
-      x: offset.x + slot.column * block.spacing,
-      y: offset.y + slot.row * block.spacing,
-      ...defaultFootprint,
-    },
+    placement: slotSpot(block, offset, slot),
   }));
 
 /** Whether no name tag in `members` is drawn over another member's box. */
@@ -340,7 +353,7 @@ const blockOf = (data: MapData, members: readonly Structure[]): Block => {
 
   const spacing = Option.getOrElse(
     Arr.findFirst(spacings, (candidate) =>
-      tagsClear(layBlock(block(candidate), { x: 0, y: 0 }))
+      tagsClear(layBlock(block(candidate), origin))
     ),
     () => widestPitch
   );
@@ -352,28 +365,47 @@ const blockOf = (data: MapData, members: readonly Structure[]): Block => {
 const startOf = (sizes: readonly number[], index: number) =>
   Arr.reduce(sizes.slice(0, index), 0, (sum, size) => sum + size + groupGap);
 
+/** Marks a grid cell, or a block's slot, that nothing takes. */
+const empty = -1;
+
 /**
- * Where each block's top left corner goes when block `index` takes cell
- * `cells[index]` of a grid of rows and columns, `groupGap` apart. The grid
- * starts at the origin, or to the right of everything already placed.
+ * The grid of rows and columns blocks are arranged in: about as wide as it
+ * is deep, with a cell for every block and the rest of the last row spare.
+ */
+const gridFor = (count: number) => {
+  const columns = Math.ceil(Math.sqrt(count));
+
+  return { columns, cells: columns * Math.ceil(count / columns) };
+};
+
+/** Where blocks start: the origin, or right of everything already placed. */
+const blocksStart = (placed: readonly PlacedStructure[]): Point =>
+  boundsOf(footprints(placed)).pipe(
+    Option.map((all) => ({ x: all.x + all.w + groupGap, y: all.y })),
+    Option.getOrElse(() => origin)
+  );
+
+/**
+ * Where each block's top left corner goes when `occupants[cell]` is the
+ * block in each grid cell, or `empty`. Each row and column is as big as its
+ * biggest block, `groupGap` from the next.
  */
 const blockOffsets = (
   placed: readonly PlacedStructure[],
   blocks: readonly Block[],
-  cells: readonly number[]
+  occupants: readonly number[]
 ): readonly Point[] => {
-  const columns = Math.ceil(Math.sqrt(blocks.length));
-  const rowCount = Math.ceil(blocks.length / columns);
+  const { columns, cells } = gridFor(blocks.length);
+  const start = blocksStart(placed);
 
-  const origin = boundsOf(footprints(placed)).pipe(
-    Option.map((all) => ({ x: all.x + all.w + groupGap, y: all.y })),
-    Option.getOrElse(() => ({ x: 0, y: 0 }))
+  const cellOf = new Map(
+    Arr.map(occupants, (block, cell) => [block, cell] as const)
   );
 
-  const columnOf = (index: number) => (cells[index] ?? index) % columns;
+  const columnOf = (index: number) => (cellOf.get(index) ?? index) % columns;
 
   const rowOf = (index: number) =>
-    Math.floor((cells[index] ?? index) / columns);
+    Math.floor((cellOf.get(index) ?? index) / columns);
 
   const widths = Arr.map(Arr.range(0, columns - 1), (column) =>
     Math.max(
@@ -384,7 +416,7 @@ const blockOffsets = (
     )
   );
 
-  const depths = Arr.map(Arr.range(0, rowCount - 1), (row) =>
+  const depths = Arr.map(Arr.range(0, cells / columns - 1), (row) =>
     Math.max(
       0,
       ...Arr.flatMap(blocks, (block, index) =>
@@ -394,23 +426,41 @@ const blockOffsets = (
   );
 
   return Arr.map(blocks, (_, index) => ({
-    x: origin.x + startOf(widths, columnOf(index)),
-    y: origin.y + startOf(depths, rowOf(index)),
+    x: start.x + startOf(widths, columnOf(index)),
+    y: start.y + startOf(depths, rowOf(index)),
   }));
 };
+
+/** Every block's members, each block laid out at its offset. */
+const layBlocks = (blocks: readonly Block[], offsets: readonly Point[]) =>
+  Arr.flatMap(blocks, (block, index) =>
+    layBlock(block, offsets[index] ?? origin)
+  );
 
 /**
  * How well a layout serves its hops: their total length, as grid distance
  * between footprint centres, and how many of them join structures that share
- * neither a ground row nor a column. Hops with an end not in `at` don't count.
+ * neither a ground row nor a column.
  */
 interface HopCost {
   readonly length: number;
   readonly misaligned: number;
 }
 
-const hopCost = (data: MapData, at: ReadonlyMap<string, Placement>): HopCost =>
-  Arr.reduce(data.hops, { length: 0, misaligned: 0 }, (sum, hop) => {
+/** Whether two footprints' centres share neither a ground row nor a column. */
+const misaligned = (a: Placement, b: Placement) => {
+  const first = centreOf(a);
+  const second = centreOf(b);
+
+  return first.x !== second.x && first.y !== second.y;
+};
+
+/** What `hops` cost with structures at `at`. Hops with an end not in `at` don't count. */
+const hopCost = (
+  hops: MapData["hops"],
+  at: ReadonlyMap<string, Placement>
+): HopCost =>
+  Arr.reduce(hops, { length: 0, misaligned: 0 }, (sum, hop) => {
     const from = at.get(hop.from);
     const to = at.get(hop.to);
 
@@ -418,12 +468,9 @@ const hopCost = (data: MapData, at: ReadonlyMap<string, Placement>): HopCost =>
       return sum;
     }
 
-    const a = centreOf(from);
-    const b = centreOf(to);
-
     return {
-      length: sum.length + Math.abs(a.x - b.x) + Math.abs(a.y - b.y),
-      misaligned: sum.misaligned + (a.x !== b.x && a.y !== b.y ? 1 : 0),
+      length: sum.length + distance(from, to),
+      misaligned: sum.misaligned + (misaligned(from, to) ? 1 : 0),
     };
   });
 
@@ -438,27 +485,6 @@ const placementsOf = (placed: readonly PlacedStructure[]) =>
     Arr.map(placed, ({ structure, placement }) => [structure.id, placement])
   );
 
-/** Every ordering of `0` to `count - 1`, in lexicographic order. */
-const permutations = (count: number): readonly (readonly number[])[] => {
-  const extend = (
-    prefix: readonly number[],
-    rest: readonly number[]
-  ): readonly (readonly number[])[] =>
-    Arr.isReadonlyArrayNonEmpty(rest)
-      ? Arr.flatMap(rest, (next) =>
-          extend(
-            [...prefix, next],
-            Arr.filter(rest, (other) => other !== next)
-          )
-        )
-      : [prefix];
-
-  return extend([], Arr.range(0, count - 1));
-};
-
-/** The most groups whose every arrangement is tried. */
-const exhaustiveGroups = 8;
-
 const swapped = (items: readonly number[], i: number, j: number) =>
   Arr.map(items, (item, index) => {
     if (index === i) {
@@ -470,12 +496,16 @@ const swapped = (items: readonly number[], i: number, j: number) =>
 
 /**
  * Starting from `start`, swaps pairs of entries while a swap makes `cost`
- * cheaper, trying pairs in order. Every accepted swap lowers the cost, so it
- * stops.
+ * cheaper and is `allowed`, trying pairs in order. Every accepted swap
+ * lowers the cost, so it stops.
  */
 const improveBySwaps = (
   start: readonly number[],
-  cost: (items: readonly number[]) => HopCost
+  cost: (items: readonly number[]) => HopCost,
+  allowed: (
+    items: readonly number[],
+    moved: readonly [number, number]
+  ) => boolean = () => true
 ) => {
   let best = start;
   let bestCost = cost(start);
@@ -489,7 +519,10 @@ const improveBySwaps = (
         const candidate = swapped(best, i, j);
         const candidateCost = cost(candidate);
 
-        if (cheaper(candidateCost, bestCost) < 0) {
+        if (
+          cheaper(candidateCost, bestCost) < 0 &&
+          allowed(candidate, [i, j])
+        ) {
           best = candidate;
           bestCost = candidateCost;
           improved = true;
@@ -502,45 +535,355 @@ const improveBySwaps = (
 };
 
 /**
- * The grid cell each block takes, so that hops are as short as they can be.
- * With up to `exhaustiveGroups` blocks every arrangement is tried; past that,
- * swaps improve on `groups` order. Ties keep the arrangement closest to
- * `groups` order.
+ * What putting blocks in grid cells costs, worked out once so the search
+ * never lays a block out. For blocks `a > b` in cells `ca` and `cb`, the
+ * hops between them cost `pairLength` and `pairOff` at
+ * `((a * blocks + b) * cells + ca) * cells + cb`, and at least
+ * `pairLeast[a * blocks + b]` in any two different cells. A block's hops to
+ * structures already placed cost `placedLength` and `placedOff` at
+ * `block * cells + cell`. Lengths are grid distances between footprint
+ * centres; the `Off` counts are hops whose ends share neither a ground row
+ * nor a column. Cells are spaced as if every block were as big as the
+ * biggest one.
  */
-const cellsFor = (
+interface CellWeights {
+  readonly blocks: number;
+  readonly cells: number;
+  readonly pairLength: Float64Array;
+  readonly pairOff: Float64Array;
+  readonly pairLeast: Float64Array;
+  readonly placedLength: Float64Array;
+  readonly placedOff: Float64Array;
+}
+
+/** Adds one hop between centres `a` and `b` to the costs at `at`. */
+const addHop = (
+  {
+    length,
+    off,
+  }: { readonly length: Float64Array; readonly off: Float64Array },
+  at: number,
+  [a, b]: readonly [Point, Point]
+) => {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+
+  length[at] = (length[at] ?? 0) + Math.abs(dx) + Math.abs(dy);
+  off[at] = (off[at] ?? 0) + (dx !== 0 && dy !== 0 ? 1 : 0);
+};
+
+const shifted = (point: Point, offset: Point): Point => ({
+  x: point.x + offset.x,
+  y: point.y + offset.y,
+});
+
+/** For each pair of blocks, the least their hops cost in two different cells. */
+const leastPairCosts = (
+  pairLength: Float64Array,
+  { blocks, cells }: { readonly blocks: number; readonly cells: number }
+) =>
+  Float64Array.from(Arr.range(0, blocks * blocks - 1), (pair) => {
+    let least = Infinity;
+
+    for (let ca = 0; ca < cells; ca += 1) {
+      for (let cb = 0; cb < cells; cb += 1) {
+        if (ca !== cb) {
+          least = Math.min(
+            least,
+            pairLength[(pair * cells + ca) * cells + cb] ?? 0
+          );
+        }
+      }
+    }
+
+    return least === Infinity ? 0 : least;
+  });
+
+const cellWeights = (
+  data: MapData,
+  placed: readonly PlacedStructure[],
+  blocks: readonly Block[]
+): CellWeights => {
+  const { columns, cells } = gridFor(blocks.length);
+  const count = blocks.length;
+  const sizes = Arr.map(blocks, sizeOf);
+  const cellW = Math.max(0, ...Arr.map(sizes, ({ w }) => w)) + groupGap;
+  const cellD = Math.max(0, ...Arr.map(sizes, ({ d }) => d)) + groupGap;
+  const start = blocksStart(placed);
+  const fixed = placementsOf(placed);
+
+  const corners = Arr.map(Arr.range(0, cells - 1), (cell) => ({
+    x: start.x + (cell % columns) * cellW,
+    y: start.y + Math.floor(cell / columns) * cellD,
+  }));
+
+  // Each new structure's block, and its centre with its block's top left
+  // corner at the origin.
+  const member = new Map(
+    Arr.flatMap(blocks, (block, index) =>
+      Arr.map(layBlock(block, origin), ({ structure, placement }) => [
+        structure.id,
+        { block: index, centre: centreOf(placement) },
+      ])
+    )
+  );
+
+  const pair = {
+    length: new Float64Array(count * count * cells * cells),
+    off: new Float64Array(count * count * cells * cells),
+  };
+
+  const toPlaced = {
+    length: new Float64Array(count * cells),
+    off: new Float64Array(count * cells),
+  };
+
+  for (const hop of data.hops) {
+    const from = member.get(hop.from);
+    const to = member.get(hop.to);
+    const end = fixed.get(from === undefined ? hop.from : hop.to);
+    const own = from ?? to;
+
+    if (from !== undefined && to !== undefined && from.block !== to.block) {
+      const [high, low] = from.block > to.block ? [from, to] : [to, from];
+      const base = (high.block * count + low.block) * cells * cells;
+
+      for (const [ca, a] of corners.entries()) {
+        for (const [cb, b] of corners.entries()) {
+          addHop(pair, base + ca * cells + cb, [
+            shifted(high.centre, a),
+            shifted(low.centre, b),
+          ]);
+        }
+      }
+    } else if (
+      (from === undefined) !== (to === undefined) &&
+      own !== undefined &&
+      end !== undefined
+    ) {
+      for (const [cell, corner] of corners.entries()) {
+        addHop(toPlaced, own.block * cells + cell, [
+          shifted(own.centre, corner),
+          centreOf(end),
+        ]);
+      }
+    }
+  }
+
+  return {
+    blocks: count,
+    cells,
+    pairLength: pair.length,
+    pairOff: pair.off,
+    pairLeast: leastPairCosts(pair.length, { blocks: count, cells }),
+    placedLength: toPlaced.length,
+    placedOff: toPlaced.off,
+  };
+};
+
+/** What `cells[block]`, the cell each block takes, costs under `weights`. */
+const cellsCost = (weights: CellWeights, cells: readonly number[]): HopCost => {
+  const { blocks, cells: cellCount, pairLength, pairOff } = weights;
+  let length = 0;
+  let off = 0;
+
+  for (const [a, ca] of cells.entries()) {
+    length += weights.placedLength[a * cellCount + ca] ?? 0;
+    off += weights.placedOff[a * cellCount + ca] ?? 0;
+
+    for (const [b, cb] of cells.slice(0, a).entries()) {
+      const at = ((a * blocks + b) * cellCount + ca) * cellCount + cb;
+
+      length += pairLength[at] ?? 0;
+      off += pairOff[at] ?? 0;
+    }
+  }
+
+  return { length, misaligned: off };
+};
+
+/** How many of the cheapest arrangements by weight are measured exactly. */
+const shortlist = 32;
+
+/**
+ * Tries every way to give each block its own cell, block 0's choice first,
+ * and returns the `shortlist` cheapest by `weights`, cheapest first, ties
+ * in the order found. A partial arrangement that, with the least the
+ * remaining blocks could add, already costs more than the last one kept is
+ * skipped. This runs hundreds of thousands of times, so it works on plain
+ * numbers and allocates nothing in the inner loop.
+ */
+const cheapestCells = (
+  weights: CellWeights
+): readonly (readonly number[])[] => {
+  const {
+    blocks,
+    cells,
+    pairLength,
+    pairOff,
+    pairLeast,
+    placedLength,
+    placedOff,
+  } = weights;
+
+  // `rest[depth]` is the least the blocks from `depth` on can add: their
+  // hops to placed structures from their best cell, and their hops to
+  // earlier blocks at their shortest.
+  const rest = new Float64Array(blocks + 1);
+
+  for (let block = blocks - 1; block >= 0; block -= 1) {
+    let least = Infinity;
+
+    for (let cell = 0; cell < cells; cell += 1) {
+      least = Math.min(least, placedLength[block * cells + cell] ?? 0);
+    }
+
+    for (let earlier = 0; earlier < block; earlier += 1) {
+      least += pairLeast[block * blocks + earlier] ?? 0;
+    }
+
+    rest[block] = (rest[block + 1] ?? 0) + least;
+  }
+
+  const kept: { cells: readonly number[]; length: number; off: number }[] = [];
+
+  let worstLength = Infinity;
+  let worstOff = Infinity;
+  const taken = new Uint8Array(cells);
+  const chosen = new Int32Array(blocks);
+
+  const keep = (length: number, off: number) => {
+    const at = Option.getOrElse(
+      Arr.findFirstIndex(
+        kept,
+        (other) =>
+          length < other.length || (length === other.length && off < other.off)
+      ),
+      () => kept.length
+    );
+
+    kept.splice(at, 0, {
+      cells: [...chosen],
+      length,
+      off,
+    });
+
+    if (kept.length > shortlist) {
+      kept.pop();
+    }
+
+    if (kept.length === shortlist) {
+      worstLength = kept.at(-1)?.length ?? Infinity;
+      worstOff = kept.at(-1)?.off ?? Infinity;
+    }
+  };
+
+  const extend = (depth: number, length: number, off: number) => {
+    if (depth === blocks) {
+      keep(length, off);
+
+      return;
+    }
+
+    for (let cell = 0; cell < cells; cell += 1) {
+      if (taken[cell] === 0) {
+        let nextLength = length + (placedLength[depth * cells + cell] ?? 0);
+        let nextOff = off + (placedOff[depth * cells + cell] ?? 0);
+
+        for (let earlier = 0; earlier < depth; earlier += 1) {
+          const at =
+            ((depth * blocks + earlier) * cells + cell) * cells +
+            (chosen[earlier] ?? 0);
+
+          nextLength += pairLength[at] ?? 0;
+          nextOff += pairOff[at] ?? 0;
+        }
+
+        const least = nextLength + (rest[depth + 1] ?? 0);
+
+        if (
+          least < worstLength ||
+          (least === worstLength && nextOff < worstOff)
+        ) {
+          taken[cell] = 1;
+          chosen[depth] = cell;
+          extend(depth + 1, nextLength, nextOff);
+          taken[cell] = 0;
+        }
+      }
+    }
+  };
+
+  extend(0, 0, 0);
+
+  return Arr.map(kept, ({ cells: found }) => found);
+};
+
+/**
+ * The most groups whose every arrangement is tried. Eight groups fill a 3×3
+ * grid, 9! = 362,880 arrangements. With precomputed weights and pruning,
+ * that search took about 32 ms for 8 groups of 16, and all of placement
+ * about 90 ms, inside the 100 ms `build` can spend. Nine groups need a 4×3
+ * grid, 12!/3! = 80 million arrangements, well past that, so past eight the
+ * search only improves `groups` order by swaps.
+ */
+const exhaustiveGroups = 8;
+
+/** The cell each of `count` blocks takes, from the block in each cell. */
+const cellsOf = (occupants: readonly number[], count: number) =>
+  Arr.map(Arr.range(0, count - 1), (block) => occupants.indexOf(block));
+
+/** The block in each of `cellCount` cells, or `empty`, from each block's cell. */
+const occupantsOf = (cells: readonly number[], cellCount: number) =>
+  Arr.map(Arr.range(0, cellCount - 1), (cell) => {
+    const block = cells.indexOf(cell);
+
+    return block === -1 ? empty : block;
+  });
+
+/**
+ * The block in each grid cell, or `empty`, so that hops are as short as they
+ * can be and then as many as possible join blocks in a shared row or
+ * column. Empty cells can fall anywhere. Ties keep `groups` order, with the
+ * spare cells last, and then the first of the shortlist, which lists equal
+ * weights in lexicographic order of each block's cell.
+ */
+const occupantsFor = (
   data: MapData,
   placed: readonly PlacedStructure[],
   blocks: readonly Block[]
 ): readonly number[] => {
-  const cost = (cells: readonly number[]) => {
-    const offsets = blockOffsets(placed, blocks, cells);
+  const weights = cellWeights(data, placed, blocks);
+  const inOrder = occupantsOf(Arr.range(0, blocks.length - 1), weights.cells);
+
+  if (blocks.length > exhaustiveGroups) {
+    return improveBySwaps(inOrder, (occupants) =>
+      cellsCost(weights, cellsOf(occupants, blocks.length))
+    );
+  }
+
+  // The weights space cells evenly, but rows and columns really take only
+  // the room their blocks need, so the shortlist is measured as laid out.
+  const measured = (occupants: readonly number[]) => {
+    const offsets = blockOffsets(placed, blocks, occupants);
 
     return hopCost(
-      data,
-      placementsOf([
-        ...placed,
-        ...Arr.flatMap(blocks, (block, index) =>
-          layBlock(block, offsets[index] ?? { x: 0, y: 0 })
-        ),
-      ])
+      data.hops,
+      placementsOf([...placed, ...layBlocks(blocks, offsets)])
     );
   };
 
-  const inOrder: readonly number[] = Arr.range(0, blocks.length - 1);
-
-  if (blocks.length > exhaustiveGroups) {
-    return improveBySwaps(inOrder, cost);
-  }
-
   return Arr.reduce(
-    permutations(blocks.length),
-    { cells: inOrder, cost: cost(inOrder) },
-    (best, cells) => {
-      const next = cost(cells);
+    Arr.map(cheapestCells(weights), (cells) =>
+      occupantsOf(cells, weights.cells)
+    ),
+    { occupants: inOrder, cost: measured(inOrder) },
+    (best, occupants) => {
+      const cost = measured(occupants);
 
-      return cheaper(next, best.cost) < 0 ? { cells, cost: next } : best;
+      return cheaper(cost, best.cost) < 0 ? { occupants, cost } : best;
     }
-  ).cells;
+  ).occupants;
 };
 
 /**
@@ -558,16 +901,15 @@ const faceNeighbours = (
     Arr.map(Arr.range(0, block.columns - 1), (column) => ({ column, row }))
   );
 
-  // `order[slot]` is the member in that slot, or an index past the members
-  // for an empty one.
-  const start = Arr.map(slots, (slot, index) =>
+  // `order[slot]` is the index of the member in that slot, or `empty`.
+  const start = Arr.map(slots, (slot) =>
     Option.getOrElse(
       Arr.findFirstIndex(
         block.members,
         (member) =>
           member.slot.column === slot.column && member.slot.row === slot.row
       ),
-      () => block.members.length + index
+      () => empty
     )
   );
 
@@ -583,17 +925,115 @@ const faceNeighbours = (
     }),
   });
 
-  const unusable = { length: Infinity, misaligned: Infinity };
+  // What each member's hops to `others` cost from each slot, and how many
+  // hops join each pair of members, worked out once for the search.
+  const fixed = placementsOf(others);
+  const count = block.members.length;
+  const spots = Arr.map(slots, (slot) => slotSpot(block, offset, slot));
 
-  const cost = (order: readonly number[]) => {
-    const laid = layBlock(blockFrom(order), offset);
+  const memberOf = new Map(
+    Arr.map(block.members, ({ structure }, index) => [structure.id, index])
+  );
 
-    return tagsClear(laid)
-      ? hopCost(data, placementsOf([...others, ...laid]))
-      : unusable;
+  const ends = Arr.map(block.members, (): Placement[] => []);
+  const within = Arr.map(Arr.range(0, count * count - 1), () => 0);
+
+  for (const hop of data.hops) {
+    const from = memberOf.get(hop.from);
+    const to = memberOf.get(hop.to);
+
+    if (from !== undefined && to !== undefined) {
+      if (from !== to) {
+        within[from * count + to] = (within[from * count + to] ?? 0) + 1;
+        within[to * count + from] = (within[to * count + from] ?? 0) + 1;
+      }
+    } else if (from !== undefined || to !== undefined) {
+      const end = fixed.get(from === undefined ? hop.from : hop.to);
+
+      if (end !== undefined) {
+        ends[from ?? to ?? 0]?.push(end);
+      }
+    }
+  }
+
+  const toOthers = Arr.flatMap(ends, (placements) =>
+    Arr.map(spots, (spot) =>
+      Arr.reduce(placements, { length: 0, misaligned: 0 }, (sum, end) => ({
+        length: sum.length + distance(spot, end),
+        misaligned: sum.misaligned + (misaligned(spot, end) ? 1 : 0),
+      }))
+    )
+  );
+
+  const slotDistance = Arr.flatMap(spots, (a) =>
+    Arr.map(spots, (b) => distance(a, b))
+  );
+
+  const slotOffLine = Arr.flatMap(spots, (a) =>
+    Arr.map(spots, (b) => (misaligned(a, b) ? 1 : 0))
+  );
+
+  const slotOf = new Int32Array(count);
+
+  const cost = (order: readonly number[]): HopCost => {
+    for (const [slot, member] of order.entries()) {
+      if (member !== empty) {
+        slotOf[member] = slot;
+      }
+    }
+
+    let length = 0;
+    let off = 0;
+
+    for (let member = 0; member < count; member += 1) {
+      const slot = slotOf[member] ?? 0;
+      const own = toOthers[member * slots.length + slot];
+
+      length += own?.length ?? 0;
+      off += own?.misaligned ?? 0;
+
+      for (let other = 0; other < member; other += 1) {
+        const links = within[member * count + other] ?? 0;
+
+        if (links > 0) {
+          const pair = slot * slots.length + (slotOf[other] ?? 0);
+
+          length += links * (slotDistance[pair] ?? 0);
+          off += links * (slotOffLine[pair] ?? 0);
+        }
+      }
+    }
+
+    return { length, misaligned: off };
   };
 
-  return blockFrom(improveBySwaps(start, cost));
+  return blockFrom(
+    improveBySwaps(start, cost, (order, moved) => {
+      const laid = layBlock(blockFrom(order), offset);
+
+      const movedIds = new Set(
+        Arr.flatMap(moved, (slot) =>
+          Option.toArray(
+            Option.map(
+              Option.fromNullishOr(block.members[order[slot] ?? empty]),
+              ({ structure }) => structure.id
+            )
+          )
+        )
+      );
+
+      // Only tags and boxes of the members that moved can newly clash.
+      return Arr.every(laid, (a) =>
+        Arr.every(
+          laid,
+          (b) =>
+            a.structure.id === b.structure.id ||
+            (!movedIds.has(a.structure.id) && !movedIds.has(b.structure.id)) ||
+            !tagCovers(a, b)
+        )
+      );
+    })
+  );
 };
 
 /**
@@ -607,9 +1047,11 @@ const arrangeBlocks = (
   placed: readonly PlacedStructure[],
   blocks: readonly Block[]
 ): readonly PlacedStructure[] => {
-  const cells = cellsFor(data, placed, blocks);
-  const offsets = blockOffsets(placed, blocks, cells);
-  const offsetOf = (index: number) => offsets[index] ?? { x: 0, y: 0 };
+  const offsets = blockOffsets(
+    placed,
+    blocks,
+    occupantsFor(data, placed, blocks)
+  );
 
   const faced = Arr.reduce(
     Arr.range(0, blocks.length - 1),
@@ -623,21 +1065,22 @@ const arrangeBlocks = (
 
       const others = [
         ...placed,
-        ...Arr.flatMap(sofar, (other, at) =>
-          at === index ? [] : layBlock(other, offsetOf(at))
+        ...layBlocks(
+          Arr.filter(sofar, (_, at) => at !== index),
+          Arr.filter(offsets, (_, at) => at !== index)
         ),
       ];
 
       const next = faceNeighbours(data, others, {
         block,
-        offset: offsetOf(index),
+        offset: offsets[index] ?? origin,
       });
 
       return Arr.map(sofar, (other, at) => (at === index ? next : other));
     }
   );
 
-  return Arr.flatMap(faced, (block, index) => layBlock(block, offsetOf(index)));
+  return layBlocks(faced, offsets);
 };
 
 /** What placement did to a layout. */
@@ -659,8 +1102,9 @@ export interface PlacedLayout {
  * keep it exactly.
  *
  * A group with nothing placed yet is laid out as a block about as wide as it
- * is deep, with structures joined by hops next to each other, and the blocks
- * sit in rows and columns in `groups` order. A new structure in a group that
+ * is deep, with structures joined by hops next to each other. The blocks
+ * sit in rows and columns arranged to shorten the hops between groups, and
+ * members move to the side of their block facing where their hops go. A new structure in a group that
  * already has placed members takes the free slot nearest its group and the
  * structures its hops connect to. Every new placement lands on a half unit
  * with a 2×2 footprint, clear of every other footprint and name tag, and

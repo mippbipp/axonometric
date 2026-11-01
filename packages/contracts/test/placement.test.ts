@@ -125,6 +125,18 @@ const crowded = mapOf(
   [hop("a1", "a2"), hop("a2", "b1"), hop("b1", "b2"), hop("c1", "a4")]
 );
 
+/**
+ * Groups a, b, c and d, listed in that order, with structures a1, a2 and so
+ * on up to `size` in each, and `hops` between them.
+ */
+const fourGroupsOf = (size: number, hops: readonly Hop[]) =>
+  mapOf(
+    Arr.flatMap(["a", "b", "c", "d"], (group) =>
+      Arr.map(Arr.range(1, size), (n) => structure(`${group}${n}`, group))
+    ),
+    hops
+  );
+
 const assertTidy = (data: MapData, layout: Layout) => {
   const placements = Rec.toEntries(layout.structures);
 
@@ -353,12 +365,11 @@ describe("placement", () => {
     "puts a structure whose only hop leaves its group on the side facing that group",
     () =>
       Effect.sync(() => {
-        const data = mapOf(
-          Arr.flatMap(["a", "b", "c", "d"], (group) =>
-            Arr.map([1, 2, 3, 4], (n) => structure(`${group}${n}`, group))
-          ),
-          [hop("a4", "b1"), hop("c1", "d1"), hop("a1", "a2")]
-        );
+        const data = fourGroupsOf(4, [
+          hop("a4", "b1"),
+          hop("c1", "d1"),
+          hop("a1", "a2"),
+        ]);
 
         const { layout } = placeStructures(data, layoutOf());
         const own = zoneOf(layout, idsIn(data, "a"));
@@ -388,19 +399,21 @@ describe("placement", () => {
         if (above) {
           assert.isBelow(spot.y, middle.y);
         }
+
+        assertTidy(data, layout);
       })
   );
 
   it.effect(
-    "puts two heavily connected groups next to each other, whatever their order in groups",
+    "puts the two most connected groups side by side when groups lists them first and last",
     () =>
       Effect.sync(() => {
-        const data = mapOf(
-          Arr.flatMap(["a", "b", "c", "d"], (group) =>
-            Arr.map([1, 2, 3, 4], (n) => structure(`${group}${n}`, group))
-          ),
-          [hop("a1", "d1"), hop("a2", "d2"), hop("d3", "a3"), hop("b1", "c1")]
-        );
+        const data = fourGroupsOf(4, [
+          hop("a1", "d1"),
+          hop("a2", "d2"),
+          hop("d3", "a3"),
+          hop("b1", "c1"),
+        ]);
 
         const { layout } = placeStructures(data, layoutOf());
         const a = zoneOf(layout, idsIn(data, "a"));
@@ -418,12 +431,7 @@ describe("placement", () => {
     "puts hop-linked structures of neighbouring groups on a shared row or column",
     () =>
       Effect.sync(() => {
-        const data = mapOf(
-          Arr.flatMap(["a", "b", "c", "d"], (group) =>
-            Arr.map([1, 2], (n) => structure(`${group}${n}`, group))
-          ),
-          [hop("b2", "a1"), hop("a1", "b1")]
-        );
+        const data = fourGroupsOf(2, [hop("b2", "a1"), hop("a1", "b1")]);
 
         const { layout } = placeStructures(data, layoutOf());
         const a1 = placementOf(layout, "a1");
