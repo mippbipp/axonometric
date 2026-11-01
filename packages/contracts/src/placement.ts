@@ -401,11 +401,14 @@ export interface PlacedLayout {
   readonly placed: readonly string[];
   /** The ids of layout entries removed because no structure has them. */
   readonly pruned: readonly string[];
+  /** The ids of route overrides removed because no hop has them. */
+  readonly prunedRoutes: readonly string[];
 }
 
 /**
  * Gives every structure without a placement one, and drops entries for
- * structures that no longer exist. Structures that already have a placement
+ * structures that no longer exist and route overrides for hops that no
+ * longer exist. Structures that already have a placement
  * keep it exactly.
  *
  * A group with nothing placed yet is laid out as a block about as wide as it
@@ -505,9 +508,19 @@ export const placeStructures: {
     }
   }
 
+  const hopIds = new Set(Arr.map(data.hops, ({ id }) => id));
+  const routes = layout.routes ?? {};
+  const prunedRoutes = Arr.filter(Rec.keys(routes), (id) => !hopIds.has(id));
+
+  const kept =
+    layout.routes === undefined
+      ? {}
+      : { routes: Rec.filter(routes, (_, id) => hopIds.has(id)) };
+
   return {
-    layout: { ...layout, structures },
+    layout: { ...layout, structures, ...kept },
     placed: Arr.map(unplaced, ({ id }) => id),
     pruned,
+    prunedRoutes,
   };
 });
