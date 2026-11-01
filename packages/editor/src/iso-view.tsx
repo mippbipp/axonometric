@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import { fitOf } from "./fit.ts";
 import { corners, screenRouteOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
+import { SelectionMarker } from "./selection-marker.tsx";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
 import { drawZones } from "./zone-outline.ts";
@@ -302,6 +303,7 @@ export function IsoView({
         {Arr.map(marked, (item) => (
           <NewMarker key={item.structure.id} placed={item} />
         ))}
+        <SelectionMarker placements={state.layout.structures} />
       </g>
       <g>
         {Arr.map(routed, (item) => (

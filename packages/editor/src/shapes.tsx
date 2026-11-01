@@ -1,10 +1,11 @@
-import { isoHeights, statusLabels } from "@axonometric/contracts";
+import { isoHeights } from "@axonometric/contracts";
 import type { Placement, Shape, Structure } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
 import { corners, project, tileHeight, tileWidth, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
+import { StructureTarget } from "./structure-target.tsx";
 
 // How each shape is drawn in the iso view. Every shape stands on its
 // footprint and reaches `isoHeights[shape]` at its highest point. Faces that
@@ -158,7 +159,8 @@ function Drum({
   );
 }
 
-function BoxShape({ placement, height, hatch }: DrawProps) {
+/** A plain box: the `box` shape, also used for the inside view's steps. */
+export function BoxShape({ placement, height, hatch }: DrawProps) {
   return <Prism placement={placement} z0={0} z1={height} hatch={hatch} />;
 }
 
@@ -603,15 +605,14 @@ export function IsoStructure({
   const chip = chipAt(structure, placement);
 
   return (
-    <g
-      data-structure={structure.id}
+    <StructureTarget
+      id={structure.id}
       data-shape={structure.shape}
       data-status={structure.status}
       className="stroke-ink"
       strokeWidth={1.2}
       strokeLinejoin="round"
     >
-      <title>{`${structure.name} · ${statusLabels[structure.status]}`}</title>
       <Drawing
         placement={placement}
         height={isoHeights[structure.shape]}
@@ -623,6 +624,6 @@ export function IsoStructure({
       {structure.status === "off" ? (
         <OffMark at={offMarkAt(structure, placement, chip !== undefined)} />
       ) : null}
-    </g>
+    </StructureTarget>
   );
 }

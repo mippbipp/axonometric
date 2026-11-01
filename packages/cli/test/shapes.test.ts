@@ -102,12 +102,22 @@ describe("shapes and statuses", () => {
         const planned = yield* lookOf(page, "cards");
         const off = yield* lookOf(page, "slab");
 
-        const titles = yield* Effect.promise(() =>
-          page
-            .locator(
-              '[data-structure="cards"] > title, [data-structure="slab"] > title'
-            )
-            .allTextContents()
+        // The hover tooltip names the status; structures carry no <title>.
+        const tooltipOf = Effect.fnUntraced(function* (id: string) {
+          yield* Effect.promise(() =>
+            page.locator(`[data-structure="${id}"]`).hover()
+          );
+
+          return yield* Effect.promise(() =>
+            page.locator(`[data-tooltip="${id}"] p`).first().textContent()
+          );
+        });
+
+        const tooltips = [yield* tooltipOf("slab"), yield* tooltipOf("cards")];
+
+        const titles = yield* inPage<number>(
+          page,
+          'document.querySelectorAll("[data-structure] > title").length'
         );
 
         assert.deepStrictEqual(Arr.sort(statusOf, Order.String), [
@@ -129,10 +139,9 @@ describe("shapes and statuses", () => {
           ),
           1
         );
-        assert.deepStrictEqual(Arr.sort(titles, Order.String), [
-          `Backend · ${statusLabels.off}`,
-          `Tools · ${statusLabels.planned}`,
-        ]);
+        assert.strictEqual(titles, 0);
+        assert.include(tooltips[0] ?? "", `Backend · ${statusLabels.off}`);
+        assert.include(tooltips[1] ?? "", `Tools · ${statusLabels.planned}`);
       })
     )
   );

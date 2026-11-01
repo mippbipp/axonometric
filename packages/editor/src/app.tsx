@@ -1,23 +1,76 @@
 import type { Hop, MapState } from "@axonometric/contracts";
+import { cn } from "@axonometric/ui/lib/utils";
+import { Array as Arr } from "effect";
 import { useCallback } from "react";
 
+import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
+import { useInsideFocus } from "./inside-focus.ts";
+import { InsideView } from "./inside-view.tsx";
 import { IsoView } from "./iso-view.tsx";
 import { screenRouteOf } from "./iso.ts";
+import { MapSurface } from "./map-surface.tsx";
 import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
+import { useSelection } from "./selection-context.ts";
+import { useSelectionKeys } from "./selection-keys.ts";
+import { SelectionProvider } from "./selection.tsx";
+import { SideIndex } from "./side-index.tsx";
 import { SidePanel } from "./side-panel.tsx";
+import { hasSteps, useStructuresById } from "./structures.ts";
 import { ThemeToggle } from "./theme.tsx";
+import { StructureTooltip, TooltipProvider } from "./tooltip.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 import { WalkthroughProvider } from "./walkthrough.tsx";
 
+/** The keys the hint bar lists, for what's on screen. */
+const hintsOf = ({
+  selected,
+  inside,
+  canGoInside,
+}: {
+  readonly selected: boolean;
+  readonly inside: boolean;
+  /** Whether the selected structure has steps. */
+  readonly canGoInside: boolean;
+}) => {
+  if (inside) {
+    return ["← or Esc come out", "click Step to move the packet"];
+  }
+
+  return selected
+    ? [
+        ...(canGoInside ? ["→ go inside"] : []),
+        "← or Esc unpin",
+        "] next chapter",
+        "[ back",
+        "+ and − zoom, 0 fits",
+        "click empty space to unpin",
+      ]
+    : [
+        "→ or ] next chapter",
+        "← or [ back",
+        "hover to read",
+        "click to pin",
+        "double-click to go inside",
+        "+ and − zoom, 0 fits",
+        "click a packet to read its payload",
+      ];
+};
+
 function WalkthroughPage() {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
+  const { selected, inside } = useSelection();
+  const byId = useStructuresById();
+  const insideStructure = inside === null ? undefined : byId.get(inside);
+  const selectedStructure = selected === null ? undefined : byId.get(selected);
 
-  useChapterKeys(true);
+  useChapterKeys(selected === null);
+  useSelectionKeys();
+  useInsideFocus(inside);
 
   const isoRouteOf = useCallback(
     (hop: Hop) => screenRouteOf({ layout: state.layout, hop }),
@@ -35,31 +88,65 @@ function WalkthroughPage() {
           {state.system}
         </h1>
         <div className="ml-auto flex items-center gap-4">
-          <PlaybackControls />
+          {insideStructure === undefined ? <PlaybackControls /> : null}
           <ThemeToggle />
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">
-          <IsoView
-            state={state}
-            revealed={revealed}
-            newlyRevealed={newlyRevealed}
-            fitTo={fit}
-            fitKey={stop.id}
+        <SideIndex />
+        <MapSurface>
+          {/* The iso view stays mounted, hidden, while the inside view is
+              open, so its pan and zoom survive the visit. It keeps its size,
+              so the viewport doesn't refit on a resize. */}
+          <div
+            data-iso-layer
+            inert={insideStructure !== undefined}
+            className={cn(
+              "absolute inset-0",
+              insideStructure !== undefined && "invisible"
+            )}
           >
-            <PacketLayer routeOf={isoRouteOf} />
-          </IsoView>
-          <ChapterRail className="absolute top-3 left-3" />
-          <FlowPicker className="absolute bottom-3 left-3" />
-        </div>
+            <IsoView
+              state={state}
+              revealed={revealed}
+              newlyRevealed={newlyRevealed}
+              fitTo={fit}
+              fitKey={stop.id}
+            >
+              <PacketLayer routeOf={isoRouteOf} />
+            </IsoView>
+            <ChapterRail className="absolute top-3 left-3" />
+            <FlowPicker className="absolute bottom-3 left-3" />
+          </div>
+          {insideStructure === undefined ? null : (
+            <div className="bg-paper absolute inset-0">
+              <InsideView
+                key={insideStructure.id}
+                structure={insideStructure}
+              />
+              <Breadcrumb
+                structure={insideStructure}
+                className="absolute top-3 left-3"
+              />
+            </div>
+          )}
+          <StructureTooltip />
+        </MapSurface>
         <SidePanel />
       </div>
-      <footer className="border-ink flex flex-wrap gap-x-4 border-t px-4 py-1 text-xs opacity-70">
-        <span>→ or ] next chapter</span>
-        <span>← or [ back</span>
-        <span>+ and − zoom, 0 fits</span>
-        <span>click a packet to read its payload</span>
+      {/* One line, clipped, so changing hints never resizes the canvas: a
+          resize refits the view and loses the engineer's zoom. */}
+      <footer className="border-ink flex h-6 shrink-0 gap-x-4 overflow-hidden border-t px-4 py-1 text-xs whitespace-nowrap opacity-70">
+        {Arr.map(
+          hintsOf({
+            selected: selected !== null,
+            inside: insideStructure !== undefined,
+            canGoInside: hasSteps(selectedStructure),
+          }),
+          (hint) => (
+            <span key={hint}>{hint}</span>
+          )
+        )}
       </footer>
     </main>
   );
@@ -73,7 +160,11 @@ export function App({ state }: { readonly state: MapState }) {
   return (
     <WalkthroughProvider state={state}>
       <PlaybackProvider>
-        <WalkthroughPage />
+        <SelectionProvider>
+          <TooltipProvider>
+            <WalkthroughPage />
+          </TooltipProvider>
+        </SelectionProvider>
       </PlaybackProvider>
     </WalkthroughProvider>
   );

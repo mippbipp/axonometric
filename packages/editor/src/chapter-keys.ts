@@ -7,7 +7,9 @@ const nextKeys = new Set(["ArrowRight", "]"]);
 
 const backKeys = new Set(["ArrowLeft", "["]);
 
-const isTyping = (target: EventTarget | null) =>
+const arrowKeys = new Set(["ArrowRight", "ArrowLeft"]);
+
+export const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
   (target.isContentEditable ||
     target instanceof HTMLInputElement ||
@@ -15,23 +17,26 @@ const isTyping = (target: EventTarget | null) =>
     target instanceof HTMLSelectElement);
 
 /**
- * Moves between chapters with → and ←, or ] and [. Pass `enabled: false`
- * while something else owns those keys, such as a selected structure that →
- * and ← take inside and out of. Keys typed into a field, or pressed with a
- * modifier, are left alone.
+ * Moves between chapters with → and ←, or ] and [. Pass `arrows: false`
+ * while something else owns → and ←, such as a selected structure that they
+ * take inside and out of; ] and [ keep working. Keys typed into a field, or
+ * pressed with a modifier, are left alone.
  */
-export const useChapterKeys = (enabled: boolean) => {
+export const useChapterKeys = (arrows: boolean) => {
   const { next: nextChapter, back: previousChapter } = useWalkthrough();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (
-      !enabled ||
       event.defaultPrevented ||
       event.altKey ||
       event.ctrlKey ||
       event.metaKey ||
       isTyping(event.target)
     ) {
+      return;
+    }
+
+    if (!arrows && arrowKeys.has(event.key)) {
       return;
     }
 
