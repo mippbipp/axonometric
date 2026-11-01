@@ -87,6 +87,7 @@ export type { PlacedLayout } from "./placement.ts";
 export {
   convexOverlap,
   distanceToPolyline,
+  gapBetween,
   growRect,
   segmentCrosses,
 } from "./geometry.ts";
@@ -104,18 +105,29 @@ export {
   labelReachLimit,
   planZoneRadius,
   sceneClashes,
+  placeMovingNameTags,
+  placeNameTags,
+  tagScene,
   sceneOf,
   silhouette,
 } from "./scene.ts";
 
+export { fitFloorOf, textZoomOf } from "./fit-floor.ts";
+
+export { textGrowthAt, textSizes } from "./text-size.ts";
+
+export type { TextGrowth } from "./text-size.ts";
+
 export type {
   HiddenStretch,
   Scene,
+  ClashPart,
   SceneClash,
   SceneHop,
   SceneSource,
   SceneStructure,
   SceneZone,
+  TaggedBox,
 } from "./scene.ts";
 
 export type { HopRoute } from "./routing.ts";

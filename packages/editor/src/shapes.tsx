@@ -1,4 +1,4 @@
-import { isoHeights } from "@axonometric/contracts";
+import { isoHeights, textSizes } from "@axonometric/contracts";
 import type {
   Placement,
   ScreenRect,
@@ -509,6 +509,9 @@ export function CodeChip({
   readonly code: string;
   readonly rect: ScreenRect;
 }) {
+  // The scene sizes the chip for its text, grown to stay readable.
+  const grow = (rect.bottom - rect.top) / textSizes.chip.height;
+
   return (
     <g data-code-chip="">
       <rect
@@ -521,9 +524,10 @@ export function CodeChip({
       />
       <text
         x={(rect.left + rect.right) / 2}
-        y={(rect.top + rect.bottom) / 2 + 3.5}
+        y={(rect.top + rect.bottom) / 2 + textSizes.chip.baseline * grow}
         textAnchor="middle"
-        className="fill-ink text-2xs stroke-none font-mono font-semibold"
+        fontSize={textSizes.chip.font * grow}
+        className="fill-ink stroke-none font-mono font-semibold"
       >
         {code}
       </text>

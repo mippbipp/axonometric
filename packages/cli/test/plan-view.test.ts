@@ -1,15 +1,7 @@
 import { LayoutFile, shapes } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  FileSystem,
-  Order,
-  Path,
-  Schema,
-  String as Str,
-} from "effect";
+import { Array as Arr, Effect, FileSystem, Order, Path, Schema } from "effect";
 import type { Page } from "playwright";
 
 import { attributesOf, openPage } from "./browser.ts";
@@ -73,6 +65,43 @@ const groundAtMiddle = (page: Page) =>
         : { x: (at.x / 36 + at.y / 18) / 2, y: (at.y / 18 - at.x / 36) / 2 };
     })()`
   );
+
+/** Every text over text, and text over a box, drawn now. */
+const clashesIn = Effect.fnUntraced(function* (page: Page) {
+  const report = yield* inPage<DrawingReport>(page, drawingReport);
+
+  return [
+    ...Arr.flatMap(report.text, (first, index) =>
+      Arr.flatMap(report.text.slice(index + 1), (second) =>
+        overlap(first.polygon, second.polygon)
+          ? [`${first.id} × ${second.id}`]
+          : []
+      )
+    ),
+    ...Arr.flatMap(report.text, (text) =>
+      Arr.flatMap(report.structures, (box) =>
+        overlap(text.polygon, box.polygon) ? [`${text.id} × ${box.id}`] : []
+      )
+    ),
+  ];
+});
+
+/** Presses + until text draws at its own size or larger. */
+const zoomInToBaseSize = Effect.fnUntraced(function* (page: Page) {
+  const scale =
+    'Number(document.querySelector("svg[data-scale]").dataset.scale)';
+
+  while ((yield* inPage<number>(page, scale)) < 1) {
+    const before = yield* inPage<number>(page, scale);
+
+    yield* press(page, "+");
+    yield* Effect.promise(() =>
+      page.waitForFunction(`${scale} > ${before}`, undefined, {
+        timeout: 5000,
+      })
+    );
+  }
+});
 
 const reviewPage = Effect.gen(function* () {
   const opened = yield* buildAndOpen(yield* fullMap, "review");
@@ -338,32 +367,22 @@ describe("Plan view", () => {
                 '[data-playback-controls] [data-control="pause"]'
               );
 
-              const report = yield* inPage<DrawingReport>(page, drawingReport);
+              // At fit, hop labels may be too small to show. Zoomed in to
+              // where text draws at its own size, every placed label shows.
+              assert.deepStrictEqual(
+                yield* clashesIn(page),
+                [],
+                `in ${chapter} at fit`
+              );
+              yield* zoomInToBaseSize(page);
 
-              const clashes = [
-                ...Arr.flatMap(report.text, (first, index) =>
-                  Arr.flatMap(report.text.slice(index + 1), (second) =>
-                    overlap(first.polygon, second.polygon)
-                      ? [`${first.id} × ${second.id}`]
-                      : []
-                  )
-                ),
-                ...Arr.flatMap(report.text, (text) =>
-                  Arr.flatMap(report.structures, (box) =>
-                    overlap(text.polygon, box.polygon)
-                      ? [`${text.id} × ${box.id}`]
-                      : []
-                  )
-                ),
-              ];
+              const clashes = yield* clashesIn(page);
 
               assert.isNotEmpty(
-                Arr.filter(report.text, ({ id }) =>
-                  Str.startsWith("label:")(id)
-                ),
+                yield* attributesOf(page, "[data-hop-label]", "data-hop-label"),
                 `no hop labels in ${chapter}`
               );
-              assert.deepStrictEqual(clashes, [], `in ${chapter}`);
+              assert.deepStrictEqual(clashes, [], `in ${chapter} zoomed in`);
             }
           })
         ),
