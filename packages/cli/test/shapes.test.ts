@@ -29,10 +29,19 @@ const styleOf = (page: Page, id: string, property: string) =>
     `getComputedStyle(document.querySelector('[data-structure="${id}"]')).${property}`
   );
 
+/** The computed fill of the structure's first face. */
+const faceFillOf = (page: Page, id: string) =>
+  inPage<string>(
+    page,
+    `getComputedStyle(document.querySelector('[data-structure="${id}"] [data-face]')).fill`
+  );
+
 const lookOf = Effect.fnUntraced(function* (page: Page, id: string) {
   return {
     dashes: yield* styleOf(page, id, "strokeDasharray"),
+    stroke: yield* styleOf(page, id, "stroke"),
     opacity: yield* styleOf(page, id, "opacity"),
+    face: yield* faceFillOf(page, id),
   };
 });
 
@@ -109,8 +118,17 @@ describe("shapes and statuses", () => {
         assert.strictEqual(live.dashes, "none");
         assert.notStrictEqual(planned.dashes, "none");
         assert.strictEqual(off.dashes, "none");
-        assert.strictEqual(live.opacity, "1");
-        assert.isBelow(Number(off.opacity), 1);
+        // Off fades its fill but keeps a full-strength outline.
+        assert.notStrictEqual(off.face, live.face);
+        assert.strictEqual(off.stroke, live.stroke);
+        assert.strictEqual(off.opacity, "1");
+        assert.strictEqual(
+          yield* inPage<number>(
+            page,
+            "document.querySelectorAll(\"[data-structure='slab'] [data-off-mark]\").length"
+          ),
+          1
+        );
         assert.deepStrictEqual(Arr.sort(titles, Order.String), [
           `Backend · ${statusLabels.off}`,
           `Tools · ${statusLabels.planned}`,

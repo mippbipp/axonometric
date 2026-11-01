@@ -544,14 +544,38 @@ function CodeChip({
 }
 
 /**
- * A power symbol floating above a switched-off structure, so "off" doesn't
- * rest on colour alone.
+ * A power symbol on a switched-off structure, so "off" doesn't rest on colour
+ * alone.
  */
+/**
+ * Where the power mark sits: on the top face, to the right of the code chip,
+ * or at the top of the front corner when there's no chip.
+ */
+const offMarkAt = (
+  structure: Structure,
+  placement: Placement,
+  hasChip: boolean
+) => {
+  const top = isoHeights[structure.shape];
+
+  if (!hasChip) {
+    return project({
+      x: placement.x + placement.w,
+      y: placement.y + placement.d,
+      z: top,
+    });
+  }
+
+  const centre = centreOf(placement, top);
+
+  return { sx: centre.sx + 22, sy: centre.sy };
+};
+
 function OffMark({ at }: { readonly at: ScreenPoint }) {
   return (
     <g
       data-off-mark=""
-      transform={`translate(${at.sx} ${at.sy - 16})`}
+      transform={`translate(${at.sx} ${at.sy})`}
       strokeWidth={1.4}
       strokeLinecap="round"
     >
@@ -597,13 +621,7 @@ export function IsoStructure({
         <CodeChip code={structure.code} at={chip.at} width={chip.width} />
       )}
       {structure.status === "off" ? (
-        <OffMark
-          at={project({
-            x: placement.x + placement.w,
-            y: placement.y,
-            z: isoHeights[structure.shape],
-          })}
-        />
+        <OffMark at={offMarkAt(structure, placement, chip !== undefined)} />
       ) : null}
     </g>
   );

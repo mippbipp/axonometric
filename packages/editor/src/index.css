@@ -34,7 +34,8 @@
 
 /* How each status is drawn. Live is the plain drawing. Planned is designed but not
    built: a dashed outline over paper, with no hatching. Off is built but
-   switched off: faded, in the muted ink, with a power mark. */
+   switched off: a faded fill and hatching inside a full-strength outline, with
+   a power mark on top. */
 [data-status="planned"] {
   stroke-dasharray: 4 3;
 }
@@ -47,18 +48,12 @@
   display: none;
 }
 
-[data-status="off"] {
-  color: var(--muted);
-  stroke: var(--muted);
-  opacity: 0.6;
-}
-
 [data-status="off"] [data-face] {
-  fill: color-mix(in oklab, var(--face), var(--paper) 50%);
+  fill: color-mix(in oklab, var(--face), var(--paper) 60%);
 }
 
 [data-status="off"] [data-hatch] {
-  opacity: 0.35;
+  opacity: 0.3;
 }
 
 [data-status="off"] .fill-ink {
