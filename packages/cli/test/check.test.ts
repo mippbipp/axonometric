@@ -342,8 +342,37 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
           'structures.page: footprint overlaps "engineer". Move one of them, for example with axonometric layout <home> page --x <x> --y <y>.',
           'structures.engineer: name tag is drawn on top of "page". Move one of them apart, so the tag under the front corner has room.',
           'structures.server: name tag is drawn on top of "proposals". Move one of them apart, so the tag under the front corner has room.',
+          ': the zones of groups "people" and "loop" overlap. Move one group\'s structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.',
         ]
       );
+    })
+  );
+
+  it.effect("warns when two groups' zones overlap, naming both groups", () =>
+    Effect.gen(function* () {
+      // upstream, in the outside group, sits one unit from server, in the
+      // loop group: the footprints and tags are clear, the zones aren't.
+      const result = yield* checkWith({
+        [layoutFile]: yield* encodeLayout({
+          format: 1,
+          revision: 0,
+          structures: {
+            engineer: { x: 0, y: 0, w: 2, d: 2 },
+            page: { x: 6, y: 0, w: 2, d: 2 },
+            server: { x: 10, y: 0, w: 2, d: 2 },
+            proposals: { x: 10, y: 6, w: 2, d: 2 },
+            "pull-request": { x: 14, y: 6, w: 2, d: 1.5 },
+            upstream: { x: 15, y: 0, w: 2, d: 2 },
+          },
+        }),
+      });
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+      assert.include(
+        result.stdout,
+        'warning layout.json: the zones of groups "loop" and "outside" overlap.'
+      );
+      assert.include(result.stdout, ": 0 errors, 1 warning.");
     })
   );
 

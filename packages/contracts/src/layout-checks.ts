@@ -6,6 +6,7 @@ import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
+import { zonesOf } from "./zones.ts";
 
 /** A structure and where the layout puts it. */
 export interface PlacedStructure {
@@ -81,6 +82,24 @@ const coveredTags = (placed: readonly PlacedStructure[]) =>
     )
   );
 
+const overlappingZones = (data: MapData, layout: Layout) => {
+  const zones = zonesOf({ data, layout });
+
+  return Arr.flatMap(zones, (first, index) =>
+    Arr.flatMap(zones.slice(index + 1), (second) =>
+      footprintsOverlap(first.box, second.box)
+        ? [
+            mapWarning({
+              file: "layout.json",
+              path: [],
+              message: `the zones of groups "${first.group.id}" and "${second.group.id}" overlap. Move one group's structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.`,
+            }),
+          ]
+        : []
+    )
+  );
+};
+
 const staleEntries = (data: MapData, layout: Layout) => {
   const ids = new Set(Arr.map(data.structures, ({ id }) => id));
 
@@ -99,7 +118,8 @@ const staleEntries = (data: MapData, layout: Layout) => {
 
 /**
  * Warnings about how the layout reads: entries for structures that no longer
- * exist, footprints that overlap, and name tags drawn over other boxes. A
+ * exist, footprints that overlap, name tags drawn over other boxes, and
+ * zones that overlap. A
  * structure with no placement gets nothing, because `build` places it.
  */
 export const checkLayout: {
@@ -112,5 +132,6 @@ export const checkLayout: {
     ...staleEntries(data, layout),
     ...overlaps(placed),
     ...coveredTags(placed),
+    ...overlappingZones(data, layout),
   ];
 });

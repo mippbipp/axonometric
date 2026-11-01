@@ -46,7 +46,10 @@ const waitForMove = (page: Page, previous: string) =>
 
 /** The box holding every structure and name tag on screen. */
 const drawingOf = Effect.fnUntraced(function* (page: Page) {
-  const drawn = yield* boxesOf(page, "[data-structure], [data-name-tag]");
+  const drawn = yield* boxesOf(
+    page,
+    "[data-structure], [data-name-tag], [data-zone]"
+  );
 
   return {
     left: Math.min(...Arr.map(drawn, (box) => box.x)),
@@ -132,31 +135,35 @@ describe("the viewport", () => {
     )
   );
 
-  it.live("stops zooming at its limits", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* builtPage;
-        const fitted = yield* scaleOf(page);
+  it.live(
+    "stops zooming at its limits",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* builtPage;
+          const fitted = yield* scaleOf(page);
 
-        for (let turn = 0; turn < 20; turn += 1) {
-          yield* wheelAtCentre(page, -1000);
-        }
+          for (let turn = 0; turn < 20; turn += 1) {
+            yield* wheelAtCentre(page, -1000);
+          }
 
-        yield* waitForScale(page, `> ${fitted * 2}`);
-        const most = yield* scaleOf(page);
+          yield* waitForScale(page, `> ${fitted * 2}`);
+          const most = yield* scaleOf(page);
 
-        for (let turn = 0; turn < 40; turn += 1) {
-          yield* wheelAtCentre(page, 1000);
-        }
+          for (let turn = 0; turn < 40; turn += 1) {
+            yield* wheelAtCentre(page, 1000);
+          }
 
-        yield* waitForScale(page, `< ${fitted}`);
-        const least = yield* scaleOf(page);
+          yield* waitForScale(page, `< ${fitted}`);
+          const least = yield* scaleOf(page);
 
-        assert.isBelow(most, fitted * 10);
-        assert.isAbove(least, fitted / 10);
-        assert.isBelow(least, fitted);
-      })
-    )
+          assert.isBelow(most, fitted * 10);
+          assert.isAbove(least, fitted / 10);
+          assert.isBelow(least, fitted);
+        })
+      ),
+    // Sixty wheel turns through Playwright take about five seconds.
+    15_000
   );
 
   it.live("pans when dragged on empty space", () =>
