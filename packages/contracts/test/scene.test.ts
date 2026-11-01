@@ -7,6 +7,7 @@ import {
   Schema,
   String as Str,
 } from "effect";
+import { vi } from "vitest";
 
 import {
   arrowheadOf,
@@ -454,6 +455,11 @@ const offSegment = (point: ScreenPoint, a: ScreenPoint, b: ScreenPoint) => {
   return Math.abs(across);
 };
 
+// The pipeline map routes 29 hops for each of its eight chapters, and some
+// tests search every short route for comparison: a few seconds each, more
+// when the browser tests run alongside.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe("scene", () => {
   for (const name of ["flake-pipeline", "review", "crowded"]) {
     it.effect(`draws nothing over anything in any chapter of ${name}`, () =>
@@ -841,4 +847,30 @@ describe("scene", () => {
       })
     );
   }
+
+  it.effect(
+    "detours the crowded map's API → DB hop around the cache between them",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("crowded");
+
+        const routes = routeRevealed({
+          data,
+          layout,
+          revealed: new Set(Arr.map(data.structures, ({ id }) => id)),
+        });
+
+        const route = routes["h-query"];
+        const cache = placementOf(layout, "cache");
+
+        assert.isDefined(route);
+        // A straight leg from API to DB would run under the cache.
+        assert.isAtLeast(bendsOf(route.points), 2);
+        assert.deepStrictEqual(route.crosses, []);
+
+        for (const leg of legsOf(route.points)) {
+          assert.isFalse(legTouches(leg, cache), "runs under the cache");
+        }
+      })
+  );
 });
