@@ -89,11 +89,24 @@ try {
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   [System.IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $work $asset), (Join-Path $work 'unpacked'))
 
+  # Run the new binary before it replaces anything, so a broken download
+  # leaves an existing install as it was. A native command that fails doesn't
+  # throw, so check its exit code.
+  $unpacked = Join-Path $work 'unpacked\axonometric.exe'
+  try {
+    $version = & $unpacked --version
+  } catch {
+    $version = $null
+  }
+  if ($LASTEXITCODE -ne 0 -or -not $version) {
+    Fail "the downloaded binary didn't run, so install.ps1 installed nothing."
+  }
+
   $binary = Join-Path $installDir 'axonometric.exe'
   New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-  Copy-Item -LiteralPath (Join-Path $work 'unpacked\axonometric.exe') -Destination $binary -Force
+  Copy-Item -LiteralPath $unpacked -Destination $binary -Force
 
-  Write-Host "Installed $(& $binary --version) to $binary"
+  Write-Host "Installed $version to $binary"
 
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
   $onPath = @(($userPath, $env:Path) -join ';' -split ';' | ForEach-Object { $_.TrimEnd('\') }) -contains $installDir.TrimEnd('\')

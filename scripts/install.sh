@@ -101,6 +101,13 @@ if [ "$actual" != "$expected" ]; then
 fi
 
 tar -xzf "$work/$asset" -C "$work" axonometric || fail "could not unpack $asset."
+chmod 755 "$work/axonometric"
+
+# Run the new binary before it replaces anything, so a broken download leaves
+# an existing install as it was.
+if ! version=$("$work/axonometric" --version); then
+  fail "the downloaded binary didn't run, so install.sh installed nothing."
+fi
 
 mkdir -p "$install_dir"
 # Copy beside the target, then rename, so the old binary is replaced in one
@@ -110,7 +117,7 @@ cp "$work/axonometric" "$staged"
 chmod 755 "$staged"
 mv -f "$staged" "$install_dir/axonometric"
 
-echo "Installed $("$install_dir/axonometric" --version) to $install_dir/axonometric"
+echo "Installed $version to $install_dir/axonometric"
 
 case ":$PATH:" in
   *":$install_dir:"*) ;;
