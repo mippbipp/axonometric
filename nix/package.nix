@@ -31,17 +31,24 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   # dev tools, such as oxlint, lefthook and react-doctor.
   pnpmWorkspaces = [ "axonometric..." ];
 
+  # fetchPnpmDeps already fetches every platform's optional packages. The one
+  # host-specific download is the Node binary that `devEngines.runtime` in
+  # package.json declares, which would change the hash on every system. The
+  # build runs nixpkgs' Node, so skip it.
+  pnpmInstallFlags = [ "--no-runtime" ];
+
   pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs)
       pname
       version
       src
       pnpmWorkspaces
+      pnpmInstallFlags
       ;
     pnpm = pnpm_12;
     fetcherVersion = 5;
     # Changes whenever pnpm-lock.yaml changes. See "Development" in README.md.
-    hash = "sha256-bhIb7Gwc0zE0nllHCH239zS6WehAmLzWcCclfc75h1I=";
+    hash = "sha256-hZRkq8jPfGwtM7+Q6Wuiufo0SCPaQXTYSZZTLLLI8IM=";
   };
 
   nativeBuildInputs = [
