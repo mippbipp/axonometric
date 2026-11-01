@@ -28,3 +28,5 @@ export const boundsOf = (
 
   return { minX, minY, maxX, maxY };
 };
+
+// scratch: editor-only change for the #68 demo
