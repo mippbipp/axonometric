@@ -1,24 +1,21 @@
-import type { Zone } from "@axonometric/contracts";
-
 import { toPoints } from "./iso.ts";
-import { zoneOutline } from "./zone-outline.ts";
+import type { ZoneDrawing } from "./zone-outline.ts";
 
-function ZonePlate({ zone }: { readonly zone: Zone }) {
-  const { plate, titleEnd } = zoneOutline(zone);
+function ZonePlate({ drawing }: { readonly drawing: ZoneDrawing }) {
+  const { zone, plate, titleTransform } = drawing;
 
   return (
     <g data-zone={zone.group.id}>
       <polygon
+        data-zone-plate=""
         points={toPoints(plate)}
         className="fill-ink/5 stroke-ink/45"
         strokeWidth={0.9}
       />
       <text
         data-zone-title=""
-        x={titleEnd.sx}
-        y={titleEnd.sy}
-        textAnchor="end"
-        className="fill-ink/70 text-2xs stroke-none font-mono tracking-widest uppercase"
+        transform={titleTransform}
+        className="fill-ink/75 text-2xs stroke-none font-mono font-medium tracking-widest uppercase"
       >
         {zone.group.title}
       </text>
@@ -27,14 +24,15 @@ function ZonePlate({ zone }: { readonly zone: Zone }) {
 }
 
 /**
- * Each zone as a plate on the ground with its group's title. Drawn first, so
- * hops and structures paint over it.
+ * Each zone as a plate on the ground, with its group's title lying on the
+ * plate along its front-left edge. Drawn first, so hops and structures
+ * paint over it.
  */
-export function Zones({ zones }: { readonly zones: readonly Zone[] }) {
+export function Zones({ zones }: { readonly zones: readonly ZoneDrawing[] }) {
   return (
     <g data-zones="">
-      {zones.map((zone) => (
-        <ZonePlate key={zone.group.id} zone={zone} />
+      {zones.map((drawing) => (
+        <ZonePlate key={drawing.zone.group.id} drawing={drawing} />
       ))}
     </g>
   );

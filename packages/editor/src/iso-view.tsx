@@ -20,7 +20,7 @@ import { corners, screenRouteOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
-import { zoneOutline } from "./zone-outline.ts";
+import { drawZones } from "./zone-outline.ts";
 import { Zones } from "./zones.tsx";
 
 interface PlacedStructure {
@@ -234,7 +234,11 @@ export function IsoView({
   const arrowhead = `${idPrefix}arrowhead`;
   const placed = placeAll(state, revealed);
   const routed = routeAll(state, revealed);
-  const zones = zonesOf({ data: state.data, layout: state.layout, revealed });
+
+  const zones = drawZones({
+    zones: zonesOf({ data: state.data, layout: state.layout, revealed }),
+    structures: placed,
+  });
 
   const marked = Arr.filter(placed, ({ structure }) =>
     newlyRevealed.has(structure.id)
@@ -250,9 +254,9 @@ export function IsoView({
         ids: [hop.from, hop.to],
         points,
       })),
-      ...Arr.map(zones, (zone) => ({
+      ...Arr.map(zones, ({ zone, plate }) => ({
         ids: zone.members,
-        points: zoneOutline(zone).extent,
+        points: plate,
       })),
     ],
     fitTo: [...fitTo],
