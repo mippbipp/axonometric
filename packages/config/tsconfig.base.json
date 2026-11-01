@@ -29,10 +29,14 @@
         "allowedUnstableApis": [
           "effect/cli",
           "effect/FileSystem",
+          "effect/http",
+          "effect/http-api",
+          "effect/encoding",
           "effect/Path",
           "effect/Stdio",
           "effect/process",
           "@effect/platform-node",
+          "@effect/platform-node-shared",
           "@effect/vitest"
         ]
       }

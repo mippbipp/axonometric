@@ -6,6 +6,7 @@ import { checkCommand } from "./check.ts";
 import { Git } from "./git.ts";
 import { initCommand } from "./init.ts";
 import { layoutCommand } from "./layout.ts";
+import { serveCommand, statusCommand } from "./serve-command.ts";
 
 export const cli = Command.make("axonometric").pipe(
   Command.withDescription(packageJson.description),
@@ -14,6 +15,8 @@ export const cli = Command.make("axonometric").pipe(
     buildCommand,
     checkCommand,
     layoutCommand,
+    serveCommand,
+    statusCommand,
   ]),
   Command.provide(Git.layer)
 );

@@ -116,6 +116,14 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  ServedPage,
+  servedPageElementId,
+  ServerEvent,
+  serverPaths,
+  ServerState,
+} from "./server.ts";
+
+export {
   normalSourcePath,
   SourceFact,
   sourceKey,

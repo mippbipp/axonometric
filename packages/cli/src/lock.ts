@@ -42,6 +42,10 @@ export class LockHeld extends Schema.TaggedError<
 
 const lockPathHint = ".axonometric/lock in the home folder";
 
+/** The path of `.axonometric/` in `home`, which holds one process's state. */
+export const stateFolderPath = (home: string) =>
+  Path.Path.use((path) => Effect.succeed(path.join(home, ".axonometric")));
+
 /**
  * Creates `.axonometric/` in `home` and returns its path. The folder holds
  * one process's state, so it carries a `.gitignore` that keeps all of it out
@@ -50,7 +54,7 @@ const lockPathHint = ".axonometric/lock in the home folder";
 export const stateFolder = Effect.fnUntraced(function* (home: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const folder = path.join(home, ".axonometric");
+  const folder = yield* stateFolderPath(home);
 
   yield* fs.makeDirectory(folder, { recursive: true });
 

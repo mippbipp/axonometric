@@ -1,4 +1,5 @@
 import { formatProblem, placeStructures } from "@axonometric/contracts";
+import type { MapProblem, MapState } from "@axonometric/contracts";
 import {
   Array as Arr,
   Console,
@@ -22,18 +23,51 @@ const quoted = (ids: readonly string[]) =>
     ", "
   );
 
-const build = Effect.fn("build")(function* (home: string) {
+/**
+ * Prints a rebuild's warnings, and the line saying why source links were
+ * skipped, if they were.
+ */
+export const printNotes = Effect.fnUntraced(function* ({
+  warnings,
+  sourcesSkipped,
+}: {
+  readonly warnings: readonly MapProblem[];
+  readonly sourcesSkipped: Option.Option<string>;
+}) {
+  yield* Effect.forEach(
+    warnings,
+    (warning) => Console.error(formatProblem(warning)),
+    { discard: true }
+  );
+
+  yield* Option.match(sourcesSkipped, {
+    onNone: () => Effect.void,
+    onSome: (line) => Console.error(line),
+  });
+});
+
+/**
+ * Does what `build` does, without printing: validates the map in `home`,
+ * places structures that have no position and saves them, then writes
+ * SYSTEM.md and the read-only page. Fails with `MapInvalid` and writes
+ * nothing when the map has an error. `command` is named in the lock and in
+ * the error.
+ */
+export const rebuild = Effect.fnUntraced(function* (
+  home: string,
+  command: string
+) {
   const path = yield* Path.Path;
   const output = path.dirname(home);
   const system = path.basename(output);
 
-  yield* withLock(home, "build");
+  yield* withLock(home, command);
 
   const { warnings, data, layout, saved, sourceLinks, sourcesSkipped } =
     yield* loadMap({
       home,
       output,
-      command: "build",
+      command,
       arrange: (mapData, savedLayout) =>
         placeStructures(mapData, savedLayout).layout,
     });
@@ -57,24 +91,17 @@ const build = Effect.fn("build")(function* (home: string) {
     placed.length > 0 || pruned.length > 0 || prunedRoutes.length > 0;
 
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
-  const state = { system, data, layout: next, sourceLinks };
-
-  yield* Effect.forEach(
-    warnings,
-    (warning) => Console.error(formatProblem(warning)),
-    { discard: true }
-  );
-
-  yield* Option.match(sourcesSkipped, {
-    onNone: () => Effect.void,
-    onSome: (line) => Console.error(line),
-  });
+  const state: MapState = { system, data, layout: next, sourceLinks };
 
   const systemMdFile = path.join(output, "SYSTEM.md");
   const pageFile = path.join(output, `${system}.html`);
   const layoutFile = path.join(home, "layout.json");
   const page = yield* renderPage(state);
 
+  // layout.json is only written when placing added or pruned structures or
+  // pruned route overrides.
+  // Under serve the write is one more watch event, and that rebuild finds
+  // every structure placed, so it writes no layout and the loop ends.
   const layoutOutput: readonly Output[] = changed
     ? [{ file: layoutFile, content: yield* encodeLayout(next) }]
     : [];
@@ -87,6 +114,34 @@ const build = Effect.fn("build")(function* (home: string) {
     },
     { file: pageFile, content: page },
   ]);
+
+  return {
+    state,
+    warnings,
+    sourcesSkipped,
+    placed,
+    pruned,
+    prunedRoutes,
+    systemMdFile,
+    pageFile,
+    layoutFile,
+  };
+}, Effect.scoped);
+
+const build = Effect.fn("build")(function* (home: string) {
+  const {
+    state,
+    warnings,
+    sourcesSkipped,
+    placed,
+    pruned,
+    prunedRoutes,
+    systemMdFile,
+    pageFile,
+    layoutFile,
+  } = yield* rebuild(home, "build");
+
+  yield* printNotes({ warnings, sourcesSkipped });
 
   if (placed.length > 0) {
     yield* Effect.log(
@@ -107,9 +162,9 @@ const build = Effect.fn("build")(function* (home: string) {
   }
 
   yield* Effect.log(
-    `Built ${systemMdFile} and ${pageFile}: ${data.structures.length} structures, ${data.hops.length} hops.`
+    `Built ${systemMdFile} and ${pageFile}: ${state.data.structures.length} structures, ${state.data.hops.length} hops.`
   );
-}, Effect.scoped);
+});
 
 export const buildCommand = Command.make(
   "build",
