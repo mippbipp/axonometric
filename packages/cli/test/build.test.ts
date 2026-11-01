@@ -183,17 +183,6 @@ describe("build", () => {
     })
   );
 
-  it.effect("rejects a structure with no placement", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({
-        [layoutFile]: layoutWith({ updater: { x: 0, y: 0, w: 2, d: 2 } }),
-      });
-
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(result.stderr, "layout.json structures.gate: missing.");
-    })
-  );
-
   it.effect("rejects layout.json that isn't JSON", () =>
     Effect.gen(function* () {
       const result = yield* buildWith({ [layoutFile]: "{ structures: " });
@@ -242,10 +231,14 @@ describe("build", () => {
     })
   );
 
-  it.effect("writes nothing when the map is invalid", () =>
+  it.effect("writes nothing, and leaves no lock, when the map is invalid", () =>
     Effect.gen(function* () {
       const result = yield* buildWith({
-        [layoutFile]: layoutWith({ updater: { x: 0, y: 0, w: 2, d: 2 } }),
+        [dataFile]: dataWith(
+          [structure("updater", "Flake updater")],
+          '[{ id: "h", from: "updater", to: "nowhere", label: "x" }]'
+        ),
+        [layoutFile]: layoutWith({}),
       });
 
       assert.strictEqual(result.exitCode, 1);

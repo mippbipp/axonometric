@@ -63,6 +63,12 @@ const fileProblem = (file: MapFile, message: string) =>
 
 type Loaded<A> = Result.Result<A, readonly MapProblem[]>;
 
+const encodeLayoutFile = Schema.encodeEffect(LayoutFile);
+
+/** The text of `layout.json` for `layout`. */
+export const encodeLayout = (layout: Layout) =>
+  encodeLayoutFile(layout).pipe(Effect.orDie);
+
 /** Returns the path of `name` in `home`, or a problem when it's missing. */
 const findFile = Effect.fnUntraced(function* (
   home: string,
@@ -127,22 +133,23 @@ const loadData = Effect.fnUntraced(function* (
   );
 });
 
+/** The layout of a map whose `layout.json` doesn't exist yet. */
+export const emptyLayout: Layout = { format: 1, revision: 0, structures: {} };
+
+/** Reads `layout.json`. A missing file is an empty layout, which `build` fills. */
 const loadLayout = Effect.fnUntraced(function* (
   home: string
 ): Effect.fn.Return<Loaded<Layout>, never, FileSystem.FileSystem | Path.Path> {
   const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const file = path.join(home, "layout.json");
+  const exists = yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false));
 
-  const found = yield* findFile(
-    home,
-    "layout.json",
-    "Write a layout.json that places every structure."
-  );
-
-  if (Result.isFailure(found)) {
-    return Result.fail(found.failure);
+  if (!exists) {
+    return Result.succeed(emptyLayout);
   }
 
-  const text = yield* fs.readFileString(found.success).pipe(Effect.result);
+  const text = yield* fs.readFileString(file).pipe(Effect.result);
 
   if (Result.isFailure(text)) {
     return Result.fail([
@@ -177,31 +184,43 @@ const existingLinks = Effect.fnUntraced(function* (
   return new Set(found);
 });
 
+/** Both map files, decoded. */
+export interface LoadedMap {
+  readonly data: MapData;
+  /** The layout to check and use: the saved one, after `arrange`. */
+  readonly layout: Layout;
+  /** The layout as `layout.json` holds it, or empty when there's no file. */
+  readonly saved: Layout;
+}
+
 /** A map as loaded: the problems found, and the files when both decoded. */
 export interface InspectedMap {
   readonly problems: readonly MapProblem[];
-  readonly map: Option.Option<{
-    readonly data: MapData;
-    readonly layout: Layout;
-  }>;
+  readonly map: Option.Option<LoadedMap>;
 }
+
+/** Changes the saved layout before it's checked, such as by placing structures. */
+export type Arrange = (data: MapData, saved: Layout) => Layout;
 
 /**
  * Loads the map in `home` and finds every error and warning in it. Links
- * resolve against `output`, the folder SYSTEM.md is written to. Writes
- * nothing.
+ * resolve against `output`, the folder SYSTEM.md is written to. The problems
+ * are those of the layout `arrange` returns, which is the saved layout by
+ * default. Writes nothing.
  */
 export const inspectMap = Effect.fnUntraced(function* (
   home: string,
-  output: string
+  output: string,
+  arrange: Arrange = (_data, saved) => saved
 ) {
-  const [data, layout] = yield* Effect.all([loadData(home), loadLayout(home)]);
+  const [data, saved] = yield* Effect.all([loadData(home), loadLayout(home)]);
 
-  if (Result.isSuccess(data) && Result.isSuccess(layout)) {
+  if (Result.isSuccess(data) && Result.isSuccess(saved)) {
     const links = yield* existingLinks(output, data.success);
+    const layout = arrange(data.success, saved.success);
 
     const problems = checkMap(
-      { data: data.success, layout: layout.success },
+      { data: data.success, layout },
       {
         linkExists: (target) => links.has(target),
       }
@@ -209,29 +228,41 @@ export const inspectMap = Effect.fnUntraced(function* (
 
     return {
       problems,
-      map: Option.some({ data: data.success, layout: layout.success }),
+      map: Option.some({ data: data.success, layout, saved: saved.success }),
     } satisfies InspectedMap;
   }
 
   return {
     problems: [
       ...(Result.isFailure(data) ? data.failure : []),
-      ...(Result.isFailure(layout) ? layout.failure : []),
+      ...(Result.isFailure(saved) ? saved.failure : []),
     ],
     map: Option.none(),
   } satisfies InspectedMap;
 });
 
+/** What `loadMap` loads, and for which command. */
+export interface LoadRequest {
+  readonly home: string;
+  /** The folder SYSTEM.md is written to, which links resolve against. */
+  readonly output: string;
+  /** The command loading the map, named in the error. */
+  readonly command: string;
+  /** As for `inspectMap`. */
+  readonly arrange?: Arrange;
+}
+
 /**
  * Loads the map in `home`, failing with every problem when it has an error.
  * Returns the map and its warnings otherwise.
  */
-export const loadMap = Effect.fnUntraced(function* (
-  home: string,
-  output: string,
-  command: string
-) {
-  const { problems, map } = yield* inspectMap(home, output);
+export const loadMap = Effect.fnUntraced(function* ({
+  home,
+  output,
+  command,
+  arrange,
+}: LoadRequest) {
+  const { problems, map } = yield* inspectMap(home, output, arrange);
 
   if (splitProblems(problems).errors.length > 0 || Option.isNone(map)) {
     return yield* MapInvalid.make({ home, command, problems });
