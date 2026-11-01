@@ -1,8 +1,11 @@
+import { applyLayoutChanges } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 
 import { App } from "./app.tsx";
-import type { ServedStore, Rejection } from "./served-store.ts";
+import { EditingContext } from "./editing-context.ts";
+import type { Editing } from "./editing-context.ts";
+import type { EditNotice, Rejection, ServedStore } from "./served-store.ts";
 
 /**
  * The served page's notices. The page shows them under the chapter rail, over
@@ -12,9 +15,11 @@ import type { ServedStore, Rejection } from "./served-store.ts";
 function ServedNotices({
   rejection,
   stopped,
+  notice,
 }: {
   readonly rejection: Rejection | null;
   readonly stopped: boolean;
+  readonly notice: EditNotice | null;
 }) {
   return (
     <>
@@ -23,11 +28,19 @@ function ServedNotices({
           data-server-stopped
           className="border-ink bg-paper text-ink pointer-events-auto max-w-full shrink-0 border px-3 py-1.5 text-xs"
         >
-          Server stopped. This is the last map it sent. If serve starts again at
-          this address, the page reconnects. If it starts on another port, open
-          the URL it prints.
+          Server stopped. This is the last map it sent, and editing is off. If
+          serve starts again at this address, the page reconnects. If it starts
+          on another port, open the URL it prints.
         </output>
       ) : null}
+      {notice === null ? null : (
+        <output
+          data-edit-notice={notice.kind}
+          className="border-refused bg-paper text-ink pointer-events-auto max-w-full shrink-0 border-2 px-3 py-1.5 text-xs"
+        >
+          {notice.message}
+        </output>
+      )}
       {rejection === null ? null : (
         <section
           data-map-error
@@ -56,16 +69,45 @@ function ServedNotices({
   );
 }
 
-/** The map page as `axonometric serve` serves it, kept up to date. */
+/**
+ * The map page as `axonometric serve` serves it, kept up to date. It shows
+ * the accepted layout with the pending changes applied, and edits them
+ * while the server is up.
+ */
 export function ServedApp({ store }: { readonly store: ServedStore }) {
   const view = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const accepted = view.state.layout;
+  const { pending } = view;
+
+  const shown = useMemo(
+    () => ({ ...view.state, layout: applyLayoutChanges(accepted, pending) }),
+    [view.state, accepted, pending]
+  );
+
+  const editing = useMemo(
+    (): Editing => ({
+      accepted,
+      pending,
+      canEdit: !view.stopped,
+      refusalOf: store.refusalOf,
+      place: store.place,
+      discard: store.discard,
+    }),
+    [accepted, pending, view.stopped, store]
+  );
 
   return (
-    <App
-      state={view.state}
-      notices={
-        <ServedNotices rejection={view.rejection} stopped={view.stopped} />
-      }
-    />
+    <EditingContext value={editing}>
+      <App
+        state={shown}
+        notices={
+          <ServedNotices
+            rejection={view.rejection}
+            stopped={view.stopped}
+            notice={view.notice}
+          />
+        }
+      />
+    </EditingContext>
   );
 }

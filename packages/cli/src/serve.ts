@@ -8,7 +8,7 @@ import {
   serverPaths,
   splitProblems,
 } from "@axonometric/contracts";
-import type { MapState, ServerState } from "@axonometric/contracts";
+import type { MapState, Proposals, ServerState } from "@axonometric/contracts";
 import { ServerApi } from "@axonometric/contracts/api";
 import { NodeHttpServer } from "@effect/platform-node";
 import {
@@ -24,6 +24,7 @@ import {
   Option,
   Path,
   Predicate,
+  Result,
   Schema,
   Scope,
   Stream,
@@ -41,9 +42,11 @@ import { HttpApiBuilder } from "effect/http-api";
 
 import { printNotes, rebuild } from "./build.ts";
 import { withLock } from "./lock.ts";
+import { loadProposals } from "./map-files.ts";
 import type { MapInvalid } from "./map-files.ts";
 import { openBrowser } from "./open-browser.ts";
 import { renderPage } from "./page.ts";
+import { writeGuardLayer, writePendingLayout } from "./pending-writes.ts";
 import { recordServer, runningServer } from "./server-state.ts";
 
 /** The port `serve` tries first. */
@@ -128,11 +131,33 @@ export interface ServeOptions {
   readonly open: boolean;
 }
 
-/** The last good map, and the event that describes the map files now. */
+/** What the map files say now, as serve holds it. */
 interface Held {
+  /** The last good map, with the accepted layout only. */
   readonly good: MapState;
-  readonly latest: ServerEvent;
+  /** What `proposals.json` held when it last decoded. */
+  readonly proposals: Proposals;
+  /** The `MapRejected` saying why the map files don't make a map, while they don't. */
+  readonly rejected: Option.Option<ServerEvent>;
 }
+
+/** The last good map with what's pending, as pages get it. */
+const shownState = ({ good, proposals }: Held): MapState => ({
+  ...good,
+  proposals,
+});
+
+/** The events that describe `held` to a page. */
+const eventsOf = (held: Held): readonly ServerEvent[] =>
+  Option.match(held.rejected, {
+    onNone: () => [
+      ServerEvent.cases.MapUpdated.make({ state: shownState(held) }),
+    ],
+    onSome: (rejected) => [
+      rejected,
+      ServerEvent.cases.PendingUpdated.make({ proposals: held.proposals }),
+    ],
+  });
 
 /** A Host header's name: a bracketed IPv6 address, or what's before a `:`. */
 const hostPattern = /^(?<name>\[[^\]]*\]|[^:]*)/u;
@@ -155,13 +180,13 @@ const urlHost = (host: string) =>
  * Answers 403 to any request whose Host isn't one the server expects. This
  * stops a page on another site from reading the map through DNS rebinding.
  */
-const hostCheck = (allowed: ReadonlySet<string>) =>
+const hostCheck = (answeredHosts: ReadonlySet<string>) =>
   HttpRouter.middleware(
     (httpEffect) =>
       Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) => {
         const header = request.headers.host;
 
-        return header !== undefined && allowed.has(hostName(header))
+        return header !== undefined && answeredHosts.has(hostName(header))
           ? httpEffect
           : Effect.succeed(
               HttpServerResponse.text(
@@ -265,38 +290,72 @@ const printedRejection = (error: MapInvalid) =>
   );
 
 /**
- * Rebuilds the map and describes the result as an event. A map with errors
- * becomes a `MapRejected`, and is printed.
+ * Rebuilds the map and returns how what the server holds changes. A map
+ * with errors keeps the last good map, and is printed.
  */
-const rebuildEvent = (home: string) =>
+const rebuildHeld = (home: string) =>
   rebuild(home, "serve").pipe(
     Effect.tap(printNotes),
-    Effect.map(({ state }) => ServerEvent.cases.MapUpdated.make({ state })),
+    Effect.map(({ state, proposals }) => (_held: Held): Held => ({
+      good: state,
+      proposals,
+      rejected: Option.none(),
+    })),
     Effect.catchTag("MapInvalid", (error) =>
-      Effect.as(
-        Console.error(printedRejection(error)),
-        ServerEvent.cases.MapRejected.make({
-          summary: summaryOf(error),
-          problems: error.problems,
-        })
-      )
+      Effect.as(Console.error(printedRejection(error)), (held: Held): Held => ({
+        ...held,
+        rejected: Option.some(
+          ServerEvent.cases.MapRejected.make({
+            summary: summaryOf(error),
+            problems: error.problems,
+          })
+        ),
+      }))
     )
   );
 
-/** Folds a rebuild into what the server holds. */
-const nextHeld = (held: Held, event: ServerEvent): Held =>
-  ServerEvent.match(event, {
-    MapUpdated: ({ state }) => ({ good: state, latest: event }),
-    MapRejected: () => ({ ...held, latest: event }),
-    Heartbeat: () => held,
-  });
+/**
+ * Rereads `proposals.json` alone, and returns how what the server holds
+ * changes. A file that doesn't decode leaves the pending changes as they
+ * were and is printed; the next rebuild, or `check`, reports it.
+ */
+const reloadProposals = (home: string) =>
+  loadProposals(home).pipe(
+    Effect.flatMap(
+      Result.match({
+        onSuccess: (proposals) =>
+          Effect.succeed((held: Held): Held => ({ ...held, proposals })),
+        onFailure: (problems) => {
+          const lines = Arr.map(
+            problems,
+            (problem) => `  ${formatProblem(problem)}`
+          );
 
-const watchedFiles = new Set(["data.mjs", "layout.json"]);
+          const message = Arr.join(
+            [
+              `${home}: proposals.json doesn't decode, so serve keeps the pending changes it has.`,
+              ...lines,
+            ],
+            "\n"
+          );
+
+          return Effect.as(Console.error(message), (held: Held): Held => held);
+        },
+      })
+    )
+  );
+
+/** Changes to these rebuild the map. */
+const mapFiles = new Set(["data.mjs", "layout.json"]);
+
+const proposalsFileName = "proposals.json";
 
 /**
  * Watches the home folder, not the files in it: editors often save by
  * writing a new file and renaming it over the old one, which a watch on the
- * old file would miss. Resolves `ready` once the watch is in place.
+ * old file would miss. Sends the names of the files that changed in each
+ * burst of saves, once the burst settles. Resolves `ready` once the watch
+ * is in place.
  */
 const watchMap = (home: string, ready: Latch.Latch) =>
   Effect.gen(function* () {
@@ -310,8 +369,12 @@ const watchMap = (home: string, ready: Latch.Latch) =>
         },
       })
       .pipe(
-        Stream.filter((event) => watchedFiles.has(path.basename(event.path))),
-        Stream.debounce(settleTime)
+        Stream.map((event) => path.basename(event.path)),
+        Stream.filter(
+          (name) => mapFiles.has(name) || name === proposalsFileName
+        ),
+        Stream.groupedWithin(Number.MAX_SAFE_INTEGER, settleTime),
+        Stream.map((names) => new Set(names))
       );
   }).pipe(Stream.unwrap);
 
@@ -321,40 +384,71 @@ const heartbeats = Stream.tick(heartbeatInterval).pipe(
   Stream.as(ServerEvent.cases.Heartbeat.make({}))
 );
 
-/** The HTTP routes: the API, behind the Host check. */
-const routes = (
-  held: SubscriptionRef.SubscriptionRef<Held>,
-  stopping: Latch.Latch,
-  allowed: ReadonlySet<string>
-) => {
+/** The HTTP routes: the API, behind the Host check and the write guard. */
+const routes = ({
+  home,
+  held,
+  stopping,
+  answeredHosts,
+}: {
+  readonly home: string;
+  readonly held: SubscriptionRef.SubscriptionRef<Held>;
+  readonly stopping: Latch.Latch;
+  /** The host names the server answers; any other Host gets a 403. */
+  readonly answeredHosts: ReadonlySet<string>;
+}) => {
   const events = SubscriptionRef.changes(held).pipe(
-    Stream.map(({ latest }) => latest),
+    Stream.flatMap((current) => Stream.fromIterable(eventsOf(current))),
     Stream.merge(heartbeats),
     // Open streams never end on their own, so they end when the server
     // starts to stop, and it doesn't wait for them.
     Stream.interruptWhen(stopping.await)
   );
 
-  const handlers = HttpApiBuilder.group(ServerApi, "map", (group) =>
+  const served = {
+    events: Str.slice(1)(serverPaths.events),
+    pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
+  };
+
+  const mapHandlers = HttpApiBuilder.group(ServerApi, "map", (group) =>
     group
       .handle("page", () =>
         SubscriptionRef.get(held).pipe(
-          Effect.flatMap(({ good }) =>
-            renderPage(good, { events: Str.slice(1)(serverPaths.events) })
-          ),
+          Effect.flatMap((current) => renderPage(shownState(current), served)),
           Effect.orDie
         )
       )
-      .handle("state", () =>
-        Effect.map(SubscriptionRef.get(held), ({ good }) => good)
-      )
+      .handle("state", () => Effect.map(SubscriptionRef.get(held), shownState))
       .handle("events", () => Effect.succeed(events))
   );
 
-  return Layer.mergeAll(
-    HttpApiBuilder.layer(ServerApi).pipe(Layer.provide(handlers)),
-    hostCheck(allowed)
-  ).pipe(Layer.provide(NodeHttpServer.layerHttpServices));
+  const proposalHandlers = HttpApiBuilder.group(
+    ServerApi,
+    "proposals",
+    (group) =>
+      group.handle("putLayout", ({ payload }) =>
+        writePendingLayout(home, payload, (proposals) =>
+          SubscriptionRef.update(held, (current) => ({
+            ...current,
+            proposals,
+          }))
+        ).pipe(
+          Effect.catchTag(
+            ["PlatformError", "LockHeld", "SchemaError"],
+            Effect.die
+          )
+        )
+      )
+  );
+
+  const api = HttpApiBuilder.layer(ServerApi).pipe(
+    Layer.provide([mapHandlers, proposalHandlers]),
+    Layer.provide(writeGuardLayer)
+  );
+
+  return Layer.mergeAll(api, hostCheck(answeredHosts)).pipe(
+    Layer.provide(NodeHttpServer.layerHttpServices)
+  );
 };
 
 /**
@@ -378,22 +472,36 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   const held = yield* SubscriptionRef.make<Held>({
     good: first.state,
-    latest: ServerEvent.cases.MapUpdated.make({ state: first.state }),
+    proposals: first.proposals,
+    rejected: Option.none(),
   });
 
   const watching = yield* Latch.make();
 
-  const onChange = rebuildEvent(home).pipe(
-    Effect.flatMap((event) =>
-      SubscriptionRef.update(held, (current) => nextHeld(current, event))
-    ),
+  const onMapChange = rebuildHeld(home).pipe(
+    Effect.flatMap((next) => SubscriptionRef.update(held, next)),
     Effect.catchCause((cause) =>
       Console.error(`serve could not rebuild the map: ${Cause.pretty(cause)}`)
     )
   );
 
+  // Pending changes don't affect the accepted map, SYSTEM.md or the page, so
+  // a change to proposals.json alone is read and broadcast without a rebuild.
+  const onProposalsChange = reloadProposals(home).pipe(
+    Effect.flatMap((next) => SubscriptionRef.update(held, next)),
+    Effect.catchCause((cause) =>
+      Console.error(
+        `serve could not read proposals.json: ${Cause.pretty(cause)}`
+      )
+    )
+  );
+
   yield* watchMap(home, watching).pipe(
-    Stream.runForEach(() => onChange),
+    Stream.runForEach((names) =>
+      Arr.some([...names], (name) => mapFiles.has(name))
+        ? onMapChange
+        : onProposalsChange
+    ),
     Effect.catchCause((cause) =>
       Console.error(
         `serve stopped watching ${home}: ${Cause.pretty(cause)} Restart serve to pick up changes again.`
@@ -404,14 +512,17 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   yield* watching.await;
 
-  const allowed = new Set([
+  const answeredHosts = new Set([
     ...loopbackHosts,
     ...Arr.map(options.allowHosts, hostName),
     ...(wildcardHosts.has(host) ? [] : [hostName(urlHost(host))]),
   ]);
 
   const stopping = yield* Latch.make();
-  const app = yield* HttpRouter.toHttpEffect(routes(held, stopping, allowed));
+
+  const app = yield* HttpRouter.toHttpEffect(
+    routes({ home, held, stopping, answeredHosts })
+  );
 
   const urlHostName = wildcardHosts.has(host) ? defaultHost : urlHost(host);
 
