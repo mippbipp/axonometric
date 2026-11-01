@@ -45,7 +45,7 @@ export const laneWidths: Readonly<Record<View, number>> = {
 };
 
 /** A route's corners in half units, with repeated and straight-through points dropped. */
-const cornersOf = (points: readonly GridPoint[]) => {
+export const routeCorners = (points: readonly GridPoint[]) => {
   const halves = Arr.dedupeAdjacentWith(
     Arr.map(points, ({ x, y }) => ({
       x: Math.round(x * 2),
@@ -97,7 +97,7 @@ interface Path {
 const cellKey = ({ x, y }: Cell) => `${x},${y}`;
 
 const pathOf = (hop: number, points: readonly GridPoint[]): Path => {
-  const corners = cornersOf(points);
+  const corners = routeCorners(points);
 
   const legs = Arr.flatMap(corners, (start, index): readonly Leg[] => {
     const end = corners[index + 1];

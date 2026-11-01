@@ -1341,6 +1341,22 @@ describe("ground clashes", () => {
   );
 });
 
+/** Whether a point is inside a convex polygon, edges excluded. */
+const insidePolygon = (polygon: readonly ScreenPoint[], point: ScreenPoint) => {
+  const signs = Arr.map(polygon, (corner, index) => {
+    const next = polygon[(index + 1) % polygon.length] ?? corner;
+
+    return Math.sign(
+      (next.sx - corner.sx) * (point.sy - corner.sy) -
+        (next.sy - corner.sy) * (point.sx - corner.sx)
+    );
+  });
+
+  return (
+    Arr.every(signs, (sign) => sign > 0) || Arr.every(signs, (sign) => sign < 0)
+  );
+};
+
 /** One arrowhead: its tip, the way it points, and the edge it is on. */
 interface Head {
   readonly tip: ScreenPoint;
@@ -1478,6 +1494,82 @@ describe("arrowheads", () => {
 
         for (const { gap, where } of closest) {
           assert.isAtLeast(gap + 1e-6, need, where);
+        }
+      })
+  );
+
+  it.effect(
+    "show one head per hop, solid or faint, so each structure shows as many as hops end there",
+    () =>
+      Effect.gen(function* () {
+        for (const name of [
+          "flake-pipeline",
+          "review",
+          "crowded",
+          "shapes",
+          "pipeline",
+        ]) {
+          const { data, layout } = yield* fixture(name);
+
+          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+            ? chaptersOf(data)
+            : [{ id: "all", plays: [], revealed: everything(data) }];
+
+          for (const chapter of chapters) {
+            for (const view of views) {
+              const scene = sceneOf({
+                data,
+                layout,
+                revealed: chapter.revealed,
+                view,
+              });
+
+              const outlines = Arr.map(
+                scene.structures,
+                ({ outline }) => outline
+              );
+
+              // A solid head is drawn under every box, so it shows only
+              // where no box's outline covers its middle. The faint heads
+              // are the hidden stretches that reach the end.
+              const shown = Arr.map(scene.hops, (hop) => {
+                const head = arrowheadOf(hop.points);
+
+                const covered =
+                  head !== undefined &&
+                  Arr.some(outlines, (outline) =>
+                    insidePolygon(outline, {
+                      sx: (head.tip.sx + head.base.sx) / 2,
+                      sy: (head.tip.sy + head.base.sy) / 2,
+                    })
+                  );
+
+                const faint = Arr.filter(
+                  hop.hidden,
+                  ({ reachesEnd }) => reachesEnd
+                );
+
+                return {
+                  to: hop.hop.to,
+                  heads: (covered ? 0 : 1) + faint.length,
+                };
+              });
+
+              const wrong = Arr.flatMap(scene.structures, ({ structure }) => {
+                const mine = Arr.filter(shown, ({ to }) => to === structure.id);
+
+                return Arr.flatMap(mine, ({ heads }) =>
+                  heads === 1 ? [] : [`${structure.id}: ${heads} heads`]
+                );
+              });
+
+              assert.deepStrictEqual(
+                wrong,
+                [],
+                `in ${name} ${chapter.id}, ${view}`
+              );
+            }
+          }
         }
       })
   );

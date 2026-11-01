@@ -208,6 +208,12 @@ const edgeCosts = {
    */
   full: 800,
   /**
+   * An end on a back edge (-x or -y), which the Iso view hides behind the
+   * box itself. It only breaks ties between edges the facing, side, back
+   * order already allows, so it stays well under the gap between those.
+   */
+  hidden: 40,
+  /**
    * Each end already on an edge, so ends spread over the facing edges
    * before one fills and a later end has to take another.
    */
@@ -789,7 +795,7 @@ const edgePoints = (
 
   const costOf = (out: number) =>
     (facing[out] ?? 0) +
-    (out === minusX || out === minusY ? backCost : 0) +
+    (out === minusX || out === minusY ? backCost + edgeCosts.hidden : 0) +
     extra(out);
 
   return [

@@ -36,7 +36,7 @@ import {
   tileWidth,
 } from "./iso.ts";
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
-import { laneGap, laneRoutes, laneWidths } from "./lanes.ts";
+import { laneGap, laneRoutes, laneWidths, routeCorners } from "./lanes.ts";
 import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
 import {
@@ -149,7 +149,11 @@ export interface SceneZone {
 /** A stretch of a route that a box is drawn over. */
 export interface HiddenStretch {
   readonly points: readonly ScreenPoint[];
-  /** Whether the stretch runs to the route's end, under its target. */
+  /**
+   * Whether the stretch runs to the route's end, which is hidden under a
+   * box, so the stretch carries a faint arrowhead. At most one stretch of a
+   * hop does.
+   */
   readonly reachesEnd: boolean;
 }
 
@@ -170,8 +174,9 @@ export interface SceneHop {
    */
   readonly points: readonly ScreenPoint[];
   /**
-   * Where the route turns, which the Iso view marks with diamonds: not the
-   * jogs that spread its ends along an edge, nor any turn within a unit of
+   * Where the route turns, which the Iso view marks with diamonds: one per
+   * turn a bundle's hops share, drawn by the first of them, and none for the
+   * jogs that spread its ends along an edge or for any turn within a unit of
    * either end.
    */
   readonly bends: readonly ScreenPoint[];
@@ -185,9 +190,10 @@ export interface SceneHop {
   readonly hoverLabel: ScreenRect | undefined;
   /**
    * The stretches of the route that boxes are drawn over and that the view
-   * redraws faintly on top, without an arrowhead: those under other
-   * structures' boxes, and the last stretch under the target's box when
-   * the end is there.
+   * redraws faintly on top: those under other structures' boxes, and the
+   * last stretch under the target's box when the end is there. The stretch
+   * that reaches a hidden end carries a faint arrowhead, so every hop shows
+   * one head, solid where its end is visible and faint where it is not.
    */
   readonly hidden: readonly HiddenStretch[];
 }
@@ -749,29 +755,88 @@ const placeZones = (
   });
 };
 
-/** How far from a route's end a bend must be to get a diamond, in grid units. */
-const bendMargin = 1;
+/** A hop's turns on the ground, as its grid corners and its laned ones. */
+interface Turning {
+  readonly id: string;
+  readonly corners: readonly GridPoint[];
+  readonly laned: readonly GridPosition[];
+}
 
 /**
- * The turns of a route on the ground that the Iso view marks: its inner
- * points at least `bendMargin` from both ends. Nearer the box the lanes
- * and fans spread the lines out, and a diamond there reads as clutter.
+ * The turns the Iso view marks with a diamond, by hop id. Hops that turn the
+ * same way at the same grid corner, as the lanes of a bundle do, share one
+ * diamond: the first of them draws it, on the middle of their lanes. A lone
+ * hop's diamond sits on its own line. Turns within `bendMargin` of either
+ * end of a route get none.
  */
-const farFromEnds = (
-  points: readonly GridPosition[]
-): readonly GridPosition[] => {
-  const [first] = points;
-  const last = points.at(-1);
+const turnsOf = ({
+  hops,
+}: {
+  readonly hops: readonly Turning[];
+}): ReadonlyMap<string, readonly GridPosition[]> => {
+  const turns = Arr.flatMap(hops, ({ id, corners: grid, laned }) => {
+    const [first] = grid;
+    const last = grid.at(-1);
 
-  return first === undefined || last === undefined
-    ? []
-    : Arr.filter(
-        points.slice(1, -1),
-        (point) =>
-          Math.hypot(point.x - first.x, point.y - first.y) >= bendMargin &&
-          Math.hypot(point.x - last.x, point.y - last.y) >= bendMargin
-      );
+    return Arr.flatMap(grid.slice(1, -1), (corner, index) => {
+      const at = laned[index + 1];
+      const before = grid[index];
+      const after = grid[index + 2];
+
+      return first === undefined ||
+        last === undefined ||
+        at === undefined ||
+        before === undefined ||
+        after === undefined ||
+        Math.hypot(corner.x - first.x, corner.y - first.y) < bendMargin ||
+        Math.hypot(corner.x - last.x, corner.y - last.y) < bendMargin
+        ? []
+        : [
+            {
+              id,
+              at,
+              key: `${Arr.join(
+                Arr.sort(
+                  [
+                    `${Math.sign(before.x - corner.x)},${Math.sign(before.y - corner.y)}`,
+                    `${Math.sign(after.x - corner.x)},${Math.sign(after.y - corner.y)}`,
+                  ],
+                  Order.String
+                ),
+                "|"
+              )}@${corner.x},${corner.y}`,
+            },
+          ];
+    });
+  });
+
+  const groups = Arr.groupBy(turns, ({ key }) => key);
+
+  return new Map(
+    Arr.map(hops, ({ id }) => [
+      id,
+      Arr.flatMap(Rec.values(groups), (group) => {
+        const [owner] = group;
+
+        return owner?.id === id
+          ? [
+              {
+                x:
+                  Arr.reduce(group, 0, (sum, { at }) => sum + at.x) /
+                  group.length,
+                y:
+                  Arr.reduce(group, 0, (sum, { at }) => sum + at.y) /
+                  group.length,
+              },
+            ]
+          : [];
+      }),
+    ])
+  );
 };
+
+/** How far from a route's end a bend must be to get a diamond, in grid units. */
+const bendMargin = 1;
 
 /** Stretches shorter than this, in screen units, aren't worth redrawing. */
 const shortestStretch = 1;
@@ -1173,6 +1238,16 @@ export const sceneOf = ({
     laneWidths[view]
   );
 
+  const turns = turnsOf({
+    hops: Arr.flatMap(shown, ({ id }) => {
+      const route = routes[id];
+
+      return route === undefined
+        ? []
+        : [{ id, corners: routeCorners(route.points), laned: bent[id] ?? [] }];
+    }),
+  });
+
   const routed = Arr.flatMap(shown, (hop) => {
     const route = routes[hop.id];
 
@@ -1183,10 +1258,7 @@ export const sceneOf = ({
             hop,
             route,
             points: Arr.map(drawn[hop.id] ?? route.points, geometry.project),
-            bends: Arr.map(
-              farFromEnds(bent[hop.id] ?? route.points),
-              geometry.project
-            ),
+            bends: Arr.map(turns.get(hop.id) ?? [], geometry.project),
           },
         ];
   });
@@ -1270,7 +1342,10 @@ export const sceneOf = ({
 
   // A route is drawn behind its own source box where it leaves a back edge,
   // which reads as leaving from behind, so that stretch isn't redrawn. Over
-  // the target box only the stretch carrying the arrowhead is redrawn.
+  // the target box only the stretch that reaches the route's end is
+  // redrawn. Routes are drawn under every box, so a solid head whose tip is
+  // inside a box's outline is hidden; the stretch that reaches the end then
+  // carries a faint head, once. A head on a visible edge is solid already.
   const hiddenOf = (hop: Hop, points: readonly ScreenPoint[]) => {
     const others = Arr.flatMap(structures, ({ structure, outline }) =>
       structure.id === hop.from || structure.id === hop.to ? [] : [outline]
@@ -1286,7 +1361,20 @@ export const sceneOf = ({
             ({ reachesEnd }) => reachesEnd
           );
 
-    return [...hiddenStretches({ points, outlines: others }), ...atHead];
+    const stretches = [
+      ...hiddenStretches({ points, outlines: others }),
+      ...atHead,
+    ];
+
+    const carrier = Arr.findLastIndex(
+      stretches,
+      ({ reachesEnd }) => reachesEnd
+    );
+
+    return Arr.map(stretches, (stretch, index) => ({
+      ...stretch,
+      reachesEnd: Option.contains(carrier, index),
+    }));
   };
 
   const rank = new Map(Arr.map(labelFirst, (id, index) => [id, index]));
@@ -1421,7 +1509,7 @@ const rectShape = (id: string, rect: ScreenRect): Shape2d => ({
  * at its own ends, and how far a crossing's lines may run on past each
  * other. Half the gap between a bundle's lines.
  */
-const outlineClearance = laneGap / 2;
+const outlineClearance = laneGap * 0.75;
 
 /**
  * How far apart two hops' lines must stay, outside a crossing: a little

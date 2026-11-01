@@ -41,7 +41,7 @@ const nudge = 6;
 const lineGap = 4;
 
 /** How far from the edge a line that starts there jogs, in grid units. */
-const startJog = 0.15;
+const startJog = 0.25;
 
 /** The least room kept between a jog and the end of its leg, in grid units. */
 const legMargin = 0.05;
@@ -62,16 +62,73 @@ interface End {
   /** How much of the end leg a jog may use, in grid units. */
   readonly room: number;
   /**
-   * How far from the edge other hops' lines cross the end's leg, running
-   * parallel to the edge, in grid units.
+   * The other hops' lines that run parallel to the edge: how far from it,
+   * and the stretch along it they cover. A jog that moves along the edge
+   * passes those that cover any of its stretch.
    */
-  readonly crossings: readonly number[];
+  readonly crossings: readonly Crossing[];
+  /**
+   * Where other hops' lines run square to the edge close to it, along the
+   * edge, not counting ends on the edge itself. An end keeps a line gap from
+   * them, or its last leg would run on top of one.
+   */
+  readonly beside: readonly number[];
   /** The range along the edge the end may take. */
   readonly low: number;
   readonly high: number;
 }
 
-/** How far from an edge other lines cross a leg square to it. */
+/** A line parallel to an edge: how far from it, and what it covers along it. */
+interface Crossing {
+  readonly depth: number;
+  readonly low: number;
+  readonly high: number;
+}
+
+/** How far from an edge a line square to it counts as beside an end's leg. */
+const besideReach = 0.6;
+
+/** Where other lines run square to an edge, close to it but not on it. */
+const besideOf = ({
+  others,
+  leg,
+}: {
+  readonly others: readonly (readonly GridPosition[])[];
+  readonly leg: {
+    readonly alongX: boolean;
+    readonly edge: number;
+    readonly inward: 1 | -1;
+  };
+}) =>
+  Arr.flatMap(others, (line) =>
+    Arr.flatMap(line.slice(1), (end, index) => {
+      const start = line[index];
+
+      if (start === undefined) {
+        return [];
+      }
+
+      const square = leg.alongX ? start.x === end.x : start.y === end.y;
+      const along = leg.alongX ? start.x : start.y;
+      const [one, two] = leg.alongX ? [start.y, end.y] : [start.x, end.x];
+
+      const near = Math.min(
+        (one - leg.edge) * leg.inward,
+        (two - leg.edge) * leg.inward
+      );
+
+      const far = Math.max(
+        (one - leg.edge) * leg.inward,
+        (two - leg.edge) * leg.inward
+      );
+
+      return square && near > 0.05 && near < besideReach && far > near
+        ? [along]
+        : [];
+    })
+  );
+
+/** The other lines parallel to the edge, on the inner side of an end's leg. */
 const crossingsOf = ({
   others,
   leg,
@@ -98,13 +155,11 @@ const crossingsOf = ({
         : [start.x, start.y, end.y];
 
       const flat = leg.alongX ? start.y === end.y : start.x === end.x;
-
-      const spans =
-        Math.min(from, to) <= leg.at && leg.at <= Math.max(from, to);
-
       const depth = (across - leg.edge) * leg.inward;
 
-      return flat && spans && depth > 0 ? [depth] : [];
+      return flat && depth > 0
+        ? [{ depth, low: Math.min(from, to), high: Math.max(from, to) }]
+        : [];
     })
   );
 
@@ -163,6 +218,7 @@ const endOf = ({
     inward,
     alongX,
     crossings: crossingsOf({ others, leg: { alongX, at, edge, inward } }),
+    beside: besideOf({ others, leg: { alongX, edge, inward } }),
     room: Math.max(0, Math.abs(across) - legMargin) / share,
     low: origin + low,
     high: origin + high,
@@ -260,6 +316,60 @@ const spread = (ends: readonly End[]): readonly number[] => {
   return Arr.flatMap(clusters, ({ targets }) => targets);
 };
 
+/**
+ * Moves each target that sits within a line gap of a line running square to
+ * the edge to just past that line, on the side it stays in order with its
+ * neighbours; a target with no such room stays.
+ */
+const clearOfLines = (
+  ends: readonly End[],
+  targets: readonly number[]
+): readonly number[] =>
+  Arr.reduce(ends, Arr.empty<number>(), (done, end, index) => {
+    const target = targets[index] ?? end.at;
+    const unit = unitOnScreen.iso;
+    const gap = lineGap / unit;
+
+    const hit = Arr.findFirst(
+      end.beside,
+      (line) => Math.abs(target - line) < gap
+    );
+
+    const before = done.at(-1);
+    const next = targets[index + 1];
+    const previous = ends[index - 1];
+    const following = ends[index + 1];
+
+    return [
+      ...done,
+      Option.match(hit, {
+        onNone: () => target,
+        onSome: (line) => {
+          const after = line + gap;
+          const under = line - gap;
+
+          const roomAfter =
+            after <= end.high &&
+            (next === undefined ||
+              following === undefined ||
+              next - after >= endGap(end.width, following.width) - 1e-9);
+
+          const roomUnder =
+            under >= end.low &&
+            (before === undefined ||
+              previous === undefined ||
+              under - before >= endGap(previous.width, end.width) - 1e-9);
+
+          if (roomAfter && (!roomUnder || after - target <= target - under)) {
+            return after;
+          }
+
+          return roomUnder ? under : target;
+        },
+      }),
+    ];
+  });
+
 /** An end after the spread: where it goes, and how far from the edge it jogs. */
 interface Fan {
   readonly end: End;
@@ -324,12 +434,23 @@ const fanned = (
     );
   };
 
-  // A jog's corner keeps a line gap from any line crossing its leg, by
-  // moving further from the edge, never nearer, so the order between jogs
-  // below holds.
-  const outwards = (jog: number, end: End) =>
-    Arr.reduce(Arr.sort(end.crossings, Order.Number), jog, (depth, cross) =>
-      Math.abs(depth - cross) < near ? cross + near : depth
+  // A jog's corner keeps a line gap from any line it passes, by moving
+  // further from the edge, never nearer, so the order between jogs below
+  // holds. A jog passes a line that covers any of the stretch it moves over.
+  const outwards = (jog: number, { end, target }: (typeof settled)[number]) =>
+    Arr.reduce(
+      Arr.sort(
+        Arr.filter(
+          end.crossings,
+          ({ low, high }) =>
+            Math.max(low, Math.min(end.at, target) - near) <=
+            Math.min(high, Math.max(end.at, target) + near)
+        ),
+        Order.mapInput(Order.Number, ({ depth }: Crossing) => depth)
+      ),
+      jog,
+      (depth, cross) =>
+        Math.abs(depth - cross.depth) < near ? cross.depth + near : depth
     );
 
   // Each pass lets a jog's push reach one more neighbour.
@@ -342,10 +463,10 @@ const fanned = (
       });
     });
 
-    Arr.forEach(settled, ({ end }, index) => {
+    Arr.forEach(settled, (item, index) => {
       const jog = jogs[index] ?? 0;
 
-      jogs[index] = jog === 0 ? 0 : outwards(jog, end);
+      jogs[index] = jog === 0 ? 0 : outwards(jog, item);
     });
   });
 
@@ -430,7 +551,7 @@ export const drawnRoutes = ({
       Order.mapInput(Order.Number, ({ at }: End) => at)
     );
 
-    const targets = spread(sorted);
+    const targets = clearOfLines(sorted, spread(sorted));
 
     return fanned(
       Arr.map(sorted, (end, at) => ({ end, target: targets[at] ?? end.at })),

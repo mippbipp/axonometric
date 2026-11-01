@@ -156,9 +156,10 @@ function HopArrow({
 
 /**
  * The stretches of a hop's route that boxes are drawn over, drawn again
- * faintly on top of those boxes, so the hop never disappears. They carry no
- * arrowhead: a head over its own target's top face reads as a stray mark,
- * and the solid head is drawn where it is visible.
+ * faintly on top of those boxes, so the hop never disappears. The stretch
+ * that reaches an end hidden behind a box carries a faint arrowhead, since
+ * the solid one is under the box; an end on a visible edge has its solid
+ * head and no faint one.
  */
 function HiddenHop({ routed }: { readonly routed: SceneHop }) {
   return (
@@ -168,7 +169,7 @@ function HiddenHop({ routed }: { readonly routed: SceneHop }) {
           key={toPoints(stretch.points)}
           points={stretch.points}
           dashed
-          head={false}
+          head={stretch.reachesEnd}
         />
       ))}
     </g>
