@@ -42,7 +42,24 @@ for output in SYSTEM.md pipeline.html; do
   fi
 done
 
-# serve and status arrive in #15. Their check goes here: start serve on
-# "$work/pipeline/map" in the background, run status, then stop serve.
+echo "serve and status"
+# Started directly, not through run_binary, so $! is the binary itself and
+# kill reaches it.
+PATH="$work/empty-path" "$binary" serve "$work/pipeline/map" --port 0 &
+serve_pid=$!
+running=""
+for _ in $(seq 1 50); do
+  if run_binary status "$work/pipeline/map" --json | grep -q '"running":true'; then
+    running=yes
+    break
+  fi
+  sleep 0.2
+done
+kill "$serve_pid" 2>/dev/null || true
+wait "$serve_pid" 2>/dev/null || true
+if [ -z "$running" ]; then
+  echo "status never reported the server that serve started." >&2
+  exit 1
+fi
 
 echo "The binary passed."
