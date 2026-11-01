@@ -162,6 +162,38 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  applyLayoutChanges,
+  ChangeId,
+  checkProposals,
+  clashOf,
+  discardChange,
+  emptyProposals,
+  Footprint,
+  LayoutChange,
+  layoutChangeKey,
+  LayoutChanges,
+  layoutRefusal,
+  MoveChange,
+  newChangeId,
+  placeStructure,
+  Proposals,
+  ProposalsFile,
+  ResizeChange,
+  sameLayoutChanges,
+  StructureMove,
+  StructureTarget,
+  structuresOf,
+  Target,
+} from "./proposals.ts";
+
+export type { Clash, Placing } from "./proposals.ts";
+
+export {
+  LayoutChangeRefused,
+  maxWriteBytes,
+  PendingLayoutWrite,
+  MapFilesUnreadable,
+  StaleProposals,
   ServedPage,
   servedPageElementId,
   ServerEvent,

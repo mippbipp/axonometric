@@ -165,12 +165,13 @@ const isTyping = (target: EventTarget | null) =>
     target.tagName === "SELECT");
 
 /**
- * Presses that start on a structure or a packet don't pan, so clicks on them
- * still land.
+ * Presses that start on a structure, a packet or a resize handle don't pan,
+ * so clicks and drags on them still land.
  */
 const startsOnStructure = (target: EventTarget | null) =>
   target instanceof Element &&
-  target.closest("[data-structure], [data-packet]") !== null;
+  target.closest("[data-structure], [data-packet], [data-resize-handle]") !==
+    null;
 
 interface Gestures {
   readonly current: () => Camera;

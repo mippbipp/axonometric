@@ -18,6 +18,8 @@ import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { fitOf } from "./fit.ts";
+import { LayoutEditor } from "./layout-editor.tsx";
+import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { groundOutline, routesOf, toPoints } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
@@ -438,6 +440,7 @@ export function MapView({
           <NewMarker key={item.structure.id} placed={item} view={view} />
         ))}
         <SelectionMarker placements={state.layout.structures} view={view} />
+        <AcceptedOutlines structures={scene.structures} view={view} />
       </g>
       <g>
         {Arr.map(scene.hops, (item) => (
@@ -449,30 +452,33 @@ export function MapView({
           />
         ))}
       </g>
-      <g>
-        {Arr.map(scene.structures, (item) => (
-          <Structure
-            key={item.structure.id}
-            placed={item}
-            hatch={hatch}
-            isNew={newlyRevealed.has(item.structure.id)}
-          />
-        ))}
-      </g>
-      <g aria-hidden="true" className="pointer-events-none opacity-40">
-        {Arr.map(scene.hops, (item) => (
-          <HiddenHop key={item.hop.id} routed={item} />
-        ))}
-      </g>
-      <g>
-        {Arr.map(scene.structures, (item) => (
-          <NameTag
-            key={item.structure.id}
-            placed={item}
-            grow={scene.growth.tag}
-          />
-        ))}
-      </g>
+      <LayoutEditor view={view} placements={state.layout.structures}>
+        <g>
+          {Arr.map(scene.structures, (item) => (
+            <Structure
+              key={item.structure.id}
+              placed={item}
+              hatch={hatch}
+              isNew={newlyRevealed.has(item.structure.id)}
+            />
+          ))}
+        </g>
+        <g aria-hidden="true" className="pointer-events-none opacity-40">
+          {Arr.map(scene.hops, (item) => (
+            <HiddenHop key={item.hop.id} routed={item} />
+          ))}
+        </g>
+        <g>
+          {Arr.map(scene.structures, (item) => (
+            <NameTag
+              key={item.structure.id}
+              placed={item}
+              grow={scene.growth.tag}
+            />
+          ))}
+        </g>
+        <PendingBadges structures={scene.structures} />
+      </LayoutEditor>
       <g className="pointer-events-none">
         {Arr.map(scene.hops, (item) => (
           <HopLabel

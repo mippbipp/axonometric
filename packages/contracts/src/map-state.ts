@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { Layout } from "./layout.ts";
 import { MapData } from "./map-data.ts";
+import { Proposals } from "./proposals.ts";
 
 /** Everything a view needs to draw a map. */
 export const MapState = Schema.Struct({
@@ -14,6 +15,11 @@ export const MapState = Schema.Struct({
    * source with no entry shows as a plain path.
    */
   sourceLinks: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /**
+   * What's pending, as `proposals.json` holds it. Only a page that `serve`
+   * serves has it: the read-only file shows the accepted layout alone.
+   */
+  proposals: Schema.optionalKey(Proposals),
 });
 
 export type MapState = typeof MapState.Type;
