@@ -12,7 +12,8 @@ import { Array as Arr } from "effect";
  * edge, so their box is their own box mapped through the skew. A
  * structure's outline is the convex hull of the corners of every polygon
  * and rect it draws, so a box that leans past its footprint still counts.
- * Parts that aren't shown, such as a planned box's hatching, don't count.
+ * Parts that aren't shown, such as a planned box's hatching or a hop label
+ * hidden at this zoom, don't count.
  */
 export const drawingReport = `(() => {
   const toScreen = (element, points) => {
@@ -70,7 +71,9 @@ export const drawingReport = `(() => {
       id: "tag:" + tag.dataset.nameTag,
       polygon: rectPolygon(tag.querySelector("rect").getBoundingClientRect()),
     })),
-    ...[...document.querySelectorAll("[data-hop-label]")].map((label) => ({
+    ...[...document.querySelectorAll("[data-hop-label]")]
+      .filter((label) => getComputedStyle(label).visibility !== "hidden")
+      .map((label) => ({
       id: "label:" + label.dataset.hopLabel,
       polygon: rectPolygon(label.getBoundingClientRect()),
     })),
