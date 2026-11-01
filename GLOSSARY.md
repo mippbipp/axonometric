@@ -32,6 +32,10 @@ _Avoid_: phase
 An open or resolved question about a structure, with an ID such as Q-G1 that never changes.
 _Avoid_: open issue, TODO
 
+**Source**:
+A file behind a structure, named by its path from the git repo's root and optionally pinned to the commit the structure's text describes.
+_Avoid_: source link, file reference
+
 **Hop**:
 One arrow from a structure to a structure, with a label and an example payload.
 _Avoid_: edge, link, connection

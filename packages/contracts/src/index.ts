@@ -65,6 +65,7 @@ export {
   ResolvedQuestion,
   Shape,
   shapes,
+  Source,
   Stat,
   Status,
   statuses,
@@ -74,6 +75,15 @@ export {
 } from "./map-data.ts";
 
 export { MapState, mapStateElementId } from "./map-state.ts";
+
+export {
+  normalSourcePath,
+  SourceFact,
+  sourceKey,
+  uniqueSources,
+} from "./sources.ts";
+
+export type { SourceFacts } from "./sources.ts";
 
 export {
   formatCount,

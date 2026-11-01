@@ -4,7 +4,7 @@ import {
   MapProblem,
   splitProblems,
 } from "@axonometric/contracts";
-import { Console, Effect, Path, Schema } from "effect";
+import { Console, Effect, Option, Path, Schema } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/cli";
 
 import { inspectMap } from "./map-files.ts";
@@ -15,6 +15,8 @@ const CheckReport = Schema.Struct({
   ok: Schema.Boolean,
   errors: Schema.Array(MapProblem),
   warnings: Schema.Array(MapProblem),
+  /** Why the source checks were skipped, or null when they ran. */
+  sourcesSkipped: Schema.NullOr(Schema.String),
 });
 
 const encodeReport = Schema.encodeEffect(Schema.fromJsonString(CheckReport));
@@ -31,15 +33,30 @@ export class CheckFailed extends Schema.TaggedError<
 
 const check = Effect.fn("check")(function* (home: string, json: boolean) {
   const path = yield* Path.Path;
-  const { problems } = yield* inspectMap(home, path.dirname(home));
+
+  const { problems, sourcesSkipped } = yield* inspectMap(
+    home,
+    path.dirname(home)
+  );
 
   const { errors, warnings } = splitProblems(problems);
 
   if (json) {
     yield* Console.log(
-      yield* encodeReport({ home, ok: errors.length === 0, errors, warnings })
+      yield* encodeReport({
+        home,
+        ok: errors.length === 0,
+        errors,
+        warnings,
+        sourcesSkipped: Option.getOrNull(sourcesSkipped),
+      })
     );
   } else {
+    yield* Option.match(sourcesSkipped, {
+      onNone: () => Effect.void,
+      onSome: (line) => Console.log(line),
+    });
+
     yield* Effect.forEach(
       problems,
       (problem) => Console.log(formatProblem(problem)),
