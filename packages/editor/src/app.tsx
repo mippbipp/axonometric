@@ -1,4 +1,5 @@
 import type { Hop, MapState } from "@axonometric/contracts";
+import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useCallback } from "react";
 
@@ -6,6 +7,7 @@ import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
+import { useInsideFocus } from "./inside-focus.ts";
 import { InsideView } from "./inside-view.tsx";
 import { IsoView } from "./iso-view.tsx";
 import { screenRouteOf } from "./iso.ts";
@@ -18,7 +20,7 @@ import { useSelectionKeys } from "./selection-keys.ts";
 import { SelectionProvider } from "./selection.tsx";
 import { SideIndex } from "./side-index.tsx";
 import { SidePanel } from "./side-panel.tsx";
-import { useStructuresById } from "./structures.ts";
+import { hasSteps, useStructuresById } from "./structures.ts";
 import { ThemeToggle } from "./theme.tsx";
 import { StructureTooltip, TooltipProvider } from "./tooltip.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -28,9 +30,12 @@ import { WalkthroughProvider } from "./walkthrough.tsx";
 const hintsOf = ({
   selected,
   inside,
+  canGoInside,
 }: {
   readonly selected: boolean;
   readonly inside: boolean;
+  /** Whether the selected structure has steps. */
+  readonly canGoInside: boolean;
 }) => {
   if (inside) {
     return ["← or Esc come out", "click Step to move the packet"];
@@ -38,7 +43,7 @@ const hintsOf = ({
 
   return selected
     ? [
-        "→ go inside",
+        ...(canGoInside ? ["→ go inside"] : []),
         "← or Esc unpin",
         "] next chapter",
         "[ back",
@@ -61,9 +66,11 @@ function WalkthroughPage() {
   const { selected, inside } = useSelection();
   const byId = useStructuresById();
   const insideStructure = inside === null ? undefined : byId.get(inside);
+  const selectedStructure = selected === null ? undefined : byId.get(selected);
 
   useChapterKeys(selected === null);
   useSelectionKeys();
+  useInsideFocus(inside);
 
   const isoRouteOf = useCallback(
     (hop: Hop) => screenRouteOf({ layout: state.layout, hop }),
@@ -88,22 +95,31 @@ function WalkthroughPage() {
       <div className="flex min-h-0 flex-1">
         <SideIndex />
         <MapSurface>
-          {insideStructure === undefined ? (
-            <>
-              <IsoView
-                state={state}
-                revealed={revealed}
-                newlyRevealed={newlyRevealed}
-                fitTo={fit}
-                fitKey={stop.id}
-              >
-                <PacketLayer routeOf={isoRouteOf} />
-              </IsoView>
-              <ChapterRail className="absolute top-3 left-3" />
-              <FlowPicker className="absolute bottom-3 left-3" />
-            </>
-          ) : (
-            <>
+          {/* The iso view stays mounted, hidden, while the inside view is
+              open, so its pan and zoom survive the visit. It keeps its size,
+              so the viewport doesn't refit on a resize. */}
+          <div
+            data-iso-layer
+            inert={insideStructure !== undefined}
+            className={cn(
+              "absolute inset-0",
+              insideStructure !== undefined && "invisible"
+            )}
+          >
+            <IsoView
+              state={state}
+              revealed={revealed}
+              newlyRevealed={newlyRevealed}
+              fitTo={fit}
+              fitKey={stop.id}
+            >
+              <PacketLayer routeOf={isoRouteOf} />
+            </IsoView>
+            <ChapterRail className="absolute top-3 left-3" />
+            <FlowPicker className="absolute bottom-3 left-3" />
+          </div>
+          {insideStructure === undefined ? null : (
+            <div className="bg-paper absolute inset-0">
               <InsideView
                 key={insideStructure.id}
                 structure={insideStructure}
@@ -112,7 +128,7 @@ function WalkthroughPage() {
                 structure={insideStructure}
                 className="absolute top-3 left-3"
               />
-            </>
+            </div>
           )}
           <StructureTooltip />
         </MapSurface>
@@ -123,6 +139,7 @@ function WalkthroughPage() {
           hintsOf({
             selected: selected !== null,
             inside: insideStructure !== undefined,
+            canGoInside: hasSteps(selectedStructure),
           }),
           (hint) => (
             <span key={hint}>{hint}</span>
