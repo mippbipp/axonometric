@@ -887,7 +887,9 @@ export const connectServed = ({
             update({
               state: { ...view.state, layout, proposals },
               pending: proposals.layout,
-              notice: null,
+              // The events stream may already have said the history was
+              // cleared by this accept. That notice stays.
+              notice: view.notice?.kind === "info" ? view.notice : null,
             });
             showSaved({ revision, message: saved });
           },
