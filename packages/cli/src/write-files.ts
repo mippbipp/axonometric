@@ -1,8 +1,9 @@
-import { Array as Arr, Effect, FileSystem } from "effect";
+import { Array as Arr, Effect, FileSystem, Predicate } from "effect";
 
 export interface Output {
   readonly file: string;
-  readonly content: string;
+  /** Text, or the bytes of a binary file such as a PNG. */
+  readonly content: string | Uint8Array;
 }
 
 /**
@@ -30,7 +31,10 @@ export const writeAll = Effect.fnUntraced(function* (
   yield* Effect.gen(function* () {
     yield* Effect.forEach(
       staged,
-      ({ temporary, content }) => fs.writeFileString(temporary, content),
+      ({ temporary, content }) =>
+        Predicate.isString(content)
+          ? fs.writeFileString(temporary, content)
+          : fs.writeFile(temporary, content),
       { discard: true }
     );
 

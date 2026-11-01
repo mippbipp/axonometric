@@ -19,3 +19,15 @@ export const palette = {
 
 /** The "White background" option's colour. */
 export const whiteBackground = "#ffffff";
+
+/**
+ * The one font the exports are drawn in. The CLI's PNG embeds it (Liberation
+ * Mono, SIL OFL 1.1), so its output doesn't depend on the OS.
+ */
+export const exportFontFamily = "Liberation Mono";
+
+/**
+ * The `font-family` of an exported SVG: the bundled font first, then
+ * monospace faces of similar width for a viewer that doesn't have it.
+ */
+export const exportFontStack = `"${exportFontFamily}", ui-monospace, Menlo, Consolas, monospace`;

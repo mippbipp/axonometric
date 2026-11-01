@@ -1,6 +1,8 @@
 import {
   excalidrawOf,
+  excalidrawText,
   exportName,
+  pngScale,
   whiteBackground,
 } from "@axonometric/contracts";
 import type { View } from "@axonometric/contracts";
@@ -13,9 +15,6 @@ import { controlClass } from "./control-class.ts";
 import { download, ExportFailed, exportSvg, pngOf } from "./svg-export.ts";
 import type { ExportLabel } from "./svg-export.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
-
-/** How much larger than the SVG the PNG is drawn. */
-const pngScale = 2;
 
 const viewNames = {
   iso: "Iso view",
@@ -184,10 +183,7 @@ export function ExportMenu({ view }: { readonly view: View }) {
         });
 
         download(
-          // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- excalidrawOf's output is plain JSON data by construction
-          new Blob([`${JSON.stringify(file, null, 2)}\n`], {
-            type: "application/json",
-          }),
+          new Blob([excalidrawText(file)], { type: "application/json" }),
           `${state.system}.excalidraw`
         );
       }),

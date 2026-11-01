@@ -1,12 +1,9 @@
+import { chapterStopsOf } from "@axonometric/contracts";
 import type { MapState } from "@axonometric/contracts";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import {
-  chapterPlayOf,
-  chapterStopsOf,
-  defaultFlowChoice,
-} from "./chapters.ts";
+import { chapterPlayOf, defaultFlowChoice } from "./chapters.ts";
 import type { FlowChoice } from "./chapters.ts";
 import { WalkthroughContext } from "./walkthrough-context.ts";
 import type { Walkthrough } from "./walkthrough-context.ts";
