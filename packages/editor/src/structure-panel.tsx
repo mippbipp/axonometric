@@ -125,8 +125,6 @@ export function StructurePanel({
 
 /** The open inside view's structure and every step in order. */
 export function InsidePanel({ structure }: { readonly structure: Structure }) {
-  const { comeOut } = useSelection();
-
   return (
     <section data-inside-panel={structure.id} className="flex flex-col gap-3">
       <p className="text-xs tracking-widest uppercase opacity-70">
@@ -135,16 +133,6 @@ export function InsidePanel({ structure }: { readonly structure: Structure }) {
       <h2 className="text-lg leading-tight font-medium">{structure.name}</h2>
       <p className="text-sm">{structure.oneLiner}</p>
       <StepList structure={structure} />
-      <div>
-        <button
-          type="button"
-          data-control="come-out"
-          className={controlClass}
-          onClick={comeOut}
-        >
-          ← Come out
-        </button>
-      </div>
     </section>
   );
 }

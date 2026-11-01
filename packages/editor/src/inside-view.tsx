@@ -1,11 +1,12 @@
 import type { Placement, Step, Structure } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
-import { useEffect, useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { useFrameClock } from "./frame-clock.ts";
 import { corners, project, routeHop, toPoints, pointAlong } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
-import { clockAtHop, packetAt, travelSeconds } from "./packet-schedule.ts";
+import { clockAtNextHop, packetAt, travelSeconds } from "./packet-schedule.ts";
 import { useReducedMotion } from "./playback.ts";
 import { BoxShape } from "./shapes.tsx";
 
@@ -145,26 +146,12 @@ const useInsideClock = (hops: number) => {
 
   const playing = stored.playing && !reducedMotion && hops > 0;
 
-  useEffect(() => {
-    let last = performance.now();
-    let frame = 0;
-
-    const tick = (now: number) => {
-      const seconds = Math.min(0.05, (now - last) / 1000);
-
-      last = now;
+  useFrameClock({
+    playing,
+    advance: (seconds) => {
       setStored((current) => ({ ...current, clock: current.clock + seconds }));
-      frame = requestAnimationFrame(tick);
-    };
-
-    if (playing) {
-      frame = requestAnimationFrame(tick);
-    }
-
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [playing]);
+    },
+  });
 
   return {
     clock: stored.clock,
@@ -177,14 +164,10 @@ const useInsideClock = (hops: number) => {
       setStored((current) => ({ ...current, playing: false }));
     },
     step: () => {
-      setStored((current) => {
-        const next = (packetAt({ clock: current.clock, hops }).hop + 1) % hops;
-
-        return {
-          clock: clockAtHop({ clock: current.clock, hops, hop: next }),
-          playing: false,
-        };
-      });
+      setStored((current) => ({
+        clock: clockAtNextHop({ clock: current.clock, hops }),
+        playing: false,
+      }));
     },
   };
 };
@@ -197,8 +180,13 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
   const idPrefix = Str.replaceAll(/\W/gu, "")(useId());
   const hatch = `${idPrefix}hatch`;
   const arrowhead = `${idPrefix}arrowhead`;
-  const steps = structure.steps ?? [];
-  const routes = routesOf(steps);
+  const steps = useMemo(() => structure.steps ?? [], [structure.steps]);
+  const routes = useMemo(() => routesOf(steps), [steps]);
+
+  const viewBox = useMemo(
+    () => viewBoxOf(Arr.flatMap(steps, (_, index) => extentOf(index))),
+    [steps]
+  );
 
   const { clock, playing, reducedMotion, play, pause, step } = useInsideClock(
     routes.length
@@ -215,7 +203,7 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
       <svg
         aria-labelledby={`${idPrefix}title`}
         className="text-ink block size-full"
-        viewBox={viewBoxOf(Arr.flatMap(steps, (_, index) => extentOf(index)))}
+        viewBox={viewBox}
         preserveAspectRatio="xMidYMid meet"
       >
         <title id={`${idPrefix}title`}>{`Inside ${structure.name}`}</title>

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { clockAtHop, packetAt, travelSeconds } from "./packet-schedule.ts";
+import { useFrameClock } from "./frame-clock.ts";
+import { clockAtNextHop, packetAt, travelSeconds } from "./packet-schedule.ts";
 import { ClockContext, PlaybackContext, useReducedMotion } from "./playback.ts";
 import type { Playback } from "./playback.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -72,12 +73,9 @@ export function PlaybackProvider({
             return current;
           }
 
-          const next =
-            (packetAt({ clock: current.clock, hops }).hop + 1) % hops;
-
           return {
             ...current,
-            clock: clockAtHop({ clock: current.clock, hops, hop: next }),
+            clock: clockAtNextHop({ clock: current.clock, hops }),
             playing: false,
             selected: runIndex,
           };
@@ -100,26 +98,12 @@ export function PlaybackProvider({
 
   const { update } = actions;
 
-  useEffect(() => {
-    let last = performance.now();
-    let frame = 0;
-
-    const tick = (now: number) => {
-      const seconds = Math.min(0.05, (now - last) / 1000);
-
-      last = now;
+  useFrameClock({
+    playing,
+    advance: (seconds) => {
       update((current) => ({ ...current, clock: current.clock + seconds }));
-      frame = requestAnimationFrame(tick);
-    };
-
-    if (playing) {
-      frame = requestAnimationFrame(tick);
-    }
-
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, [playing, update]);
+    },
+  });
 
   const value = useMemo((): Playback => {
     const hop =
