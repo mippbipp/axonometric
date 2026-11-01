@@ -2,6 +2,7 @@ import type { Hop, MapState } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useCallback } from "react";
+import type { ReactNode } from "react";
 
 import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
@@ -74,7 +75,16 @@ const hintsOf = ({
       ];
 };
 
-function WalkthroughPage() {
+/**
+ * Things to show under the chapter rail, such as the live page's notices.
+ * They're in the flow under the rail, so a rail that wraps pushes them down
+ * instead of being covered.
+ */
+interface Notices {
+  readonly notices?: ReactNode;
+}
+
+function WalkthroughPage({ notices }: Notices) {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
   const { selected, inside } = useSelection();
   const { open: overviewOpen } = useOverviewPage();
@@ -129,7 +139,11 @@ function WalkthroughPage() {
             >
               <PacketLayer routeOf={isoRouteOf} />
             </IsoView>
-            <ChapterRail className="absolute top-3 left-3" />
+            <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-start gap-2">
+              <ChapterRail className="pointer-events-auto" />
+              {/* The inside view shows the notices instead, while it's open. */}
+              {insideStructure === undefined ? notices : null}
+            </div>
             {/* Stops short of the zoom controls at the bottom right, and wraps
                 upward when the flows don't fit on one line. */}
             <div
@@ -146,10 +160,13 @@ function WalkthroughPage() {
                 key={insideStructure.id}
                 structure={insideStructure}
               />
-              <Breadcrumb
-                structure={insideStructure}
-                className="absolute top-3 left-3"
-              />
+              <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-start gap-2">
+                <Breadcrumb
+                  structure={insideStructure}
+                  className="pointer-events-auto"
+                />
+                {notices}
+              </div>
             </div>
           )}
           <StructureTooltip />
@@ -189,14 +206,17 @@ function WalkthroughPage() {
  * The map page. It draws whatever map state it's given; the caller decides
  * where the state comes from.
  */
-export function App({ state }: { readonly state: MapState }) {
+export function App({
+  state,
+  notices,
+}: Notices & { readonly state: MapState }) {
   return (
     <WalkthroughProvider state={state}>
       <PlaybackProvider>
         <SelectionProvider>
           <TooltipProvider>
             <OverviewPageProvider>
-              <WalkthroughPage />
+              <WalkthroughPage notices={notices} />
             </OverviewPageProvider>
           </TooltipProvider>
         </SelectionProvider>

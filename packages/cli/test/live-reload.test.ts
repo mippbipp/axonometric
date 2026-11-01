@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path, String as Str } from "effect";
 import type { Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
+import { boxesOf, openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { commitAll, git, initRepo, noGit } from "./git.ts";
 import { makeHome, startServe } from "./harness.ts";
@@ -96,6 +96,44 @@ const settle = Effect.fnUntraced(function* (page: Page) {
   return yield* attributeOf(page, "svg[data-scale]", "data-scale");
 });
 
+interface Box {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+const overlaps = (a: Box, b: Box) =>
+  a.x < b.x + b.width &&
+  b.x < a.x + a.width &&
+  a.y < b.y + b.height &&
+  b.y < a.y + a.height;
+
+/** The controls a notice must never cover. */
+const controls =
+  '[data-chapter-rail], [data-chapter-rail] button, [data-playback-bar], button[aria-label="Zoom in"], button[aria-label="Zoom out"], button[title="Zoom to fit (0)"]';
+
+/** Asserts that no box matching `notice` overlaps a control. */
+const assertClearOfControls = Effect.fnUntraced(function* (
+  page: Page,
+  notice: string
+) {
+  const [shown] = yield* boxesOf(page, notice);
+  const covered = yield* boxesOf(page, controls);
+
+  assert.isDefined(shown);
+  assert.isAbove(covered.length, 4);
+
+  for (const control of covered) {
+    if (shown !== undefined) {
+      assert.isFalse(
+        overlaps(shown, control),
+        `${notice} covers a control at ${control.x},${control.y}`
+      );
+    }
+  }
+});
+
 describe("live reload", () => {
   it.live(
     "applies a change to data.mjs, keeping the chapter, the selection and the zoom",
@@ -156,7 +194,8 @@ describe("live reload", () => {
 
         const banner = yield* textOf(page, "[data-map-error]");
 
-        assert.include(banner, "The last good map is still showing.");
+        assert.include(banner, "Open pages keep the last good map");
+        assert.notInclude(banner, "wrote nothing");
         assert.include(banner, "structures[2].name");
         assert.strictEqual(yield* textOf(page, panelTitle), "Save server");
 
@@ -237,4 +276,27 @@ export default data;
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
+
+  for (const width of [1280, 900]) {
+    it.live(
+      `shows the error banner and the stopped notice clear of every control at ${width}×800`,
+      () =>
+        Effect.gen(function* () {
+          const { home, serve, page } = yield* servedReview;
+
+          yield* Effect.promise(() =>
+            page.setViewportSize({ width, height: 800 })
+          );
+          yield* editData(home, rename('"Save server"', '""'));
+          yield* waitFor(page, "[data-map-error]");
+          yield* assertClearOfControls(page, "[data-map-error]");
+
+          yield* serve.stop;
+          yield* waitFor(page, "[data-server-stopped]");
+          yield* assertClearOfControls(page, "[data-server-stopped]");
+          yield* assertClearOfControls(page, "[data-map-error]");
+        }),
+      60_000
+    );
+  }
 });

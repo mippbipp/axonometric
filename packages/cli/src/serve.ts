@@ -1,7 +1,12 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- NodeHttpServer takes a Node server to listen with
 import { createServer } from "node:http";
 
-import { ServerEvent } from "@axonometric/contracts";
+import {
+  formatCount,
+  formatProblem,
+  ServerEvent,
+  splitProblems,
+} from "@axonometric/contracts";
 import type { MapState, ServerState } from "@axonometric/contracts";
 import { ServerApi } from "@axonometric/contracts/api";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -35,6 +40,7 @@ import { HttpApiBuilder } from "effect/http-api";
 
 import { printNotes, rebuild } from "./build.ts";
 import { withLock } from "./lock.ts";
+import type { MapInvalid } from "./map-files.ts";
 import { openBrowser } from "./open-browser.ts";
 import { renderPage } from "./page.ts";
 import { recordServer, runningServer } from "./server-state.ts";
@@ -236,6 +242,22 @@ const portOf = (server: HttpServer.HttpServer["Service"]) =>
   "port" in server.address ? server.address.port : 0;
 
 /**
+ * What serve says when a change breaks the map: what's wrong, and that the
+ * page and the files on disk stay as they were.
+ */
+const rejectionOf = (error: MapInvalid) => {
+  const { errors } = splitProblems(error.problems);
+
+  return Arr.join(
+    [
+      `The map in ${error.home} has ${formatCount(errors.length, "error")}. Open pages keep the last good map until the files are fixed. SYSTEM.md and the HTML are unchanged.`,
+      ...Arr.map(error.problems, (problem) => `  ${formatProblem(problem)}`),
+    ],
+    "\n"
+  );
+};
+
+/**
  * Rebuilds the map and describes the result as an event. A map with errors
  * becomes a `MapRejected`, and is printed.
  */
@@ -243,14 +265,14 @@ const rebuildEvent = (home: string) =>
   rebuild(home, "serve").pipe(
     Effect.tap(printNotes),
     Effect.map(({ state }) => ServerEvent.cases.MapUpdated.make({ state })),
-    Effect.catchTag("MapInvalid", (error) =>
-      Effect.as(
-        Console.error(error[CliError.userMessage]),
-        ServerEvent.cases.MapRejected.make({
-          message: error[CliError.userMessage],
-        })
-      )
-    )
+    Effect.catchTag("MapInvalid", (error) => {
+      const message = rejectionOf(error);
+
+      return Effect.as(
+        Console.error(message),
+        ServerEvent.cases.MapRejected.make({ message })
+      );
+    })
   );
 
 /** Folds a rebuild into what the server holds. */
