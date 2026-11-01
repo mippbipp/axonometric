@@ -29,6 +29,9 @@
         "allowedUnstableApis": [
           "effect/cli",
           "effect/FileSystem",
+          "effect/http",
+          "effect/http-api",
+          "effect/encoding",
           "effect/Path",
           "effect/Stdio",
           "effect/process",

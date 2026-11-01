@@ -1,4 +1,5 @@
 import { formatProblem, placeStructures } from "@axonometric/contracts";
+import type { MapState } from "@axonometric/contracts";
 import { Array as Arr, Console, Effect, Path, Record as Rec } from "effect";
 import { Argument, Command } from "effect/cli";
 
@@ -15,17 +16,27 @@ const quoted = (ids: readonly string[]) =>
     ", "
   );
 
-const build = Effect.fn("build")(function* (home: string) {
+/**
+ * Does what `build` does, without printing: validates the map in `home`,
+ * places structures that have no position and saves them, then writes
+ * SYSTEM.md and the read-only page. Fails with `MapInvalid` and writes
+ * nothing when the map has an error. `command` is named in the lock and in
+ * the error.
+ */
+export const rebuild = Effect.fnUntraced(function* (
+  home: string,
+  command: string
+) {
   const path = yield* Path.Path;
   const output = path.dirname(home);
   const system = path.basename(output);
 
-  yield* withLock(home, "build");
+  yield* withLock(home, command);
 
   const { warnings, data, layout, saved } = yield* loadMap({
     home,
     output,
-    command: "build",
+    command,
     arrange: (mapData, savedLayout) =>
       placeStructures(mapData, savedLayout).layout,
   });
@@ -42,13 +53,7 @@ const build = Effect.fn("build")(function* (home: string) {
 
   const changed = placed.length > 0 || pruned.length > 0;
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
-  const state = { system, data, layout: next };
-
-  yield* Effect.forEach(
-    warnings,
-    (warning) => Console.error(formatProblem(warning)),
-    { discard: true }
-  );
+  const state: MapState = { system, data, layout: next };
 
   const systemMdFile = path.join(output, "SYSTEM.md");
   const pageFile = path.join(output, `${system}.html`);
@@ -68,6 +73,34 @@ const build = Effect.fn("build")(function* (home: string) {
     { file: pageFile, content: page },
   ]);
 
+  return {
+    state,
+    warnings,
+    placed,
+    pruned,
+    systemMdFile,
+    pageFile,
+    layoutFile,
+  };
+}, Effect.scoped);
+
+const build = Effect.fn("build")(function* (home: string) {
+  const {
+    state,
+    warnings,
+    placed,
+    pruned,
+    systemMdFile,
+    pageFile,
+    layoutFile,
+  } = yield* rebuild(home, "build");
+
+  yield* Effect.forEach(
+    warnings,
+    (warning) => Console.error(formatProblem(warning)),
+    { discard: true }
+  );
+
   if (placed.length > 0) {
     yield* Effect.log(
       `Placed ${quoted(placed)} in ${layoutFile}. Move any of them with axonometric layout.`
@@ -81,9 +114,9 @@ const build = Effect.fn("build")(function* (home: string) {
   }
 
   yield* Effect.log(
-    `Built ${systemMdFile} and ${pageFile}: ${data.structures.length} structures, ${data.hops.length} hops.`
+    `Built ${systemMdFile} and ${pageFile}: ${state.data.structures.length} structures, ${state.data.hops.length} hops.`
   );
-}, Effect.scoped);
+});
 
 export const buildCommand = Command.make(
   "build",

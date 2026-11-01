@@ -14,8 +14,8 @@ const launch = Effect.acquireRelease(
   (browser) => Effect.promise(() => browser.close())
 );
 
-/** Opens `file` and records page errors and every request off the disk. */
-export const openPage = Effect.fnUntraced(function* (file: string) {
+/** Opens `url` and records page errors and every request off the disk. */
+export const openUrl = Effect.fnUntraced(function* (url: string) {
   const browser = yield* launch;
 
   const page = yield* Effect.promise(() =>
@@ -35,7 +35,7 @@ export const openPage = Effect.fnUntraced(function* (file: string) {
     errors.push(error.message);
   });
 
-  yield* Effect.promise(() => page.goto(pathToFileURL(file).href));
+  yield* Effect.promise(() => page.goto(url));
 
   yield* Effect.promise(() =>
     page.locator("[data-structure]").first().waitFor({ state: "attached" })
@@ -43,6 +43,9 @@ export const openPage = Effect.fnUntraced(function* (file: string) {
 
   return { page, requests, errors };
 });
+
+/** Opens the HTML file `file`, as `openUrl` does. */
+export const openPage = (file: string) => openUrl(pathToFileURL(file).href);
 
 /** The on-screen boxes of every element matching `selector`. */
 export const boxesOf = Effect.fnUntraced(function* (
