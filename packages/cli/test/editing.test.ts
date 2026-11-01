@@ -672,7 +672,7 @@ describe("editing off", () => {
       page.request.put(new URL("/api/proposals/layout", serve.url).href, {
         headers: { origin: serve.url, "content-type": "application/json" },
         data: {
-          baseRevision: 0,
+          baseFileRevision: 0,
           layout: [moveOf("other-writer", other.id, other.to)],
         },
       })

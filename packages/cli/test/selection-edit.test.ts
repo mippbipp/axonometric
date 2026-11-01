@@ -805,7 +805,7 @@ describe("undo and redo", () => {
           page.request.put(new URL("/api/proposals/layout", serve.url).href, {
             headers: { origin: serve.url, "content-type": "application/json" },
             data: {
-              baseRevision: 1,
+              baseFileRevision: 1,
               layout: [
                 ...Option.match(mine, {
                   onNone: () => [],
@@ -1101,17 +1101,12 @@ describe("accepting a change", () => {
         yield* waitForRevision(home, 1);
         yield* waitFor(page, "[data-control='undo']:not([disabled])");
 
-        // Accepting writes layout.json, which raises its revision. The
-        // layout command does the same, so the page hears of it alike.
-        const done = yield* runCli(home, [
-          "layout",
-          home,
-          "upstream",
-          "--x",
-          "19",
-        ]);
-
-        assert.strictEqual(done.exitCode, 0, done.stderr);
+        // Accept all, through #17's Pending tab: it raises the accepted
+        // layout's revision, which is what ends the history.
+        yield* Effect.promise(() =>
+          page.locator('[role="tab"][data-tab="pending"]').click()
+        );
+        yield* Effect.promise(() => page.locator("[data-accept-all]").click());
         yield* waitFor(page, "[data-edit-notice='info']");
         assert.include(
           yield* Effect.promise(() =>

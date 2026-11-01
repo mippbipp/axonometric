@@ -41,7 +41,7 @@ interface Sent {
 
 /** A body for the endpoint, which the server may refuse. */
 const WriteBody = Schema.Struct({
-  baseRevision: Schema.optionalKey(Schema.Finite),
+  baseFileRevision: Schema.optionalKey(Schema.Finite),
   layout: Schema.optionalKey(Schema.Array(Schema.Unknown)),
   file: Schema.optionalKey(Schema.String),
 });
@@ -153,8 +153,8 @@ const pageAt = (x: number, y = 3): LayoutChange => ({
   moves: [{ target: { kind: "structure", id: "page" }, position: { x, y } }],
 });
 
-const moveBody = (baseRevision: number, x: number) =>
-  toJson({ baseRevision, layout: [pageAt(x)] });
+const moveBody = (baseFileRevision: number, x: number) =>
+  toJson({ baseFileRevision, layout: [pageAt(x)] });
 
 /** Every file in `home` and its contents, the lock folder left out. */
 const snapshot = Effect.fnUntraced(function* (home: string) {
@@ -332,7 +332,7 @@ describe("writing pending layout changes over HTTP", () => {
             origin: url,
             "content-type": "application/x-www-form-urlencoded",
           },
-          Effect.succeed("baseRevision=0&layout=[]")
+          Effect.succeed("baseFileRevision=0&layout=[]")
         )
       );
       yield* assertRefused(
@@ -371,9 +371,9 @@ describe("writing pending layout changes over HTTP", () => {
 
       for (const body of [
         "{ not json",
-        yield* toJson({ baseRevision: 0 }),
+        yield* toJson({ baseFileRevision: 0 }),
         yield* moveBody(0, 0.3),
-        yield* toJson({ baseRevision: 0, layout: [], file: "../data.mjs" }),
+        yield* toJson({ baseFileRevision: 0, layout: [], file: "../data.mjs" }),
       ]) {
         yield* assertRefused(
           home,
@@ -416,7 +416,7 @@ describe("writing pending layout changes over HTTP", () => {
       const { home, url } = yield* served;
 
       const onServer = toJson({
-        baseRevision: 0,
+        baseFileRevision: 0,
         layout: [pageAt(8, 0)],
       });
 

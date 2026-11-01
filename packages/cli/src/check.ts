@@ -37,7 +37,7 @@ const check = Effect.fn("check")(function* (home: string, json: boolean) {
   const { problems, sourcesSkipped } = yield* inspectMap(
     home,
     path.dirname(home),
-    { strictProposals: true }
+    { strictProposals: true, strictHistory: true }
   );
 
   const { errors, warnings } = splitProblems(problems);

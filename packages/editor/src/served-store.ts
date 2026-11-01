@@ -1,6 +1,8 @@
 import {
   appendMove,
   applyLayoutChanges,
+  Accepted,
+  AcceptWrite,
   discardChange,
   emptyHistory,
   emptyProposals,
@@ -58,8 +60,14 @@ const encodeWrite = Schema.encodeEffect(
   Schema.fromJsonString(PendingLayoutWrite)
 );
 
+const encodeAccept = Schema.encodeEffect(Schema.fromJsonString(AcceptWrite));
+
 const decodeSaved = Schema.decodeUnknownOption(
   Schema.fromJsonString(Proposals)
+);
+
+const decodeAccepted = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Accepted)
 );
 
 const WriteRefusal = Schema.Union([
@@ -94,6 +102,12 @@ export interface EditNotice {
   readonly message: string;
 }
 
+/** The revision an accept just saved, shown for a few seconds. */
+export interface SavedRevision {
+  readonly revision: number;
+  readonly message: string;
+}
+
 /** What a served page shows. */
 export interface ServedView {
   /** The last good map, with what `proposals.json` held at last word. */
@@ -113,6 +127,14 @@ export interface ServedView {
   readonly canUndo: boolean;
   /** Whether there is an undone edit to redo. */
   readonly canRedo: boolean;
+  /** The revision the last accept saved, for a few seconds. */
+  readonly saved: SavedRevision | null;
+  /**
+   * Whether an accept is waiting for the saves before it, or on its way to
+   * the server. Edits are refused meanwhile, because they'd be saved over
+   * the changes the accept takes.
+   */
+  readonly accepting: boolean;
 }
 
 /**
@@ -165,6 +187,15 @@ export interface ServedStore {
   readonly undo: () => void;
   /** Redoes the edit that `undo` took back. */
   readonly redo: () => void;
+  /**
+   * Accepts the pending layout changes with these ids, or all of them, as one
+   * revision, once the saves already on their way are done. An empty
+   * `message` has the server write one.
+   */
+  readonly accept: (
+    ids: "all" | Arr.NonEmptyReadonlyArray<ChangeId>,
+    message: string
+  ) => void;
 }
 
 /** The moves that arrange a set, given where its structures sit now. */
@@ -245,6 +276,9 @@ interface Queued {
 
 /** How long to wait before reconnecting a stream the browser gave up on. */
 const retryDelay = Duration.seconds(2);
+
+/** How long "Saved revision n" stays on the page. */
+const savedShown = Duration.seconds(4);
 
 /** What `connectServed` starts from. */
 export interface ServedSource {
@@ -331,6 +365,8 @@ export const connectServed = ({
     notice: null,
     canUndo: false,
     canRedo: false,
+    saved: null,
+    accepting: false,
   };
 
   let history: History = emptyHistory(proposalsOf(initial).revision);
@@ -600,7 +636,7 @@ export const connectServed = ({
       }
 
       const body = yield* encodeWrite({
-        baseRevision: sent.base,
+        baseFileRevision: sent.base,
         layout: sent.layout,
       }).pipe(Effect.orDie);
 
@@ -718,6 +754,10 @@ export const connectServed = ({
 
   /** Runs `edit`, queues its write, or returns why it was refused. */
   const run = (edit: Edit): string | undefined => {
+    if (view.accepting) {
+      return "Accepting the pending changes. Make this edit once that's saved.";
+    }
+
     const { after, refusal } = tryEdit(edit);
 
     if (Option.isSome(refusal)) {
@@ -794,6 +834,105 @@ export const connectServed = ({
     submit({ edit: () => target, after: target, step: true, next });
   };
 
+  /** Shows the revision just saved, and takes it down after a few seconds. */
+  const showSaved = (saved: SavedRevision) => {
+    update({ saved });
+
+    const takeDown = Effect.sync(() => {
+      if (view.saved === saved) {
+        update({ saved: null });
+      }
+    });
+
+    Effect.runFork(Effect.sleep(savedShown).pipe(Effect.andThen(takeDown)));
+  };
+
+  /** Sends an accept once the writes before it are done. */
+  const sendAccept = (
+    ids: "all" | Arr.NonEmptyReadonlyArray<ChangeId>,
+    message: string
+  ) =>
+    Effect.gen(function* () {
+      const text = message.trim();
+
+      const base = {
+        baseFileRevision: proposalsOf(view.state).revision,
+        changeIds: ids,
+      };
+
+      const body = yield* encodeAccept(
+        text === "" ? base : { ...base, message: text }
+      ).pipe(Effect.orDie);
+
+      const client = yield* HttpClient.HttpClient;
+
+      const response = yield* client.execute(
+        HttpClientRequest.post(new URL(served.accept, document.baseURI)).pipe(
+          HttpClientRequest.bodyText(body, "application/json")
+        )
+      );
+
+      const { status } = response;
+      const answer = yield* response.text;
+
+      if (status >= 200 && status < 300) {
+        Option.match(decodeAccepted(answer), {
+          onNone: () => {
+            failed(
+              "The server's answer didn't make sense. Reload the page.",
+              history
+            );
+          },
+          onSome: ({ revision, message: saved, layout, proposals }) => {
+            update({
+              state: { ...view.state, layout, proposals },
+              pending: proposals.layout,
+              notice: null,
+            });
+            showSaved({ revision, message: saved });
+          },
+        });
+
+        return;
+      }
+
+      Option.match(decodeRefusal(answer), {
+        onNone: () => {
+          failed(
+            `The server refused the accept (${status}): ${answer.trim()}`,
+            history
+          );
+        },
+        onSome: (refusal) => {
+          if (Predicate.isTagged(refusal, "StaleProposals")) {
+            adopt(refusal.proposals, {
+              kind: "conflict",
+              message:
+                "The pending changes changed on disk before this accept. The page now shows what's pending. Accept again if the changes are still right.",
+            });
+          } else if (Predicate.isTagged(refusal, "LayoutChangeRefused")) {
+            adopt(refusal.proposals, noticeOf(refusal));
+          } else {
+            failed(noticeOf(refusal).message, history);
+          }
+        },
+      });
+    }).pipe(
+      Effect.catchTag("HttpClientError", () =>
+        Effect.sync(() => {
+          failed(
+            "The accept wasn't saved: the server didn't answer. It may have stopped.",
+            history
+          );
+        })
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          update({ accepting: false });
+        })
+      )
+    );
+
   connect();
 
   return {
@@ -817,6 +956,20 @@ export const connectServed = ({
     },
     redo: () => {
       stepThrough("redo");
+    },
+    accept: (ids, message) => {
+      if (view.accepting || view.pending.length === 0) {
+        return;
+      }
+
+      update({ accepting: true, notice: null });
+
+      Effect.runFork(
+        writeTurn
+          .withPermit(sendAccept(ids, message))
+          // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
+          .pipe(Effect.provide(FetchHttpClient.layer))
+      );
     },
   };
 };
