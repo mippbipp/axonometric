@@ -4,6 +4,8 @@ import { dual } from "effect/Function";
 import { boxOutline, nameTagRect, nameTagText, tagCoversBox } from "./iso.ts";
 import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
+import { views } from "./plan.ts";
+import type { View } from "./plan.ts";
 import { mapError, mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
 import { routeLength, routeRevealed } from "./routing.ts";
@@ -43,7 +45,7 @@ export const footprintsOverlap: {
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.d && b.y < a.y + a.d
 );
 
-/** Whether `a`'s name tag is drawn over `b`'s box in the iso view. */
+/** Whether `a`'s name tag is drawn over `b`'s box in the Iso view. */
 export const tagCovers: {
   (b: PlacedStructure): (a: PlacedStructure) => boolean;
   (a: PlacedStructure, b: PlacedStructure): boolean;
@@ -279,16 +281,29 @@ const describeThing = (thing: string) => {
   return `${name} "${Arr.join(rest, ":")}"`;
 };
 
-/** What the footprint and name tag checks cover between them. */
-const structureParts: ReadonlySet<string> = new Set(["box", "tag", "chip"]);
+/** What the footprint and name tag checks cover between them, by view. */
+const structureParts: Readonly<Record<View, ReadonlySet<string>>> = {
+  iso: new Set(["box", "tag", "chip"]),
+  plan: new Set(["box", "chip"]),
+};
 
 /**
- * Whether the older checks already warn about a clash: boxes, tags and
- * chips drawn over each other come from overlapping footprints or a tag on
- * a box, which `overlaps` and `coveredTags` report.
+ * Whether the older checks already warn about a clash. In the Iso view,
+ * boxes, tags and chips drawn over each other come from overlapping
+ * footprints or a tag on a box, which `overlaps` and `coveredTags` report.
+ * Those checks measure the Iso view's tags, so in Plan view only boxes and
+ * chips drawn over each other count as covered: they come from overlapping
+ * footprints.
  */
-const coveredElsewhere = (first: string, second: string) =>
-  structureParts.has(kindOf(first)) && structureParts.has(kindOf(second));
+const coveredElsewhere = (view: View, first: string, second: string) =>
+  structureParts[view].has(kindOf(first)) &&
+  structureParts[view].has(kindOf(second));
+
+/** How a warning names the view it's about. The Iso view goes unnamed. */
+const viewNames: Readonly<Record<View, string>> = {
+  iso: "",
+  plan: " in Plan view",
+};
 
 /** Every half-unit step a route takes, as order-free keys. */
 const stepKeysOf = (points: readonly GridPoint[]) =>
@@ -358,11 +373,45 @@ const sharedSegments = (
 };
 
 /**
+ * A warning for each clash in each view's scene of one chapter, except
+ * those the older checks cover. `once` keys by the view as well as the
+ * pair, so a pair that clashes in both views warns in both.
+ */
+export const clashWarnings = ({
+  clashes,
+  where,
+  once,
+}: {
+  readonly clashes: readonly {
+    readonly view: View;
+    readonly clashes: readonly SceneClash[];
+  }[];
+  /** Where the clashes are, such as ` in chapter "c-all"`. */
+  readonly where: string;
+  /** Whether a key is seen for the first time, across chapters. */
+  readonly once: (key: string) => boolean;
+}): readonly MapProblem[] =>
+  Arr.flatMap(clashes, ({ view, clashes: drawn }) =>
+    Arr.flatMap(drawn, ({ between: [first, second] }) =>
+      coveredElsewhere(view, first, second) ||
+      !once(`${view} ${first} ${second}`)
+        ? []
+        : [
+            mapWarning({
+              file: "layout.json",
+              path: ["structures"],
+              message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}${viewNames[view]}. Move the structures apart, so the drawing has room.`,
+            }),
+          ]
+    )
+  );
+
+/**
  * Warnings about each chapter's drawing, as the walkthrough draws it: hops
  * routed around the structures revealed so far, and everything else the
- * iso view would draw over something by the scene's overlap rule (chips,
- * zone titles, labels and routes). Each warning is reported once, at the
- * first chapter it shows in.
+ * Iso view or Plan view would draw over something by the scene's overlap
+ * rule (chips, zone titles, labels and routes). Each warning is reported
+ * once per view, at the first chapter it shows in.
  */
 const chapterWarnings = (data: MapData, layout: Layout) => {
   const seen = new Set<string>();
@@ -387,21 +436,16 @@ const chapterWarnings = (data: MapData, layout: Layout) => {
         : Arr.filter(routeWarnings(hop, route), ({ message }) => once(message));
     });
 
-    const clashes = Arr.flatMap<SceneClash, MapProblem>(
-      sceneClashes(
-        sceneOf({ data, layout, revealed, routes, labelFirst: plays })
-      ),
-      ({ between: [first, second] }) =>
-        coveredElsewhere(first, second) || !once(`${first} ${second}`)
-          ? []
-          : [
-              mapWarning({
-                file: "layout.json",
-                path: ["structures"],
-                message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}. Move the structures apart, so the drawing has room.`,
-              }),
-            ]
-    );
+    const clashes = clashWarnings({
+      clashes: Arr.map(views, (view) => ({
+        view,
+        clashes: sceneClashes(
+          sceneOf({ data, layout, revealed, routes, labelFirst: plays, view })
+        ),
+      })),
+      where,
+      once,
+    });
 
     const shared = Arr.filter(sharedSegments(data, routes), ({ message }) =>
       once(message)
@@ -417,8 +461,8 @@ const chapterWarnings = (data: MapData, layout: Layout) => {
  * that no longer exist, route overrides for hops that no longer exist,
  * overrides that share a segment with another route, footprints that
  * overlap, name tags drawn over other boxes, zones that overlap, routes that
- * run under boxes, and anything else the iso view would draw over something
- * in some chapter. A structure with no placement gets nothing, because
+ * run under boxes, and anything else the Iso view or Plan view would draw
+ * over something in some chapter. A structure with no placement gets nothing, because
  * `build` places it.
  */
 export const checkLayout: {

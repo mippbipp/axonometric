@@ -57,6 +57,12 @@ export default defineConfig({
     "anti-slop/no-unknown-parameters": "error",
     "anti-slop/no-unknown-returns": "error",
     "anti-slop/no-unknown-type-aliases": "error",
+    // Test names start lowercase, except for the glossary's view names,
+    // which GLOSSARY.md capitalises.
+    "vitest/prefer-lowercase-title": [
+      "warn",
+      { allowedPrefixes: ["Iso view", "Plan view"] },
+    ],
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-readable-spacing": "error",

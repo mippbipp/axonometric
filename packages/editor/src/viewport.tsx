@@ -1,3 +1,4 @@
+import type { GroundProjection } from "@axonometric/contracts";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -11,7 +12,8 @@ import {
 import type { Bounds } from "./bounds.ts";
 import { controlClass } from "./control-class.ts";
 
-interface View {
+/** Where the drawing sits in the canvas: its zoom and its pan, in pixels. */
+interface Camera {
   readonly scale: number;
   readonly x: number;
   readonly y: number;
@@ -40,7 +42,7 @@ const zoomStep = 1.25;
 
 const emptyBounds: Bounds = { minX: -1, minY: -1, maxX: 1, maxY: 1 };
 
-const fitted = (bounds: Bounds, size: Size): View => {
+const fitted = (bounds: Bounds, size: Size): Camera => {
   const width = Math.max(bounds.maxX - bounds.minX, 1);
   const height = Math.max(bounds.maxY - bounds.minY, 1);
 
@@ -72,25 +74,60 @@ const limitsFor = (fitScale: number) => ({
   max: Math.max(fitScale, 1) * 4,
 });
 
-/** Zooms `view` by `factor` around the screen point `at`, within limits. */
+/**
+ * The camera that shows, in `next`'s projection, the ground point `camera` shows
+ * in the middle of a canvas of `size` in `previous`'s projection, with a
+ * grid unit as long on screen as before.
+ */
+const reprojected = ({
+  camera,
+  size,
+  previous,
+  next,
+}: {
+  readonly camera: Camera;
+  readonly size: Size;
+  readonly previous: GroundProjection;
+  readonly next: GroundProjection;
+}): Camera => {
+  const middle = previous.toGround({
+    sx: (size.width / 2 - camera.x) / camera.scale,
+    sy: (size.height / 2 - camera.y) / camera.scale,
+  });
+
+  const scale = (camera.scale * previous.unit) / next.unit;
+  const at = next.toScreen(middle);
+
+  return {
+    scale,
+    x: size.width / 2 - at.sx * scale,
+    y: size.height / 2 - at.sy * scale,
+  };
+};
+
+/** Zooms `camera` by `factor` around the screen point `at`, within limits. */
 const zoomed = ({
-  view,
+  camera,
   factor,
   at,
   limits,
 }: {
-  readonly view: View;
+  readonly camera: Camera;
   readonly factor: number;
   readonly at: { readonly x: number; readonly y: number };
   readonly limits: { readonly min: number; readonly max: number };
-}): View => {
-  const scale = Math.min(Math.max(view.scale * factor, limits.min), limits.max);
-  const applied = scale / view.scale;
+}): Camera => {
+  const scale = Math.min(
+    Math.max(camera.scale * factor, limits.min),
+    limits.max
+  );
+
+  const applied = scale / camera.scale;
 
   return {
     scale,
-    x: at.x - (at.x - view.x) * applied,
-    y: at.y - (at.y - view.y) * applied,
+    x: at.x - (at.x - camera.x) * applied,
+    y: at.y - (at.y - camera.y) * applied,
   };
 };
 
@@ -119,9 +156,9 @@ const startsOnStructure = (target: EventTarget | null) =>
   target.closest("[data-structure], [data-packet]") !== null;
 
 interface Gestures {
-  readonly current: () => View;
+  readonly current: () => Camera;
   readonly limits: () => { readonly min: number; readonly max: number };
-  readonly show: (next: View) => void;
+  readonly show: (next: Camera) => void;
   readonly zoomBy: (
     factor: number,
     at?: { readonly x: number; readonly y: number }
@@ -141,9 +178,9 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
   };
 
   const pointers = new Map<number, { x: number; y: number }>();
-  let press: { x: number; y: number; view: View } | undefined;
+  let press: { x: number; y: number; camera: Camera } | undefined;
   let dragging = false;
-  let pinch: { distance: number; view: View } | undefined;
+  let pinch: { distance: number; camera: Camera } | undefined;
 
   const pinchSpan = () => {
     const [a, b] = [...pointers.values()];
@@ -179,9 +216,9 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
       pinch =
         span === undefined
           ? undefined
-          : { distance: span.distance, view: gestures.current() };
+          : { distance: span.distance, camera: gestures.current() };
     } else if (!startsOnStructure(event.target)) {
-      press = { ...local(event), view: gestures.current() };
+      press = { ...local(event), camera: gestures.current() };
     }
   };
 
@@ -200,7 +237,7 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
       if (span !== undefined && pinch.distance > 0) {
         gestures.show(
           zoomed({
-            view: pinch.view,
+            camera: pinch.camera,
             factor: span.distance / pinch.distance,
             at: span.centre,
             limits: gestures.limits(),
@@ -229,9 +266,9 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
     }
 
     gestures.show({
-      ...press.view,
-      x: press.view.x + dx,
-      y: press.view.y + dy,
+      ...press.camera,
+      x: press.camera.x + dx,
+      y: press.camera.y + dy,
     });
   };
 
@@ -280,24 +317,29 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
  * Other changes to `fit`, such as a moved structure, keep the current zoom
  * and pan; the next fit uses the new bounds. Drag on empty space
  * to pan; the wheel or a pinch zooms; `+`, `-` and `0` zoom in, out and to
- * fit. The view lives in a transform on one group, so panning doesn't
- * re-render `children`.
+ * fit. The camera lives in a transform on one group, so panning doesn't
+ * re-render `children`. When `ground` changes to another view's projection,
+ * the ground point in the middle stays in the middle, and a grid unit keeps
+ * its length on screen.
  */
 export function Viewport({
   fit = emptyBounds,
   fitKey = "",
+  ground,
   title,
   children,
 }: {
   readonly fit?: Bounds | undefined;
   /** Names what `fit` holds, such as a chapter. A new key refits the view. */
   readonly fitKey?: string;
+  /** How the drawing projects the ground, to keep the middle on a switch. */
+  readonly ground?: GroundProjection | undefined;
   readonly title: string;
   readonly children: ReactNode;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const worldRef = useRef<SVGGElement>(null);
-  const view = useRef<View>({ scale: 1, x: 0, y: 0 });
+  const camera = useRef<Camera>({ scale: 1, x: 0, y: 0 });
   const fitScale = useRef(1);
   const titleId = useId();
   const bounds = useRef(fit);
@@ -306,8 +348,8 @@ export function Viewport({
     bounds.current = fit;
   });
 
-  const show = useCallback((next: View) => {
-    view.current = next;
+  const show = useCallback((next: Camera) => {
+    camera.current = next;
     worldRef.current?.setAttribute(
       "transform",
       `translate(${next.x} ${next.y}) scale(${next.scale})`
@@ -346,7 +388,7 @@ export function Viewport({
 
       show(
         zoomed({
-          view: view.current,
+          camera: camera.current,
           factor,
           at: centre,
           limits: limitsFor(fitScale.current),
@@ -357,6 +399,35 @@ export function Viewport({
   );
 
   const fittedFor = useRef<string | undefined>(undefined);
+  const projectedBy = useRef(ground);
+
+  // Keep the middle before the first paint in the new projection. A new
+  // chapter in the same render refits anyway, below.
+  useLayoutEffect(() => {
+    const previous = projectedBy.current;
+    const svg = svgRef.current;
+
+    projectedBy.current = ground;
+
+    if (
+      previous === undefined ||
+      ground === undefined ||
+      previous === ground ||
+      svg === null
+    ) {
+      return;
+    }
+
+    const next = reprojected({
+      camera: camera.current,
+      size: { width: svg.clientWidth, height: svg.clientHeight },
+      previous,
+      next: ground,
+    });
+
+    fitScale.current = (fitScale.current * previous.unit) / ground.unit;
+    show(next);
+  }, [ground, show]);
 
   // Fit before the first paint, and again when the key changes.
   useLayoutEffect(() => {
@@ -384,7 +455,7 @@ export function Viewport({
     return svg === null
       ? undefined
       : listenForGestures(svg, {
-          current: () => view.current,
+          current: () => camera.current,
           limits: () => limitsFor(fitScale.current),
           show,
           zoomBy,

@@ -183,6 +183,56 @@ describe("live reload", () => {
   );
 
   it.live(
+    "moves a structure in Plan view when layout.json changes, staying in Plan view",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+        const face = '[data-structure="server"] [data-face]';
+
+        yield* settle(page);
+        yield* Effect.promise(() =>
+          page.locator('[data-view-toggle] [data-view="plan"]').click()
+        );
+        yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
+
+        const before = Number(yield* attributeOf(page, face, "x"));
+
+        const moved = yield* runCli(home, [
+          "layout",
+          home,
+          "server",
+          "--x",
+          "10",
+        ]);
+
+        assert.strictEqual(moved.exitCode, 0, moved.stderr);
+
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `Number(document.querySelector('${face}')?.getAttribute("x")) !== ${before}`,
+            undefined,
+            waitTimeout
+          )
+        );
+
+        // Two grid units along x, at 60 screen units each.
+        assert.strictEqual(
+          Number(yield* attributeOf(page, face, "x")) - before,
+          120
+        );
+        assert.strictEqual(
+          yield* attributeOf(page, "[data-walkthrough]", "data-view"),
+          "plan"
+        );
+        assert.strictEqual(
+          yield* attributeOf(page, '[data-selected="true"]', "data-structure"),
+          "server"
+        );
+      }),
+    60_000
+  );
+
+  it.live(
     "applies a change to layout.json, such as from the layout command, keeping the chapter",
     () =>
       Effect.gen(function* () {

@@ -16,6 +16,9 @@ import {
   corners,
   distanceToPolyline,
   endsOnTarget,
+  groundProjections,
+  labelGap,
+  labelReachLimit,
   Layout,
   MapData,
   routeCap,
@@ -23,7 +26,9 @@ import {
   routeRevealed,
   nameTagRect,
   nameTagText,
+  planUnit,
   project,
+  views,
   sceneClashes,
   sceneOf,
   segmentCrosses,
@@ -512,6 +517,144 @@ describe("scene", () => {
           );
         }
       })
+    );
+  }
+
+  for (const name of [
+    "flake-pipeline",
+    "review",
+    "crowded",
+    "shapes",
+    "pipeline",
+  ]) {
+    it.effect(
+      `draws nothing over anything in Plan view, in any chapter of ${name}`,
+      () =>
+        Effect.gen(function* () {
+          const { data, layout } = yield* fixture(name);
+
+          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+            ? chaptersOf(data)
+            : [{ id: "all", plays: [], revealed: everything(data) }];
+
+          for (const chapter of chapters) {
+            const scene = sceneOf({
+              data,
+              layout,
+              revealed: chapter.revealed,
+              labelFirst: chapter.plays,
+              view: "plan",
+            });
+
+            assert.strictEqual(scene.view, "plan");
+
+            assert.deepStrictEqual(
+              Arr.map(sceneClashes(scene), clashKey),
+              [],
+              `in chapter ${chapter.id}`
+            );
+          }
+        })
+    );
+  }
+
+  it.effect(
+    "draws Plan view's boxes, routes and zones flat from the layout",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("review");
+
+        const scene = sceneOf({
+          data,
+          layout,
+          revealed: everything(data),
+          view: "plan",
+        });
+
+        const server = Arr.findFirst(
+          scene.structures,
+          ({ structure }) => structure.id === "server"
+        ).pipe(Option.getOrThrow);
+
+        const { x, y, w, d } = placementOf(layout, "server");
+
+        assert.deepStrictEqual(server.outline, [
+          { sx: x * planUnit, sy: y * planUnit },
+          { sx: (x + w) * planUnit, sy: y * planUnit },
+          { sx: (x + w) * planUnit, sy: (y + d) * planUnit },
+          { sx: x * planUnit, sy: (y + d) * planUnit },
+        ]);
+
+        const routes = routeRevealed({
+          data,
+          layout,
+          revealed: everything(data),
+        });
+
+        for (const hop of scene.hops) {
+          assert.deepStrictEqual(
+            hop.points,
+            Arr.map(routes[hop.hop.id]?.points ?? [], ({ x: gx, y: gy }) => ({
+              sx: gx * planUnit,
+              sy: gy * planUnit,
+            }))
+          );
+
+          for (const [a, b] of Arr.zip(hop.points, hop.points.slice(1))) {
+            assert.isTrue(
+              a.sx === b.sx || a.sy === b.sy,
+              `${hop.hop.id} has a leg that isn't at a right angle`
+            );
+          }
+        }
+
+        assert.isNotEmpty(scene.zones);
+      })
+  );
+
+  for (const view of views) {
+    it.effect(
+      `keeps every label within ${labelReachLimit} grid units of its route in ${view === "iso" ? "the Iso view" : "Plan view"}`,
+      () =>
+        Effect.gen(function* () {
+          const { unit } = groundProjections[view];
+
+          for (const name of [
+            "flake-pipeline",
+            "review",
+            "crowded",
+            "shapes",
+            "pipeline",
+          ]) {
+            const { data, layout } = yield* fixture(name);
+
+            const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+              ? chaptersOf(data)
+              : [{ id: "all", plays: [], revealed: everything(data) }];
+
+            for (const chapter of chapters) {
+              const scene = sceneOf({
+                data,
+                layout,
+                revealed: chapter.revealed,
+                labelFirst: chapter.plays,
+                view,
+              });
+
+              for (const { hop, points, label } of scene.hops) {
+                if (label !== undefined) {
+                  const gap = labelGap(points, label) / unit;
+
+                  assert.isAtMost(
+                    gap,
+                    labelReachLimit + 1e-9,
+                    `${hop.id}'s label in ${name} ${chapter.id}`
+                  );
+                }
+              }
+            }
+          }
+        })
     );
   }
 

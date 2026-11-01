@@ -4,10 +4,16 @@ import { useId, useMemo, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useFrameClock } from "./frame-clock.ts";
-import { corners, project, routeHop, toPoints, pointAlong } from "./iso.ts";
-import type { ScreenPoint } from "./iso.ts";
 import { clockAtNextHop, packetAt, travelSeconds } from "./packet-schedule.ts";
 import { reducedMotionNote, useReducedMotion } from "./playback.ts";
+import {
+  corners,
+  project,
+  routeHop,
+  toPoints,
+  pointAlong,
+} from "./projection.ts";
+import type { ScreenPoint } from "./projection.ts";
 import { BoxShape } from "./shapes.tsx";
 
 /** Height of a step's box above the ground, in screen units. */

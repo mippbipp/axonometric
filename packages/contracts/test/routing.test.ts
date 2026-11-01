@@ -7,7 +7,13 @@ import {
   String as Str,
 } from "effect";
 
-import { checkLayout, routeCap, routeHops, routeLength } from "../src/index.ts";
+import {
+  checkLayout,
+  clashWarnings,
+  routeCap,
+  routeHops,
+  routeLength,
+} from "../src/index.ts";
 import type {
   GridPoint,
   Hop,
@@ -428,6 +434,41 @@ describe("routing", () => {
 });
 
 describe("route checks", () => {
+  it.effect(
+    "warns about a clash in Plan view even when the Iso view has the same one",
+    () =>
+      Effect.sync(() => {
+        const seen = new Set<string>();
+
+        const once = (key: string) => {
+          const fresh = !seen.has(key);
+
+          seen.add(key);
+
+          return fresh;
+        };
+
+        const clash = { between: ["route:h", "tag:m"] as const };
+
+        const warnings = clashWarnings({
+          clashes: [
+            { view: "iso", clashes: [clash] },
+            { view: "plan", clashes: [clash] },
+          ],
+          where: "",
+          once,
+        });
+
+        assert.deepStrictEqual(
+          Arr.map(warnings, ({ message }) => message),
+          [
+            'the route of hop "h" is drawn over the name tag of "m". Move the structures apart, so the drawing has room.',
+            'the route of hop "h" is drawn over the name tag of "m" in Plan view. Move the structures apart, so the drawing has room.',
+          ]
+        );
+      })
+  );
+
   it.effect("warns about a hop that can't avoid a box, naming it", () =>
     Effect.sync(() => {
       const { data, layout } = mapOf(

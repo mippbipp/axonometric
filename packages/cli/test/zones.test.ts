@@ -141,7 +141,7 @@ const titleReports = `(() => {
   });
 })()`;
 
-describe("zones in the iso view", () => {
+describe("zones in the Iso view", () => {
   it.live(
     "draws a zone with its title for every group in the last chapter",
     () =>

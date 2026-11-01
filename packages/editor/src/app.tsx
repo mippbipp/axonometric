@@ -1,7 +1,7 @@
-import type { Hop, MapState } from "@axonometric/contracts";
+import type { Hop, MapState, View } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 
 import { Breadcrumb } from "./breadcrumb.tsx";
@@ -10,9 +10,8 @@ import { ChapterRail } from "./chapter-rail.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
 import { useInsideFocus } from "./inside-focus.ts";
 import { InsideView } from "./inside-view.tsx";
-import { IsoView } from "./iso-view.tsx";
-import { screenRouteOf } from "./iso.ts";
 import { MapSurface } from "./map-surface.tsx";
+import { MapView } from "./map-view.tsx";
 import { useOverviewPage } from "./overview-context.ts";
 import {
   OverviewButton,
@@ -22,6 +21,7 @@ import {
 import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
+import { screenRouteOf } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
 import { useSelectionKeys } from "./selection-keys.ts";
 import { SelectionProvider } from "./selection.tsx";
@@ -30,6 +30,8 @@ import { SidePanel } from "./side-panel.tsx";
 import { hasSteps, useStructuresById } from "./structures.ts";
 import { ThemeToggle } from "./theme.tsx";
 import { StructureTooltip, TooltipProvider } from "./tooltip.tsx";
+import { useViewKey } from "./view-keys.ts";
+import { ViewToggle } from "./view-toggle.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 import { WalkthroughProvider } from "./walkthrough.tsx";
 
@@ -62,6 +64,7 @@ const hintsOf = ({
         "] next chapter",
         "[ back",
         "+ and − zoom, 0 fits",
+        "v switches view",
         "click empty space to unpin",
       ]
     : [
@@ -72,6 +75,7 @@ const hintsOf = ({
         "double-click to go inside",
         "click a packet to read its payload",
         "+ and − zoom, 0 fits",
+        "v switches view",
       ];
 };
 
@@ -91,21 +95,48 @@ function WalkthroughPage({ notices }: Notices) {
   const byId = useStructuresById();
   const insideStructure = inside === null ? undefined : byId.get(inside);
   const selectedStructure = selected === null ? undefined : byId.get(selected);
+  // The view lives here, in memory, so switching it keeps every provider's
+  // state: the chapter, the selection and the packets.
+  const [view, setView] = useState<View>("iso");
 
   useChapterKeys(selected === null);
   useSelectionKeys();
   useInsideFocus(inside);
 
-  const isoRouteOf = useCallback(
+  // Switching views while a page covers the map would change what's under
+  // it unseen, so the toggle and `v` both wait until it's closed.
+  const blockedBy = [
+    ...(insideStructure === undefined
+      ? []
+      : ["Come out of the inside view to switch views"]),
+    ...(overviewOpen ? ["Close How it's built to switch views"] : []),
+  ];
+
+  const [switchBlocked] = blockedBy;
+
+  useViewKey(() => {
+    if (switchBlocked === undefined) {
+      setView((current) => (current === "iso" ? "plan" : "iso"));
+    }
+  });
+
+  const routeOf = useCallback(
     (hop: Hop) =>
-      screenRouteOf({ data: state.data, layout: state.layout, revealed, hop }),
-    [state.data, state.layout, revealed]
+      screenRouteOf({
+        data: state.data,
+        layout: state.layout,
+        revealed,
+        hop,
+        view,
+      }),
+    [state.data, state.layout, revealed, view]
   );
 
   return (
     <main
       data-walkthrough
       data-chapter={stop.id}
+      data-view={view}
       className="bg-paper text-ink flex h-svh flex-col font-mono"
     >
       <header className="border-ink flex items-center gap-4 border-b px-4 py-2">
@@ -113,6 +144,11 @@ function WalkthroughPage({ notices }: Notices) {
           {state.data.overview.title}
         </h1>
         <div className="ml-auto flex gap-1.5">
+          <ViewToggle
+            view={view}
+            choose={setView}
+            disabledBecause={switchBlocked}
+          />
           <OverviewButton />
           <ThemeToggle />
         </div>
@@ -120,18 +156,19 @@ function WalkthroughPage({ notices }: Notices) {
       <div className="relative flex min-h-0 flex-1">
         <SideIndex />
         <MapSurface>
-          {/* The iso view stays mounted, hidden, while the inside view is
-              open, so its pan and zoom survive the visit. It keeps its size,
-              so the viewport doesn't refit on a resize. */}
+          {/* The map stays mounted, hidden, while the inside view is open,
+              so its pan and zoom survive the visit. It keeps its size, so
+              the viewport doesn't refit on a resize. */}
           <div
-            data-iso-layer
+            data-map-layer
             inert={insideStructure !== undefined}
             className={cn(
               "absolute inset-0",
               insideStructure !== undefined && "invisible"
             )}
           >
-            <IsoView
+            <MapView
+              view={view}
               state={state}
               revealed={revealed}
               newlyRevealed={newlyRevealed}
@@ -139,8 +176,8 @@ function WalkthroughPage({ notices }: Notices) {
               fitKey={stop.id}
               labelFirst={stop.plays}
             >
-              <PacketLayer routeOf={isoRouteOf} />
-            </IsoView>
+              <PacketLayer routeOf={routeOf} />
+            </MapView>
             <div className="pointer-events-none absolute inset-x-3 top-3 bottom-2/3 flex flex-col items-start gap-2">
               <ChapterRail className="pointer-events-auto shrink-0" />
               {/* The inside view shows the notices instead, while it's open. */}

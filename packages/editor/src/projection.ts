@@ -1,13 +1,16 @@
-import { project, routeRevealed } from "@axonometric/contracts";
+import { groundProjections, routeRevealed } from "@axonometric/contracts";
 import type {
   GridPoint,
+  GroundProjection,
   HopRoute,
   Layout,
   MapData,
   Placement,
   ScreenPoint,
+  View,
 } from "@axonometric/contracts";
 import { Array as Arr, Order } from "effect";
+import { dual } from "effect/Function";
 
 export {
   corners,
@@ -24,6 +27,26 @@ export const toPoints = (points: readonly ScreenPoint[]) =>
     Arr.map(points, (point) => `${point.sx},${point.sy}`),
     " "
   );
+
+/**
+ * A footprint's ground outline on screen in one view, from its corner at
+ * the smallest x and y round to the opposite corner.
+ */
+export const groundOutline: {
+  (ground: GroundProjection): (placement: Placement) => readonly ScreenPoint[];
+  (placement: Placement, ground: GroundProjection): readonly ScreenPoint[];
+} = dual(
+  2,
+  (
+    { x, y, w, d }: Placement,
+    ground: GroundProjection
+  ): readonly ScreenPoint[] => [
+    ground.toScreen({ x, y }),
+    ground.toScreen({ x: x + w, y }),
+    ground.toScreen({ x: x + w, y: y + d }),
+    ground.toScreen({ x, y: y + d }),
+  ]
+);
 
 const centre = (placement: Placement): GridPoint => ({
   x: placement.x + placement.w / 2,
@@ -106,7 +129,7 @@ const keyOf = (revealed: ReadonlySet<string>) =>
 /**
  * Every revealed hop's route on the ground, routed around the revealed
  * structures only, from the contracts router. Routing the same data, layout
- * and set again returns the same object, so the iso view and the packets
+ * and set again returns the same object, so the Iso view and the packets
  * share one routing pass.
  */
 export const routesOf = ({
@@ -143,23 +166,27 @@ export const routesOf = ({
 };
 
 /**
- * A hop's route on screen, or `undefined` when it has none, such as when
- * either end isn't revealed. Packets walk along these points.
+ * A hop's route on screen in `view`, or `undefined` when it has none, such
+ * as when either end isn't revealed. Packets walk along these points.
  */
 export const screenRouteOf = ({
   data,
   layout,
   revealed,
   hop,
+  view,
 }: {
   readonly data: MapData;
   readonly layout: Layout;
   readonly revealed: ReadonlySet<string>;
   readonly hop: { readonly id: string };
+  readonly view: View;
 }): readonly ScreenPoint[] | undefined => {
   const route = routesOf({ data, layout, revealed })[hop.id];
 
-  return route === undefined ? undefined : Arr.map(route.points, project);
+  return route === undefined
+    ? undefined
+    : Arr.map(route.points, groundProjections[view].toScreen);
 };
 
 /**

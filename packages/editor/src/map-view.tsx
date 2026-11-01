@@ -2,25 +2,25 @@ import type {
   MapState,
   SceneHop,
   SceneStructure,
+  View,
 } from "@axonometric/contracts";
 import {
   arrowheadOf,
-  isoHeights,
+  groundProjections,
   nameTagText,
   sceneOf,
-  tagDrop,
 } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
 import { use, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { fitOf } from "./fit.ts";
-import { corners, routesOf, toPoints } from "./iso.ts";
-import type { ScreenPoint } from "./iso.ts";
 import { PlaybackContext } from "./playback.ts";
+import { groundOutline, routesOf, toPoints } from "./projection.ts";
+import type { ScreenPoint } from "./projection.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
-import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
+import { viewDrawings } from "./views.tsx";
 import { Zones } from "./zones.tsx";
 
 function NameTag({ placed }: { readonly placed: SceneStructure }) {
@@ -126,14 +126,17 @@ function Arrow({
 
 function HopArrow({
   routed,
+  markBends,
   onHover,
 }: {
   readonly routed: SceneHop;
+  /** Whether to mark the route's bends with diamonds. */
+  readonly markBends: boolean;
   /** Called with the hop's id while the pointer is on its line, else null. */
   readonly onHover: (hop: string | null) => void;
 }) {
   const { hop, points } = routed;
-  const bends = points.slice(1, -1);
+  const bends = markBends ? points.slice(1, -1) : [];
 
   return (
     <g
@@ -219,40 +222,25 @@ function HopLabel({
   );
 }
 
-/** The screen points a structure's drawing reaches, tag included. */
-const extentOf = ({ structure, placement, tag }: SceneStructure) => {
-  const ground = corners(placement, 0);
-  const top = corners(placement, isoHeights[structure.shape]);
-
-  return [
-    top.back,
-    top.left,
-    top.right,
-    ground.left,
-    ground.right,
-    { sx: tag.left, sy: ground.front.sy + tagDrop },
-    { sx: tag.right, sy: ground.front.sy + tagDrop },
-  ];
-};
-
 /** A dashed outline around the footprint of a newly revealed structure. */
-function NewMarker({ placed }: { readonly placed: SceneStructure }) {
+function NewMarker({
+  placed,
+  view,
+}: {
+  readonly placed: SceneStructure;
+  readonly view: View;
+}) {
   const { x, y, w, d } = placed.placement;
-
-  const outline = corners(
-    { x: x - 0.2, y: y - 0.2, w: w + 0.4, d: d + 0.4 },
-    0
-  );
 
   return (
     <polygon
       data-new-marker={placed.structure.id}
-      points={toPoints([
-        outline.back,
-        outline.right,
-        outline.front,
-        outline.left,
-      ])}
+      points={toPoints(
+        groundOutline(
+          { x: x - 0.2, y: y - 0.2, w: w + 0.4, d: d + 0.4 },
+          groundProjections[view]
+        )
+      )}
       fill="none"
       className="stroke-ink motion-safe:animate-pulse"
       strokeWidth={1.4}
@@ -270,16 +258,19 @@ const none: ReadonlySet<string> = new Set();
 const useSelectedHop = () => use(PlaybackContext)?.selected?.hop.id;
 
 /**
- * The iso view of a map: each revealed structure as its shape with a name
- * tag, and each hop between revealed structures as an arrow along the
- * ground, over each group's zone fitted to its revealed structures, in a
- * viewport you can pan and zoom. Everything is drawn from the contracts
- * scene, which keeps every name tag, label, zone title and chip clear of
- * each other and of the boxes. The view fits the structures in `fitTo` and
- * the hops between them, and fits again when `fitKey` changes. `children`
- * draw on top, in the same coordinates, and pan and zoom with the drawing.
+ * A view of a map, the Iso view or Plan view: each revealed structure as
+ * its shape with a name tag, and each hop between revealed structures as an
+ * arrow along the ground, over each group's zone fitted to its revealed
+ * structures, in a viewport you can pan and zoom. Everything is drawn from
+ * the contracts scene, which keeps every name tag, label, zone title and
+ * chip clear of each other and of the boxes. The view fits the structures
+ * in `fitTo` and the hops between them, and fits again when `fitKey`
+ * changes. Switching `view` keeps the viewport, with the same ground point
+ * in the middle. `children` draw on top, in the same coordinates, and pan
+ * and zoom with the drawing.
  */
-export function IsoView({
+export function MapView({
+  view,
   state,
   revealed,
   newlyRevealed = none,
@@ -288,6 +279,7 @@ export function IsoView({
   labelFirst,
   children,
 }: {
+  readonly view: View;
   readonly state: MapState;
   /** The structures to draw. */
   readonly revealed: ReadonlySet<string>;
@@ -319,19 +311,25 @@ export function IsoView({
         revealed,
         routes: routesOf({ data: state.data, layout: state.layout, revealed }),
         labelFirst,
+        view,
       }),
-    [state.data, state.layout, revealed, labelFirst]
+    [state.data, state.layout, revealed, labelFirst, view]
   );
 
-  const marked = Arr.filter(scene.structures, ({ structure }) =>
-    newlyRevealed.has(structure.id)
-  );
+  const drawing = viewDrawings[view];
+  const { Structure } = drawing;
+
+  const marked = drawing.newRing
+    ? Arr.filter(scene.structures, ({ structure }) =>
+        newlyRevealed.has(structure.id)
+      )
+    : [];
 
   const fitted = fitOf({
     drawn: [
       ...Arr.map(scene.structures, (item) => ({
         ids: [item.structure.id],
-        points: extentOf(item),
+        points: drawing.extentOf(item),
       })),
       ...Arr.map(scene.hops, ({ hop, points, label }) => ({
         ids: [hop.from, hop.to],
@@ -354,9 +352,10 @@ export function IsoView({
 
   return (
     <Viewport
-      title={`Iso view of ${state.data.overview.title}`}
+      title={`${drawing.title} of ${state.data.overview.title}`}
       fit={fitted.bounds}
       fitKey={fitKey ?? fitted.key}
+      ground={groundProjections[view]}
     >
       <defs>
         <pattern
@@ -376,26 +375,30 @@ export function IsoView({
           />
         </pattern>
       </defs>
-      <Zones zones={scene.zones} />
+      <Zones zones={scene.zones} Plate={drawing.Plate} />
       <g>
         {Arr.map(marked, (item) => (
-          <NewMarker key={item.structure.id} placed={item} />
+          <NewMarker key={item.structure.id} placed={item} view={view} />
         ))}
-        <SelectionMarker placements={state.layout.structures} />
+        <SelectionMarker placements={state.layout.structures} view={view} />
       </g>
       <g>
         {Arr.map(scene.hops, (item) => (
-          <HopArrow key={item.hop.id} routed={item} onHover={setHoveredHop} />
+          <HopArrow
+            key={item.hop.id}
+            routed={item}
+            markBends={drawing.markBends}
+            onHover={setHoveredHop}
+          />
         ))}
       </g>
       <g>
         {Arr.map(scene.structures, (item) => (
-          <IsoStructure
+          <Structure
             key={item.structure.id}
-            structure={item.structure}
-            placement={item.placement}
-            chip={item.chip}
+            placed={item}
             hatch={hatch}
+            isNew={newlyRevealed.has(item.structure.id)}
           />
         ))}
       </g>

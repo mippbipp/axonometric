@@ -27,6 +27,7 @@ export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 
 export {
   checkLayout,
+  clashWarnings,
   footprintsOverlap,
   placedStructures,
   tagCovers,
@@ -35,6 +36,17 @@ export {
 export type { PlacedStructure } from "./layout-checks.ts";
 
 export { isoHeights } from "./iso-heights.ts";
+
+export {
+  groundProjections,
+  planRect,
+  planTagSpots,
+  planUnit,
+  projectPlan,
+  views,
+} from "./plan.ts";
+
+export type { GroundProjection, View } from "./plan.ts";
 
 export {
   GridPoint,
@@ -57,6 +69,7 @@ export type { PlacedLayout } from "./placement.ts";
 export {
   convexOverlap,
   distanceToPolyline,
+  growRect,
   segmentCrosses,
 } from "./geometry.ts";
 
@@ -68,7 +81,10 @@ export {
   arrowheadOf,
   arrowLength,
   endsOnTarget,
+  labelGap,
   labelReach,
+  labelReachLimit,
+  planZoneRadius,
   sceneClashes,
   sceneOf,
   silhouette,

@@ -1,6 +1,7 @@
-import type { Placement } from "@axonometric/contracts";
+import { groundProjections } from "@axonometric/contracts";
+import type { Placement, View } from "@axonometric/contracts";
 
-import { project, toPoints } from "./iso.ts";
+import { groundOutline, toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
 
 /** How far the outline reaches past the footprint, in grid units. */
@@ -12,8 +13,10 @@ const pad = 0.35;
  */
 export function SelectionMarker({
   placements,
+  view,
 }: {
   readonly placements: Readonly<Partial<Record<string, Placement>>>;
+  readonly view: View;
 }) {
   const { selected } = useSelection();
   const placement = selected === null ? undefined : placements[selected];
@@ -22,20 +25,17 @@ export function SelectionMarker({
     return null;
   }
 
-  const x = placement.x - pad;
-  const y = placement.y - pad;
-  const w = placement.w + pad * 2;
-  const d = placement.d + pad * 2;
+  const grown = {
+    x: placement.x - pad,
+    y: placement.y - pad,
+    w: placement.w + pad * 2,
+    d: placement.d + pad * 2,
+  };
 
   return (
     <polygon
       data-selection-marker={selected}
-      points={toPoints([
-        project({ x, y }),
-        project({ x: x + w, y }),
-        project({ x: x + w, y: y + d }),
-        project({ x, y: y + d }),
-      ])}
+      points={toPoints(groundOutline(grown, groundProjections[view]))}
       className="fill-ink/15 stroke-ink pointer-events-none"
       strokeWidth={2}
     />
