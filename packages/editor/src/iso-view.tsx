@@ -2,9 +2,11 @@ import type {
   Hop,
   MapState,
   Placement,
+  ScreenRect,
   Structure,
 } from "@axonometric/contracts";
 import {
+  boxOutline,
   isoHeights,
   nameTagRect,
   nameTagText,
@@ -15,8 +17,14 @@ import { useId } from "react";
 import type { ReactNode } from "react";
 
 import { fitOf } from "./fit.ts";
-import { corners, screenRouteOf, toPoints } from "./iso.ts";
-import type { ScreenPoint } from "./iso.ts";
+import {
+  corners,
+  hiddenStretches,
+  labelSpot,
+  screenRouteOf,
+  toPoints,
+} from "./iso.ts";
+import type { HiddenStretch, ScreenPoint } from "./iso.ts";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
 
@@ -28,6 +36,10 @@ interface PlacedStructure {
 interface RoutedHop {
   readonly hop: Hop;
   readonly points: readonly ScreenPoint[];
+  /** Where its label goes. */
+  readonly label: ScreenRect | undefined;
+  /** The stretches of its route that boxes are drawn over. */
+  readonly hidden: readonly HiddenStretch[];
 }
 
 /** Painter's order: boxes further back are drawn first. */
@@ -84,7 +96,6 @@ function HopArrow({
 }) {
   const { hop, points } = routed;
   const bends = points.slice(1, -1);
-  const labelAt = bends[0] ?? points[0];
 
   return (
     <g data-hop={hop.id} className="stroke-ink">
@@ -103,18 +114,54 @@ function HopArrow({
           stroke="none"
         />
       ))}
-      {labelAt === undefined ? null : (
-        <text
-          x={labelAt.sx + 8}
-          y={labelAt.sy - 8}
-          className="fill-ink stroke-paper font-mono text-xs"
-          strokeWidth={3}
-          paintOrder="stroke"
-        >
-          {hop.label}
-        </text>
-      )}
     </g>
+  );
+}
+
+/**
+ * The stretches of a hop's route that boxes are drawn over, drawn again
+ * faintly on top of those boxes, so the hop never disappears.
+ */
+function HiddenHop({
+  routed,
+  arrowhead,
+}: {
+  readonly routed: RoutedHop;
+  readonly arrowhead: string;
+}) {
+  return (
+    <g data-hidden-hop={routed.hop.id}>
+      {Arr.map(routed.hidden, (stretch) => (
+        <polyline
+          key={toPoints(stretch.points)}
+          points={toPoints(stretch.points)}
+          fill="none"
+          className="stroke-ink"
+          strokeWidth={1.4}
+          strokeDasharray="4 3"
+          markerEnd={stretch.reachesEnd ? `url(#${arrowhead})` : undefined}
+        />
+      ))}
+    </g>
+  );
+}
+
+/** A hop's label, drawn above every box so none hides it. */
+function HopLabel({ routed }: { readonly routed: RoutedHop }) {
+  const { hop, label } = routed;
+
+  return label === undefined ? null : (
+    <text
+      data-hop-label={hop.id}
+      x={(label.left + label.right) / 2}
+      y={label.bottom - 4}
+      textAnchor="middle"
+      className="fill-ink stroke-paper font-mono text-xs"
+      strokeWidth={3}
+      paintOrder="stroke"
+    >
+      {hop.label}
+    </text>
   );
 }
 
@@ -151,12 +198,29 @@ const placeAll = (
     byDepth
   );
 
+/**
+ * Routes every hop between revealed structures, works out which stretches
+ * the revealed boxes hide, and places each label clear of the boxes, the
+ * name tags and the labels placed before it, in data.mjs order.
+ */
 const routeAll = (
   state: MapState,
-  revealed: ReadonlySet<string>
-): readonly RoutedHop[] =>
-  Arr.flatMap(state.data.hops, (hop) => {
-    const points = screenRouteOf({ layout: state.layout, hop });
+  placed: readonly PlacedStructure[]
+): readonly RoutedHop[] => {
+  const revealed = new Set(Arr.map(placed, ({ structure }) => structure.id));
+
+  const outlines = Arr.map(placed, ({ structure, placement }) =>
+    boxOutline(placement, structure.shape)
+  );
+
+  const tags = Arr.map(placed, tagOf);
+
+  const routes = Arr.flatMap(state.data.hops, (hop) => {
+    const points = screenRouteOf({
+      data: state.data,
+      layout: state.layout,
+      hop,
+    });
 
     return points === undefined ||
       !revealed.has(hop.from) ||
@@ -164,6 +228,26 @@ const routeAll = (
       ? []
       : [{ hop, points }];
   });
+
+  return Arr.reduce(routes, Arr.empty<RoutedHop>(), (done, { hop, points }) => {
+    const label = labelSpot({
+      points,
+      text: hop.label,
+      outlines,
+      taken: [
+        ...tags,
+        ...Arr.flatMap(done, (other) =>
+          other.label === undefined ? [] : [other.label]
+        ),
+      ],
+    });
+
+    return [
+      ...done,
+      { hop, points, label, hidden: hiddenStretches({ points, outlines }) },
+    ];
+  });
+};
 
 /** A dashed outline around the footprint of a newly revealed structure. */
 function NewMarker({ placed }: { readonly placed: PlacedStructure }) {
@@ -229,7 +313,7 @@ export function IsoView({
   const hatch = `${idPrefix}hatch`;
   const arrowhead = `${idPrefix}arrowhead`;
   const placed = placeAll(state, revealed);
-  const routed = routeAll(state, revealed);
+  const routed = routeAll(state, placed);
 
   const marked = Arr.filter(placed, ({ structure }) =>
     newlyRevealed.has(structure.id)
@@ -241,9 +325,16 @@ export function IsoView({
         ids: [item.structure.id],
         points: extentOf(item),
       })),
-      ...Arr.map(routed, ({ hop, points }) => ({
+      ...Arr.map(routed, ({ hop, points, label }) => ({
         ids: [hop.from, hop.to],
-        points,
+        points:
+          label === undefined
+            ? points
+            : [
+                ...points,
+                { sx: label.left, sy: label.top },
+                { sx: label.right, sy: label.bottom },
+              ],
       })),
     ],
     fitTo: [...fitTo],
@@ -304,22 +395,19 @@ export function IsoView({
           />
         ))}
       </g>
-      {/* Hops again, faintly, so a hop that runs behind a box stays visible. */}
-      <g aria-hidden="true" className="opacity-30">
+      <g aria-hidden="true" className="pointer-events-none opacity-40">
         {Arr.map(routed, (item) => (
-          <polyline
-            key={item.hop.id}
-            points={toPoints(item.points)}
-            fill="none"
-            className="stroke-ink"
-            strokeWidth={1.4}
-            markerEnd={`url(#${arrowhead})`}
-          />
+          <HiddenHop key={item.hop.id} routed={item} arrowhead={arrowhead} />
         ))}
       </g>
       <g>
         {Arr.map(placed, (item) => (
           <NameTag key={item.structure.id} placed={item} />
+        ))}
+      </g>
+      <g className="pointer-events-none">
+        {Arr.map(routed, (item) => (
+          <HopLabel key={item.hop.id} routed={item} />
         ))}
       </g>
       {children}

@@ -20,8 +20,9 @@ function WalkthroughPage() {
   useChapterKeys(true);
 
   const isoRouteOf = useCallback(
-    (hop: Hop) => screenRouteOf({ layout: state.layout, hop }),
-    [state.layout]
+    (hop: Hop) =>
+      screenRouteOf({ data: state.data, layout: state.layout, hop }),
+    [state.data, state.layout]
   );
 
   return (
