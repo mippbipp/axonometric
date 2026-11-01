@@ -44,6 +44,10 @@ _Avoid_: edge, link, connection
 The right-angle path a hop's arrow takes on the ground grid, from the edge of one footprint to the edge of the other. The router computes it from the layout, around other footprints when it can.
 _Avoid_: path, wire, edge
 
+**Bundle**:
+Hops from one structure whose routes share a stretch, drawn as separate parallel lines with their own arrowheads.
+_Avoid_: trunk, lane, group (a group is a set of structures)
+
 **Route override**:
 A route saved by hand in `layout.json` as a list of grid points, followed instead of the automatic route.
 _Avoid_: manual route, waypoints
