@@ -122,6 +122,59 @@ const routesCross = (a: readonly GridPoint[], b: readonly GridPoint[]) =>
     Arr.some(legsOf(b), (second) => legsCross(first, second))
   );
 
+const bendsOf = (points: readonly GridPoint[]) =>
+  Math.max(0, points.length - 2);
+
+interface Span {
+  readonly from: number;
+  readonly to: number;
+}
+
+/** Whether two spans share more than a half unit, room for a straight leg. */
+const spansShare = (a: Span, b: Span) =>
+  Math.max(a.from, b.from) + 0.5 <= Math.min(a.to, b.to) - 0.5;
+
+const apart = (a: Span, b: Span) => a.to <= b.from || b.to <= a.from;
+
+const alongX = ({ x, w }: Placement): Span => ({ from: x, to: x + w });
+
+const alongY = ({ y, d }: Placement): Span => ({ from: y, to: y + d });
+
+/**
+ * The fewest bends any right-angled route between two footprints needs
+ * with nothing in the way: 1 when they're apart on both axes, 0 when a
+ * straight leg fits between them, and 2 otherwise.
+ */
+const fewestBends = (a: Placement, b: Placement) => {
+  const apartX = apart(alongX(a), alongX(b));
+  const apartY = apart(alongY(a), alongY(b));
+
+  if (apartX && apartY) {
+    return 1;
+  }
+
+  const straight =
+    (apartX && spansShare(alongY(a), alongY(b))) ||
+    (apartY && spansShare(alongX(a), alongX(b)));
+
+  return straight ? 0 : 2;
+};
+
+/** One hop routed on its own around the revealed structures. */
+const alone = (
+  { data, layout }: { readonly data: MapData; readonly layout: Layout },
+  revealed: ReadonlySet<string>,
+  id: string
+): readonly GridPoint[] => {
+  const routes = routeRevealed({
+    data: { ...data, hops: Arr.filter(data.hops, (hop) => hop.id === id) },
+    layout,
+    revealed,
+  });
+
+  return routes[id]?.points ?? [];
+};
+
 const placementOf = (layout: Layout, id: string): Placement => {
   const placement = layout.structures[id];
 
@@ -359,4 +412,61 @@ describe("scene", () => {
         }
       })
   );
+
+  it.effect("routes chapter 1's hops into Updater with one bend each", () =>
+    Effect.gen(function* () {
+      const { data, layout } = yield* fixture("flake-pipeline");
+      const [first] = chaptersOf(data);
+
+      assert.isDefined(first);
+
+      const routes = routeRevealed({ data, layout, revealed: first.revealed });
+
+      for (const id of ["h-main-updater", "h-upstream-updater"]) {
+        const route = routes[id];
+
+        assert.isDefined(route, `${id} has no route`);
+        assert.strictEqual(bendsOf(route.points), 1, id);
+      }
+    })
+  );
+
+  for (const name of ["flake-pipeline", "review", "crowded"]) {
+    it.effect(`bends each ${name} route at most once more than it needs`, () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture(name);
+
+        for (const chapter of chaptersOf(data)) {
+          const routes = routeRevealed({
+            data,
+            layout,
+            revealed: chapter.revealed,
+          });
+
+          for (const hop of data.hops) {
+            const route = routes[hop.id];
+
+            if (route !== undefined) {
+              const source = placementOf(layout, hop.from);
+              const target = placementOf(layout, hop.to);
+              const fewest = fewestBends(source, target);
+              const bends = bendsOf(route.points);
+
+              // A revealed box in the way can force more: check that
+              // the hop on its own, around the same boxes, needs them too.
+              const forced = bendsOf(
+                alone({ data, layout }, chapter.revealed, hop.id)
+              );
+
+              assert.isAtMost(
+                bends,
+                Math.max(fewest, forced) + 1,
+                `${hop.id} in ${chapter.id}`
+              );
+            }
+          }
+        }
+      })
+    );
+  }
 });

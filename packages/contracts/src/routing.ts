@@ -72,30 +72,17 @@ const scale = 2;
  */
 const margin = 4;
 
-/**
- * How far past the box around a hop's two ends a route may go before each
- * step costs extra, in half units.
- */
-const reach = 6;
-
-/** Each half-unit step past `reach` costs this much more. */
-const strayCost = 1;
-
-/**
- * Each half-unit step costs this much more per grid unit it lands away from
- * the straight line between the two ends' centres. On screen a single bend
- * between ends offset on both axes reads as half a diamond, so this trades
- * a bend or two for a route that hugs the line.
- */
-const lineCost = 0.3;
-
 const stepCost = 1;
 
-/** Each bend costs as much as this many half-unit steps. */
-const bendCost = 6;
+/**
+ * Each bend costs as much as this many half-unit steps: 12 grid units. A
+ * route takes the fewest bends it can and only then the shortest way, so it
+ * never trades an L for a Z to save a little length.
+ */
+const bendCost = 24;
 
 /** Running alongside another hop's route costs this much more per step. */
-const sharedStepCost = 2;
+const sharedStepCost = 1;
 
 /**
  * Passing through a point a hop between the same two structures already
@@ -109,7 +96,7 @@ const pairPointCost = 8;
  * and this one faces it less directly on screen; an edge facing away costs
  * a lot, so a route takes it only when the facing edges are blocked.
  */
-const facingCosts = [0, 2, 60, 60] as const;
+const facingCosts = [0, 2, 100, 100] as const;
 
 /**
  * Entering a box by a back edge (-x or -y) costs this much more, because the
@@ -720,11 +707,6 @@ interface Search {
   readonly groups: ReadonlySet<string>;
   readonly from: Box;
   readonly to: Box;
-  /**
-   * The box around both ends grown by `reach`, in half units. Steps outside
-   * it cost extra, so routes stay near the straight path.
-   */
-  readonly near: Box;
   /** Where the routes of the ends' other hops run, and along which axes. */
   readonly siblings: readonly ReadonlyMap<number, number>[];
   /** When set, steps outside this box aren't allowed at all. */
@@ -778,8 +760,6 @@ const stepPrice = (
   }
 
   const bend = heading === noDirection || heading === direction ? 0 : 1;
-  const offLine = lineCost * distanceToLine(search, next);
-  const stray = distanceTo(search.near, next) > 0 ? strayCost : 0;
   const nextIndex = pointIndex(grid, next);
 
   const across = direction % 2 === 0 ? 2 : 1;
@@ -801,25 +781,9 @@ const stepPrice = (
     zones * zoneStepCost +
     crossings * siblingCrossCost +
     (grid.inTags[step] ?? []).length * tagCost +
-    stray +
-    offLine +
     (search.usage.steps.has(step) ? sharedStepCost : 0) +
     (search.pair.points.has(nextIndex) ? pairPointCost : 0)
   );
-};
-
-/** How far a point lands from the line between the ends' centres, in grid units. */
-const distanceToLine = (search: Search, { x, y }: Cell) => {
-  const { from, to } = search;
-  const ax = (from.x0 + from.x1) / 2;
-  const ay = (from.y0 + from.y1) / 2;
-  const bx = (to.x0 + to.x1) / 2;
-  const by = (to.y0 + to.y1) / 2;
-  const length = Math.hypot(bx - ax, by - ay);
-
-  return length === 0
-    ? 0
-    : Math.abs((bx - ax) * (ay - y) - (ax - x) * (by - ay)) / length / scale;
 };
 
 const cellOf = (grid: Grid, state: number): Cell => {
@@ -951,14 +915,6 @@ const searchOf = (
   groups: new Set([from.group, to.group]),
   from,
   to,
-  near: {
-    id: "",
-    group: "",
-    x0: Math.min(from.x0, to.x0) - reach,
-    y0: Math.min(from.y0, to.y0) - reach,
-    x1: Math.max(from.x1, to.x1) + reach,
-    y1: Math.max(from.y1, to.y1) + reach,
-  },
   siblings: Arr.flatMap([from.id, to.id], (id) =>
     Option.toArray(Option.fromNullishOr(usage.axes.get(id)))
   ),
@@ -1156,14 +1112,17 @@ const cappedRoute = (
  * Routes every hop whose ends both have a placement. A hop with a route
  * override in `layout.routes` follows it. Every other hop gets a route at
  * right angles on the half-unit grid, from the edge of one footprint to the
- * edge of the other, with as few bends as it can manage, going around every
- * footprint whenever a clear route exists. Each end leaves or enters by the
- * edge facing the other end on screen, unless something blocks it: every
+ * edge of the other, going around every footprint whenever a clear route
+ * exists. It takes the fewest bends first and the shortest length second:
+ * an L between ends apart on both axes, a straight leg or a Z between ends
+ * that share an axis, and more bends only to get around a box. Each end
+ * leaves or enters by an edge facing the other end, unless something
+ * blocks it: every
  * end runs straight out of its box for at least one unit, routes keep out
  * of name tags whenever they can, and hops sharing a structure avoid
  * crossing each other. A route longer than `routeCap` allows is searched
- * again close to its ends. Routes stay near the box around their two
- * ends, inside the zones' bounds plus a margin, and keep out of the zones of
+ * again close to its ends. Routes stay inside the zones' bounds plus a
+ * margin, and keep out of the zones of
  * groups neither end belongs to when they can. Hops between the same two
  * structures, in either direction, never share a step, so they run side by
  * side. Overrides go first, then the longest hops, then data.mjs order for
