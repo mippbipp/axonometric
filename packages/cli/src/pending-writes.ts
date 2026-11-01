@@ -109,9 +109,31 @@ export const unreadable = <A>(
   });
 
 /**
+ * What every write to the pending changes starts with: take the lock for the
+ * rest of the scope, `load` what the write needs, and refuse with
+ * `StaleProposals`, naming the file as it is now, when `baseFileRevision`
+ * isn't the revision of `proposals.json` that was loaded.
+ */
+export const loadForWrite = Effect.fnUntraced(function* <
+  A extends { readonly proposals: Proposals },
+  E,
+  R,
+>(home: string, baseFileRevision: number, load: Effect.Effect<A, E, R>) {
+  yield* withLock(home, "serve");
+
+  const loaded = yield* load;
+
+  if (baseFileRevision !== loaded.proposals.revision) {
+    return yield* StaleProposals.make({ proposals: loaded.proposals });
+  }
+
+  return loaded;
+});
+
+/**
  * Replaces the pending layout changes in `proposals.json` in `home` with
  * those in `write`, under the lock. The write is refused, and nothing
- * written, when `write.baseRevision` isn't the file's revision, or when a
+ * written, when `write.baseFileRevision` isn't the file's revision, or when a
  * new or changed change would leave footprints overlapping in the layout
  * the page shows. `written` runs under the lock, once the file is saved, to
  * tell the open pages. Returns what `proposals.json` holds after the write.
@@ -123,14 +145,16 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
 ) {
   const path = yield* Path.Path;
 
-  yield* withLock(home, "serve");
+  const readFiles = Effect.all({
+    proposals: Effect.flatMap(loadProposals(home), unreadable),
+    accepted: Effect.flatMap(loadLayout(home), unreadable),
+  });
 
-  const current = yield* unreadable(yield* loadProposals(home));
-  const accepted = yield* unreadable(yield* loadLayout(home));
-
-  if (write.baseRevision !== current.revision) {
-    return yield* StaleProposals.make({ proposals: current });
-  }
+  const { proposals: current, accepted } = yield* loadForWrite(
+    home,
+    write.baseFileRevision,
+    readFiles
+  );
 
   const refusal = layoutRefusal({
     accepted,

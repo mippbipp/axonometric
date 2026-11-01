@@ -443,7 +443,7 @@ export const connectServed = ({
       }
 
       const body = yield* encodeWrite({
-        baseRevision: sent.base,
+        baseFileRevision: sent.base,
         layout: sent.layout,
       }).pipe(Effect.orDie);
 
@@ -571,7 +571,7 @@ export const connectServed = ({
       const text = message.trim();
 
       const base = {
-        baseRevision: proposalsOf(view.state).revision,
+        baseFileRevision: proposalsOf(view.state).revision,
         changeIds: ids,
       };
 

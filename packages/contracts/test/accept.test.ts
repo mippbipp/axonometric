@@ -188,15 +188,62 @@ describe("accepting layout changes", () => {
     assert.isTrue(Result.isSuccess(result));
   });
 
-  it("refuses a change that an earlier pending change on the same thing would overwrite", () => {
-    const pending = [groupMove("g1"), move("m1", "a", [0, 20])];
-    const early = refusal(pending, ["m1"]);
+  it("drops the earlier change that the accepted one overrides", () => {
+    const pending = [move("m1", "a", [0, 20]), move("m2", "a", [0, 30])];
+    const result = accepted(pending, ["m2"]);
 
-    assert.include(early, "g1");
-    assert.include(early, "m1");
+    assert.deepStrictEqual(result.remaining, []);
+    assert.deepStrictEqual(result.dropped, [
+      { id: "m1", kind: "move", structures: ["a"] },
+    ]);
+    assert.deepStrictEqual(result.layout.structures.a, {
+      x: 0,
+      y: 30,
+      w: 2,
+      d: 2,
+    });
   });
 
-  it("takes an earlier change when a later one on the same thing stays pending", () => {
+  it("takes only the overridden structures out of an earlier group move", () => {
+    const pending = [groupMove("g1"), move("m1", "a", [0, 20])];
+    const result = accepted(pending, ["m1"]);
+
+    assert.deepStrictEqual(result.remaining, [
+      {
+        id: "g1",
+        kind: "move",
+        moves: [
+          { target: { kind: "structure", id: "b" }, position: { x: 4, y: 10 } },
+        ],
+      },
+    ]);
+    assert.deepStrictEqual(result.dropped, [
+      { id: "g1", kind: "move", structures: ["a"] },
+    ]);
+  });
+
+  it("drops a group move whose every structure is overridden", () => {
+    const pending = [groupMove("g1"), groupMove("g2")];
+    const result = accepted(pending, ["g2"]);
+
+    assert.deepStrictEqual(result.remaining, []);
+    assert.deepStrictEqual(result.dropped, [
+      { id: "g1", kind: "move", structures: ["a", "b"] },
+    ]);
+  });
+
+  it("leaves an earlier change on another thing alone", () => {
+    const pending = [resize("r1", "a", [3, 3]), move("m1", "a", [0, 20])];
+    const result = accepted(pending, ["m1"]);
+
+    assert.deepStrictEqual(
+      Arr.map(result.remaining, ({ id }) => id),
+      ["r1"]
+    );
+    assert.deepStrictEqual(result.dropped, []);
+  });
+
+  it("keeps a later change that stays pending, and drops nothing", () => {
     const pending = [groupMove("g1"), move("m1", "a", [0, 20])];
     const result = accepted(pending, ["g1"]);
 
@@ -204,6 +251,15 @@ describe("accepting layout changes", () => {
       Arr.map(result.remaining, ({ id }) => id),
       ["m1"]
     );
+    assert.deepStrictEqual(result.dropped, []);
+  });
+
+  it("drops nothing when everything is accepted", () => {
+    const pending = [move("m1", "a", [0, 20]), move("m2", "a", [0, 30])];
+    const result = accepted(pending, "all");
+
+    assert.deepStrictEqual(result.dropped, []);
+    assert.strictEqual(result.layout.structures.a?.y, 30);
   });
 
   it("lets a resize be accepted past a pending move of the same structure", () => {
@@ -283,6 +339,16 @@ describe("the message for an acceptance", () => {
         nameOf
       ),
       "Move Save server, Map page, Proposals and Engineer"
+    );
+  });
+
+  it("says which earlier changes the accepted ones replace", () => {
+    assert.strictEqual(
+      acceptanceMessage([move("m2", "a", [0, 30])], nameOf, [
+        { id: "m1", kind: "move", structures: ["a", "b"] },
+        { id: "r1", kind: "resize", structures: ["c"] },
+      ]),
+      "Move Save server; replaces earlier pending changes to Save server, Map page and Proposals"
     );
   });
 

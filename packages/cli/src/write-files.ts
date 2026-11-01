@@ -7,11 +7,25 @@ import {
   Path,
   Predicate,
   Schedule,
+  Schema,
 } from "effect";
+
+/** An output marked `exclusive` already exists. Nothing was changed. */
+export class OutputExists extends Schema.TaggedError<
+  OutputExists,
+  { readonly brand: unique symbol }
+>()("OutputExists", { file: Schema.String }) {}
 
 export interface Output {
   readonly file: string;
   readonly content: string;
+  /**
+   * The file must not exist. `writeAll` fails with `AlreadyExists`, before
+   * it renames anything, when it does, so a file that is never rewritten,
+   * such as a revision, is never replaced. It relies on the caller's lock to
+   * keep anyone else from creating the file after that check.
+   */
+  readonly exclusive?: boolean;
 }
 
 /**
@@ -70,9 +84,10 @@ export const writeAll = Effect.fnUntraced(function* (
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  const staged = Arr.map(outputs, ({ file, content }) => ({
+  const staged = Arr.map(outputs, ({ file, content, exclusive }) => ({
     file,
     content,
+    exclusive: exclusive === true,
     temporary: `${file}.${process.pid}.tmp`,
   }));
 
@@ -96,27 +111,40 @@ export const writeAll = Effect.fnUntraced(function* (
       currentContent(file)
     );
 
+    const taken = Arr.findFirst(
+      Arr.zip(staged, before),
+      ([{ exclusive }, old]) => exclusive && Option.isSome(old)
+    );
+
+    yield* Option.match(taken, {
+      onNone: () => Effect.void,
+      onSome: ([{ file }]) => OutputExists.make({ file }),
+    });
+
     const renamed: number[] = [];
 
-    const putBack = Effect.forEach(
-      Arr.reverse(renamed),
-      (index) => {
-        const target = staged[index];
-        const old = before[index];
+    // Built when it runs, so it sees the renames that went through by then.
+    const putBack = Effect.suspend(() =>
+      Effect.forEach(
+        Arr.reverse(renamed),
+        (index) => {
+          const target = staged[index];
+          const old = before[index];
 
-        return target === undefined || old === undefined
-          ? Effect.void
-          : Option.match(old, {
-              onNone: () => fs.remove(target.file),
-              onSome: (text) =>
-                fs
-                  .writeFileString(target.temporary, text)
-                  .pipe(
-                    Effect.andThen(renameInto(target.temporary, target.file))
-                  ),
-            }).pipe(Effect.ignore);
-      },
-      { discard: true }
+          return target === undefined || old === undefined
+            ? Effect.void
+            : Option.match(old, {
+                onNone: () => fs.remove(target.file),
+                onSome: (text) =>
+                  fs
+                    .writeFileString(target.temporary, text)
+                    .pipe(
+                      Effect.andThen(renameInto(target.temporary, target.file))
+                    ),
+              }).pipe(Effect.ignore);
+        },
+        { discard: true }
+      )
     );
 
     yield* Effect.forEach(

@@ -46,6 +46,10 @@ export const printNotes = Effect.fnUntraced(function* ({
   });
 });
 
+/** The system's name: the name of the folder that holds the home folder. */
+export const systemOf = (home: string) =>
+  Path.Path.use((path) => Effect.succeed(path.basename(path.dirname(home))));
+
 /**
  * The two files `build` writes from an accepted `state`: SYSTEM.md and the
  * read-only page, both in the home folder's parent. Pending changes never
@@ -84,7 +88,7 @@ export const rebuild = Effect.fnUntraced(function* (
 ) {
   const path = yield* Path.Path;
   const output = path.dirname(home);
-  const system = path.basename(output);
+  const system = yield* systemOf(home);
 
   yield* withLock(home, command);
 

@@ -1,4 +1,8 @@
-import { layoutChangeKey, structuresOf } from "@axonometric/contracts";
+import {
+  layoutChangeKey,
+  maxMessageLength,
+  structuresOf,
+} from "@axonometric/contracts";
 import type { ChangeId, Layout, LayoutChange } from "@axonometric/contracts";
 import { Array as Arr, Option, Record as Rec } from "effect";
 import { useId, useState } from "react";
@@ -107,7 +111,7 @@ export function PendingTab() {
                 data-accept-message
                 type="text"
                 value={message}
-                maxLength={500}
+                maxLength={maxMessageLength}
                 placeholder="Leave empty to write one from the changes"
                 disabled={accepting.busy}
                 className="border-ink bg-paper text-ink focus-visible:outline-ink border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"

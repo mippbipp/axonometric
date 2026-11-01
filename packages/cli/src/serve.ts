@@ -437,7 +437,7 @@ const routes = ({
             }))
           ).pipe(
             Effect.catchTag(
-              ["PlatformError", "LockHeld", "SchemaError"],
+              ["PlatformError", "LockHeld", "SchemaError", "OutputExists"],
               Effect.die
             )
           )
@@ -458,6 +458,7 @@ const routes = ({
                 "SchemaError",
                 "BadArgument",
                 "EditorNotBuilt",
+                "OutputExists",
               ],
               Effect.die
             )

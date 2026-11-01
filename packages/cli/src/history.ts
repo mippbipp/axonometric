@@ -18,7 +18,6 @@ import {
   Path,
   Result,
   Schema,
-  String as Str,
 } from "effect";
 
 const encodeRevisionFile = Schema.encodeEffect(RevisionFile);
@@ -34,7 +33,7 @@ export const encodeRevision = (revision: Revision) =>
 
 /** The name a revision's file goes by in problems, such as `history/0003.json`. */
 export const revisionFileOf = (n: number): MapFile =>
-  `${historyFolder}/${Str.padStart(4, "0")(String(n))}.json`;
+  `${historyFolder}/${revisionFileName(n)}`;
 
 /**
  * The revision numbers of the files in `history/`, from their names alone,

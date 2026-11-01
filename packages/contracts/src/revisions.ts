@@ -152,7 +152,7 @@ export type Revision = typeof Revision.Type;
 export const RevisionFile = JsonText.pipe(Schema.decodeTo(Revision));
 
 /** The name of revision `n`'s file: at least four digits, so names sort. */
-export const revisionFileName = (n: number) =>
+export const revisionFileName = (n: number): `${string}.json` =>
   `${Str.padStart(4, "0")(String(n))}.json`;
 
 const revisionName = /^(?<digits>\d{4,})\.json$/u;

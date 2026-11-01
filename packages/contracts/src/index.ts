@@ -2,7 +2,7 @@ export { describeCause } from "./cause.ts";
 
 export { acceptanceMessage, acceptLayoutChanges } from "./accept.ts";
 
-export type { Acceptance } from "./accept.ts";
+export type { Acceptance, DroppedChange } from "./accept.ts";
 
 export { checkMap, linkTargets } from "./check.ts";
 

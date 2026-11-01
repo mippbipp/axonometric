@@ -34,18 +34,21 @@ export const maxWriteBytes = 256 * 1024;
 /** A write to the pending layout changes. */
 export const PendingLayoutWrite = Schema.Struct({
   /** The `proposals.json` revision the page based the write on. */
-  baseRevision: Schema.Int,
+  baseFileRevision: Schema.Int,
   /** Every pending layout change after the write, replacing the old list. */
   layout: LayoutChanges,
 });
 
 export type PendingLayoutWrite = typeof PendingLayoutWrite.Type;
 
-const messageFix =
-  "expected a message of 1 to 500 characters, or leave it out.";
-
-/** The longest message a revision takes, in characters. */
+/**
+ * The longest message a revision takes. It counts UTF-16 code units, as the
+ * schema's `isMaxLength` and an input's `maxLength` both do, so the page stops
+ * typing where the server would refuse.
+ */
 export const maxMessageLength = 500;
+
+const messageFix = `expected a message of 1 to ${maxMessageLength} characters, or leave it out.`;
 
 const messageText = Schema.String.annotate({ message: messageFix }).check(
   Schema.isNonEmpty({ message: messageFix }),
@@ -59,7 +62,7 @@ const messageText = Schema.String.annotate({ message: messageFix }).check(
  */
 export const AcceptWrite = Schema.Struct({
   /** The `proposals.json` revision the page based the write on. */
-  baseRevision: Schema.Int,
+  baseFileRevision: Schema.Int,
   /** The changes to accept, or `"all"` for every pending layout change. */
   changeIds: Schema.Union([
     Schema.Literal("all"),

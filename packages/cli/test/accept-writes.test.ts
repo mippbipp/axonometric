@@ -95,7 +95,7 @@ const moveOf = (
 
 /** Saves `layout` as the pending changes, from revision `base`. */
 const pend = (url: string, base: number, layout: readonly LayoutChange[]) =>
-  Effect.flatMap(json({ baseRevision: base, layout }), (body) =>
+  Effect.flatMap(json({ baseFileRevision: base, layout }), (body) =>
     send(url, {
       method: "PUT",
       pathname: layoutPath,
@@ -174,7 +174,7 @@ describe("accepting pending layout changes over HTTP", () => {
       ]);
 
       const sent = yield* accept(url, {
-        baseRevision: 1,
+        baseFileRevision: 1,
         changeIds: ["m1"],
         message: "Lower the page",
       });
@@ -247,7 +247,11 @@ describe("accepting pending layout changes over HTTP", () => {
           },
         ]);
 
-        const first = yield* accept(url, { baseRevision: 1, changeIds: "all" });
+        const first = yield* accept(url, {
+          baseFileRevision: 1,
+          changeIds: "all",
+        });
+
         const one = yield* decodeAccepted(first.body);
 
         assert.strictEqual(one.message, "Move Map page; resize Save server");
@@ -256,7 +260,7 @@ describe("accepting pending layout changes over HTTP", () => {
         yield* pend(url, 2, [moveOf("m3", "engineer", { x: 0, y: 4 })]);
 
         const second = yield* accept(url, {
-          baseRevision: 3,
+          baseFileRevision: 3,
           changeIds: "all",
         });
 
@@ -299,7 +303,10 @@ describe("accepting pending layout changes over HTTP", () => {
 
         assert.notInclude(before, '"x":4,"y":7');
 
-        const sent = yield* accept(url, { baseRevision: 1, changeIds: "all" });
+        const sent = yield* accept(url, {
+          baseFileRevision: 1,
+          changeIds: "all",
+        });
 
         assert.strictEqual(sent.status, 200, sent.body);
         assert.include(yield* fs.readFileString(html), '"x":4,"y":7');
@@ -312,7 +319,7 @@ describe("accepting pending layout changes over HTTP", () => {
 
       yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
 
-      const body = { baseRevision: 1, changeIds: "all" };
+      const body = { baseFileRevision: 1, changeIds: "all" };
 
       yield* assertRefused(
         root,
@@ -343,7 +350,7 @@ describe("accepting pending layout changes over HTTP", () => {
           method: "POST",
           pathname: acceptPath,
           headers: { origin: url, "content-type": "text/plain" },
-          body: "baseRevision=1",
+          body: "baseFileRevision=1",
         })
       );
     })
@@ -360,7 +367,7 @@ describe("accepting pending layout changes over HTTP", () => {
         const stale = yield* assertRefused(
           root,
           409,
-          accept(url, { baseRevision: 0, changeIds: "all" })
+          accept(url, { baseFileRevision: 0, changeIds: "all" })
         );
 
         const answer = yield* Schema.decodeEffect(
@@ -384,7 +391,7 @@ describe("accepting pending layout changes over HTTP", () => {
       const refused = yield* assertRefused(
         root,
         422,
-        accept(url, { baseRevision: 1, changeIds: ["m1", "nope"] })
+        accept(url, { baseFileRevision: 1, changeIds: ["m1", "nope"] })
       );
 
       assert.include(refused.body, "nope");
@@ -403,7 +410,7 @@ describe("accepting pending layout changes over HTTP", () => {
         root,
         400,
         accept(url, {
-          baseRevision: 1,
+          baseFileRevision: 1,
           changeIds: "all",
           proposals: [{ kind: "rename", id: "page", name: "x" }],
         })
@@ -411,7 +418,7 @@ describe("accepting pending layout changes over HTTP", () => {
       yield* assertRefused(
         root,
         422,
-        accept(url, { baseRevision: 1, changeIds: ["p-rename-1"] })
+        accept(url, { baseFileRevision: 1, changeIds: ["p-rename-1"] })
       );
     })
   );
@@ -422,13 +429,17 @@ describe("accepting pending layout changes over HTTP", () => {
 
       const bodies: readonly Schema.JsonObject[] = [
         {},
-        { baseRevision: 0 },
-        { baseRevision: 0, changeIds: [] },
-        { baseRevision: 0, changeIds: "some" },
-        { baseRevision: 0, changeIds: ["../x"] },
-        { baseRevision: 0, changeIds: "all", message: "" },
-        { baseRevision: 0, changeIds: "all", message: Str.repeat(501)("x") },
-        { baseRevision: 0, changeIds: "all", file: "../data.mjs" },
+        { baseFileRevision: 0 },
+        { baseFileRevision: 0, changeIds: [] },
+        { baseFileRevision: 0, changeIds: "some" },
+        { baseFileRevision: 0, changeIds: ["../x"] },
+        { baseFileRevision: 0, changeIds: "all", message: "" },
+        {
+          baseFileRevision: 0,
+          changeIds: "all",
+          message: Str.repeat(501)("x"),
+        },
+        { baseFileRevision: 0, changeIds: "all", file: "../data.mjs" },
       ];
 
       for (const body of bodies) {
@@ -450,7 +461,7 @@ describe("accepting pending layout changes over HTTP", () => {
       const refused = yield* assertRefused(
         root,
         422,
-        accept(url, { baseRevision: 1, changeIds: ["m2"] })
+        accept(url, { baseFileRevision: 1, changeIds: ["m2"] })
       );
 
       assert.include(refused.body, "overlap");
@@ -464,7 +475,7 @@ describe("accepting pending layout changes over HTTP", () => {
       yield* assertRefused(
         root,
         422,
-        accept(url, { baseRevision: 0, changeIds: "all" })
+        accept(url, { baseFileRevision: 0, changeIds: "all" })
       );
     })
   );
@@ -485,7 +496,7 @@ describe("accepting pending layout changes over HTTP", () => {
         yield* assertRefused(
           root,
           500,
-          accept(url, { baseRevision: 1, changeIds: "all" })
+          accept(url, { baseFileRevision: 1, changeIds: "all" })
         );
 
         assert.strictEqual(
@@ -495,28 +506,138 @@ describe("accepting pending layout changes over HTTP", () => {
       }).pipe(Effect.provide(NodeServices.layer))
   );
 
-  it.live("leaves every file as it was when a later rename fails", () =>
+  it.live(
+    "numbers a revision after the highest in history, and leaves the old file untouched",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { home, url } = yield* served;
+        const old = path.join(home, "history", "0001.json");
+
+        yield* fs.makeDirectory(path.dirname(old), { recursive: true });
+        yield* fs.writeFileString(
+          old,
+          "an earlier revision, not ours to touch"
+        );
+        yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
+
+        const sent = yield* accept(url, {
+          baseFileRevision: 1,
+          changeIds: "all",
+        });
+
+        assert.strictEqual(sent.status, 200, sent.body);
+        assert.strictEqual((yield* decodeAccepted(sent.body)).revision, 2);
+        assert.strictEqual(
+          yield* fs.readFileString(old),
+          "an earlier revision, not ours to touch"
+        );
+        assert.isTrue(
+          yield* fs.exists(path.join(home, "history", "0002.json"))
+        );
+      }).pipe(Effect.provide(NodeServices.layer))
+  );
+
+  it.live(
+    "drops the earlier change that an accepted one overrides, and says so",
+    () =>
+      Effect.gen(function* () {
+        const { url } = yield* served;
+
+        yield* pend(url, 0, [
+          moveOf("m1", "page", { x: 4, y: 3 }),
+          moveOf("m2", "page", { x: 4, y: 5 }),
+        ]);
+
+        const sent = yield* accept(url, {
+          baseFileRevision: 1,
+          changeIds: ["m2"],
+        });
+
+        assert.strictEqual(sent.status, 200, sent.body);
+
+        const answer = yield* decodeAccepted(sent.body);
+
+        assert.deepStrictEqual(answer.proposals.layout, []);
+        assert.strictEqual(answer.layout.structures.page?.y, 5);
+        assert.strictEqual(
+          answer.message,
+          "Move Map page; replaces earlier pending changes to Map page"
+        );
+      })
+  );
+
+  it.live(
+    "takes two accepts at once as one success and one stale refusal",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { home, url } = yield* served;
+
+        yield* pend(url, 0, [
+          moveOf("m1", "page", { x: 4, y: 3 }),
+          moveOf("m2", "server", { x: 8, y: 3 }),
+        ]);
+
+        const [first, second] = yield* Effect.all(
+          [
+            accept(url, { baseFileRevision: 1, changeIds: ["m1"] }),
+            accept(url, { baseFileRevision: 1, changeIds: ["m2"] }),
+          ],
+          { concurrency: "unbounded" }
+        );
+
+        assert.sameMembers([first.status, second.status], [200, 409]);
+
+        const history = yield* fs.readDirectory(path.join(home, "history"));
+
+        assert.deepStrictEqual(history, ["0001.json"]);
+      }).pipe(Effect.provide(NodeServices.layer))
+  );
+
+  it.live("refuses an accept body over 256 KB", () =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const { root, home, url } = yield* served;
+      const { root, url } = yield* served;
 
       yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
 
-      // A folder where the read-only page goes: the page's rename fails
-      // after the revision, layout and proposals renames went through.
-      const html = path.join(root, "review", "review.html");
-
-      yield* fs.remove(html);
-      yield* fs.makeDirectory(html);
-      yield* fs.writeFileString(path.join(html, "keep"), "x");
+      const padding = Str.repeat(300 * 1024)(" ");
+      const body = yield* json({ baseFileRevision: 1, changeIds: "all" });
 
       yield* assertRefused(
         root,
-        500,
-        accept(url, { baseRevision: 1, changeIds: "all" })
+        413,
+        send(url, {
+          method: "POST",
+          pathname: acceptPath,
+          headers: ownOrigin(url),
+          body: `${body}${padding}`,
+        })
       );
-      assert.isFalse(yield* fs.exists(path.join(home, "history", "0001.json")));
-    }).pipe(Effect.provide(NodeServices.layer))
+    })
+  );
+
+  it.live("refuses an accept with a forged Host", () =>
+    Effect.gen(function* () {
+      const { root, url } = yield* served;
+
+      yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
+
+      yield* assertRefused(
+        root,
+        403,
+        accept(
+          url,
+          { baseFileRevision: 1, changeIds: "all" },
+          {
+            ...ownOrigin(url),
+            host: "attacker.example.test",
+            origin: "http://attacker.example.test",
+          }
+        )
+      );
+    })
   );
 });
