@@ -1,6 +1,8 @@
-import { Array as Arr, Option, Order } from "effect";
+import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
+import { arrowHalfWidth } from "./ends.ts";
+import { drawnRoutes } from "./fans.ts";
 import {
   boundsOfPoints,
   emptyRect,
@@ -32,9 +34,16 @@ import {
   tileWidth,
 } from "./iso.ts";
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
-import type { Layout, Placement } from "./layout.ts";
+import { laneGap, laneRoutes, laneWidths, routeCorners } from "./lanes.ts";
+import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { Hop, MapData, Shape, Structure } from "./map-data.ts";
-import { planRect, planTagSpots, planUnit, projectPlan } from "./plan.ts";
+import {
+  groundProjections,
+  planRect,
+  planTagSpots,
+  planUnit,
+  projectPlan,
+} from "./plan.ts";
 import type { TagSize, View } from "./plan.ts";
 import { routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
@@ -140,7 +149,11 @@ export interface SceneZone {
 /** A stretch of a route that a box is drawn over. */
 export interface HiddenStretch {
   readonly points: readonly ScreenPoint[];
-  /** Whether the stretch runs to the route's end, so it needs the arrowhead. */
+  /**
+   * Whether the stretch runs to the route's end, which is hidden under a
+   * box, so the stretch carries a faint arrowhead. At most one stretch of a
+   * hop does.
+   */
   readonly reachesEnd: boolean;
 }
 
@@ -154,8 +167,19 @@ const labelPadding = 3;
 export interface SceneHop {
   readonly hop: Hop;
   readonly route: HopRoute;
-  /** The route on screen, from the source's edge to the target's edge. */
+  /**
+   * The hop's own line on screen, from the source's edge to the target's
+   * edge: its route, moved sideways into its own lane where it runs on the
+   * same grid line as another route, so no two hops' lines coincide.
+   */
   readonly points: readonly ScreenPoint[];
+  /**
+   * Where the route turns, which the Iso view marks with diamonds: one per
+   * turn a bundle's hops share, drawn by the first of them, and none for the
+   * jogs that spread its ends along an edge or for any turn within a unit of
+   * either end.
+   */
+  readonly bends: readonly ScreenPoint[];
   /**
    * Where the label goes, or `undefined` when no clear spot at the route
    * exists. A hop without a spot shows its label only on hover or while its
@@ -167,7 +191,9 @@ export interface SceneHop {
   /**
    * The stretches of the route that boxes are drawn over and that the view
    * redraws faintly on top: those under other structures' boxes, and the
-   * last stretch under the target's box when the arrowhead is there.
+   * last stretch under the target's box when the end is there. The stretch
+   * that reaches a hidden end carries a faint arrowhead, so every hop shows
+   * one head, solid where its end is visible and faint where it is not.
    */
   readonly hidden: readonly HiddenStretch[];
 }
@@ -797,6 +823,89 @@ const placeZones = ({
   });
 };
 
+/** A hop's turns on the ground, as its grid corners and its laned ones. */
+interface Turning {
+  readonly id: string;
+  readonly corners: readonly GridPoint[];
+  readonly laned: readonly GridPosition[];
+}
+
+/**
+ * The turns the Iso view marks with a diamond, by hop id. Hops that turn the
+ * same way at the same grid corner, as the lanes of a bundle do, share one
+ * diamond: the first of them draws it, on the middle of their lanes. A lone
+ * hop's diamond sits on its own line. Turns within `bendMargin` of either
+ * end of a route get none.
+ */
+const turnsOf = ({
+  hops,
+}: {
+  readonly hops: readonly Turning[];
+}): ReadonlyMap<string, readonly GridPosition[]> => {
+  const turns = Arr.flatMap(hops, ({ id, corners: grid, laned }) => {
+    const [first] = grid;
+    const last = grid.at(-1);
+
+    return Arr.flatMap(grid.slice(1, -1), (corner, index) => {
+      const at = laned[index + 1];
+      const before = grid[index];
+      const after = grid[index + 2];
+
+      return first === undefined ||
+        last === undefined ||
+        at === undefined ||
+        before === undefined ||
+        after === undefined ||
+        Math.hypot(corner.x - first.x, corner.y - first.y) < bendMargin ||
+        Math.hypot(corner.x - last.x, corner.y - last.y) < bendMargin
+        ? []
+        : [
+            {
+              id,
+              at,
+              key: `${Arr.join(
+                Arr.sort(
+                  [
+                    `${Math.sign(before.x - corner.x)},${Math.sign(before.y - corner.y)}`,
+                    `${Math.sign(after.x - corner.x)},${Math.sign(after.y - corner.y)}`,
+                  ],
+                  Order.String
+                ),
+                "|"
+              )}@${corner.x},${corner.y}`,
+            },
+          ];
+    });
+  });
+
+  const groups = Arr.groupBy(turns, ({ key }) => key);
+
+  return new Map(
+    Arr.map(hops, ({ id }) => [
+      id,
+      Arr.flatMap(Rec.values(groups), (group) => {
+        const [owner] = group;
+
+        return owner?.id === id
+          ? [
+              {
+                x:
+                  Arr.reduce(group, 0, (sum, { at }) => sum + at.x) /
+                  group.length,
+                y:
+                  Arr.reduce(group, 0, (sum, { at }) => sum + at.y) /
+                  group.length,
+              },
+            ]
+          : [];
+      }),
+    ])
+  );
+};
+
+/** How far from a route's end a bend must be to get a diamond, in grid units. */
+const bendMargin = 1;
+
 /** Stretches shorter than this, in screen units, aren't worth redrawing. */
 const shortestStretch = 1;
 
@@ -1246,6 +1355,7 @@ interface RoutedHop {
   readonly hop: Hop;
   readonly route: HopRoute;
   readonly points: readonly ScreenPoint[];
+  readonly bends: readonly ScreenPoint[];
 }
 
 interface Frame {
@@ -1311,14 +1421,61 @@ const frameOf = ({
       : { ...item, chip: undefined }
   );
 
-  const routed = Arr.flatMap(data.hops, (hop) => {
+  const shown = Arr.filter(
+    data.hops,
+    (hop) =>
+      routes[hop.id] !== undefined &&
+      revealed.has(hop.from) &&
+      revealed.has(hop.to)
+  );
+
+  const drawn = drawnRoutes({
+    routes: Rec.fromEntries(
+      Arr.flatMap(shown, ({ id }) => {
+        const route = routes[id];
+
+        return route === undefined ? [] : [[id, route] as const];
+      })
+    ),
+    hops: shown,
+    placements: layout.structures,
+    view,
+  });
+
+  const bent = laneRoutes(
+    Rec.fromEntries(
+      Arr.flatMap(shown, ({ id }) => {
+        const route = routes[id];
+
+        return route === undefined ? [] : [[id, route] as const];
+      })
+    ),
+    laneWidths[view]
+  );
+
+  const turns = turnsOf({
+    hops: Arr.flatMap(shown, ({ id }) => {
+      const route = routes[id];
+
+      return route === undefined
+        ? []
+        : [{ id, corners: routeCorners(route.points), laned: bent[id] ?? [] }];
+    }),
+  });
+
+  const routed = Arr.flatMap(shown, (hop) => {
     const route = routes[hop.id];
 
-    return route === undefined ||
-      !revealed.has(hop.from) ||
-      !revealed.has(hop.to)
+    return route === undefined
       ? []
-      : [{ hop, route, points: Arr.map(route.points, geometry.project) }];
+      : [
+          {
+            hop,
+            route,
+            points: Arr.map(drawn[hop.id] ?? route.points, geometry.project),
+            bends: Arr.map(turns.get(hop.id) ?? [], geometry.project),
+          },
+        ];
   });
 
   const lines = Arr.map(routed, ({ hop, points }) => ({
@@ -1456,7 +1613,10 @@ export const sceneOf = (source: SceneSource): Scene => {
 
   // A route is drawn behind its own source box where it leaves a back edge,
   // which reads as leaving from behind, so that stretch isn't redrawn. Over
-  // the target box only the stretch carrying the arrowhead is redrawn.
+  // the target box only the stretch that reaches the route's end is
+  // redrawn. Routes are drawn under every box, so a solid head whose tip is
+  // inside a box's outline is hidden; the stretch that reaches the end then
+  // carries a faint head, once. A head on a visible edge is solid already.
   const hiddenOf = (hop: Hop, points: readonly ScreenPoint[]) => {
     const others = Arr.flatMap(structures, ({ structure, outline }) =>
       structure.id === hop.from || structure.id === hop.to ? [] : [outline]
@@ -1472,7 +1632,20 @@ export const sceneOf = (source: SceneSource): Scene => {
             ({ reachesEnd }) => reachesEnd
           );
 
-    return [...hiddenStretches({ points, outlines: others }), ...atHead];
+    const stretches = [
+      ...hiddenStretches({ points, outlines: others }),
+      ...atHead,
+    ];
+
+    const carrier = Arr.findLastIndex(
+      stretches,
+      ({ reachesEnd }) => reachesEnd
+    );
+
+    return Arr.map(stretches, (stretch, index) => ({
+      ...stretch,
+      reachesEnd: Option.contains(carrier, index),
+    }));
   };
 
   const rank = new Map(Arr.map(labelFirst, (id, index) => [id, index]));
@@ -1539,7 +1712,16 @@ export interface SceneClash {
 
 /** One side of a clash. */
 export interface ClashPart {
-  readonly kind: "box" | "tag" | "chip" | "title" | "label" | "route";
+  readonly kind:
+    | "box"
+    | "tag"
+    | "chip"
+    | "title"
+    | "label"
+    | "route"
+    | "zone"
+    | "corner"
+    | "arrow";
   /** The structure, group or hop it belongs to. */
   readonly id: string;
 }
@@ -1574,6 +1756,34 @@ export const arrowheadOf = (
   };
 };
 
+/**
+ * The triangle drawn at a route's end: its tip on the last point, its base
+ * `arrowLength` back along the last leg and `arrowHalfWidth` either side.
+ */
+export const arrowPolygon = (
+  points: readonly ScreenPoint[]
+): readonly ScreenPoint[] | undefined => {
+  const head = arrowheadOf(points);
+
+  if (head === undefined) {
+    return undefined;
+  }
+
+  const { tip, base } = head;
+  const length = Math.max(Math.hypot(tip.sx - base.sx, tip.sy - base.sy), 1e-9);
+
+  const wing = {
+    sx: (-(tip.sy - base.sy) / length) * arrowHalfWidth,
+    sy: ((tip.sx - base.sx) / length) * arrowHalfWidth,
+  };
+
+  return [
+    tip,
+    { sx: base.sx + wing.sx, sy: base.sy + wing.sy },
+    { sx: base.sx - wing.sx, sy: base.sy - wing.sy },
+  ];
+};
+
 interface Shape2d extends ClashPart {
   readonly polygon: readonly ScreenPoint[];
 }
@@ -1582,6 +1792,316 @@ const rectShape = (part: ClashPart, rect: ScreenRect): Shape2d => ({
   ...part,
   polygon: rectPolygon(rect),
 });
+
+/**
+ * How close a route may come to a box or zone outline on screen, other than
+ * at its own ends, and how far a crossing's lines may run on past each
+ * other. Half the gap between a bundle's lines.
+ */
+const outlineClearance = laneGap * 0.75;
+
+/**
+ * How far apart two hops' lines must stay, outside a crossing: a little
+ * less than half the bundle gap, which is as close as a line's lanes come
+ * where more lines share it than fit at the full gap.
+ */
+const lineClearance = laneGap * 0.4;
+
+/** How near a route's end may sit to a box's corner, in grid units. */
+const cornerClearance = 0.5;
+
+const pointToSegment = (point: ScreenPoint, { start, end }: Segment) =>
+  distanceToPolyline([start, end], point);
+
+/** Which side of the line from `p` to `q` the point `r` is on, or 0. */
+const side = (p: ScreenPoint, q: ScreenPoint, r: ScreenPoint) =>
+  Math.sign((q.sx - p.sx) * (r.sy - p.sy) - (q.sy - p.sy) * (r.sx - p.sx));
+
+/** Whether two segments cross or touch. */
+const segmentsMeet = (a: Segment, b: Segment) => {
+  const overlap = (pick: (point: ScreenPoint) => number) =>
+    Math.max(
+      Math.min(pick(a.start), pick(a.end)),
+      Math.min(pick(b.start), pick(b.end))
+    ) <=
+    Math.min(
+      Math.max(pick(a.start), pick(a.end)),
+      Math.max(pick(b.start), pick(b.end))
+    ) +
+      1e-9;
+
+  return (
+    overlap(({ sx }) => sx) &&
+    overlap(({ sy }) => sy) &&
+    side(a.start, a.end, b.start) * side(a.start, a.end, b.end) <= 0 &&
+    side(b.start, b.end, a.start) * side(b.start, b.end, a.end) <= 0
+  );
+};
+
+/** The least distance between two segments on screen. */
+const segmentGap = (a: Segment, b: Segment) =>
+  segmentsMeet(a, b)
+    ? 0
+    : Math.min(
+        pointToSegment(a.start, b),
+        pointToSegment(a.end, b),
+        pointToSegment(b.start, a),
+        pointToSegment(b.end, a)
+      );
+
+const unitOf = ({ start, end }: Segment) => {
+  const length = Math.max(
+    Math.hypot(end.sx - start.sx, end.sy - start.sy),
+    1e-9
+  );
+
+  return { sx: (end.sx - start.sx) / length, sy: (end.sy - start.sy) / length };
+};
+
+const parallel = (a: Segment, b: Segment) => {
+  const u = unitOf(a);
+  const v = unitOf(b);
+
+  return Math.abs(u.sx * v.sy - u.sy * v.sx) < 1e-6;
+};
+
+/** How far two parallel segments run alongside each other. */
+const sideBySide = (a: Segment, b: Segment) => {
+  const u = unitOf(a);
+  const along = (point: ScreenPoint) => point.sx * u.sx + point.sy * u.sy;
+  const [a0, a1] = [along(a.start), along(a.end)];
+  const [b0, b1] = [along(b.start), along(b.end)];
+
+  return (
+    Math.min(Math.max(a0, a1), Math.max(b0, b1)) -
+    Math.max(Math.min(a0, a1), Math.min(b0, b1))
+  );
+};
+
+/** A segment with `by` cut off its start, its end, or both. */
+const trim = (
+  { start, end }: Segment,
+  {
+    atStart,
+    atEnd,
+    by,
+  }: { readonly atStart: boolean; readonly atEnd: boolean; readonly by: number }
+): Segment => {
+  const u = unitOf({ start, end });
+
+  return {
+    start: atStart
+      ? { sx: start.sx + u.sx * by, sy: start.sy + u.sy * by }
+      : start,
+    end: atEnd ? { sx: end.sx - u.sx * by, sy: end.sy - u.sy * by } : end,
+  };
+};
+
+const closedEdges = (polygon: readonly ScreenPoint[]): readonly Segment[] =>
+  Arr.map(polygon, (start, index) => ({
+    start,
+    end: polygon[(index + 1) % polygon.length] ?? start,
+  }));
+
+/** The four corners of a footprint on the ground, in a view. */
+const groundCorners = (view: View, { x, y, w, d }: Placement) =>
+  Arr.map(
+    [
+      { x, y },
+      { x: x + w, y },
+      { x: x + w, y: y + d },
+      { x, y: y + d },
+    ],
+    groundProjections[view].toScreen
+  );
+
+/** How far a route's end sits from the nearer corner along its edge, in grid units. */
+const cornerGap = (end: GridPoint, { x, y, w, d }: Placement) => {
+  const onX = end.x === x || end.x === x + w;
+  const onY = end.y === y || end.y === y + d;
+  const fromX = Math.min(Math.abs(end.x - x), Math.abs(end.x - x - w));
+  const fromY = Math.min(Math.abs(end.y - y), Math.abs(end.y - y - d));
+
+  // On a vertical edge (x fixed) the end slides along y, and the reverse.
+  if (onX && !onY) {
+    return d >= 1 ? fromY : Number.POSITIVE_INFINITY;
+  }
+
+  if (onY && !onX) {
+    return w >= 1 ? fromX : Number.POSITIVE_INFINITY;
+  }
+
+  return onX && onY ? 0 : Number.POSITIVE_INFINITY;
+};
+
+/**
+ * The clashes on the ground, in the view's screen space: a route that comes
+ * within `outlineClearance` of a box's outline other than at its own ends,
+ * or lies along a zone's outline; a route's end within half a unit of its
+ * box's corner on an edge at least a unit long; and two hops' lines closer
+ * than `laneGap`, other than where they cross. A route that runs under a
+ * box counts only as running under it, and a hop between overlapping
+ * footprints not at all: `check` reports both already.
+ */
+const groundClashes = (scene: Scene): readonly SceneClash[] => {
+  const placements = new Map(
+    Arr.map(scene.structures, ({ structure, placement }) => [
+      structure.id,
+      placement,
+    ])
+  );
+
+  // Overlapping footprints leave a hop between them no clear way out,
+  // and `check` warns about the overlap itself.
+  const apart = ({ from, to }: Hop) => {
+    const a = placements.get(from);
+    const b = placements.get(to);
+
+    return (
+      a === undefined ||
+      b === undefined ||
+      a.x >= b.x + b.w ||
+      b.x >= a.x + a.w ||
+      a.y >= b.y + b.d ||
+      b.y >= a.y + a.d
+    );
+  };
+
+  const lines = Arr.flatMap(scene.hops, ({ hop, route, points }) =>
+    apart(hop) ? [{ hop, route, segments: segmentsOf(points) }] : []
+  );
+
+  const boxes = Arr.flatMap(lines, ({ hop, route, segments }) =>
+    Arr.flatMap(scene.structures, ({ structure, placement }) => {
+      if (route.crosses.includes(structure.id)) {
+        return [];
+      }
+
+      const edges = closedEdges(groundCorners(scene.view, placement));
+
+      const near = Arr.some(segments, (segment, index) => {
+        const trimmed = trim(segment, {
+          atStart: index === 0 && structure.id === hop.from,
+          atEnd: index === segments.length - 1 && structure.id === hop.to,
+          // In the Iso view a leg leaves its edge at a slant on screen, so
+          // it needs to run further to clear it.
+          by: laneGap,
+        });
+
+        return Arr.some(
+          edges,
+          (edge) => segmentGap(trimmed, edge) < outlineClearance - 1e-6
+        );
+      });
+
+      return near
+        ? [
+            clashOf(
+              { kind: "route", id: hop.id },
+              { kind: "box", id: structure.id }
+            ),
+          ]
+        : [];
+    })
+  );
+
+  const zones = Arr.flatMap(lines, ({ hop, segments }) =>
+    Arr.flatMap(scene.zones, ({ zone, plate }) =>
+      Arr.some(segments, (segment) =>
+        Arr.some(
+          closedEdges(plate),
+          (edge) =>
+            parallel(segment, edge) &&
+            segmentGap(segment, edge) < outlineClearance - 1e-6 &&
+            sideBySide(segment, edge) > outlineClearance
+        )
+      )
+        ? [
+            clashOf(
+              { kind: "route", id: hop.id },
+              { kind: "zone", id: zone.group.id }
+            ),
+          ]
+        : []
+    )
+  );
+
+  const nearCorners = Arr.flatMap(lines, ({ hop, route }) =>
+    Arr.flatMap(
+      [
+        [route.points[0], hop.from],
+        [route.points.at(-1), hop.to],
+      ] as const,
+      ([end, id]) => {
+        const placement = placements.get(id);
+
+        return end !== undefined &&
+          placement !== undefined &&
+          cornerGap(end, placement) < cornerClearance - 1e-9
+          ? [clashOf({ kind: "route", id: hop.id }, { kind: "corner", id })]
+          : [];
+      }
+    )
+  );
+
+  const routes = Arr.flatMap(lines, (first, index) =>
+    Arr.flatMap(lines.slice(index + 1), (second) => {
+      const close = Arr.some(first.segments, (a) =>
+        Arr.some(second.segments, (b) => {
+          if (parallel(a, b)) {
+            return (
+              segmentGap(a, b) < lineClearance &&
+              sideBySide(a, b) > -lineClearance
+            );
+          }
+
+          // Lines that cross may meet, as long as each runs on well past
+          // the other: a crossing, not one ending or turning on the other.
+          if (!segmentsMeet(a, b)) {
+            return segmentGap(a, b) < lineClearance;
+          }
+
+          return (
+            Math.min(pointToSegment(a.start, b), pointToSegment(a.end, b)) <
+              lineClearance ||
+            Math.min(pointToSegment(b.start, a), pointToSegment(b.end, a)) <
+              lineClearance
+          );
+        })
+      );
+
+      return close
+        ? [
+            clashOf(
+              { kind: "route", id: first.hop.id },
+              { kind: "route", id: second.hop.id }
+            ),
+          ]
+        : [];
+    })
+  );
+
+  return [...boxes, ...zones, ...nearCorners, ...routes];
+};
+
+/** Every pair of hops whose arrowheads overlap. */
+const arrowClashes = (scene: Scene): readonly SceneClash[] => {
+  const heads = Arr.flatMap(scene.hops, ({ hop, points }) => {
+    const polygon = arrowPolygon(points);
+
+    return polygon === undefined
+      ? []
+      : [{ part: { kind: "arrow" as const, id: hop.id }, polygon }];
+  });
+
+  return Arr.flatMap(heads, (first, index) =>
+    Arr.flatMap(heads.slice(index + 1), (second) =>
+      convexOverlap(first.polygon, second.polygon)
+        ? [clashOf(first.part, second.part)]
+        : []
+    )
+  );
+};
 
 /** A shape's name in a clash, such as `tag:a`. */
 const nameOf = ({ kind, id }: ClashPart) => `${kind}:${id}`;
@@ -1597,7 +2117,10 @@ const clashOf = (first: ClashPart, second: ClashPart): SceneClash => ({
  * box outlines overlap (a chip sits on its own box), and no route runs
  * through a name tag, a zone title or a label other than its own. A
  * route may run through the tag of a structure it starts or ends at only
- * where it can't avoid it, so that counts too.
+ * where it can't avoid it, so that counts too. On the ground, no route
+ * touches a box's outline other than at its own ends, lies along a zone's
+ * outline, ends near a corner, or comes closer to another hop's line than
+ * a bundle's lines are apart, other than to cross it.
  */
 export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
   const boxes = Arr.map(scene.structures, ({ structure, outline }) => ({
@@ -1673,7 +2196,12 @@ export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
     )
   );
 
-  return [...pairs, ...crossings];
+  return [
+    ...pairs,
+    ...crossings,
+    ...groundClashes(scene),
+    ...arrowClashes(scene),
+  ];
 };
 
 /** How far a point may sit from where it should be, in screen units. */
