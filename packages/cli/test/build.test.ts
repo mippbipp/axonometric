@@ -113,6 +113,19 @@ describe("build", () => {
     })
   );
 
+  it.effect("titles the page with the overview's title", () =>
+    Effect.gen(function* () {
+      const result = yield* buildWith({});
+      const page = result.files["pipeline/pipeline.html"] ?? "";
+
+      assert.include(
+        page,
+        "<title>Flake update pipeline · axonometric</title>"
+      );
+      assert.notInclude(page, "<title>axonometric</title>");
+    })
+  );
+
   it.effect("names the field, the file and the fix for invalid data", () =>
     Effect.gen(function* () {
       const result = yield* buildWith({

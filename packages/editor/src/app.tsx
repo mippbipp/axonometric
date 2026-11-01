@@ -12,6 +12,12 @@ import { InsideView } from "./inside-view.tsx";
 import { IsoView } from "./iso-view.tsx";
 import { screenRouteOf } from "./iso.ts";
 import { MapSurface } from "./map-surface.tsx";
+import { useOverviewPage } from "./overview-context.ts";
+import {
+  OverviewButton,
+  OverviewPage,
+  OverviewPageProvider,
+} from "./overview-page.tsx";
 import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
@@ -28,15 +34,22 @@ import { WalkthroughProvider } from "./walkthrough.tsx";
 
 /** The keys the hint bar lists, for what's on screen. */
 const hintsOf = ({
+  overviewOpen,
   selected,
   inside,
   canGoInside,
 }: {
+  /** Whether the How it's built page is open. */
+  readonly overviewOpen: boolean;
   readonly selected: boolean;
   readonly inside: boolean;
   /** Whether the selected structure has steps. */
   readonly canGoInside: boolean;
 }) => {
+  if (overviewOpen) {
+    return ["Esc closes this page"];
+  }
+
   if (inside) {
     return ["← or Esc come out", "click Step to move the packet"];
   }
@@ -64,6 +77,7 @@ const hintsOf = ({
 function WalkthroughPage() {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
   const { selected, inside } = useSelection();
+  const { open: overviewOpen } = useOverviewPage();
   const byId = useStructuresById();
   const insideStructure = inside === null ? undefined : byId.get(inside);
   const selectedStructure = selected === null ? undefined : byId.get(selected);
@@ -86,13 +100,14 @@ function WalkthroughPage() {
     >
       <header className="border-ink flex items-center gap-4 border-b px-4 py-2">
         <h1 className="text-sm font-medium tracking-widest uppercase">
-          {state.system}
+          {state.data.overview.title}
         </h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex gap-1.5">
+          <OverviewButton />
           <ThemeToggle />
         </div>
       </header>
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <SideIndex />
         <MapSurface>
           {/* The iso view stays mounted, hidden, while the inside view is
@@ -142,6 +157,7 @@ function WalkthroughPage() {
           <StructureTooltip />
         </MapSurface>
         <SidePanel />
+        <OverviewPage />
       </div>
       {/* One line, fixed height, so changing hints never resizes the canvas:
           a resize refits the view and loses the engineer's zoom. Hints that
@@ -154,6 +170,7 @@ function WalkthroughPage() {
         <ul className="flex h-4 min-w-0 flex-wrap gap-x-4 gap-y-2 overflow-hidden">
           {Arr.map(
             hintsOf({
+              overviewOpen,
               selected: selected !== null,
               inside: insideStructure !== undefined,
               canGoInside: hasSteps(selectedStructure),
@@ -180,7 +197,9 @@ export function App({ state }: { readonly state: MapState }) {
       <PlaybackProvider>
         <SelectionProvider>
           <TooltipProvider>
-            <WalkthroughPage />
+            <OverviewPageProvider>
+              <WalkthroughPage />
+            </OverviewPageProvider>
           </TooltipProvider>
         </SelectionProvider>
       </PlaybackProvider>

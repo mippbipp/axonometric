@@ -37,7 +37,7 @@ export const renderPage = Effect.fnUntraced(function* (state: MapState) {
 
   const json = Str.replaceAll("<", String.raw`\u003c`)(encoded);
   const script = `<script type="application/json" id="${mapStateElementId}">${json}</script>`;
-  const title = `<title>${escapeHtml(state.system)} · axonometric</title>`;
+  const title = `<title>${escapeHtml(state.data.overview.title)} · axonometric</title>`;
 
   const titled = splice(page, "<title>axonometric</title>", title);
 
