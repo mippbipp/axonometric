@@ -242,20 +242,21 @@ const portOf = (server: HttpServer.HttpServer["Service"]) =>
   "port" in server.address ? server.address.port : 0;
 
 /**
- * What serve says when a change breaks the map: what's wrong, and that the
- * page and the files on disk stay as they were.
+ * What serve says when a change breaks the map, before the problems: how
+ * many errors, and that the page and the files on disk stay as they were.
  */
-const rejectionOf = (error: MapInvalid) => {
-  const { errors } = splitProblems(error.problems);
+const summaryOf = (error: MapInvalid) =>
+  `The map has ${formatCount(splitProblems(error.problems).errors.length, "error")}. Open pages keep the last good map until the files are fixed. SYSTEM.md and the HTML are unchanged.`;
 
-  return Arr.join(
+/** The summary and the problems, as serve prints them. */
+const printedRejection = (error: MapInvalid) =>
+  Arr.join(
     [
-      `The map in ${error.home} has ${formatCount(errors.length, "error")}. Open pages keep the last good map until the files are fixed. SYSTEM.md and the HTML are unchanged.`,
+      `${error.home}: ${summaryOf(error)}`,
       ...Arr.map(error.problems, (problem) => `  ${formatProblem(problem)}`),
     ],
     "\n"
   );
-};
 
 /**
  * Rebuilds the map and describes the result as an event. A map with errors
@@ -265,14 +266,15 @@ const rebuildEvent = (home: string) =>
   rebuild(home, "serve").pipe(
     Effect.tap(printNotes),
     Effect.map(({ state }) => ServerEvent.cases.MapUpdated.make({ state })),
-    Effect.catchTag("MapInvalid", (error) => {
-      const message = rejectionOf(error);
-
-      return Effect.as(
-        Console.error(message),
-        ServerEvent.cases.MapRejected.make({ message })
-      );
-    })
+    Effect.catchTag("MapInvalid", (error) =>
+      Effect.as(
+        Console.error(printedRejection(error)),
+        ServerEvent.cases.MapRejected.make({
+          summary: summaryOf(error),
+          problems: error.problems,
+        })
+      )
+    )
   );
 
 /** Folds a rebuild into what the server holds. */

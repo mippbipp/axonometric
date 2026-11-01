@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { MapState } from "./map-state.ts";
+import { MapProblem } from "./problems.ts";
 
 /**
  * What `serve` writes to `.axonometric/server.json` in the home folder while
@@ -28,7 +29,8 @@ export const serverPaths = {
  *
  * - `MapUpdated`: the map was rebuilt, and `state` is the new map.
  * - `MapRejected`: the map files changed, and the new map failed validation.
- *   Pages keep the last good map and show `message`.
+ *   Pages keep the last good map and show `summary` and every problem found,
+ *   in the shape `check --json` uses.
  * - `Heartbeat`: sent every few seconds, so proxies keep a quiet stream open.
  *
  * A new stream starts with the map's current status, a `MapUpdated` or a
@@ -36,7 +38,7 @@ export const serverPaths = {
  */
 export const ServerEvent = Schema.TaggedUnion({
   MapUpdated: { state: MapState },
-  MapRejected: { message: Schema.String },
+  MapRejected: { summary: Schema.String, problems: Schema.Array(MapProblem) },
   Heartbeat: {},
 });
 

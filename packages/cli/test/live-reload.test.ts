@@ -197,6 +197,11 @@ describe("live reload", () => {
         assert.include(banner, "Open pages keep the last good map");
         assert.notInclude(banner, "wrote nothing");
         assert.include(banner, "structures[2].name");
+
+        const problem = yield* textOf(page, "[data-map-problem]");
+
+        assert.match(problem, /^error data\.mjs structures\[2\]\.name: /u);
+        assert.strictEqual(problem, Str.trimStart(problem));
         assert.strictEqual(yield* textOf(page, panelTitle), "Save server");
 
         yield* editData(home, rename('name: ""', 'name: "Fixed server"'));
@@ -287,8 +292,13 @@ export default data;
           yield* Effect.promise(() =>
             page.setViewportSize({ width, height: 800 })
           );
-          yield* editData(home, rename('"Save server"', '""'));
+          // Every name blanked gives a long list of problems, which must
+          // scroll inside the banner instead of reaching the playback bar.
+          yield* editData(home, (text) =>
+            Str.replaceAll(/name: "[^"]*"/gu, 'name: ""')(text)
+          );
           yield* waitFor(page, "[data-map-error]");
+          assert.isAbove(yield* count(page, "[data-map-problem]"), 8);
           yield* assertClearOfControls(page, "[data-map-error]");
 
           yield* serve.stop;

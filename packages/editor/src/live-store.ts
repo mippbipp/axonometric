@@ -3,7 +3,7 @@ import {
   servedPageElementId,
   ServerEvent,
 } from "@axonometric/contracts";
-import type { MapState } from "@axonometric/contracts";
+import type { MapProblem, MapState } from "@axonometric/contracts";
 import { Duration, Effect, Option, Result, Schema } from "effect";
 
 const decodeServed = Schema.decodeUnknownOption(
@@ -24,12 +24,18 @@ export const readServedPage = (document: Document): Option.Option<ServedPage> =>
     (element) => decodeServed(element.textContent)
   );
 
+/** What the server said is wrong with the map files. */
+export interface Rejection {
+  readonly summary: string;
+  readonly problems: readonly MapProblem[];
+}
+
 /** What a served page shows. */
 export interface Live {
   /** The last good map. */
   readonly state: MapState;
   /** Why the map files on disk don't make a map, or null when they do. */
-  readonly error: string | null;
+  readonly rejection: Rejection | null;
   /** Whether the page has lost its connection to the server. */
   readonly stopped: boolean;
 }
@@ -57,7 +63,7 @@ export interface LiveSource {
  */
 export const connectLive = ({ initial, served }: LiveSource): LiveStore => {
   const listeners = new Set<() => void>();
-  let live: Live = { state: initial, error: null, stopped: false };
+  let live: Live = { state: initial, rejection: null, stopped: false };
 
   const update = (next: Partial<Live>) => {
     live = { ...live, ...next };
@@ -85,10 +91,10 @@ export const connectLive = ({ initial, served }: LiveSource): LiveStore => {
 
       ServerEvent.match(decoded.success, {
         MapUpdated: ({ state }) => {
-          update({ state, error: null, stopped: false });
+          update({ state, rejection: null, stopped: false });
         },
-        MapRejected: ({ message: error }) => {
-          update({ error, stopped: false });
+        MapRejected: ({ summary, problems }) => {
+          update({ rejection: { summary, problems }, stopped: false });
         },
         Heartbeat: () => {},
       });

@@ -139,8 +139,8 @@ function WalkthroughPage({ notices }: Notices) {
             >
               <PacketLayer routeOf={isoRouteOf} />
             </IsoView>
-            <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-start gap-2">
-              <ChapterRail className="pointer-events-auto" />
+            <div className="pointer-events-none absolute inset-x-3 top-3 bottom-2/3 flex flex-col items-start gap-2">
+              <ChapterRail className="pointer-events-auto shrink-0" />
               {/* The inside view shows the notices instead, while it's open. */}
               {insideStructure === undefined ? notices : null}
             </div>
@@ -160,10 +160,10 @@ function WalkthroughPage({ notices }: Notices) {
                 key={insideStructure.id}
                 structure={insideStructure}
               />
-              <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-col items-start gap-2">
+              <div className="pointer-events-none absolute inset-x-3 top-3 bottom-2/3 flex flex-col items-start gap-2">
                 <Breadcrumb
                   structure={insideStructure}
-                  className="pointer-events-auto"
+                  className="pointer-events-auto shrink-0"
                 />
                 {notices}
               </div>
