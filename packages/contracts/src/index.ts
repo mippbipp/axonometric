@@ -1,17 +1,44 @@
+// oxlint-disable anti-slop/no-shape-in-symbol-names -- re-exports the spec's "shape" field; see map-data.ts.
 export { describeCause } from "./cause.ts";
+
+export { checkMap, linkTargets } from "./check.ts";
+
+export type { CheckOptions, MapFiles } from "./check.ts";
 
 export { fileVersionFields, formatVersion } from "./fields.ts";
 
 export { Layout, LayoutFile, Placement } from "./layout.ts";
 
-export { Hop, MapData, Structure } from "./map-data.ts";
+export {
+  Chapter,
+  Decision,
+  DeepDive,
+  Flow,
+  Group,
+  Hop,
+  MapData,
+  OpenQuestion,
+  Overview,
+  Question,
+  ResolvedQuestion,
+  Shape,
+  shapes,
+  Stat,
+  Status,
+  statuses,
+  statusLabels,
+  Step,
+  Structure,
+} from "./map-data.ts";
+
+export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
-  crossCheck,
+  formatPath,
   formatProblem,
+  hasErrors,
   MapFile,
   MapProblem,
-  MapState,
-  mapStateElementId,
   problemsFromIssue,
-} from "./map-state.ts";
+  Severity,
+} from "./problems.ts";
