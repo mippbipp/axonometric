@@ -12,6 +12,11 @@ import { InsideView } from "./inside-view.tsx";
 import { IsoView } from "./iso-view.tsx";
 import { screenRouteOf } from "./iso.ts";
 import { MapSurface } from "./map-surface.tsx";
+import {
+  OverviewButton,
+  OverviewPage,
+  OverviewProvider,
+} from "./overview-page.tsx";
 import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
@@ -85,13 +90,14 @@ function WalkthroughPage() {
     >
       <header className="border-ink flex items-center gap-4 border-b px-4 py-2">
         <h1 className="text-sm font-medium tracking-widest uppercase">
-          {state.system}
+          {state.data.overview.title}
         </h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex gap-1.5">
+          <OverviewButton />
           <ThemeToggle />
         </div>
       </header>
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <SideIndex />
         <MapSurface>
           {/* The iso view stays mounted, hidden, while the inside view is
@@ -140,6 +146,7 @@ function WalkthroughPage() {
           <StructureTooltip />
         </MapSurface>
         <SidePanel />
+        <OverviewPage />
       </div>
       {/* One line, fixed height, so changing hints never resizes the canvas:
           a resize refits the view and loses the engineer's zoom. Hints that
@@ -178,7 +185,9 @@ export function App({ state }: { readonly state: MapState }) {
       <PlaybackProvider>
         <SelectionProvider>
           <TooltipProvider>
-            <WalkthroughPage />
+            <OverviewProvider>
+              <WalkthroughPage />
+            </OverviewProvider>
           </TooltipProvider>
         </SelectionProvider>
       </PlaybackProvider>
