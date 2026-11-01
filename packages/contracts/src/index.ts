@@ -58,7 +58,10 @@ export { convexOverlap, segmentCrosses } from "./geometry.ts";
 export type { Segment } from "./geometry.ts";
 
 export {
+  areaMargin,
   facingEdges,
+  outsideArea,
+  routeArea,
   routeCap,
   routeHops,
   routeLength,
@@ -90,7 +93,7 @@ export type {
   SceneZone,
 } from "./scene.ts";
 
-export type { HopRoute, RevealedSource } from "./routing.ts";
+export type { AreaEnd, HopRoute, RevealedSource } from "./routing.ts";
 
 export { zonePadding, zonesOf } from "./zones.ts";
 

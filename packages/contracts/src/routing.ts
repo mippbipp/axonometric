@@ -1,11 +1,23 @@
 import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
-import { clipToConvex, growRect, rectPolygon } from "./geometry.ts";
-import { nameTagRect, nameTagText, project } from "./iso.ts";
-import type { ScreenRect } from "./iso.ts";
+import {
+  boundsOfPoints,
+  clipToConvex,
+  growRect,
+  rectPolygon,
+} from "./geometry.ts";
+import {
+  boxOutline,
+  nameTagRect,
+  nameTagText,
+  project,
+  tileHeight,
+  tileWidth,
+} from "./iso.ts";
+import type { ScreenPoint, ScreenRect } from "./iso.ts";
 import type { GridPoint, Layout, Placement } from "./layout.ts";
-import type { Hop, MapData } from "./map-data.ts";
+import type { Hop, MapData, Shape } from "./map-data.ts";
 import { zonesOf } from "./zones.ts";
 
 /** Where a hop runs on the ground, from one footprint's edge to the other's. */
@@ -75,11 +87,63 @@ const margin = 4;
 const stepCost = 1;
 
 /**
- * Each bend costs as much as this many half-unit steps: 12 grid units. A
- * route takes the fewest bends it can and only then the shortest way, so it
- * never trades an L for a Z to save a little length.
+ * Each bend costs as much as this many half-unit steps: 80 grid units. A
+ * route only adds a bend to get around a box or to keep out of a name tag,
+ * never to save length, and never turns into a staircase to stay inside its
+ * area.
  */
-const bendCost = 24;
+const bendCost = 160;
+
+/**
+ * Each bend costs this many half-unit steps more for every grid unit of
+ * screen distance it sits outside its route's area (see `routeArea`). With
+ * the same number of bends, a route picks the one that stays between its
+ * boxes on screen.
+ */
+const bendStrayCost = 60;
+
+/** One grid unit along x or y, measured on screen. */
+const gridOnScreen = Math.hypot(tileWidth / 2, tileHeight / 2);
+
+/** How far past its two boxes' silhouettes a route's area reaches, in grid units. */
+export const areaMargin = 1.5;
+
+/** One end of a hop, as `routeArea` needs it. */
+export interface AreaEnd {
+  readonly placement: Placement;
+  readonly shape: Shape;
+}
+
+/**
+ * The area on screen a hop's route should stay within: the bounding box of
+ * its two structures' drawn silhouettes, to their iso heights, widened by
+ * `areaMargin` grid units on each side. It's what the reader sees the hop
+ * join.
+ */
+export const routeArea: {
+  (to: AreaEnd): (from: AreaEnd) => ScreenRect;
+  (from: AreaEnd, to: AreaEnd): ScreenRect;
+} = dual(2, (from: AreaEnd, to: AreaEnd): ScreenRect =>
+  growRect(
+    boundsOfPoints([
+      ...boxOutline(from.placement, from.shape),
+      ...boxOutline(to.placement, to.shape),
+    ]),
+    areaMargin * gridOnScreen
+  )
+);
+
+/** How far a screen point sits outside an area, in grid units. */
+export const outsideArea: {
+  (point: ScreenPoint): (area: ScreenRect) => number;
+  (area: ScreenRect, point: ScreenPoint): number;
+} = dual(
+  2,
+  (area: ScreenRect, point: ScreenPoint) =>
+    (Math.max(area.left - point.sx, 0, point.sx - area.right) +
+      Math.max(area.top - point.sy, 0, point.sy - area.bottom)) /
+    gridOnScreen
+);
 
 /** Running alongside another hop's route costs this much more per step. */
 const sharedStepCost = 1;
@@ -94,9 +158,10 @@ const pairPointCost = 8;
  * What leaving or entering a box by an edge costs: an edge facing the other
  * end costs nothing, or a little when the other end lies beyond two edges
  * and this one faces it less directly on screen; an edge facing away costs
- * a lot, so a route takes it only when the facing edges are blocked.
+ * more than a bend, so a route takes it only when the facing edges are
+ * blocked.
  */
-const facingCosts = [0, 2, 100, 100] as const;
+const facingCosts = [0, 2, 400, 400] as const;
 
 /**
  * Entering a box by a back edge (-x or -y) costs this much more, because the
@@ -139,6 +204,8 @@ const tagMargin = 3;
 interface Box {
   readonly id: string;
   readonly group: string;
+  readonly placement: Placement;
+  readonly shape: Shape;
   readonly x0: number;
   readonly y0: number;
   readonly x1: number;
@@ -146,11 +213,17 @@ interface Box {
 }
 
 const toBox = (
-  { id, group }: { readonly id: string; readonly group: string },
+  {
+    id,
+    group,
+    shape = "box",
+  }: { readonly id: string; readonly group: string; readonly shape?: Shape },
   placement: Placement
 ): Box => ({
   id,
   group,
+  placement,
+  shape,
   x0: placement.x * scale,
   y0: placement.y * scale,
   x1: (placement.x + placement.w) * scale,
@@ -711,6 +784,8 @@ interface Search {
   readonly siblings: readonly ReadonlyMap<number, number>[];
   /** When set, steps outside this box aren't allowed at all. */
   readonly window: Box | undefined;
+  /** The route's area on screen. */
+  readonly area: ScreenRect;
 }
 
 const inside = (grid: Grid, { x, y }: Cell) =>
@@ -759,7 +834,8 @@ const stepPrice = (
     return undefined;
   }
 
-  const bend = heading === noDirection || heading === direction ? 0 : 1;
+  const turns = heading !== noDirection && heading !== direction;
+  const bend = turns ? bendCost + strayOf(search, from) : 0;
   const nextIndex = pointIndex(grid, next);
 
   const across = direction % 2 === 0 ? 2 : 1;
@@ -776,7 +852,7 @@ const stepPrice = (
 
   return (
     stepCost +
-    bend * bendCost +
+    bend +
     touched.length * crossCost +
     zones * zoneStepCost +
     crossings * siblingCrossCost +
@@ -785,6 +861,11 @@ const stepPrice = (
     (search.pair.points.has(nextIndex) ? pairPointCost : 0)
   );
 };
+
+/** What a bend at `cell` costs for sitting outside the route's area. */
+const strayOf = (search: Search, cell: Cell) =>
+  bendStrayCost *
+  outsideArea(search.area, project({ x: cell.x / scale, y: cell.y / scale }));
 
 const cellOf = (grid: Grid, state: number): Cell => {
   const point = Math.floor(state / directions);
@@ -919,6 +1000,7 @@ const searchOf = (
     Option.toArray(Option.fromNullishOr(usage.axes.get(id)))
   ),
   window,
+  area: routeArea(from, to),
 });
 
 /** The stubs into the target, keyed by the point where the search meets them. */
@@ -936,7 +1018,13 @@ const goalsOf = (search: Search) => {
 
 /** The cheapest way to finish from `state` into one of the goal stubs. */
 const finishFrom = (
-  goals: ReadonlyMap<number, readonly Stub[]>,
+  {
+    search,
+    goals,
+  }: {
+    readonly search: Search;
+    readonly goals: ReadonlyMap<number, readonly Stub[]>;
+  },
   { state, g }: { readonly state: number; readonly g: number },
   best: Finish | undefined
 ): Finish | undefined => {
@@ -946,7 +1034,10 @@ const finishFrom = (
     goals.get(Math.floor(state / directions)) ?? [],
     best,
     (sofar, stub) => {
-      const turn = heading === (stub.edge.out + 2) % 4 ? 0 : bendCost;
+      const turn =
+        heading === (stub.edge.out + 2) % 4
+          ? 0
+          : bendCost + strayOf(search, cellOf(search.grid, state));
 
       const total =
         heading === stub.edge.out
@@ -1052,7 +1143,7 @@ const searchRoute = (
 
     if (frontier.done[state] !== 1) {
       frontier.done[state] = 1;
-      best = finishFrom(goals, { state, g }, best);
+      best = finishFrom({ search, goals }, { state, g }, best);
       expand(search, frontier, state);
     }
   }
@@ -1093,6 +1184,7 @@ const cappedRoute = (
     from,
     to,
     window: {
+      ...from,
       id: "",
       group: "",
       x0: Math.min(from.x0, to.x0) - windowMargin,
@@ -1113,9 +1205,9 @@ const cappedRoute = (
  * override in `layout.routes` follows it. Every other hop gets a route at
  * right angles on the half-unit grid, from the edge of one footprint to the
  * edge of the other, going around every footprint whenever a clear route
- * exists. It takes the fewest bends first and the shortest length second:
- * an L between ends apart on both axes, a straight leg or a Z between ends
- * that share an axis, and more bends only to get around a box. Each end
+ * exists. A route costs its length, a fixed cost per bend, and more for each
+ * bend outside `routeArea`, the screen area its two boxes span, so routes
+ * stay between their boxes as the reader sees them. Each end
  * leaves or enters by an edge facing the other end, unless something
  * blocks it: every
  * end runs straight out of its box for at least one unit, routes keep out

@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
   Effect,
+  Option,
   Record as Rec,
   Schema,
   String as Str,
@@ -19,10 +20,21 @@ import {
   routeCap,
   routeLength,
   routeRevealed,
+  nameTagRect,
+  nameTagText,
+  outsideArea,
+  project,
+  routeArea,
   sceneClashes,
   sceneOf,
+  segmentCrosses,
 } from "../src/index.ts";
-import type { GridPoint, Placement, ScreenPoint } from "../src/index.ts";
+import type {
+  GridPoint,
+  Placement,
+  ScreenPoint,
+  ScreenRect,
+} from "../src/index.ts";
 
 /** A fixture map from the CLI's test fixtures, decoded. */
 const fixture = (name: string) =>
@@ -173,6 +185,177 @@ const alone = (
   });
 
   return routes[id]?.points ?? [];
+};
+
+/** How far a bend may sit outside its route's area, in grid units. */
+const strayLimit = 3;
+
+/**
+ * Hops in chapter 1 of the pipeline map allowed to bend outside their area,
+ * and why. Each entry is checked: the test fails once a route with at most
+ * two bends could stay inside the area, so the exception can't outlive its
+ * reason.
+ *
+ * - h-upstream-updater: Updater's name tag hangs under its front corner, so
+ *   the hop comes in at Updater's +x face, and main sits on every way down
+ *   Upstream's -x face that would keep the bends inside. The route bends
+ *   2.08 units outside its area.
+ */
+const chapterOneExceptions = new Set(["h-upstream-updater"]);
+
+const hopOf = (data: MapData, id: string) => {
+  const hop = Arr.findFirst(data.hops, (item) => item.id === id);
+
+  assert.isTrue(Option.isSome(hop), `no hop ${id}`);
+
+  return Option.getOrThrow(hop);
+};
+
+const shapeOf = (data: MapData, id: string) =>
+  Option.getOrThrow(Arr.findFirst(data.structures, (item) => item.id === id))
+    .shape;
+
+const areaOf = (
+  { data, layout }: { readonly data: MapData; readonly layout: Layout },
+  hop: { readonly from: string; readonly to: string }
+) =>
+  routeArea(
+    {
+      placement: placementOf(layout, hop.from),
+      shape: shapeOf(data, hop.from),
+    },
+    { placement: placementOf(layout, hop.to), shape: shapeOf(data, hop.to) }
+  );
+
+/** How far a route's furthest bend sits outside its area, in grid units. */
+const strayOf = (
+  map: { readonly data: MapData; readonly layout: Layout },
+  hop: { readonly from: string; readonly to: string },
+  points: readonly GridPoint[]
+) => {
+  const area = areaOf(map, hop);
+
+  return Math.max(
+    0,
+    ...Arr.map(points.slice(1, -1), (point) =>
+      outsideArea(area, project(point))
+    )
+  );
+};
+
+/** The points on a footprint's edges, on half units. */
+const edgePointsOf = ({ x, y, w, d }: Placement): readonly GridPoint[] => [
+  ...Arr.flatMap(Arr.range(0, w * 2), (step) => [
+    { x: x + step / 2, y },
+    { x: x + step / 2, y: y + d },
+  ]),
+  ...Arr.flatMap(Arr.range(0, d * 2), (step) => [
+    { x, y: y + step / 2 },
+    { x: x + w, y: y + step / 2 },
+  ]),
+];
+
+/** Whether a leg leaves a footprint's edge outwards. */
+const leaves = (point: GridPoint, next: GridPoint, box: Placement) =>
+  (point.x === box.x && next.x < box.x) ||
+  (point.x === box.x + box.w && next.x > box.x + box.w) ||
+  (point.y === box.y && next.y < box.y) ||
+  (point.y === box.y + box.d && next.y > box.y + box.d);
+
+/** Whether a leg runs through a footprint's inside or along its edge. */
+const legTouches = (leg: Leg, box: Placement) => {
+  const left = Math.min(leg.start.x, leg.end.x);
+  const right = Math.max(leg.start.x, leg.end.x);
+  const top = Math.min(leg.start.y, leg.end.y);
+  const bottom = Math.max(leg.start.y, leg.end.y);
+
+  return (
+    left <= box.x + box.w &&
+    right >= box.x &&
+    top <= box.y + box.d &&
+    bottom >= box.y
+  );
+};
+
+/** Whether a leg's line on screen runs through a name tag. */
+const legCrossesTag = (leg: Leg, tag: ScreenRect) =>
+  segmentCrosses({ start: project(leg.start), end: project(leg.end) }, [
+    { sx: tag.left, sy: tag.top },
+    { sx: tag.right, sy: tag.top },
+    { sx: tag.right, sy: tag.bottom },
+    { sx: tag.left, sy: tag.bottom },
+  ]);
+
+/**
+ * The least stray any route with at most two bends could have: leaving its
+ * source squarely, entering its target squarely, and keeping off every
+ * other revealed footprint, off the ends' footprints after its first leg
+ * and before its last, and off every revealed name tag. Infinity when no
+ * such route exists.
+ */
+const fewestStrayClear = (
+  map: { readonly data: MapData; readonly layout: Layout },
+  hop: { readonly from: string; readonly to: string },
+  revealed: ReadonlySet<string>
+) => {
+  const source = placementOf(map.layout, hop.from);
+  const target = placementOf(map.layout, hop.to);
+
+  const others = Arr.flatMap([...revealed], (id) =>
+    id === hop.from || id === hop.to ? [] : [placementOf(map.layout, id)]
+  );
+
+  const tags = Arr.flatMap(map.data.structures, (structure) =>
+    revealed.has(structure.id)
+      ? [
+          nameTagRect(
+            placementOf(map.layout, structure.id),
+            nameTagText(structure)
+          ),
+        ]
+      : []
+  );
+
+  const span = Arr.range(-20, 60);
+
+  const candidates = Arr.flatMap(edgePointsOf(source), (start) =>
+    Arr.flatMap(edgePointsOf(target), (end) => [
+      [start, { x: end.x, y: start.y }, end],
+      [start, { x: start.x, y: end.y }, end],
+      ...Arr.flatMap(span, (step) => [
+        [start, { x: step / 2, y: start.y }, { x: step / 2, y: end.y }, end],
+        [start, { x: start.x, y: step / 2 }, { x: end.x, y: step / 2 }, end],
+      ]),
+    ])
+  );
+
+  const clear = (points: readonly GridPoint[]) => {
+    const legs = legsOf(points);
+    const [first] = legs;
+    const last = legs.at(-1);
+
+    return (
+      first !== undefined &&
+      last !== undefined &&
+      leaves(first.start, first.end, source) &&
+      leaves(last.end, last.start, target) &&
+      Arr.every(
+        legs,
+        (leg, index) =>
+          Arr.every(others, (box) => !legTouches(leg, box)) &&
+          Arr.every(tags, (tag) => !legCrossesTag(leg, tag)) &&
+          (index === 0 || !legTouches(leg, source)) &&
+          (index === legs.length - 1 || !legTouches(leg, target))
+      )
+    );
+  };
+
+  return Math.min(
+    Number.POSITIVE_INFINITY,
+    ...Arr.flatMap(candidates, (points) =>
+      clear(points) ? [strayOf(map, hop, points)] : []
+    )
+  );
 };
 
 const placementOf = (layout: Layout, id: string): Placement => {
@@ -413,23 +596,70 @@ describe("scene", () => {
       })
   );
 
-  it.effect("routes chapter 1's hops into Updater with one bend each", () =>
-    Effect.gen(function* () {
-      const { data, layout } = yield* fixture("flake-pipeline");
-      const [first] = chaptersOf(data);
+  it.effect(
+    "routes chapter 1 with at most 2 bends a hop, each inside its area or forced out",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("flake-pipeline");
+        const [first] = chaptersOf(data);
 
-      assert.isDefined(first);
+        assert.isDefined(first);
 
-      const routes = routeRevealed({ data, layout, revealed: first.revealed });
+        const routes = Rec.toEntries(
+          routeRevealed({ data, layout, revealed: first.revealed })
+        );
 
-      for (const id of ["h-main-updater", "h-upstream-updater"]) {
-        const route = routes[id];
+        assert.lengthOf(routes, 2);
 
-        assert.isDefined(route, `${id} has no route`);
-        assert.strictEqual(bendsOf(route.points), 1, id);
-      }
-    })
+        for (const [id, route] of routes) {
+          const hop = hopOf(data, id);
+          const stray = strayOf({ data, layout }, hop, route.points);
+
+          assert.isAtMost(bendsOf(route.points), 2, id);
+
+          if (chapterOneExceptions.has(id)) {
+            // The exception holds only while nothing better exists.
+            assert.isAbove(
+              fewestStrayClear({ data, layout }, hop, first.revealed),
+              0,
+              `${id} could stay inside its area: drop its exception`
+            );
+          } else {
+            assert.strictEqual(stray, 0, `${id} bends outside its area`);
+          }
+        }
+      })
   );
+
+  for (const name of ["flake-pipeline", "review", "crowded"]) {
+    it.effect(
+      `keeps every ${name} bend within 3 units of its area unless boxes force it`,
+      () =>
+        Effect.gen(function* () {
+          const { data, layout } = yield* fixture(name);
+
+          for (const chapter of chaptersOf(data)) {
+            const routes = routeRevealed({
+              data,
+              layout,
+              revealed: chapter.revealed,
+            });
+
+            for (const [id, route] of Rec.toEntries(routes)) {
+              const hop = hopOf(data, id);
+              const stray = strayOf({ data, layout }, hop, route.points);
+
+              assert.isTrue(
+                stray <= strayLimit ||
+                  fewestStrayClear({ data, layout }, hop, chapter.revealed) >
+                    strayLimit,
+                `${id} in ${chapter.id} bends ${stray.toFixed(2)} units outside its area`
+              );
+            }
+          }
+        })
+    );
+  }
 
   for (const name of ["flake-pipeline", "review", "crowded"]) {
     it.effect(`bends each ${name} route at most once more than it needs`, () =>
