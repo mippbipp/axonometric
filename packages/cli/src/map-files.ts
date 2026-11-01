@@ -11,6 +11,7 @@ import {
   mapError,
   MapProblem,
   problemsFromIssue,
+  sourceKey,
   splitProblems,
 } from "@axonometric/contracts";
 import type { Layout, MapFile } from "@axonometric/contracts";
@@ -21,10 +22,14 @@ import {
   Option,
   Path,
   Random,
+  Record as Rec,
   Result,
   Schema,
 } from "effect";
 import { CliError } from "effect/cli";
+
+import { Git } from "./git.ts";
+import type { NoRepo, Repo } from "./git.ts";
 
 /**
  * The map has at least one error. `problems` holds every error and warning
@@ -184,6 +189,74 @@ const existingLinks = Effect.fnUntraced(function* (
   return new Set(found);
 });
 
+const skipReasons = {
+  "git-missing": "git isn't installed",
+  "not-a-repo": "the home folder isn't in a git repo",
+} as const satisfies Record<NoRepo, string>;
+
+/** What git says about the map's sources, gathered before `checkMap`. */
+interface SourceContext {
+  readonly repo: Option.Option<Repo>;
+  /** The line saying why source checks were skipped, when they were. */
+  readonly skipped: Option.Option<string>;
+}
+
+const noSources: SourceContext = {
+  repo: Option.none(),
+  skipped: Option.none(),
+};
+
+/**
+ * Finds the git repo that holds `home`, when the map lists any sources. A map
+ * with none never runs git.
+ */
+const sourceContext = Effect.fnUntraced(function* (
+  home: string,
+  data: MapData
+) {
+  const listed = Arr.some(
+    data.structures,
+    (structure) => (structure.sources?.length ?? 0) > 0
+  );
+
+  if (!listed) {
+    return noSources;
+  }
+
+  const git = yield* Git;
+  const repo = yield* git.repoOf(home);
+
+  return Result.match(repo, {
+    onSuccess: (found): SourceContext => ({
+      repo: Option.some(found),
+      skipped: Option.none(),
+    }),
+    onFailure: (reason): SourceContext => ({
+      repo: Option.none(),
+      skipped: Option.some(
+        `Skipped the source checks: ${skipReasons[reason]}.`
+      ),
+    }),
+  });
+});
+
+/** The web address of every source that has one, keyed by `sourceKey`. */
+const linksOf = (data: MapData, repo: Option.Option<Repo>) =>
+  Option.match(repo, {
+    onNone: () => ({}),
+    onSome: ({ linkOf }) =>
+      Rec.fromEntries(
+        Arr.flatMap(data.structures, (structure) =>
+          Arr.flatMap(structure.sources ?? [], (source) =>
+            Option.match(linkOf(source), {
+              onNone: () => [],
+              onSome: (url) => [[sourceKey(source), url] as const],
+            })
+          )
+        )
+      ),
+  });
+
 /** Both map files, decoded. */
 export interface LoadedMap {
   readonly data: MapData;
@@ -191,12 +264,16 @@ export interface LoadedMap {
   readonly layout: Layout;
   /** The layout as `layout.json` holds it, or empty when there's no file. */
   readonly saved: Layout;
+  /** The web address of each source that has one, keyed by `sourceKey`. */
+  readonly sourceLinks: Readonly<Record<string, string>>;
 }
 
 /** A map as loaded: the problems found, and the files when both decoded. */
 export interface InspectedMap {
   readonly problems: readonly MapProblem[];
   readonly map: Option.Option<LoadedMap>;
+  /** Why the source checks were skipped, when they were. */
+  readonly sourcesSkipped: Option.Option<string>;
 }
 
 /** Changes the saved layout before it's checked, such as by placing structures. */
@@ -218,17 +295,29 @@ export const inspectMap = Effect.fnUntraced(function* (
   if (Result.isSuccess(data) && Result.isSuccess(saved)) {
     const links = yield* existingLinks(output, data.success);
     const layout = arrange(data.success, saved.success);
+    const sources = yield* sourceContext(home, data.success);
+
+    const sourceFacts = Option.isSome(sources.repo)
+      ? yield* sources.repo.value.factsOf(data.success)
+      : undefined;
 
     const problems = checkMap(
       { data: data.success, layout },
       {
         linkExists: (target) => links.has(target),
+        sourceFacts,
       }
     );
 
     return {
       problems,
-      map: Option.some({ data: data.success, layout, saved: saved.success }),
+      map: Option.some({
+        data: data.success,
+        layout,
+        saved: saved.success,
+        sourceLinks: linksOf(data.success, sources.repo),
+      }),
+      sourcesSkipped: sources.skipped,
     } satisfies InspectedMap;
   }
 
@@ -238,6 +327,7 @@ export const inspectMap = Effect.fnUntraced(function* (
       ...(Result.isFailure(saved) ? saved.failure : []),
     ],
     map: Option.none(),
+    sourcesSkipped: Option.none(),
   } satisfies InspectedMap;
 });
 
@@ -262,11 +352,15 @@ export const loadMap = Effect.fnUntraced(function* ({
   command,
   arrange,
 }: LoadRequest) {
-  const { problems, map } = yield* inspectMap(home, output, arrange);
+  const { problems, map, sourcesSkipped } = yield* inspectMap(
+    home,
+    output,
+    arrange
+  );
 
   if (splitProblems(problems).errors.length > 0 || Option.isNone(map)) {
     return yield* MapInvalid.make({ home, command, problems });
   }
 
-  return { ...map.value, warnings: problems };
+  return { ...map.value, warnings: problems, sourcesSkipped };
 });

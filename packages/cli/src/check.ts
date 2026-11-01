@@ -4,7 +4,7 @@ import {
   MapProblem,
   splitProblems,
 } from "@axonometric/contracts";
-import { Console, Effect, Path, Schema } from "effect";
+import { Console, Effect, Option, Path, Schema } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/cli";
 
 import { inspectMap } from "./map-files.ts";
@@ -31,7 +31,11 @@ export class CheckFailed extends Schema.TaggedError<
 
 const check = Effect.fn("check")(function* (home: string, json: boolean) {
   const path = yield* Path.Path;
-  const { problems } = yield* inspectMap(home, path.dirname(home));
+
+  const { problems, sourcesSkipped } = yield* inspectMap(
+    home,
+    path.dirname(home)
+  );
 
   const { errors, warnings } = splitProblems(problems);
 
@@ -40,6 +44,11 @@ const check = Effect.fn("check")(function* (home: string, json: boolean) {
       yield* encodeReport({ home, ok: errors.length === 0, errors, warnings })
     );
   } else {
+    yield* Option.match(sourcesSkipped, {
+      onNone: () => Effect.void,
+      onSome: (line) => Console.log(line),
+    });
+
     yield* Effect.forEach(
       problems,
       (problem) => Console.log(formatProblem(problem)),

@@ -1,5 +1,12 @@
 import { formatProblem, placeStructures } from "@axonometric/contracts";
-import { Array as Arr, Console, Effect, Path, Record as Rec } from "effect";
+import {
+  Array as Arr,
+  Console,
+  Effect,
+  Option,
+  Path,
+  Record as Rec,
+} from "effect";
 import { Argument, Command } from "effect/cli";
 
 import { withLock } from "./lock.ts";
@@ -22,13 +29,14 @@ const build = Effect.fn("build")(function* (home: string) {
 
   yield* withLock(home, "build");
 
-  const { warnings, data, layout, saved } = yield* loadMap({
-    home,
-    output,
-    command: "build",
-    arrange: (mapData, savedLayout) =>
-      placeStructures(mapData, savedLayout).layout,
-  });
+  const { warnings, data, layout, saved, sourceLinks, sourcesSkipped } =
+    yield* loadMap({
+      home,
+      output,
+      command: "build",
+      arrange: (mapData, savedLayout) =>
+        placeStructures(mapData, savedLayout).layout,
+    });
 
   const placed = Arr.filter(
     Rec.keys(layout.structures),
@@ -42,13 +50,18 @@ const build = Effect.fn("build")(function* (home: string) {
 
   const changed = placed.length > 0 || pruned.length > 0;
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
-  const state = { system, data, layout: next };
+  const state = { system, data, layout: next, sourceLinks };
 
   yield* Effect.forEach(
     warnings,
     (warning) => Console.error(formatProblem(warning)),
     { discard: true }
   );
+
+  yield* Option.match(sourcesSkipped, {
+    onNone: () => Effect.void,
+    onSome: (line) => Effect.log(line),
+  });
 
   const systemMdFile = path.join(output, "SYSTEM.md");
   const pageFile = path.join(output, `${system}.html`);

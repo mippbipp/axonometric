@@ -1,0 +1,387 @@
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- see noGit
+import { spawnSync } from "node:child_process";
+
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, it } from "@effect/vitest";
+import {
+  Array as Arr,
+  Effect,
+  FileSystem,
+  Path,
+  Record as Rec,
+  Schema,
+  String as Str,
+} from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
+
+import { minimalMap } from "./fixtures.ts";
+import type { HomeFiles } from "./harness.ts";
+import { makeHome, runCli } from "./harness.ts";
+
+/**
+ * These tests need a real git repo, so they skip without git. Vitest decides
+ * skips before any test runs, so this check is synchronous.
+ */
+// oxlint-disable-next-line node/no-sync -- see above
+const noGit = spawnSync("git", ["--version"]).error !== undefined;
+
+/** Runs git in `cwd` and returns its trimmed output. */
+const git = Effect.fnUntraced(function* (cwd: string, args: readonly string[]) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+
+  const output = yield* spawner.string(
+    ChildProcess.make("git", args, { cwd, stdin: "ignore" })
+  );
+
+  return Str.trim(output);
+}, Effect.provide(NodeServices.layer));
+
+const dataFile = "pipeline/map/data.mjs";
+
+/**
+ * The minimal map with `sources` on its first structure. `sources` is a JS
+ * expression, so a test can pin the commit it just made.
+ */
+const mapWithSources = Effect.fnUntraced(function* (sources: string) {
+  const files = yield* minimalMap;
+  const original = files[dataFile] ?? "";
+
+  return {
+    ...files,
+    [dataFile]: `${Str.replace("export default {", "const data = {")(original)}
+data.structures[0].sources = ${sources};
+export default data;
+`,
+  } satisfies HomeFiles;
+});
+
+/** Writes `content` to `file` in `home`, a `/`-separated path. */
+const writeFile = Effect.fnUntraced(function* (
+  home: string,
+  file: string,
+  content: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const absolute = path.join(home, ...Str.split(file, "/"));
+
+  yield* fs.makeDirectory(path.dirname(absolute), { recursive: true });
+  yield* fs.writeFileString(absolute, content);
+}, Effect.provide(NodeServices.layer));
+
+/** Commits everything in `home` and returns the commit's hash. */
+const commitAll = Effect.fnUntraced(function* (home: string, message: string) {
+  yield* git(home, ["add", "--all"]);
+  yield* git(home, ["commit", "--quiet", "--no-verify", "-m", message]);
+
+  return yield* git(home, ["rev-parse", "HEAD"]);
+});
+
+/**
+ * A home folder that's a git repo on branch main, holding `src/updater.ts`
+ * in one commit, whose hash it returns.
+ */
+const repoHome = Effect.fnUntraced(function* () {
+  const home = yield* makeHome({ "src/updater.ts": "export const run = 1;\n" });
+
+  yield* git(home, ["init", "--quiet", "--initial-branch=main"]);
+  yield* git(home, ["config", "user.name", "Test"]);
+  yield* git(home, ["config", "user.email", "test@example.com"]);
+  yield* git(home, ["config", "commit.gpgsign", "false"]);
+
+  const commit = yield* commitAll(home, "add the updater");
+
+  return { home, commit };
+});
+
+/** Writes the minimal map into `home`, with `sources` on its first structure. */
+const writeMap = Effect.fnUntraced(function* (home: string, sources: string) {
+  const files = yield* mapWithSources(sources);
+
+  yield* Effect.forEach(
+    Rec.toEntries(files),
+    ([file, content]) => writeFile(home, file, content),
+    { discard: true }
+  );
+});
+
+/** Runs `command` on the minimal map's home folder inside `home`. */
+const runOnMap = Effect.fnUntraced(function* (
+  home: string,
+  command: "build" | "check"
+) {
+  const path = yield* Path.Path;
+
+  return yield* runCli(home, [command, path.join(home, "pipeline", "map")]);
+}, Effect.provide(NodeServices.layer));
+
+/** Writes the map in `home` with `sources`, then runs `check` on it. */
+const checkWith = Effect.fnUntraced(function* (home: string, sources: string) {
+  yield* writeMap(home, sources);
+
+  return yield* runOnMap(home, "check");
+});
+
+const at = "data.mjs structures[0].sources[0]";
+
+describe.skipIf(noGit)("check on a structure's sources", () => {
+  it.effect("passes a pinned source with no later change", () =>
+    Effect.gen(function* () {
+      const { home, commit } = yield* repoHome();
+
+      const result = yield* checkWith(
+        home,
+        `[{ path: "src/updater.ts", commit: "${commit}" }]`
+      );
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+      assert.include(result.stdout, ": 0 errors, 0 warnings.");
+    })
+  );
+
+  it.effect("warns once the file changes in a later commit", () =>
+    Effect.gen(function* () {
+      const { home, commit } = yield* repoHome();
+
+      yield* writeFile(home, "src/updater.ts", "export const run = 2;\n");
+      yield* commitAll(home, "change the updater");
+
+      const result = yield* checkWith(
+        home,
+        `[{ path: "src/updater.ts", commit: "${commit}" }]`
+      );
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+      assert.include(
+        result.stdout,
+        `warning ${at}.path: "src/updater.ts" changed between commit ${commit} and HEAD. Reread structure "updater"`
+      );
+      assert.include(result.stdout, ": 0 errors, 1 warning.");
+    })
+  );
+
+  it.effect("doesn't count changes that aren't committed", () =>
+    Effect.gen(function* () {
+      const { home, commit } = yield* repoHome();
+
+      yield* writeFile(home, "src/updater.ts", "export const run = 3;\n");
+
+      const result = yield* checkWith(
+        home,
+        `[{ path: "src/updater.ts", commit: "${commit}" }]`
+      );
+
+      assert.include(result.stdout, ": 0 errors, 0 warnings.");
+    })
+  );
+
+  it.effect("warns when the file is deleted or renamed after the pin", () =>
+    Effect.gen(function* () {
+      const { home, commit } = yield* repoHome();
+
+      yield* git(home, ["mv", "src/updater.ts", "src/update.ts"]);
+      yield* commitAll(home, "rename the updater");
+
+      const result = yield* checkWith(
+        home,
+        `[{ path: "src/updater.ts", commit: "${commit}" }]`
+      );
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+      assert.include(
+        result.stdout,
+        `warning ${at}.path: "src/updater.ts" exists at commit ${commit} but not at HEAD, so it was renamed or deleted.`
+      );
+    })
+  );
+
+  it.effect("errors on a typo in the path, pinned or not", () =>
+    Effect.gen(function* () {
+      const { home, commit } = yield* repoHome();
+
+      const result = yield* checkWith(
+        home,
+        `[{ path: "src/updatr.ts", commit: "${commit}" }, { path: "src/updatr.ts" }]`
+      );
+
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(
+        result.stdout,
+        `error ${at}.path: "src/updatr.ts" doesn't exist at commit ${commit}.`
+      );
+      assert.include(
+        result.stdout,
+        `error data.mjs structures[0].sources[1].path: "src/updatr.ts" isn't in the git repo's working tree.`
+      );
+      assert.include(result.stdout, ": 2 errors, 0 warnings.");
+    })
+  );
+
+  it.effect("errors on a commit that isn't in the history", () =>
+    Effect.gen(function* () {
+      const { home } = yield* repoHome();
+
+      const result = yield* checkWith(
+        home,
+        '[{ path: "src/updater.ts", commit: "0123456789abcdef0123456789abcdef01234567" }]'
+      );
+
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(
+        result.stdout,
+        `error ${at}.commit: commit 0123456789abcdef0123456789abcdef01234567 isn't in the local git history. Run git fetch`
+      );
+    })
+  );
+
+  it.effect("finds sources from the repo's root, not the home folder", () =>
+    Effect.gen(function* () {
+      const { home } = yield* repoHome();
+
+      const result = yield* checkWith(home, '[{ path: "./src/updater.ts" }]');
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+    })
+  );
+});
+
+describe("check outside a git repo", () => {
+  it.effect("skips the source checks, says so in one line, and exits 0", () =>
+    Effect.gen(function* () {
+      const home = yield* makeHome({});
+
+      const result = yield* checkWith(
+        home,
+        '[{ path: "src/updater.ts", commit: "3f2a9c1" }]'
+      );
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+
+      const lines = Str.split(result.stdout, "\n");
+
+      const skipped = Arr.filter(
+        lines,
+        Str.startsWith("Skipped the source checks")
+      );
+
+      assert.lengthOf(skipped, 1);
+      assert.include(result.stdout, ": 0 errors, 0 warnings.");
+    })
+  );
+});
+
+const Links = Schema.Record(Schema.String, Schema.String);
+
+const MapStateJson = Schema.fromJsonString(
+  Schema.Struct({ sourceLinks: Schema.optionalKey(Links) })
+);
+
+const decodeState = Schema.decodeUnknownEffect(MapStateJson);
+
+/** The source links in the map state that `build` inlined into the page. */
+const pageLinks = Effect.fnUntraced(function* (page: string) {
+  const match = /id="axonometric-map-state">(?<json>.*?)<\/script>/su.exec(
+    page
+  );
+
+  const state = yield* decodeState(match?.groups?.json ?? "");
+
+  return state.sourceLinks ?? {};
+});
+
+/** Builds the map in a repo whose origin is `remote`, if any. */
+const buildWith = Effect.fnUntraced(function* (
+  remote: string | undefined,
+  sources: (commit: string) => string
+) {
+  const { home, commit } = yield* repoHome();
+
+  if (remote !== undefined) {
+    yield* git(home, ["remote", "add", "origin", remote]);
+  }
+
+  yield* writeMap(home, sources(commit));
+
+  const result = yield* runOnMap(home, "build");
+
+  assert.strictEqual(result.exitCode, 0, result.stderr);
+
+  return {
+    commit,
+    systemMd: result.files["pipeline/SYSTEM.md"] ?? "",
+    links: yield* pageLinks(result.files["pipeline/pipeline.html"] ?? ""),
+  };
+}, Effect.provide(NodeServices.layer));
+
+const both = (commit: string) =>
+  `[{ path: "src/updater.ts", commit: "${commit}" }, { path: "src/updater.ts" }]`;
+
+describe.skipIf(noGit)("build's source links", () => {
+  for (const remote of [
+    "https://github.com/mippbipp/pipeline.git",
+    "https://github.com/mippbipp/pipeline",
+    "git@github.com:mippbipp/pipeline.git",
+    "ssh://git@github.com/mippbipp/pipeline.git",
+  ]) {
+    it.effect(`links to GitHub's blob URL for ${remote}`, () =>
+      Effect.gen(function* () {
+        const { commit, systemMd, links } = yield* buildWith(remote, both);
+
+        const pinnedUrl = `https://github.com/mippbipp/pipeline/blob/${commit}/src/updater.ts`;
+
+        const branchUrl =
+          "https://github.com/mippbipp/pipeline/blob/main/src/updater.ts";
+
+        assert.deepStrictEqual(links, {
+          [`${commit}:src/updater.ts`]: pinnedUrl,
+          ":src/updater.ts": branchUrl,
+        });
+        assert.include(systemMd, `[\`src/updater.ts\`](${pinnedUrl})`);
+        assert.include(systemMd, `[\`src/updater.ts\`](${branchUrl})`);
+      })
+    );
+  }
+
+  it.effect("shows plain paths with no remote", () =>
+    Effect.gen(function* () {
+      const { systemMd, links } = yield* buildWith(undefined, both);
+
+      assert.deepStrictEqual(links, {});
+      assert.include(systemMd, "- `src/updater.ts`");
+      assert.notInclude(systemMd, "](https://");
+    })
+  );
+
+  it.effect("shows plain paths for a host it doesn't know", () =>
+    Effect.gen(function* () {
+      const { links } = yield* buildWith(
+        "https://gitlab.com/mippbipp/pipeline.git",
+        both
+      );
+
+      assert.deepStrictEqual(links, {});
+    })
+  );
+
+  it.effect("links a detached HEAD's unpinned sources to its commit", () =>
+    Effect.gen(function* () {
+      const { home, commit } = yield* repoHome();
+
+      yield* git(home, [
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:mippbipp/pipeline.git",
+      ]);
+      yield* git(home, ["checkout", "--quiet", "--detach"]);
+      yield* writeMap(home, '[{ path: "src/updater.ts" }]');
+
+      const result = yield* runOnMap(home, "build");
+
+      assert.include(
+        result.files["pipeline/SYSTEM.md"] ?? "",
+        `(https://github.com/mippbipp/pipeline/blob/${commit}/src/updater.ts)`
+      );
+    })
+  );
+});
