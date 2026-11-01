@@ -44,9 +44,14 @@ export interface HopRoute {
 
 /**
  * The longest a route may be, in grid units, for ends `distance` apart along
- * the axes: half as long again, plus a little room to turn.
+ * the axes: half as long again, plus one unit. The unit is the slack two
+ * half-unit face stubs need when a route leaves or enters at a corner, the
+ * most any route between footprints at least a half unit apart overshoots
+ * `1.5 * distance` by. Footprints that touch can need more, because both
+ * ends' stubs must clear the shared edge; placement keeps a gap, and `check`
+ * warns when a hand-placed layout makes such a route long.
  */
-export const routeCap = (distance: number) => 1.5 * distance + 4;
+export const routeCap = (distance: number) => 1.5 * distance + 1;
 
 /** A route's length in grid units, and the distance between its ends. */
 export const routeLength = (points: readonly GridPoint[]) => {
@@ -1152,6 +1157,42 @@ const routeOf = (grid: Grid, frontier: Frontier, best: Finish) => {
 };
 
 /**
+ * The cheapest straight leg from `from`'s edge to a facing point on `to`'s
+ * edge, when the two face each other across a gap no wider than a stub:
+ * there the search's stubs would overlap, so it's found directly.
+ */
+const straightAcross = (
+  search: Search,
+  { from, to }: { readonly from: Box; readonly to: Box }
+): readonly Cell[] | undefined => {
+  const targets = new Map(
+    Arr.map(edgePoints(to, from), (edge) => [
+      `${edge.x},${edge.y},${edge.out}`,
+      edge,
+    ])
+  );
+
+  const straight = Arr.flatMap(stubsOf(search, from, to), (stub) => {
+    const end = targets.get(
+      `${stub.tip.x},${stub.tip.y},${opposite(stub.edge.out)}`
+    );
+
+    return end === undefined ? [] : [{ stub, cost: stub.cost + end.cost }];
+  });
+
+  if (!Arr.isReadonlyArrayNonEmpty(straight)) {
+    return undefined;
+  }
+
+  const { stub } = Arr.min(
+    straight,
+    Order.mapInput(Order.Number, ({ cost }: (typeof straight)[number]) => cost)
+  );
+
+  return [{ x: stub.edge.x, y: stub.edge.y }, stub.tip];
+};
+
+/**
  * The cheapest route from `from`'s edge to `to`'s edge, by A* over the
  * half-unit grid with a cost for each bend. Each end runs straight out of
  * its box for a stub before it may turn. Running under a box costs more
@@ -1167,6 +1208,12 @@ const searchRoute = (
   }
 ): readonly Cell[] => {
   const search = searchOf(grid, pair, ends);
+  const across = straightAcross(search, ends);
+
+  if (across !== undefined) {
+    return across;
+  }
+
   const goals = goalsOf(search);
   const size = grid.width * grid.height * directions;
 

@@ -1,5 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Option,
+  Record as Rec,
+  String as Str,
+} from "effect";
 
 import { checkLayout, routeCap, routeHops, routeLength } from "../src/index.ts";
 import type {
@@ -478,6 +484,126 @@ describe("route checks", () => {
           },
         ]
       );
+    })
+  );
+
+  it.effect("warns when two overrides run along the same segment", () =>
+    Effect.sync(() => {
+      const along = [
+        { x: 2, y: 1 },
+        { x: 4, y: 1 },
+      ];
+
+      const { data, layout } = mapOf(
+        { a: at(0, 0), b: at(4, 0) },
+        [hop("a", "b", "there"), hop("b", "a", "back")],
+        {
+          there: along,
+          back: [
+            { x: 4, y: 1 },
+            { x: 3, y: 1 },
+            { x: 3, y: 1.5 },
+            { x: 2, y: 1.5 },
+          ],
+        }
+      );
+
+      assert.deepStrictEqual(
+        Arr.map(checkLayout(data, layout), ({ severity, path, message }) => ({
+          severity,
+          path,
+          message,
+        })),
+        [
+          {
+            severity: "warning",
+            path: "routes.there",
+            message:
+              'hop "there"\'s route override runs along the same segment as hop "back", so the two read as one line. Move the override\'s points off the other route.',
+          },
+        ]
+      );
+    })
+  );
+
+  it.effect("is quiet when overrides for the same pair run side by side", () =>
+    Effect.sync(() => {
+      const { data, layout } = mapOf(
+        { a: at(0, 0), b: at(4, 0) },
+        [hop("a", "b", "there"), hop("b", "a", "back")],
+        {
+          there: [
+            { x: 2, y: 0.5 },
+            { x: 4, y: 0.5 },
+          ],
+          back: [
+            { x: 4, y: 1.5 },
+            { x: 2, y: 1.5 },
+          ],
+        }
+      );
+
+      assert.deepStrictEqual(checkLayout(data, layout), []);
+    })
+  );
+
+  it.effect("rejects an override whose end is off its structure", () =>
+    Effect.sync(() => {
+      const { data, layout } = mapOf(
+        { a: at(0, 0), b: at(8, 0) },
+        [hop("a", "b")],
+        {
+          "a-b": [
+            { x: 2, y: 1 },
+            { x: 6, y: 1 },
+          ],
+        }
+      );
+
+      const errors = Arr.filter(
+        checkLayout(data, layout),
+        ({ severity }) => severity === "error"
+      );
+
+      assert.deepStrictEqual(
+        Arr.map(errors, ({ path, message }) => ({ path, message })),
+        [
+          {
+            path: 'routes["a-b"]',
+            message:
+              'hop "a-b"\'s route override ends at (6, 1), which isn\'t on the edge of "b" at x 8–10, y 0–2. Move its last point onto that footprint\'s edge.',
+          },
+        ]
+      );
+    })
+  );
+
+  it.effect("tells a long override to shorten itself, not to write one", () =>
+    Effect.sync(() => {
+      const { data, layout } = mapOf(
+        { a: at(0, 0), b: at(4, 0) },
+        [hop("a", "b")],
+        {
+          "a-b": [
+            { x: 2, y: 1 },
+            { x: 2.5, y: 1 },
+            { x: 2.5, y: 8 },
+            { x: 3.5, y: 8 },
+            { x: 3.5, y: 1 },
+            { x: 4, y: 1 },
+          ],
+        }
+      );
+
+      const long = Option.getOrUndefined(
+        Arr.findFirst(checkLayout(data, layout), ({ message }) =>
+          Str.includes("long way round")(message)
+        )
+      );
+
+      assert.isDefined(long);
+      assert.include(long.message, "Shorten the route override's points");
+      assert.notInclude(long.message, "write a route override");
     })
   );
 

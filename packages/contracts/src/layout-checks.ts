@@ -2,9 +2,9 @@ import { Array as Arr, Record as Rec, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import { boxOutline, nameTagRect, nameTagText, tagCoversBox } from "./iso.ts";
-import type { Layout, Placement } from "./layout.ts";
+import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
-import { mapWarning } from "./problems.ts";
+import { mapError, mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
 import { routeLength, routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
@@ -154,13 +154,61 @@ const routeWarnings = (
         mapWarning({
           file: "layout.json",
           path: ["routes", hop.id],
-          message: `hop "${hop.id}" from "${hop.from}" to "${hop.to}" takes a long way round: ${length} units for ends ${distance} apart. Move the structures so nothing stands between them, or write a route override.`,
+          message: `hop "${hop.id}" from "${hop.from}" to "${hop.to}" takes a long way round: ${length} units for ends ${distance} apart. ${
+            route.overridden
+              ? "Shorten the route override's points, or delete it so the hop routes itself."
+              : "Move the structures so nothing stands between them, or write a route override."
+          }`,
         }),
       ]
     : [];
 
   return [...under, ...long];
 };
+
+/** Whether a point sits on a footprint's outline, edges and corners included. */
+const onOutline = (point: GridPoint, box: Placement) => {
+  const withinX = point.x >= box.x && point.x <= box.x + box.w;
+  const withinY = point.y >= box.y && point.y <= box.y + box.d;
+  const onX = point.x === box.x || point.x === box.x + box.w;
+  const onY = point.y === box.y || point.y === box.y + box.d;
+
+  return (onX && withinY) || (onY && withinX);
+};
+
+/**
+ * Errors for route overrides whose first point isn't on the edge of the
+ * hop's source footprint, or whose last point isn't on its target's. Such
+ * a route starts or ends in the open, or inside a box, so it can't be
+ * drawn as a hop between the two.
+ */
+const offEndOverrides = (data: MapData, layout: Layout) =>
+  Arr.flatMap(data.hops, (hop) => {
+    const points = layout.routes?.[hop.id];
+    const from = layout.structures[hop.from];
+    const to = layout.structures[hop.to];
+
+    if (points === undefined || from === undefined || to === undefined) {
+      return [];
+    }
+
+    const ends = [
+      { end: "first", point: points[0], box: from, structure: hop.from },
+      { end: "last", point: points.at(-1), box: to, structure: hop.to },
+    ] as const;
+
+    return Arr.flatMap(ends, ({ end, point, box, structure }) =>
+      point === undefined || onOutline(point, box)
+        ? []
+        : [
+            mapError({
+              file: "layout.json",
+              path: ["routes", hop.id],
+              message: `hop "${hop.id}"'s route override ${end === "first" ? "starts" : "ends"} at (${point.x}, ${point.y}), which isn't on the edge of "${structure}" at x ${box.x}–${box.x + box.w}, y ${box.y}–${box.y + box.d}. Move its ${end} point onto that footprint's edge.`,
+            }),
+          ]
+    );
+  });
 
 const staleRoutes = (data: MapData, layout: Layout) => {
   const ids = new Set(Arr.map(data.hops, ({ id }) => id));
@@ -242,6 +290,73 @@ const structureParts: ReadonlySet<string> = new Set(["box", "tag", "chip"]);
 const coveredElsewhere = (first: string, second: string) =>
   structureParts.has(kindOf(first)) && structureParts.has(kindOf(second));
 
+/** Every half-unit step a route takes, as order-free keys. */
+const stepKeysOf = (points: readonly GridPoint[]) =>
+  new Set(
+    Arr.flatMap(points, (start, index) => {
+      const end = points[index + 1];
+
+      if (end === undefined) {
+        return [];
+      }
+
+      const count = (Math.abs(end.x - start.x) + Math.abs(end.y - start.y)) * 2;
+      const dx = Math.sign(end.x - start.x) / 2;
+      const dy = Math.sign(end.y - start.y) / 2;
+
+      return Arr.map(Arr.range(0, count - 1), (step) => {
+        const x = start.x + dx * step;
+        const y = start.y + dy * step;
+
+        return `${Math.min(x, x + dx)},${Math.min(y, y + dy)},${dx === 0 ? "y" : "x"}`;
+      });
+    })
+  );
+
+/**
+ * Warnings for two routes that run along the same segment, where at least
+ * one is a route override. The router keeps its own routes apart, so only
+ * an override can land on top of another route, and then the two hops read
+ * as one line.
+ */
+const sharedSegments = (
+  data: MapData,
+  routes: Readonly<Record<string, HopRoute>>
+) => {
+  const routed = Arr.flatMap(data.hops, (hop) => {
+    const route = routes[hop.id];
+
+    return route === undefined
+      ? []
+      : [{ hop, route, steps: stepKeysOf(route.points) }];
+  });
+
+  return Arr.flatMap(routed, (first, index) =>
+    Arr.flatMap(routed.slice(index + 1), (second) => {
+      const overridden = first.route.overridden || second.route.overridden;
+
+      const shares = Arr.some([...second.steps], (step) =>
+        first.steps.has(step)
+      );
+
+      if (!overridden || !shares) {
+        return [];
+      }
+
+      const owner = first.route.overridden ? first : second;
+      const other = owner === first ? second : first;
+
+      return [
+        mapWarning({
+          file: "layout.json",
+          path: ["routes", owner.hop.id],
+          message: `hop "${owner.hop.id}"'s route override runs along the same segment as hop "${other.hop.id}", so the two read as one line. Move the override's points off the other route.`,
+        }),
+      ];
+    })
+  );
+};
+
 /**
  * Warnings about each chapter's drawing, as the walkthrough draws it: hops
  * routed around the structures revealed so far, and everything else the
@@ -288,13 +403,19 @@ const chapterWarnings = (data: MapData, layout: Layout) => {
             ]
     );
 
-    return [...routing, ...clashes];
+    const shared = Arr.filter(sharedSegments(data, routes), ({ message }) =>
+      once(message)
+    );
+
+    return [...routing, ...shared, ...clashes];
   });
 };
 
 /**
- * Warnings about how the layout reads: entries for structures that no longer
- * exist, route overrides for hops that no longer exist, footprints that
+ * Problems with how the layout reads. Errors for route overrides whose ends
+ * aren't on their hop's footprints; warnings for entries for structures
+ * that no longer exist, route overrides for hops that no longer exist,
+ * overrides that share a segment with another route, footprints that
  * overlap, name tags drawn over other boxes, zones that overlap, routes that
  * run under boxes, and anything else the iso view would draw over something
  * in some chapter. A structure with no placement gets nothing, because
@@ -309,6 +430,7 @@ export const checkLayout: {
   return [
     ...staleEntries(data, layout),
     ...staleRoutes(data, layout),
+    ...offEndOverrides(data, layout),
     ...overlaps(placed),
     ...coveredTags(placed),
     ...overlappingZones(data, layout),
