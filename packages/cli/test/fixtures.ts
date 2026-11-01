@@ -50,3 +50,13 @@ export const fullMap: Effect.Effect<HomeFiles> = readFixtures([
   "review/adr/0001-local-server.md",
   "review/research/clipboard.md",
 ]);
+
+/**
+ * A map at `crowded/map/` that forces routing around boxes: a hop with a
+ * structure in its way, a request and its reply between the same pair, and
+ * a hop into a walled-in vault that can't avoid a box.
+ */
+export const crowdedMap: Effect.Effect<HomeFiles> = readFixtures([
+  "crowded/map/data.mjs",
+  "crowded/map/layout.json",
+]);
