@@ -1,6 +1,13 @@
-import { project } from "@axonometric/contracts";
-import type { Layout, Placement, ScreenPoint } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import { project, routeRevealed } from "@axonometric/contracts";
+import type {
+  GridPoint,
+  HopRoute,
+  Layout,
+  MapData,
+  Placement,
+  ScreenPoint,
+} from "@axonometric/contracts";
+import { Array as Arr, Order } from "effect";
 
 export {
   corners,
@@ -10,12 +17,6 @@ export {
 } from "@axonometric/contracts";
 
 export type { Corners, ScreenPoint } from "@axonometric/contracts";
-
-/** A point on the ground grid, in grid units. */
-export interface GridPoint {
-  readonly x: number;
-  readonly y: number;
-}
 
 /** Formats screen points for an SVG `points` attribute. */
 export const toPoints = (points: readonly ScreenPoint[]) =>
@@ -64,14 +65,15 @@ const toEdge = (
 
 const samePoint = (a: GridPoint, b: GridPoint) => a.x === b.x && a.y === b.y;
 
-/** The two footprints a hop runs between. */
+/** The two footprints a link in the inside view runs between. */
 export interface HopEnds {
   readonly from: Placement;
   readonly to: Placement;
 }
 
 /**
- * Routes a hop along the ground with at most one bend, from the edge of one
+ * Routes a link between two steps of the inside view along the ground with
+ * at most one bend, from the edge of one
  * footprint to the edge of the other. Of the two bends it takes the one whose
  * last leg reaches the target's front edge (its +x or +y side), where the
  * target's box can't hide the arrowhead. When neither or both do, it bends x
@@ -93,23 +95,71 @@ export const routeHop = ({ from, to }: HopEnds): readonly GridPoint[] => {
   return [toEdge(start, bend, from), bend, toEdge(end, bend, to)];
 };
 
+const routeCache = new WeakMap<
+  MapData,
+  WeakMap<Layout, Map<string, Readonly<Record<string, HopRoute>>>>
+>();
+
+const keyOf = (revealed: ReadonlySet<string>) =>
+  Arr.join(Arr.sort([...revealed], Order.String), "\n");
+
 /**
- * A hop's route on screen, or `undefined` when either end has no placement.
- * Packets walk along these points.
+ * Every revealed hop's route on the ground, routed around the revealed
+ * structures only, from the contracts router. Routing the same data, layout
+ * and set again returns the same object, so the iso view and the packets
+ * share one routing pass.
+ */
+export const routesOf = ({
+  data,
+  layout,
+  revealed,
+}: {
+  readonly data: MapData;
+  readonly layout: Layout;
+  readonly revealed: ReadonlySet<string>;
+}): Readonly<Record<string, HopRoute>> => {
+  const byLayout =
+    routeCache.get(data) ??
+    new WeakMap<Layout, Map<string, Readonly<Record<string, HopRoute>>>>();
+
+  const bySet =
+    byLayout.get(layout) ??
+    new Map<string, Readonly<Record<string, HopRoute>>>();
+
+  const key = keyOf(revealed);
+  const cached = bySet.get(key);
+
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const routes = routeRevealed({ data, layout, revealed });
+
+  bySet.set(key, routes);
+  byLayout.set(layout, bySet);
+  routeCache.set(data, byLayout);
+
+  return routes;
+};
+
+/**
+ * A hop's route on screen, or `undefined` when it has none, such as when
+ * either end isn't revealed. Packets walk along these points.
  */
 export const screenRouteOf = ({
+  data,
   layout,
+  revealed,
   hop,
 }: {
+  readonly data: MapData;
   readonly layout: Layout;
-  readonly hop: { readonly from: string; readonly to: string };
+  readonly revealed: ReadonlySet<string>;
+  readonly hop: { readonly id: string };
 }): readonly ScreenPoint[] | undefined => {
-  const from = layout.structures[hop.from];
-  const to = layout.structures[hop.to];
+  const route = routesOf({ data, layout, revealed })[hop.id];
 
-  return from === undefined || to === undefined
-    ? undefined
-    : Arr.map(routeHop({ from, to }), project);
+  return route === undefined ? undefined : Arr.map(route.points, project);
 };
 
 /**

@@ -48,7 +48,14 @@ const build = Effect.fn("build")(function* (home: string) {
     (id) => !Rec.has(layout.structures, id)
   );
 
-  const changed = placed.length > 0 || pruned.length > 0;
+  const prunedRoutes = Arr.filter(
+    Rec.keys(saved.routes ?? {}),
+    (id) => !Rec.has(layout.routes ?? {}, id)
+  );
+
+  const changed =
+    placed.length > 0 || pruned.length > 0 || prunedRoutes.length > 0;
+
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
   const state = { system, data, layout: next, sourceLinks };
 
@@ -90,6 +97,12 @@ const build = Effect.fn("build")(function* (home: string) {
   if (pruned.length > 0) {
     yield* Effect.log(
       `Removed ${quoted(pruned)} from ${layoutFile}: no structure in data.mjs has ${pruned.length === 1 ? "that id" : "those ids"}.`
+    );
+  }
+
+  if (prunedRoutes.length > 0) {
+    yield* Effect.log(
+      `Removed the route override${prunedRoutes.length === 1 ? "" : "s"} for ${quoted(prunedRoutes)} from ${layoutFile}: no hop in data.mjs has ${prunedRoutes.length === 1 ? "that id" : "those ids"}.`
     );
   }
 

@@ -87,8 +87,9 @@ function WalkthroughPage() {
   useInsideFocus(inside);
 
   const isoRouteOf = useCallback(
-    (hop: Hop) => screenRouteOf({ layout: state.layout, hop }),
-    [state.layout]
+    (hop: Hop) =>
+      screenRouteOf({ data: state.data, layout: state.layout, revealed, hop }),
+    [state.data, state.layout, revealed]
   );
 
   return (
@@ -126,6 +127,7 @@ function WalkthroughPage() {
               newlyRevealed={newlyRevealed}
               fitTo={fit}
               fitKey={stop.id}
+              labelFirst={stop.plays}
             >
               <PacketLayer routeOf={isoRouteOf} />
             </IsoView>

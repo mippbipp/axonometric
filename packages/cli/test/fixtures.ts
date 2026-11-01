@@ -50,3 +50,25 @@ export const fullMap: Effect.Effect<HomeFiles> = readFixtures([
   "review/adr/0001-local-server.md",
   "review/research/clipboard.md",
 ]);
+
+/**
+ * A map at `crowded/map/` that forces routing around boxes: a hop with a
+ * structure in its way, a request and its reply between the same pair, and
+ * a hop into a walled-in vault that can't avoid a box.
+ */
+export const crowdedMap: Effect.Effect<HomeFiles> = readFixtures([
+  "crowded/map/data.mjs",
+  "crowded/map/layout.json",
+]);
+
+/**
+ * A real map at `flake-pipeline/map/`: conf.nix's flake update pipeline, with
+ * 15 structures in 4 groups, 29 hops, 8 chapters and a 9-step inside view.
+ * Its decisions link to stand-in ADRs next to it.
+ */
+export const pipelineMap: Effect.Effect<HomeFiles> = readFixtures([
+  "flake-pipeline/map/data.mjs",
+  "flake-pipeline/map/layout.json",
+  "flake-pipeline/adr/0009-flake-update-pipeline.md",
+  "flake-pipeline/adr/0018-per-arch-build-gate.md",
+]);

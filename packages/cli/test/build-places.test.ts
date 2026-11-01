@@ -206,6 +206,56 @@ describe("build places structures", () => {
       })
   );
 
+  it.effect(
+    "check warns about an override for a removed hop, and build removes it",
+    () =>
+      Effect.gen(function* () {
+        const files = yield* minimalMap;
+        const saved = yield* decodeLayout(files[layoutFile] ?? "");
+
+        const kept = [
+          { x: 2, y: 5 },
+          { x: 5, y: 5 },
+          { x: 5, y: 1.5 },
+        ];
+
+        const home = yield* makeHome({
+          ...files,
+          [layoutFile]: yield* encodeLayout({
+            ...saved,
+            revision: 4,
+            routes: {
+              "h-update": kept,
+              "h-gone": [
+                { x: 0, y: 5 },
+                { x: 4, y: 5 },
+              ],
+            },
+          }),
+        });
+
+        const checked = yield* runCli(home, ["check", `${home}/pipeline/map`]);
+
+        assert.strictEqual(checked.exitCode, 0);
+        assert.include(
+          checked.stdout,
+          'warning layout.json routes["h-gone"]: no hop in data.mjs has the id "h-gone". build removes this route override.'
+        );
+
+        const built = yield* buildIn(home);
+        const layout = yield* layoutOf(built.files);
+
+        assert.strictEqual(built.exitCode, 0, built.stderr);
+        assert.deepStrictEqual(layout.routes, { "h-update": kept });
+        assert.deepStrictEqual(layout.structures, saved.structures);
+        assert.strictEqual(layout.revision, 5);
+        assert.include(
+          built.stderr + built.stdout,
+          'Removed the route override for "h-gone"'
+        );
+      })
+  );
+
   it.effect("takes and releases the lock", () =>
     Effect.gen(function* () {
       const home = yield* makeHome({ [dataFile]: sixStructures });
