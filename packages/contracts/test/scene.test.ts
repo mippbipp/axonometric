@@ -30,6 +30,7 @@ import {
 } from "../src/index.ts";
 import type {
   GridPoint,
+  SceneClash,
   Placement,
   ScreenPoint,
   ScreenRect,
@@ -458,6 +459,27 @@ const offSegment = (point: ScreenPoint, a: ScreenPoint, b: ScreenPoint) => {
 // when the browser tests run alongside.
 vi.setConfig({ testTimeout: 30_000 });
 
+const clashKey = ({ between: [first, second] }: SceneClash) =>
+  `${first} × ${second}`;
+
+/**
+ * Clashes a fixture draws on purpose, by fixture and chapter. Each is
+ * checked both ways: any other clash fails, and so does an allowed one
+ * that's no longer drawn.
+ *
+ * - crowded, chapter c-all: the north and west walls' boxes are drawn over
+ *   the vault's box. The walls stand half a unit from the vault so that no
+ *   route can reach it without running under one, which is what the map is
+ *   for, and at that distance their iso boxes overlap the vault's on
+ *   screen.
+ */
+const allowedClashes = new Map([
+  [
+    "crowded",
+    new Map([["c-all", ["box:north × box:vault", "box:west × box:vault"]]]),
+  ],
+]);
+
 describe("scene", () => {
   for (const name of ["flake-pipeline", "review", "crowded"]) {
     it.effect(`draws nothing over anything in any chapter of ${name}`, () =>
@@ -472,14 +494,22 @@ describe("scene", () => {
             labelFirst: chapter.plays,
           });
 
-          // The crowded map walls the vault in on purpose, so its only
-          // allowed clashes are the walls' boxes over the vault's.
-          const clashes = Arr.filter(
-            sceneClashes(scene),
-            ({ between }) => !(name === "crowded" && between[1] === "box:vault")
+          const allowed = allowedClashes.get(name)?.get(chapter.id) ?? [];
+          const clashes = Arr.map(sceneClashes(scene), clashKey);
+
+          assert.deepStrictEqual(
+            Arr.filter(clashes, (clash) => !allowed.includes(clash)),
+            [],
+            `in chapter ${chapter.id}`
           );
 
-          assert.deepStrictEqual(clashes, [], `in chapter ${chapter.id}`);
+          // Each allowed clash must still happen, so none outlives its
+          // reason.
+          assert.deepStrictEqual(
+            Arr.filter(allowed, (clash) => !clashes.includes(clash)),
+            [],
+            `allowed clashes no longer drawn in chapter ${chapter.id}`
+          );
         }
       })
     );
