@@ -48,4 +48,3 @@ catalogs:
 # patch can't target effect APIs the pinned effect doesn't have.
 overrides:
   "@effect/platform-node-shared": 4.1.0
-
