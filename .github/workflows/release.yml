@@ -11,9 +11,16 @@ on:
     paths:
       - .github/workflows/release.yml
       - packages/cli/**
+      - packages/contracts/**
+      - packages/editor/**
+      - packages/ui/**
+      - packages/config/**
       - scripts/**
       - package.json
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - turbo.jsonc
+      - tsconfig.json
 
 permissions:
   contents: read
@@ -23,8 +30,39 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Reads the version once, for every job after it. On a tag, the tag must
+  # match packages/cli/package.json. A version with a suffix, such as
+  # 0.1.0-rc.1, is a pre-release.
+  meta:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: version
+        run: |
+          version=$(jq -r .version packages/cli/package.json)
+
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "The tag is $GITHUB_REF_NAME, but packages/cli/package.json says $version." >&2
+            exit 1
+          fi
+
+          case $version in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
+
+          echo "Version $version, pre-release: $prerelease"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >>"$GITHUB_OUTPUT"
+
   binary:
     name: binary (${{ matrix.target }})
+    needs: meta
     strategy:
       fail-fast: false
       matrix:
@@ -53,21 +91,14 @@ jobs:
           cache: true
           require-lockfile: true
 
-      - name: Check the tag matches the package version
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          version=$(node -p 'require("./packages/cli/package.json").version')
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "The tag is $GITHUB_REF_NAME, but packages/cli/package.json says $version." >&2
-            exit 1
-          fi
-
       - run: pnpm turbo run build --filter axonometric
 
       - run: pnpm --filter axonometric build:sea
 
       - name: Smoke-test the binary
-        run: packages/cli/scripts/smoke-binary.sh "packages/cli/release/$BINARY"
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: packages/cli/scripts/smoke-binary.sh "packages/cli/release/$BINARY" "$VERSION"
 
       - name: Write a checksum for the install test
         working-directory: packages/cli/release
@@ -95,13 +126,16 @@ jobs:
           # The archives are already compressed.
           compression-level: 0
 
-  # The npm publish job (#29) goes beside this one, also after `binary`.
+  # The npm publish job (#29) goes beside this one, after `meta` and `binary`.
   release:
-    needs: binary
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [meta, binary]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
 
     steps:
       - uses: actions/checkout@v7
@@ -124,20 +158,19 @@ jobs:
       - name: Write the release notes
         working-directory: release
         run: |
-          version=${GITHUB_REF_NAME#v}
           node_version=$(jq -r .devEngines.runtime.version ../package.json)
-          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION"
           {
             echo "Install on Linux or macOS:"
             echo
             echo '```sh'
-            echo "curl -fsSL $base/install.sh | AXONOMETRIC_VERSION=$version sh"
+            echo "curl -fsSL $base/install.sh | AXONOMETRIC_VERSION=$VERSION sh"
             echo '```'
             echo
             echo "Install on Windows, in PowerShell:"
             echo
             echo '```powershell'
-            echo "\$env:AXONOMETRIC_VERSION = '$version'; irm $base/install.ps1 | iex"
+            echo "\$env:AXONOMETRIC_VERSION = '$VERSION'; irm $base/install.ps1 | iex"
             echo '```'
             echo
             echo "Each archive holds one binary with Node $node_version built in, so you don't need Node installed. The macOS binaries have an ad-hoc signature and aren't notarized. The Windows binary isn't signed. SHA256SUMS lists every file's checksum."
@@ -156,12 +189,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=()
-          case $GITHUB_REF_NAME in
-            *-*) prerelease=(--prerelease) ;;
-          esac
-          gh release create "$GITHUB_REF_NAME" release/* \
+          if [ "$PRERELEASE" = true ]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create "v$VERSION" release/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --title "$GITHUB_REF_NAME" \
+            --title "v$VERSION" \
             --notes-file notes.md \
             "${prerelease[@]}"
