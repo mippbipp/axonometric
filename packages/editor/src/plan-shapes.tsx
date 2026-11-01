@@ -1,21 +1,17 @@
-import type {
-  ScreenPoint,
-  ScreenRect,
-  Shape,
-  Structure,
-} from "@axonometric/contracts";
+import { growRect } from "@axonometric/contracts";
+import type { ScreenPoint, ScreenRect, Shape } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
-import { boundsOf } from "./bounds.ts";
-import { toPoints } from "./iso.ts";
+import { toPoints } from "./projection.ts";
 import { CodeChip, OffMark } from "./shapes.tsx";
+import type { StructureDrawingProps } from "./structure-drawing.ts";
 import { StructureTarget } from "./structure-target.tsx";
 
 // How each shape is drawn in Plan view: its footprint as a flat box seen
-// from above, with a hatched strip along the bottom edge where the iso view
+// from above, with a hatched strip along the bottom edge where the Iso view
 // shows the hatched sides, and a small icon of the shape in the middle. The
-// icons keep the iso view's line weights and its `data-face` and
+// icons keep the Iso view's line weights and its `data-face` and
 // `data-hatch` parts, so the status rules in index.css restyle both views.
 
 /** How tall the hatched strip along a box's bottom edge is. */
@@ -31,7 +27,7 @@ interface IconProps {
 const face = "fill-face";
 
 function BoxIcon() {
-  // A cube, the iso view's box in miniature.
+  // A cube, the Iso view's box in miniature.
   const s = iconSize;
 
   return (
@@ -62,21 +58,23 @@ function BoxIcon() {
 }
 
 function TallIcon() {
-  // A hipped roof from above: its ridges meet in the middle.
+  // A tall, narrow block of stacked floors: the brain stands highest.
   const s = iconSize;
+  const floors = [-0.5, 0, 0.5];
 
   return (
     <>
       <rect
         data-face=""
-        x={-s}
-        y={-s}
-        width={s * 2}
-        height={s * 2}
+        x={-s * 0.6}
+        y={-s * 1.1}
+        width={s * 1.2}
+        height={s * 2.2}
         className={face}
       />
-      <line x1={-s} y1={-s} x2={s} y2={s} />
-      <line x1={s} y1={-s} x2={-s} y2={s} />
+      {Arr.map(floors, (at) => (
+        <line key={at} x1={-s * 0.6} y1={s * at} x2={s * 0.6} y2={s * at} />
+      ))}
     </>
   );
 }
@@ -129,27 +127,21 @@ function CardsIcon() {
 }
 
 function SlabIcon({ hatch }: IconProps) {
-  // A wide, flat block with a hatched top.
+  // A wide, flat block, hatched across its top like the Iso view's slab.
   const s = iconSize;
+  const top = { x: -s * 2, y: -s * 0.55, width: s * 4, height: s * 0.8 };
 
   return (
     <>
+      <rect data-face="" {...top} className={face} />
+      <rect data-hatch="" {...top} fill={`url(#${hatch})`} stroke="none" />
       <rect
         data-face=""
-        x={-s * 1.3}
-        y={-s * 0.5}
-        width={s * 2.6}
-        height={s}
+        x={top.x}
+        y={top.y + top.height}
+        width={top.width}
+        height={s * 0.35}
         className={face}
-      />
-      <rect
-        data-hatch=""
-        x={-s * 1.3}
-        y={-s * 0.5}
-        width={s * 2.6}
-        height={s}
-        fill={`url(#${hatch})`}
-        stroke="none"
       />
     </>
   );
@@ -294,12 +286,13 @@ function DocumentIcon() {
 }
 
 function ExternalIcon() {
-  // An arrow coming in from outside.
+  // An arrow coming in from outside, drawn lighter than a hop.
   const s = iconSize;
 
   return (
     <>
       <rect
+        strokeWidth={1}
         data-face=""
         x={-s * 0.2}
         y={-s * 0.8}
@@ -310,7 +303,7 @@ function ExternalIcon() {
       <path
         d={`M${-s},0 L${s * 0.4},0 M${s * 0.05},${-s * 0.35} L${s * 0.4},0 L${s * 0.05},${s * 0.35}`}
         fill="none"
-        strokeWidth={1.4}
+        strokeWidth={1}
         strokeLinecap="round"
       />
     </>
@@ -334,12 +327,8 @@ const icons = {
 /** How far inside its outline an external box is drawn: its halo. */
 const haloInset = 12;
 
-const inset = (rect: ScreenRect, by: number): ScreenRect => ({
-  left: rect.left + by,
-  top: rect.top + by,
-  right: rect.right - by,
-  bottom: rect.bottom - by,
-});
+/** The gap between an external box's two outlines. */
+const ringGap = 4;
 
 /** A box from above, with the hatched strip along its bottom edge. */
 function Box({
@@ -391,39 +380,25 @@ const offMarkAt = (rect: ScreenRect): ScreenPoint => ({
 /**
  * One structure in Plan view: its footprint from above with its shape's
  * icon in the middle, styled for its status, with its code chip in the top
- * left corner when it fits. An external structure sits inside a dashed
- * ring, as in the iso view.
+ * left corner when it fits. An external structure sits inside a second
+ * outline, a gap away. A structure the chapter reveals is tinted.
  */
 export function PlanStructure({
-  structure,
-  outline,
-  chip,
+  placed: { structure, bounds, chip },
   hatch,
-}: {
-  readonly structure: Structure;
-  /** What the shape draws, from the scene: the footprint, halo included. */
-  readonly outline: readonly ScreenPoint[];
-  readonly chip: ScreenRect | undefined;
-  readonly hatch: string;
-}) {
+  isNew,
+}: StructureDrawingProps) {
   const Icon = icons[structure.shape];
-  const bounds = boundsOf(outline) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-
-  const drawn = {
-    left: bounds.minX,
-    top: bounds.minY,
-    right: bounds.maxX,
-    bottom: bounds.maxY,
-  };
-
   const external = structure.shape === "external";
-  const box = external ? inset(drawn, haloInset) : drawn;
+  const box = external ? growRect(bounds, -haloInset) : bounds;
+  const ring = growRect(box, ringGap);
 
   return (
     <StructureTarget
       id={structure.id}
       data-shape={structure.shape}
       data-status={structure.status}
+      data-new={isNew}
       className="stroke-ink"
       strokeWidth={1.2}
       strokeLinejoin="round"
@@ -431,16 +406,26 @@ export function PlanStructure({
       {external ? (
         <rect
           data-external-ring=""
-          x={drawn.left}
-          y={drawn.top}
-          width={drawn.right - drawn.left}
-          height={drawn.bottom - drawn.top}
+          x={ring.left}
+          y={ring.top}
+          width={ring.right - ring.left}
+          height={ring.bottom - ring.top}
           className="fill-paper"
           strokeWidth={0.9}
-          strokeDasharray="4 3"
         />
       ) : null}
       <Box rect={box} hatch={hatch} />
+      {isNew ? (
+        <rect
+          data-new-marker={structure.id}
+          x={box.left}
+          y={box.top}
+          width={box.right - box.left}
+          height={box.bottom - box.top}
+          className="fill-ink/15 pointer-events-none"
+          stroke="none"
+        />
+      ) : null}
       <g
         data-plan-icon={structure.shape}
         transform={`translate(${(box.left + box.right) / 2} ${(box.top + box.bottom - stripHeight) / 2})`}

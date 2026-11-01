@@ -84,7 +84,7 @@ const reviewPage = Effect.gen(function* () {
   return opened;
 });
 
-describe("plan view", () => {
+describe("Plan view", () => {
   it.live(
     "the toggle and v switch views, keeping the chapter, the selection and the middle",
     () =>
@@ -177,6 +177,18 @@ describe("plan view", () => {
           page.locator('[data-structure="updater"]').dblclick()
         );
         yield* waitFor(page, '[data-inside-view="updater"]');
+
+        // Neither the key nor the toggle switches views while it's open.
+        yield* press(page, "v");
+
+        const toggle = page.locator('[data-view-toggle] [data-view="iso"]');
+
+        assert.isTrue(yield* Effect.promise(() => toggle.isDisabled()));
+        assert.include(
+          (yield* Effect.promise(() => toggle.getAttribute("title"))) ?? "",
+          "inside view"
+        );
+
         yield* press(page, "Escape");
         yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
         yield* waitFor(page, '[data-structure="updater"] [data-plan-icon]');
@@ -251,6 +263,49 @@ describe("plan view", () => {
         assert.strictEqual(live.off, 0);
       })
     )
+  );
+
+  it.live(
+    "draws new, external and planned structures with different outlines",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* reviewPage;
+
+          yield* showPlan(page);
+
+          // What a structure draws around and over its box: each part's
+          // tag, fill class and dash pattern.
+          const outlineOf = (id: string) =>
+            inPage<string>(
+              page,
+              `Array.from(document.querySelectorAll('[data-structure="${id}"] > rect, [data-structure="${id}"] > polygon'), (part) =>
+                [part.tagName, part.getAttribute("class") ?? "", getComputedStyle(part).strokeDasharray, part.hasAttribute("data-new-marker"), part.hasAttribute("data-external-ring")].join(":")
+              ).join(" ")`
+            );
+
+          yield* goToChapter(page, "c-save");
+
+          const fresh = yield* outlineOf("server");
+
+          yield* goToChapter(page, "c-all");
+
+          const settled = yield* outlineOf("server");
+          const external = yield* outlineOf("upstream");
+          const planned = yield* outlineOf("pull-request");
+
+          assert.notStrictEqual(fresh, settled, "new looks like settled");
+          assert.lengthOf(new Set([fresh, external, planned]), 3);
+
+          // A new box is tinted, not ringed with dashes.
+          assert.include(fresh, "true:false");
+          assert.notInclude(fresh, "4px, 3px");
+          // The external ring is a solid second outline.
+          assert.include(external, "false:true");
+          assert.notInclude(external, "4px, 3px:false:true");
+          assert.include(planned, "4px, 3px");
+        })
+      )
   );
 
   for (const { name, map, system } of [
@@ -377,7 +432,7 @@ describe("both views", () => {
 
           const after = yield* measure();
 
-          // One grid unit along x moves right and down in the iso view, and
+          // One grid unit along x moves right and down in the Iso view, and
           // straight right in Plan view.
           assert.closeTo(after.iso.x - before.iso.x, 36, 0.5);
           assert.closeTo(after.iso.y - before.iso.y, 18, 0.5);

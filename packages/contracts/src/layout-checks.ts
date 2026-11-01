@@ -45,7 +45,7 @@ export const footprintsOverlap: {
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.d && b.y < a.y + a.d
 );
 
-/** Whether `a`'s name tag is drawn over `b`'s box in the iso view. */
+/** Whether `a`'s name tag is drawn over `b`'s box in the Iso view. */
 export const tagCovers: {
   (b: PlacedStructure): (a: PlacedStructure) => boolean;
   (a: PlacedStructure, b: PlacedStructure): boolean;
@@ -288,10 +288,10 @@ const structureParts: Readonly<Record<View, ReadonlySet<string>>> = {
 };
 
 /**
- * Whether the older checks already warn about a clash. In the iso view,
+ * Whether the older checks already warn about a clash. In the Iso view,
  * boxes, tags and chips drawn over each other come from overlapping
  * footprints or a tag on a box, which `overlaps` and `coveredTags` report.
- * Those checks measure the iso view's tags, so in Plan view only boxes and
+ * Those checks measure the Iso view's tags, so in Plan view only boxes and
  * chips drawn over each other count as covered: they come from overlapping
  * footprints.
  */
@@ -299,7 +299,7 @@ const coveredElsewhere = (view: View, first: string, second: string) =>
   structureParts[view].has(kindOf(first)) &&
   structureParts[view].has(kindOf(second));
 
-/** How a warning names the view it's about. The iso view goes unnamed. */
+/** How a warning names the view it's about. The Iso view goes unnamed. */
 const viewNames: Readonly<Record<View, string>> = {
   iso: "",
   plan: " in Plan view",
@@ -409,7 +409,7 @@ export const clashWarnings = ({
 /**
  * Warnings about each chapter's drawing, as the walkthrough draws it: hops
  * routed around the structures revealed so far, and everything else the
- * iso view or Plan view would draw over something by the scene's overlap
+ * Iso view or Plan view would draw over something by the scene's overlap
  * rule (chips, zone titles, labels and routes). Each warning is reported
  * once per view, at the first chapter it shows in.
  */
@@ -461,7 +461,7 @@ const chapterWarnings = (data: MapData, layout: Layout) => {
  * that no longer exist, route overrides for hops that no longer exist,
  * overrides that share a segment with another route, footprints that
  * overlap, name tags drawn over other boxes, zones that overlap, routes that
- * run under boxes, and anything else the iso view or Plan view would draw
+ * run under boxes, and anything else the Iso view or Plan view would draw
  * over something in some chapter. A structure with no placement gets nothing, because
  * `build` places it.
  */

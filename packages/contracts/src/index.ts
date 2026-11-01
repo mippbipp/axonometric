@@ -69,6 +69,7 @@ export type { PlacedLayout } from "./placement.ts";
 export {
   convexOverlap,
   distanceToPolyline,
+  growRect,
   segmentCrosses,
 } from "./geometry.ts";
 

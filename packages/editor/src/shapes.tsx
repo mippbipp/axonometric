@@ -8,11 +8,18 @@ import type {
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
-import { corners, project, tileHeight, tileWidth, toPoints } from "./iso.ts";
-import type { ScreenPoint } from "./iso.ts";
+import {
+  corners,
+  project,
+  tileHeight,
+  tileWidth,
+  toPoints,
+} from "./projection.ts";
+import type { ScreenPoint } from "./projection.ts";
+import type { StructureDrawingProps } from "./structure-drawing.ts";
 import { StructureTarget } from "./structure-target.tsx";
 
-// How each shape is drawn in the iso view. Every shape stands on its
+// How each shape is drawn in the Iso view. Every shape stands on its
 // footprint and reaches `isoHeights[shape]` at its highest point. Faces that
 // face the viewer carry the shared hatch; `data-face` and `data-hatch` let the
 // rules for each status in index.css restyle them.
@@ -568,21 +575,14 @@ export function OffMark({ at }: { readonly at: ScreenPoint }) {
 }
 
 /**
- * One structure in the iso view, drawn as its shape and styled for its status,
+ * One structure in the Iso view, drawn as its shape and styled for its status,
  * with its code chip on top when it fits.
  */
 export function IsoStructure({
-  structure,
-  placement,
-  chip,
+  placed: { structure, placement, chip },
   hatch,
-}: {
-  readonly structure: Structure;
-  readonly placement: Placement;
-  /** Where the code chip goes, from the scene. */
-  readonly chip: ScreenRect | undefined;
-  readonly hatch: string;
-}) {
+  isNew,
+}: StructureDrawingProps) {
   const Drawing = drawings[structure.shape];
 
   return (
@@ -590,6 +590,7 @@ export function IsoStructure({
       id={structure.id}
       data-shape={structure.shape}
       data-status={structure.status}
+      data-new={isNew}
       className="stroke-ink"
       strokeWidth={1.2}
       strokeLinejoin="round"

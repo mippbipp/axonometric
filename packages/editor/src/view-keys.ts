@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent } from "react";
 
 import { isTyping } from "./chapter-keys.ts";
 
-/** The key that switches between the iso view and Plan view. */
+/** The key that switches between the Iso view and Plan view. */
 export const viewKey = "v";
 
 /**

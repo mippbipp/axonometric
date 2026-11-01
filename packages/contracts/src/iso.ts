@@ -62,7 +62,7 @@ export interface ScreenRect {
 }
 
 /**
- * Where the iso view draws a structure's name tag: centred under the front
+ * Where the Iso view draws a structure's name tag: centred under the front
  * corner of its footprint on the ground, whatever the shape's height, with
  * its width estimated from the text.
  */
@@ -86,7 +86,7 @@ export const nameTagRect: {
   };
 });
 
-/** A footprint's corners on screen, named by where they sit in the iso view. */
+/** A footprint's corners on screen, named by where they sit in the Iso view. */
 export interface Corners {
   readonly back: ScreenPoint;
   readonly right: ScreenPoint;

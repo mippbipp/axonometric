@@ -1,7 +1,7 @@
 import type { Shape } from "./map-data.ts";
 
 /**
- * How far each shape rises above the ground in the iso view, in screen units,
+ * How far each shape rises above the ground in the Iso view, in screen units,
  * from the ground to its highest point. Iso heights default by shape; the map
  * files don't set them.
  */

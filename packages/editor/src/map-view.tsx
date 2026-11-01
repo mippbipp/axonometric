@@ -7,23 +7,20 @@ import type {
 import {
   arrowheadOf,
   groundProjections,
-  isoHeights,
   nameTagText,
   sceneOf,
-  tagDrop,
 } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
 import { use, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { fitOf } from "./fit.ts";
-import { corners, groundOutline, routesOf, toPoints } from "./iso.ts";
-import type { ScreenPoint } from "./iso.ts";
-import { PlanStructure } from "./plan-shapes.tsx";
 import { PlaybackContext } from "./playback.ts";
+import { groundOutline, routesOf, toPoints } from "./projection.ts";
+import type { ScreenPoint } from "./projection.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
-import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
+import { viewDrawings } from "./views.tsx";
 import { Zones } from "./zones.tsx";
 
 function NameTag({ placed }: { readonly placed: SceneStructure }) {
@@ -129,18 +126,17 @@ function Arrow({
 
 function HopArrow({
   routed,
-  view,
+  markBends,
   onHover,
 }: {
   readonly routed: SceneHop;
-  readonly view: View;
+  /** Whether to mark the route's bends with diamonds. */
+  readonly markBends: boolean;
   /** Called with the hop's id while the pointer is on its line, else null. */
   readonly onHover: (hop: string | null) => void;
 }) {
   const { hop, points } = routed;
-  // The iso view marks bends with diamonds, as system-atlas does. From
-  // above a bend is plain to see, and a dot there reads as a junction.
-  const bends = view === "iso" ? points.slice(1, -1) : [];
+  const bends = markBends ? points.slice(1, -1) : [];
 
   return (
     <g
@@ -226,32 +222,6 @@ function HopLabel({
   );
 }
 
-/** The screen points a structure's drawing reaches, tag included. */
-const extentOf = {
-  iso: ({ structure, placement, tag }: SceneStructure) => {
-    const ground = corners(placement, 0);
-    const top = corners(placement, isoHeights[structure.shape]);
-
-    return [
-      top.back,
-      top.left,
-      top.right,
-      ground.left,
-      ground.right,
-      { sx: tag.left, sy: ground.front.sy + tagDrop },
-      { sx: tag.right, sy: ground.front.sy + tagDrop },
-    ];
-  },
-  plan: ({ outline, tag }: SceneStructure) => [
-    ...outline,
-    { sx: tag.left, sy: tag.top },
-    { sx: tag.right, sy: tag.bottom },
-  ],
-} as const satisfies Record<
-  View,
-  (placed: SceneStructure) => readonly ScreenPoint[]
->;
-
 /** A dashed outline around the footprint of a newly revealed structure. */
 function NewMarker({
   placed,
@@ -287,13 +257,8 @@ const none: ReadonlySet<string> = new Set();
  */
 const useSelectedHop = () => use(PlaybackContext)?.selected?.hop.id;
 
-const viewTitles = {
-  iso: "Iso view",
-  plan: "Plan view",
-} as const satisfies Record<View, string>;
-
 /**
- * A view of a map, the iso view or Plan view: each revealed structure as
+ * A view of a map, the Iso view or Plan view: each revealed structure as
  * its shape with a name tag, and each hop between revealed structures as an
  * arrow along the ground, over each group's zone fitted to its revealed
  * structures, in a viewport you can pan and zoom. Everything is drawn from
@@ -351,15 +316,20 @@ export function MapView({
     [state.data, state.layout, revealed, labelFirst, view]
   );
 
-  const marked = Arr.filter(scene.structures, ({ structure }) =>
-    newlyRevealed.has(structure.id)
-  );
+  const drawing = viewDrawings[view];
+  const { Structure } = drawing;
+
+  const marked = drawing.newRing
+    ? Arr.filter(scene.structures, ({ structure }) =>
+        newlyRevealed.has(structure.id)
+      )
+    : [];
 
   const fitted = fitOf({
     drawn: [
       ...Arr.map(scene.structures, (item) => ({
         ids: [item.structure.id],
-        points: extentOf[view](item),
+        points: drawing.extentOf(item),
       })),
       ...Arr.map(scene.hops, ({ hop, points, label }) => ({
         ids: [hop.from, hop.to],
@@ -382,7 +352,7 @@ export function MapView({
 
   return (
     <Viewport
-      title={`${viewTitles[view]} of ${state.data.overview.title}`}
+      title={`${drawing.title} of ${state.data.overview.title}`}
       fit={fitted.bounds}
       fitKey={fitKey ?? fitted.key}
       ground={groundProjections[view]}
@@ -405,7 +375,7 @@ export function MapView({
           />
         </pattern>
       </defs>
-      <Zones zones={scene.zones} view={view} />
+      <Zones zones={scene.zones} Plate={drawing.Plate} />
       <g>
         {Arr.map(marked, (item) => (
           <NewMarker key={item.structure.id} placed={item} view={view} />
@@ -417,31 +387,20 @@ export function MapView({
           <HopArrow
             key={item.hop.id}
             routed={item}
-            view={view}
+            markBends={drawing.markBends}
             onHover={setHoveredHop}
           />
         ))}
       </g>
       <g>
-        {Arr.map(scene.structures, (item) =>
-          view === "iso" ? (
-            <IsoStructure
-              key={item.structure.id}
-              structure={item.structure}
-              placement={item.placement}
-              chip={item.chip}
-              hatch={hatch}
-            />
-          ) : (
-            <PlanStructure
-              key={item.structure.id}
-              structure={item.structure}
-              outline={item.outline}
-              chip={item.chip}
-              hatch={hatch}
-            />
-          )
-        )}
+        {Arr.map(scene.structures, (item) => (
+          <Structure
+            key={item.structure.id}
+            placed={item}
+            hatch={hatch}
+            isNew={newlyRevealed.has(item.structure.id)}
+          />
+        ))}
       </g>
       <g aria-hidden="true" className="pointer-events-none opacity-40">
         {Arr.map(scene.hops, (item) => (

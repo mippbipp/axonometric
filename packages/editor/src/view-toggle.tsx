@@ -15,9 +15,12 @@ const names = {
 export function ViewToggle({
   view,
   choose,
+  disabledBecause,
 }: {
   readonly view: View;
   readonly choose: (view: View) => void;
+  /** Why the views can't switch now, such as an open page, or `undefined`. */
+  readonly disabledBecause?: string | undefined;
 }) {
   return (
     <fieldset data-view-toggle className="flex">
@@ -28,7 +31,8 @@ export function ViewToggle({
           type="button"
           data-view={option}
           aria-pressed={option === view}
-          title={`${names[option]} view (${viewKey})`}
+          disabled={disabledBecause !== undefined}
+          title={disabledBecause ?? `${names[option]} view (${viewKey})`}
           className={cn(
             controlClass,
             index > 0 && "-ml-px",

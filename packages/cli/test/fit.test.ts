@@ -20,7 +20,7 @@ const drawn = [
   { ids: ["b", "c"], points: [{ sx: 300, sy: 300 }] },
 ];
 
-describe("what the iso view fits to the window", () => {
+describe("what the Iso view fits to the window", () => {
   it.effect("fits everything when fitTo is left out", () =>
     Effect.sync(() => {
       assert.deepStrictEqual(fitOf({ drawn }).bounds, {

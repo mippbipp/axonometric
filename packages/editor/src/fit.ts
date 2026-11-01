@@ -2,7 +2,7 @@ import { Array as Arr, Order } from "effect";
 
 import { boundsOf } from "./bounds.ts";
 import type { Bounds } from "./bounds.ts";
-import type { ScreenPoint } from "./iso.ts";
+import type { ScreenPoint } from "./projection.ts";
 
 /** Something drawn, with the structures it belongs to and the points it reaches. */
 export interface Drawn {

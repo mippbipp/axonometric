@@ -129,7 +129,7 @@ const keyOf = (revealed: ReadonlySet<string>) =>
 /**
  * Every revealed hop's route on the ground, routed around the revealed
  * structures only, from the contracts router. Routing the same data, layout
- * and set again returns the same object, so the iso view and the packets
+ * and set again returns the same object, so the Iso view and the packets
  * share one routing pass.
  */
 export const routesOf = ({

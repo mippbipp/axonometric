@@ -105,7 +105,7 @@ const packetOffRoute = `
  * outlines of its source and target footprints, and how far its label's
  * centre sits from its own route and from the nearest other route, all in
  * screen pixels. Footprints come from the map state inlined in the page,
- * projected the way the iso view projects them.
+ * projected the way the Iso view projects them.
  */
 const hopReport = `
   (() => {

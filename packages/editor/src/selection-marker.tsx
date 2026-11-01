@@ -1,7 +1,7 @@
 import { groundProjections } from "@axonometric/contracts";
 import type { Placement, View } from "@axonometric/contracts";
 
-import { groundOutline, toPoints } from "./iso.ts";
+import { groundOutline, toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
 
 /** How far the outline reaches past the footprint, in grid units. */

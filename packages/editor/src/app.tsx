@@ -10,7 +10,6 @@ import { ChapterRail } from "./chapter-rail.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
 import { useInsideFocus } from "./inside-focus.ts";
 import { InsideView } from "./inside-view.tsx";
-import { screenRouteOf } from "./iso.ts";
 import { MapSurface } from "./map-surface.tsx";
 import { MapView } from "./map-view.tsx";
 import { useOverviewPage } from "./overview-context.ts";
@@ -22,6 +21,7 @@ import {
 import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
+import { screenRouteOf } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
 import { useSelectionKeys } from "./selection-keys.ts";
 import { SelectionProvider } from "./selection.tsx";
@@ -102,8 +102,20 @@ function WalkthroughPage({ notices }: Notices) {
   useChapterKeys(selected === null);
   useSelectionKeys();
   useInsideFocus(inside);
+
+  // Switching views while a page covers the map would change what's under
+  // it unseen, so the toggle and `v` both wait until it's closed.
+  const blockedBy = [
+    ...(insideStructure === undefined
+      ? []
+      : ["Come out of the inside view to switch views"]),
+    ...(overviewOpen ? ["Close How it's built to switch views"] : []),
+  ];
+
+  const [switchBlocked] = blockedBy;
+
   useViewKey(() => {
-    if (insideStructure === undefined && !overviewOpen) {
+    if (switchBlocked === undefined) {
       setView((current) => (current === "iso" ? "plan" : "iso"));
     }
   });
@@ -132,7 +144,11 @@ function WalkthroughPage({ notices }: Notices) {
           {state.data.overview.title}
         </h1>
         <div className="ml-auto flex gap-1.5">
-          <ViewToggle view={view} choose={setView} />
+          <ViewToggle
+            view={view}
+            choose={setView}
+            disabledBecause={switchBlocked}
+          />
           <OverviewButton />
           <ThemeToggle />
         </div>

@@ -38,7 +38,7 @@ import { zonesOf } from "./zones.ts";
 import type { Zone } from "./zones.ts";
 
 // The scene: everything a view draws for one set of revealed structures, in
-// screen space, for the iso view or Plan view. The editor draws from it, and
+// screen space, for the Iso view or Plan view. The editor draws from it, and
 // `check` runs the same overlap test over both views, so the page and
 // `check` can't disagree. The views differ only in their geometry: how the
 // ground projects, each box's outline, where tags, chips and zone titles may
@@ -67,7 +67,7 @@ export interface SceneStructure {
   readonly placement: Placement;
   /**
    * The outline of everything the shape draws, as a convex polygon: in the
-   * iso view its silhouette to its iso height, in Plan view its footprint's
+   * Iso view its silhouette to its iso height, in Plan view its footprint's
    * rectangle, halo included.
    */
   readonly outline: readonly ScreenPoint[];
@@ -114,7 +114,7 @@ const upFrontRight = {
 export interface SceneZone {
   readonly zone: Zone;
   /**
-   * The plate's ground corners: in the iso view back, right, front and left;
+   * The plate's ground corners: in the Iso view back, right, front and left;
    * in Plan view clockwise from the top left.
    */
   readonly plate: readonly ScreenPoint[];
@@ -604,7 +604,7 @@ const withShapes = (
   shapes: [...avoid.shapes, ...Arr.map(polygons, obstacle)],
 });
 
-/** What differs between the iso view and Plan view. */
+/** What differs between the Iso view and Plan view. */
 interface ViewGeometry {
   readonly project: (point: GridPosition) => ScreenPoint;
   readonly outline: (
@@ -613,7 +613,7 @@ interface ViewGeometry {
   ) => readonly ScreenPoint[];
   /**
    * Whether the tag goes in the first of `tagSpots` that's clear, or always
-   * in the first. The iso view keeps every tag under its box's front corner,
+   * in the first. The Iso view keeps every tag under its box's front corner,
    * where `check` warns about it; Plan view moves tags to find room.
    */
   readonly tagPlacement: "fixed" | "first-clear";
@@ -1045,7 +1045,7 @@ export interface SceneSource {
    * in order. The rest follow in data.mjs order.
    */
   readonly labelFirst?: readonly string[] | undefined;
-  /** Which view to draw. Defaults to the iso view. */
+  /** Which view to draw. Defaults to the Iso view. */
   readonly view?: View | undefined;
 }
 

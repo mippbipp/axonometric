@@ -4,10 +4,10 @@ import { useMemo } from "react";
 import type { KeyboardEvent } from "react";
 
 import type { PacketRun } from "./chapters.ts";
-import { pointAlong } from "./iso.ts";
-import type { ScreenPoint } from "./iso.ts";
 import { packetAt } from "./packet-schedule.ts";
 import { usePlayback, usePlaybackClock } from "./playback.ts";
+import { pointAlong } from "./projection.ts";
+import type { ScreenPoint } from "./projection.ts";
 
 /**
  * A view's drawn route for a hop, in its own screen coordinates, or
@@ -88,7 +88,7 @@ function Packet({
 /**
  * The packets for the current chapter, one per run, drawn inside a view's
  * SVG. `routeOf` gives each hop's route in the view's coordinates, so the
- * iso view and Plan view share the timing and differ only in the routes.
+ * Iso view and Plan view share the timing and differ only in the routes.
  *
  * Packets carry no label. The hop's own label, drawn once by the view at the
  * hop, names what the packet carries, and the side panel shows it when the
