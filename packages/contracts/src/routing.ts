@@ -1043,6 +1043,8 @@ interface Search {
    * outline. `check` warns about the overlap instead.
    */
   readonly cornersFree: boolean;
+  /** Whether the strangers' steps and points are barred, not just dear. */
+  readonly apart: boolean;
   /**
    * When set, steps outside this box aren't allowed at all, and bends cost
    * nothing for straying from the route's area: the search is after a route
@@ -1100,7 +1102,12 @@ const stepPrice = (
     outside ||
     (pairStep && search.window === undefined) ||
     ownEnd ||
-    reverse
+    reverse ||
+    (search.apart &&
+      (search.strangers.steps.has(step) ||
+        ((search.strangers.points.get(pointIndex(grid, next)) ?? 0) &
+          (alongXAxis(direction) ? 1 : 2)) !==
+          0))
   ) {
     return undefined;
   }
@@ -1312,18 +1319,41 @@ interface Frontier {
   readonly queue: ReturnType<typeof makeQueue>;
 }
 
-/** The steps and points of the routes that share none of `ends`. */
-const strangersOf = (usage: Usage, ends: ReadonlySet<string>) => {
+/**
+ * How far from a structure two hops share, in half units, their routes may
+ * run together without being strangers: a bundle's trunk, with the jogs
+ * that spread its ends along the edge. Past it they must keep apart.
+ */
+const trunkReach = 16;
+
+/**
+ * The steps and points of the routes the hop between `ends` must keep off:
+ * those of routes that share none of its structures, and those of routes
+ * that share one, beyond `trunkReach` of it.
+ */
+const strangersOf = (grid: Grid, usage: Usage, ends: readonly Box[]) => {
   const steps = new Set<number>();
   const points = new Map<number, number>();
 
+  const near = (route: Usage["routes"][number], point: number) => {
+    const cell = cellOf(grid, point * directions);
+
+    return Arr.some(
+      ends,
+      (box) =>
+        route.ends.includes(box.id) && distanceTo(box, cell) <= trunkReach
+    );
+  };
+
   for (const route of usage.routes) {
-    if (!Arr.some(route.ends, (end) => ends.has(end))) {
-      for (const step of route.steps) {
+    for (const step of route.steps) {
+      if (!near(route, Math.floor(step / 2))) {
         steps.add(step);
       }
+    }
 
-      for (const [point, axes] of route.points) {
+    for (const [point, axes] of route.points) {
+      if (!near(route, point)) {
         points.set(point, (points.get(point) ?? 0) | axes);
       }
     }
@@ -1339,10 +1369,12 @@ const searchOf = (
     from,
     to,
     window,
+    apart = false,
   }: {
     readonly from: Box;
     readonly to: Box;
     readonly window: Box | undefined;
+    readonly apart?: boolean;
   }
 ): Search => ({
   grid,
@@ -1355,8 +1387,9 @@ const searchOf = (
   siblings: Arr.flatMap([from.id, to.id], (id) =>
     Option.toArray(Option.fromNullishOr(usage.axes.get(id)))
   ),
-  strangers: strangersOf(usage, new Set([from.id, to.id])),
+  strangers: strangersOf(grid, usage, [from, to]),
   cornersFree: overlapping(from, to),
+  apart,
   window,
   area: routeArea(from, to),
   line: [screenCentre(from), screenCentre(to)],
@@ -1499,6 +1532,7 @@ const searchRoute = (
     readonly from: Box;
     readonly to: Box;
     readonly window: Box | undefined;
+    readonly apart?: boolean;
   }
 ): readonly Cell[] => {
   const search = searchOf(grid, pair, ends);
@@ -1565,9 +1599,124 @@ const withinCap = (points: readonly Cell[]) => {
   return length <= routeCap(distance);
 };
 
+/** How far a bend may sit outside a route's area before it counts as stray. */
+const strayLimit = 3;
+
+// WIP: with the guards on, a route that avoids strangers must be as good as
+// the one it replaces, which leaves 11 shared pairs in chapter 8. Off, only a
+// bend allowance applies: 0 shared pairs, but five scene tests fail.
+const guarded = true;
+
 /**
- * The cheapest route, unless it's longer than `routeCap` allows. Then the
- * route is searched again inside the box around both ends, grown by
+ * The fewest bends any route between two footprints needs with nothing in
+ * the way: 1 when they're apart on both axes, 0 when a straight leg fits
+ * between them, and 2 otherwise.
+ */
+const fewestBends = (from: Box, to: Box) => {
+  const apartX = from.x1 <= to.x0 || to.x1 <= from.x0;
+  const apartY = from.y1 <= to.y0 || to.y1 <= from.y0;
+
+  const overlap = (a0: number, a1: number, b0: number, b1: number) =>
+    Math.min(a1, b1) - Math.max(a0, b0) >= scale;
+
+  if (apartX && apartY) {
+    return 1;
+  }
+
+  return (apartX && overlap(from.y0, from.y1, to.y0, to.y1)) ||
+    (apartY && overlap(from.x0, from.x1, to.x0, to.x1))
+    ? 0
+    : 2;
+};
+
+/** What a route is judged on besides sharing, to compare two for one hop. */
+const qualityOf = (
+  grid: Grid,
+  { from, to }: { readonly from: Box; readonly to: Box },
+  cells: readonly Cell[]
+) => {
+  const corners = cornersOf(cells);
+  const area = routeArea(from, to);
+  const [first, second] = corners;
+  const last = corners.at(-1);
+  const before = corners.at(-2);
+
+  const faces = (box: Box, other: Box, out: number) =>
+    facingEdges(placementOf(box), placementOf(other))[out] === true;
+
+  return {
+    bends: Math.max(0, corners.length - 2),
+    awayEnds:
+      (first !== undefined &&
+      second !== undefined &&
+      !faces(from, to, directionOf(first, second))
+        ? 1
+        : 0) +
+      (last !== undefined &&
+      before !== undefined &&
+      !faces(to, from, directionOf(last, before))
+        ? 1
+        : 0),
+    tagSteps: Arr.reduce(
+      stepsAlong(cells),
+      0,
+      (sum, { a, b }) =>
+        sum + (grid.inTags[stepKey(grid, a, directionOf(a, b))] ?? []).length
+    ),
+    stray: Math.max(
+      0,
+      ...Arr.map(corners.slice(1, -1), (corner) =>
+        outsideArea(area, project({ x: corner.x / scale, y: corner.y / scale }))
+      )
+    ),
+  };
+};
+
+/**
+ * Whether a route that keeps off strangers is as good a route as the one
+ * it would replace: no more bends than the hop needs plus one, or than the
+ * old route had, and leaving by no worse edges, crossing no more name tags
+ * and straying no further than the old route or `strayLimit`.
+ */
+const asGood = (
+  grid: Grid,
+  ends: { readonly from: Box; readonly to: Box },
+  {
+    next,
+    old,
+    slack,
+  }: {
+    readonly next: readonly Cell[];
+    readonly old: readonly Cell[];
+    readonly slack: number;
+  }
+) => {
+  const after = qualityOf(grid, ends, next);
+  const before = qualityOf(grid, ends, old);
+
+  if (!guarded) {
+    return after.bends <= before.bends + slack;
+  }
+
+  return (
+    after.bends <=
+      Math.max(fewestBends(ends.from, ends.to) + 1, before.bends) &&
+    after.awayEnds <= before.awayEnds &&
+    after.tagSteps <= before.tagSteps &&
+    (after.stray <= strayLimit || after.stray <= before.stray)
+  );
+};
+
+/**
+ * How many more grid units of length a route that keeps off strangers'
+ * routes may have than the cheapest route, which may share them.
+ */
+const apartLength = 20;
+
+/**
+ * The cheapest route that keeps clear of strangers' routes, if it doesn't
+ * cost much more, else the cheapest route; unless that is longer than
+ * `routeCap` allows. Then the route is searched again inside the box around both ends, grown by
  * `windowMargin`, which may mean running under a box; the shorter of the
  * two is kept.
  */
@@ -1576,7 +1725,24 @@ const cappedRoute = (
   pair: { readonly usage: Usage; readonly key: string },
   { from, to }: { readonly from: Box; readonly to: Box }
 ): readonly Cell[] => {
-  const free = searchRoute(grid, pair, { from, to, window: undefined });
+  const soft = searchRoute(grid, pair, { from, to, window: undefined });
+
+  // First try a route that keeps off every stranger's steps; it wins unless
+  // it needs much more than the cheapest route.
+  const clear = searchRoute(grid, pair, {
+    from,
+    to,
+    window: undefined,
+    apart: true,
+  });
+
+  const free =
+    clear.length > 0 &&
+    withinCap(clear) &&
+    asGood(grid, { from, to }, { next: clear, old: soft, slack: 1 }) &&
+    lengthOfCells(clear).length <= lengthOfCells(soft).length + apartLength
+      ? clear
+      : soft;
 
   if (free.length === 0 || withinCap(free)) {
     return free;
@@ -1600,6 +1766,177 @@ const cappedRoute = (
     lengthOfCells(tight).length < lengthOfCells(free).length
     ? tight
     : free;
+};
+
+/** A routed hop as the track pass sees it. */
+interface Laid {
+  readonly hop: Hop;
+  /** The route's ends and bends, in half units. */
+  readonly corners: readonly Cell[];
+  /** Every half-unit point the route passes, in order. */
+  readonly cells: readonly Cell[];
+  /** For each point, its index in `cells` and the axes the route runs along there. */
+  readonly points: ReadonlyMap<
+    number,
+    { readonly at: number; readonly axes: number }
+  >;
+  /** Each end's structure and the direction it leaves or enters by. */
+  readonly edges: readonly [string, string];
+}
+
+const laidOf = (grid: Grid, hop: Hop, corners: readonly Cell[]): Laid => {
+  const [first] = corners;
+
+  const cells =
+    first === undefined
+      ? []
+      : [first, ...Arr.map(stepsAlong(corners), ({ b }) => b)];
+
+  const points = new Map<number, { at: number; axes: number }>();
+
+  Arr.forEach(cells, (cell, at) => {
+    const before = cells[at - 1];
+    const after = cells[at + 1];
+
+    const axes =
+      before === undefined ||
+      after === undefined ||
+      (before.x === cell.x) !== (cell.x === after.x)
+        ? 3
+        : before.y === cell.y
+          ? 1
+          : 2;
+
+    points.set(pointIndex(grid, cell), { at, axes });
+  });
+
+  const second = corners[1];
+  const last = corners.at(-1);
+  const before = corners.at(-2);
+
+  return {
+    hop,
+    corners,
+    cells,
+    points,
+    edges: [
+      `${hop.from}:${first === undefined || second === undefined ? "" : directionOf(first, second)}`,
+      `${hop.to}:${last === undefined || before === undefined ? "" : directionOf(last, before)}`,
+    ],
+  };
+};
+
+/**
+ * How far along a route from the structure it shares with another hop,
+ * leaving it by the same edge, the two may first meet and still be a bundle,
+ * in half units: far enough to take in the jogs that spread their ends.
+ */
+const approachReach = 8;
+
+/**
+ * Whether two routes may share the points at `mine` in `p` (and the same
+ * points in `q`) as a bundle: they leave or enter one structure by the same
+ * edge, and the points are one stretch of both that starts near that end.
+ */
+const bundled = (p: Laid, q: Laid, mine: readonly number[]) => {
+  const sorted = Arr.sort(mine, Order.Number);
+  const first = sorted[0] ?? 0;
+  const last = sorted.at(-1) ?? 0;
+
+  const theirs = Arr.sort(
+    Arr.map(sorted, (at) => {
+      const cell = p.cells[at];
+
+      return cell === undefined
+        ? -1
+        : q.cells.findIndex((c) => c.x === cell.x && c.y === cell.y);
+    }),
+    Order.Number
+  );
+
+  const qFirst = theirs[0] ?? 0;
+  const qLast = theirs.at(-1) ?? 0;
+
+  const run = (indexes: readonly number[]) =>
+    (indexes.at(-1) ?? 0) - (indexes[0] ?? 0) + 1 === indexes.length;
+
+  if (!run(sorted) || !run(theirs)) {
+    return false;
+  }
+
+  return Arr.some([0, 1] as const, (mineEnd) =>
+    Arr.some([0, 1] as const, (theirEnd) => {
+      const same =
+        p.edges[mineEnd] === q.edges[theirEnd] &&
+        p.edges[mineEnd] !== undefined;
+
+      const approach = mineEnd === 0 ? first : p.cells.length - 1 - last;
+      const theirApproach =
+        theirEnd === 0 ? qFirst : q.cells.length - 1 - qLast;
+
+      return (
+        same && approach <= approachReach && theirApproach <= approachReach
+      );
+    })
+  );
+};
+
+/** How many times the hops that share with strangers are routed again. */
+const ripUpRounds = 2;
+
+/** How many hops are routed again in a round: the ones that share most. */
+const ripUpHops = 6;
+
+const samePair = (p: Hop, q: Hop) =>
+  pairKey(p.from, p.to) === pairKey(q.from, q.to);
+
+/** The routes so far, by the points they pass. */
+type Occupancy = Map<number, { readonly laid: Laid; readonly axes: number }[]>;
+
+const occupy = (occupancy: Occupancy, laid: Laid) => {
+  for (const [point, { axes }] of laid.points) {
+    const list = occupancy.get(point) ?? [];
+
+    list.push({ laid, axes });
+    occupancy.set(point, list);
+  }
+};
+
+const vacate = (occupancy: Occupancy, laid: Laid) => {
+  for (const point of laid.points.keys()) {
+    const list = occupancy.get(point);
+
+    if (list !== undefined) {
+      occupancy.set(
+        point,
+        Arr.filter(list, (entry) => entry.laid !== laid)
+      );
+    }
+  }
+};
+
+/**
+ * How many points `p` shares with other routes that it mustn't: those where
+ * the axes meet, other than a bundle's. Crossing squarely shares nothing.
+ */
+const clashes = (occupancy: Occupancy, p: Laid) => {
+  const shared = new Map<Laid, number[]>();
+
+  for (const [point, { at, axes }] of p.points) {
+    for (const entry of occupancy.get(point) ?? []) {
+      if (entry.laid.hop.id !== p.hop.id && (entry.axes & axes) !== 0) {
+        shared.set(entry.laid, [...(shared.get(entry.laid) ?? []), at]);
+      }
+    }
+  }
+
+  let total = 0;
+
+  for (const [q, mine] of shared) {
+    total += !samePair(p.hop, q.hop) && bundled(p, q, mine) ? 0 : mine.length;
+  }
+
+  return total;
 };
 
 /**
@@ -1657,15 +1994,18 @@ export const routeHops: {
 
     const grid = gridOf(boxes, zones, { tags, extra: overridePoints });
 
-    const usage: Usage = {
+    const freshUsage = (): Usage => ({
       steps: new Set(),
       axes: new Map(),
       pairs: new Map(),
       routes: [],
       edgeEnds: new Map(),
-    };
+    });
+
+    const usage = freshUsage();
 
     const routes: Record<string, HopRoute> = {};
+    const halves = new Map<string, readonly Cell[]>();
 
     // A hop with one edge facing the other end has no other good way out,
     // so its end keeps room on that edge, and hops with a choice take
@@ -1703,6 +2043,26 @@ export const routeHops: {
       }
     };
 
+    const routeFrom = (hop: Hop, halfUnits: readonly Cell[]): HopRoute => {
+      const override = overrides[hop.id];
+
+      const points =
+        override ??
+        Arr.map(halfUnits, (point) => ({
+          x: point.x / scale,
+          y: point.y / scale,
+        }));
+
+      const { length, distance } = routeLength(points);
+
+      return {
+        points,
+        crosses: crossesOf(boxes, new Set([hop.from, hop.to]), halfUnits),
+        overridden: override !== undefined,
+        tooLong: length > routeCap(distance),
+      };
+    };
+
     const routeOne = (hop: Hop) => {
       const from = byId.get(hop.from);
       const to = byId.get(hop.to);
@@ -1714,7 +2074,6 @@ export const routeHops: {
       release(hop);
 
       const key = pairKey(hop.from, hop.to);
-      const ends = new Set([hop.from, hop.to]);
       const override = overrides[hop.id];
 
       const halfUnits =
@@ -1727,22 +2086,9 @@ export const routeHops: {
       }
 
       record(grid, { usage, key, ends: [hop.from, hop.to] }, halfUnits);
+      halves.set(hop.id, halfUnits);
 
-      const points =
-        override ??
-        Arr.map(halfUnits, (point) => ({
-          x: point.x / scale,
-          y: point.y / scale,
-        }));
-
-      const { length, distance } = routeLength(points);
-
-      routes[hop.id] = {
-        points,
-        crosses: crossesOf(boxes, ends, halfUnits),
-        overridden: override !== undefined,
-        tooLong: length > routeCap(distance),
-      };
+      routes[hop.id] = routeFrom(hop, halfUnits);
     };
 
     // Overrides go first, so automatic routes keep clear of them.
@@ -1771,6 +2117,107 @@ export const routeHops: {
 
     for (const hop of automatic) {
       routeOne(hop);
+    }
+
+    // Each search above saw only the routes before it. A route that shares
+    // points with a stranger's, beyond a bundle's trunk, is routed again
+    // around everyone else's routes as they stand, and kept if it shares
+    // less, stays within the cap and is `asGood`. Only
+    // the `ripUpHops` that share most are tried, so a crowded map costs a
+    // few more searches, not one per hop.
+    const occupancy: Occupancy = new Map();
+    const laid = new Map<string, Laid>();
+
+    for (const hop of data.hops) {
+      const cells = halves.get(hop.id);
+
+      if (cells !== undefined) {
+        const one = laidOf(grid, hop, cornersOf(cells));
+
+        laid.set(hop.id, one);
+        occupy(occupancy, one);
+      }
+    }
+
+    const withoutHop = (hop: Hop) => {
+      const others = freshUsage();
+
+      for (const other of data.hops) {
+        const cells = halves.get(other.id);
+
+        if (other.id !== hop.id && cells !== undefined) {
+          record(
+            grid,
+            {
+              usage: others,
+              key: pairKey(other.from, other.to),
+              ends: [other.from, other.to],
+            },
+            cells
+          );
+        }
+      }
+
+      return others;
+    };
+
+    for (let round = 0; round < ripUpRounds; round++) {
+      const crowded = Arr.take(
+        Arr.sort(
+          Arr.filter(
+            Arr.flatMap(automatic, (hop) => {
+              const mine = laid.get(hop.id);
+
+              return mine === undefined
+                ? []
+                : [{ hop, shared: clashes(occupancy, mine) }];
+            }),
+            ({ shared }) => shared > 0
+          ),
+          Order.mapInput(
+            Order.Number,
+            ({ shared }: { readonly shared: number }) => -shared
+          )
+        ),
+        ripUpHops
+      );
+
+      for (const { hop } of crowded) {
+        const mine = laid.get(hop.id);
+        const from = byId.get(hop.from);
+        const to = byId.get(hop.to);
+
+        if (mine !== undefined && from !== undefined && to !== undefined) {
+          const next = searchRoute(
+            grid,
+            { usage: withoutHop(hop), key: pairKey(hop.from, hop.to) },
+            { from, to, window: undefined, apart: true }
+          );
+
+          const candidate =
+            next.length === 0 ? undefined : laidOf(grid, hop, cornersOf(next));
+
+          if (
+            candidate !== undefined &&
+            withinCap(next) &&
+            asGood(grid, { from, to }, { next, old: mine.cells, slack: 2 }) &&
+            clashes(occupancy, candidate) < clashes(occupancy, mine)
+          ) {
+            vacate(occupancy, mine);
+            occupy(occupancy, candidate);
+            laid.set(hop.id, candidate);
+            halves.set(hop.id, candidate.corners);
+          }
+        }
+      }
+    }
+
+    for (const hop of automatic) {
+      const cells = halves.get(hop.id);
+
+      if (cells !== undefined) {
+        routes[hop.id] = routeFrom(hop, cells);
+      }
     }
 
     return Rec.fromEntries(

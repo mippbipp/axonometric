@@ -13,6 +13,7 @@ import {
   routeCap,
   routeHops,
   routeLength,
+  routeRevealed,
 } from "../src/index.ts";
 import type {
   GridPoint,
@@ -23,6 +24,7 @@ import type {
   Placement,
   Structure,
 } from "../src/index.ts";
+import { chaptersOf, fixture } from "./fixture-maps.ts";
 import { facingEdges } from "./route-geometry.ts";
 
 const structure = (id: string): Structure => ({
@@ -431,6 +433,127 @@ describe("routing", () => {
       assert.lengthOf(Rec.keys(routes), 60);
     })
   );
+});
+
+/** The half-unit points a route passes, each with the axes it runs along. */
+const passesOf = (points: readonly GridPoint[]) => {
+  const corners = Arr.filter(points, (point, index) => {
+    const before = points[index - 1];
+    const after = points[index + 1];
+
+    return (
+      before === undefined ||
+      after === undefined ||
+      (before.x === point.x) !== (point.x === after.x)
+    );
+  });
+
+  const cells = Arr.flatMap(corners, (start, index) => {
+    const end = corners[index + 1];
+
+    if (end === undefined) {
+      return [{ x: start.x * 2, y: start.y * 2 }];
+    }
+
+    const count = Math.round(
+      (Math.abs(end.x - start.x) + Math.abs(end.y - start.y)) * 2
+    );
+
+    return Arr.map(Arr.range(0, count - 1), (step) => ({
+      x: start.x * 2 + Math.sign(end.x - start.x) * step,
+      y: start.y * 2 + Math.sign(end.y - start.y) * step,
+    }));
+  });
+
+  const passes = new Map<string, number>();
+
+  Arr.forEach(cells, (cell, index) => {
+    const before = cells[index - 1];
+    const after = cells[index + 1];
+
+    const axes =
+      before === undefined ||
+      after === undefined ||
+      (before.x === cell.x) !== (cell.x === after.x)
+        ? 3
+        : before.y === cell.y
+          ? 1
+          : 2;
+
+    const key = `${cell.x},${cell.y}`;
+
+    passes.set(key, (passes.get(key) ?? 0) | axes);
+  });
+
+  return passes;
+};
+
+/** Which edge a route's first and last legs leave and enter by. */
+const endEdgesOf = (points: readonly GridPoint[]) => {
+  const [first, second] = points;
+  const last = points.at(-1);
+  const before = points.at(-2);
+
+  const edge = (point: GridPoint | undefined, next: GridPoint | undefined) =>
+    point === undefined || next === undefined ? -1 : edgeOf(point, next);
+
+  return [edge(first, second), edge(last, before)] as const;
+};
+
+describe("bundles", () => {
+  for (const name of ["flake-pipeline", "review", "crowded"]) {
+    it.effect(
+      `keeps hops of different bundles off each other's grid points in every chapter of ${name}`,
+      () =>
+        Effect.gen(function* () {
+          const { data, layout } = yield* fixture(name);
+
+          for (const chapter of chaptersOf(data)) {
+            const routes = routeRevealed({
+              data,
+              layout,
+              revealed: chapter.revealed,
+            });
+
+            const items = Arr.flatMap(data.hops, (item) => {
+              const route = routes[item.id];
+
+              if (route === undefined) {
+                return [];
+              }
+
+              const [start, finish] = endEdgesOf(route.points);
+
+              return [
+                {
+                  id: item.id,
+                  // A bundle shares an end structure and the edge it leaves by.
+                  ends: [`${item.from}:${start}`, `${item.to}:${finish}`],
+                  passes: passesOf(route.points),
+                },
+              ];
+            });
+
+            const shared = Arr.flatMap(items, (one, index) =>
+              Arr.flatMap(items.slice(index + 1), (two) => {
+                const bundled = Arr.some(one.ends, (end) =>
+                  two.ends.includes(end)
+                );
+
+                const touching = Arr.some(
+                  [...one.passes],
+                  ([key, axes]) => ((two.passes.get(key) ?? 0) & axes) !== 0
+                );
+
+                return touching && !bundled ? [`${one.id} ~ ${two.id}`] : [];
+              })
+            );
+
+            assert.deepStrictEqual(shared, [], `in chapter ${chapter.id}`);
+          }
+        })
+    );
+  }
 });
 
 describe("route checks", () => {
