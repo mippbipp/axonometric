@@ -1,18 +1,19 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
+
 import {
   checkLayout,
   footprintsOverlap,
   placeStructures,
   tagCovers,
-} from "@axonometric/contracts";
+} from "../src/index.ts";
 import type {
   Hop,
   Layout,
   MapData,
   Placement,
   Structure,
-} from "@axonometric/contracts";
-import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
+} from "../src/index.ts";
 
 const structure = (id: string, group = "main", name = id): Structure => ({
   id,
