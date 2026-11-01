@@ -1045,3 +1045,270 @@ describe("scene", () => {
       })
   );
 });
+
+/** A one-group map with 2×2 boxes at `placements` and route overrides. */
+const groundMap = (
+  placements: Readonly<Record<string, GridPoint>>,
+  hops: readonly {
+    readonly id: string;
+    readonly from: string;
+    readonly to: string;
+  }[],
+  routes: Readonly<Record<string, readonly GridPoint[]>>
+) => {
+  const ids = Rec.keys(placements);
+
+  const data: MapData = {
+    format: 1,
+    revision: 0,
+    overview: { title: "Map", summary: "A map." },
+    groups: [{ id: "main", title: "Main" }],
+    structures: Arr.map(ids, (id) => ({
+      id,
+      code: "S",
+      name: id,
+      shape: "box" as const,
+      group: "main",
+      status: "live" as const,
+      oneLiner: "One line.",
+      whatItDoes: "Does.",
+      howItsBuilt: "Built.",
+    })),
+    hops: Arr.map(hops, (hop) => ({ ...hop, label: "x" })),
+    flows: [],
+    chapters: [],
+  };
+
+  const layout: Layout = {
+    format: 1,
+    revision: 0,
+    structures: Rec.map(placements, ({ x, y }) => ({ x, y, w: 2, d: 2 })),
+    routes,
+  };
+
+  return { data, layout, revealed: new Set(ids) };
+};
+
+/** The ground clashes of a map's scene in each view, as `a × b` keys. */
+const groundClashesOf = (map: ReturnType<typeof groundMap>) =>
+  Arr.map(views, (view) => {
+    const clashes = sceneClashes(sceneOf({ ...map, view }));
+
+    return Arr.filter(
+      Arr.map(clashes, clashKey),
+      (key) => !Str.includes("tag:")(key) && !Str.includes("label:")(key)
+    );
+  });
+
+describe("ground clashes", () => {
+  it.effect("reports a route that touches another box's corner", () =>
+    Effect.sync(() => {
+      // The route turns on m's corner at (4, 0) without running along or
+      // under m, so only the outline check sees it.
+      const map = groundMap(
+        { a: { x: 0, y: 0 }, m: { x: 4, y: 0 }, b: { x: 8, y: 0 } },
+        [{ id: "h", from: "a", to: "b" }],
+        {
+          h: [
+            { x: 2, y: 0.5 },
+            { x: 3.5, y: 0.5 },
+            { x: 3.5, y: 0 },
+            { x: 4, y: 0 },
+            { x: 4, y: -0.5 },
+            { x: 7, y: -0.5 },
+            { x: 7, y: 0.5 },
+            { x: 8, y: 0.5 },
+          ],
+        }
+      );
+
+      for (const clashes of groundClashesOf(map)) {
+        assert.include(clashes, "route:h × box:m");
+      }
+    })
+  );
+
+  it.effect("reports a route that ends on its box's corner", () =>
+    Effect.sync(() => {
+      const map = groundMap(
+        { a: { x: 0, y: 0 }, b: { x: 6, y: 0 } },
+        [{ id: "h", from: "a", to: "b" }],
+        {
+          h: [
+            { x: 2, y: 2 },
+            { x: 3, y: 2 },
+            { x: 3, y: 3 },
+            { x: 5, y: 3 },
+            { x: 5, y: 1 },
+            { x: 6, y: 1 },
+          ],
+        }
+      );
+
+      for (const clashes of groundClashesOf(map)) {
+        assert.include(clashes, "route:h × corner:a");
+      }
+    })
+  );
+
+  it.effect("reports a route that lies along a zone's outline", () =>
+    Effect.sync(() => {
+      // The zone reaches one unit past the boxes, to y = -1.
+      const map = groundMap(
+        { a: { x: 0, y: 0 }, b: { x: 6, y: 0 } },
+        [{ id: "h", from: "a", to: "b" }],
+        {
+          h: [
+            { x: 1, y: 0 },
+            { x: 1, y: -1 },
+            { x: 7, y: -1 },
+            { x: 7, y: 0 },
+          ],
+        }
+      );
+
+      for (const clashes of groundClashesOf(map)) {
+        assert.include(clashes, "route:h × zone:main");
+      }
+    })
+  );
+
+  it.effect("reports two hops' lines that run on top of each other", () =>
+    Effect.sync(() => {
+      // Two hops between different pairs share a stretch at y = 5.
+      // Overrides keep their points, so the scene draws them as they are.
+      const map = groundMap(
+        {
+          a: { x: 0, y: 0 },
+          b: { x: 10, y: 8 },
+          c: { x: 4, y: 0 },
+          d: { x: 14, y: 8 },
+        },
+        [
+          { id: "one", from: "a", to: "b" },
+          { id: "two", from: "c", to: "d" },
+        ],
+        {
+          one: [
+            { x: 1, y: 2 },
+            { x: 1, y: 5 },
+            { x: 11, y: 5 },
+            { x: 11, y: 8 },
+          ],
+          two: [
+            { x: 5, y: 2 },
+            { x: 5, y: 5 },
+            { x: 15, y: 5 },
+            { x: 15, y: 8 },
+          ],
+        }
+      );
+
+      const lanes = Arr.map(views, (view) =>
+        Arr.map(sceneOf({ ...map, view }).hops, ({ points }) => points)
+      );
+
+      // The scene gives each its own lane, so the lines don't coincide.
+      for (const clashes of groundClashesOf(map)) {
+        assert.notInclude(clashes, "route:one × route:two");
+      }
+
+      for (const [one, two] of lanes) {
+        assert.notDeepEqual(one?.[1], two?.[0]);
+      }
+    })
+  );
+
+  it.effect("is quiet for two hops that cross at a right angle", () =>
+    Effect.sync(() => {
+      const map = groundMap(
+        {
+          a: { x: 0, y: 4 },
+          b: { x: 10, y: 4 },
+          c: { x: 5, y: 0 },
+          d: { x: 5, y: 10 },
+        },
+        [
+          { id: "across", from: "a", to: "b" },
+          { id: "down", from: "c", to: "d" },
+        ],
+        {
+          across: [
+            { x: 2, y: 5 },
+            { x: 10, y: 5 },
+          ],
+          down: [
+            { x: 6, y: 2 },
+            { x: 6, y: 10 },
+          ],
+        }
+      );
+
+      for (const clashes of groundClashesOf(map)) {
+        assert.deepStrictEqual(clashes, []);
+      }
+    })
+  );
+
+  it.effect(
+    "draws main → Updater and Upstream → Updater as two lines into two points on Updater",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("flake-pipeline");
+        const updater = placementOf(layout, "updater");
+
+        for (const view of views) {
+          const { hops } = sceneOf({
+            data,
+            layout,
+            revealed: everything(data),
+            view,
+          });
+
+          const lineOf = (id: string) =>
+            Option.getOrThrow(Arr.findFirst(hops, ({ hop }) => hop.id === id))
+              .points;
+
+          const main = lineOf("h-main-updater");
+          const upstream = lineOf("h-upstream-updater");
+          const tips = [main.at(-1), upstream.at(-1)];
+          const { toScreen } = groundProjections[view];
+
+          const edge = [
+            toScreen({ x: updater.x, y: updater.y + updater.d }),
+            toScreen({ x: updater.x + updater.w, y: updater.y + updater.d }),
+            toScreen({ x: updater.x + updater.w, y: updater.y }),
+          ];
+
+          for (const tip of tips) {
+            assert.isDefined(tip);
+            assert.isBelow(distanceToPolyline(edge, tip), 1e-6, view);
+          }
+
+          assert.isAbove(
+            distance(
+              tips[0] ?? project({ x: 0, y: 0 }),
+              tips[1] ?? project({ x: 0, y: 0 })
+            ),
+            1,
+            `the two arrowheads share a point in ${view}`
+          );
+
+          // The lines keep apart wherever they run side by side: each of
+          // one's corners sits off the other's line, except where they cross.
+          for (const [line, other] of [
+            [main, upstream],
+            [upstream, main],
+          ] as const) {
+            for (const point of line) {
+              assert.isAbove(
+                distanceToPolyline(other, point),
+                1,
+                `the two lines meet in ${view}`
+              );
+            }
+          }
+        }
+      })
+  );
+});
