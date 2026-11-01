@@ -112,6 +112,10 @@ _Avoid_: drill-down, detail view
 The structure that's selected. Its panel is pinned in the side panel until the selection clears.
 _Avoid_: focus, active structure
 
+**Multi-selection**:
+The structures picked together with Shift-click or a selection box, to move, nudge, align and distribute as one. It opens no panel, and it is separate from the selection.
+_Avoid_: group selection, marquee
+
 **Side index**:
 The list of every structure by group, next to the view.
 _Avoid_: sidebar, legend
