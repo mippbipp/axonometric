@@ -129,14 +129,18 @@ function Arrow({
 
 function HopArrow({
   routed,
+  view,
   onHover,
 }: {
   readonly routed: SceneHop;
+  readonly view: View;
   /** Called with the hop's id while the pointer is on its line, else null. */
   readonly onHover: (hop: string | null) => void;
 }) {
   const { hop, points } = routed;
-  const bends = points.slice(1, -1);
+  // The iso view marks bends with diamonds, as system-atlas does. From
+  // above a bend is plain to see, and a dot there reads as a junction.
+  const bends = view === "iso" ? points.slice(1, -1) : [];
 
   return (
     <g
@@ -410,7 +414,12 @@ export function MapView({
       </g>
       <g>
         {Arr.map(scene.hops, (item) => (
-          <HopArrow key={item.hop.id} routed={item} onHover={setHoveredHop} />
+          <HopArrow
+            key={item.hop.id}
+            routed={item}
+            view={view}
+            onHover={setHoveredHop}
+          />
         ))}
       </g>
       <g>
