@@ -81,6 +81,20 @@ jobs:
 
       - uses: cachix/install-nix-action@v31
 
+      # Restores /nix and saves it after a successful job. It uses the GitHub
+      # Actions cache with the job's own token, so no secret is added. The key
+      # includes pnpm-lock.yaml and has no fallback prefix. The pnpm deps are a
+      # fixed-output derivation, so with a stale `pnpmDeps.hash` a restored
+      # store would already hold them, and the build would skip the check that
+      # prints `got: sha256-...`.
+      - name: Read the pnpm deps hash
+        id: pnpm-deps
+        run: echo "hash=$(grep -o 'sha256-[^"]*' nix/package.nix | head -n 1)" >>"$GITHUB_OUTPUT"
+
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'pnpm-lock.yaml') }}-${{ steps.pnpm-deps.outputs.hash }}
+
       # If pnpm-lock.yaml changed, this fails with a hash mismatch. Copy the
       # `got: sha256-...` value into `pnpmDeps.hash` in nix/package.nix.
       - run: nix build -L .#default
