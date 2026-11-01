@@ -87,14 +87,10 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   '';
 
   meta = {
-    description = cliPackage.description;
+    inherit (cliPackage) description;
     homepage = "https://github.com/mippbipp/axonometric";
     license = lib.licenses.mit;
     mainProgram = "axonometric";
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-      "aarch64-darwin"
-    ];
+    platforms = import ./systems.nix;
   };
 })

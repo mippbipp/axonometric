@@ -22,16 +22,8 @@
       llm-agents,
       ...
     }:
-    let
-      # The systems the package is built for. The dev shell covers
-      # flake-utils' default systems.
-      packageSystems = [
-        "x86_64-linux"
-        "aarch64-linux"
-        "aarch64-darwin"
-      ];
-    in
-    flake-utils.lib.eachSystem packageSystems (
+    # The dev shell below covers flake-utils' default systems.
+    flake-utils.lib.eachSystem (import ./nix/systems.nix) (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};

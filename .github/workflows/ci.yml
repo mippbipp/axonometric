@@ -47,7 +47,13 @@ jobs:
           node packages/cli/dist/bin.mjs --help
 
   nix:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # x86_64-linux and aarch64-darwin. aarch64-linux is the maintainer's
+        # machine.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v7
