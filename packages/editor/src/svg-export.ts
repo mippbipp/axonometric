@@ -42,7 +42,6 @@ const strippedSelector = [
   "polygon[data-new-marker]",
   '[data-hop-label-fits="false"]',
   'polyline[stroke="transparent"]',
-  "title",
 ].join(", ");
 
 /**
@@ -376,6 +375,17 @@ export const cleanSvg = ({
 
   for (const element of clone.querySelectorAll(strippedSelector)) {
     element.remove();
+  }
+
+  // Each structure's accessible name becomes its title, so a structure whose
+  // name tag shows its short tag still carries its full name.
+  for (const element of clone.querySelectorAll(
+    "[data-structure][aria-label]"
+  )) {
+    const name = document.createElementNS(svgNs, "title");
+
+    name.textContent = element.getAttribute("aria-label");
+    element.prepend(name);
   }
 
   for (const [attribute, kind] of namedParts) {
