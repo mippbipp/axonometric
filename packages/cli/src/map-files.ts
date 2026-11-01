@@ -3,13 +3,15 @@ import { pathToFileURL } from "node:url";
 import {
   checkMap,
   describeCause,
+  formatCount,
   formatProblem,
-  hasErrors,
   LayoutFile,
   linkTargets,
   MapData,
+  mapError,
   MapProblem,
   problemsFromIssue,
+  splitProblems,
 } from "@axonometric/contracts";
 import type { Layout, MapFile } from "@axonometric/contracts";
 import {
@@ -37,16 +39,11 @@ export class MapInvalid extends Schema.TaggedError<
   problems: Schema.Array(MapProblem),
 }) {
   public override get [CliError.userMessage]() {
-    const errors = Arr.filter(
-      this.problems,
-      (problem) => problem.severity === "error"
-    );
-
-    const count = errors.length;
+    const { errors } = splitProblems(this.problems);
 
     return Arr.join(
       [
-        `The map in ${this.home} has ${count} ${count === 1 ? "error" : "errors"}. ${this.command} wrote nothing.`,
+        `The map in ${this.home} has ${formatCount(errors.length, "error")}. ${this.command} wrote nothing.`,
         ...Arr.map(this.problems, (problem) => `  ${formatProblem(problem)}`),
       ],
       "\n"
@@ -60,13 +57,9 @@ const decodeData = Schema.decodeUnknownResult(MapData, parseOptions);
 
 const decodeLayout = Schema.decodeUnknownResult(LayoutFile, parseOptions);
 
-/** A problem with a whole file, rather than one field in it. */
-const fileProblem = (file: MapFile, message: string): MapProblem => ({
-  severity: "error",
-  file,
-  path: "",
-  message,
-});
+/** An error with a whole file, rather than one field in it. */
+const fileProblem = (file: MapFile, message: string) =>
+  mapError({ file, path: [], message });
 
 type Loaded<A> = Result.Result<A, readonly MapProblem[]>;
 
@@ -162,18 +155,23 @@ const loadLayout = Effect.fnUntraced(function* (
   );
 });
 
-/** Which of the map's relative links resolve to a file next to SYSTEM.md. */
+/**
+ * Which of the map's relative links resolve to a file next to SYSTEM.md.
+ * `URL` resolves each link against `output` and drops its `#fragment`.
+ */
 const existingLinks = Effect.fnUntraced(function* (
   output: string,
   data: MapData
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const base = yield* path.toFileUrl(path.join(output, path.sep));
 
-  const found = yield* Effect.filter(linkTargets(data), (target) =>
-    fs
-      .exists(path.resolve(output, target))
-      .pipe(Effect.orElseSucceed(() => false))
+  const found = yield* Effect.filter(linkTargets(data), (link) =>
+    path.fromFileUrl(new URL(link, base)).pipe(
+      Effect.flatMap((file) => fs.exists(file)),
+      Effect.orElseSucceed(() => false)
+    )
   );
 
   return new Set(found);
@@ -235,7 +233,7 @@ export const loadMap = Effect.fnUntraced(function* (
 ) {
   const { problems, map } = yield* inspectMap(home, output);
 
-  if (hasErrors(problems) || Option.isNone(map)) {
+  if (splitProblems(problems).errors.length > 0 || Option.isNone(map)) {
     return yield* MapInvalid.make({ home, command, problems });
   }
 

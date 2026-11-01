@@ -33,11 +33,14 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  formatCount,
   formatPath,
   formatProblem,
-  hasErrors,
   MapFile,
+  mapError,
   MapProblem,
+  mapWarning,
   problemsFromIssue,
   Severity,
+  splitProblems,
 } from "./problems.ts";

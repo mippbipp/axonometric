@@ -1,5 +1,10 @@
-import { formatProblem, hasErrors, MapProblem } from "@axonometric/contracts";
-import { Array as Arr, Console, Effect, Path, Schema } from "effect";
+import {
+  formatCount,
+  formatProblem,
+  MapProblem,
+  splitProblems,
+} from "@axonometric/contracts";
+import { Console, Effect, Path, Schema } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/cli";
 
 import { inspectMap } from "./map-files.ts";
@@ -20,23 +25,15 @@ export class CheckFailed extends Schema.TaggedError<
   { readonly brand: unique symbol }
 >()("CheckFailed", { home: Schema.String, errors: Schema.Int }) {
   public override get [CliError.userMessage]() {
-    return `The map in ${this.home} has ${this.errors} ${this.errors === 1 ? "error" : "errors"}.`;
+    return `The map in ${this.home} has ${formatCount(this.errors, "error")}.`;
   }
 }
-
-const plural = (count: number, word: string) =>
-  `${count} ${word}${count === 1 ? "" : "s"}`;
 
 const check = Effect.fn("check")(function* (home: string, json: boolean) {
   const path = yield* Path.Path;
   const { problems } = yield* inspectMap(home, path.dirname(home));
 
-  const errors = Arr.filter(problems, ({ severity }) => severity === "error");
-
-  const warnings = Arr.filter(
-    problems,
-    ({ severity }) => severity === "warning"
-  );
+  const { errors, warnings } = splitProblems(problems);
 
   if (json) {
     yield* Console.log(
@@ -50,11 +47,11 @@ const check = Effect.fn("check")(function* (home: string, json: boolean) {
     );
 
     yield* Console.log(
-      `${home}: ${plural(errors.length, "error")}, ${plural(warnings.length, "warning")}.`
+      `${home}: ${formatCount(errors.length, "error")}, ${formatCount(warnings.length, "warning")}.`
     );
   }
 
-  return hasErrors(problems)
+  return errors.length > 0
     ? yield* CheckFailed.make({ home, errors: errors.length })
     : undefined;
 });

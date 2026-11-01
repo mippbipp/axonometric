@@ -1,26 +1,18 @@
-import { Array as Arr, Record as Rec, String as Str } from "effect";
+import { Array as Arr, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
-import { formatPath } from "./problems.ts";
+import { mapError, mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
 
 type Path = readonly PropertyKey[];
 
-const error = (path: Path, message: string): MapProblem => ({
-  severity: "error",
-  file: "data.mjs",
-  path: formatPath(path),
-  message,
-});
+const error = (path: Path, message: string) =>
+  mapError({ file: "data.mjs", path, message });
 
-const warning = (path: Path, message: string): MapProblem => ({
-  severity: "warning",
-  file: "data.mjs",
-  path: formatPath(path),
-  message,
-});
+const warning = (path: Path, message: string) =>
+  mapWarning({ file: "data.mjs", path, message });
 
 interface Keyed {
   readonly key: string;
@@ -220,11 +212,6 @@ const walkthrough = (data: MapData): readonly MapProblem[] => {
   return [...unrevealedEnds, ...lastChapter];
 };
 
-const isUrl = (link: string) => /^[a-z][a-z\d+.-]*:/iu.test(link);
-
-/** The part of a relative link that names a file. */
-const linkTarget = (link: string) => Str.split(link, "#")[0] ?? link;
-
 interface LinkField {
   readonly link: string | undefined;
   readonly path: Path;
@@ -232,11 +219,13 @@ interface LinkField {
 
 interface RelativeLink {
   readonly link: string;
-  readonly target: string;
   readonly path: Path;
 }
 
-/** Every link in the overview that names a file rather than a URL. */
+/**
+ * Every link in the overview that names a file rather than a full URL, such
+ * as `https://...`.
+ */
 const relativeLinks = (data: MapData): readonly RelativeLink[] => {
   const fields: readonly LinkField[] = [
     ...Arr.map(data.overview.decisions ?? [], (decision, index) => ({
@@ -249,27 +238,19 @@ const relativeLinks = (data: MapData): readonly RelativeLink[] => {
     })),
   ];
 
-  return Arr.flatMap(fields, (field) => {
-    if (field.link === undefined || isUrl(field.link)) {
-      return [];
-    }
-
-    const target = linkTarget(field.link);
-
-    return target === ""
-      ? []
-      : [{ link: field.link, target, path: field.path }];
-  });
+  return Arr.flatMap(fields, ({ link, path }) =>
+    link === undefined || URL.canParse(link) ? [] : [{ link, path }]
+  );
 };
 
 const links = (
   data: MapData,
-  linkExists: (target: string) => boolean
+  linkExists: (link: string) => boolean
 ): readonly MapProblem[] => {
   const candidates = relativeLinks(data);
 
-  return Arr.flatMap(candidates, ({ link, target, path }) =>
-    linkExists(target)
+  return Arr.flatMap(candidates, ({ link, path }) =>
+    linkExists(link)
       ? []
       : [
           error(
@@ -302,21 +283,21 @@ const placements = (data: MapData, layout: Layout): readonly MapProblem[] =>
     Rec.has(layout.structures, structure.id)
       ? []
       : [
-          {
-            severity: "error" as const,
-            file: "layout.json" as const,
-            path: formatPath(["structures", structure.id]),
+          mapError({
+            file: "layout.json",
+            path: ["structures", structure.id],
             message: `missing. structures[${index}] in data.mjs has no placement. Add "${structure.id}": { "x": 0, "y": 0, "w": 2, "d": 2 } to structures, at a free spot.`,
-          },
+          }),
         ]
   );
 
 export interface CheckOptions {
   /**
-   * Whether a relative link target, such as `../adr/0001-runtime.md`,
-   * resolves to a file. Links are relative to SYSTEM.md.
+   * Whether a relative link, such as `../adr/0001-runtime.md#context`,
+   * resolves to a file. Links are relative to SYSTEM.md, and a fragment
+   * names a place in the file.
    */
-  readonly linkExists: (target: string) => boolean;
+  readonly linkExists: (link: string) => boolean;
 }
 
 /** The two map files, each already decoded by its own schema. */
@@ -348,6 +329,6 @@ export const checkMap: {
   ]
 );
 
-/** Every relative link target in the map, for resolving before `checkMap`. */
+/** Every relative link in the map, for resolving before `checkMap`. */
 export const linkTargets = (data: MapData): readonly string[] =>
-  Arr.map(relativeLinks(data), ({ target }) => target);
+  Arr.map(relativeLinks(data), ({ link }) => link);
