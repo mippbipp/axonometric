@@ -1,32 +1,23 @@
 @import "@axonometric/ui/globals.css";
 
 /* The map's palette: dark ink on khaki paper, taken from inkboard/system-atlas,
-   the MIT project axonometric grew out of. The page follows the system's
-   colour scheme unless <html data-theme> picks one. */
+   the MIT project axonometric grew out of. Each colour is
+   light-dark(light, dark). The page follows the system's colour scheme
+   unless <html data-theme> picks one. */
 :root {
-  color-scheme: light;
-  --paper: #e6dfbe;
-  --ink: #17170f;
-  --face: #efe9cc;
-  --muted: #8e8a70;
+  color-scheme: light dark;
+  --paper: light-dark(#e6dfbe, #1e1d15);
+  --ink: light-dark(#17170f, #e6dfbe);
+  --face: light-dark(#efe9cc, #2a2920);
+  --muted: light-dark(#8e8a70, #6e6b54);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --paper: #1e1d15;
-    --ink: #e6dfbe;
-    --face: #2a2920;
-    --muted: #6e6b54;
-  }
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #1e1d15;
-  --ink: #e6dfbe;
-  --face: #2a2920;
-  --muted: #6e6b54;
 }
 
 @theme inline {
@@ -42,7 +33,7 @@
     Consolas, monospace;
 }
 
-/* Status looks. Live is the plain drawing. Planned is designed but not
+/* How each status is drawn. Live is the plain drawing. Planned is designed but not
    built: a dashed outline over paper, with no hatching. Off is built but
    switched off: faded, in the muted ink, with a power mark. */
 [data-status="planned"] {
