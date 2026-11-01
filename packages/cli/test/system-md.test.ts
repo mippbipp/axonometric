@@ -38,7 +38,7 @@ const sectionOf = (markdown: string, heading: string) => {
   });
 };
 
-describe("sYSTEM.md", () => {
+describe("the SYSTEM.md build writes", () => {
   it.effect("opens with the overview: title, summary and stats", () =>
     Effect.gen(function* () {
       const systemMd = yield* builtSystemMd;

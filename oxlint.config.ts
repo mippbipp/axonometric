@@ -51,7 +51,9 @@ export default defineConfig({
     "anti-slop/no-reflect-apply": "error",
     "anti-slop/no-reflect-get": "error",
     "anti-slop/no-runtime-typeof": "error",
-    "anti-slop/no-shape-in-symbol-names": "error",
+    // "shape" is a domain term here (see CONTEXT.md): what a structure is
+    // drawn as. The rule targets "shape" meaning a value's type.
+    "anti-slop/no-shape-in-symbol-names": "off",
     "anti-slop/no-unknown-parameters": "error",
     "anti-slop/no-unknown-returns": "error",
     "anti-slop/no-unknown-type-aliases": "error",

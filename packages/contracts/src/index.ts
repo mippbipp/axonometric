@@ -1,4 +1,3 @@
-// oxlint-disable anti-slop/no-shape-in-symbol-names -- re-exports the spec's "shape" field; see map-data.ts.
 export { describeCause } from "./cause.ts";
 
 export { checkMap, linkTargets } from "./check.ts";

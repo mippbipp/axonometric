@@ -1,4 +1,3 @@
-// oxlint-disable anti-slop/no-shape-in-symbol-names -- "shape" is the spec's word for what a structure is drawn as (box, tall, store...), not a word for a type's structure.
 import { Array as Arr, Schema } from "effect";
 
 import {
@@ -58,13 +57,15 @@ export const shapes = [
   "external",
 ] as const;
 
+const shapeList = Arr.join(shapes, ", ");
+
 export const Shape = Schema.Literals(shapes)
   .annotate({
-    message: `expected one of ${Arr.join(shapes, ", ")}. Pick the shape closest to the structure's role.`,
+    message: `expected one of ${shapeList}. Pick the shape closest to the structure's role.`,
   })
   .pipe(
     Schema.annotateKey({
-      messageMissingKey: `missing. Set shape to one of ${Arr.join(shapes, ", ")}.`,
+      messageMissingKey: `missing. Set shape to one of ${shapeList}.`,
     })
   );
 
@@ -108,7 +109,7 @@ const questionId = requiredText(
 ).check(
   Schema.isPattern(/^Q-[A-Z]+[1-9]\d*$/u, {
     message:
-      "expected an id of the form Q-<code><n>, such as Q-G1: the owning structure's code and a number from 1. Keep the id it was first given.",
+      "expected an id of the form Q-<code><n>, such as Q-G1, where the code is capital letters and the number starts at 1. Use the structure's code when you first assign the id, then keep the id even if the code changes.",
   })
 );
 
@@ -234,7 +235,7 @@ export const Flow = Schema.Struct({
 
 export type Flow = typeof Flow.Type;
 
-/** One step of the walkthrough. */
+/** One stop in the walkthrough. */
 export const Chapter = Schema.Struct({
   id: requiredText("Give every chapter an id."),
   title: requiredText("Give every chapter a title."),
