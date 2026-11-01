@@ -10,6 +10,12 @@ const dataFile = "review/map/data.mjs";
 
 const layoutFile = "review/map/layout.json";
 
+const proposalsFile = "review/map/proposals.json";
+
+/** A proposals.json holding `layout`, written as JSON text. */
+const proposals = (layout: string) =>
+  `{ "format": 1, "revision": 3, "layout": ${layout} }\n`;
+
 const CheckReport = Schema.Struct({
   home: Schema.String,
   ok: Schema.Boolean,
@@ -428,4 +434,77 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
       assert.isUndefined(result.files["review/SYSTEM.md"]);
     })
   );
+
+  describe("with a proposals.json", () => {
+    it.effect("passes pending changes that fit, and writes nothing", () =>
+      Effect.gen(function* () {
+        const files = {
+          [proposalsFile]: proposals(
+            '[{ "kind": "move", "structureId": "page", "position": { "x": 4, "y": 3 } }]'
+          ),
+        };
+
+        const before = { ...(yield* fullMap), ...files };
+        const result = yield* checkWith(files);
+
+        assert.strictEqual(result.exitCode, 0, result.stdout);
+        assert.include(result.stdout, ": 0 errors, 0 warnings.");
+        assert.deepStrictEqual(result.files, before);
+      })
+    );
+
+    it.effect(
+      "reports a proposals.json that doesn't match its schema as an error",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* checkWith({
+            [proposalsFile]: proposals(
+              '[{ "kind": "move", "structureId": "page", "position": { "x": 4.2, "y": 3 } }]'
+            ),
+          });
+
+          assert.strictEqual(result.exitCode, 1);
+          assert.include(
+            result.stdout,
+            "error proposals.json layout[0].position.x: expected a whole or half grid unit"
+          );
+        })
+    );
+
+    it.effect(
+      "warns about a pending change for a structure data.mjs doesn't have",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* checkWith({
+            [proposalsFile]: proposals(
+              '[{ "kind": "resize", "structureId": "gone", "footprint": { "w": 3, "d": 3 } }]'
+            ),
+          });
+
+          assert.strictEqual(result.exitCode, 0, result.stdout);
+          assert.include(
+            result.stdout,
+            'warning proposals.json layout[0].structureId: no structure in data.mjs has the id "gone"'
+          );
+        })
+    );
+
+    it.effect("warns when a pending move now overlaps a footprint", () =>
+      Effect.gen(function* () {
+        const result = yield* checkWith({
+          [proposalsFile]: proposals(
+            '[{ "kind": "move", "structureId": "page", "position": { "x": 8.5, "y": 0 } }]'
+          ),
+        });
+
+        assert.strictEqual(result.exitCode, 0, result.stdout);
+        assert.include(
+          result.stdout,
+          'warning proposals.json layout: the pending change to "page" makes its footprint overlap "server".'
+        );
+        // The accepted layout's own checks don't see the pending move.
+        assert.notInclude(result.stdout, "warning layout.json");
+      })
+    );
+  });
 });

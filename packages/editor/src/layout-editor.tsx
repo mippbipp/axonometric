@@ -229,16 +229,24 @@ export function LayoutEditor({
 
     const ground = groundAt(element, event, view);
 
-    if (ground !== undefined) {
-      dragged.current = false;
-      press.current = {
-        id,
-        pointer: event.pointerId,
-        from: { x: event.clientX, y: event.clientY },
-        ground,
-        start,
-        corner,
-      };
+    if (ground === undefined) {
+      return;
+    }
+
+    dragged.current = false;
+    press.current = {
+      id,
+      pointer: event.pointerId,
+      from: { x: event.clientX, y: event.clientY },
+      ground,
+      start,
+      corner,
+    };
+
+    // A handle is never a click target, so it takes the pointer at once,
+    // and moves keep coming once the pointer leaves the small square.
+    if (corner !== undefined) {
+      element.setPointerCapture(event.pointerId);
     }
   };
 
@@ -286,7 +294,10 @@ export function LayoutEditor({
     // Capture only once it's a drag, so a plain click keeps its target.
     if (!dragged.current) {
       dragged.current = true;
-      element.setPointerCapture(event.pointerId);
+
+      if (!element.hasPointerCapture(event.pointerId)) {
+        element.setPointerCapture(event.pointerId);
+      }
     }
 
     const delta = {
@@ -403,7 +414,7 @@ function DragOutline({
 }
 
 /** How big a resize handle is, in drawing units. */
-const handleSize = 10;
+const handleSize = 12;
 
 /** A square handle on each corner of the selected structure's footprint. */
 function ResizeHandles({
