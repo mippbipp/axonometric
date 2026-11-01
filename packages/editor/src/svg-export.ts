@@ -1,4 +1,4 @@
-import { whiteBackground } from "@axonometric/contracts";
+import { exportFontStack, whiteBackground } from "@axonometric/contracts";
 import { Effect, Schema } from "effect";
 import { dual } from "effect/Function";
 
@@ -10,10 +10,6 @@ import { dual } from "effect/Function";
 // in one page.
 
 const svgNs = "http://www.w3.org/2000/svg";
-
-/** A generic monospace stack, close to the page's, for any viewer. */
-export const exportFontStack =
-  'ui-monospace, Menlo, Consolas, "Liberation Mono", monospace';
 
 /** Space around the drawing, in drawing units. */
 const margin = 16;

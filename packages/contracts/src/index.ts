@@ -1,10 +1,14 @@
 export { describeCause } from "./cause.ts";
 
+export { chapterStopsOf, wholeMapChapterId } from "./chapters.ts";
+
+export type { ChapterStop } from "./chapters.ts";
+
 export { checkMap, linkTargets } from "./check.ts";
 
 export type { CheckOptions, MapFiles } from "./check.ts";
 
-export { excalidrawIds, excalidrawOf } from "./excalidraw.ts";
+export { excalidrawIds, excalidrawOf, excalidrawText } from "./excalidraw.ts";
 
 export type {
   ExcalidrawArrow,
@@ -18,9 +22,14 @@ export type {
   ExcalidrawText,
 } from "./excalidraw.ts";
 
-export { exportName } from "./export-name.ts";
+export { exportName, pngScale } from "./export-name.ts";
 
-export { palette, whiteBackground } from "./palette.ts";
+export {
+  exportFontFamily,
+  exportFontStack,
+  palette,
+  whiteBackground,
+} from "./palette.ts";
 
 export { fileVersionFields, formatVersion } from "./fields.ts";
 

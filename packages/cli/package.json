@@ -28,6 +28,7 @@
     "@axonometric/editor": "workspace:*",
     "@effect/platform-node": "catalog:effect",
     "@effect/vitest": "catalog:effect",
+    "@resvg/resvg-wasm": "2.6.2",
     "@types/node": "catalog:",
     "effect": "catalog:effect",
     "playwright": "catalog:",
