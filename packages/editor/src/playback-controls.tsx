@@ -1,5 +1,5 @@
 import { controlClass } from "./control-class.ts";
-import { usePlayback } from "./playback.ts";
+import { reducedMotionNote, usePlayback } from "./playback.ts";
 
 /** Play or pause, and step one hop. */
 export function PlaybackControls() {
@@ -23,11 +23,7 @@ export function PlaybackControls() {
           data-control="play"
           className={controlClass}
           disabled={nothingToPlay || reducedMotion}
-          title={
-            reducedMotion
-              ? "Packets stay still because you prefer reduced motion. Use Step."
-              : undefined
-          }
+          title={reducedMotion ? reducedMotionNote : undefined}
           onClick={play}
         >
           ▸ Play

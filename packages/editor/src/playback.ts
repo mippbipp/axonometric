@@ -76,3 +76,7 @@ export const usePlayback = (): Playback => {
 
 /** Seconds of playback so far, for drawing packets. */
 export const usePlaybackClock = () => use(ClockContext);
+
+/** Why Play is disabled when the system asks for reduced motion. */
+export const reducedMotionNote =
+  "Packets stay still because your system asks for reduced motion. Step still moves them.";

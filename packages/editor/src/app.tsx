@@ -56,8 +56,8 @@ const hintsOf = ({
         "hover to read",
         "click to pin",
         "double-click to go inside",
-        "+ and − zoom, 0 fits",
         "click a packet to read its payload",
+        "+ and − zoom, 0 fits",
       ];
 };
 
@@ -87,8 +87,7 @@ function WalkthroughPage() {
         <h1 className="text-sm font-medium tracking-widest uppercase">
           {state.system}
         </h1>
-        <div className="ml-auto flex items-center gap-4">
-          {insideStructure === undefined ? <PlaybackControls /> : null}
+        <div className="ml-auto">
           <ThemeToggle />
         </div>
       </header>
@@ -116,7 +115,15 @@ function WalkthroughPage() {
               <PacketLayer routeOf={isoRouteOf} />
             </IsoView>
             <ChapterRail className="absolute top-3 left-3" />
-            <FlowPicker className="absolute bottom-3 left-3" />
+            {/* Stops short of the zoom controls at the bottom right, and wraps
+                upward when the flows don't fit on one line. */}
+            <div
+              data-playback-bar
+              className="absolute bottom-3 left-3 flex max-w-[calc(100%-13rem)] flex-wrap items-center gap-x-3 gap-y-1.5"
+            >
+              <PlaybackControls />
+              <FlowPicker className="border-ink border-l pl-3" />
+            </div>
           </div>
           {insideStructure === undefined ? null : (
             <div className="bg-paper absolute inset-0">
@@ -134,19 +141,28 @@ function WalkthroughPage() {
         </MapSurface>
         <SidePanel />
       </div>
-      {/* One line, clipped, so changing hints never resizes the canvas: a
-          resize refits the view and loses the engineer's zoom. */}
-      <footer className="border-ink flex h-6 shrink-0 gap-x-4 overflow-hidden border-t px-4 py-1 text-xs whitespace-nowrap opacity-70">
-        {Arr.map(
-          hintsOf({
-            selected: selected !== null,
-            inside: insideStructure !== undefined,
-            canGoInside: hasSteps(selectedStructure),
-          }),
-          (hint) => (
-            <span key={hint}>{hint}</span>
-          )
-        )}
+      {/* One line, fixed height, so changing hints never resizes the canvas:
+          a resize refits the view and loses the engineer's zoom. Hints that
+          don't fit wrap onto a second line, which the list clips, so a hint
+          shows whole or not at all. */}
+      <footer
+        data-hints
+        className="border-ink flex h-6 shrink-0 border-t px-4 py-1 text-xs opacity-70"
+      >
+        <ul className="flex h-4 min-w-0 flex-wrap gap-x-4 gap-y-2 overflow-hidden">
+          {Arr.map(
+            hintsOf({
+              selected: selected !== null,
+              inside: insideStructure !== undefined,
+              canGoInside: hasSteps(selectedStructure),
+            }),
+            (hint) => (
+              <li key={hint} data-hint className="shrink-0 whitespace-nowrap">
+                {hint}
+              </li>
+            )
+          )}
+        </ul>
       </footer>
     </main>
   );

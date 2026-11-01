@@ -38,11 +38,11 @@ export function FlowPicker({ className }: { readonly className?: string }) {
   return (
     <fieldset
       data-flow-picker
-      className={cn("flex flex-wrap items-center gap-1.5", className)}
+      className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)}
     >
       <legend className="sr-only">Flow to play</legend>
       <span className="mr-1 text-xs tracking-widest uppercase opacity-70">
-        Play
+        Flow
       </span>
       {Arr.map(options, ({ label, choice }) => {
         const key = flowChoiceKey(choice);
