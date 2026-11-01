@@ -24,57 +24,84 @@ const paperOf = (page: Page) =>
   );
 
 const toggle = (page: Page) =>
-  Effect.promise(() => page.getByRole("button", { name: /^Theme:/u }).click());
+  Effect.promise(() => page.locator("[data-theme-toggle]").click());
 
 const toggleLabel = (page: Page) =>
-  Effect.promise(() =>
-    page.getByRole("button", { name: /^Theme:/u }).textContent()
-  );
+  Effect.promise(() => page.locator("[data-theme-toggle]").textContent());
+
+const prefer = (page: Page, colorScheme: "light" | "dark") =>
+  Effect.promise(() => page.emulateMedia({ colorScheme }));
 
 describe("the theme", () => {
   it.live("follows the system's colour scheme by default", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { page } = yield* builtPage;
+
+        yield* prefer(page, "light");
         const light = yield* paperOf(page);
 
-        yield* Effect.promise(() => page.emulateMedia({ colorScheme: "dark" }));
-
+        yield* prefer(page, "dark");
         const dark = yield* paperOf(page);
 
         assert.strictEqual(yield* themeOf(page), null);
-        assert.strictEqual(yield* toggleLabel(page), "Theme: System");
         assert.notStrictEqual(light, dark);
       })
     )
   );
 
-  it.live("toggles between light, dark and the system, and remembers", () =>
+  it.live("flips the visible theme on the first click, on either system", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { page } = yield* builtPage;
-        const system = yield* paperOf(page);
+
+        yield* prefer(page, "light");
+        const lightSystem = yield* paperOf(page);
+        const lightLabel = yield* toggleLabel(page);
 
         yield* toggle(page);
-        const darkTheme = yield* themeOf(page);
-        const dark = yield* paperOf(page);
+        const fromLight = yield* paperOf(page);
+        const fromLightTheme = yield* themeOf(page);
+
+        // Back to following the system, which is now dark.
+        yield* toggle(page);
+        yield* prefer(page, "dark");
+        const darkSystem = yield* paperOf(page);
+        const darkLabel = yield* toggleLabel(page);
 
         yield* toggle(page);
-        const lightTheme = yield* themeOf(page);
-        const light = yield* paperOf(page);
+        const fromDark = yield* paperOf(page);
+        const fromDarkTheme = yield* themeOf(page);
+
+        assert.strictEqual(lightLabel, "Use dark theme");
+        assert.strictEqual(fromLightTheme, "dark");
+        assert.notStrictEqual(fromLight, lightSystem);
+        assert.strictEqual(darkLabel, "Use light theme");
+        assert.strictEqual(fromDarkTheme, "light");
+        assert.notStrictEqual(fromDark, darkSystem);
+        assert.strictEqual(fromDark, lightSystem);
+      })
+    )
+  );
+
+  it.live("goes back to the system on the next click, and remembers", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+
+        yield* prefer(page, "light");
+        yield* toggle(page);
 
         // Reloading keeps the choice, and sets it before the page draws.
         yield* Effect.promise(() => page.reload());
         const kept = yield* themeOf(page);
+        const label = yield* toggleLabel(page);
 
         yield* toggle(page);
         const back = yield* themeOf(page);
 
-        assert.strictEqual(darkTheme, "dark");
-        assert.notStrictEqual(dark, system);
-        assert.strictEqual(lightTheme, "light");
-        assert.strictEqual(light, system);
-        assert.strictEqual(kept, "light");
+        assert.strictEqual(kept, "dark");
+        assert.strictEqual(label, "Follow system theme");
         assert.strictEqual(back, null);
       })
     )
