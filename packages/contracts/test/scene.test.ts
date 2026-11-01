@@ -10,7 +10,9 @@ import { vi } from "vitest";
 
 import {
   arrowheadOf,
+  arrowHalfWidth,
   arrowLength,
+  arrowPolygon,
   checkLayout,
   corners,
   distanceToPolyline,
@@ -40,7 +42,12 @@ import type {
   ScreenRect,
 } from "../src/index.ts";
 import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
-import { facingEdges, outsideArea, routeArea } from "./route-geometry.ts";
+import {
+  facingEdges,
+  facingEdgesFull,
+  outsideArea,
+  routeArea,
+} from "./route-geometry.ts";
 
 /** Which edge of a footprint a point sits on: +x, +y, -x or -y. */
 /**
@@ -769,7 +776,7 @@ describe("scene", () => {
   );
 
   it.effect(
-    "leaves and enters every pipeline route by the edges facing the other end",
+    "leaves and enters every pipeline route by an edge facing the other end, unless every point on the facing edges is taken by another hop of the same box",
     () =>
       Effect.gen(function* () {
         const { data, layout } = yield* fixture("flake-pipeline");
@@ -781,28 +788,49 @@ describe("scene", () => {
             revealed: chapter.revealed,
           });
 
-          for (const hop of data.hops) {
+          // Every end on every box, with the edge it leaves or enters by.
+          const ends = Arr.flatMap(data.hops, (hop) => {
             const route = routes[hop.id];
+            const [first] = route?.points ?? [];
+            const last = route?.points.at(-1);
 
-            if (route !== undefined) {
-              const source = placementOf(layout, hop.from);
-              const target = placementOf(layout, hop.to);
-              const [first] = route.points;
-              const last = route.points.at(-1);
+            return route === undefined ||
+              first === undefined ||
+              last === undefined
+              ? []
+              : [
+                  {
+                    hop: hop.id,
+                    box: hop.from,
+                    other: hop.to,
+                    head: false,
+                    edge: edgeOf(first, route.points[1] ?? first),
+                  },
+                  {
+                    hop: hop.id,
+                    box: hop.to,
+                    other: hop.from,
+                    head: true,
+                    edge: edgeOf(last, route.points.at(-2) ?? last),
+                  },
+                ];
+          });
 
-              assert.isDefined(first);
-              assert.isDefined(last);
-              assert.isTrue(
-                facingEdges(source, target)[
-                  edgeOf(first, route.points[1] ?? first)
-                ],
-                `${hop.id} leaves by an edge facing away in ${chapter.id}`
+          for (const end of ends) {
+            const box = placementOf(layout, end.box);
+            const other = placementOf(layout, end.other);
+
+            if (facingEdges(box, other)[end.edge] !== true) {
+              const taken = Arr.filter(
+                ends,
+                (item) =>
+                  item.box === end.box &&
+                  !(item.hop === end.hop && item.head === end.head)
               );
+
               assert.isTrue(
-                facingEdges(target, source)[
-                  edgeOf(last, route.points.at(-2) ?? last)
-                ],
-                `${hop.id} enters by an edge facing away in ${chapter.id}`
+                facingEdgesFull(box, other, { taken, extra: end.head }),
+                `${end.hop} ${end.head ? "enters" : "leaves"} ${end.box} by an edge facing away in ${chapter.id} while a facing edge has room`
               );
             }
           }
@@ -1000,6 +1028,608 @@ describe("scene", () => {
 
         for (const leg of legsOf(route.points)) {
           assert.isFalse(legTouches(leg, cache), "runs under the cache");
+        }
+      })
+  );
+});
+
+/** A one-group map with 2×2 boxes at `placements` and route overrides. */
+const groundMap = (
+  placements: Readonly<Record<string, GridPoint>>,
+  hops: readonly {
+    readonly id: string;
+    readonly from: string;
+    readonly to: string;
+  }[],
+  routes: Readonly<Record<string, readonly GridPoint[]>>
+) => {
+  const ids = Rec.keys(placements);
+
+  const data: MapData = {
+    format: 1,
+    revision: 0,
+    overview: { title: "Map", summary: "A map." },
+    groups: [{ id: "main", title: "Main" }],
+    structures: Arr.map(ids, (id) => ({
+      id,
+      code: "S",
+      name: id,
+      shape: "box" as const,
+      group: "main",
+      status: "live" as const,
+      oneLiner: "One line.",
+      whatItDoes: "Does.",
+      howItsBuilt: "Built.",
+    })),
+    hops: Arr.map(hops, (hop) => ({ ...hop, label: "x" })),
+    flows: [],
+    chapters: [],
+  };
+
+  const layout: Layout = {
+    format: 1,
+    revision: 0,
+    structures: Rec.map(placements, ({ x, y }) => ({ x, y, w: 2, d: 2 })),
+    routes,
+  };
+
+  return { data, layout, revealed: new Set(ids) };
+};
+
+/** The ground clashes of a map's scene in each view, as `a × b` keys. */
+const groundClashesOf = (map: ReturnType<typeof groundMap>) =>
+  Arr.map(views, (view) => {
+    const clashes = sceneClashes(sceneOf({ ...map, view }));
+
+    return Arr.filter(
+      Arr.map(clashes, clashKey),
+      (key) => !Str.includes("tag:")(key) && !Str.includes("label:")(key)
+    );
+  });
+
+describe("ground clashes", () => {
+  it.effect("reports a route that touches another box's corner", () =>
+    Effect.sync(() => {
+      // The route turns on m's corner at (4, 0) without running along or
+      // under m, so only the outline check sees it.
+      const map = groundMap(
+        { a: { x: 0, y: 0 }, m: { x: 4, y: 0 }, b: { x: 8, y: 0 } },
+        [{ id: "h", from: "a", to: "b" }],
+        {
+          h: [
+            { x: 2, y: 0.5 },
+            { x: 3.5, y: 0.5 },
+            { x: 3.5, y: 0 },
+            { x: 4, y: 0 },
+            { x: 4, y: -0.5 },
+            { x: 7, y: -0.5 },
+            { x: 7, y: 0.5 },
+            { x: 8, y: 0.5 },
+          ],
+        }
+      );
+
+      for (const clashes of groundClashesOf(map)) {
+        assert.include(clashes, "route:h × box:m");
+      }
+    })
+  );
+
+  it.effect("reports a route that ends on its box's corner", () =>
+    Effect.sync(() => {
+      const map = groundMap(
+        { a: { x: 0, y: 0 }, b: { x: 6, y: 0 } },
+        [{ id: "h", from: "a", to: "b" }],
+        {
+          h: [
+            { x: 2, y: 2 },
+            { x: 3, y: 2 },
+            { x: 3, y: 3 },
+            { x: 5, y: 3 },
+            { x: 5, y: 1 },
+            { x: 6, y: 1 },
+          ],
+        }
+      );
+
+      for (const clashes of groundClashesOf(map)) {
+        assert.include(clashes, "route:h × corner:a");
+      }
+    })
+  );
+
+  it.effect("reports a route that lies along a zone's outline", () =>
+    Effect.sync(() => {
+      // The zone reaches one unit past the boxes, to y = -1.
+      const map = groundMap(
+        { a: { x: 0, y: 0 }, b: { x: 6, y: 0 } },
+        [{ id: "h", from: "a", to: "b" }],
+        {
+          h: [
+            { x: 1, y: 0 },
+            { x: 1, y: -1 },
+            { x: 7, y: -1 },
+            { x: 7, y: 0 },
+          ],
+        }
+      );
+
+      for (const clashes of groundClashesOf(map)) {
+        assert.include(clashes, "route:h × zone:main");
+      }
+    })
+  );
+
+  it.effect("reports two hops' lines that run on top of each other", () =>
+    Effect.sync(() => {
+      // Two hops between different pairs share a stretch at y = 5.
+      // Overrides keep their points, so the scene draws them as they are.
+      const map = groundMap(
+        {
+          a: { x: 0, y: 0 },
+          b: { x: 10, y: 8 },
+          c: { x: 4, y: 0 },
+          d: { x: 14, y: 8 },
+        },
+        [
+          { id: "one", from: "a", to: "b" },
+          { id: "two", from: "c", to: "d" },
+        ],
+        {
+          one: [
+            { x: 1, y: 2 },
+            { x: 1, y: 5 },
+            { x: 11, y: 5 },
+            { x: 11, y: 8 },
+          ],
+          two: [
+            { x: 5, y: 2 },
+            { x: 5, y: 5 },
+            { x: 15, y: 5 },
+            { x: 15, y: 8 },
+          ],
+        }
+      );
+
+      const lanes = Arr.map(views, (view) =>
+        Arr.map(sceneOf({ ...map, view }).hops, ({ points }) => points)
+      );
+
+      // The scene gives each its own lane, so the lines don't coincide.
+      for (const clashes of groundClashesOf(map)) {
+        assert.notInclude(clashes, "route:one × route:two");
+      }
+
+      for (const [one, two] of lanes) {
+        assert.notDeepEqual(one?.[1], two?.[0]);
+      }
+    })
+  );
+
+  it.effect("is quiet for two hops that cross at a right angle", () =>
+    Effect.sync(() => {
+      const map = groundMap(
+        {
+          a: { x: 0, y: 4 },
+          b: { x: 10, y: 4 },
+          c: { x: 5, y: 0 },
+          d: { x: 5, y: 10 },
+        },
+        [
+          { id: "across", from: "a", to: "b" },
+          { id: "down", from: "c", to: "d" },
+        ],
+        {
+          across: [
+            { x: 2, y: 5 },
+            { x: 10, y: 5 },
+          ],
+          down: [
+            { x: 6, y: 2 },
+            { x: 6, y: 10 },
+          ],
+        }
+      );
+
+      for (const clashes of groundClashesOf(map)) {
+        assert.deepStrictEqual(clashes, []);
+      }
+    })
+  );
+
+  it.effect(
+    "draws main → Updater and Upstream → Updater as two lines into two points on Updater",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("flake-pipeline");
+        const updater = placementOf(layout, "updater");
+
+        for (const view of views) {
+          const { hops } = sceneOf({
+            data,
+            layout,
+            revealed: everything(data),
+            view,
+          });
+
+          const lineOf = (id: string) =>
+            Option.getOrThrow(Arr.findFirst(hops, ({ hop }) => hop.id === id))
+              .points;
+
+          const main = lineOf("h-main-updater");
+          const upstream = lineOf("h-upstream-updater");
+          const tips = [main.at(-1), upstream.at(-1)];
+          const { toScreen } = groundProjections[view];
+
+          const edge = [
+            toScreen({ x: updater.x, y: updater.y + updater.d }),
+            toScreen({ x: updater.x + updater.w, y: updater.y + updater.d }),
+            toScreen({ x: updater.x + updater.w, y: updater.y }),
+          ];
+
+          for (const tip of tips) {
+            assert.isDefined(tip);
+            assert.isBelow(distanceToPolyline(edge, tip), 1e-6, view);
+          }
+
+          assert.isAbove(
+            distance(
+              tips[0] ?? project({ x: 0, y: 0 }),
+              tips[1] ?? project({ x: 0, y: 0 })
+            ),
+            1,
+            `the two arrowheads share a point in ${view}`
+          );
+
+          // The lines keep apart wherever they run side by side: each of
+          // one's corners sits off the other's line, except where they cross.
+          for (const [line, other] of [
+            [main, upstream],
+            [upstream, main],
+          ] as const) {
+            for (const point of line) {
+              assert.isAbove(
+                distanceToPolyline(other, point),
+                1,
+                `the two lines meet in ${view}`
+              );
+            }
+          }
+        }
+      })
+  );
+});
+
+/** Whether a point is inside a convex polygon, edges excluded. */
+const insidePolygon = (polygon: readonly ScreenPoint[], point: ScreenPoint) => {
+  const signs = Arr.map(polygon, (corner, index) => {
+    const next = polygon[(index + 1) % polygon.length] ?? corner;
+
+    return Math.sign(
+      (next.sx - corner.sx) * (point.sy - corner.sy) -
+        (next.sy - corner.sy) * (point.sx - corner.sx)
+    );
+  });
+
+  return (
+    Arr.every(signs, (sign) => sign > 0) || Arr.every(signs, (sign) => sign < 0)
+  );
+};
+
+/** One arrowhead: its tip, the way it points, and the edge it is on. */
+interface Head {
+  readonly tip: ScreenPoint;
+  readonly along: ScreenPoint;
+}
+
+/**
+ * How far apart two heads' tips are across the direction the first points,
+ * the part of the gap square to it.
+ */
+const acrossGap = (first: Head, second: Head) =>
+  Math.abs(
+    (second.tip.sx - first.tip.sx) * first.along.sy -
+      (second.tip.sy - first.tip.sy) * first.along.sx
+  ) / Math.max(Math.hypot(first.along.sx, first.along.sy), 1e-9);
+
+describe("arrowheads", () => {
+  it.effect(
+    "never overlap on any fixture, in any chapter, in either view",
+    () =>
+      Effect.gen(function* () {
+        for (const name of [
+          "flake-pipeline",
+          "review",
+          "crowded",
+          "shapes",
+          "pipeline",
+        ]) {
+          const { data, layout } = yield* fixture(name);
+
+          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+            ? chaptersOf(data)
+            : [{ id: "all", plays: [], revealed: everything(data) }];
+
+          for (const chapter of chapters) {
+            for (const view of views) {
+              const scene = sceneOf({
+                data,
+                layout,
+                revealed: chapter.revealed,
+                labelFirst: chapter.plays,
+                view,
+              });
+
+              const clashes = Arr.filter(
+                Arr.map(sceneClashes(scene), clashKey),
+                (key) => Str.startsWith("arrow:")(key)
+              );
+
+              assert.deepStrictEqual(
+                clashes,
+                [],
+                `${name} ${chapter.id} in ${view}`
+              );
+            }
+          }
+        }
+      })
+  );
+
+  it.effect(
+    "keep a head width plus 3 px apart across their direction on one edge, on every fixture, in the Iso view",
+    () =>
+      Effect.gen(function* () {
+        // The zoom that fits chapter 8 in a 1780×1020 window is 0.76; 0.4 is
+        // the least a map is shown at, so heads must clear each other there.
+        const fit = 0.4;
+        const need = 2 * arrowHalfWidth * fit + 3;
+        const closest: { readonly gap: number; readonly where: string }[] = [];
+
+        for (const name of [
+          "flake-pipeline",
+          "review",
+          "crowded",
+          "shapes",
+          "pipeline",
+        ]) {
+          const { data, layout } = yield* fixture(name);
+
+          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+            ? chaptersOf(data)
+            : [{ id: "all", plays: [], revealed: everything(data) }];
+
+          for (const chapter of chapters) {
+            const { hops } = sceneOf({
+              data,
+              layout,
+              revealed: chapter.revealed,
+              view: "iso",
+            });
+
+            // Each head: its tip, its direction, and the edge it is on.
+            const heads = Arr.flatMap(hops, ({ hop, route, points }) => {
+              const tip = points.at(-1);
+              const before = points.at(-2);
+              const last = route.points.at(-1);
+              const back = route.points.at(-2);
+
+              return tip === undefined ||
+                before === undefined ||
+                last === undefined ||
+                back === undefined
+                ? []
+                : [
+                    {
+                      id: hop.id,
+                      edge: `${hop.to}:${edgeOf(last, back)}`,
+                      tip,
+                      along: {
+                        sx: tip.sx - before.sx,
+                        sy: tip.sy - before.sy,
+                      },
+                    },
+                  ];
+            });
+
+            closest.push(
+              ...Arr.flatMap(heads, (first, index) =>
+                Arr.flatMap(heads.slice(index + 1), (second) =>
+                  first.edge === second.edge
+                    ? [
+                        {
+                          gap: acrossGap(first, second) * fit,
+                          where: `${name} ${chapter.id}: ${first.id} and ${second.id} on ${first.edge}`,
+                        },
+                      ]
+                    : []
+                )
+              )
+            );
+          }
+        }
+
+        assert.isNotEmpty(closest);
+
+        for (const { gap, where } of closest) {
+          assert.isAtLeast(gap + 1e-6, need, where);
+        }
+      })
+  );
+
+  it.effect(
+    "show one head per hop, solid or faint, so each structure shows as many as hops end there",
+    () =>
+      Effect.gen(function* () {
+        for (const name of [
+          "flake-pipeline",
+          "review",
+          "crowded",
+          "shapes",
+          "pipeline",
+        ]) {
+          const { data, layout } = yield* fixture(name);
+
+          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
+            ? chaptersOf(data)
+            : [{ id: "all", plays: [], revealed: everything(data) }];
+
+          for (const chapter of chapters) {
+            for (const view of views) {
+              const scene = sceneOf({
+                data,
+                layout,
+                revealed: chapter.revealed,
+                view,
+              });
+
+              const outlines = Arr.map(
+                scene.structures,
+                ({ outline }) => outline
+              );
+
+              // A solid head is drawn under every box, so it shows only
+              // where no box's outline covers its middle. The faint heads
+              // are the hidden stretches that reach the end.
+              const shown = Arr.map(scene.hops, (hop) => {
+                const head = arrowheadOf(hop.points);
+
+                const covered =
+                  head !== undefined &&
+                  Arr.some(outlines, (outline) =>
+                    insidePolygon(outline, {
+                      sx: (head.tip.sx + head.base.sx) / 2,
+                      sy: (head.tip.sy + head.base.sy) / 2,
+                    })
+                  );
+
+                const faint = Arr.filter(
+                  hop.hidden,
+                  ({ reachesEnd }) => reachesEnd
+                );
+
+                return {
+                  to: hop.hop.to,
+                  heads: (covered ? 0 : 1) + faint.length,
+                };
+              });
+
+              const wrong = Arr.flatMap(scene.structures, ({ structure }) => {
+                const mine = Arr.filter(shown, ({ to }) => to === structure.id);
+
+                return Arr.flatMap(mine, ({ heads }) =>
+                  heads === 1 ? [] : [`${structure.id}: ${heads} heads`]
+                );
+              });
+
+              assert.deepStrictEqual(
+                wrong,
+                [],
+                `in ${name} ${chapter.id}, ${view}`
+              );
+            }
+          }
+        }
+      })
+  );
+
+  it.effect("reports two arrowheads that overlap", () =>
+    Effect.sync(() => {
+      const map = groundMap(
+        { a: { x: 0, y: 0 }, b: { x: 6, y: 0 }, c: { x: 0, y: 4 } },
+        [
+          { id: "one", from: "a", to: "b" },
+          { id: "two", from: "c", to: "b" },
+        ],
+        {}
+      );
+
+      for (const view of views) {
+        const scene = sceneOf({ ...map, view });
+        const [one, two] = scene.hops;
+
+        assert.isDefined(one);
+        assert.isDefined(two);
+
+        // The router keeps the heads apart, so move the second hop's last
+        // leg 2 px from the first's, where the heads overlap.
+        const [tip, before] = [one.points.at(-1), one.points.at(-2)];
+
+        assert.isDefined(tip);
+        assert.isDefined(before);
+
+        const moved = {
+          ...scene,
+          hops: [
+            one,
+            {
+              ...two,
+              points: [
+                ...two.points.slice(0, -2),
+                { sx: before.sx + 2, sy: before.sy + 2 },
+                { sx: tip.sx + 2, sy: tip.sy + 2 },
+              ],
+            },
+          ],
+        };
+
+        assert.include(
+          Arr.map(sceneClashes(moved), clashKey),
+          "arrow:one × arrow:two",
+          view
+        );
+        assert.notInclude(
+          Arr.map(sceneClashes(scene), clashKey),
+          "arrow:one × arrow:two",
+          view
+        );
+      }
+    })
+  );
+
+  it.effect(
+    "keep 3 px apart at fit where main → Updater and Upstream → Updater meet",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("flake-pipeline");
+
+        // The scale that fits chapter 8 in a 1780×1020 window.
+        const fit = { iso: 0.76, plan: 0.5 };
+
+        for (const view of views) {
+          const { hops } = sceneOf({
+            data,
+            layout,
+            revealed: everything(data),
+            view,
+          });
+
+          const heads = Arr.flatMap(hops, ({ hop, points }) => {
+            const polygon = arrowPolygon(points);
+
+            return polygon === undefined ? [] : [{ id: hop.id, polygon }];
+          });
+
+          const gaps = Arr.flatMap(heads, (first, index) =>
+            Arr.map(heads.slice(index + 1), (second) =>
+              Math.min(
+                ...Arr.map(first.polygon, (point) =>
+                  distanceToPolyline(
+                    [...second.polygon, second.polygon[0] ?? point],
+                    point
+                  )
+                ),
+                ...Arr.map(second.polygon, (point) =>
+                  distanceToPolyline(
+                    [...first.polygon, first.polygon[0] ?? point],
+                    point
+                  )
+                )
+              )
+            )
+          );
+
+          assert.isAtLeast(Math.min(...gaps) * fit[view], 3, view);
         }
       })
   );

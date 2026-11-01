@@ -94,11 +94,18 @@ export {
 
 export type { Segment } from "./geometry.ts";
 
+export { arrowHalfWidth } from "./ends.ts";
+
+export { drawnRoutes } from "./fans.ts";
+
+export { laneGap, laneRoutes, laneWidths } from "./lanes.ts";
+
 export { routeCap, routeHops, routeLength, routeRevealed } from "./routing.ts";
 
 export {
   arrowheadOf,
   arrowLength,
+  arrowPolygon,
   endsOnTarget,
   labelGap,
   labelReach,

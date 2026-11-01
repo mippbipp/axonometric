@@ -7,6 +7,7 @@ import type {
 } from "@axonometric/contracts";
 import {
   arrowheadOf,
+  arrowPolygon,
   fitFloorOf,
   groundProjections,
   nameTagText,
@@ -71,37 +72,17 @@ const diamond = (at: ScreenPoint) =>
     { sx: at.sx - 3.5, sy: at.sy },
   ]);
 
-/** Half the arrowhead's width at its base, on screen. */
-const arrowHalfWidth = 4;
-
 /**
  * The arrowhead on the last leg: its tip on the route's end and its base
  * across the line, `arrowLength` back.
  */
 const arrowPoints = (points: readonly ScreenPoint[]) => {
   const head = arrowheadOf(points);
+  const polygon = arrowPolygon(points);
 
-  if (head === undefined) {
-    return null;
-  }
-
-  const { tip, base } = head;
-
-  const length = Math.max(Math.hypot(tip.sx - base.sx, tip.sy - base.sy), 1e-9);
-
-  const across = {
-    sx: (-(tip.sy - base.sy) / length) * arrowHalfWidth,
-    sy: ((tip.sx - base.sx) / length) * arrowHalfWidth,
-  };
-
-  return {
-    base,
-    polygon: toPoints([
-      tip,
-      { sx: base.sx + across.sx, sy: base.sy + across.sy },
-      { sx: base.sx - across.sx, sy: base.sy - across.sy },
-    ]),
-  };
+  return head === undefined || polygon === undefined
+    ? null
+    : { base: head.base, polygon: toPoints(polygon) };
 };
 
 /** A hop's line, with the arrowhead drawn as part of its last segment. */
@@ -151,7 +132,7 @@ function HopArrow({
   readonly onHover: (hop: string | null) => void;
 }) {
   const { hop, points } = routed;
-  const bends = markBends ? points.slice(1, -1) : [];
+  const bends = markBends ? routed.bends : [];
 
   return (
     <g
@@ -188,7 +169,10 @@ function HopArrow({
 
 /**
  * The stretches of a hop's route that boxes are drawn over, drawn again
- * faintly on top of those boxes, so the hop never disappears.
+ * faintly on top of those boxes, so the hop never disappears. The stretch
+ * that reaches an end hidden behind a box carries a faint arrowhead, since
+ * the solid one is under the box; an end on a visible edge has its solid
+ * head and no faint one.
  */
 function HiddenHop({ routed }: { readonly routed: SceneHop }) {
   return (
