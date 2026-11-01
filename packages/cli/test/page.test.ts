@@ -48,14 +48,14 @@ describe("the built page", () => {
           page.locator('[data-hop="h-update"]').textContent()
         );
 
-        const route = yield* Effect.promise(() =>
-          page.locator('[data-hop="h-update"] polyline').getAttribute("points")
+        const route = yield* Effect.promise((): Promise<string> =>
+          page.evaluate(
+            `document.querySelector('[data-hop="h-update"]').dataset.route`
+          )
         );
 
-        const arrowhead = yield* Effect.promise(() =>
-          page
-            .locator('[data-hop="h-update"] polyline')
-            .getAttribute("marker-end")
+        const arrowheads = yield* Effect.promise(() =>
+          page.locator('[data-hop="h-update"] [data-arrowhead]').count()
         );
 
         assert.deepStrictEqual(Arr.sort(tags, Order.String), [
@@ -64,9 +64,9 @@ describe("the built page", () => {
         ]);
         assert.strictEqual(boxes, 2);
         assert.include(hop ?? "", "update → build");
-        // Start, one bend, end.
-        assert.lengthOf(Str.split(" ")(route ?? ""), 3);
-        assert.match(arrowhead ?? "", /^url\(#.+\)$/u);
+        // At least start, one bend, end.
+        assert.isAtLeast(Str.split(" ")(route ?? "").length, 3);
+        assert.strictEqual(arrowheads, 1);
       })
     )
   );

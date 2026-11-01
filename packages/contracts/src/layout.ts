@@ -1,4 +1,10 @@
-import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Schema,
+  SchemaIssue,
+  SchemaTransformation,
+} from "effect";
 
 import { describeCause } from "./cause.ts";
 import { fileVersionFields, objectMessages } from "./fields.ts";
@@ -38,6 +44,43 @@ export const Placement = Schema.Struct({
 
 export type Placement = typeof Placement.Type;
 
+/** A point on the ground grid, in grid units, on a half unit. */
+export const GridPoint = Schema.Struct({
+  x: gridValue("x", "the point's position along the grid's x axis"),
+  y: gridValue("y", "the point's position along the grid's y axis"),
+}).annotate(objectMessages("A route point has only x and y."));
+
+export type GridPoint = typeof GridPoint.Type;
+
+const routeFix =
+  "Write a route override as a list of at least two points, such as [{ x: 2, y: 1 }, { x: 4, y: 1 }], where each point shares x or y with the one before it.";
+
+const rightAngled = (points: readonly GridPoint[]) =>
+  Arr.every(points, (point, index) => {
+    const previous = points[index - 1];
+
+    return (
+      previous === undefined || previous.x === point.x || previous.y === point.y
+    );
+  });
+
+/**
+ * A route override: the points a hop's route runs through, from the edge of
+ * one footprint to the edge of the other. Every leg runs along x or y.
+ */
+export const RouteOverride = Schema.Array(GridPoint)
+  .annotate({ message: `expected an array of points. ${routeFix}` })
+  .check(
+    Schema.isMinLength(2, {
+      message: `expected at least two points. ${routeFix}`,
+    }),
+    Schema.makeFilter(rightAngled, {
+      message: `expected every leg to run along x or y. ${routeFix}`,
+    })
+  );
+
+export type RouteOverride = typeof RouteOverride.Type;
+
 /** `layout.json`: the accepted layout, keyed by structure id. */
 export const Layout = Schema.Struct({
   ...fileVersionFields,
@@ -52,8 +95,15 @@ export const Layout = Schema.Struct({
           "missing. Add structures: { [id]: { x, y, w, d } } with a placement for every structure.",
       })
     ),
+  /** Route overrides, keyed by hop id. A hop without one routes itself. */
+  routes: Schema.optionalKey(
+    Schema.Record(Schema.String, RouteOverride).annotate({
+      message:
+        "expected an object keyed by hop id. Write routes as { [hopId]: [{ x, y }, ...] }.",
+    })
+  ),
 }).annotate(
-  objectMessages("A layout has only format, revision and structures.")
+  objectMessages("A layout has only format, revision, structures and routes.")
 );
 
 export type Layout = typeof Layout.Type;

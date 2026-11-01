@@ -9,6 +9,7 @@ export { fileVersionFields, formatVersion } from "./fields.ts";
 export {
   boxOutline,
   corners,
+  gridOnScreen,
   nameTagRect,
   nameTagText,
   project,
@@ -35,7 +36,13 @@ export type { PlacedStructure } from "./layout-checks.ts";
 
 export { isoHeights } from "./iso-heights.ts";
 
-export { Layout, LayoutFile, Placement } from "./layout.ts";
+export {
+  GridPoint,
+  Layout,
+  LayoutFile,
+  Placement,
+  RouteOverride,
+} from "./layout.ts";
 
 export {
   defaultFootprint,
@@ -46,6 +53,38 @@ export {
 } from "./placement.ts";
 
 export type { PlacedLayout } from "./placement.ts";
+
+export {
+  convexOverlap,
+  distanceToPolyline,
+  segmentCrosses,
+} from "./geometry.ts";
+
+export type { Segment } from "./geometry.ts";
+
+export { routeCap, routeHops, routeLength, routeRevealed } from "./routing.ts";
+
+export {
+  arrowheadOf,
+  arrowLength,
+  endsOnTarget,
+  labelReach,
+  sceneClashes,
+  sceneOf,
+  silhouette,
+} from "./scene.ts";
+
+export type {
+  HiddenStretch,
+  Scene,
+  SceneClash,
+  SceneHop,
+  SceneSource,
+  SceneStructure,
+  SceneZone,
+} from "./scene.ts";
+
+export type { HopRoute } from "./routing.ts";
 
 export { zonePadding, zonesOf } from "./zones.ts";
 
