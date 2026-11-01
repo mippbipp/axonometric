@@ -1,6 +1,7 @@
 import type { Placement, Step, Structure } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
-import { useId, useMemo, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useFrameClock } from "./frame-clock.ts";
@@ -15,6 +16,7 @@ import {
 } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
 import { BoxShape } from "./shapes.tsx";
+import { showTextAt } from "./show-text.ts";
 
 /** Height of a step's box above the ground, in screen units. */
 const boxHeight = 34;
@@ -84,7 +86,11 @@ function StepTag({
   const tagWidth = label.length * 7.2 + 12;
 
   return (
-    <g className="stroke-ink pointer-events-none">
+    <g
+      data-step-tag={index + 1}
+      data-grows="top"
+      className="stroke-ink pointer-events-none"
+    >
       <rect
         x={ground.front.sx - tagWidth / 2}
         y={ground.front.sy + 9}
@@ -120,7 +126,51 @@ const viewBoxOf = (points: readonly ScreenPoint[]) => {
   const minX = Math.min(...xs) - margin;
   const minY = Math.min(...ys) - margin;
 
-  return `${minX} ${minY} ${Math.max(...xs) + margin - minX} ${Math.max(...ys) + margin - minY}`;
+  return {
+    minX,
+    minY,
+    width: Math.max(...xs) + margin - minX,
+    height: Math.max(...ys) + margin - minY,
+  };
+};
+
+/**
+ * Sizes the step names for the zoom the `viewBox` draws `svg` at, now and
+ * whenever it's resized, as the map's viewport does for its name tags.
+ */
+const useReadableSteps = (
+  svg: RefObject<SVGSVGElement | null>,
+  box: { readonly width: number; readonly height: number }
+) => {
+  useLayoutEffect(() => {
+    const element = svg.current;
+
+    const measure = () => {
+      if (element === null) {
+        return;
+      }
+
+      showTextAt(
+        element,
+        Math.min(
+          element.clientWidth / box.width,
+          element.clientHeight / box.height
+        )
+      );
+    };
+
+    const observer = new ResizeObserver(measure);
+
+    measure();
+
+    if (element !== null) {
+      observer.observe(element);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [svg, box.width, box.height]);
 };
 
 const extentOf = (index: number) => {
@@ -189,10 +239,14 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
   const steps = useMemo(() => structure.steps ?? [], [structure.steps]);
   const routes = useMemo(() => routesOf(steps), [steps]);
 
-  const viewBox = useMemo(
+  const box = useMemo(
     () => viewBoxOf(Arr.flatMap(steps, (_, index) => extentOf(index))),
     [steps]
   );
+
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  useReadableSteps(svgRef, box);
 
   const { clock, playing, reducedMotion, play, pause, step } = useInsideClock(
     routes.length
@@ -207,9 +261,10 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
   return (
     <div data-inside-view={structure.id} className="relative size-full">
       <svg
+        ref={svgRef}
         aria-labelledby={`${idPrefix}title`}
         className="text-ink block size-full"
-        viewBox={viewBox}
+        viewBox={`${box.minX} ${box.minY} ${box.width} ${box.height}`}
         preserveAspectRatio="xMidYMid meet"
       >
         <title id={`${idPrefix}title`}>{`Inside ${structure.name}`}</title>

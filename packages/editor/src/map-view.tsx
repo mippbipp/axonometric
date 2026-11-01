@@ -11,13 +11,14 @@ import {
   sceneOf,
 } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
-import { use, useId, useMemo, useState } from "react";
+import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { fitOf } from "./fit.ts";
 import { PlaybackContext } from "./playback.ts";
 import { groundOutline, routesOf, toPoints } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
+import { readableScale, surroundingsOf, tagSideOf } from "./readable-text.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
 import { Viewport } from "./viewport.tsx";
 import { viewDrawings } from "./views.tsx";
@@ -27,7 +28,11 @@ function NameTag({ placed }: { readonly placed: SceneStructure }) {
   const { tag } = placed;
 
   return (
-    <g data-name-tag={placed.structure.id} className="pointer-events-none">
+    <g
+      data-name-tag={placed.structure.id}
+      data-grows={tagSideOf(placed)}
+      className="pointer-events-none"
+    >
       <rect
         x={tag.left}
         y={tag.top}
@@ -193,7 +198,8 @@ function HiddenHop({ routed }: { readonly routed: SceneHop }) {
 /**
  * A hop's label, drawn above every box so none hides it. A label the scene
  * found no room for shows only while the pointer is on its hop or its
- * packet is selected.
+ * packet is selected. Zoomed out too far to read, every label hides until
+ * then, and shows grown to a readable size.
  */
 function HopLabel({
   routed,
@@ -210,6 +216,7 @@ function HopLabel({
     <text
       data-hop-label={hop.id}
       data-hop-label-fits={label !== undefined}
+      data-hop-label-shown={shown ? "" : undefined}
       x={(at.left + at.right) / 2}
       y={at.bottom - 4}
       textAnchor="middle"
@@ -316,6 +323,13 @@ export function MapView({
     [state.data, state.layout, revealed, labelFirst, view]
   );
 
+  const surroundings = useMemo(() => surroundingsOf(scene), [scene]);
+
+  const fitFloor = useCallback(
+    (scale: number) => readableScale(surroundings, scale),
+    [surroundings]
+  );
+
   const drawing = viewDrawings[view];
   const { Structure } = drawing;
 
@@ -355,6 +369,7 @@ export function MapView({
       title={`${drawing.title} of ${state.data.overview.title}`}
       fit={fitted.bounds}
       fitKey={fitKey ?? fitted.key}
+      fitFloor={fitFloor}
       ground={groundProjections[view]}
     >
       <defs>

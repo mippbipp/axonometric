@@ -11,6 +11,7 @@ import {
 
 import type { Bounds } from "./bounds.ts";
 import { controlClass } from "./control-class.ts";
+import { showTextAt } from "./show-text.ts";
 
 /** Where the drawing sits in the canvas: its zoom and its pan, in pixels. */
 interface Camera {
@@ -42,20 +43,33 @@ const zoomStep = 1.25;
 
 const emptyBounds: Bounds = { minX: -1, minY: -1, maxX: 1, maxY: 1 };
 
-const fitted = (bounds: Bounds, size: Size): Camera => {
+const noFloor = (scale: number) => scale;
+
+const fitted = ({
+  bounds,
+  size,
+  floor,
+}: {
+  readonly bounds: Bounds;
+  readonly size: Size;
+  readonly floor: (scale: number) => number;
+}): Camera => {
   const width = Math.max(bounds.maxX - bounds.minX, 1);
   const height = Math.max(bounds.maxY - bounds.minY, 1);
 
-  const scale = Math.max(
-    Math.min(
-      (size.width - fitPadding * 2) / width,
-      (size.height - fitPadding * 2) / height,
-      maxFitScale
-    ),
-    0.01
+  const scale = floor(
+    Math.max(
+      Math.min(
+        (size.width - fitPadding * 2) / width,
+        (size.height - fitPadding * 2) / height,
+        maxFitScale
+      ),
+      0.01
+    )
   );
 
-  // Centring the bounds keeps a capped drawing in the middle of the window.
+  // Centring the bounds keeps a capped or floored drawing in the middle of
+  // the window.
 
   return {
     scale,
@@ -320,11 +334,13 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
  * fit. The camera lives in a transform on one group, so panning doesn't
  * re-render `children`. When `ground` changes to another view's projection,
  * the ground point in the middle stays in the middle, and a grid unit keeps
- * its length on screen.
+ * its length on screen. The zoom also sets how big the text draws: see
+ * `readable-text.ts`.
  */
 export function Viewport({
   fit = emptyBounds,
   fitKey = "",
+  fitFloor = noFloor,
   ground,
   title,
   children,
@@ -332,6 +348,11 @@ export function Viewport({
   readonly fit?: Bounds | undefined;
   /** Names what `fit` holds, such as a chapter. A new key refits the view. */
   readonly fitKey?: string;
+  /**
+   * The zoom to fit at, given the zoom that fits `fit`: the same or larger.
+   * Defaults to the zoom that fits.
+   */
+  readonly fitFloor?: (scale: number) => number;
   /** How the drawing projects the ground, to keep the middle on a switch. */
   readonly ground?: GroundProjection | undefined;
   readonly title: string;
@@ -343,9 +364,11 @@ export function Viewport({
   const fitScale = useRef(1);
   const titleId = useId();
   const bounds = useRef(fit);
+  const floor = useRef(fitFloor);
 
   useLayoutEffect(() => {
     bounds.current = fit;
+    floor.current = fitFloor;
   });
 
   const show = useCallback((next: Camera) => {
@@ -357,6 +380,7 @@ export function Viewport({
 
     if (svgRef.current !== null) {
       svgRef.current.dataset.scale = String(next.scale);
+      showTextAt(svgRef.current, next.scale);
     }
   }, []);
 
@@ -367,9 +391,10 @@ export function Viewport({
       return;
     }
 
-    const next = fitted(bounds.current, {
-      width: svg.clientWidth,
-      height: svg.clientHeight,
+    const next = fitted({
+      bounds: bounds.current,
+      size: { width: svg.clientWidth, height: svg.clientHeight },
+      floor: floor.current,
     });
 
     fitScale.current = next.scale;
