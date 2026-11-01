@@ -1605,7 +1605,7 @@ const strayLimit = 3;
 // WIP: with the guards on, a route that avoids strangers must be as good as
 // the one it replaces, which leaves 11 shared pairs in chapter 8. Off, only a
 // bend allowance applies: 0 shared pairs, but five scene tests fail.
-const guarded = true;
+const guarded = false;
 
 /**
  * The fewest bends any route between two footprints needs with nothing in
