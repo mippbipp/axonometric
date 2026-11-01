@@ -3,16 +3,20 @@ import type { Placement, Shape, Structure } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
-import { project, toPoints } from "./iso.ts";
+import { corners, project, tileHeight, tileWidth, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 
 // How each shape is drawn in the iso view. Every shape stands on its
 // footprint and reaches `isoHeights[shape]` at its highest point. Faces that
 // face the viewer carry the shared hatch; `data-face` and `data-hatch` let the
-// status looks in index.css restyle them.
+// rules for each status in index.css restyle them.
+
+const halfTileWidth = tileWidth / 2;
+
+const halfTileHeight = tileHeight / 2;
 
 /** One grid unit along x or y, measured on screen. */
-const gridStep = Math.hypot(36, 18);
+const gridStep = Math.hypot(halfTileWidth, halfTileHeight);
 
 /** Approximate width of one character of the code chip's font. */
 const chipCharWidth = 6.4;
@@ -22,13 +26,6 @@ interface DrawProps {
   readonly height: number;
   readonly hatch: string;
 }
-
-const corners = ({ x, y, w, d }: Placement, z: number) => ({
-  back: project({ x, y, z }),
-  right: project({ x: x + w, y, z }),
-  front: project({ x: x + w, y: y + d, z }),
-  left: project({ x, y: y + d, z }),
-});
 
 const centreOf = ({ x, y, w, d }: Placement, z: number) =>
   project({ x: x + w / 2, y: y + d / 2, z });
@@ -45,7 +42,7 @@ const inset = ({ x, y, w, d }: Placement, by: number): Placement => ({
  * front `y`: local x runs along the face in screen units, local y runs down.
  */
 const alongX = (at: ScreenPoint) =>
-  `matrix(${36 / gridStep} ${18 / gridStep} 0 1 ${at.sx} ${at.sy})`;
+  `matrix(${halfTileWidth / gridStep} ${halfTileHeight / gridStep} 0 1 ${at.sx} ${at.sy})`;
 
 function Face({
   points,
@@ -120,8 +117,8 @@ function Footprint({ placement }: { readonly placement: Placement }) {
  * projection squashes it to a 2:1 ellipse.
  */
 const flatRadii = (radius: number) => ({
-  rx: radius * Math.SQRT2 * 36,
-  ry: radius * Math.SQRT2 * 18,
+  rx: radius * Math.SQRT2 * halfTileWidth,
+  ry: radius * Math.SQRT2 * halfTileHeight,
 });
 
 /** An upright cylinder from `z0` to `z1`, standing on `at`. */
@@ -508,7 +505,7 @@ const chipless: ReadonlySet<Shape> = new Set(["person", "document"]);
  */
 const chipAt = (structure: Structure, placement: Placement) => {
   const width = structure.code.length * chipCharWidth + 8;
-  const topWidth = (placement.w + placement.d) * 36;
+  const topWidth = (placement.w + placement.d) * halfTileWidth;
 
   return chipless.has(structure.shape) || topWidth < width * 1.6
     ? undefined
@@ -566,7 +563,7 @@ function OffMark({ at }: { readonly at: ScreenPoint }) {
 }
 
 /**
- * One structure in the iso view, drawn as its shape in its status's look,
+ * One structure in the iso view, drawn as its shape and styled for its status,
  * with its code chip on top when it fits.
  */
 export function IsoStructure({
