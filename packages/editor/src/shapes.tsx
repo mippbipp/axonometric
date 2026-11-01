@@ -449,15 +449,14 @@ function DocumentShape({ placement, height, hatch }: DrawProps) {
 const haloSize = 0.2;
 
 /**
- * A box with a second outline around it and an arrow coming in: a source
- * outside the system.
+ * A box inside a dashed outer ring: a source outside the system. The ring
+ * is dashed so it can't be read as a hop.
  */
 function ExternalShape({ placement, height, hatch }: DrawProps) {
   const halo = inset(placement, -haloSize);
   // The halo stops at the ground, so it stays clear of the name tag.
   const ground = corners(halo, 0);
   const top = corners(halo, height + 4);
-  const length = placement.w * gridStep * 0.5;
 
   const outline = [
     top.back,
@@ -468,34 +467,16 @@ function ExternalShape({ placement, height, hatch }: DrawProps) {
     top.left,
   ];
 
-  const at = project({
-    x: placement.x,
-    y: placement.y + placement.d,
-    z: height * 0.5,
-  });
-
   return (
     <>
       <polygon
+        data-external-ring=""
         points={toPoints(outline)}
         className="fill-paper"
         strokeWidth={0.9}
+        strokeDasharray="4 3"
       />
       <Prism placement={placement} z0={0} z1={height} hatch={hatch} />
-      <g transform={alongX(at)}>
-        <line
-          x1={-gridStep * haloSize - 6}
-          y1={0}
-          x2={length - 4}
-          y2={0}
-          strokeWidth={1.6}
-        />
-        <path
-          d={`M${length - 8},-5 L${length},0 L${length - 8},5 z`}
-          className="fill-ink"
-          stroke="none"
-        />
-      </g>
     </>
   );
 }
