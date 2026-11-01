@@ -16,6 +16,7 @@ import {
   corners,
   distanceToPolyline,
   endsOnTarget,
+  labelReach,
   Layout,
   MapData,
   routeCap,
@@ -543,6 +544,21 @@ describe("scene", () => {
             });
 
             assert.strictEqual(scene.view, "plan");
+
+            // Every label sits by its own route: its centre no further off
+            // than half its width plus the widest gap.
+            for (const hop of scene.hops) {
+              const reach = labelReach(hop);
+              const { label } = hop;
+
+              assert.isTrue(
+                reach === undefined ||
+                  label === undefined ||
+                  reach <= (label.right - label.left) / 2 + 20,
+                `${hop.hop.id}'s label sits ${reach} from its route in ${chapter.id}`
+              );
+            }
+
             assert.deepStrictEqual(
               Arr.map(sceneClashes(scene), clashKey),
               [],

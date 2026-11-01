@@ -1,3 +1,4 @@
+import type { GroundProjection } from "@axonometric/contracts";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -71,6 +72,37 @@ const limitsFor = (fitScale: number) => ({
   min: Math.min(fitScale, 1) / 2,
   max: Math.max(fitScale, 1) * 4,
 });
+
+/**
+ * The view that shows, in `next`'s projection, the ground point `view` shows
+ * in the middle of a canvas of `size` in `previous`'s projection, with a
+ * grid unit as long on screen as before.
+ */
+const reprojected = ({
+  view,
+  size,
+  previous,
+  next,
+}: {
+  readonly view: View;
+  readonly size: Size;
+  readonly previous: GroundProjection;
+  readonly next: GroundProjection;
+}): View => {
+  const middle = previous.toGround({
+    sx: (size.width / 2 - view.x) / view.scale,
+    sy: (size.height / 2 - view.y) / view.scale,
+  });
+
+  const scale = (view.scale * previous.unit) / next.unit;
+  const at = next.toScreen(middle);
+
+  return {
+    scale,
+    x: size.width / 2 - at.sx * scale,
+    y: size.height / 2 - at.sy * scale,
+  };
+};
 
 /** Zooms `view` by `factor` around the screen point `at`, within limits. */
 const zoomed = ({
@@ -281,17 +313,22 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
  * and pan; the next fit uses the new bounds. Drag on empty space
  * to pan; the wheel or a pinch zooms; `+`, `-` and `0` zoom in, out and to
  * fit. The view lives in a transform on one group, so panning doesn't
- * re-render `children`.
+ * re-render `children`. When `ground` changes to another view's projection,
+ * the ground point in the middle stays in the middle, and a grid unit keeps
+ * its length on screen.
  */
 export function Viewport({
   fit = emptyBounds,
   fitKey = "",
+  ground,
   title,
   children,
 }: {
   readonly fit?: Bounds | undefined;
   /** Names what `fit` holds, such as a chapter. A new key refits the view. */
   readonly fitKey?: string;
+  /** How the drawing projects the ground, to keep the middle on a switch. */
+  readonly ground?: GroundProjection | undefined;
   readonly title: string;
   readonly children: ReactNode;
 }) {
@@ -357,6 +394,35 @@ export function Viewport({
   );
 
   const fittedFor = useRef<string | undefined>(undefined);
+  const projectedBy = useRef(ground);
+
+  // Keep the middle before the first paint in the new projection. A new
+  // chapter in the same render refits anyway, below.
+  useLayoutEffect(() => {
+    const previous = projectedBy.current;
+    const svg = svgRef.current;
+
+    projectedBy.current = ground;
+
+    if (
+      previous === undefined ||
+      ground === undefined ||
+      previous === ground ||
+      svg === null
+    ) {
+      return;
+    }
+
+    const next = reprojected({
+      view: view.current,
+      size: { width: svg.clientWidth, height: svg.clientHeight },
+      previous,
+      next: ground,
+    });
+
+    fitScale.current = (fitScale.current * previous.unit) / ground.unit;
+    show(next);
+  }, [ground, show]);
 
   // Fit before the first paint, and again when the key changes.
   useLayoutEffect(() => {

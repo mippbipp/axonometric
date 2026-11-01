@@ -80,6 +80,7 @@ export {
   arrowLength,
   endsOnTarget,
   labelReach,
+  planZoneRadius,
   sceneClashes,
   sceneOf,
   silhouette,

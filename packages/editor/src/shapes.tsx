@@ -495,7 +495,7 @@ const drawings = {
   external: ExternalShape,
 } as const satisfies Record<Shape, (props: DrawProps) => ReactNode>;
 
-function CodeChip({
+export function CodeChip({
   code,
   rect,
 }: {
@@ -525,10 +525,6 @@ function CodeChip({
 }
 
 /**
- * A power symbol on a switched-off structure, so "off" doesn't rest on colour
- * alone.
- */
-/**
  * Where the power mark sits: on the top face, to the right of the code chip,
  * or at the top of the front corner when there's no chip.
  */
@@ -552,7 +548,11 @@ const offMarkAt = (
   return { sx: centre.sx + 22, sy: centre.sy };
 };
 
-function OffMark({ at }: { readonly at: ScreenPoint }) {
+/**
+ * A power symbol on a switched-off structure, so "off" doesn't rest on colour
+ * alone.
+ */
+export function OffMark({ at }: { readonly at: ScreenPoint }) {
   return (
     <g
       data-off-mark=""

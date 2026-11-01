@@ -444,6 +444,9 @@ const titleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
   ];
 };
 
+/** How round a zone's corners are in Plan view, in screen units. */
+export const planZoneRadius = 10;
+
 /** The screen direction along a horizontal edge in Plan view. */
 const across = { sx: 1, sy: 0 };
 
@@ -454,10 +457,11 @@ const across = { sx: 1, sy: 0 };
  */
 const planTitleSpots = (zone: Zone, width: number): readonly TitleSpot[] => {
   const plate = planRect(zone.box);
-  const wide = plate.right - plate.left;
+  // Titles keep off the plate's rounded corners.
+  const wide = plate.right - plate.left - 2 * planZoneRadius;
   const deep = plate.bottom - plate.top;
-  const topLeft = { sx: plate.left, sy: plate.top };
-  const bottomLeft = { sx: plate.left, sy: plate.bottom };
+  const topLeft = { sx: plate.left + planZoneRadius, sy: plate.top };
+  const bottomLeft = { sx: plate.left + planZoneRadius, sy: plate.bottom };
 
   const tops = [
     { start: topLeft, along: across, length: wide, room: deep, inward: -1 },
@@ -883,7 +887,11 @@ const spotsAt = (leg: Leg, share: number, width: number) => {
         rectAt(-(reach + gap)),
         rectAt(reach + gap),
       ]),
-      ...Arr.flatMap(labelGaps, (gap) => [upright(gap, -1), upright(gap, 1)]),
+      // A vertical leg, which only Plan view draws, has no spots straight
+      // above and below it; the spots beside it sit level with it.
+      ...(leg.end.sx === leg.start.sx
+        ? []
+        : Arr.flatMap(labelGaps, (gap) => [upright(gap, -1), upright(gap, 1)])),
     ],
     on: rectAt(0),
     lean,

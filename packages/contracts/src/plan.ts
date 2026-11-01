@@ -1,7 +1,13 @@
 import { Array as Arr, Order } from "effect";
 import { dual } from "effect/Function";
 
-import { project, tagHeight, tileHeight, tileWidth } from "./iso.ts";
+import {
+  gridOnScreen,
+  project,
+  tagHeight,
+  tileHeight,
+  tileWidth,
+} from "./iso.ts";
 import type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 import type { GridPoint, Placement } from "./layout.ts";
 
@@ -26,6 +32,8 @@ export const projectPlan = ({ x, y }: GridPosition): ScreenPoint => ({
 export interface GroundProjection {
   readonly toScreen: (point: GridPosition) => ScreenPoint;
   readonly toGround: (point: ScreenPoint) => GridPoint;
+  /** How long one grid unit along x or y is on screen. */
+  readonly unit: number;
 }
 
 /**
@@ -41,10 +49,12 @@ export const groundProjections: Readonly<Record<View, GroundProjection>> = {
 
       return { x: (across + down) / 2, y: (down - across) / 2 };
     },
+    unit: gridOnScreen,
   },
   plan: {
     toScreen: projectPlan,
     toGround: ({ sx, sy }) => ({ x: sx / planUnit, y: sy / planUnit }),
+    unit: planUnit,
   },
 };
 
