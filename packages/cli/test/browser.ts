@@ -2,25 +2,39 @@ import { pathToFileURL } from "node:url";
 
 import { Array as Arr, Effect, String as Str } from "effect";
 import { chromium } from "playwright";
-import type { Page } from "playwright";
+import type { Browser, Page } from "playwright";
+import { afterAll } from "vitest";
 
 // Browser tests build a map through the CLI, open the HTML file it wrote in
 // Chromium, and check what's on screen. They drive Playwright from Node,
 // because a Vitest browser-mode test page can't read a file:// page, or a
 // page that `serve` serves from another origin.
 
-const launch = Effect.acquireRelease(
-  Effect.promise(() => chromium.launch()),
-  (browser) => Effect.promise(() => browser.close())
+// Each test file launches Chromium once, on its first page, and closes it in
+// an `afterAll` hook, which runs even when a test failed. Vitest gives every
+// test file its own module graph, so this promise is per file. Every test
+// still gets a fresh browser context, so storage, theme and viewport don't
+// carry over.
+let browser: Promise<Browser> | undefined;
+
+// oxlint-disable-next-line vitest/require-top-level-describe, vitest/no-hooks -- one hook per file, from the shared helper, so test files don't register it
+afterAll(() => browser?.then((launched) => launched.close()));
+
+const openContext = Effect.acquireRelease(
+  Effect.promise(() => {
+    browser ??= chromium.launch();
+
+    return browser.then((launched) =>
+      launched.newContext({ viewport: { width: 1024, height: 640 } })
+    );
+  }),
+  (context) => Effect.promise(() => context.close())
 );
 
 /** Opens `url` and records page errors and every request off the disk. */
 export const openUrl = Effect.fnUntraced(function* (url: string) {
-  const browser = yield* launch;
-
-  const page = yield* Effect.promise(() =>
-    browser.newPage({ viewport: { width: 1024, height: 640 } })
-  );
+  const context = yield* openContext;
+  const page = yield* Effect.promise(() => context.newPage());
 
   const requests: string[] = [];
   const errors: string[] = [];
