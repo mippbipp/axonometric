@@ -1,9 +1,10 @@
 import { LayoutFile } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Clock, Effect, FileSystem, Path, Schema } from "effect";
+import { Clock, Effect, Fiber, FileSystem, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { withLock } from "../src/lock.ts";
 import { minimalMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
 
@@ -321,5 +322,32 @@ describe("layout", () => {
       assert.notStrictEqual(result.exitCode, 0);
       assert.isFalse(yield* fs.exists(lock));
     }).pipe(Effect.provide(NodeServices.layer))
+  );
+
+  it.live(
+    "stops waiting for a held lock as soon as it's interrupted",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const pid = yield* liveProcess;
+        const home = yield* makeHome({ ".axonometric/lock": lockOf(pid) });
+        const lock = path.join(home, ".axonometric", "lock");
+
+        const waiting = yield* withLock(home, "layout").pipe(
+          Effect.scoped,
+          Effect.forkChild
+        );
+
+        yield* Effect.sleep("300 millis");
+
+        const started = yield* Clock.currentTimeMillis;
+
+        yield* Fiber.interrupt(waiting);
+
+        assert.isBelow((yield* Clock.currentTimeMillis) - started, 1000);
+        assert.strictEqual(yield* fs.readFileString(lock), lockOf(pid));
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    15_000
   );
 });

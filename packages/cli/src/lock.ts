@@ -142,7 +142,13 @@ const attempt = Effect.fnUntraced(function* (file: string, content: string) {
 
     // Another command clearing the same stale lock may already have taken
     // a fresh one, so only remove the file while it still holds the stale
-    // text.
+    // text. A narrow race remains: a command can take a fresh lock between
+    // this read and the remove below, and lose it. That needs two commands
+    // to find the same stale lock within microseconds, which one user on
+    // one machine won't hit in practice, and a real fix needs an OS file
+    // lock that Node doesn't offer. PID reuse isn't guarded against either:
+    // a stale lock whose PID now belongs to another live process counts as
+    // held, and the command times out naming that PID.
     const current = yield* readLock(file);
 
     if (Option.isSome(text) && Option.contains(current, text.value)) {
@@ -175,16 +181,6 @@ export const withLock = Effect.fnUntraced(function* (
   const since = DateTime.formatIso(yield* DateTime.now);
   const content = yield* encodeHolder({ pid: process.pid, command, since });
 
-  const take = attempt(file, content).pipe(
-    Effect.flatMap(
-      Option.match({
-        onNone: () => Effect.void,
-        onSome: (holder) =>
-          Effect.fail(LockHeld.make({ home, command, holder })),
-      })
-    )
-  );
-
   // Only remove the lock while it's still ours.
   const release = readLock(file).pipe(
     Effect.flatMap((current) =>
@@ -197,9 +193,22 @@ export const withLock = Effect.fnUntraced(function* (
     Schedule.upTo({ duration: wait.timeout })
   );
 
-  const takeOrWait = take.pipe(
-    Effect.retry({ schedule: retries, while: Schema.is(LockHeld) })
+  // Only one try runs uninterruptibly, inside acquireRelease, so the lock
+  // is never taken without its release registered. The wait between tries
+  // stays outside it, so Ctrl-C stops a waiting command at once.
+  const take = Effect.acquireRelease(attempt(file, content), (holder) =>
+    Option.isNone(holder) ? release : Effect.void
+  ).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.void,
+        onSome: (holder) =>
+          Effect.fail(LockHeld.make({ home, command, holder })),
+      })
+    )
   );
 
-  yield* Effect.acquireRelease(takeOrWait, () => release);
+  yield* take.pipe(
+    Effect.retry({ schedule: retries, while: Schema.is(LockHeld) })
+  );
 });
