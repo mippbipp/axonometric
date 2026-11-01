@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
 
 import {
+  boxOutline,
   checkLayout,
   footprintsOverlap,
   placeStructures,
@@ -14,6 +15,8 @@ import type {
   Layout,
   MapData,
   Placement,
+  ScreenPoint,
+  Shape,
   Structure,
 } from "../src/index.ts";
 
@@ -69,6 +72,10 @@ const placementOf = (layout: Layout, id: string): Placement => {
 
   return placement;
 };
+
+/** The highest screen point of an outline. Screen y grows downwards. */
+const topOf = (outline: readonly ScreenPoint[]) =>
+  Math.min(...Arr.map(outline, (point) => point.sy));
 
 const grow = (box: Placement, by: number): Placement => ({
   x: box.x - by,
@@ -474,5 +481,46 @@ describe("layout checks", () => {
         assert.isFalse(tagCovers(short, beside));
         assert.isTrue(tagCovers(long, beside));
       })
+  );
+
+  it.effect("draws a tall shape's outline higher than a slab's", () =>
+    Effect.sync(() => {
+      const tall = topOf(boxOutline(at(0, 0), "tall"));
+      const slab = topOf(boxOutline(at(0, 0), "slab"));
+
+      assert.isBelow(tall, slab);
+    })
+  );
+
+  it.effect("checks a name tag against the height of the box behind it", () =>
+    Effect.sync(() => {
+      // a's tag hangs below its front corner. A box two units further back
+      // along both axes only reaches the tag when it's tall.
+      const tagged = { structure: structure("a"), placement: at(0, 0) };
+
+      const behind = (shape: Shape) => ({
+        structure: { ...structure("b"), shape },
+        placement: at(4, 4),
+      });
+
+      assert.isTrue(tagCovers(tagged, behind("tall")));
+      assert.isFalse(tagCovers(tagged, behind("slab")));
+    })
+  );
+
+  it.effect("sizes a name tag from the tag label when there is one", () =>
+    Effect.sync(() => {
+      const tagged = {
+        structure: {
+          ...structure("a", "main", "A very long structure name indeed"),
+          tag: "A",
+        },
+        placement: at(0, 0),
+      };
+
+      const beside = { structure: structure("b"), placement: at(2, 0) };
+
+      assert.isFalse(tagCovers(tagged, beside));
+    })
   );
 });

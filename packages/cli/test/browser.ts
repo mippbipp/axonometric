@@ -58,6 +58,15 @@ export const boxesOf = Effect.fnUntraced(function* (
   return Arr.filter(boxes, (box) => box !== null);
 });
 
+/**
+ * `value` as a JavaScript literal, for building the expression strings that
+ * `page.evaluate` and `page.waitForFunction` run in the page.
+ */
+export const literal = (value: string | null) =>
+  value === null
+    ? "null"
+    : `"${Str.replaceAll('"', String.raw`\"`)(Str.replaceAll("\\", String.raw`\\`)(value))}"`;
+
 /** The `name` attribute of every element matching `selector`, in order. */
 export const attributesOf = Effect.fnUntraced(function* (
   page: Page,

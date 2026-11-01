@@ -8,8 +8,9 @@ export { fileVersionFields, formatVersion } from "./fields.ts";
 
 export {
   boxOutline,
-  defaultBoxHeight,
+  corners,
   nameTagRect,
+  nameTagText,
   project,
   tagCharWidth,
   tagCoversBox,
@@ -21,7 +22,7 @@ export {
   tileWidth,
 } from "./iso.ts";
 
-export type { GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
+export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 
 export {
   checkLayout,
@@ -31,6 +32,8 @@ export {
 } from "./layout-checks.ts";
 
 export type { PlacedStructure } from "./layout-checks.ts";
+
+export { isoHeights } from "./iso-heights.ts";
 
 export { Layout, LayoutFile, Placement } from "./layout.ts";
 

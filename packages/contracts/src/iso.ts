@@ -1,7 +1,9 @@
 import { Array as Arr } from "effect";
 import { dual } from "effect/Function";
 
+import { isoHeights } from "./iso-heights.ts";
 import type { Placement } from "./layout.ts";
+import type { Structure } from "./map-data.ts";
 
 /** A point on screen, in SVG user units. */
 export interface ScreenPoint {
@@ -20,9 +22,6 @@ export interface GridPosition {
 export const tileWidth = 72;
 
 export const tileHeight = 36;
-
-/** How tall the iso view draws a box, in screen units. */
-export const defaultBoxHeight = 40;
 
 /** Approximate width of one character of the name tag's monospace font. */
 export const tagCharWidth = 7.2;
@@ -47,6 +46,10 @@ export const project = ({ x, y, z = 0 }: GridPosition): ScreenPoint => ({
   sy: ((x + y) * tileHeight) / 2 - z,
 });
 
+/** The text on a structure's name tag: its tag, or else its name. */
+export const nameTagText = (structure: Pick<Structure, "name" | "tag">) =>
+  structure.tag ?? structure.name;
+
 /** An axis-aligned rectangle on screen. */
 export interface ScreenRect {
   readonly left: number;
@@ -57,7 +60,8 @@ export interface ScreenRect {
 
 /**
  * Where the iso view draws a structure's name tag: centred under the front
- * corner of its footprint, with its width estimated from the text.
+ * corner of its footprint on the ground, whatever the shape's height, with
+ * its width estimated from the text.
  */
 export const nameTagRect: {
   (text: string): (placement: Placement) => ScreenRect;
@@ -79,23 +83,49 @@ export const nameTagRect: {
   };
 });
 
-/**
- * The outline of a box drawn on `placement` at the default height: the six
- * corners of its silhouette, clockwise from the top back corner.
- */
-export const boxOutline = (placement: Placement): readonly ScreenPoint[] => {
-  const { x, y, w, d } = placement;
-  const height = defaultBoxHeight;
+/** A footprint's corners on screen, named by where they sit in the iso view. */
+export interface Corners {
+  readonly back: ScreenPoint;
+  readonly right: ScreenPoint;
+  readonly front: ScreenPoint;
+  readonly left: ScreenPoint;
+}
 
-  return [
-    project({ x, y, z: height }),
-    project({ x: x + w, y, z: height }),
-    project({ x: x + w, y }),
-    project({ x: x + w, y: y + d }),
-    project({ x, y: y + d }),
-    project({ x, y: y + d, z: height }),
-  ];
-};
+/** The four corners of a footprint, raised to height `z`. */
+export const corners: {
+  (z: number): (placement: Placement) => Corners;
+  (placement: Placement, z: number): Corners;
+} = dual(2, ({ x, y, w, d }: Placement, z: number): Corners => ({
+  back: project({ x, y, z }),
+  right: project({ x: x + w, y, z }),
+  front: project({ x: x + w, y: y + d, z }),
+  left: project({ x, y: y + d, z }),
+}));
+
+/**
+ * The outline of a structure drawn on `placement`, as tall as its shape's
+ * iso height: the six corners of its silhouette, clockwise from the top back
+ * corner.
+ */
+export const boxOutline: {
+  (shape: Structure["shape"]): (placement: Placement) => readonly ScreenPoint[];
+  (placement: Placement, shape: Structure["shape"]): readonly ScreenPoint[];
+} = dual(
+  2,
+  (placement: Placement, shape: Structure["shape"]): readonly ScreenPoint[] => {
+    const ground = corners(placement, 0);
+    const top = corners(placement, isoHeights[shape]);
+
+    return [
+      top.back,
+      top.right,
+      ground.right,
+      ground.front,
+      ground.left,
+      top.left,
+    ];
+  }
+);
 
 const rectCorners = (rect: ScreenRect): readonly ScreenPoint[] => [
   { sx: rect.left, sy: rect.top },

@@ -31,6 +31,44 @@ const press = (page: Page, key: string) =>
 const click = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).click());
 
+const scaleExpression =
+  'Number(document.querySelector("svg[data-scale]").dataset.scale)';
+
+const scaleOf = (page: Page) =>
+  Effect.promise(() => page.evaluate<number>(scaleExpression));
+
+/** Waits until the viewport's zoom passes `test`, such as `> 2`. */
+const waitForScale = (page: Page, test: string) =>
+  Effect.promise(() =>
+    page.waitForFunction(`${scaleExpression} ${test}`, undefined, {
+      timeout: 5000,
+    })
+  );
+
+const zoomIn = (page: Page) =>
+  click(page, 'button[aria-label="Zoom in"]').pipe(
+    Effect.andThen(click(page, 'button[aria-label="Zoom in"]'))
+  );
+
+/** Asserts that every drawn structure and name tag is inside the canvas. */
+const assertInside = Effect.fnUntraced(function* (page: Page) {
+  const [svg] = yield* boxesOf(page, "svg[data-scale]");
+  const drawn = yield* boxesOf(page, "[data-structure], [data-name-tag]");
+
+  assert.isDefined(svg);
+
+  if (svg === undefined) {
+    return;
+  }
+
+  for (const box of drawn) {
+    assert.isAtLeast(box.x, svg.x);
+    assert.isAtLeast(box.y, svg.y);
+    assert.isAtMost(box.x + box.width, svg.x + svg.width);
+    assert.isAtMost(box.y + box.height, svg.y + svg.height);
+  }
+});
+
 describe("the chapter walkthrough", () => {
   it.live("lists every chapter in the rail and opens on the first", () =>
     Effect.scoped(
@@ -118,18 +156,107 @@ describe("the chapter walkthrough", () => {
         const { page } = yield* reviewPage;
         const [svg] = yield* boxesOf(page, "svg");
         const first = yield* boxesOf(page, '[data-structure="engineer"]');
+        const fitted = yield* scaleOf(page);
 
         yield* press(page, "ArrowRight");
         yield* press(page, "ArrowRight");
         yield* waitForChapter(page, "c-all");
+        yield* waitForScale(page, `< ${fitted}`);
 
         const last = yield* boxesOf(page, '[data-structure="engineer"]');
 
         assert.isDefined(svg);
-        // Two structures fill the view in chapter 1; six share it later.
-        assert.isAbove(first[0]?.width ?? 0, (last[0]?.width ?? 0) * 1.5);
+        // Two structures are drawn larger in chapter 1 than when six share
+        // the view.
+        assert.isAbove(first[0]?.width ?? 0, last[0]?.width ?? 0);
       })
     )
+  );
+
+  it.live("caps the fit for a small chapter and centres the drawing", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+        const [svg] = yield* boxesOf(page, "svg[data-scale]");
+        const drawn = yield* boxesOf(page, "[data-structure], [data-name-tag]");
+
+        assert.isAtMost(yield* scaleOf(page), 1.5);
+        assert.isDefined(svg);
+
+        if (svg === undefined) {
+          return;
+        }
+
+        const left = Math.min(...Arr.map(drawn, (box) => box.x));
+        const right = Math.max(...Arr.map(drawn, (box) => box.x + box.width));
+        const top = Math.min(...Arr.map(drawn, (box) => box.y));
+        const bottom = Math.max(...Arr.map(drawn, (box) => box.y + box.height));
+
+        // The fitted bounds use each footprint's full top, which reaches a
+        // little above the engineer's figure, so the vertical check is looser.
+        assert.closeTo((left + right) / 2, svg.x + svg.width / 2, 8);
+        assert.closeTo((top + bottom) / 2, svg.y + svg.height / 2, 40);
+
+        // Zooming by hand still goes past the cap.
+        yield* zoomIn(page);
+        yield* zoomIn(page);
+        yield* waitForScale(page, "> 1.5");
+      })
+    )
+  );
+
+  it.live("refits the view on every chapter change, after a manual zoom", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+        const fittedFirst = yield* scaleOf(page);
+
+        yield* zoomIn(page);
+        yield* waitForScale(page, `> ${fittedFirst * 1.3}`);
+
+        yield* press(page, "ArrowRight");
+        yield* waitForChapter(page, "c-save");
+        // Four structures need a smaller scale than two.
+        yield* waitForScale(page, `< ${fittedFirst}`);
+        yield* assertInside(page);
+
+        const fittedSecond = yield* scaleOf(page);
+
+        yield* zoomIn(page);
+        yield* waitForScale(page, `> ${fittedSecond * 1.3}`);
+        yield* press(page, "ArrowLeft");
+        yield* waitForChapter(page, "c-page");
+        yield* waitForScale(page, `=== ${fittedFirst}`);
+        yield* assertInside(page);
+      })
+    )
+  );
+
+  it.live(
+    "leaves the zoom keys to the viewport and the arrows to chapters",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* reviewPage;
+          const fitted = yield* scaleOf(page);
+
+          yield* press(page, "Equal");
+          yield* waitForScale(page, `> ${fitted}`);
+          yield* press(page, "Digit0");
+          yield* waitForScale(page, `=== ${fitted}`);
+
+          const chapter = yield* attributesOf(
+            page,
+            "[data-walkthrough]",
+            "data-chapter"
+          );
+
+          yield* press(page, "BracketRight");
+          yield* waitForChapter(page, "c-save");
+
+          assert.deepStrictEqual(chapter, ["c-page"]);
+        })
+      )
   );
 
   it.live("shows a map with no chapters whole, as one chapter", () =>

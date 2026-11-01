@@ -2,9 +2,14 @@ import { project } from "@axonometric/contracts";
 import type { Layout, Placement, ScreenPoint } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
-export { project } from "@axonometric/contracts";
+export {
+  corners,
+  project,
+  tileHeight,
+  tileWidth,
+} from "@axonometric/contracts";
 
-export type { ScreenPoint } from "@axonometric/contracts";
+export type { Corners, ScreenPoint } from "@axonometric/contracts";
 
 /** A point on the ground grid, in grid units. */
 export interface GridPoint {
