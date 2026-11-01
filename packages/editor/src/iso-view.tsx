@@ -11,7 +11,7 @@ import {
   tagDrop,
 } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
-import { use, useId, useMemo } from "react";
+import { use, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { fitOf } from "./fit.ts";
@@ -123,13 +123,37 @@ function Arrow({
   );
 }
 
-function HopArrow({ routed }: { readonly routed: SceneHop }) {
+function HopArrow({
+  routed,
+  onHover,
+}: {
+  readonly routed: SceneHop;
+  /** Called with the hop's id while the pointer is on its line, else null. */
+  readonly onHover: (hop: string | null) => void;
+}) {
   const { hop, points } = routed;
   const bends = points.slice(1, -1);
 
   return (
-    <g data-hop={hop.id} data-route={toPoints(points)} className="stroke-ink">
+    <g
+      data-hop={hop.id}
+      data-route={toPoints(points)}
+      className="stroke-ink"
+      onPointerEnter={() => {
+        onHover(hop.id);
+      }}
+      onPointerLeave={() => {
+        onHover(null);
+      }}
+    >
       <title>{hop.label}</title>
+      {/* A wide, invisible line, so the hop is easy to point at. */}
+      <polyline
+        points={toPoints(points)}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={10}
+      />
       <Arrow points={points} head />
       {Arr.map(bends, (bend) => (
         <polygon
@@ -164,17 +188,19 @@ function HiddenHop({ routed }: { readonly routed: SceneHop }) {
 
 /**
  * A hop's label, drawn above every box so none hides it. A label the scene
- * found no room for shows only while its packet is selected.
+ * found no room for shows only while the pointer is on its hop or its
+ * packet is selected.
  */
 function HopLabel({
   routed,
-  selected,
+  shown,
 }: {
   readonly routed: SceneHop;
-  readonly selected: boolean;
+  /** Whether to show the label even where the scene found no room. */
+  readonly shown: boolean;
 }) {
   const { hop, label, hoverLabel } = routed;
-  const at = label ?? (selected ? hoverLabel : undefined);
+  const at = label ?? (shown ? hoverLabel : undefined);
 
   return at === undefined ? null : (
     <text
@@ -282,6 +308,7 @@ export function IsoView({
   const idPrefix = Str.replaceAll(/\W/gu, "")(useId());
   const hatch = `${idPrefix}hatch`;
   const selectedHop = useSelectedHop();
+  const [hoveredHop, setHoveredHop] = useState<string | null>(null);
 
   const scene = useMemo(
     () =>
@@ -356,7 +383,7 @@ export function IsoView({
       </g>
       <g>
         {Arr.map(scene.hops, (item) => (
-          <HopArrow key={item.hop.id} routed={item} />
+          <HopArrow key={item.hop.id} routed={item} onHover={setHoveredHop} />
         ))}
       </g>
       <g>
@@ -385,7 +412,7 @@ export function IsoView({
           <HopLabel
             key={item.hop.id}
             routed={item}
-            selected={item.hop.id === selectedHop}
+            shown={item.hop.id === selectedHop || item.hop.id === hoveredHop}
           />
         ))}
       </g>

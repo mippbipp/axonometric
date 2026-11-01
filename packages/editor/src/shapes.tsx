@@ -439,7 +439,8 @@ const haloSize = 0.2;
  */
 function ExternalShape({ placement, height, hatch }: DrawProps) {
   const halo = inset(placement, -haloSize);
-  const ground = corners(halo, -4);
+  // The halo stops at the ground, so it stays clear of the name tag.
+  const ground = corners(halo, 0);
   const top = corners(halo, height + 4);
   const length = placement.w * gridStep * 0.5;
 
