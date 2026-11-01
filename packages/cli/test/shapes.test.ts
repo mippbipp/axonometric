@@ -85,18 +85,18 @@ describe("shapes and statuses", () => {
 
         const statusOf = yield* attributeOfAll(
           page,
-          '[data-structure="box"], [data-structure="cards"], [data-structure="job"]',
+          '[data-structure="box"], [data-structure="cards"], [data-structure="slab"]',
           "data-status"
         );
 
         const live = yield* lookOf(page, "box");
         const planned = yield* lookOf(page, "cards");
-        const off = yield* lookOf(page, "job");
+        const off = yield* lookOf(page, "slab");
 
         const titles = yield* Effect.promise(() =>
           page
             .locator(
-              '[data-structure="cards"] > title, [data-structure="job"] > title'
+              '[data-structure="cards"] > title, [data-structure="slab"] > title'
             )
             .allTextContents()
         );
@@ -112,7 +112,7 @@ describe("shapes and statuses", () => {
         assert.strictEqual(live.opacity, "1");
         assert.isBelow(Number(off.opacity), 1);
         assert.deepStrictEqual(Arr.sort(titles, Order.String), [
-          `Nightly job · ${statusLabels.off}`,
+          `Backend · ${statusLabels.off}`,
           `Tools · ${statusLabels.planned}`,
         ]);
       })
