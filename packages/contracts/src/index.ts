@@ -86,8 +86,10 @@ export {
   labelReachLimit,
   planZoneRadius,
   sceneClashes,
+  placeNameTags,
   sceneOf,
   silhouette,
+  textGrowthAt,
 } from "./scene.ts";
 
 export type {
@@ -98,6 +100,8 @@ export type {
   SceneSource,
   SceneStructure,
   SceneZone,
+  TaggedBox,
+  TextGrowth,
 } from "./scene.ts";
 
 export type { HopRoute } from "./routing.ts";
