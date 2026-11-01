@@ -265,6 +265,8 @@ const thingNames = {
   title: "the zone title of",
   label: "the label of hop",
   route: "the route of hop",
+  corner: "a corner of",
+  zone: "the outline of zone",
 } as const satisfies Record<string, string>;
 
 const kindOf = (thing: string) => Str.split(":")(thing)[0];

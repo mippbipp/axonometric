@@ -1485,7 +1485,8 @@ const cornerGap = (end: GridPoint, { x, y, w, d }: Placement) => {
  * or lies along a zone's outline; a route's end within half a unit of its
  * box's corner on an edge at least a unit long; and two hops' lines closer
  * than `laneGap`, other than where they cross. A route that runs under a
- * box counts only as running under it, which `check` reports already.
+ * box counts only as running under it, and a hop between overlapping
+ * footprints not at all: `check` reports both already.
  */
 const groundClashes = (scene: Scene): readonly SceneClash[] => {
   const placements = new Map(
@@ -1495,11 +1496,25 @@ const groundClashes = (scene: Scene): readonly SceneClash[] => {
     ])
   );
 
-  const lines = Arr.map(scene.hops, ({ hop, route, points }) => ({
-    hop,
-    route,
-    segments: segmentsOf(points),
-  }));
+  // Overlapping footprints leave a hop between them no clear way out,
+  // and `check` warns about the overlap itself.
+  const apart = ({ from, to }: Hop) => {
+    const a = placements.get(from);
+    const b = placements.get(to);
+
+    return (
+      a === undefined ||
+      b === undefined ||
+      a.x >= b.x + b.w ||
+      b.x >= a.x + a.w ||
+      a.y >= b.y + b.d ||
+      b.y >= a.y + a.d
+    );
+  };
+
+  const lines = Arr.flatMap(scene.hops, ({ hop, route, points }) =>
+    apart(hop) ? [{ hop, route, segments: segmentsOf(points) }] : []
+  );
 
   const boxes = Arr.flatMap(lines, ({ hop, route, segments }) =>
     Arr.flatMap(scene.structures, ({ structure, placement }) => {

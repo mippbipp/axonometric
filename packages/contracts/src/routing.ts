@@ -701,14 +701,22 @@ const facingOf = (box: Box, other: Box): readonly number[] => {
 /**
  * The half-unit points along an edge from `start` to `end` a route may
  * start or end at: every one at least a half unit from both corners, or
- * every one, corners included, on an edge shorter than a unit.
+ * every one, corners included, on an edge shorter than a unit or when
+ * `corners` allows them.
  */
-const alongEdge = (start: number, end: number) =>
-  end - start >= 2 ? Arr.range(start + 1, end - 1) : Arr.range(start, end);
+const alongEdge = (start: number, end: number, corners: boolean) =>
+  end - start >= 2 && !corners
+    ? Arr.range(start + 1, end - 1)
+    : Arr.range(start, end);
+
+/** Whether two footprints share ground, as `check` warns they mustn't. */
+const overlapping = (a: Box, b: Box) =>
+  a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
 /**
  * The points on a footprint's edge a route may start or end at, kept off
- * the corners where the edge is long enough. Each comes with what it costs to use it: the edge's
+ * the corners where the edge is long enough, unless the two footprints
+ * overlap and so leave too few points outside each other. Each comes with what it costs to use it: the edge's
  * facing cost towards `other`, `backCost` more on a back edge (-x or -y),
  * and a little for points away from the middle of their edge, so a lone
  * route leaves from the middle.
@@ -721,30 +729,31 @@ const edgePoints = (
   const midX = (box.x0 + box.x1) / 2;
   const midY = (box.y0 + box.y1) / 2;
   const facing = facingOf(box, other);
+  const corners = overlapping(box, other);
 
   const costOf = (out: number) =>
     (facing[out] ?? 0) + (out === minusX || out === minusY ? backCost : 0);
 
   return [
-    ...Arr.map(alongEdge(box.x0, box.x1), (x) => ({
+    ...Arr.map(alongEdge(box.x0, box.x1, corners), (x) => ({
       x,
       y: box.y1,
       out: plusY,
       cost: costOf(plusY) + offCentreCost * Math.abs(x - midX),
     })),
-    ...Arr.map(alongEdge(box.y0, box.y1), (y) => ({
+    ...Arr.map(alongEdge(box.y0, box.y1, corners), (y) => ({
       x: box.x1,
       y,
       out: plusX,
       cost: costOf(plusX) + offCentreCost * Math.abs(y - midY),
     })),
-    ...Arr.map(alongEdge(box.x0, box.x1), (x) => ({
+    ...Arr.map(alongEdge(box.x0, box.x1, corners), (x) => ({
       x,
       y: box.y0,
       out: minusY,
       cost: costOf(minusY) + offCentreCost * Math.abs(x - midX),
     })),
-    ...Arr.map(alongEdge(box.y0, box.y1), (y) => ({
+    ...Arr.map(alongEdge(box.y0, box.y1, corners), (y) => ({
       x: box.x0,
       y,
       out: minusX,
@@ -922,7 +931,17 @@ interface Search {
     readonly steps: ReadonlySet<number>;
     readonly points: ReadonlyMap<number, number>;
   };
-  /** When set, steps outside this box aren't allowed at all. */
+  /**
+   * Whether the hop's two footprints overlap, which leaves too little room
+   * outside both to keep its route off their corners and their zone's
+   * outline. `check` warns about the overlap instead.
+   */
+  readonly cornersFree: boolean;
+  /**
+   * When set, steps outside this box aren't allowed at all, and bends cost
+   * nothing for straying from the route's area: the search is after a route
+   * short enough for `routeCap`, wherever it bends.
+   */
   readonly window: Box | undefined;
   /** The route's area on screen. */
   readonly area: ScreenRect;
@@ -966,10 +985,14 @@ const stepPrice = (
   const outside =
     search.window !== undefined && distanceTo(search.window, next) > 0;
 
+  // Over the cap, a hop may share a step with a hop between the same two
+  // structures: the scene still draws the two as separate lines.
+  const pairStep = search.pair.steps.has(step);
+
   if (
     !inside(grid, next) ||
     outside ||
-    search.pair.steps.has(step) ||
+    (pairStep && search.window === undefined) ||
     ownEnd ||
     reverse
   ) {
@@ -1001,17 +1024,21 @@ const stepPrice = (
     crossings * siblingCrossCost +
     (grid.inTags[step] ?? []).length * tagCost +
     (search.usage.steps.has(step) ? sharedStepCost : 0) +
-    (search.pair.points.has(nextIndex) ? pairPointCost : 0)
+    // Over the cap, the pair's points cost no more than any shared step.
+    (search.pair.points.has(nextIndex) && search.window === undefined
+      ? pairPointCost
+      : 0)
   );
 };
 
 /**
  * What a step costs for running along or onto something it should keep off:
  * the route of a hop that shares no structure with this one, a zone's
- * outline, or a box's corner.
+ * outline, or a box's corner. Between overlapping footprints only the
+ * first counts.
  */
 const outlinePrice = (
-  { grid, strangers }: Search,
+  { grid, strangers, cornersFree }: Search,
   {
     step,
     next,
@@ -1028,13 +1055,19 @@ const outlinePrice = (
 
   return (
     (stranger ? strangerStepCost : 0) +
-    (grid.onZoneLines[step] ?? []).length * zoneLineCost +
-    (grid.corners.has(next) ? cornerCost : 0)
+    (cornersFree
+      ? 0
+      : (grid.onZoneLines[step] ?? []).length * zoneLineCost +
+        (grid.corners.has(next) ? cornerCost : 0))
   );
 };
 
 /** What a bend at `cell` costs for sitting outside the route's area. */
 const strayOf = (search: Search, cell: Cell) => {
+  if (search.window !== undefined) {
+    return 0;
+  }
+
   const at = project({ x: cell.x / scale, y: cell.y / scale });
   const fromLine = distanceToPolyline(search.line, at) / gridOnScreen;
 
@@ -1210,6 +1243,7 @@ const searchOf = (
     Option.toArray(Option.fromNullishOr(usage.axes.get(id)))
   ),
   strangers: strangersOf(usage, new Set([from.id, to.id])),
+  cornersFree: overlapping(from, to),
   window,
   area: routeArea(from, to),
   line: [screenCentre(from), screenCentre(to)],
