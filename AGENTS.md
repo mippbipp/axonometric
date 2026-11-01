@@ -24,4 +24,8 @@ Default five-label vocabulary, each label string equal to its role name. See `do
 
 ### Domain docs
 
-Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+### Development
+
+Read `CONTRIBUTING.md` before running commands, changing `pnpm-lock.yaml` or releasing.

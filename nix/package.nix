@@ -47,7 +47,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       ;
     pnpm = pnpm_12;
     fetcherVersion = 5;
-    # Changes whenever pnpm-lock.yaml changes. See "Development" in README.md.
+    # Changes whenever pnpm-lock.yaml changes. See CONTRIBUTING.md.
     hash = "sha256-Vxv6LOT4KZDwh4uIHef3ZuUlWQas4TLTqurOCA91tGk=";
   };
 
