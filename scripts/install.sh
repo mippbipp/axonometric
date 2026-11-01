@@ -97,7 +97,7 @@ expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1 }' "$wo
 
 actual=$(sha256 "$work/$asset")
 if [ "$actual" != "$expected" ]; then
-  fail "the checksum of $asset is $actual, but SHA256SUMS says $expected. Nothing was installed."
+  fail "the checksum of $asset is $actual, but SHA256SUMS says $expected. install.sh installed nothing."
 fi
 
 tar -xzf "$work/$asset" -C "$work" axonometric || fail "could not unpack $asset."

@@ -81,7 +81,7 @@ try {
   $actual = (Get-FileHash -LiteralPath (Join-Path $work $asset) -Algorithm SHA256).Hash.ToLowerInvariant()
 
   if ($actual -ne $expected) {
-    Fail "the checksum of $asset is $actual, but SHA256SUMS says $expected. Nothing was installed."
+    Fail "the checksum of $asset is $actual, but SHA256SUMS says $expected. install.ps1 installed nothing."
   }
 
   # ZipFile works in Windows PowerShell 5.1 and in PowerShell 7, with or

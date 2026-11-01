@@ -17,37 +17,47 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Serve the release over HTTP, the way the installer downloads from GitHub.
+# Serve a good copy of the release and one with a bad checksum over HTTP, the
+# way the installer downloads from GitHub.
+mkdir -p "$work/served/good" "$work/served/tampered"
+cp "$release"/*.tar.gz "$release/SHA256SUMS" "$work/served/good/"
+cp "$release"/*.tar.gz "$work/served/tampered/"
+sed 's/^[0-9a-f]\{64\}/0000000000000000000000000000000000000000000000000000000000000000/' \
+  "$release/SHA256SUMS" >"$work/served/tampered/SHA256SUMS"
+
 port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
-python3 -m http.server "$port" --bind 127.0.0.1 --directory "$release" >"$work/server.log" 2>&1 &
+python3 -m http.server "$port" --bind 127.0.0.1 --directory "$work/served" >"$work/server.log" 2>&1 &
 server=$!
 
 tries=0
-until curl -fs -o /dev/null "http://127.0.0.1:$port/SHA256SUMS" 2>/dev/null; do
+until curl -fs -o /dev/null "http://127.0.0.1:$port/good/SHA256SUMS" 2>/dev/null; do
   tries=$((tries + 1))
-  [ "$tries" -lt 50 ] || { echo "The test server didn't start." >&2; exit 1; }
+  [ "$tries" -lt 50 ] || { echo "test-install.sh: the test server didn't start." >&2; exit 1; }
   sleep 0.2
 done
 
+fail() {
+  echo "test-install.sh: $*" >&2
+  exit 1
+}
+
 echo "A good install"
-AXONOMETRIC_DOWNLOAD_URL="http://127.0.0.1:$port" \
+# Output goes to a file, not through tee, so the installer's exit status
+# isn't replaced by tee's.
+AXONOMETRIC_DOWNLOAD_URL="http://127.0.0.1:$port/good" \
   AXONOMETRIC_INSTALL_DIR="$work/bin" \
-  sh "$installer" | tee "$work/good.log"
-"$work/bin/axonometric" --version
-grep -q "isn't on your PATH" "$work/good.log"
+  sh "$installer" >"$work/good.log" 2>&1 || { cat "$work/good.log"; fail "the good install failed."; }
+cat "$work/good.log"
+"$work/bin/axonometric" --version || fail "the installed binary didn't run."
+grep -q "isn't on your PATH" "$work/good.log" || fail "the installer printed no PATH hint."
 
 echo "A bad checksum"
-mkdir "$work/tampered"
-cp "$release"/*.tar.gz "$work/tampered/"
-sed 's/^[0-9a-f]\{64\}/0000000000000000000000000000000000000000000000000000000000000000/' \
-  "$release/SHA256SUMS" >"$work/tampered/SHA256SUMS"
-
-if AXONOMETRIC_DOWNLOAD_URL="$work/tampered" \
+if AXONOMETRIC_DOWNLOAD_URL="http://127.0.0.1:$port/tampered" \
   AXONOMETRIC_INSTALL_DIR="$work/tampered-bin" \
   sh "$installer"; then
-  echo "The installer accepted a bad checksum." >&2
-  exit 1
+  fail "the installer accepted a bad checksum."
 fi
-[ ! -e "$work/tampered-bin/axonometric" ] || { echo "The installer wrote the binary despite the bad checksum." >&2; exit 1; }
+[ ! -e "$work/tampered-bin/axonometric" ] || fail "the installer wrote the binary despite the bad checksum."
 
 echo "The installer passed."
+exit 0
