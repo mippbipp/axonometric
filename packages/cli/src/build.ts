@@ -1,4 +1,5 @@
-import { Array as Arr, Effect, FileSystem, Path } from "effect";
+import { formatProblem } from "@axonometric/contracts";
+import { Array as Arr, Console, Effect, FileSystem, Path } from "effect";
 import { Argument, Command } from "effect/cli";
 
 import { loadMap } from "./map-files.ts";
@@ -49,8 +50,14 @@ const build = Effect.fn("build")(function* (home: string) {
   const path = yield* Path.Path;
   const output = path.dirname(home);
   const system = path.basename(output);
-  const map = yield* loadMap(home);
+  const { warnings, ...map } = yield* loadMap(home, output, "build");
   const state = { system, ...map };
+
+  yield* Effect.forEach(
+    warnings,
+    (warning) => Console.error(formatProblem(warning)),
+    { discard: true }
+  );
 
   const systemMdFile = path.join(output, "SYSTEM.md");
   const pageFile = path.join(output, `${system}.html`);
