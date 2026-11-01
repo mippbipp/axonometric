@@ -76,6 +76,8 @@ export type FlowChoice =
 
 /** A list of hops one packet walks along, on a loop. */
 export interface Track {
+  /** The chapter's or the flow's id. */
+  readonly id: string;
   /** The chapter title or flow name, for the packet panel. */
   readonly name: string;
   readonly hops: readonly Hop[];
@@ -108,26 +110,30 @@ export const tracksOf = (
   const shown = (id: string) =>
     stop.revealed.has(id) && state.layout.structures[id] !== undefined;
 
-  const track = (name: string, ids: readonly string[]): readonly Track[] => {
+  const track = (
+    id: string,
+    name: string,
+    ids: readonly string[]
+  ): readonly Track[] => {
     const playable = Arr.flatMap(ids, (id) => {
       const hop = hops.get(id);
 
       return hop !== undefined && shown(hop.from) && shown(hop.to) ? [hop] : [];
     });
 
-    return playable.length === 0 ? [] : [{ name, hops: playable }];
+    return playable.length === 0 ? [] : [{ id, name, hops: playable }];
   };
 
   switch (choice.kind) {
     case "chapter":
-      return track(stop.title, stop.plays);
+      return track(stop.id, stop.title, stop.plays);
     case "flow":
       return Arr.flatMap(state.data.flows, (flow) =>
-        flow.id === choice.id ? track(flow.name, flow.hops) : []
+        flow.id === choice.id ? track(flow.id, flow.name, flow.hops) : []
       );
     case "all":
       return Arr.flatMap(state.data.flows, (flow) =>
-        track(flow.name, flow.hops)
+        track(flow.id, flow.name, flow.hops)
       );
   }
 };

@@ -6,8 +6,9 @@ import type {
 } from "@axonometric/contracts";
 import { Array as Arr, Order, String as Str } from "effect";
 import { useId } from "react";
+import type { ReactNode } from "react";
 
-import { project, routeHop, toPoints } from "./iso.ts";
+import { project, screenRouteOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 
 /** Height of a box above the ground, in screen units. */
@@ -193,46 +194,91 @@ const extentOf = ({ placement }: PlacedStructure) => {
   ];
 };
 
-const placeAll = (state: MapState): readonly PlacedStructure[] =>
+const placeAll = (
+  state: MapState,
+  revealed: ReadonlySet<string>
+): readonly PlacedStructure[] =>
   Arr.sort(
     Arr.flatMap(state.data.structures, (structure) => {
       const placement = state.layout.structures[structure.id];
 
-      return placement === undefined ? [] : [{ structure, placement }];
+      return placement === undefined || !revealed.has(structure.id)
+        ? []
+        : [{ structure, placement }];
     }),
     byDepth
   );
 
-const routeAll = (state: MapState): readonly RoutedHop[] =>
+const routeAll = (
+  state: MapState,
+  revealed: ReadonlySet<string>
+): readonly RoutedHop[] =>
   Arr.flatMap(state.data.hops, (hop) => {
-    const from = state.layout.structures[hop.from];
-    const to = state.layout.structures[hop.to];
+    const points = screenRouteOf(state.layout, hop);
 
-    if (from === undefined || to === undefined) {
-      return [];
-    }
-
-    const route = routeHop({ from, to });
-
-    return [{ hop, points: Arr.map(route, project) }];
+    return points === undefined ||
+      !revealed.has(hop.from) ||
+      !revealed.has(hop.to)
+      ? []
+      : [{ hop, points }];
   });
 
+/** A dashed outline around the footprint of a newly revealed structure. */
+function NewMarker({ placed }: { readonly placed: PlacedStructure }) {
+  const { x, y, w, d } = placed.placement;
+
+  const outline = corners(
+    { x: x - 0.2, y: y - 0.2, w: w + 0.4, d: d + 0.4 },
+    0
+  );
+
+  return (
+    <polygon
+      data-new-marker={placed.structure.id}
+      points={toPoints([outline.back, outline.right, outline.front, outline.left])}
+      fill="none"
+      className="stroke-ink motion-safe:animate-pulse"
+      strokeWidth={1.4}
+      strokeDasharray="5 4"
+    />
+  );
+}
+
+const none: ReadonlySet<string> = new Set();
+
 /**
- * The iso view of a map: every structure as a hatched box with a name tag,
- * and every hop as an arrow along the ground. The drawing is scaled to fit
- * its container.
+ * The iso view of a map: each revealed structure as a hatched box with a name
+ * tag, and each hop between revealed structures as an arrow along the
+ * ground. The drawing is scaled to fit the structures in `fit` and the hops
+ * between them. `children` draw on top, in the same coordinates.
  */
-export function IsoView({ state }: { readonly state: MapState }) {
+export function IsoView({
+  state,
+  revealed,
+  fresh = none,
+  fit = revealed,
+  children,
+}: {
+  readonly state: MapState;
+  /** The structures to draw. */
+  readonly revealed: ReadonlySet<string>;
+  /** The structures to mark as new. */
+  readonly fresh?: ReadonlySet<string>;
+  /** The structures to zoom to fit. */
+  readonly fit?: ReadonlySet<string>;
+  readonly children?: ReactNode;
+}) {
   // useId's output can hold characters that don't belong in url(#...).
   const idPrefix = Str.replaceAll(/\W/gu, "")(useId());
   const hatch = `${idPrefix}hatch`;
   const arrowhead = `${idPrefix}arrowhead`;
-  const placed = placeAll(state);
-  const routed = routeAll(state);
+  const placed = placeAll(state, revealed);
+  const routed = routeAll(state, revealed);
+  const marked = Arr.filter(placed, ({ structure }) => fresh.has(structure.id));
 
   const viewBox = viewBoxOf([
-    ...Arr.flatMap(placed, extentOf),
-    ...Arr.flatMap(routed, ({ points }) => points),
+    ...Arr.flatMap(placeAll(state, fit), extentOf),
+    ...Arr.flatMap(routeAll(state, fit), ({ points }) => points),
   ]);
 
   return (
@@ -273,6 +319,11 @@ export function IsoView({ state }: { readonly state: MapState }) {
         </marker>
       </defs>
       <g>
+        {Arr.map(marked, (item) => (
+          <NewMarker key={item.structure.id} placed={item} />
+        ))}
+      </g>
+      <g>
         {Arr.map(routed, (item) => (
           <HopArrow key={item.hop.id} routed={item} arrowhead={arrowhead} />
         ))}
@@ -300,6 +351,7 @@ export function IsoView({ state }: { readonly state: MapState }) {
           <NameTag key={item.structure.id} placed={item} />
         ))}
       </g>
+      {children}
     </svg>
   );
 }
