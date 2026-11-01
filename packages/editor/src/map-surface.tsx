@@ -7,11 +7,11 @@ import { useSelection } from "./selection-context.ts";
  * The area around a view. A click that lands on nothing, not a structure, a
  * packet or a control, clears the selection. The inside view ignores such
  * clicks, so a stray one doesn't close it. A pan that ends over empty space
- * doesn't count: the viewport swallows the click that ends a drag.
+ * doesn't count, because the viewport swallows the click that ends a drag.
  *
- * Clicking empty space is a mouse shortcut, so the listener is attached
- * directly rather than making the area interactive; Escape clears the
- * selection from the keyboard.
+ * Clicking empty space is only a mouse shortcut. Escape clears the selection
+ * from the keyboard. So the listener goes on the element directly, and the
+ * area itself doesn't become interactive.
  */
 export function MapSurface({ children }: { readonly children: ReactNode }) {
   const { inside, select } = useSelection();

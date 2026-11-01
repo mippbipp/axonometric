@@ -3,7 +3,7 @@ import { createContext, use } from "react";
 /**
  * Which structure is selected, and whether its inside view is open. Shared
  * by every view of the map, so the iso view, Plan view, the side index and
- * the side panel agree.
+ * the side panel agree. #20 will widen `selected` to a set for multi-select.
  */
 export interface Selection {
   /**

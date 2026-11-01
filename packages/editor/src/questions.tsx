@@ -30,8 +30,36 @@ export function QuestionBody({ question }: { readonly question: Question }) {
   );
 }
 
-const questionButtonClass =
-  "border-ink/30 hover:border-ink focus-visible:outline-ink w-full cursor-pointer border p-1.5 text-left text-xs focus-visible:outline-2 focus-visible:outline-offset-1";
+const headingButtonClass =
+  "focus-visible:outline-ink w-full cursor-pointer text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-1";
+
+/**
+ * One question: its ID and text as a button that selects its structure, then
+ * its answer when it's resolved. The item is a container, so an answer form
+ * (#25) can sit beside the button.
+ */
+function QuestionItem({
+  question,
+  onPick,
+}: {
+  readonly question: Question;
+  readonly onPick: () => void;
+}) {
+  return (
+    <article
+      data-question={question.id}
+      data-state={question.state}
+      className="border-ink/30 border p-1.5 text-xs"
+    >
+      <h5>
+        <button type="button" className={headingButtonClass} onClick={onPick}>
+          <b className="font-medium">{question.id}</b> {question.text}
+        </button>
+      </h5>
+      {question.state === "resolved" ? <Answer question={question} /> : null}
+    </article>
+  );
+}
 
 function QuestionList<Q extends Question>({
   kind,
@@ -62,16 +90,12 @@ function QuestionList<Q extends Question>({
             <ul className="flex flex-col gap-1">
               {Arr.map(questions, (question) => (
                 <li key={question.id}>
-                  <button
-                    type="button"
-                    data-question={question.id}
-                    className={questionButtonClass}
-                    onClick={() => {
+                  <QuestionItem
+                    question={question}
+                    onPick={() => {
                       onPick(structure.id);
                     }}
-                  >
-                    <QuestionBody question={question} />
-                  </button>
+                  />
                 </li>
               ))}
             </ul>

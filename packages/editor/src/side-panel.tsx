@@ -268,8 +268,26 @@ export function SidePanel() {
       </div>
       <div
         role="tabpanel"
-        id={`${idPrefix}-${tab}`}
-        aria-labelledby={`${idPrefix}-${tab}-tab`}
+        id={`${idPrefix}-details`}
+        aria-labelledby={`${idPrefix}-details-tab`}
+        hidden={tab !== "details"}
+        className="min-h-0 flex-1 overflow-y-auto p-4"
+      >
+        {tab === "details"
+          ? renderContent(
+              panelContentOf({
+                packet,
+                pinned: selected === null ? undefined : byId.get(selected),
+                inside: inside === null ? undefined : byId.get(inside),
+              })
+            )
+          : null}
+      </div>
+      <div
+        role="tabpanel"
+        id={`${idPrefix}-questions`}
+        aria-labelledby={`${idPrefix}-questions-tab`}
+        hidden={tab !== "questions"}
         className="min-h-0 flex-1 overflow-y-auto p-4"
       >
         {tab === "questions" ? (
@@ -278,15 +296,7 @@ export function SidePanel() {
               choose("details");
             }}
           />
-        ) : (
-          renderContent(
-            panelContentOf({
-              packet,
-              pinned: selected === null ? undefined : byId.get(selected),
-              inside: inside === null ? undefined : byId.get(inside),
-            })
-          )
-        )}
+        ) : null}
       </div>
     </aside>
   );
