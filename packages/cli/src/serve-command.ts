@@ -18,7 +18,7 @@ export const serveCommand = Command.make(
     port: Flag.Int("port").pipe(
       Flag.optional,
       Flag.withDescription(
-        "Listen on this port, and fail if it's busy. Without it, serve uses 5178 or the next free port."
+        "Listen on this port, and fail if it's busy. 0 lets the system pick a free port. Without it, serve uses 5178 or the next free port."
       )
     ),
     host: Flag.String("host").pipe(

@@ -43,23 +43,67 @@ for output in SYSTEM.md pipeline.html; do
 done
 
 echo "serve and status"
+map="$work/pipeline/map"
+state_file="$map/.axonometric/server.json"
 # Started directly, not through run_binary, so $! is the binary itself and
 # kill reaches it.
-PATH="$work/empty-path" "$binary" serve "$work/pipeline/map" --port 0 &
+PATH="$work/empty-path" "$binary" serve "$map" --port 0 &
 serve_pid=$!
-running=""
+report=""
 for _ in $(seq 1 50); do
-  if run_binary status "$work/pipeline/map" --json | grep -q '"running":true'; then
-    running=yes
-    break
-  fi
+  report=$(run_binary status "$map" --json || true)
+  case "$report" in
+    *'"running":true'*) break ;;
+  esac
+  report=""
   sleep 0.2
 done
-kill "$serve_pid" 2>/dev/null || true
-wait "$serve_pid" 2>/dev/null || true
-if [ -z "$running" ]; then
+
+stop_serve() {
+  kill "$serve_pid" 2>/dev/null || true
+  wait "$serve_pid" 2>/dev/null || true
+}
+
+if [ -z "$report" ]; then
+  stop_serve
   echo "status never reported the server that serve started." >&2
   exit 1
 fi
+
+url=$(printf '%s\n' "$report" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
+echo "serve is at $url"
+
+if ! curl -fsS "$url/" | grep -q 'id="axonometric-map-state"'; then
+  stop_serve
+  echo "$url/ didn't answer 200 with the map page." >&2
+  exit 1
+fi
+
+forged=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: attacker.example.test' "$url/")
+if [ "$forged" != "403" ]; then
+  stop_serve
+  echo "A request with a forged Host got $forged, not 403." >&2
+  exit 1
+fi
+
+stop_serve
+
+if run_binary status "$map" --json | grep -q '"running":true'; then
+  echo "status still reports a server after serve was stopped." >&2
+  exit 1
+fi
+
+# kill sends SIGTERM on macOS and Linux, and serve removes its state file.
+# Git Bash on Windows ends the process without a signal it can handle, so
+# the file stays there, and status ignores it because its process is gone.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) ;;
+  *)
+    if [ -e "$state_file" ]; then
+      echo "serve left $state_file behind after it stopped." >&2
+      exit 1
+    fi
+    ;;
+esac
 
 echo "The binary passed."

@@ -22,6 +22,7 @@ import type { Exit } from "effect";
 import { TerminalCapabilities } from "effect/cli";
 
 import { run } from "../src/cli.ts";
+import { serverStateFile } from "../src/server-state.ts";
 import { openPage } from "./browser.ts";
 
 /** Files keyed by their `/`-separated path relative to the home folder. */
@@ -166,8 +167,7 @@ const waitForServer = Effect.fnUntraced(function* (
   previous?: string
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, ".axonometric", "server.json");
+  const file = yield* serverStateFile(home);
 
   const read = fs.readFileString(file).pipe(
     Effect.map(decodeServerState),
@@ -202,8 +202,7 @@ export const startServe = Effect.fnUntraced(function* (
   args: readonly string[]
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, ".axonometric", "server.json");
+  const file = yield* serverStateFile(home);
 
   const previous = yield* fs.readFileString(file).pipe(
     Effect.map(decodeServerState),

@@ -5,6 +5,7 @@ import {
   formatCount,
   formatProblem,
   ServerEvent,
+  serverPaths,
   splitProblems,
 } from "@axonometric/contracts";
 import type { MapState, ServerState } from "@axonometric/contracts";
@@ -54,12 +55,17 @@ const portsToTry = 20;
 /** The address `serve` binds unless told otherwise. */
 export const defaultHost = "127.0.0.1";
 
-/** The Host names every server answers, whatever `--allow-host` adds. */
-const loopbackHosts = ["localhost", "127.0.0.1", "[::1]"];
+/**
+ * The loopback names, as a Host header writes them. Every server answers
+ * them, whatever `--allow-host` adds, and binding one of them keeps the
+ * server off the network.
+ */
+const loopbackHosts = ["localhost", "127.0.0.1", "[::1]"] as const;
+
+/** The loopback names, for messages. */
+const loopbackList = Arr.join(loopbackHosts, ", ");
 
 const wildcardHosts = new Set(["0.0.0.0", "::", "[::]"]);
-
-const loopbackAddresses = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 /** How long the watcher waits for a burst of saves to settle. */
 const settleTime = Duration.millis(100);
@@ -123,7 +129,7 @@ export interface ServeOptions {
 }
 
 /** The last good map, and the event that describes the map files now. */
-interface Live {
+interface Held {
   readonly good: MapState;
   readonly latest: ServerEvent;
 }
@@ -159,7 +165,7 @@ const hostCheck = (allowed: ReadonlySet<string>) =>
           ? httpEffect
           : Effect.succeed(
               HttpServerResponse.text(
-                "This server only answers requests addressed to localhost, 127.0.0.1, [::1] or a host given with --allow-host.\n",
+                `This server only answers requests addressed to ${loopbackList} or a host given with --allow-host.\n`,
                 { status: 403 }
               )
             );
@@ -278,11 +284,11 @@ const rebuildEvent = (home: string) =>
   );
 
 /** Folds a rebuild into what the server holds. */
-const nextLive = (live: Live, event: ServerEvent): Live =>
+const nextHeld = (held: Held, event: ServerEvent): Held =>
   ServerEvent.match(event, {
     MapUpdated: ({ state }) => ({ good: state, latest: event }),
-    MapRejected: () => ({ ...live, latest: event }),
-    Heartbeat: () => live,
+    MapRejected: () => ({ ...held, latest: event }),
+    Heartbeat: () => held,
   });
 
 const watchedFiles = new Set(["data.mjs", "layout.json"]);
@@ -317,11 +323,11 @@ const heartbeats = Stream.tick(heartbeatInterval).pipe(
 
 /** The HTTP routes: the API, behind the Host check. */
 const routes = (
-  live: SubscriptionRef.SubscriptionRef<Live>,
+  held: SubscriptionRef.SubscriptionRef<Held>,
   stopping: Latch.Latch,
   allowed: ReadonlySet<string>
 ) => {
-  const events = SubscriptionRef.changes(live).pipe(
+  const events = SubscriptionRef.changes(held).pipe(
     Stream.map(({ latest }) => latest),
     Stream.merge(heartbeats),
     // Open streams never end on their own, so they end when the server
@@ -332,15 +338,15 @@ const routes = (
   const handlers = HttpApiBuilder.group(ServerApi, "map", (group) =>
     group
       .handle("page", () =>
-        SubscriptionRef.get(live).pipe(
+        SubscriptionRef.get(held).pipe(
           Effect.flatMap(({ good }) =>
-            renderPage(good, { events: "api/events" })
+            renderPage(good, { events: Str.slice(1)(serverPaths.events) })
           ),
           Effect.orDie
         )
       )
       .handle("state", () =>
-        Effect.map(SubscriptionRef.get(live), ({ good }) => good)
+        Effect.map(SubscriptionRef.get(held), ({ good }) => good)
       )
       .handle("events", () => Effect.succeed(events))
   );
@@ -370,7 +376,7 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   yield* printNotes(first);
 
-  const live = yield* SubscriptionRef.make<Live>({
+  const held = yield* SubscriptionRef.make<Held>({
     good: first.state,
     latest: ServerEvent.cases.MapUpdated.make({ state: first.state }),
   });
@@ -379,7 +385,7 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   const onChange = rebuildEvent(home).pipe(
     Effect.flatMap((event) =>
-      SubscriptionRef.update(live, (current) => nextLive(current, event))
+      SubscriptionRef.update(held, (current) => nextHeld(current, event))
     ),
     Effect.catchCause((cause) =>
       Console.error(`serve could not rebuild the map: ${Cause.pretty(cause)}`)
@@ -405,7 +411,7 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   ]);
 
   const stopping = yield* Latch.make();
-  const app = yield* HttpRouter.toHttpEffect(routes(live, stopping, allowed));
+  const app = yield* HttpRouter.toHttpEffect(routes(held, stopping, allowed));
 
   const urlHostName = wildcardHosts.has(host) ? defaultHost : urlHost(host);
 
@@ -442,9 +448,11 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
     return recorded;
   }).pipe(Effect.scoped);
 
-  if (!loopbackAddresses.has(host)) {
+  const bound = hostName(urlHost(host));
+
+  if (!Arr.some(loopbackHosts, (name) => name === bound)) {
     yield* Console.error(
-      `serve is listening on ${host}, so other machines on the network can reach it. It still only answers requests addressed to localhost, 127.0.0.1, [::1]${wildcardHosts.has(host) ? "" : `, ${host}`} or a host given with --allow-host.`
+      `serve is listening on ${host}, so other machines on the network can reach it. It still only answers requests addressed to ${loopbackList}${wildcardHosts.has(host) ? "" : `, ${host}`} or a host given with --allow-host.`
     );
   }
 

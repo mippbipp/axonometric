@@ -5,8 +5,8 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./app.tsx";
 import { readInlineState } from "./inline-state.ts";
-import { LiveApp } from "./live-app.tsx";
-import { connectLive, readServedPage } from "./live-store.ts";
+import { ServedApp } from "./served-app.tsx";
+import { connectServed, readServedPage } from "./served-store.ts";
 
 const root = document.querySelector("#root");
 
@@ -24,8 +24,8 @@ if (root !== null) {
     return Option.match(served, {
       onNone: () => <App state={inline.state} />,
       onSome: (where) => (
-        <LiveApp
-          store={connectLive({ initial: inline.state, served: where })}
+        <ServedApp
+          store={connectServed({ initial: inline.state, served: where })}
         />
       ),
     });

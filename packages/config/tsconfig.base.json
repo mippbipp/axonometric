@@ -36,6 +36,7 @@
           "effect/Stdio",
           "effect/process",
           "@effect/platform-node",
+          "@effect/platform-node-shared",
           "@effect/vitest"
         ]
       }

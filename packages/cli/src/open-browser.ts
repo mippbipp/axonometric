@@ -1,16 +1,25 @@
-import { Console, Effect } from "effect";
+import { Console, Effect, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-/** The command that opens `url` in the system's browser. */
+/** The system's opener ran, and exited with a code other than 0. */
+class OpenerFailed extends Schema.TaggedError<
+  OpenerFailed,
+  { readonly brand: unique symbol }
+>()("OpenerFailed", { code: Schema.Int }) {}
+
+/**
+ * The command that opens `url` in the system's browser. None runs through a
+ * shell, so nothing in the URL is parsed as a command. On Windows,
+ * `url.dll,FileProtocolHandler` hands the URL to the default browser as it
+ * is, where `cmd /c start` would reparse it.
+ */
 const openCommand = (url: string) => {
   if (process.platform === "darwin") {
     return ChildProcess.make("open", [url]);
   }
 
-  // `start` is built into cmd. Its first quoted argument is a window title,
-  // so it gets an empty one.
   return process.platform === "win32"
-    ? ChildProcess.make("cmd", ["/c", "start", '""', url], {
+    ? ChildProcess.make("rundll32", ["url.dll,FileProtocolHandler", url], {
         windowsHide: true,
       })
     : ChildProcess.make("xdg-open", [url]);
@@ -27,7 +36,7 @@ export const openBrowser = (url: string) =>
     Effect.flatMap((code) =>
       Number(code) === 0
         ? Effect.void
-        : Effect.fail(`the opener exited with code ${Number(code)}`)
+        : Effect.fail(OpenerFailed.make({ code: Number(code) }))
     ),
     Effect.catchCause(() =>
       Console.error(`serve could not open a browser. Open ${url} yourself.`)

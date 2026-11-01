@@ -1,10 +1,23 @@
 import { ServerState } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
+import {
+  NodeHttpClient,
+  NodeServices,
+  NodeSocket,
+} from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Path, Schema } from "effect";
+import {
+  Effect,
+  FileSystem,
+  Path,
+  Predicate,
+  Schema,
+  String as Str,
+} from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { stateFolder } from "../src/lock.ts";
+import { serverStateFile } from "../src/server-state.ts";
 import { minimalMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
 
@@ -17,9 +30,7 @@ const minimalHome = Effect.gen(function* () {
 }).pipe(Effect.provide(NodeServices.layer));
 
 const stateFileOf = (home: string) =>
-  Path.Path.use((path) =>
-    Effect.succeed(path.join(home, ".axonometric", "server.json"))
-  ).pipe(Effect.provide(NodeServices.layer));
+  serverStateFile(home).pipe(Effect.provide(NodeServices.layer));
 
 const encodeServerState = Schema.encodeEffect(
   Schema.fromJsonString(ServerState)
@@ -28,9 +39,8 @@ const encodeServerState = Schema.encodeEffect(
 /** A state file as a running `serve` would write it. */
 const writeStateFile = Effect.fnUntraced(function* (home: string, pid: number) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
 
-  yield* fs.makeDirectory(path.join(home, ".axonometric"), { recursive: true });
+  yield* stateFolder(home);
   yield* fs.writeFileString(
     yield* stateFileOf(home),
     yield* encodeServerState({
@@ -81,6 +91,37 @@ const getWithHost = (url: string, pathname: string, host: string) =>
     Effect.scoped,
     Effect.provide(NodeHttpClient.layerNodeHttp)
   );
+
+/**
+ * Sends a GET for `/api/state` with no Host header at all, which no HTTP
+ * client allows, over a raw socket. Returns the status from the reply's
+ * first line.
+ */
+const getWithoutHost = (url: string) =>
+  Effect.gen(function* () {
+    const target = new URL(url);
+
+    const socket = yield* NodeSocket.makeNet({
+      host: target.hostname,
+      port: Number(target.port),
+    });
+
+    const writer = yield* socket.writer;
+    const reader = yield* socket.reader;
+
+    yield* writer.write("GET /api/state HTTP/1.0\r\nConnection: close\r\n\r\n");
+
+    const [first] = yield* reader.pull;
+
+    const text =
+      first === undefined || Predicate.isString(first)
+        ? (first ?? "")
+        : new TextDecoder().decode(first);
+
+    const [, status = ""] = Str.split(" ")(text);
+
+    return Number(status);
+  }).pipe(Effect.scoped);
 
 const portOf = (url: string) => Number(new URL(url).port);
 
@@ -263,6 +304,7 @@ describe("serve", () => {
       const statuses = yield* Effect.forEach(
         [
           `localhost:${port}`,
+          `LOCALHOST:${port}`,
           `127.0.0.1:${port}`,
           `[::1]:${port}`,
           "map.example.test",
@@ -276,12 +318,13 @@ describe("serve", () => {
 
       assert.deepStrictEqual(
         statuses,
-        [200, 200, 200, 200, 200, 403, 403, 403]
+        [200, 200, 200, 200, 200, 200, 403, 403, 403]
       );
       assert.strictEqual(
         yield* getWithHost(serve.url, "/", "attacker.example.test"),
         403
       );
+      assert.strictEqual(yield* getWithoutHost(serve.url), 403);
     })
   );
 

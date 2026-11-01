@@ -1,7 +1,7 @@
 import { ServerState } from "@axonometric/contracts";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 
-import { processIsAlive, stateFolder } from "./lock.ts";
+import { processIsAlive, stateFolder, stateFolderPath } from "./lock.ts";
 import { writeAll } from "./write-files.ts";
 
 const StateFile = Schema.fromJsonString(ServerState);
@@ -10,11 +10,12 @@ const decodeState = Schema.decodeUnknownOption(StateFile);
 
 const encodeState = Schema.encodeEffect(StateFile);
 
-/** Where `serve` records itself, relative to the home folder. */
-export const serverStateFile = (home: string) =>
-  Path.Path.use((path) =>
-    Effect.succeed(path.join(home, ".axonometric", "server.json"))
-  );
+/** Where `serve` records itself for the map in `home`. */
+export const serverStateFile = Effect.fnUntraced(function* (home: string) {
+  const path = yield* Path.Path;
+
+  return path.join(yield* stateFolderPath(home), "server.json");
+});
 
 /** The state file's text, or nothing when there's no file. */
 const readText = Effect.fnUntraced(function* (file: string) {

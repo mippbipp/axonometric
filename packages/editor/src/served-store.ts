@@ -31,7 +31,7 @@ export interface Rejection {
 }
 
 /** What a served page shows. */
-export interface Live {
+export interface ServedView {
   /** The last good map. */
   readonly state: MapState;
   /** Why the map files on disk don't make a map, or null when they do. */
@@ -40,16 +40,16 @@ export interface Live {
   readonly stopped: boolean;
 }
 
-export interface LiveStore {
+export interface ServedStore {
   readonly subscribe: (listener: () => void) => () => void;
-  readonly getSnapshot: () => Live;
+  readonly getSnapshot: () => ServedView;
 }
 
 /** How long to wait before reconnecting a stream the browser gave up on. */
 const retryDelay = Duration.seconds(2);
 
-/** What `connectLive` starts from. */
-export interface LiveSource {
+/** What `connectServed` starts from. */
+export interface ServedSource {
   /** The map inlined into the page. */
   readonly initial: MapState;
   readonly served: ServedPage;
@@ -61,12 +61,15 @@ export interface LiveSource {
  * response, such as a reverse proxy's 502 while the server is down, and then
  * the store starts a new stream.
  */
-export const connectLive = ({ initial, served }: LiveSource): LiveStore => {
+export const connectServed = ({
+  initial,
+  served,
+}: ServedSource): ServedStore => {
   const listeners = new Set<() => void>();
-  let live: Live = { state: initial, rejection: null, stopped: false };
+  let view: ServedView = { state: initial, rejection: null, stopped: false };
 
-  const update = (next: Partial<Live>) => {
-    live = { ...live, ...next };
+  const update = (next: Partial<ServedView>) => {
+    view = { ...view, ...next };
 
     for (const listener of listeners) {
       listener();
@@ -77,7 +80,7 @@ export const connectLive = ({ initial, served }: LiveSource): LiveStore => {
     const source = new EventSource(new URL(served.events, document.baseURI));
 
     source.addEventListener("open", () => {
-      if (live.stopped) {
+      if (view.stopped) {
         update({ stopped: false });
       }
     });
@@ -101,7 +104,7 @@ export const connectLive = ({ initial, served }: LiveSource): LiveStore => {
     });
 
     source.addEventListener("error", () => {
-      if (!live.stopped) {
+      if (!view.stopped) {
         update({ stopped: true });
       }
 
@@ -126,6 +129,6 @@ export const connectLive = ({ initial, served }: LiveSource): LiveStore => {
         listeners.delete(listener);
       };
     },
-    getSnapshot: () => live,
+    getSnapshot: () => view,
   };
 };

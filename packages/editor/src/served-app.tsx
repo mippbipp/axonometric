@@ -2,14 +2,14 @@ import { Array as Arr } from "effect";
 import { useSyncExternalStore } from "react";
 
 import { App } from "./app.tsx";
-import type { LiveStore, Rejection } from "./live-store.ts";
+import type { ServedStore, Rejection } from "./served-store.ts";
 
 /**
- * The live page's notices. The page shows them under the chapter rail, over
+ * The served page's notices. The page shows them under the chapter rail, over
  * the canvas, so they never change its size: a resize refits the view and
  * loses the zoom. A long list of problems scrolls inside the banner.
  */
-function LiveNotices({
+function ServedNotices({
   rejection,
   stopped,
 }: {
@@ -23,8 +23,9 @@ function LiveNotices({
           data-server-stopped
           className="border-ink bg-paper text-ink pointer-events-auto max-w-full shrink-0 border px-3 py-1.5 text-xs"
         >
-          Server stopped. This is the last map it sent. The page reconnects when
-          axonometric serve runs again.
+          Server stopped. This is the last map it sent. If serve starts again at
+          this address, the page reconnects. If it starts on another port, open
+          the URL it prints.
         </output>
       ) : null}
       {rejection === null ? null : (
@@ -56,14 +57,14 @@ function LiveNotices({
 }
 
 /** The map page as `axonometric serve` serves it, kept up to date. */
-export function LiveApp({ store }: { readonly store: LiveStore }) {
-  const live = useSyncExternalStore(store.subscribe, store.getSnapshot);
+export function ServedApp({ store }: { readonly store: ServedStore }) {
+  const view = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
   return (
     <App
-      state={live.state}
+      state={view.state}
       notices={
-        <LiveNotices rejection={live.rejection} stopped={live.stopped} />
+        <ServedNotices rejection={view.rejection} stopped={view.stopped} />
       }
     />
   );
