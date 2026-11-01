@@ -223,6 +223,9 @@ describe("the How it's built page", () => {
 
         assert.strictEqual(expanded, "true");
         assert.isTrue(yield* inPage<boolean>(page, focusInside));
+        assert.deepStrictEqual(yield* texts(page, "[data-hint]"), [
+          "Esc closes this page",
+        ]);
 
         yield* press(page, "Escape");
         yield* waitGone(page, overviewPage);

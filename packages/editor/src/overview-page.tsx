@@ -106,36 +106,38 @@ function Decisions({
 }) {
   return (
     <Section title="Decisions">
-      <table data-overview-decisions className="w-full text-left text-sm">
-        <thead className="text-xs tracking-widest uppercase opacity-70">
-          <tr>
-            <th scope="col" className="pr-4 pb-1 font-normal">
-              Topic
-            </th>
-            <th scope="col" className="pr-4 pb-1 font-normal">
-              Decision
-            </th>
-            <th scope="col" className="pb-1 font-normal">
-              ADR
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {Arr.map(decisions, (decision) => (
-            <tr key={decision.topic}>
-              <td className={cn(cellClass, "font-medium whitespace-nowrap")}>
-                {decision.topic}
-              </td>
-              <td className={cellClass}>{decision.decision}</td>
-              <td className={cn(cellClass, "pr-0 text-xs")}>
-                {decision.adr === undefined ? null : (
-                  <MapLink href={decision.adr}>{decision.adr}</MapLink>
-                )}
-              </td>
+      <div className="overflow-x-auto">
+        <table data-overview-decisions className="w-full text-left text-sm">
+          <thead className="text-xs tracking-widest uppercase opacity-70">
+            <tr>
+              <th scope="col" className="pr-4 pb-1 font-normal">
+                Topic
+              </th>
+              <th scope="col" className="pr-4 pb-1 font-normal">
+                Decision
+              </th>
+              <th scope="col" className="pb-1 font-normal">
+                ADR
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {Arr.map(decisions, (decision) => (
+              <tr key={decision.topic}>
+                <td className={cn(cellClass, "font-medium whitespace-nowrap")}>
+                  {decision.topic}
+                </td>
+                <td className={cellClass}>{decision.decision}</td>
+                <td className={cn(cellClass, "pr-0 text-xs whitespace-nowrap")}>
+                  {decision.adr === undefined ? null : (
+                    <MapLink href={decision.adr}>{decision.adr}</MapLink>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Section>
   );
 }

@@ -19,7 +19,7 @@ export function MapLink({
   readonly className?: string;
 }) {
   if (href === undefined) {
-    return <code className={cn("break-all", className)}>{children}</code>;
+    return <code className={cn("wrap-anywhere", className)}>{children}</code>;
   }
 
   return (
@@ -28,7 +28,7 @@ export function MapLink({
       target="_blank"
       rel="noreferrer"
       className={cn(
-        "focus-visible:outline-ink break-all underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-1",
+        "focus-visible:outline-ink wrap-anywhere underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-1",
         className
       )}
     >

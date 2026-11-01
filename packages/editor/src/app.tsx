@@ -12,6 +12,7 @@ import { InsideView } from "./inside-view.tsx";
 import { IsoView } from "./iso-view.tsx";
 import { screenRouteOf } from "./iso.ts";
 import { MapSurface } from "./map-surface.tsx";
+import { useOverviewPage } from "./overview-context.ts";
 import {
   OverviewButton,
   OverviewPage,
@@ -33,15 +34,22 @@ import { WalkthroughProvider } from "./walkthrough.tsx";
 
 /** The keys the hint bar lists, for what's on screen. */
 const hintsOf = ({
+  overview,
   selected,
   inside,
   canGoInside,
 }: {
+  /** Whether the How it's built page is open. */
+  readonly overview: boolean;
   readonly selected: boolean;
   readonly inside: boolean;
   /** Whether the selected structure has steps. */
   readonly canGoInside: boolean;
 }) => {
+  if (overview) {
+    return ["Esc closes this page"];
+  }
+
   if (inside) {
     return ["← or Esc come out", "click Step to move the packet"];
   }
@@ -69,6 +77,7 @@ const hintsOf = ({
 function WalkthroughPage() {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
   const { selected, inside } = useSelection();
+  const { open: overviewOpen } = useOverviewPage();
   const byId = useStructuresById();
   const insideStructure = inside === null ? undefined : byId.get(inside);
   const selectedStructure = selected === null ? undefined : byId.get(selected);
@@ -159,6 +168,7 @@ function WalkthroughPage() {
         <ul className="flex h-4 min-w-0 flex-wrap gap-x-4 gap-y-2 overflow-hidden">
           {Arr.map(
             hintsOf({
+              overview: overviewOpen,
               selected: selected !== null,
               inside: insideStructure !== undefined,
               canGoInside: hasSteps(selectedStructure),
