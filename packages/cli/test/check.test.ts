@@ -1,4 +1,9 @@
-import { LayoutFile, MapProblem } from "@axonometric/contracts";
+import {
+  LayoutFile,
+  MapData,
+  MapProblem,
+  Revision,
+} from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Schema, String as Str } from "effect";
 
@@ -24,6 +29,48 @@ const CheckReport = Schema.Struct({
 });
 
 const encodeLayout = Schema.encodeEffect(LayoutFile);
+
+const encodeRevision = Schema.encodeEffect(Schema.fromJsonString(Revision));
+
+const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
+
+/** `text` with the first `from` replaced by `to`, failing if `from` isn't there. */
+const edited = (text: string, from: string, to: string) => {
+  assert.include(text, from);
+
+  return Str.replace(from, to)(text);
+};
+
+/**
+ * The text of a valid revision file for the full map: its data.mjs as
+ * evaluated, and its layout.json.
+ */
+const revisionText = Effect.fnUntraced(function* (
+  n: number,
+  changes: Partial<Revision> = {}
+) {
+  const files = yield* fullMap;
+
+  const module: unknown = yield* Effect.promise(
+    () => import(new URL("fixtures/review/map/data.mjs", import.meta.url).href)
+  );
+
+  const { default: data } = yield* Schema.decodeUnknownEffect(
+    Schema.Struct({ default: MapData })
+  )(module);
+
+  return yield* encodeRevision({
+    format: 1,
+    revision: n,
+    savedAt: "2026-11-01T09:00:00.000Z",
+    message: "Move Save server",
+    accepted: [],
+    rejected: [],
+    data,
+    layout: yield* decodeLayout(files[layoutFile] ?? ""),
+    ...changes,
+  });
+});
 
 const decodeReport = Schema.decodeUnknownEffect(
   Schema.fromJsonString(CheckReport)
@@ -537,6 +584,162 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
           assert.isDefined(result.files["review/SYSTEM.md"]);
           assert.strictEqual(result.files[proposalsFile], "{ not json");
         })
+    );
+  });
+
+  describe("with a history folder", () => {
+    it.effect("passes valid revision files and writes nothing", () =>
+      Effect.gen(function* () {
+        const files = {
+          "review/map/history/0001.json": yield* revisionText(1),
+          "review/map/history/0002.json": yield* revisionText(2),
+        };
+
+        const before = { ...(yield* fullMap), ...files };
+        const result = yield* checkWith(files);
+
+        assert.strictEqual(result.exitCode, 0, result.stdout);
+        assert.include(result.stdout, ": 0 errors, 0 warnings.");
+        assert.deepStrictEqual(result.files, before);
+      })
+    );
+
+    it.effect("names a revision file that isn't JSON", () =>
+      Effect.gen(function* () {
+        const result = yield* checkWith({
+          "review/map/history/0001.json": yield* revisionText(1),
+          "review/map/history/0002.json": "{ not json",
+        });
+
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          "error history/0002.json: isn't valid JSON"
+        );
+        assert.notInclude(result.stdout, "history/0001.json");
+      })
+    );
+
+    it.effect("names the field in a revision file that breaks the schema", () =>
+      Effect.gen(function* () {
+        const good = yield* revisionText(1);
+
+        const broken = edited(
+          good,
+          '"message":"Move Save server"',
+          '"message":""'
+        );
+
+        const result = yield* checkWith({
+          "review/map/history/0001.json": broken,
+        });
+
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          "error history/0001.json message: expected the revision's message as a non-empty string."
+        );
+      })
+    );
+
+    it.effect("finds a problem inside the snapshot of the data", () =>
+      Effect.gen(function* () {
+        const good = yield* revisionText(1);
+        const broken = edited(good, '"shape":"person"', '"shape":"blob"');
+
+        const result = yield* checkWith({
+          "review/map/history/0001.json": broken,
+        });
+
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          "error history/0001.json data.structures["
+        );
+      })
+    );
+
+    it.effect("tells you to upgrade for a revision with a newer format", () =>
+      Effect.gen(function* () {
+        const good = yield* revisionText(1);
+        const newer = edited(good, '"format":1', '"format":2');
+
+        const result = yield* checkWith({
+          "review/map/history/0001.json": newer,
+        });
+
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          "error history/0001.json format: format 2 is newer than this axonometric reads"
+        );
+      })
+    );
+
+    it.effect("reports a revision whose number isn't the one in its name", () =>
+      Effect.gen(function* () {
+        const result = yield* checkWith({
+          "review/map/history/0003.json": yield* revisionText(2),
+        });
+
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          "error history/0003.json revision: is 2, but the file is named for revision 3."
+        );
+      })
+    );
+
+    it.effect("reports every broken file in --json, with the file name", () =>
+      Effect.gen(function* () {
+        const result = yield* checkWith(
+          {
+            "review/map/history/0001.json": "{ not json",
+            "review/map/history/0002.json": "[]",
+          },
+          ["--json"]
+        );
+
+        const report = yield* decodeReport(result.stdout);
+
+        assert.strictEqual(result.exitCode, 1);
+        assert.deepStrictEqual(
+          Arr.map(report.errors, ({ file }) => file),
+          ["history/0001.json", "history/0002.json"]
+        );
+      })
+    );
+
+    it.effect(
+      "ignores files in history that aren't named like a revision",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* checkWith({
+            "review/map/history/notes.txt": "hello",
+            "review/map/history/0001.json.1234.tmp": "half a write",
+          });
+
+          assert.strictEqual(result.exitCode, 0, result.stdout);
+        })
+    );
+
+    it.effect("doesn't stop build for a broken revision, but warns", () =>
+      Effect.gen(function* () {
+        const home = yield* makeHome({
+          ...(yield* fullMap),
+          "review/map/history/0001.json": "{ not json",
+        });
+
+        const result = yield* runCli(home, ["build", `${home}/review/map`]);
+
+        assert.strictEqual(result.exitCode, 0, result.stderr);
+        assert.include(result.stderr, "warning history/0001.json");
+        assert.include(result.stderr, "ignored until it is fixed");
+        assert.strictEqual(
+          result.files["review/map/history/0001.json"],
+          "{ not json"
+        );
+      })
     );
   });
 });

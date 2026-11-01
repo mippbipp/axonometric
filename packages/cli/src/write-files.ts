@@ -3,6 +3,8 @@ import {
   Duration,
   Effect,
   FileSystem,
+  Option,
+  Path,
   Predicate,
   Schedule,
 } from "effect";
@@ -44,15 +46,29 @@ const renameInto = (temporary: string, file: string) =>
       : (effect) => effect
   );
 
+/** The text of `file` now, or nothing when it doesn't exist. */
+const currentContent = (file: string) =>
+  FileSystem.FileSystem.use((fs) => fs.readFileString(file)).pipe(
+    Effect.asSome,
+    Effect.catchReason("PlatformError", "NotFound", () => Effect.succeedNone)
+  );
+
 /**
  * Writes every output to a temporary file beside it, and only then renames
- * them all into place, so a failed write leaves every old output as it was.
- * On any failure the temporary files are removed.
+ * them all into place in the order given, so a failed write leaves every old
+ * output as it was. The folder of an output is created if it's missing, which
+ * is the one thing that outlasts a failure.
+ *
+ * Renames can't be done together, so when one fails, the ones before it are
+ * put back: a file that existed gets its old text again, and a file that
+ * didn't is removed. Putting back is a best effort, since the disk that just
+ * refused one rename may refuse another. Temporary files are always removed.
  */
 export const writeAll = Effect.fnUntraced(function* (
   outputs: readonly Output[]
 ) {
   const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
 
   const staged = Arr.map(outputs, ({ file, content }) => ({
     file,
@@ -69,14 +85,47 @@ export const writeAll = Effect.fnUntraced(function* (
   yield* Effect.gen(function* () {
     yield* Effect.forEach(
       staged,
-      ({ temporary, content }) => fs.writeFileString(temporary, content),
+      ({ file, temporary, content }) =>
+        fs
+          .makeDirectory(path.dirname(file), { recursive: true })
+          .pipe(Effect.andThen(fs.writeFileString(temporary, content))),
+      { discard: true }
+    );
+
+    const before = yield* Effect.forEach(staged, ({ file }) =>
+      currentContent(file)
+    );
+
+    const renamed: number[] = [];
+
+    const putBack = Effect.forEach(
+      Arr.reverse(renamed),
+      (index) => {
+        const target = staged[index];
+        const old = before[index];
+
+        return target === undefined || old === undefined
+          ? Effect.void
+          : Option.match(old, {
+              onNone: () => fs.remove(target.file),
+              onSome: (text) =>
+                fs
+                  .writeFileString(target.temporary, text)
+                  .pipe(
+                    Effect.andThen(renameInto(target.temporary, target.file))
+                  ),
+            }).pipe(Effect.ignore);
+      },
       { discard: true }
     );
 
     yield* Effect.forEach(
       staged,
-      ({ temporary, file }) => renameInto(temporary, file),
+      ({ temporary, file }, index) =>
+        renameInto(temporary, file).pipe(
+          Effect.tap(() => Effect.sync(() => renamed.push(index)))
+        ),
       { discard: true }
-    );
+    ).pipe(Effect.onError(() => putBack));
   }).pipe(Effect.onError(() => removeTemporaries));
 });

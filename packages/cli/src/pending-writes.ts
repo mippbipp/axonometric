@@ -100,7 +100,7 @@ export const writeGuardLayer = Layer.succeed(WriteGuard, (httpEffect) =>
 );
 
 /** The problems in a file that didn't decode, as a write's error. */
-const unreadable = <A>(
+export const unreadable = <A>(
   loaded: Result.Result<A, MapFilesUnreadable["problems"]>
 ) =>
   Result.match(loaded, {

@@ -1,11 +1,10 @@
 import { Array as Arr, Predicate, Result, Schema, SchemaIssue } from "effect";
 import { dual } from "effect/Function";
 
-/** The map files a problem can be in. */
-export const MapFile = Schema.Literals([
-  "data.mjs",
-  "layout.json",
-  "proposals.json",
+/** The map files a problem can be in, `history/<n>.json` included. */
+export const MapFile = Schema.Union([
+  Schema.Literals(["data.mjs", "layout.json", "proposals.json"]),
+  Schema.TemplateLiteral(["history/", Schema.String, ".json"]),
 ]);
 
 export type MapFile = typeof MapFile.Type;

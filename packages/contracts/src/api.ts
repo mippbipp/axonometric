@@ -10,6 +10,8 @@ import {
 import { MapState } from "./map-state.ts";
 import { Proposals } from "./proposals.ts";
 import {
+  Accepted,
+  AcceptWrite,
   LayoutChangeRefused,
   PendingLayoutWrite,
   MapFilesUnreadable,
@@ -46,8 +48,8 @@ export class WriteGuard extends HttpApiMiddleware.Service<WriteGuard>()(
 /**
  * Writing the map's pending changes. Each write names the file revision it
  * was based on, and the server takes the lock, checks it, and writes
- * `proposals.json` atomically. Accepting changes and undo join this group as
- * their own endpoints.
+ * `proposals.json` atomically. Accepting changes is its own endpoint, and
+ * undo will join this group as another.
  *
  * A write replaces the whole list of layout changes, because undo needs to
  * put an earlier list back. When #21 freezes items into batches, it must
@@ -60,6 +62,11 @@ export class ProposalsApiGroup extends HttpApiGroup.make("proposals")
     HttpApiEndpoint.put("putLayout", serverPaths.pendingLayout, {
       payload: PendingLayoutWrite,
       success: Proposals,
+      error: [StaleProposals, LayoutChangeRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("accept", serverPaths.accept, {
+      payload: AcceptWrite,
+      success: Accepted,
       error: [StaleProposals, LayoutChangeRefused, MapFilesUnreadable],
     })
   )

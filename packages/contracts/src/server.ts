@@ -1,8 +1,9 @@
 import { Schema } from "effect";
 
+import { Layout } from "./layout.ts";
 import { MapState } from "./map-state.ts";
 import { MapProblem } from "./problems.ts";
-import { LayoutChanges, Proposals } from "./proposals.ts";
+import { ChangeId, LayoutChanges, Proposals } from "./proposals.ts";
 
 /**
  * What `serve` writes to `.axonometric/server.json` in the home folder while
@@ -24,6 +25,7 @@ export const serverPaths = {
   state: "/api/state",
   events: "/api/events",
   pendingLayout: "/api/proposals/layout",
+  accept: "/api/proposals/accept",
 } as const;
 
 /** The largest request body the server reads, in bytes. */
@@ -38,6 +40,55 @@ export const PendingLayoutWrite = Schema.Struct({
 });
 
 export type PendingLayoutWrite = typeof PendingLayoutWrite.Type;
+
+const messageFix =
+  "expected a message of 1 to 500 characters, or leave it out.";
+
+/** The longest message a revision takes, in characters. */
+export const maxMessageLength = 500;
+
+const messageText = Schema.String.annotate({ message: messageFix }).check(
+  Schema.isNonEmpty({ message: messageFix }),
+  Schema.isMaxLength(maxMessageLength, { message: messageFix })
+);
+
+/**
+ * Accepting pending layout changes. The server looks for `changeIds` among
+ * the pending layout changes only, so the id of anything else is refused as
+ * unknown.
+ */
+export const AcceptWrite = Schema.Struct({
+  /** The `proposals.json` revision the page based the write on. */
+  baseRevision: Schema.Int,
+  /** The changes to accept, or `"all"` for every pending layout change. */
+  changeIds: Schema.Union([
+    Schema.Literal("all"),
+    Schema.NonEmptyArray(ChangeId),
+  ]).annotate({
+    message: 'expected "all" or a list of at least one change id.',
+  }),
+  /** What the revision is called. Left out, the server writes one from the changes. */
+  message: Schema.optionalKey(messageText),
+});
+
+export type AcceptWrite = typeof AcceptWrite.Type;
+
+/**
+ * The changes were accepted: `layout.json`, `proposals.json` and the new
+ * revision file are written, and SYSTEM.md and the read-only page rebuilt.
+ */
+export const Accepted = Schema.Struct({
+  /** The revision just saved: its number, and the name of its file. */
+  revision: Schema.Int,
+  /** The revision's message, written by the server when the write gave none. */
+  message: Schema.String,
+  /** The accepted layout now. */
+  layout: Layout,
+  /** What is still pending. */
+  proposals: Proposals,
+});
+
+export type Accepted = typeof Accepted.Type;
 
 /**
  * The write was based on an older revision of `proposals.json`. Nothing was
@@ -62,8 +113,8 @@ export class LayoutChangeRefused extends Schema.TaggedError<
 ) {}
 
 /**
- * `layout.json` or `proposals.json` on disk doesn't decode, so the server
- * won't write. `problems` says what to fix.
+ * The map files on disk don't make a map, such as a `proposals.json` that
+ * doesn't decode, so the server won't write. `problems` says what to fix.
  */
 export class MapFilesUnreadable extends Schema.TaggedError<
   MapFilesUnreadable,
@@ -107,6 +158,8 @@ export const ServedPage = Schema.Struct({
   events: Schema.String,
   /** Where to write the pending layout changes, relative to the page's URL. */
   pendingLayout: Schema.String,
+  /** Where to accept pending layout changes, relative to the page's URL. */
+  accept: Schema.String,
 });
 
 export type ServedPage = typeof ServedPage.Type;

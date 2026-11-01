@@ -1,5 +1,9 @@
 export { describeCause } from "./cause.ts";
 
+export { acceptanceMessage, acceptLayoutChanges } from "./accept.ts";
+
+export type { Acceptance } from "./accept.ts";
+
 export { checkMap, linkTargets } from "./check.ts";
 
 export type { CheckOptions, MapFiles } from "./check.ts";
@@ -23,6 +27,16 @@ export { exportName } from "./export-name.ts";
 export { palette, whiteBackground } from "./palette.ts";
 
 export { fileVersionFields, formatVersion } from "./fields.ts";
+
+export {
+  AcceptedItem,
+  historyFolder,
+  parseRevisionFileName,
+  RejectedItem,
+  Revision,
+  RevisionFile,
+  revisionFileName,
+} from "./revisions.ts";
 
 export {
   boxOutline,
@@ -189,7 +203,10 @@ export {
 export type { Clash, Placing } from "./proposals.ts";
 
 export {
+  Accepted,
+  AcceptWrite,
   LayoutChangeRefused,
+  maxMessageLength,
   maxWriteBytes,
   PendingLayoutWrite,
   MapFilesUnreadable,
