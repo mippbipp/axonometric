@@ -75,3 +75,14 @@ export const clockAtHop = ({
 
   return inThisCycle > clock ? inThisCycle : inThisCycle + cycle;
 };
+
+/**
+ * The clock reading at which a packet is halfway along the hop after the one
+ * it's on. Stepping a packet sets its clock to this.
+ */
+export const clockAtNextHop = ({ clock, hops }: RunClock) =>
+  clockAtHop({
+    clock,
+    hops,
+    hop: (packetAt({ clock, hops }).hop + 1) % hops,
+  });

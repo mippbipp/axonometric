@@ -54,6 +54,8 @@ export interface Playback {
   readonly step: () => void;
   /** Pauses and selects the packet on `run`, the index into `runs`. */
   readonly selectPacket: (run: number) => void;
+  /** Closes the packet panel and stays paused. */
+  readonly closePacket: () => void;
 }
 
 export const PlaybackContext = createContext<Playback | null>(null);
@@ -74,3 +76,7 @@ export const usePlayback = (): Playback => {
 
 /** Seconds of playback so far, for drawing packets. */
 export const usePlaybackClock = () => use(ClockContext);
+
+/** Why Play is disabled when the system asks for reduced motion. */
+export const reducedMotionNote =
+  "Packets stay still because your system asks for reduced motion. Step still moves them.";

@@ -1,9 +1,16 @@
+import type { Structure } from "@axonometric/contracts";
 import { Array as Arr, Match } from "effect";
-import { useMemo } from "react";
+import { useId, useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
+import { QuestionsTab } from "./questions.tsx";
+import { useRevealedQuestions } from "./revealed-questions.ts";
+import { useSelection } from "./selection-context.ts";
+import { InsidePanel, StructurePanel } from "./structure-panel.tsx";
+import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** Structure names by id, for showing ids as names. */
@@ -68,7 +75,7 @@ function ChapterStory() {
 }
 
 function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
-  const { play, step, reducedMotion } = usePlayback();
+  const { play, step, reducedMotion, closePacket } = usePlayback();
   const { run, hop, index } = packet;
   const names = useStructureNames();
   const nameOf = (id: string) => names.get(id) ?? id;
@@ -106,46 +113,191 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
             ▸ Play
           </button>
         )}
+        <button
+          type="button"
+          data-control="close"
+          className={controlClass}
+          onClick={closePacket}
+        >
+          Close
+        </button>
       </div>
     </section>
   );
 }
 
 /**
- * What the side panel shows. A selected packet wins over the chapter story.
+ * What the side panel's Details tab shows, in the order they win: the open
+ * inside view, then a selected packet, then the pinned structure, then the
+ * chapter story. A packet clicked while a structure is pinned shows until
+ * it's closed or playback resumes, then the pinned structure returns.
  *
- * To add a kind of content, such as #7's pinned structure: add a member here,
- * return it from `panelContentOf` in the order it should win (a pinned
- * structure likely comes after a selected packet, since clicking a packet
- * pauses to show it), and render it in `renderContent`, whose
- * match fails to compile until every kind is handled.
+ * To add a kind of content: add a member here, return it from
+ * `panelContentOf` in the order it should win, and render it in
+ * `renderContent`, whose match fails to compile until every kind is handled.
  */
 export type PanelContent =
   | { readonly kind: "chapter" }
-  | { readonly kind: "packet"; readonly packet: SelectedPacket };
+  | { readonly kind: "packet"; readonly packet: SelectedPacket }
+  | { readonly kind: "structure"; readonly structure: Structure }
+  | { readonly kind: "inside"; readonly structure: Structure };
 
-const panelContentOf = (selected: SelectedPacket | null): PanelContent =>
-  selected === null
+const panelContentOf = ({
+  packet,
+  pinned,
+  inside,
+}: {
+  readonly packet: SelectedPacket | null;
+  readonly pinned: Structure | undefined;
+  readonly inside: Structure | undefined;
+}): PanelContent => {
+  if (inside !== undefined) {
+    return { kind: "inside", structure: inside };
+  }
+
+  if (packet !== null) {
+    return { kind: "packet", packet };
+  }
+
+  return pinned === undefined
     ? { kind: "chapter" }
-    : { kind: "packet", packet: selected };
+    : { kind: "structure", structure: pinned };
+};
 
 const renderContent = Match.type<PanelContent>().pipe(
   Match.discriminatorsExhaustive("kind")({
     chapter: () => <ChapterStory />,
     packet: ({ packet }) => <PacketDetails packet={packet} />,
+    structure: ({ structure }) => (
+      <StructurePanel key={structure.id} structure={structure} />
+    ),
+    inside: ({ structure }) => <InsidePanel structure={structure} />,
   })
 );
 
-/** The side panel next to the view. See `PanelContent` for what it shows. */
+type Tab = "details" | "questions";
+
+const tabClass =
+  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-2 py-1 text-xs tracking-widest uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+
+/**
+ * The side panel next to the view, with two tabs. Details shows one of the
+ * `PanelContent` kinds; Open questions lists every question revealed so far.
+ * Selecting a structure anywhere switches back to Details.
+ */
 export function SidePanel() {
-  const { selected } = usePlayback();
+  const { selected: packet } = usePlayback();
+  const { selected, inside } = useSelection();
+  const byId = useStructuresById();
+  const { open } = useRevealedQuestions();
+
+  const openCount = Arr.reduce(
+    open,
+    0,
+    (sum, group) => sum + group.questions.length
+  );
+
+  const idPrefix = useId();
+
+  // The Questions tab stays open until the selection changes.
+  const [questionsFor, setQuestionsFor] = useState<{
+    readonly selected: string | null;
+  } | null>(null);
+
+  const tab: Tab =
+    questionsFor !== null && questionsFor.selected === selected
+      ? "questions"
+      : "details";
+
+  const tabs: readonly { readonly id: Tab; readonly label: string }[] = [
+    { id: "details", label: "Details" },
+    { id: "questions", label: `Open questions · ${openCount}` },
+  ];
+
+  const choose = (next: Tab) => {
+    setQuestionsFor(next === "questions" ? { selected } : null);
+  };
+
+  const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+
+    // The tab list owns ← and → while it has focus.
+    event.preventDefault();
+    event.stopPropagation();
+
+    const next = tab === "details" ? "questions" : "details";
+
+    choose(next);
+    event.currentTarget
+      .querySelector<HTMLElement>(`[data-tab="${next}"]`)
+      ?.focus();
+  };
 
   return (
     <aside
       data-side-panel
-      className="border-ink w-80 shrink-0 overflow-y-auto border-l p-4"
+      className="border-ink flex w-80 shrink-0 flex-col border-l"
     >
-      {renderContent(panelContentOf(selected))}
+      <div
+        tabIndex={0}
+        role="tablist"
+        aria-label="Side panel"
+        className="border-ink flex gap-1 border-b px-3 pt-2"
+        onKeyDown={onTabKeyDown}
+      >
+        {Arr.map(tabs, ({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`${idPrefix}-${id}-tab`}
+            data-tab={id}
+            aria-selected={tab === id}
+            aria-controls={`${idPrefix}-${id}`}
+            tabIndex={tab === id ? 0 : -1}
+            className={tabClass}
+            onClick={() => {
+              choose(id);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={`${idPrefix}-details`}
+        aria-labelledby={`${idPrefix}-details-tab`}
+        hidden={tab !== "details"}
+        className="min-h-0 flex-1 overflow-y-auto p-4"
+      >
+        {tab === "details"
+          ? renderContent(
+              panelContentOf({
+                packet,
+                pinned: selected === null ? undefined : byId.get(selected),
+                inside: inside === null ? undefined : byId.get(inside),
+              })
+            )
+          : null}
+      </div>
+      <div
+        role="tabpanel"
+        id={`${idPrefix}-questions`}
+        aria-labelledby={`${idPrefix}-questions-tab`}
+        hidden={tab !== "questions"}
+        className="min-h-0 flex-1 overflow-y-auto p-4"
+      >
+        {tab === "questions" ? (
+          <QuestionsTab
+            onPicked={() => {
+              choose("details");
+            }}
+          />
+        ) : null}
+      </div>
     </aside>
   );
 }

@@ -1,4 +1,4 @@
-import { isoHeights, statusLabels } from "@axonometric/contracts";
+import { isoHeights } from "@axonometric/contracts";
 import type {
   Placement,
   ScreenRect,
@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 
 import { corners, project, tileHeight, tileWidth, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
+import { StructureTarget } from "./structure-target.tsx";
 
 // How each shape is drawn in the iso view. Every shape stands on its
 // footprint and reaches `isoHeights[shape]` at its highest point. Faces that
@@ -160,7 +161,8 @@ function Drum({
   );
 }
 
-function BoxShape({ placement, height, hatch }: DrawProps) {
+/** A plain box: the `box` shape, also used for the inside view's steps. */
+export function BoxShape({ placement, height, hatch }: DrawProps) {
   return <Prism placement={placement} z0={0} z1={height} hatch={hatch} />;
 }
 
@@ -399,11 +401,9 @@ function DocumentShape({ placement, height, hatch }: DrawProps) {
     at(from, height),
   ];
 
-  const flap = [
-    at(to - fold, height),
-    at(to - fold, height - foldSize),
-    at(to, height - foldSize),
-  ];
+  const foldTop = at(to - fold, height);
+  const foldSide = at(to, height - foldSize);
+  const flap = [foldTop, at(to - fold, height - foldSize), foldSide];
 
   const lines = [0.32, 0.48, 0.64, 0.8];
 
@@ -413,7 +413,22 @@ function DocumentShape({ placement, height, hatch }: DrawProps) {
       <Face points={edge} hatch={hatch} />
       <Face points={topEdge} />
       <polygon data-face="" points={toPoints(page)} className="fill-face" />
-      <Face points={flap} hatch={hatch} />
+      <g data-fold="">
+        <polygon
+          data-face=""
+          points={toPoints(flap)}
+          className="fill-face"
+          strokeWidth={1}
+        />
+        <line
+          data-crease=""
+          x1={foldTop.sx}
+          y1={foldTop.sy}
+          x2={foldSide.sx}
+          y2={foldSide.sy}
+          strokeWidth={1.4}
+        />
+      </g>
       <g transform={alongX(at(from, height))}>
         {Arr.map(lines, (line, index) => (
           <line
@@ -590,15 +605,14 @@ export function IsoStructure({
   const Drawing = drawings[structure.shape];
 
   return (
-    <g
-      data-structure={structure.id}
+    <StructureTarget
+      id={structure.id}
       data-shape={structure.shape}
       data-status={structure.status}
       className="stroke-ink"
       strokeWidth={1.2}
       strokeLinejoin="round"
     >
-      <title>{`${structure.name} · ${statusLabels[structure.status]}`}</title>
       <Drawing
         placement={placement}
         height={isoHeights[structure.shape]}
@@ -610,6 +624,6 @@ export function IsoStructure({
       {structure.status === "off" ? (
         <OffMark at={offMarkAt(structure, placement, chip !== undefined)} />
       ) : null}
-    </g>
+    </StructureTarget>
   );
 }

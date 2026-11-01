@@ -18,6 +18,7 @@ import { fitOf } from "./fit.ts";
 import { corners, routesOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 import { PlaybackContext } from "./playback.ts";
+import { SelectionMarker } from "./selection-marker.tsx";
 import { IsoStructure } from "./shapes.tsx";
 import { Viewport } from "./viewport.tsx";
 import { Zones } from "./zones.tsx";
@@ -380,6 +381,7 @@ export function IsoView({
         {Arr.map(marked, (item) => (
           <NewMarker key={item.structure.id} placed={item} />
         ))}
+        <SelectionMarker placements={state.layout.structures} />
       </g>
       <g>
         {Arr.map(scene.hops, (item) => (
