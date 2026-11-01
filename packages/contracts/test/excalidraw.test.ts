@@ -77,6 +77,7 @@ describe("excalidraw export", () => {
     Effect.gen(function* () {
       const { data, layout } = yield* fixture("flake-pipeline");
       const { elements } = excalidrawOf({ data, layout });
+
       const byId = new Map(
         Arr.map(elements, (element) => [element.id, element])
       );
@@ -125,9 +126,11 @@ describe("excalidraw export", () => {
       Effect.gen(function* () {
         const { data, layout } = yield* fixture("pipeline");
         const { elements } = excalidrawOf({ data, layout });
+
         const byId = new Map(
           Arr.map(elements, (element) => [element.id, element])
         );
+
         const gate = byId.get("structure:gate");
         const placement = layout.structures.gate;
 
