@@ -1,3 +1,8 @@
+import {
+  defaultBoxHeight as boxHeight,
+  nameTagRect,
+  tagDrop,
+} from "@axonometric/contracts";
 import type {
   Hop,
   MapState,
@@ -11,17 +16,8 @@ import type { ReactNode } from "react";
 import { project, screenRouteOf, toPoints } from "./iso.ts";
 import type { ScreenPoint } from "./iso.ts";
 
-/** Height of a box above the ground, in screen units. */
-const boxHeight = 40;
-
 /** Space around the drawing when it's fitted to the window. */
 const margin = 48;
-
-/** How far below the front corner a name tag reaches, in screen units. */
-const tagDrop = 28;
-
-/** Approximate width of one character of the name tag's monospace font. */
-const tagCharWidth = 7.2;
 
 interface PlacedStructure {
   readonly structure: Structure;
@@ -93,16 +89,16 @@ function IsoBox({
 
 function NameTag({ placed }: { readonly placed: PlacedStructure }) {
   const { front } = corners(placed.placement, 0);
-  const width = placed.structure.name.length * tagCharWidth + 12;
-  const top = front.sy + 9;
+  const tag = nameTagRect(placed.placement, placed.structure.name);
+  const { top } = tag;
 
   return (
     <g data-name-tag={placed.structure.id} className="pointer-events-none">
       <rect
-        x={front.sx - width / 2}
+        x={tag.left}
         y={top}
-        width={width}
-        height={18}
+        width={tag.right - tag.left}
+        height={tag.bottom - tag.top}
         className="fill-paper stroke-ink"
         strokeWidth={0.9}
       />

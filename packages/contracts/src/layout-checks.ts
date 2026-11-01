@@ -1,7 +1,7 @@
 import { Array as Arr, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
-import { boxOutline, nameTagRect, nameTagText, tagCoversBox } from "./iso.ts";
+import { boxOutline, nameTagRect, tagCoversBox } from "./iso.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
@@ -44,7 +44,7 @@ export const tagCovers: {
   (a: PlacedStructure, b: PlacedStructure): boolean;
 } = dual(2, (a: PlacedStructure, b: PlacedStructure) =>
   tagCoversBox(
-    nameTagRect(a.placement, nameTagText(a.structure)),
+    nameTagRect(a.placement, a.structure.name),
     boxOutline(b.placement)
   )
 );

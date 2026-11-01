@@ -1,35 +1,16 @@
-import type { Layout, Placement } from "@axonometric/contracts";
+import { project } from "@axonometric/contracts";
+import type { Layout, Placement, ScreenPoint } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
+
+export { project } from "@axonometric/contracts";
+
+export type { ScreenPoint } from "@axonometric/contracts";
 
 /** A point on the ground grid, in grid units. */
 export interface GridPoint {
   readonly x: number;
   readonly y: number;
 }
-
-/** A point on screen, in SVG user units. */
-export interface ScreenPoint {
-  readonly sx: number;
-  readonly sy: number;
-}
-
-/** One grid unit is a 72 × 36 tile. */
-const tileWidth = 72;
-
-const tileHeight = 36;
-
-/**
- * Projects a grid point onto the screen. `z` is a height above the ground in
- * screen units; it defaults to the ground.
- */
-export const project = ({
-  x,
-  y,
-  z = 0,
-}: GridPoint & { readonly z?: number }): ScreenPoint => ({
-  sx: ((x - y) * tileWidth) / 2,
-  sy: ((x + y) * tileHeight) / 2 - z,
-});
 
 /** Formats screen points for an SVG `points` attribute. */
 export const toPoints = (points: readonly ScreenPoint[]) =>

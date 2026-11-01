@@ -2,7 +2,6 @@ import { Array as Arr } from "effect";
 import { dual } from "effect/Function";
 
 import type { Placement } from "./layout.ts";
-import type { Structure } from "./map-data.ts";
 
 /** A point on screen, in SVG user units. */
 export interface ScreenPoint {
@@ -29,12 +28,15 @@ export const defaultBoxHeight = 40;
 export const tagCharWidth = 7.2;
 
 /** The tag is this much wider than its text, for padding. */
-const tagPadding = 12;
+export const tagPadding = 12;
 
 /** The tag's top edge sits this far below the box's front corner. */
-const tagOffset = 9;
+export const tagOffset = 9;
 
-const tagHeight = 18;
+export const tagHeight = 18;
+
+/** How far below the front corner a name tag reaches, in screen units. */
+export const tagDrop = 28;
 
 /**
  * Projects a grid point onto the screen. `z` is a height above the ground in
@@ -44,10 +46,6 @@ export const project = ({ x, y, z = 0 }: GridPosition): ScreenPoint => ({
   sx: ((x - y) * tileWidth) / 2,
   sy: ((x + y) * tileHeight) / 2 - z,
 });
-
-/** The text on a structure's name tag: its tag label, or else its name. */
-export const nameTagText = (structure: Pick<Structure, "name" | "tag">) =>
-  structure.tag ?? structure.name;
 
 /** An axis-aligned rectangle on screen. */
 export interface ScreenRect {

@@ -387,20 +387,4 @@ describe("layout checks", () => {
         assert.isTrue(tagCovers(long, beside));
       })
   );
-
-  it.effect("uses the tag label over the name for the tag's width", () =>
-    Effect.sync(() => {
-      const tagged = {
-        structure: {
-          ...structure("a", "main", "A very long structure name indeed"),
-          tag: "A",
-        },
-        placement: at(0, 0),
-      };
-
-      const beside = { structure: structure("b"), placement: at(2, 0) };
-
-      assert.isFalse(tagCovers(tagged, beside));
-    })
-  );
 });
