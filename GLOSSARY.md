@@ -76,6 +76,18 @@ The isometric drawing of the map's layout.
 The same layout drawn straight from above.
 _Avoid_: 2D view, flat view
 
+**Name tag**:
+The label under a structure's front corner in the iso view. It shows the structure's tag, or its name when it has no tag.
+_Avoid_: label, caption
+
+**Code chip**:
+The small box on top of a structure that shows its code, such as G.
+_Avoid_: badge, icon
+
+**Iso height**:
+How tall a structure stands in the iso view. Each shape has its own, and the map files don't set it.
+_Avoid_: depth, z
+
 ## Editing and review
 
 **Layout change**:
