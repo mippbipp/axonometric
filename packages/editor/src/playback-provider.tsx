@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import type { FlowChoice } from "./chapters.ts";
 import { clockAtHop, packetAt, travelSeconds } from "./packet-schedule.ts";
 import { ClockContext, PlaybackContext, useReducedMotion } from "./playback.ts";
 import type { Playback } from "./playback.ts";
@@ -23,18 +22,14 @@ const freshSession = (key: string, reducedMotion: boolean): Session => ({
   selected: null,
 });
 
-const flowKey = (choice: FlowChoice) =>
-  choice.kind === "flow" ? `flow:${choice.id}` : choice.kind;
-
-/** Plays the current chapter's tracks. Put it inside a `WalkthroughProvider`. */
+/** Plays the current chapter's runs. Put it inside a `WalkthroughProvider`. */
 export function PlaybackProvider({
   children,
 }: {
   readonly children: ReactNode;
 }) {
-  const { stop, flowChoice, tracks } = useWalkthrough();
+  const { playKey: key, runs } = useWalkthrough();
   const reducedMotion = useReducedMotion();
-  const key = `${stop.id}|${flowKey(flowChoice)}`;
 
   const [stored, setStored] = useState<Session>(() =>
     freshSession(key, reducedMotion)
@@ -44,14 +39,14 @@ export function PlaybackProvider({
     stored.key === key ? stored : freshSession(key, reducedMotion);
 
   const playing = session.playing && !reducedMotion;
-  const selectedTrack = session.selected;
-  const track = selectedTrack === null ? undefined : tracks[selectedTrack];
+  const selectedRun = session.selected;
+  const run = selectedRun === null ? undefined : runs[selectedRun];
 
   // Only set while paused, so it doesn't change every frame.
   const selectedHop =
-    track === undefined
+    run === undefined
       ? null
-      : packetAt({ clock: session.clock, hops: track.hops.length }).hop;
+      : packetAt({ clock: session.clock, hops: run.hops.length }).hop;
 
   const actions = useMemo(() => {
     const update = (change: (current: Session) => Session) => {
@@ -70,8 +65,8 @@ export function PlaybackProvider({
       },
       step: () => {
         update((current) => {
-          const trackIndex = current.selected ?? 0;
-          const hops = tracks[trackIndex]?.hops.length ?? 0;
+          const runIndex = current.selected ?? 0;
+          const hops = runs[runIndex]?.hops.length ?? 0;
 
           if (hops === 0) {
             return current;
@@ -84,7 +79,7 @@ export function PlaybackProvider({
             ...current,
             clock: clockAtHop({ clock: current.clock, hops, hop: next }),
             playing: false,
-            selected: trackIndex,
+            selected: runIndex,
           };
         });
       },
@@ -96,7 +91,7 @@ export function PlaybackProvider({
         }));
       },
     };
-  }, [key, reducedMotion, tracks]);
+  }, [key, reducedMotion, runs]);
 
   const { update } = actions;
 
@@ -123,24 +118,24 @@ export function PlaybackProvider({
 
   const value = useMemo((): Playback => {
     const hop =
-      track === undefined || selectedHop === null
+      run === undefined || selectedHop === null
         ? undefined
-        : track.hops[selectedHop];
+        : run.hops[selectedHop];
 
     return {
-      tracks,
+      runs,
       playing,
       reducedMotion,
       selected:
-        track === undefined || hop === undefined || selectedHop === null
+        run === undefined || hop === undefined || selectedHop === null
           ? null
-          : { track, hop, index: selectedHop },
+          : { run, hop, index: selectedHop },
       play: actions.play,
       pause: actions.pause,
       step: actions.step,
       selectPacket: actions.selectPacket,
     };
-  }, [tracks, playing, reducedMotion, track, selectedHop, actions]);
+  }, [runs, playing, reducedMotion, run, selectedHop, actions]);
 
   return (
     <PlaybackContext value={value}>

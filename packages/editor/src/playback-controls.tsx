@@ -3,8 +3,8 @@ import { usePlayback } from "./playback.ts";
 
 /** Play or pause, and step one hop. */
 export function PlaybackControls() {
-  const { tracks, playing, reducedMotion, play, pause, step } = usePlayback();
-  const nothingToPlay = tracks.length === 0;
+  const { runs, playing, reducedMotion, play, pause, step } = usePlayback();
+  const nothingToPlay = runs.length === 0;
 
   return (
     <div data-playback-controls className="flex items-center gap-1.5">

@@ -260,7 +260,7 @@ const none: ReadonlySet<string> = new Set();
 export function IsoView({
   state,
   revealed,
-  fresh = none,
+  newlyRevealed = none,
   fit = revealed,
   children,
 }: {
@@ -268,7 +268,7 @@ export function IsoView({
   /** The structures to draw. */
   readonly revealed: ReadonlySet<string>;
   /** The structures to mark as new. */
-  readonly fresh?: ReadonlySet<string>;
+  readonly newlyRevealed?: ReadonlySet<string>;
   /** The structures to zoom to fit. */
   readonly fit?: ReadonlySet<string>;
   readonly children?: ReactNode;
@@ -279,7 +279,10 @@ export function IsoView({
   const arrowhead = `${idPrefix}arrowhead`;
   const placed = placeAll(state, revealed);
   const routed = routeAll(state, revealed);
-  const marked = Arr.filter(placed, ({ structure }) => fresh.has(structure.id));
+
+  const marked = Arr.filter(placed, ({ structure }) =>
+    newlyRevealed.has(structure.id)
+  );
 
   const viewBox = viewBoxOf([
     ...Arr.flatMap(placeAll(state, fit), extentOf),

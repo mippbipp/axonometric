@@ -1,9 +1,11 @@
-import type { MapState } from "@axonometric/contracts";
+import type { Hop, MapState } from "@axonometric/contracts";
+import { useCallback } from "react";
 
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
 import { IsoView } from "./iso-view.tsx";
+import { screenRouteOf } from "./iso.ts";
 import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
@@ -12,9 +14,14 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 import { WalkthroughProvider } from "./walkthrough.tsx";
 
 function WalkthroughPage() {
-  const { state, stop, revealed, fresh, fit } = useWalkthrough();
+  const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
 
   useChapterKeys(true);
+
+  const isoRouteOf = useCallback(
+    (hop: Hop) => screenRouteOf({ layout: state.layout, hop }),
+    [state.layout]
+  );
 
   return (
     <main
@@ -32,8 +39,13 @@ function WalkthroughPage() {
       </header>
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
-          <IsoView state={state} revealed={revealed} fresh={fresh} fit={fit}>
-            <PacketLayer />
+          <IsoView
+            state={state}
+            revealed={revealed}
+            newlyRevealed={newlyRevealed}
+            fit={fit}
+          >
+            <PacketLayer routeOf={isoRouteOf} />
           </IsoView>
           <ChapterRail className="absolute top-3 left-3" />
           <FlowPicker className="absolute bottom-3 left-3" />
@@ -43,7 +55,7 @@ function WalkthroughPage() {
       <footer className="border-ink flex flex-wrap gap-x-4 border-t px-4 py-1 text-xs opacity-70">
         <span>→ or ] next chapter</span>
         <span>← or [ back</span>
-        <span>click a dot to read its payload</span>
+        <span>click a packet to read its payload</span>
       </footer>
     </main>
   );

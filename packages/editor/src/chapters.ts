@@ -13,7 +13,7 @@ export interface ChapterStop {
   /** Every structure revealed by this chapter or an earlier one. */
   readonly revealed: ReadonlySet<string>;
   /** The structures this chapter reveals for the first time, in map order. */
-  readonly fresh: readonly string[];
+  readonly newlyRevealed: readonly string[];
   /** The ids of the hops the chapter plays, in order. */
   readonly plays: readonly string[];
 }
@@ -39,7 +39,7 @@ export const chapterStopsOf = (
         lede: "Every structure at once.",
         story: "This map has no chapters yet, so it shows everything.",
         revealed: new Set(Arr.map(structures, ({ id }) => id)),
-        fresh: [],
+        newlyRevealed: [],
         plays: [],
       },
     ];
@@ -54,7 +54,7 @@ export const chapterStopsOf = (
       revealed.add(id);
     }
 
-    const fresh = Arr.flatMap(structures, ({ id }) =>
+    const newlyRevealed = Arr.flatMap(structures, ({ id }) =>
       revealed.has(id) && !before.has(id) ? [id] : []
     );
 
@@ -64,7 +64,7 @@ export const chapterStopsOf = (
       lede: chapter.lede,
       story: chapter.story,
       revealed: new Set(revealed),
-      fresh,
+      newlyRevealed,
       plays: chapter.plays,
     };
   });
@@ -76,8 +76,11 @@ export type FlowChoice =
   | { readonly kind: "flow"; readonly id: string }
   | { readonly kind: "all" };
 
-/** A list of hops one packet walks along, on a loop. */
-export interface Track {
+/**
+ * The hops one packet carries, in order, on a loop. A chapter's own hops make
+ * one run; a flow choice makes one run per flow it plays.
+ */
+export interface PacketRun {
   /** The chapter's or the flow's id. */
   readonly id: string;
   /** The chapter title or flow name, for the packet panel. */
@@ -105,26 +108,40 @@ export const defaultFlowChoice = ({
     : { kind: "chapter" };
 
 /**
- * The tracks a chapter plays for `choice`: one track for the chapter or a
- * flow, one per flow for "all". Hops whose ends aren't revealed or placed are
- * left out, and empty tracks are dropped.
+ * A string that names a flow choice, equal for equal choices. Playback
+ * restarts when it changes, and the flow picker uses it to mark its choice.
  */
-export const tracksOf = ({
+export const flowChoiceKey = (choice: FlowChoice) =>
+  choice.kind === "flow" ? `flow:${choice.id}` : choice.kind;
+
+/** What a chapter plays for one flow choice. */
+export interface ChapterPlay {
+  /** Names the chapter and the choice together; see `flowChoiceKey`. */
+  readonly key: string;
+  readonly runs: readonly PacketRun[];
+}
+
+/**
+ * What a chapter plays for `choice`: one run for the chapter's hops or for
+ * one flow, or one run per flow for "all". Hops whose ends aren't revealed
+ * or placed are left out, and empty runs are dropped.
+ */
+export const chapterPlayOf = ({
   state,
   stop,
   choice,
-}: ChapterOfMap & { readonly choice: FlowChoice }): readonly Track[] => {
+}: ChapterOfMap & { readonly choice: FlowChoice }): ChapterPlay => {
   const hops = new Map(Arr.map(state.data.hops, (hop) => [hop.id, hop]));
 
   const shown = (structure: string) =>
     stop.revealed.has(structure) &&
     state.layout.structures[structure] !== undefined;
 
-  const track = (
+  const run = (
     id: string,
     name: string,
     hopIds: readonly string[]
-  ): readonly Track[] => {
+  ): readonly PacketRun[] => {
     const playable = Arr.flatMap(hopIds, (hopId) => {
       const hop = hops.get(hopId);
 
@@ -134,14 +151,16 @@ export const tracksOf = ({
     return playable.length === 0 ? [] : [{ id, name, hops: playable }];
   };
 
-  if (choice.kind === "chapter") {
-    return track(stop.id, stop.title, stop.plays);
-  }
+  const lists =
+    choice.kind === "chapter"
+      ? [{ id: stop.id, name: stop.title, hops: stop.plays }]
+      : Arr.filter(
+          state.data.flows,
+          (flow) => choice.kind === "all" || flow.id === choice.id
+        );
 
-  const flows =
-    choice.kind === "flow"
-      ? Arr.filter(state.data.flows, (flow) => flow.id === choice.id)
-      : state.data.flows;
-
-  return Arr.flatMap(flows, (flow) => track(flow.id, flow.name, flow.hops));
+  return {
+    key: `${stop.id}|${flowChoiceKey(choice)}`,
+    runs: Arr.flatMap(lists, (list) => run(list.id, list.name, list.hops)),
+  };
 };

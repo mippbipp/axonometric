@@ -1,11 +1,11 @@
 import type { MapState } from "@axonometric/contracts";
 import { createContext, use } from "react";
 
-import type { ChapterStop, FlowChoice, Track } from "./chapters.ts";
+import type { ChapterStop, FlowChoice, PacketRun } from "./chapters.ts";
 
 /**
  * The walkthrough's state, shared by every view of the map. Views read
- * `revealed`, `fresh` and `fit` to decide what to draw, and `tracks` to know
+ * `revealed`, `newlyRevealed` and `fit` to decide what to draw, and `runs` to know
  * what the packets play.
  */
 export interface Walkthrough {
@@ -18,15 +18,20 @@ export interface Walkthrough {
   /** Every structure revealed by the current chapter or an earlier one. */
   readonly revealed: ReadonlySet<string>;
   /** The structures the current chapter reveals for the first time. */
-  readonly fresh: ReadonlySet<string>;
+  readonly newlyRevealed: ReadonlySet<string>;
   /**
    * The structures a view should zoom to fit. Today that's everything
    * revealed so far.
    */
   readonly fit: ReadonlySet<string>;
   readonly flowChoice: FlowChoice;
-  /** The hop lists the packets play, one packet per track. */
-  readonly tracks: readonly Track[];
+  /** The hop lists the packets play, one packet per run. */
+  readonly runs: readonly PacketRun[];
+  /**
+   * Names the current chapter and flow choice together. Playback restarts
+   * when it changes.
+   */
+  readonly playKey: string;
   readonly goTo: (index: number) => void;
   readonly next: () => void;
   readonly back: () => void;

@@ -1,7 +1,7 @@
 import type { Hop } from "@axonometric/contracts";
 import { createContext, use, useSyncExternalStore } from "react";
 
-import type { Track } from "./chapters.ts";
+import type { PacketRun } from "./chapters.ts";
 
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
@@ -26,11 +26,11 @@ export const useReducedMotion = () =>
     () => false
   );
 
-/** The packet someone clicked or stepped to: which track it's on. */
+/** The packet someone clicked or stepped to: which run it's on. */
 export interface SelectedPacket {
-  readonly track: Track;
+  readonly run: PacketRun;
   readonly hop: Hop;
-  /** The hop's position in the track, from 0. */
+  /** The hop's position in the run, from 0. */
   readonly index: number;
 }
 
@@ -39,7 +39,7 @@ export interface SelectedPacket {
  * chapter or the flow picker's choice changes.
  */
 export interface Playback {
-  readonly tracks: readonly Track[];
+  readonly runs: readonly PacketRun[];
   readonly playing: boolean;
   /** When true, packets rest and only `step` moves them. */
   readonly reducedMotion: boolean;
@@ -48,12 +48,12 @@ export interface Playback {
   readonly play: () => void;
   readonly pause: () => void;
   /**
-   * Pauses and moves the selected packet, or the first track's packet, on to
+   * Pauses and moves the selected packet, or the first run's packet, on to
    * its next hop, then selects it.
    */
   readonly step: () => void;
-  /** Pauses and selects the packet on `track`, the index into `tracks`. */
-  readonly selectPacket: (track: number) => void;
+  /** Pauses and selects the packet on `run`, the index into `runs`. */
+  readonly selectPacket: (run: number) => void;
 }
 
 export const PlaybackContext = createContext<Playback | null>(null);

@@ -2,7 +2,11 @@ import type { MapState } from "@axonometric/contracts";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { chapterStopsOf, defaultFlowChoice, tracksOf } from "./chapters.ts";
+import {
+  chapterPlayOf,
+  chapterStopsOf,
+  defaultFlowChoice,
+} from "./chapters.ts";
 import type { FlowChoice } from "./chapters.ts";
 import { WalkthroughContext } from "./walkthrough-context.ts";
 import type { Walkthrough } from "./walkthrough-context.ts";
@@ -47,6 +51,8 @@ export function WalkthroughProvider({
       });
     };
 
+    const play = chapterPlayOf({ state, stop, choice: flowChoice });
+
     return {
       state,
       stops,
@@ -54,10 +60,11 @@ export function WalkthroughProvider({
       stop,
       isLast,
       revealed: stop.revealed,
-      fresh: new Set(stop.fresh),
+      newlyRevealed: new Set(stop.newlyRevealed),
       fit: stop.revealed,
       flowChoice,
-      tracks: tracksOf({ state, stop, choice: flowChoice }),
+      runs: play.runs,
+      playKey: play.key,
       goTo,
       next: () => {
         setPosition((current) =>

@@ -56,6 +56,27 @@ const stepTo = Effect.fnUntraced(function* (page: Page, hop: string) {
   yield* waitFor(page, `[data-packet-panel="${hop}"]`);
 });
 
+/** Steps until the packet panel shows `hop`, at most `limit` times. */
+const stepUntil = Effect.fnUntraced(function* (
+  page: Page,
+  hop: string,
+  limit: number
+) {
+  for (let steps = 0; steps < limit; steps++) {
+    const shown = yield* Effect.promise(() =>
+      page.locator(`[data-packet-panel="${hop}"]`).count()
+    );
+
+    if (shown > 0) {
+      return;
+    }
+
+    yield* click(page, '[data-playback-controls] [data-control="step"]');
+  }
+
+  yield* waitFor(page, `[data-packet-panel="${hop}"]`);
+});
+
 /** Waits two animation frames in the page. */
 const nextFrames = (page: Page) =>
   Effect.promise(() =>
@@ -87,6 +108,28 @@ describe("packets", () => {
         yield* waitFor(page, `[data-packet] circle:not([cy="${start.cy}"])`);
 
         assert.deepStrictEqual(yield* packetIds(page), ["h-note"]);
+      })
+    )
+  );
+
+  it.live("leave the hop's label drawn once while they play on it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+
+        yield* goToChapter(page, "c-save");
+        yield* click(page, '[data-playback-controls] [data-control="pause"]');
+        yield* click(page, "[data-packet]");
+        yield* stepUntil(page, "h-save", 3);
+
+        const labels = yield* Effect.promise(() =>
+          page
+            .locator("svg text")
+            .filter({ hasText: /^POST \/proposals$/u })
+            .count()
+        );
+
+        assert.strictEqual(labels, 1);
       })
     )
   );
@@ -263,15 +306,15 @@ describe("the flow picker", () => {
           ),
           "true"
         );
-        yield* waitFor(page, '[data-packet][data-track="f-note"]');
-        yield* waitFor(page, '[data-packet][data-track="f-accept"]');
+        yield* waitFor(page, '[data-packet][data-run="f-note"]');
+        yield* waitFor(page, '[data-packet][data-run="f-accept"]');
 
         yield* click(page, '[data-flow-picker] [data-flow="f-accept"]');
         yield* waitFor(page, '[data-flow="f-accept"][aria-pressed="true"]');
 
-        const tracks = yield* attributesOf(page, "[data-packet]", "data-track");
+        const runs = yield* attributesOf(page, "[data-packet]", "data-run");
 
-        assert.deepStrictEqual(tracks, ["f-accept"]);
+        assert.deepStrictEqual(runs, ["f-accept"]);
 
         yield* click(page, '[data-playback-controls] [data-control="pause"]');
         yield* click(page, "[data-packet]");

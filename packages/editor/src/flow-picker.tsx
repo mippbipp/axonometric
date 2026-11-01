@@ -1,6 +1,9 @@
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
+import { flowChoiceKey } from "./chapters.ts";
+import type { FlowChoice } from "./chapters.ts";
+import { controlClass } from "./control-class.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /**
@@ -16,35 +19,20 @@ export function FlowPicker({ className }: { readonly className?: string }) {
     return null;
   }
 
-  const options = [
+  const chosen = flowChoiceKey(flowChoice);
+
+  const options: readonly {
+    readonly label: string;
+    readonly choice: FlowChoice;
+  }[] = [
     ...(stop.plays.length === 0
       ? []
-      : [
-          {
-            key: "chapter",
-            label: "This chapter",
-            on: flowChoice.kind === "chapter",
-            handleChoose: () => {
-              chooseFlow({ kind: "chapter" });
-            },
-          },
-        ]),
+      : [{ label: "This chapter", choice: { kind: "chapter" } as const }]),
     ...Arr.map(flows, (flow) => ({
-      key: flow.id,
       label: flow.name,
-      on: flowChoice.kind === "flow" && flowChoice.id === flow.id,
-      handleChoose: () => {
-        chooseFlow({ kind: "flow", id: flow.id });
-      },
+      choice: { kind: "flow", id: flow.id } as const,
     })),
-    {
-      key: "all",
-      label: "All flows",
-      on: flowChoice.kind === "all",
-      handleChoose: () => {
-        chooseFlow({ kind: "all" });
-      },
-    },
+    { label: "All flows", choice: { kind: "all" } },
   ];
 
   return (
@@ -56,21 +44,28 @@ export function FlowPicker({ className }: { readonly className?: string }) {
       <span className="mr-1 text-xs tracking-widest uppercase opacity-70">
         Play
       </span>
-      {Arr.map(options, (option) => (
-        <button
-          key={option.key}
-          type="button"
-          data-flow={option.key}
-          aria-pressed={option.on}
-          className={cn(
-            "border-ink focus-visible:outline-ink cursor-pointer border px-2 py-0.5 text-xs tracking-wider uppercase focus-visible:outline-2 focus-visible:outline-offset-1",
-            option.on ? "bg-ink text-paper" : "bg-paper text-ink"
-          )}
-          onClick={option.handleChoose}
-        >
-          {option.label}
-        </button>
-      ))}
+      {Arr.map(options, ({ label, choice }) => {
+        const key = flowChoiceKey(choice);
+
+        return (
+          <button
+            key={key}
+            type="button"
+            data-flow={choice.kind === "flow" ? choice.id : choice.kind}
+            aria-pressed={key === chosen}
+            className={cn(
+              controlClass,
+              "tracking-wider uppercase",
+              key === chosen && "bg-ink text-paper"
+            )}
+            onClick={() => {
+              chooseFlow(choice);
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
     </fieldset>
   );
 }
