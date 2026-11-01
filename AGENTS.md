@@ -27,3 +27,15 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
 ### Development
 
 Read `CONTRIBUTING.md` before running commands or changing `pnpm-lock.yaml`.
+
+### Running tests
+
+Queue full test runs behind one lock, so each gets the whole machine:
+
+```sh
+flock /tmp/opencode/axonometric-test.lock nix develop -c pnpm test
+```
+
+Several agents share this machine, and overlapping runs each start Vitest workers and Chromium, which slows every run into false timeouts. Single test files run without the lock.
+
+Run the full suite once. CI repeats it on Linux, macOS and Windows. When a branch adds or changes browser tests, run just those files a second time to catch flakiness.
