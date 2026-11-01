@@ -42,11 +42,25 @@ export class LockHeld extends Schema.TaggedError<
 
 const lockPathHint = ".axonometric/lock in the home folder";
 
-/** The lock file of the map in `home`. */
-export const lockPath = Effect.fnUntraced(function* (home: string) {
+/**
+ * Creates `.axonometric/` in `home` and returns its path. The folder holds
+ * one process's state, so it carries a `.gitignore` that keeps all of it out
+ * of git.
+ */
+export const stateFolder = Effect.fnUntraced(function* (home: string) {
+  const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const folder = path.join(home, ".axonometric");
 
-  return path.join(home, ".axonometric", "lock");
+  yield* fs.makeDirectory(folder, { recursive: true });
+
+  yield* fs
+    .writeFileString(path.join(folder, ".gitignore"), "*\n", { flag: "wx" })
+    .pipe(
+      Effect.catchReason("PlatformError", "AlreadyExists", () => Effect.void)
+    );
+
+  return folder;
 });
 
 /**
@@ -156,9 +170,7 @@ export const withLock = Effect.fnUntraced(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const file = yield* lockPath(home);
-
-  yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+  const file = path.join(yield* stateFolder(home), "lock");
 
   const since = DateTime.formatIso(yield* DateTime.now);
   const content = yield* encodeHolder({ pid: process.pid, command, since });
