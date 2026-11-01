@@ -1,17 +1,46 @@
 export { describeCause } from "./cause.ts";
 
+export { checkMap, linkTargets } from "./check.ts";
+
+export type { CheckOptions, MapFiles } from "./check.ts";
+
 export { fileVersionFields, formatVersion } from "./fields.ts";
 
 export { Layout, LayoutFile, Placement } from "./layout.ts";
 
-export { Hop, MapData, Structure } from "./map-data.ts";
+export {
+  Chapter,
+  Decision,
+  DeepDive,
+  Flow,
+  Group,
+  Hop,
+  MapData,
+  OpenQuestion,
+  Overview,
+  Question,
+  ResolvedQuestion,
+  Shape,
+  shapes,
+  Stat,
+  Status,
+  statuses,
+  statusLabels,
+  Step,
+  Structure,
+} from "./map-data.ts";
+
+export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
-  crossCheck,
+  formatCount,
+  formatPath,
   formatProblem,
   MapFile,
+  mapError,
   MapProblem,
-  MapState,
-  mapStateElementId,
+  mapWarning,
   problemsFromIssue,
-} from "./map-state.ts";
+  Severity,
+  splitProblems,
+} from "./problems.ts";

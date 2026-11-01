@@ -31,6 +31,26 @@ const layoutWith = (structures: Readonly<Record<string, PlacementInput>>) => {
   return `{ "format": 1, "revision": 0, "structures": { ${Arr.join(entries, ", ")} } }`;
 };
 
+/** A structure with every required field, as data.mjs source. */
+const structure = (id: string, name: string) =>
+  `{ id: "${id}", code: "${id === "gate" ? "G" : "U"}", name: ${JSON.stringify(name)}, shape: "box", group: "pipeline", status: "live", oneLiner: "One line.", whatItDoes: "Does.", howItsBuilt: "Built." }`;
+
+/** A data.mjs with the given structures and hops, and nothing else. */
+const dataWith = (
+  structures: readonly string[],
+  hops = "[]"
+) => `export default {
+  format: 1,
+  revision: 0,
+  overview: { title: "Pipeline", summary: "A summary." },
+  groups: [{ id: "pipeline", title: "Pipeline" }],
+  structures: [${Arr.join(structures, ", ")}],
+  hops: ${hops},
+  flows: [],
+  chapters: [],
+};
+`;
+
 /** Builds the minimal map with some of its files replaced. */
 const buildWith = Effect.fnUntraced(function* (
   files: Readonly<Record<string, string>>
@@ -57,7 +77,7 @@ describe("build", () => {
       const result = yield* buildWith({});
       const systemMd = result.files["pipeline/SYSTEM.md"] ?? "";
 
-      assert.include(systemMd, "# pipeline\n");
+      assert.include(systemMd, "# Flake update pipeline\n");
       assert.include(systemMd, "| `updater` | Flake updater |");
       assert.include(systemMd, "| `gate` | Build gate |");
       assert.include(
@@ -70,16 +90,10 @@ describe("build", () => {
   it.effect("writes a standalone page with the map inlined", () =>
     Effect.gen(function* () {
       const result = yield* buildWith({
-        [dataFile]: `export default {
-  format: 1,
-  revision: 0,
-  structures: [
-    { id: "updater", name: "Flake updater" },
-    { id: "gate", name: "</script><b>gate" },
-  ],
-  hops: [],
-};
-`,
+        [dataFile]: dataWith([
+          structure("updater", "Flake updater"),
+          structure("gate", "</script><b>gate"),
+        ]),
       });
 
       const page = result.files["pipeline/pipeline.html"] ?? "";
@@ -114,7 +128,7 @@ describe("build", () => {
       assert.strictEqual(result.exitCode, 1);
       assert.include(
         result.stderr,
-        "data.mjs structures[1].id: expected a string. Give every structure an id."
+        "error data.mjs structures[1].id: expected a string. Give every structure an id."
       );
       assert.include(result.stderr, "build wrote nothing.");
     })
@@ -123,20 +137,17 @@ describe("build", () => {
   it.effect("rejects a hop to a structure that doesn't exist", () =>
     Effect.gen(function* () {
       const result = yield* buildWith({
-        [dataFile]: `export default {
-  format: 1,
-  revision: 0,
-  structures: [{ id: "updater", name: "Flake updater" }],
-  hops: [{ id: "h", from: "updater", to: "nowhere", label: "x" }],
-};
-`,
+        [dataFile]: dataWith(
+          [structure("updater", "Flake updater")],
+          '[{ id: "h", from: "updater", to: "nowhere", label: "x" }]'
+        ),
         [layoutFile]: layoutWith({ updater: { x: 0, y: 0, w: 2, d: 2 } }),
       });
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(
         result.stderr,
-        'data.mjs hops[0].to: no structure has the id "nowhere".'
+        'error data.mjs hops[0].to: no structure has the id "nowhere".'
       );
     })
   );
