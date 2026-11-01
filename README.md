@@ -34,9 +34,9 @@ With Nix, run it straight from the flake with `nix run github:mippbipp/axonometr
 
 ## Releases
 
-Pushing a tag such as `v0.1.0` runs `.github/workflows/release.yml`. It builds each binary on its own OS's runner, builds the fixture map with it, tests both install scripts, then creates the GitHub Release as a draft with the binaries, `SHA256SUMS` and the install scripts. At the same time, its `npm` job stages the npm package, and the draft is published only once that succeeds. The tag must match the version in `packages/cli/package.json`. A tag with a suffix, such as `v0.1.0-rc.1`, makes a pre-release, so you can test a release before the real one. For a pre-release, set the version in `packages/cli/package.json` to the pre-release version, such as `0.1.0-rc.1`, in its own commit, and tag that commit. Pull requests that change the binary build run the same checks without releasing anything.
+Pushing a tag such as `v0.1.0` runs `.github/workflows/release.yml`. It builds each binary on its own OS's runner, builds the fixture map with it, tests both install scripts, then creates the GitHub Release as a draft with the binaries, `SHA256SUMS` and the install scripts. At the same time, its `npm-pack` job builds and checks the npm tarball, and its `npm` job stages it. The draft is published only once staging succeeds. The tag must match the version in `packages/cli/package.json`. A tag with a suffix, such as `v0.1.0-rc.1`, makes a pre-release, so you can test a release before the real one. For a pre-release, set the version in `packages/cli/package.json` to the pre-release version, such as `0.1.0-rc.1`, in its own commit, and tag that commit. Pull requests that change the binary build run the same checks without releasing anything.
 
-The `npm` job runs in the GitHub environment `npm` and stages the package with `npm stage publish` through npm trusted publishing, so no npm token exists anywhere. A release gets the `latest` tag and a pre-release gets `next`. npm adds provenance on its own. Set up the trusted publisher on npmjs.com, under the package's Settings, Trusted publishing, with GitHub Actions:
+The `npm` job runs in the GitHub environment `npm` and stages the package with `npm stage publish` through npm trusted publishing, so no npm token exists anywhere. It runs no project code: it downloads the tarball `npm-pack` built and stages that. A release gets the `latest` tag and a pre-release gets `next`. The job passes `--provenance` to request a provenance statement explicitly. Set up the trusted publisher on npmjs.com, under the package's Settings, Trusted publishing, with GitHub Actions:
 
 - Organization or user: `mippbipp`
 - Repository: `axonometric`
@@ -44,9 +44,11 @@ The `npm` job runs in the GitHub environment `npm` and stages the package with `
 - Environment name: `npm`
 - Allowed actions: leave `npm publish` and `npm dist-tag` off, so it can only stage
 
-A new trusted publisher expires unless a publish through it succeeds within 2 days, so set it up right before pushing the tag. Once the job has staged the package, approve it with 2FA, either with `npm stage list axonometric` and then `npm stage approve <id>`, or on npmjs.com in the package's Staged Packages tab. Until then the npm version isn't public.
+A new trusted publisher expires unless a publish through it succeeds within 2 days, so set it up right before pushing the tag. Once the job has staged the package, approve it with 2FA, either with `npm stage list axonometric` and then `npm stage approve <id>`, or on npmjs.com in the package's Staged Packages tab. Until then the npm version isn't public. On npmjs.com, set the package's publishing access to "Require two-factor authentication and disallow tokens".
 
-The tarball holds `package.json`, `README.md`, `LICENSE` and `dist/bin.mjs`, which has the editor's page embedded in it. `pnpm --filter axonometric pack:npm <path>.tgz` packs it with `pnpm pack` and checks the file list and the package metadata. CI runs it on every pull request, and the `npm` job stages the tarball it writes. Run `pnpm build` first.
+If the `npm` job fails before it stages anything, rerun the failed jobs. The draft release waits. If a version was staged wrong, reject it with `npm stage reject <id>` (2FA), delete the draft release and the tag, fix the problem, bump the version and tag again. A staged version's number can't be reused.
+
+The tarball holds the CLI bundle, with the editor's page embedded in it, plus the repo's README and license and `package.json`. `pnpm --filter axonometric pack:npm <path>.tgz` packs it with `pnpm pack` and checks it. `packages/cli/scripts/pack-npm.ts` lists the exact files allowed and the metadata it requires. CI runs it on every pull request, and the `npm` job stages the tarball it writes. Run `pnpm build` first.
 
 To build a binary for your own machine, run `pnpm build`, then `pnpm --filter axonometric build:sea`. It writes the binary and its archive to `packages/cli/release/`.
 
