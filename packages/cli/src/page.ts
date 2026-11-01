@@ -56,7 +56,7 @@ export const renderPage = Effect.fnUntraced(function* (
   ];
 
   const script = Arr.join(scripts, "\n");
-  const title = `<title>${escapeHtml(state.system)} · axonometric</title>`;
+  const title = `<title>${escapeHtml(state.data.overview.title)} · axonometric</title>`;
 
   const titled = splice(page, "<title>axonometric</title>", title);
 

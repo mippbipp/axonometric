@@ -65,6 +65,7 @@ export {
   ResolvedQuestion,
   Shape,
   shapes,
+  Source,
   Stat,
   Status,
   statuses,
@@ -82,6 +83,15 @@ export {
   serverPaths,
   ServerState,
 } from "./server.ts";
+
+export {
+  normalSourcePath,
+  SourceFact,
+  sourceKey,
+  uniqueSources,
+} from "./sources.ts";
+
+export type { SourceFacts } from "./sources.ts";
 
 export {
   formatCount,

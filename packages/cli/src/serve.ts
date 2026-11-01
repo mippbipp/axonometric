@@ -1,7 +1,7 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- NodeHttpServer takes a Node server to listen with
 import { createServer } from "node:http";
 
-import { formatProblem, ServerEvent } from "@axonometric/contracts";
+import { ServerEvent } from "@axonometric/contracts";
 import type { MapState, ServerState } from "@axonometric/contracts";
 import { ServerApi } from "@axonometric/contracts/api";
 import { NodeHttpServer } from "@effect/platform-node";
@@ -33,7 +33,7 @@ import {
 } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 
-import { rebuild } from "./build.ts";
+import { printNotes, rebuild } from "./build.ts";
 import { withLock } from "./lock.ts";
 import { openBrowser } from "./open-browser.ts";
 import { renderPage } from "./page.ts";
@@ -241,13 +241,7 @@ const portOf = (server: HttpServer.HttpServer["Service"]) =>
  */
 const rebuildEvent = (home: string) =>
   rebuild(home, "serve").pipe(
-    Effect.tap(({ warnings }) =>
-      Effect.forEach(
-        warnings,
-        (warning) => Console.error(formatProblem(warning)),
-        { discard: true }
-      )
-    ),
+    Effect.tap(printNotes),
     Effect.map(({ state }) => ServerEvent.cases.MapUpdated.make({ state })),
     Effect.catchTag("MapInvalid", (error) =>
       Effect.as(
@@ -350,11 +344,7 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   const first = yield* rebuild(home, "serve");
 
-  yield* Effect.forEach(
-    first.warnings,
-    (warning) => Console.error(formatProblem(warning)),
-    { discard: true }
-  );
+  yield* printNotes(first);
 
   const live = yield* SubscriptionRef.make<Live>({
     good: first.state,

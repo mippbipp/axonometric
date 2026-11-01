@@ -5,6 +5,7 @@ import type { Page } from "playwright";
 
 import { openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
+import { commitAll, git, initRepo, noGit } from "./git.ts";
 import { makeHome, startServe } from "./harness.ts";
 
 // These tests run a real serve in-process on a free port, open its page in
@@ -187,6 +188,53 @@ describe("live reload", () => {
 
         assert.strictEqual(yield* count(page, "[data-structure]"), 2);
       }),
+    60_000
+  );
+
+  it.live.skipIf(noGit)(
+    "links a source added while serving to GitHub, in the panel and SYSTEM.md",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { root, home, page } = yield* servedReview;
+
+        yield* fs.makeDirectory(path.join(root, "src"));
+        yield* fs.writeFileString(
+          path.join(root, "src", "server.ts"),
+          "export {};\n"
+        );
+        yield* initRepo(root);
+        yield* git(root, [
+          "remote",
+          "add",
+          "origin",
+          "git@github.com:mippbipp/review.git",
+        ]);
+
+        const commit = yield* commitAll(root, "add the server");
+
+        yield* settle(page);
+        yield* editData(
+          home,
+          (text) => `${Str.replace("export default {", "const data = {")(text)}
+data.structures[2].sources = [{ path: "src/server.ts", commit: "${commit}" }];
+export default data;
+`
+        );
+
+        const url = `https://github.com/mippbipp/review/blob/${commit}/src/server.ts`;
+        const link = `[data-structure-panel="server"] [data-source="src/server.ts"] a`;
+
+        yield* waitFor(page, link);
+
+        const systemMd = yield* fs.readFileString(
+          path.join(root, "review", "SYSTEM.md")
+        );
+
+        assert.strictEqual(yield* attributeOf(page, link, "href"), url);
+        assert.include(systemMd, `(${url})`);
+      }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
 });

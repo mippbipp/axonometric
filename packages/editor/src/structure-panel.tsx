@@ -1,9 +1,15 @@
-import { statusLabels } from "@axonometric/contracts";
-import type { Structure } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import {
+  normalSourcePath,
+  sourceKey,
+  statusLabels,
+  uniqueSources,
+} from "@axonometric/contracts";
+import type { Source, Structure } from "@axonometric/contracts";
+import { Array as Arr, String as Str } from "effect";
 import type { ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { MapLink } from "./map-link.tsx";
 import { QuestionBody } from "./questions.tsx";
 import { useSelection } from "./selection-context.ts";
 import { hasSteps } from "./structures.ts";
@@ -39,6 +45,37 @@ function StepList({ structure }: { readonly structure: Structure }) {
   );
 }
 
+/**
+ * The files behind a structure. `build` worked out each one's web address
+ * from the repo's remote; a source without one shows as a plain path.
+ */
+function SourceList({ sources }: { readonly sources: readonly Source[] }) {
+  const { state } = useWalkthrough();
+  const links = state.sourceLinks ?? {};
+
+  const listed = uniqueSources(sources);
+
+  return (
+    <ul className="flex flex-col gap-1 text-xs">
+      {Arr.map(listed, (source) => {
+        const file = normalSourcePath(source.path);
+
+        return (
+          <li key={file} data-source={file}>
+            <MapLink href={links[sourceKey(source)]}>{file}</MapLink>
+            {source.commit === undefined ? null : (
+              <span className="opacity-70">
+                {" "}
+                at {Str.slice(0, 7)(source.commit)}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /** The pinned structure: what it is, how it's built and its questions. */
 export function StructurePanel({
   structure,
@@ -48,6 +85,7 @@ export function StructurePanel({
   const { select, goInside } = useSelection();
   const { newlyRevealed } = useWalkthrough();
   const questions = structure.questions ?? [];
+  const sources = structure.sources ?? [];
 
   return (
     <section
@@ -75,6 +113,11 @@ export function StructurePanel({
       <Section title="How it's built">
         <p className="text-sm">{structure.howItsBuilt}</p>
       </Section>
+      {sources.length === 0 ? null : (
+        <Section title="Sources">
+          <SourceList sources={sources} />
+        </Section>
+      )}
       {hasSteps(structure) ? (
         <Section title="Steps">
           <StepList structure={structure} />

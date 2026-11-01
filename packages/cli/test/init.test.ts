@@ -34,6 +34,10 @@ describe("init", () => {
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
         assert.isString(result.files["docs/pipeline/map/data.mjs"]);
+        assert.include(
+          result.files["docs/pipeline/map/data.mjs"] ?? "",
+          '// sources: [{ path: "src/api/server.ts", commit: "3f2a9c1" }],'
+        );
         assert.isUndefined(result.files["docs/pipeline/map/layout.json"]);
         assert.include(result.stdout, `Wrote ${path.join(map, "data.mjs")}.`);
         assert.include(result.stdout, "axonometric build");

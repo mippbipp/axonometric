@@ -1,6 +1,13 @@
 import { formatProblem, placeStructures } from "@axonometric/contracts";
-import type { MapState } from "@axonometric/contracts";
-import { Array as Arr, Console, Effect, Path, Record as Rec } from "effect";
+import type { MapProblem, MapState } from "@axonometric/contracts";
+import {
+  Array as Arr,
+  Console,
+  Effect,
+  Option,
+  Path,
+  Record as Rec,
+} from "effect";
 import { Argument, Command } from "effect/cli";
 
 import { withLock } from "./lock.ts";
@@ -15,6 +22,29 @@ const quoted = (ids: readonly string[]) =>
     Arr.map(ids, (id) => `"${id}"`),
     ", "
   );
+
+/**
+ * Prints a rebuild's warnings, and the line saying why source links were
+ * skipped, if they were.
+ */
+export const printNotes = Effect.fnUntraced(function* ({
+  warnings,
+  sourcesSkipped,
+}: {
+  readonly warnings: readonly MapProblem[];
+  readonly sourcesSkipped: Option.Option<string>;
+}) {
+  yield* Effect.forEach(
+    warnings,
+    (warning) => Console.error(formatProblem(warning)),
+    { discard: true }
+  );
+
+  yield* Option.match(sourcesSkipped, {
+    onNone: () => Effect.void,
+    onSome: (line) => Console.error(line),
+  });
+});
 
 /**
  * Does what `build` does, without printing: validates the map in `home`,
@@ -33,13 +63,14 @@ export const rebuild = Effect.fnUntraced(function* (
 
   yield* withLock(home, command);
 
-  const { warnings, data, layout, saved } = yield* loadMap({
-    home,
-    output,
-    command,
-    arrange: (mapData, savedLayout) =>
-      placeStructures(mapData, savedLayout).layout,
-  });
+  const { warnings, data, layout, saved, sourceLinks, sourcesSkipped } =
+    yield* loadMap({
+      home,
+      output,
+      command,
+      arrange: (mapData, savedLayout) =>
+        placeStructures(mapData, savedLayout).layout,
+    });
 
   const placed = Arr.filter(
     Rec.keys(layout.structures),
@@ -53,7 +84,7 @@ export const rebuild = Effect.fnUntraced(function* (
 
   const changed = placed.length > 0 || pruned.length > 0;
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
-  const state: MapState = { system, data, layout: next };
+  const state: MapState = { system, data, layout: next, sourceLinks };
 
   const systemMdFile = path.join(output, "SYSTEM.md");
   const pageFile = path.join(output, `${system}.html`);
@@ -76,6 +107,7 @@ export const rebuild = Effect.fnUntraced(function* (
   return {
     state,
     warnings,
+    sourcesSkipped,
     placed,
     pruned,
     systemMdFile,
@@ -88,6 +120,7 @@ const build = Effect.fn("build")(function* (home: string) {
   const {
     state,
     warnings,
+    sourcesSkipped,
     placed,
     pruned,
     systemMdFile,
@@ -95,11 +128,7 @@ const build = Effect.fn("build")(function* (home: string) {
     layoutFile,
   } = yield* rebuild(home, "build");
 
-  yield* Effect.forEach(
-    warnings,
-    (warning) => Console.error(formatProblem(warning)),
-    { discard: true }
-  );
+  yield* printNotes({ warnings, sourcesSkipped });
 
   if (placed.length > 0) {
     yield* Effect.log(
