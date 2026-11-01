@@ -371,6 +371,16 @@ export function LayoutEditor({
     >
       {children}
       {drag === undefined ? null : <DragOutline drag={drag} view={view} />}
+      {drag === undefined || drag.resizing ? null : (
+        <polygon
+          data-drag-origin={drag.id}
+          aria-hidden="true"
+          points={toPoints(groundOutline(drag.start, groundProjections[view]))}
+          className="stroke-ink pointer-events-none fill-none opacity-40"
+          strokeWidth={1.2}
+          strokeDasharray="3 3"
+        />
+      )}
       {live && selected !== null && handlesAt !== undefined ? (
         <ResizeHandles
           id={selected}

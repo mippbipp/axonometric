@@ -13,7 +13,7 @@ import {
 } from "effect";
 import type { Page, Route } from "playwright";
 
-import { literal, openPage, openUrl } from "./browser.ts";
+import { boxesOf, literal, openPage, openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
 
@@ -145,6 +145,14 @@ const unitOnScreen = Effect.fnUntraced(function* (
   return (view === "plan" ? 60 : Math.hypot(36, 18)) * Number(scale);
 });
 
+/** The computed opacity of the element matching `selector`. */
+const opacityOf = (page: Page, selector: string) =>
+  Effect.promise(() =>
+    page.evaluate<string>(
+      `getComputedStyle(document.querySelector(${literal(selector)})).opacity`
+    )
+  );
+
 /** The computed stroke colour of the element matching `selector`. */
 const strokeOf = (page: Page, selector: string) =>
   Effect.promise(() =>
@@ -272,6 +280,17 @@ describe("moving structures", () => {
         assert.strictEqual(
           yield* attribute(page, "[data-drag-outline]", "data-refused"),
           "true"
+        );
+
+        // The dragged box is see-through and its start is outlined, so the
+        // box it's over, and the place it left, still show.
+        assert.strictEqual(
+          yield* count(page, '[data-drag-origin="engineer"]'),
+          1
+        );
+        assert.strictEqual(
+          yield* opacityOf(page, '[data-structure="engineer"]'),
+          "0.55"
         );
 
         const before = yield* attribute(
@@ -432,6 +451,30 @@ describe("resizing structures", () => {
         }
       }),
     60_000
+  );
+});
+
+describe("the side panel tabs", () => {
+  it.live("fit on one line each at 1280 wide, with Pending listed", () =>
+    Effect.gen(function* () {
+      const { page } = yield* servedReview;
+
+      yield* Effect.promise(() =>
+        page.locator('[role="tab"][data-tab="pending"]').waitFor()
+      );
+
+      const boxes = yield* boxesOf(page, '[role="tab"]');
+      const [first] = boxes;
+
+      assert.strictEqual(boxes.length, 3);
+      assert.isDefined(first);
+
+      for (const box of boxes) {
+        // One line of 12px text, with padding, is well under two lines.
+        assert.isBelow(box.height, 30);
+        assert.strictEqual(box.y, first?.y);
+      }
+    })
   );
 });
 

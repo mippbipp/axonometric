@@ -77,3 +77,9 @@
 [data-structure][data-pending="true"] [data-face] {
   fill: color-mix(in oklab, var(--face), var(--pending) 14%);
 }
+
+/* A structure being dragged, with its name tag and badge, is see-through, so
+   what it's dragged over shows. */
+[data-drag-shifted] {
+  opacity: 0.55;
+}
