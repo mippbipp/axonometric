@@ -20,6 +20,10 @@ on:
       # inside the binaries.
       - packages/cli/assets/**
       - packages/cli/src/rasterise*.ts
+      # The guide that `docs` prints rides inside the binaries as text, and
+      # the smoke test reads its list of topics.
+      - packages/cli/docs/**
+      - packages/cli/src/docs*.ts
       - packages/drawing/**
       - scripts/**
       - package.json

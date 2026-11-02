@@ -4,6 +4,7 @@ import packageJson from "../package.json" with { type: "json" };
 import { buildCommand } from "./build.ts";
 import { checkCommand } from "./check.ts";
 import { commitCommand } from "./commit.ts";
+import { docsCommand } from "./docs.ts";
 import { exportCommand } from "./export.ts";
 import { Git } from "./git.ts";
 import { initCommand } from "./init.ts";
@@ -25,6 +26,7 @@ export const cli = Command.make("axonometric").pipe(
     reviewCommand,
     verdictCommand,
     commitCommand,
+    docsCommand,
   ]),
   Command.provide(Git.layer)
 );

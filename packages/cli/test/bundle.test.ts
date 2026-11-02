@@ -65,6 +65,25 @@ describe("the built bundle", () => {
   );
 
   it.effect(
+    "docs prints the embedded guide, with no docs folder beside it",
+    () =>
+      Effect.gen(function* () {
+        const home = yield* makeHome({});
+
+        const overview = yield* runBundle(home, ["docs"]);
+        const review = yield* runBundle(home, ["docs", "review"]);
+        const unknown = yield* runBundle(home, ["docs", "nonsense"]);
+
+        assert.strictEqual(overview.exitCode, 0, overview.stderr);
+        assert.include(overview.stdout, "`axonometric docs review`");
+        assert.strictEqual(review.exitCode, 0, review.stderr);
+        assert.include(review.stdout, "axonometric verdict <home> <item>");
+        assert.strictEqual(unknown.exitCode, 1);
+        assert.include(unknown.stderr, '"visual-check"');
+      })
+  );
+
+  it.effect(
     "build writes SYSTEM.md and the page with the editor embedded",
     () =>
       Effect.gen(function* () {

@@ -78,6 +78,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   installCheckPhase = ''
     runHook preInstallCheck
     $out/bin/axonometric --version
+    $out/bin/axonometric docs review | grep -q 'axonometric verdict'
     cp -r packages/cli/test/fixtures/pipeline "$TMPDIR/pipeline"
     chmod -R u+w "$TMPDIR/pipeline"
     $out/bin/axonometric build "$TMPDIR/pipeline/map"

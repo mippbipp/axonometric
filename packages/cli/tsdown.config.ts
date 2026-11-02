@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { brotliCompress, constants } from "node:zlib";
 
-import { Array as Arr } from "effect";
+import { Array as Arr, Record as Rec, String as Str } from "effect";
 import { defineConfig } from "tsdown";
 import type { UserConfig } from "tsdown";
 
@@ -11,6 +11,10 @@ const editorPageModule = /[\\/]cli[\\/]src[\\/]editor-page\.ts$/u;
 const editorPageHtml = fileURLToPath(
   new URL("../editor/dist/index.html", import.meta.url)
 );
+
+const docsContentModule = /[\\/]cli[\\/]src[\\/]docs-content\.ts$/u;
+
+const docsFolder = fileURLToPath(new URL("docs", import.meta.url));
 
 const rasteriseAssetsModule = /[\\/]cli[\\/]src[\\/]rasterise-assets\.ts$/u;
 
@@ -51,6 +55,39 @@ const shared: UserConfig = {
     onlyImport: [],
   },
   plugins: [
+    {
+      // `axonometric docs` prints the Markdown files in docs/. The bundle
+      // carries them as strings, so the command works offline from every
+      // install, and a CommonJS single executable can use them the same way.
+      name: "axonometric:embed-docs",
+      load(id) {
+        if (!docsContentModule.test(id)) {
+          return null;
+        }
+
+        const read = (name: string) => {
+          const file = `${docsFolder}/${name}`;
+
+          this.addWatchFile(file);
+
+          return this.fs
+            .readFile(file, { encoding: "utf8" })
+            .then((text) => [Str.slice(0, -".md".length)(name), text] as const);
+        };
+
+        return this.fs
+          .readdir(docsFolder)
+          .then((entries) => {
+            const markdown = Arr.filter(entries, Str.endsWith(".md"));
+
+            return Promise.all(Arr.map(markdown, read));
+          })
+          .then(
+            (texts) =>
+              `import { Effect } from "effect";\nexport const docsContent = Effect.succeed(${JSON.stringify(Rec.fromEntries(texts))});\n`
+          );
+      },
+    },
     {
       // The PNG rasteriser's WASM and fonts ride in the bundle as compressed
       // strings, and are unpacked on first use.

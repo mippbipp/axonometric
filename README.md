@@ -34,6 +34,18 @@ The macOS binaries have an ad-hoc signature and aren't notarized. If you downloa
 
 With Nix, run it straight from the flake with `nix run github:mippbipp/axonometric -- --help`, or add `github:mippbipp/axonometric` as a flake input and install `packages.<system>.default`.
 
+## Instructions for your agent
+
+`axonometric docs` prints the guide an agent follows to build and review a map. It lists the topics, and `axonometric docs <topic>` prints one: `process`, `data`, `chapters`, `design`, `review` and `visual-check`. The guide is bundled in the CLI, so it works offline and always matches the installed version.
+
+Install the skill so your agent knows when to use the CLI:
+
+```sh
+npx skills add mippbipp/axonometric
+```
+
+This installs one folder, `skills/axonometric/`, which holds a `SKILL.md`. The skill triggers on requests to map, explain, review or present a system's architecture, and on the review prompt that the page copies. It tells the agent to run `axonometric docs` first. The CLI itself must be on the agent's `PATH`, or reachable with `npx axonometric`. The skill says how to install it if not.
+
 ## License
 
 MIT
