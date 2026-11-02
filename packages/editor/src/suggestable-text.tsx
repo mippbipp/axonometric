@@ -157,6 +157,76 @@ function SuggestionBeside({
   );
 }
 
+/** The button that starts a suggestion: Edit, or Suggest again after a rejection. */
+function StartButton({
+  field,
+  again,
+  onStart,
+}: {
+  readonly field: TextField;
+  /** Whether the text was suggested before, and the agent turned that down. */
+  readonly again: boolean;
+  readonly onStart: () => void;
+}) {
+  const label = again ? "Suggest again" : "Edit";
+
+  return (
+    <span>
+      <button
+        type="button"
+        data-suggest={field}
+        className={smallButton}
+        aria-label={`${label}: ${fieldLabel(field)}`}
+        onClick={onStart}
+      >
+        {label}
+      </button>
+    </span>
+  );
+}
+
+/** The text with, when there is one, the suggestion beside it. */
+function TextAndSuggestion({
+  found,
+  text,
+  className,
+  onEdit,
+}: {
+  readonly found: Entry | undefined;
+  /** The text as data.mjs has it. */
+  readonly text: string;
+  readonly className: string | undefined;
+  readonly onEdit: () => void;
+}) {
+  if (found === undefined) {
+    return <p className={className}>{text}</p>;
+  }
+
+  if (wasTaken(found.status)) {
+    return (
+      <>
+        <p className={className}>{text}</p>
+        <ItemStatusLine status={found.status} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div data-current className="flex flex-col gap-0.5">
+        <span className={labelClass}>Current</span>
+        <p className={className}>{text}</p>
+      </div>
+      <SuggestionBeside
+        entry={found}
+        text={text}
+        className={className}
+        onEdit={onEdit}
+      />
+    </>
+  );
+}
+
 /**
  * One text of a structure that the engineer can edit in place: its one-liner,
  * what it does, how it's built, or a part of a step. Pressing Edit opens the
@@ -194,11 +264,11 @@ export function SuggestableText({
     return <p className={className}>{text}</p>;
   }
 
-  const taken = found !== undefined && wasTaken(found.status);
-  const beside = found !== undefined && !taken;
   const open = found?.status.state === "open" ? found : undefined;
-  const canStart = review.canWrite && !editing && open === undefined;
-  const startLabel = beside ? "Suggest again" : "Edit";
+
+  const start = () => {
+    setEditing(true);
+  };
 
   return (
     <div
@@ -206,50 +276,33 @@ export function SuggestableText({
       data-suggestion-state={found?.status.state ?? "none"}
       className="flex flex-col gap-1.5"
     >
-      {beside ? (
-        <div data-current className="flex flex-col gap-0.5">
-          <span className={labelClass}>Current</span>
+      {editing ? (
+        <>
           <p className={className}>{text}</p>
-        </div>
+          <SuggestionForm
+            structure={structure}
+            field={field}
+            text={text}
+            open={open}
+            onDone={() => {
+              setEditing(false);
+            }}
+          />
+        </>
       ) : (
-        <p className={className}>{text}</p>
-      )}
-      {beside && !editing ? (
-        <SuggestionBeside
-          entry={found}
+        <TextAndSuggestion
+          found={found}
           text={text}
           className={className}
-          onEdit={() => {
-            setEditing(true);
-          }}
+          onEdit={start}
         />
-      ) : null}
-      {taken && !editing ? <ItemStatusLine status={found.status} /> : null}
-      {editing ? (
-        <SuggestionForm
-          structure={structure}
+      )}
+      {review.canWrite && !editing && open === undefined ? (
+        <StartButton
           field={field}
-          text={text}
-          open={open}
-          onDone={() => {
-            setEditing(false);
-          }}
+          again={found !== undefined && !wasTaken(found.status)}
+          onStart={start}
         />
-      ) : null}
-      {canStart ? (
-        <span>
-          <button
-            type="button"
-            data-suggest={field}
-            className={smallButton}
-            aria-label={`${startLabel}: ${fieldLabel(field)}`}
-            onClick={() => {
-              setEditing(true);
-            }}
-          >
-            {startLabel}
-          </button>
-        </span>
       ) : null}
     </div>
   );
