@@ -218,9 +218,12 @@ const tabsOf = ({
   hasHistory,
   pendingOff,
   hasFlows,
+  flowsOff,
 }: {
   /** Whether the page can propose changes to flows, which gives it a Flows tab. */
   readonly hasFlows: boolean;
+  /** Whether the Flows tab is shown but can't be used, as while a past revision is open. */
+  readonly flowsOff: boolean;
   readonly openCount: number;
   /** How many changes are pending, or `undefined` on a page that can't edit. */
   readonly pendingCount: number | undefined;
@@ -235,7 +238,7 @@ const tabsOf = ({
   { id: "details", label: "Details", disabled: false },
   { id: "questions", label: `Questions · ${openCount}`, disabled: false },
   ...(hasFlows
-    ? [{ id: "flows" as const, label: "Flows", disabled: false }]
+    ? [{ id: "flows" as const, label: "Flows", disabled: flowsOff }]
     : []),
   ...(pendingCount === undefined
     ? []
@@ -384,7 +387,8 @@ export function SidePanel() {
     pendingCount,
     hasHistory: history !== null,
     pendingOff: editing === null,
-    hasFlows: connections !== null,
+    hasFlows: connections !== null || history !== null,
+    flowsOff: connections === null,
   });
 
   const tab: Tab =
