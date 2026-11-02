@@ -571,7 +571,12 @@ describe("editing off", () => {
           page.locator('[role="tab"][data-tab="pending"]').click()
         );
         yield* waitFor(page, "[data-pending-change]");
-        assert.strictEqual(yield* count(page, "[data-pending-list] button"), 0);
+        // The drag also proposed a group change; its row keeps a Discard, but
+        // disabled, as every review row does while the server is stopped.
+        assert.strictEqual(
+          yield* count(page, "[data-pending-list] button:enabled"),
+          0
+        );
       }),
     60_000
   );
