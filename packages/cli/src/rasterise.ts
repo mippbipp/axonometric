@@ -3,7 +3,7 @@ import { initWasm, Resvg } from "@resvg/resvg-wasm";
 import { Effect, Schema } from "effect";
 import { CliError } from "effect/cli";
 
-import { resvgFont, resvgWasm } from "./rasterise-assets.ts";
+import { resvgFonts, resvgWasm } from "./rasterise-assets.ts";
 
 /** The SVG couldn't be drawn as a PNG. Nothing was written. */
 export class RasteriseFailed extends Schema.TaggedError<
@@ -45,9 +45,11 @@ export const rasterise = Effect.fn("rasterise")(function* (
 ) {
   yield* start;
 
-  const font = yield* resvgFont.pipe(
+  const fonts = yield* resvgFonts.pipe(
     Effect.mapError((cause) =>
-      RasteriseFailed.make({ reason: `the font didn't load: ${String(cause)}` })
+      RasteriseFailed.make({
+        reason: `the fonts didn't load: ${String(cause)}`,
+      })
     )
   );
 
@@ -57,7 +59,7 @@ export const rasterise = Effect.fn("rasterise")(function* (
         fitTo: { mode: "zoom", value: scale },
         font: {
           loadSystemFonts: false,
-          fontBuffers: [font],
+          fontBuffers: fonts,
           defaultFontFamily: exportFontFamily,
           monospaceFamily: exportFontFamily,
           sansSerifFamily: exportFontFamily,

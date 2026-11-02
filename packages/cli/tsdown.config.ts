@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { brotliCompress, constants } from "node:zlib";
 
+import { Array as Arr } from "effect";
 import { defineConfig } from "tsdown";
 import type { UserConfig } from "tsdown";
 
@@ -17,8 +18,10 @@ const resvgWasmFile = fileURLToPath(
   import.meta.resolve("@resvg/resvg-wasm/index_bg.wasm")
 );
 
-const fontFile = fileURLToPath(
-  new URL("assets/fonts/LiberationMono-Regular.ttf", import.meta.url)
+const fontFiles = Arr.map(["Regular", "Bold"], (weight) =>
+  fileURLToPath(
+    new URL(`assets/fonts/LiberationMono-${weight}.ttf`, import.meta.url)
+  )
 );
 
 const compress = promisify(brotliCompress);
@@ -49,7 +52,7 @@ const shared: UserConfig = {
   },
   plugins: [
     {
-      // The PNG rasteriser's WASM and font ride in the bundle as compressed
+      // The PNG rasteriser's WASM and fonts ride in the bundle as compressed
       // strings, and are unpacked on first use.
       name: "axonometric:embed-rasteriser-assets",
       load(id) {
@@ -59,13 +62,15 @@ const shared: UserConfig = {
 
         return Promise.all([
           this.fs.readFile(resvgWasmFile).then(packed),
-          this.fs.readFile(fontFile).then(packed),
+          Promise.all(
+            Arr.map(fontFiles, (file) => this.fs.readFile(file).then(packed))
+          ),
         ]).then(
-          ([wasm, font]) => `import { brotliDecompressSync } from "node:zlib";
+          ([wasm, fonts]) => `import { brotliDecompressSync } from "node:zlib";
 import { Effect } from "effect";
 const unpack = (text) => Effect.sync(() => new Uint8Array(brotliDecompressSync(Buffer.from(text, "base64"))));
 export const resvgWasm = unpack(${JSON.stringify(wasm)});
-export const resvgFont = unpack(${JSON.stringify(font)});
+export const resvgFonts = Effect.forEach(${JSON.stringify(fonts)}, unpack);
 `
         );
       },

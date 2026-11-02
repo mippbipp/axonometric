@@ -89,7 +89,9 @@ fi
 url=$(printf '%s\n' "$report" | sed -n 's/.*"url":"\([^"]*\)".*/\1/p')
 echo "serve is at $url"
 
-if ! curl -fsS "$url/" | grep -q 'id="axonometric-map-state"'; then
+# Saved to a file first: grep -q stops reading at its first match, which makes
+# curl fail with "Failed writing body" on a page as large as this one.
+if ! curl -fsS -o "$work/served.html" "$url/" || ! grep -q 'id="axonometric-map-state"' "$work/served.html"; then
   stop_serve
   echo "$url/ didn't answer 200 with the map page." >&2
   exit 1
