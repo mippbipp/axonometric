@@ -4,7 +4,6 @@ import { createServer } from "node:http";
 import {
   formatCount,
   formatProblem,
-  historyEntryOf,
   historyFolder,
   parseRevisionFileName,
   RevisionNotFound,
@@ -511,18 +510,12 @@ const routes = ({
           )
         )
         .handle("accept", ({ payload }) =>
-          acceptPendingLayout(home, payload, ({ state, proposals, revision }) =>
+          acceptPendingLayout(home, payload, ({ state, proposals, history }) =>
             SubscriptionRef.update(held, (current) => ({
               ...current,
               good: state,
               proposals,
-              history: [
-                historyEntryOf(revision),
-                ...Arr.filter(
-                  current.history,
-                  (entry) => entry.revision !== revision.revision
-                ),
-              ],
+              history,
               rejected: Option.none(),
             }))
           ).pipe(
@@ -599,9 +592,16 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   // Revisions come from accepting, here or by the CLI, and never change once
   // written, so a change to history/ alone adds lines and rebuilds nothing.
-  const onHistoryChange = SubscriptionRef.get(held).pipe(
-    Effect.flatMap(({ history }) => reloadHistory(home, history)),
-    Effect.flatMap((next) => SubscriptionRef.update(held, next)),
+  // It reads and replaces the list under the lock that every accept holds,
+  // so it can't put back a list that an accept has since moved on from.
+  const onHistoryChange = Effect.gen(function* () {
+    yield* withLock(home, "serve");
+
+    const { history } = yield* SubscriptionRef.get(held);
+
+    yield* SubscriptionRef.update(held, yield* reloadHistory(home, history));
+  }).pipe(
+    Effect.scoped,
     Effect.catchCause((cause) =>
       Console.error(`serve could not read history/: ${Cause.pretty(cause)}`)
     )

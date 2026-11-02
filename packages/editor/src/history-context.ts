@@ -1,4 +1,4 @@
-import type { HistoryList } from "@axonometric/contracts";
+import type { DifferenceLines, HistoryList } from "@axonometric/contracts";
 import { createContext, use } from "react";
 
 /**
@@ -15,6 +15,16 @@ export interface HistoryPanel {
   /** Why the open revision couldn't be read, or `null`. */
   readonly failure: string | null;
   readonly open: (revision: number) => void;
+  /**
+   * How many changes are pending. The Pending tab keeps its count while a
+   * past revision is open and editing is off.
+   */
+  readonly pendingCount: number;
+  /**
+   * How the open revision differs from the accepted map, while Compare is
+   * on, or `null`.
+   */
+  readonly differences: DifferenceLines | null;
 }
 
 export const HistoryContext = createContext<HistoryPanel | null>(null);

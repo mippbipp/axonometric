@@ -10,6 +10,7 @@ import {
   restoreChanges,
 } from "../src/index.ts";
 import type {
+  DataSection,
   Layout,
   LayoutChange,
   MapData,
@@ -47,6 +48,59 @@ const ids = (changes: readonly { readonly id: string }[]) =>
   Arr.map(changes, ({ id }) => id);
 
 describe("diffMaps()", () => {
+  it.effect("compares every field of a structure, a hop and the data", () =>
+    Effect.gen(function* () {
+      const map = yield* review;
+      const [structure] = map.data.structures;
+
+      assert.isDefined(structure);
+
+      // Change each field the schema has, one at a time, and see it named.
+      const named = (field: string) =>
+        withData(map, (data) => ({
+          ...data,
+          structures: Arr.map(data.structures, (each) =>
+            each.id === structure?.id ? { ...each, [field]: "changed" } : each
+          ),
+        }));
+
+      for (const field of [
+        "code",
+        "name",
+        "tag",
+        "shape",
+        "group",
+        "status",
+        "oneLiner",
+        "whatItDoes",
+        "howItsBuilt",
+        "steps",
+        "questions",
+        "sources",
+      ]) {
+        const { changed } = diffMaps(map, named(field)).structures;
+
+        assert.deepStrictEqual(Arr.map(changed, fieldsOf), [[field]], field);
+      }
+
+      const edits = {
+        overview: {
+          ...map.data,
+          overview: { ...map.data.overview, title: "Another" },
+        },
+        groups: { ...map.data, groups: [] },
+        flows: { ...map.data, flows: [] },
+        chapters: { ...map.data, chapters: [] },
+      } as const satisfies Readonly<Record<DataSection, MapData>>;
+
+      for (const [section, data] of Rec.toEntries(edits)) {
+        const { sections } = diffMaps(map, { data, layout: map.layout });
+
+        assert.deepStrictEqual(sections, [section]);
+      }
+    })
+  );
+
   it.effect("finds nothing between a map and itself", () =>
     Effect.gen(function* () {
       const map = yield* review;
@@ -275,6 +329,11 @@ describe("diffMaps()", () => {
     })
   );
 });
+
+const fieldsOf = ({ fields }: { readonly fields: readonly string[] }) => fields;
+
+const texts = (list: readonly { readonly text: string }[]) =>
+  Arr.map(list, ({ text }) => text);
 
 const idsFrom = (prefix: string) => {
   let counter = 0;
@@ -565,16 +624,33 @@ describe("describeDifferences()", () => {
         revisionName: "revision 2",
       });
 
-      assert.deepStrictEqual(lines.layout, [
+      assert.deepStrictEqual(texts(lines.layout), [
         "Map page moved from 4, 0 to 4, 4",
         "Save server resized from 2 × 2 to 3 × 2",
       ]);
-      assert.deepStrictEqual(lines.meaning, [
-        "Upstream atlas is in the current map, not in revision 2",
+      assert.deepStrictEqual(texts(lines.meaning), [
+        "Upstream atlas is in the accepted map, not in revision 2",
         "Proposals: one-liner differs",
-        'Hop "accepted" (Proposals → Pull request) is in the current map, not in revision 2',
+        'Hop "accepted" (Proposals → Pull request) is in the accepted map, not in revision 2',
         "The overview differs",
       ]);
+
+      // Each line names the structure to select, and no two share a key.
+      assert.deepStrictEqual(
+        Arr.map(lines.layout, ({ structureId }) => structureId),
+        ["page", "server"]
+      );
+      assert.deepStrictEqual(
+        Arr.map(lines.meaning, ({ structureId }) => structureId),
+        ["upstream", "proposals", "proposals", undefined]
+      );
+
+      const keys = Arr.map(
+        [...lines.layout, ...lines.meaning],
+        ({ key }) => key
+      );
+
+      assert.strictEqual(new Set(keys).size, keys.length);
       assert.deepStrictEqual(lines.routes, []);
     })
   );

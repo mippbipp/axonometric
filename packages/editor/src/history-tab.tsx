@@ -1,16 +1,57 @@
+import type { DifferenceLine } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
+import { controlClass } from "./control-class.ts";
 import { useHistory } from "./history-context.ts";
 import { fullDate, relativeTime } from "./relative-time.ts";
+import { useSelection } from "./selection-context.ts";
 
 const itemsText = (count: number) =>
   `${count} ${count === 1 ? "item" : "items"}`;
 
 /**
+ * One difference as text. When it names a structure, choosing it selects
+ * that structure on the map, which shows its panel.
+ */
+function DifferenceItem({ line }: { readonly line: DifferenceLine }) {
+  const { select } = useSelection();
+  const { structureId } = line;
+
+  return (
+    <li data-difference={line.key}>
+      {structureId === undefined ? (
+        line.text
+      ) : (
+        <button
+          type="button"
+          className={cn(controlClass, "w-full text-left")}
+          onClick={() => {
+            select(structureId);
+          }}
+        >
+          {line.text}
+        </button>
+      )}
+    </li>
+  );
+}
+
+function Differences({ lines }: { readonly lines: readonly DifferenceLine[] }) {
+  return (
+    <ul className="flex flex-col gap-1 text-xs">
+      {Arr.map(lines, (line) => (
+        <DifferenceItem key={line.key} line={line} />
+      ))}
+    </ul>
+  );
+}
+
+/**
  * The History tab: every revision, newest first, with its number, message,
  * how long ago it was saved and how many items it decided. Choosing one
- * opens it on the map, read-only.
+ * opens it on the map, read-only. With Compare on, it lists each difference
+ * from the accepted map as text, and choosing one selects its structure.
  */
 export function HistoryTab() {
   const history = useHistory();
@@ -19,7 +60,7 @@ export function HistoryTab() {
     return null;
   }
 
-  const { entries, opened, loading, failure, open } = history;
+  const { entries, opened, loading, failure, open, differences } = history;
 
   return (
     <section data-history-list className="flex flex-col gap-3">
@@ -80,6 +121,28 @@ export function HistoryTab() {
         <p data-history-failure role="alert" className="text-refused text-xs">
           {failure}
         </p>
+      )}
+      {differences === null ? null : (
+        <div data-difference-list className="flex flex-col gap-2">
+          <p className="text-xs tracking-widest uppercase opacity-70">
+            Differences from the accepted map
+          </p>
+          {Arr.isReadonlyArrayEmpty([
+            ...differences.layout,
+            ...differences.meaning,
+            ...differences.routes,
+          ]) ? (
+            <p className="text-xs opacity-80">Nothing differs.</p>
+          ) : (
+            <Differences
+              lines={[
+                ...differences.layout,
+                ...differences.meaning,
+                ...differences.routes,
+              ]}
+            />
+          )}
+        </div>
       )}
     </section>
   );

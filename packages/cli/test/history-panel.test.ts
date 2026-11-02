@@ -12,7 +12,9 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf, openUrl } from "./browser.ts";
+import { attributesOf, boxesOf, literal, openUrl } from "./browser.ts";
+import { drawingReport, overlap } from "./drawing-report.ts";
+import type { DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, startServe } from "./harness.ts";
 import { acceptChanges, moveOf, resizeOf } from "./revisions.ts";
@@ -113,6 +115,97 @@ const servedWithTwo = Effect.gen(function* () {
 
   return { root, home, serve, ...opened };
 }).pipe(Effect.provide(NodeServices.layer));
+
+/**
+ * Every piece of text drawn on the map, other than the code chips that sit
+ * on their boxes by design, as the page draws it. A compare must add none.
+ */
+const strayText = `[...document.querySelectorAll("svg[data-scale] text")]
+  .filter((text) => getComputedStyle(text).visibility !== "hidden")
+  .filter((text) => text.closest("[data-name-tag], [data-code-chip], [data-zone-title]") === null && text.dataset.hopLabel === undefined)
+  .map((text) => text.textContent)`;
+
+/**
+ * Asserts the overlap rule on the map as drawn now: no text over text or a
+ * box, name tags at least 10 px, hop labels at least 9 px, and no text on
+ * the map that the rule doesn't measure.
+ */
+const assertReadable = Effect.fnUntraced(function* (page: Page, where: string) {
+  const report = yield* Effect.promise((): Promise<DrawingReport> =>
+    page.evaluate(drawingReport)
+  );
+
+  const textClashes = Arr.flatMap(report.text, (first, index) =>
+    Arr.flatMap(Arr.drop(report.text, index + 1), (second) =>
+      overlap(first.polygon, second.polygon)
+        ? [`${first.id} × ${second.id}`]
+        : []
+    )
+  );
+
+  const underBoxes = Arr.flatMap(report.text, (text) =>
+    Arr.flatMap(report.structures, (box) =>
+      overlap(text.polygon, box.polygon) ? [`${text.id} × ${box.id}`] : []
+    )
+  );
+
+  const sizes = yield* Effect.promise(() =>
+    page.evaluate<
+      readonly number[]
+    >(`[...document.querySelectorAll("[data-name-tag] text")]
+      .map((text) => parseFloat(getComputedStyle(text).fontSize) * Math.hypot(text.getScreenCTM().a, text.getScreenCTM().b))`)
+  );
+
+  const labelSizes = yield* Effect.promise(() =>
+    page.evaluate<
+      readonly number[]
+    >(`[...document.querySelectorAll("[data-hop-label]")]
+      .filter((text) => getComputedStyle(text).visibility !== "hidden")
+      .map((text) => parseFloat(getComputedStyle(text).fontSize) * Math.hypot(text.getScreenCTM().a, text.getScreenCTM().b))`)
+  );
+
+  const stray = yield* Effect.promise(() =>
+    page.evaluate<readonly string[]>(strayText)
+  );
+
+  assert.isNotEmpty(report.text, where);
+  assert.deepStrictEqual(textClashes, [], `text over text in ${where}`);
+  assert.deepStrictEqual(underBoxes, [], `text under boxes in ${where}`);
+  assert.deepStrictEqual(
+    stray,
+    [],
+    `text outside the overlap model in ${where}`
+  );
+
+  for (const size of sizes) {
+    assert.isAtLeast(size, 9.95, `name tag size in ${where}`);
+  }
+
+  for (const size of labelSizes) {
+    assert.isAtLeast(size, 8.95, `hop label size in ${where}`);
+  }
+});
+
+/** Where each tab sits, rounded to whole pixels. */
+const tabBoxes = Effect.fnUntraced(function* (page: Page) {
+  const boxes = yield* boxesOf(page, '[role="tab"]');
+
+  return Arr.map(boxes, ({ x, y, width }) => [
+    Math.round(x),
+    Math.round(y),
+    Math.round(width),
+  ]);
+});
+
+const dashOf = (page: Page, kind: string, id: string) =>
+  attributeOf(page, ringOf(kind, id), "stroke-dasharray");
+
+const strokeOfSelector = (page: Page, selector: string) =>
+  Effect.promise(() =>
+    page.evaluate<string>(
+      `getComputedStyle(document.querySelector(${literal(selector)})).stroke`
+    )
+  );
 
 const hopAccepted =
   '{ id: "h-pr", from: "proposals", to: "pull-request", label: "accepted" },';
@@ -220,6 +313,9 @@ describe("the History panel", () => {
         const nowEngineer = yield* centreOf(page, "engineer");
 
         yield* openHistory(page);
+
+        const tabsBefore = yield* tabBoxes(page);
+
         yield* openRevision(page, 1);
 
         const banner = yield* textOf(page, "[data-past-revision]");
@@ -241,12 +337,26 @@ describe("the History panel", () => {
         assert.isBelow(thenEngineer.y, nowEngineer.y - 20);
 
         // The same chapter, and the engineer can't be edited: no handles, no
-        // toolbar, no Pending tab, and a drag moves nothing.
+        // toolbar, and a drag moves nothing. The Pending tab stays, switched
+        // off with its count, so the tab strip doesn't move.
         assert.strictEqual(
           yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
           "c-all"
         );
-        assert.strictEqual(yield* count(page, '[data-tab="pending"]'), 0);
+        assert.strictEqual(yield* count(page, '[data-tab="pending"]'), 1);
+        assert.strictEqual(
+          yield* attributeOf(page, '[data-tab="pending"]', "disabled"),
+          ""
+        );
+        assert.include(
+          yield* textOf(page, '[data-tab="pending"]'),
+          "Pending · 0"
+        );
+        assert.deepStrictEqual(
+          yield* tabBoxes(page),
+          tabsBefore,
+          "the tab strip didn't move"
+        );
         assert.strictEqual(yield* count(page, "[data-edit-toolbar]"), 0);
         assert.strictEqual(
           yield* count(page, '[data-structure][data-pending="true"]'),
@@ -276,7 +386,10 @@ describe("the History panel", () => {
         yield* waitGone(page, "[data-past-revision]");
         yield* click(page, '[data-view-toggle] button[data-view="iso"]');
         yield* waitFor(page, '[data-walkthrough][data-view="iso"]');
-        assert.strictEqual(yield* count(page, '[data-tab="pending"]'), 1);
+        assert.strictEqual(
+          yield* attributeOf(page, '[data-tab="pending"]', "disabled"),
+          null
+        );
 
         const back = yield* centreOf(page, "engineer");
 
@@ -287,7 +400,7 @@ describe("the History panel", () => {
   );
 
   it.live(
-    "compares with the current map: each kind of difference has its own look, legend and spoken label",
+    "compares with the accepted map: each kind of difference is an outline with its own dash, a legend entry and a spoken label, and no text lands on the map",
     () =>
       Effect.gen(function* () {
         const { page, errors } = yield* servedWithTwo;
@@ -302,33 +415,49 @@ describe("the History panel", () => {
         yield* click(page, '[data-control="compare"]');
         yield* waitFor(page, "[data-compare-legend]");
 
-        // Revision 1 against the current map: the engineer and the server
-        // moved, and the page is 2 × 2 where the current map has it 3 × 2.
+        // Revision 1 against the accepted map: the engineer and the server
+        // moved, and the page is 2 × 2 where the accepted map has it 3 × 2.
         assert.strictEqual(yield* count(page, ringOf("moved", "engineer")), 1);
         assert.strictEqual(yield* count(page, ringOf("moved", "server")), 1);
         assert.strictEqual(yield* count(page, ringOf("resized", "page")), 1);
         assert.strictEqual(yield* count(page, ringOf("moved", "page")), 0);
         assert.strictEqual(yield* count(page, ringOf("moved", "proposals")), 0);
 
-        // The moved structure keeps a faint outline where the current map has it.
+        // The moved structure is outlined where the accepted map has it, in
+        // ink and dotted, which the pink dashed ghost is not.
         assert.strictEqual(
           yield* count(page, '[data-compare-origin="engineer"]'),
           1
         );
+        assert.notStrictEqual(
+          yield* attributeOf(
+            page,
+            '[data-compare-origin="engineer"]',
+            "stroke-dasharray"
+          ),
+          yield* dashOf(page, "moved", "engineer")
+        );
+        assert.notStrictEqual(
+          yield* strokeOfSelector(page, '[data-compare-origin="engineer"]'),
+          yield* strokeOfSelector(page, ringOf("moved", "engineer"))
+        );
 
         // The kinds differ in dash, so no look rests on colour alone.
-        const dashOf = (kind: string, id: string) =>
-          attributeOf(page, ringOf(kind, id), "stroke-dasharray");
-
         assert.notStrictEqual(
-          yield* dashOf("moved", "engineer"),
-          yield* dashOf("resized", "page")
+          yield* dashOf(page, "moved", "engineer"),
+          yield* dashOf(page, "resized", "page")
         );
 
-        assert.include(
-          yield* textOf(page, '[data-compare-badge="engineer"]'),
-          "moved"
-        );
+        // Outlines only: there are no text badges, and nothing on the map
+        // overlaps text, in either view.
+        assert.strictEqual(yield* count(page, "[data-compare-badge]"), 0);
+
+        for (const view of ["iso", "plan"] as const) {
+          yield* click(page, `[data-view-toggle] button[data-view="${view}"]`);
+          yield* waitFor(page, `[data-walkthrough][data-view="${view}"]`);
+          yield* Effect.promise(() => page.keyboard.press("0"));
+          yield* assertReadable(page, `compare in ${view}`);
+        }
 
         // A screen reader hears the kind after the name.
         assert.include(
@@ -361,10 +490,26 @@ describe("the History panel", () => {
           "Resized",
           "Text changed",
           "Only in this revision",
-          "Only in the current map",
+          "Only in the accepted map",
+          "Where it is in the accepted map",
         ]) {
           assert.include(legend, word);
         }
+
+        // The side panel lists each difference as text, and choosing one
+        // selects the structure.
+        yield* click(page, '[role="tab"][data-tab="history"]');
+        yield* waitFor(page, "[data-difference-list]");
+        assert.include(
+          yield* textOf(page, "[data-difference-list]"),
+          "Engineer moved from 0, 4 to 0, 0"
+        );
+        yield* click(page, '[data-difference="moved:engineer"] button');
+        yield* waitFor(page, '[data-structure-panel="engineer"]');
+        assert.include(
+          yield* textOf(page, "[data-past-revision]"),
+          "Against the accepted map"
+        );
 
         // Compare off again clears the highlights.
         yield* click(page, '[data-control="compare"]');
@@ -430,7 +575,7 @@ describe("the History panel", () => {
           yield* click(page, `[data-view-toggle] button[data-view="${view}"]`);
           yield* waitFor(page, `[data-walkthrough][data-view="${view}"]`);
 
-          // The revision names the server "Save server"; the current map "Save service".
+          // The revision names the server "Save server"; the accepted map "Save service".
           assert.include(
             (yield* attributeOf(
               page,
@@ -440,24 +585,32 @@ describe("the History panel", () => {
             "text changed"
           );
 
-          // The hop only the revision has, and the hop only the current map
-          // has (drawn as a ghost), each in their own look.
+          // The hop only the revision has, the hop only the accepted map has
+          // (a ghost), and the reworded hop each get a halo of their kind.
+          const kindOfHop = (id: string) =>
+            attributeOf(
+              page,
+              `[data-compare-hop="${id}"]`,
+              "data-compare-kind"
+            );
+
+          assert.strictEqual(yield* kindOfHop("h-pr"), "added");
+          assert.strictEqual(yield* kindOfHop("h-read"), "removed");
+          assert.strictEqual(yield* kindOfHop("h-store"), "changed");
           assert.strictEqual(
-            yield* attributeOf(page, '[data-hop="h-pr"]', "data-compare"),
-            "added"
+            yield* count(page, '[data-compare-hop="h-note"]'),
+            0
           );
-          assert.strictEqual(
-            yield* attributeOf(page, '[data-hop="h-read"]', "data-compare"),
-            "removed"
+          assert.include(
+            (yield* attributeOf(
+              page,
+              '[data-compare-hop="h-pr"]',
+              "aria-label"
+            )) ?? "",
+            "only in this revision"
           );
-          assert.strictEqual(
-            yield* attributeOf(page, '[data-hop="h-store"]', "data-compare"),
-            "changed"
-          );
-          assert.strictEqual(
-            yield* attributeOf(page, '[data-hop="h-note"]', "data-compare"),
-            null
-          );
+
+          yield* assertReadable(page, `compare with hops in ${view}`);
         }
 
         assert.deepStrictEqual(errors, []);
@@ -481,7 +634,10 @@ describe("the History panel", () => {
         const dialog = yield* textOf(page, "[data-restore-dialog]");
 
         assert.include(dialog, "Restore revision 1");
-        assert.include(dialog, "pending change");
+        assert.include(
+          dialog,
+          "3 layout differences are now pending changes. Review them in the Pending tab, or undo them."
+        );
         assert.include(dialog, "Engineer moved from 0, 4 to 0, 0");
         assert.include(dialog, "Map page resized from 3 × 2 to 2 × 2");
         assert.strictEqual(yield* count(page, "[data-restore-meaning]"), 0);
@@ -552,6 +708,44 @@ describe("the History panel", () => {
   );
 
   it.live(
+    "words the restore dialog for one layout difference in the singular",
+    () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const root = yield* makeHome(yield* fullMap);
+        const home = path.join(root, "review", "map");
+        const serve = yield* startServe(home, ["--port", "0"]);
+
+        yield* acceptChanges(serve.url, {
+          base: 0,
+          changes: [moveOf("a", "page", { x: 4, y: 4 })],
+          message: "First",
+        });
+        yield* acceptChanges(serve.url, {
+          base: 2,
+          changes: [moveOf("b", "engineer", { x: 0, y: 4 })],
+          message: "Second",
+        });
+
+        const { page, errors } = yield* openUrl(serve.url);
+
+        yield* Effect.promise(() =>
+          page.setViewportSize({ width: 1280, height: 800 })
+        );
+        yield* openHistory(page);
+        yield* openRevision(page, 1);
+        yield* click(page, '[data-control="restore"]');
+        yield* waitFor(page, "[data-restore-dialog]");
+        assert.include(
+          yield* textOf(page, "[data-restore-done]"),
+          "1 layout difference is now a pending change. Review it in the Pending tab, or undo it."
+        );
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    60_000
+  );
+
+  it.live(
     "lists the meaning differences in the restore dialog instead of dropping them",
     () =>
       Effect.gen(function* () {
@@ -607,11 +801,11 @@ describe("the History panel", () => {
 
         assert.deepStrictEqual(lines, [
           "Save service: name differs",
-          'Hop "accepted" (Proposals → Pull request) is in revision 1, not in the current map',
+          'Hop "accepted" (Proposals → Pull request) is in revision 1, not in the accepted map',
         ]);
 
         // The layout is the same, so nothing became pending.
-        assert.include(dialog, "same layout");
+        assert.include(dialog, "same layout as the accepted map");
         yield* click(page, '[data-control="close-restore"]');
         yield* waitGone(page, "[data-restore-dialog]");
         assert.strictEqual(

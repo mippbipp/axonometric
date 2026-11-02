@@ -1,6 +1,7 @@
 import type { Revision } from "@axonometric/contracts";
-import { Effect } from "effect";
-import { useCallback, useState } from "react";
+import { Effect, Fiber } from "effect";
+import type { Fiber as FiberType } from "effect";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { LoadedRevision } from "./history-client.ts";
 
@@ -20,42 +21,55 @@ export type Opened =
 
 /**
  * Which past revision the page is showing. Choosing one reads it from the
- * server; the page keeps showing the current map until the read is done, and
- * a read that comes back after another choice is dropped.
+ * server, and the page keeps showing the current map until the read is done.
+ * Choosing another revision, going back, or leaving the page interrupts the
+ * read still under way, so a late answer can't land on the wrong revision.
  */
 export const useOpenedRevision = (
   read: (n: number) => Effect.Effect<LoadedRevision>
 ) => {
   const [opened, setOpened] = useState<Opened | null>(null);
+  const reading = useRef<FiberType.Fiber<void> | undefined>(undefined);
+
+  const stop = useCallback(() => {
+    const fiber = reading.current;
+
+    reading.current = undefined;
+
+    if (fiber !== undefined) {
+      Effect.runFork(Fiber.interrupt(fiber));
+    }
+  }, []);
 
   const open = useCallback(
     (revision: number) => {
+      stop();
       setOpened({ revision, status: "loading" });
 
-      Effect.runFork(
+      reading.current = Effect.runFork(
         read(revision).pipe(
           Effect.tap((loaded) =>
             Effect.sync(() => {
-              setOpened((now) => {
-                if (now?.revision !== revision) {
-                  return now;
-                }
-
-                return loaded.ok
+              setOpened(
+                loaded.ok
                   ? { revision, status: "ready", saved: loaded.revision }
-                  : { revision, status: "failed", message: loaded.message };
-              });
+                  : { revision, status: "failed", message: loaded.message }
+              );
             })
-          )
+          ),
+          Effect.asVoid
         )
       );
     },
-    [read]
+    [read, stop]
   );
 
   const close = useCallback(() => {
+    stop();
     setOpened(null);
-  }, []);
+  }, [stop]);
+
+  useEffect(() => stop, [stop]);
 
   return { opened, open, close };
 };

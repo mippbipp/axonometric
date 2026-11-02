@@ -1,3 +1,4 @@
+import type { DifferenceLine } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import { useEffect, useId, useRef } from "react";
 
@@ -7,26 +8,32 @@ import { controlClass } from "./control-class.ts";
 export interface RestoreReport {
   readonly revision: number;
   /** The layout differences that became pending changes. */
-  readonly restored: readonly string[];
+  readonly restored: readonly DifferenceLine[];
   /** Why the layout couldn't be restored, when it couldn't. */
   readonly refusal: string | undefined;
   /** Differences in what the map says, which a restore can't turn into layout changes. */
-  readonly meaning: readonly string[];
-  /** Route differences, which aren&apos;t pending changes yet. */
-  readonly routes: readonly string[];
+  readonly meaning: readonly DifferenceLine[];
+  /** Route differences, which aren't pending changes yet. */
+  readonly routes: readonly DifferenceLine[];
 }
+
+/** What the dialog says about the layout changes a restore made. */
+const restoredText = (count: number) =>
+  count === 1
+    ? "1 layout difference is now a pending change. Review it in the Pending tab, or undo it."
+    : `${count} layout differences are now pending changes. Review them in the Pending tab, or undo them.`;
 
 function Lines({
   lines,
   name,
 }: {
-  readonly lines: readonly string[];
+  readonly lines: readonly DifferenceLine[];
   readonly name: string;
 }) {
   return (
     <ul className="flex list-disc flex-col gap-1 pl-5" data-restore-list={name}>
       {Arr.map(lines, (line) => (
-        <li key={line}>{line}</li>
+        <li key={line.key}>{line.text}</li>
       ))}
     </ul>
   );
@@ -78,17 +85,12 @@ export function RestoreDialog({
         {refusal === undefined ? (
           restored.length > 0 ? (
             <>
-              <p data-restore-done>
-                {restored.length === 1
-                  ? "1 layout difference is now a pending change."
-                  : `${restored.length} layout differences are now pending changes.`}{" "}
-                Review them in the Pending tab, or undo them.
-              </p>
+              <p data-restore-done>{restoredText(restored.length)}</p>
               <Lines lines={restored} name="layout" />
             </>
           ) : (
             <p data-restore-done>
-              Revision {revision} has the same layout as the current map, so no
+              Revision {revision} has the same layout as the accepted map, so no
               layout changes were made.
             </p>
           )

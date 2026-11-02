@@ -96,52 +96,20 @@
 
 /* A structure in the multi-selection: outlined in the multi-selection
    colour, and ringed on the ground under it. This comes after the pending
-   rule, so a structure that is both keeps the pending face tint and badge
+   rule, so a structure that is both keeps the pending face tint
    but takes the multi-selection outline. */
 [data-structure][data-multi-selected="true"] {
   stroke: var(--multi);
 }
 
-/* A structure being dragged, with its name tag and badge, is see-through, so
+/* A structure being dragged, with its name tag, is see-through, so
    what it's dragged over shows. */
 [data-drag-shifted] {
   opacity: 0.55;
 }
 
-/* A compare draws a structure only the current map has as a ghost: faint,
+/* A compare draws a structure only the accepted map has as a ghost: faint,
    under the rings that mark it. */
 [data-structure][data-compare~="removed"] {
   opacity: 0.45;
-}
-
-/* A hop in a compare takes the colour and dash of its kind, and a heavier
-   line. A hop only the current map has is a ghost too. */
-[data-hop][data-compare] {
-  --mark: var(--changed);
-}
-
-[data-hop][data-compare="added"] {
-  --mark: var(--added);
-}
-
-[data-hop][data-compare="removed"] {
-  --mark: var(--removed);
-  opacity: 0.6;
-}
-
-[data-hop][data-compare] polyline {
-  stroke: var(--mark);
-  stroke-width: 2.6;
-}
-
-[data-hop][data-compare="added"] polyline {
-  stroke-dasharray: 10 2 2 2;
-}
-
-[data-hop][data-compare="removed"] polyline {
-  stroke-dasharray: 4 4;
-}
-
-[data-hop][data-compare] [data-arrowhead] {
-  fill: var(--mark);
 }

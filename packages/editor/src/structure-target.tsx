@@ -1,4 +1,5 @@
 import { cn } from "@axonometric/ui/lib/utils";
+import { Array as Arr } from "effect";
 import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
 
 import { spokenMarks, useCompare } from "./compare-context.ts";
@@ -85,10 +86,14 @@ export function StructureTarget({
       // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
       role="button"
       tabIndex={0}
-      aria-label={[
-        isMultiSelected ? `${name}, in the multi-selection` : name,
-        ...(marked === undefined ? [] : [marked]),
-      ].join(", ")}
+      aria-label={Arr.join(
+        [
+          isMultiSelected ? `${name}, in the multi-selection` : name,
+          ...(isPending ? ["pending change"] : []),
+          ...(marked === undefined ? [] : [marked]),
+        ],
+        ", "
+      )}
       aria-pressed={isSelected}
       onClick={(event) => {
         activate(event.shiftKey);

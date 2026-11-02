@@ -1,7 +1,8 @@
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
-import { looks, legendOrder } from "./compare-looks.ts";
+import { legendOrder, looks } from "./compare-looks.ts";
+import type { CompareKind } from "./compare-looks.ts";
 import { controlClass } from "./control-class.ts";
 import { fullDate } from "./relative-time.ts";
 
@@ -12,7 +13,7 @@ export interface DifferenceCount {
 }
 
 /** One swatch and word of the legend: the look's stroke and dash, drawn small. */
-function LegendItem({ kind }: { readonly kind: (typeof legendOrder)[number] }) {
+function LegendItem({ kind }: { readonly kind: CompareKind }) {
   const look = looks[kind];
 
   return (
@@ -94,7 +95,7 @@ export function RevisionBanner({
           className={cn(controlClass, comparing && "bg-ink text-paper")}
           onClick={onCompare}
         >
-          Compare with current
+          Compare with accepted
         </button>
         <button
           type="button"
@@ -118,8 +119,8 @@ export function RevisionBanner({
         <div data-compare-legend className="flex flex-col gap-1.5">
           <p data-compare-summary>
             {none
-              ? "Nothing differs from the current map."
-              : `Against the current map: ${differences.layout} layout ${differences.layout === 1 ? "difference" : "differences"}, ${differences.meaning} ${differences.meaning === 1 ? "difference" : "differences"} in what the map says.`}
+              ? "Nothing differs from the accepted map."
+              : `Against the accepted map: ${differences.layout} layout ${differences.layout === 1 ? "difference" : "differences"}, ${differences.meaning} ${differences.meaning === 1 ? "difference" : "differences"} in what the map says. Pending changes aren't compared.`}
           </p>
           <ul
             aria-label="Compare legend"

@@ -343,7 +343,7 @@ describe("moving structures", () => {
 
 describe("the pending look", () => {
   it.live(
-    "draws a moved structure in the accent with a badge, and a faint outline where it was accepted, in both views",
+    "draws a moved structure in the accent with no badge, and a faint outline where it was accepted, in both views",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
@@ -352,7 +352,10 @@ describe("the pending look", () => {
 
         yield* dragBy(page, from, { x: 0, y: unit * 2.2 });
         yield* waitForRevision(home, 1);
-        yield* waitFor(page, '[data-pending-badge="engineer"]');
+        yield* waitFor(
+          page,
+          '[data-structure="engineer"][data-pending="true"]'
+        );
 
         for (const view of ["iso", "plan"] as const) {
           if (view === "plan") {
@@ -373,9 +376,16 @@ describe("the pending look", () => {
             1,
             view
           );
+          // The pending look is the outline and the face tint: no text sits
+          // on the map, and a screen reader hears it in the structure's name.
           assert.strictEqual(
             yield* count(page, "[data-pending-badge]"),
-            1,
+            0,
+            view
+          );
+          assert.include(
+            yield* attribute(page, '[data-structure="engineer"]', "aria-label"),
+            "pending change",
             view
           );
 

@@ -86,6 +86,9 @@ export {
   LayoutFile,
   Placement,
   RouteOverride,
+  samePlacement,
+  samePosition,
+  sameSize,
 } from "./layout.ts";
 
 export {
@@ -191,6 +194,7 @@ export {
 export type {
   CompareMarks,
   DataSection,
+  DifferenceLine,
   DifferenceLines,
   FieldChange,
   GhostedMap,

@@ -1,14 +1,9 @@
-import {
-  Array as Arr,
-  Equal,
-  Option,
-  Record as Rec,
-  String as Str,
-} from "effect";
+import { Array as Arr, Equal, Option, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
+import { samePosition, sameSize } from "./layout.ts";
 import type { Layout, Placement } from "./layout.ts";
-import type { Hop, MapData, Structure } from "./map-data.ts";
+import { Hop, MapData, Structure } from "./map-data.ts";
 import { applyLayoutChanges, placeStructure } from "./proposals.ts";
 import type { ChangeId, LayoutChange } from "./proposals.ts";
 
@@ -31,15 +26,25 @@ export interface FieldChange {
   readonly fields: readonly string[];
 }
 
-/** The parts of the map's data, besides structures and hops, that can differ. */
-export type DataSection = "overview" | "groups" | "flows" | "chapters";
+/**
+ * The parts of the map's data that `diffMaps` compares whole, besides
+ * structures and hops, which it compares field by field. A new field in
+ * `MapData` joins this type, and `sectionPhrases` fails to compile until it
+ * has words.
+ */
+export type DataSection = Exclude<
+  keyof MapData,
+  "format" | "revision" | "structures" | "hops"
+>;
 
-const dataSections: readonly DataSection[] = [
-  "overview",
-  "groups",
-  "flows",
-  "chapters",
-];
+const isDataSection = (key: keyof MapData): key is DataSection =>
+  key !== "format" &&
+  key !== "revision" &&
+  key !== "structures" &&
+  key !== "hops";
+
+/** Every field of the data, from the schema, so a new field is compared. */
+const dataSections = Arr.filter(Rec.keys(MapData.fields), isDataSection);
 
 /**
  * What it takes to go from one map to another. Ids are in the order of the
@@ -70,29 +75,18 @@ export interface MapDiff {
   readonly rerouted: readonly string[];
 }
 
-/** The fields of a structure whose values `diffMaps` compares. */
-const structureFields = [
-  "code",
-  "name",
-  "tag",
-  "shape",
-  "group",
-  "status",
-  "oneLiner",
-  "whatItDoes",
-  "howItsBuilt",
-  "steps",
-  "questions",
-  "sources",
-] as const satisfies readonly (keyof Structure)[];
+/**
+ * Every field of a structure and of a hop but its id, read from the schema,
+ * so a field added to the schema is compared without a change here. The
+ * fields `data.mjs` must not have are in the list too, and are always
+ * absent from both sides.
+ */
+const structureFields = Arr.filter(
+  Rec.keys(Structure.fields),
+  (key) => key !== "id"
+);
 
-/** The fields of a hop whose values `diffMaps` compares. */
-const hopFields = [
-  "from",
-  "to",
-  "label",
-  "payload",
-] as const satisfies readonly (keyof Hop)[];
+const hopFields = Arr.filter(Rec.keys(Hop.fields), (key) => key !== "id");
 
 const byId = <A extends { readonly id: string }>(items: readonly A[]) =>
   new Map(Arr.map(items, (item) => [item.id, item] as const));
@@ -173,12 +167,9 @@ export const diffMaps: {
     structures: {
       moved: Arr.filter(
         repositioned,
-        ({ from, to }) => from.x !== to.x || from.y !== to.y
+        ({ from, to }) => !samePosition(from, to)
       ),
-      resized: Arr.filter(
-        repositioned,
-        ({ from, to }) => from.w !== to.w || from.d !== to.d
-      ),
+      resized: Arr.filter(repositioned, ({ from, to }) => !sameSize(from, to)),
       added: structures.added,
       removed: structures.removed,
       changed: structures.changed,
@@ -421,12 +412,12 @@ const fieldNames = {
   howItsBuilt: "how it's built",
 } as const satisfies Readonly<Record<string, string>>;
 
-const sectionPhrases: Readonly<Record<DataSection, string>> = {
+const sectionPhrases = {
   overview: "The overview differs",
   groups: "The groups differ",
   flows: "The flows differ",
   chapters: "The chapters differ",
-};
+} as const satisfies Readonly<Record<DataSection, string>>;
 
 const joinWords = (words: readonly string[]) => {
   const last = words.at(-1);
@@ -450,20 +441,35 @@ const differs = (
   return `${subject}: ${joinWords(words)} ${words.length === 1 ? "differs" : "differ"}`;
 };
 
-/** The differences of a compare, as sentences for a restore dialog. */
+/** One difference, as a sentence. */
+export interface DifferenceLine {
+  /** Names the difference, such as `moved:engineer`; no two lines share one. */
+  readonly key: string;
+  readonly text: string;
+  /** The structure to select when the line is chosen, if it has one. */
+  readonly structureId: string | undefined;
+}
+
+const structureLine = (
+  key: string,
+  id: string,
+  text: string
+): DifferenceLine => ({ key: `${key}:${id}`, text, structureId: id });
+
+/** The differences of a compare, as sentences. */
 export interface DifferenceLines {
   /** Layout differences a restore turns into pending changes. */
-  readonly layout: readonly string[];
+  readonly layout: readonly DifferenceLine[];
   /** Differences in what the map says, which a restore can't turn into layout changes. */
-  readonly meaning: readonly string[];
+  readonly meaning: readonly DifferenceLine[];
   /** Route overrides that differ, which a restore can't turn into layout changes yet. */
-  readonly routes: readonly string[];
+  readonly routes: readonly DifferenceLine[];
 }
 
 /**
  * Words for each difference in `diff`, which `diffMaps` made with the
- * current map as `before` and the revision as `after`. `revisionName` is how
- * the revision is called in the sentences, such as "revision 2".
+ * accepted map as `before` and the revision as `after`. `revisionName` is
+ * how the revision is called in the sentences, such as "revision 2".
  */
 export const describeDifferences = ({
   diff,
@@ -476,66 +482,92 @@ export const describeDifferences = ({
   readonly revision: MapData;
   readonly revisionName: string;
 }): DifferenceLines => {
-  const nameOfStructure = (id: string) =>
-    Arr.findFirst(
-      [...current.structures, ...revision.structures],
-      (structure) => structure.id === id
-    ).pipe(
-      Option.map(({ name }) => name),
-      Option.getOrElse(() => id)
-    );
+  const structureNames = new Map(
+    Arr.map(
+      [...revision.structures, ...current.structures],
+      ({ id, name }) => [id, name] as const
+    )
+  );
 
-  const hopLine = (id: string, where: string) =>
-    Arr.findFirst(
-      [...current.hops, ...revision.hops],
-      (hop) => hop.id === id
-    ).pipe(
-      Option.match({
-        onNone: () => `Hop "${id}" ${where}`,
-        onSome: (hop) =>
-          `Hop "${hop.label}" (${nameOfStructure(hop.from)} → ${nameOfStructure(hop.to)}) ${where}`,
-      })
-    );
+  const hops = new Map(
+    Arr.map(
+      [...revision.hops, ...current.hops],
+      (hop) => [hop.id, hop] as const
+    )
+  );
 
-  const inRevisionOnly = `is in ${revisionName}, not in the current map`;
-  const inCurrentOnly = `is in the current map, not in ${revisionName}`;
-  const { structures, hops } = diff;
+  const nameOf = (id: string) => structureNames.get(id) ?? id;
+
+  const hopSubject = (id: string) => {
+    const hop = hops.get(id);
+
+    return hop === undefined
+      ? `Hop "${id}"`
+      : `Hop "${hop.label}" (${nameOf(hop.from)} → ${nameOf(hop.to)})`;
+  };
+
+  const hopLine = (key: string, id: string, text: string): DifferenceLine => ({
+    key: `${key}:${id}`,
+    text,
+    structureId: hops.get(id)?.from,
+  });
+
+  const inRevisionOnly = `is in ${revisionName}, not in the accepted map`;
+  const inCurrentOnly = `is in the accepted map, not in ${revisionName}`;
+  const { structures } = diff;
 
   return {
     layout: [
-      ...Arr.map(
-        structures.moved,
-        ({ id, from, to }) =>
-          `${nameOfStructure(id)} moved from ${spot(from)} to ${spot(to)}`
+      ...Arr.map(structures.moved, ({ id, from, to }) =>
+        structureLine(
+          "moved",
+          id,
+          `${nameOf(id)} moved from ${spot(from)} to ${spot(to)}`
+        )
       ),
-      ...Arr.map(
-        structures.resized,
-        ({ id, from, to }) =>
-          `${nameOfStructure(id)} resized from ${size(from)} to ${size(to)}`
+      ...Arr.map(structures.resized, ({ id, from, to }) =>
+        structureLine(
+          "resized",
+          id,
+          `${nameOf(id)} resized from ${size(from)} to ${size(to)}`
+        )
       ),
     ],
     meaning: [
-      ...Arr.map(
-        structures.added,
-        (id) => `${nameOfStructure(id)} ${inRevisionOnly}`
+      ...Arr.map(structures.added, (id) =>
+        structureLine("added", id, `${nameOf(id)} ${inRevisionOnly}`)
       ),
-      ...Arr.map(
-        structures.removed,
-        (id) => `${nameOfStructure(id)} ${inCurrentOnly}`
+      ...Arr.map(structures.removed, (id) =>
+        structureLine("removed", id, `${nameOf(id)} ${inCurrentOnly}`)
       ),
       ...Arr.map(structures.changed, (change) =>
-        differs(nameOfStructure(change.id), change, fieldNames)
+        structureLine(
+          "changed",
+          change.id,
+          differs(nameOf(change.id), change, fieldNames)
+        )
       ),
-      ...Arr.map(hops.added, (id) => hopLine(id, inRevisionOnly)),
-      ...Arr.map(hops.removed, (id) => hopLine(id, inCurrentOnly)),
-      ...Arr.map(hops.changed, (change) =>
-        differs(Str.trimEnd(hopLine(change.id, "")), change, {})
+      ...Arr.map(diff.hops.added, (id) =>
+        hopLine("hop-added", id, `${hopSubject(id)} ${inRevisionOnly}`)
       ),
-      ...Arr.map(diff.sections, (section) => sectionPhrases[section]),
+      ...Arr.map(diff.hops.removed, (id) =>
+        hopLine("hop-removed", id, `${hopSubject(id)} ${inCurrentOnly}`)
+      ),
+      ...Arr.map(diff.hops.changed, (change) =>
+        hopLine(
+          "hop-changed",
+          change.id,
+          differs(hopSubject(change.id), change, {})
+        )
+      ),
+      ...Arr.map(diff.sections, (section): DifferenceLine => ({
+        key: `section:${section}`,
+        text: sectionPhrases[section],
+        structureId: undefined,
+      })),
     ],
-    routes: Arr.map(
-      diff.rerouted,
-      (id) => `${Str.trimEnd(hopLine(id, ""))}: route differs`
+    routes: Arr.map(diff.rerouted, (id) =>
+      hopLine("route", id, `${hopSubject(id)}: route differs`)
     ),
   };
 };

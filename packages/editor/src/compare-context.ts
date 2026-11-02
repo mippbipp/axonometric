@@ -1,4 +1,5 @@
 import type { CompareMarks } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
 import { createContext, use } from "react";
 
 import { looks } from "./compare-looks.ts";
@@ -27,5 +28,8 @@ export const spokenMarks = ({
 
   return found === undefined
     ? undefined
-    : found.map((mark) => looks[mark].spoken).join(", ");
+    : Arr.join(
+        Arr.map(found, (mark) => looks[mark].spoken),
+        ", "
+      );
 };

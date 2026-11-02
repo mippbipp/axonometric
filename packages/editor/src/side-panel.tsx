@@ -182,24 +182,40 @@ const renderContent = Match.type<PanelContent>().pipe(
 type Tab = "details" | "questions" | "pending" | "history";
 
 const tabClass =
-  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-1.5 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent disabled:cursor-default disabled:opacity-40 px-1.5 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
 
 /** The tabs to show: Pending only while the page can edit, History only when served. */
 const tabsOf = ({
   openCount,
   pendingCount,
   hasHistory,
+  pendingOff,
 }: {
   readonly openCount: number;
+  /** How many changes are pending, or `undefined` on a page that can't edit. */
   readonly pendingCount: number | undefined;
   readonly hasHistory: boolean;
-}): readonly { readonly id: Tab; readonly label: string }[] => [
-  { id: "details", label: "Details" },
-  { id: "questions", label: `Questions · ${openCount}` },
+  /** Whether the Pending tab is shown but can't be used, as while a past revision is open. */
+  readonly pendingOff: boolean;
+}): readonly {
+  readonly id: Tab;
+  readonly label: string;
+  readonly disabled: boolean;
+}[] => [
+  { id: "details", label: "Details", disabled: false },
+  { id: "questions", label: `Questions · ${openCount}`, disabled: false },
   ...(pendingCount === undefined
     ? []
-    : [{ id: "pending" as const, label: `Pending · ${pendingCount}` }]),
-  ...(hasHistory ? [{ id: "history" as const, label: "History" }] : []),
+    : [
+        {
+          id: "pending" as const,
+          label: `Pending · ${pendingCount}`,
+          disabled: pendingOff,
+        },
+      ]),
+  ...(hasHistory
+    ? [{ id: "history" as const, label: "History", disabled: false }]
+    : []),
 ];
 
 /**
@@ -230,16 +246,21 @@ export function SidePanel() {
     readonly selected: string | null;
   } | null>(null);
 
+  // While a past revision is open there is no editing, but the tab strip
+  // keeps its Pending tab and count, so it doesn't move.
+  const pendingCount = editing?.pending.length ?? history?.pendingCount;
+
   const tabs = tabsOf({
     openCount,
-    pendingCount: editing?.pending.length,
+    pendingCount,
     hasHistory: history !== null,
+    pendingOff: editing === null,
   });
 
   const tab: Tab =
     otherTab !== null &&
     otherTab.selected === selected &&
-    Arr.some(tabs, ({ id }) => id === otherTab.tab)
+    Arr.some(tabs, ({ id, disabled }) => id === otherTab.tab && !disabled)
       ? otherTab.tab
       : "details";
 
@@ -256,9 +277,12 @@ export function SidePanel() {
     event.preventDefault();
     event.stopPropagation();
 
-    const at = tabs.findIndex(({ id }) => id === tab);
+    const usable = Arr.filter(tabs, ({ disabled }) => !disabled);
+    const at = usable.findIndex(({ id }) => id === tab);
     const step = event.key === "ArrowRight" ? 1 : -1;
-    const next = tabs[(at + step + tabs.length) % tabs.length]?.id ?? "details";
+
+    const next =
+      usable[(at + step + usable.length) % usable.length]?.id ?? "details";
 
     choose(next);
     event.currentTarget
@@ -278,7 +302,7 @@ export function SidePanel() {
         className="border-ink flex min-w-0 gap-0 overflow-x-auto border-b px-1 pt-2"
         onKeyDown={onTabKeyDown}
       >
-        {Arr.map(tabs, ({ id, label }) => (
+        {Arr.map(tabs, ({ id, label, disabled }) => (
           <button
             key={id}
             type="button"
@@ -287,6 +311,13 @@ export function SidePanel() {
             data-tab={id}
             aria-selected={tab === id}
             aria-controls={`${idPrefix}-${id}`}
+            aria-disabled={disabled}
+            disabled={disabled}
+            title={
+              disabled
+                ? "Editing is off while a past revision is open"
+                : undefined
+            }
             tabIndex={tab === id ? 0 : -1}
             className={tabClass}
             onClick={() => {
