@@ -7,6 +7,9 @@ import type { ReactNode } from "react";
 import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
+import { useArrowOwner, useEditKeys } from "./edit-keys.ts";
+import { EditToolbar } from "./edit-toolbar.tsx";
+import { useEditing } from "./editing-context.ts";
 import { ExportMenu } from "./export-menu.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
 import { useInsideFocus } from "./inside-focus.ts";
@@ -42,6 +45,8 @@ const hintsOf = ({
   selected,
   inside,
   canGoInside,
+  editing,
+  multiSelected,
 }: {
   /** Whether the How it's built page is open. */
   readonly overviewOpen: boolean;
@@ -49,6 +54,10 @@ const hintsOf = ({
   readonly inside: boolean;
   /** Whether the selected structure has steps. */
   readonly canGoInside: boolean;
+  /** Whether the page can edit the layout. */
+  readonly editing: boolean;
+  /** How many structures are in the multi-selection. */
+  readonly multiSelected: number;
 }) => {
   if (overviewOpen) {
     return ["Esc closes this page"];
@@ -56,6 +65,16 @@ const hintsOf = ({
 
   if (inside) {
     return ["← or Esc come out", "click Step to move the packet"];
+  }
+
+  if (multiSelected > 0) {
+    return [
+      "arrows nudge half a unit",
+      "drag to move them together",
+      "Esc clears the selection",
+      "Ctrl+Z undo",
+      "Shift-click adds or removes",
+    ];
   }
 
   return selected
@@ -77,6 +96,7 @@ const hintsOf = ({
         "click a packet to read its payload",
         "+ and − zoom, 0 fits",
         "v switches view",
+        ...(editing ? ["Shift-click or Shift-drag selects several"] : []),
       ];
 };
 
@@ -91,7 +111,8 @@ interface Notices {
 
 function WalkthroughPage({ notices }: Notices) {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
-  const { selected, inside } = useSelection();
+  const { selected, inside, multiSelection } = useSelection();
+  const editing = useEditing();
   const { open: overviewOpen } = useOverviewPage();
   const byId = useStructuresById();
   const insideStructure = inside === null ? undefined : byId.get(inside);
@@ -100,8 +121,11 @@ function WalkthroughPage({ notices }: Notices) {
   // state: the chapter, the selection and the packets.
   const [view, setView] = useState<View>("iso");
 
-  useChapterKeys(selected === null);
-  useSelectionKeys();
+  const arrowOwner = useArrowOwner();
+
+  useChapterKeys(arrowOwner === "chapter");
+  useSelectionKeys(arrowOwner === "selection");
+  useEditKeys(arrowOwner);
   useInsideFocus(inside);
 
   // Switching views while a page covers the map would change what's under
@@ -144,7 +168,7 @@ function WalkthroughPage({ notices }: Notices) {
         <h1 className="text-sm font-medium tracking-widest uppercase">
           {state.data.overview.title}
         </h1>
-        <div className="ml-auto flex gap-1.5">
+        <div className="ml-auto flex items-stretch gap-1.5">
           <ViewToggle
             view={view}
             choose={setView}
@@ -185,6 +209,10 @@ function WalkthroughPage({ notices }: Notices) {
               {/* The inside view shows the notices instead, while it's open. */}
               {insideStructure === undefined ? notices : null}
             </div>
+            <EditToolbar
+              view={view}
+              className="pointer-events-auto absolute top-3 right-3"
+            />
             {/* Stops short of the zoom controls at the bottom right, and wraps
                 upward when the flows don't fit on one line. */}
             <div
@@ -230,6 +258,8 @@ function WalkthroughPage({ notices }: Notices) {
               selected: selected !== null,
               inside: insideStructure !== undefined,
               canGoInside: hasSteps(selectedStructure),
+              editing: editing?.canEdit === true,
+              multiSelected: arrowOwner === "nudge" ? multiSelection.size : 0,
             }),
             (hint) => (
               <li key={hint} data-hint className="shrink-0 whitespace-nowrap">

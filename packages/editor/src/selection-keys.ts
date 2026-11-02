@@ -8,19 +8,41 @@ import { useSelection } from "./selection-context.ts";
  * out of the inside view, or clear the selection when it's not open. Pair
  * it with `useChapterKeys(selected === null)`, so → and ← change chapter
  * only when nothing is selected.
+ *
+ * Escape first empties the multi-selection, and a second press clears the
+ * selection. The arrow keys are handled only when `arrows` is true, which
+ * is when this is their owner (see `useArrowOwner`).
  */
-export const useSelectionKeys = () => {
-  const { selected, inside, select, goInside, comeOut } = useSelection();
+export const useSelectionKeys = (arrows: boolean) => {
+  const {
+    selected,
+    inside,
+    multiSelection,
+    select,
+    goInside,
+    comeOut,
+    clearMultiSelection,
+  } = useSelection();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (
-      selected === null ||
       event.defaultPrevented ||
       event.altKey ||
       event.ctrlKey ||
       event.metaKey ||
       isTyping(event.target)
     ) {
+      return;
+    }
+
+    if (event.key === "Escape" && multiSelection.size > 0) {
+      event.preventDefault();
+      clearMultiSelection();
+
+      return;
+    }
+
+    if (selected === null || (!arrows && event.key.startsWith("Arrow"))) {
       return;
     }
 

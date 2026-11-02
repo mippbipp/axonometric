@@ -13,6 +13,9 @@
   /* Pending changes: a blue that no status uses, and that stays clear of
      the ink the "new" marker is drawn in. */
   --pending: light-dark(#1d4ed8, #7aa7ff);
+  /* The multi-selection: a magenta that neither the pending blue, the
+     refused red nor the ink of a pinned selection can be mistaken for. */
+  --multi: light-dark(#a21caf, #f0abfc);
   /* A drop that would be refused, such as onto another footprint. */
   --refused: light-dark(#b91c1c, #ff7b72);
 }
@@ -31,6 +34,7 @@
   --color-face: var(--face);
   --color-muted-ink: var(--muted);
   --color-pending: var(--pending);
+  --color-multi: var(--multi);
   --color-refused: var(--refused);
   --text-2xs: 10px;
   /* System fonts only: the page must work offline from disk. */
@@ -76,6 +80,14 @@
 
 [data-structure][data-pending="true"] [data-face] {
   fill: color-mix(in oklab, var(--face), var(--pending) 14%);
+}
+
+/* A structure in the multi-selection: outlined in the multi-selection
+   colour, and ringed on the ground under it. This comes after the pending
+   rule, so a structure that is both keeps the pending face tint and badge
+   but takes the multi-selection outline. */
+[data-structure][data-multi-selected="true"] {
+  stroke: var(--multi);
 }
 
 /* A structure being dragged, with its name tag and badge, is see-through, so

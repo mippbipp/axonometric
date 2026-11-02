@@ -18,6 +18,7 @@ import { Array as Arr, String as Str } from "effect";
 import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { BoxSelect } from "./box-select.tsx";
 import { fitOf } from "./fit.ts";
 import { LayoutEditor } from "./layout-editor.tsx";
 import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
@@ -436,6 +437,11 @@ export function MapView({
           />
         ))}
       </g>
+      <BoxSelect
+        view={view}
+        placements={state.layout.structures}
+        revealed={revealed}
+      />
       <LayoutEditor view={view} placements={state.layout.structures}>
         <g>
           {Arr.map(scene.structures, (item) => (

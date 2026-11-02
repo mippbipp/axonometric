@@ -20,6 +20,8 @@ export function MapSurface({ children }: { readonly children: ReactNode }) {
   const onClick = useEffectEvent((event: MouseEvent) => {
     if (
       inside === null &&
+      // A Shift-click that misses is a slip while picking several.
+      !event.shiftKey &&
       event.target instanceof Element &&
       event.target.closest("button, [role='button'], a, input") === null
     ) {

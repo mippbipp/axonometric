@@ -183,6 +183,27 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  emptyHistory,
+  observeFile,
+  pushStep,
+  redoStep,
+  undoStep,
+  wroteFile,
+} from "./undo-history.ts";
+
+export type { Observed, Stepped, UndoHistory } from "./undo-history.ts";
+
+export {
+  alignMoves,
+  appendMove,
+  distributeMoves,
+  nudgeMoves,
+  structuresInBox,
+} from "./arrange.ts";
+
+export type { Alignment, Axis, GroundBox, Placements } from "./arrange.ts";
+
+export {
   applyLayoutChanges,
   ChangeId,
   checkProposals,
