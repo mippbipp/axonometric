@@ -1,4 +1,6 @@
 import {
+  applyLayoutChanges,
+  frozenLayoutChanges,
   LayoutChangeRefused,
   layoutRefusal,
   MapFilesUnreadable,
@@ -7,11 +9,20 @@ import {
 } from "@axonometric/contracts";
 import type {
   HopEnds,
+  LayoutChange,
   PendingLayoutWrite,
   Proposals,
 } from "@axonometric/contracts";
 import { WriteGuard } from "@axonometric/contracts/api";
-import { Effect, Layer, Option, Path, Result, String as Str } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Layer,
+  Option,
+  Path,
+  Result,
+  String as Str,
+} from "effect";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { withLock } from "./lock.ts";
@@ -142,6 +153,29 @@ export interface PendingWrite {
 }
 
 /**
+ * Why a write can't use the id of a change in `layout`: it belongs to a note
+ * or to an item in a batch. Frozen items can't be added again, changed or
+ * replaced by a write to the open layout changes.
+ */
+const usedElsewhere = (
+  current: Proposals,
+  layout: readonly LayoutChange[]
+): Option.Option<string> => {
+  const taken = new Set([
+    ...Arr.map(current.notes ?? [], ({ id }) => id),
+    ...Arr.flatMap(current.batches ?? [], ({ items }) =>
+      Arr.map(items, ({ id }) => id)
+    ),
+  ]);
+
+  return Option.map(
+    Arr.findFirst(layout, ({ id }) => taken.has(id)),
+    ({ id }) =>
+      `"${id}" is already a note or an item in a batch, so it can't be a layout change too. Frozen items can't be edited while the agent reviews them.`
+  );
+};
+
+/**
  * Replaces the pending layout changes in `proposals.json` in `home` with
  * those in `write`, under the lock. The write is refused, and nothing
  * written, when `write.baseFileRevision` isn't the file's revision, or when a
@@ -168,12 +202,18 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
     readFiles
   );
 
-  const refusal = layoutRefusal({
-    accepted,
-    before: current.layout,
-    after: write.layout,
-    hops,
-  });
+  // Frozen layout changes wait for the agent, and still count: an open
+  // change is checked against the layout they would make.
+  const base = applyLayoutChanges(accepted, frozenLayoutChanges(current));
+
+  const refusal = Option.orElse(usedElsewhere(current, write.layout), () =>
+    layoutRefusal({
+      accepted: base,
+      before: current.layout,
+      after: write.layout,
+      hops,
+    })
+  );
 
   if (Option.isSome(refusal)) {
     return yield* LayoutChangeRefused.make({

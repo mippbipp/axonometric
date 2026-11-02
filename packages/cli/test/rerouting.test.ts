@@ -476,6 +476,170 @@ describe("rerouting a hop by dragging a segment", () => {
   );
 });
 
+describe("a reroute in the review loop", () => {
+  /** Drags h-store right, then sends it to the agent with Ready for review. */
+  const frozenReroute = Effect.gen(function* () {
+    const opened = yield* servedReview;
+    const { home, page } = opened;
+
+    yield* toView(page, "plan");
+
+    const unit = yield* unitOnScreen(page, "plan");
+    const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+    yield* dragBy(page, from, screenDelta("plan", unit, { x: 1, y: 0 }));
+    yield* waitForRevision(home, 1);
+    yield* Effect.promise(() =>
+      page.locator("[data-ready-for-review]").first().click()
+    );
+    yield* waitFor(page, "[data-review-dialog][open]");
+    yield* Effect.promise(() =>
+      page.locator("[data-review-close]").first().click()
+    );
+
+    return opened;
+  });
+
+  it.live(
+    "Ready for review freezes the reroute with a one-line summary in the prompt",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* toView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+        yield* dragBy(page, from, screenDelta("plan", unit, { x: 1, y: 0 }));
+        yield* waitForRevision(home, 1);
+        yield* Effect.promise(() =>
+          page.evaluate(
+            `(() => { window.__copied = []; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (text) => (window.__copied.push(text), Promise.resolve()) } }); })()`
+          )
+        );
+        yield* Effect.promise(() =>
+          page.locator("[data-ready-for-review]").first().click()
+        );
+        yield* waitFor(page, "[data-review-dialog][open]");
+
+        const copied = yield* Effect.promise(() =>
+          page.evaluate<readonly string[]>("window.__copied ?? []")
+        );
+
+        assert.match(copied[0] ?? "", /^- reroute \S+ on "write batch"$/mu);
+
+        const saved = yield* proposalsIn(home);
+
+        assert.deepStrictEqual(
+          Arr.map(
+            Option.getOrThrow(saved).batches?.[0]?.items ?? [],
+            ({ kind }) => kind
+          ),
+          ["layout"]
+        );
+        assert.deepStrictEqual(Option.getOrThrow(saved).layout, []);
+      }),
+    90_000
+  );
+
+  it.live(
+    "refuses Reset route, a new route and a discard while the reroute waits for the agent",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* frozenReroute;
+
+        // The frozen reroute is still drawn, as pending.
+        yield* waitFor(page, '[data-hop-pending="h-store"]');
+
+        // A new drag of the same hop is refused, with the waiting message.
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, segmentSelector("h-store", 2));
+
+        yield* pressAndMove(
+          page,
+          from,
+          screenDelta("plan", unit, { x: 1, y: 0 })
+        );
+        assert.strictEqual(
+          yield* attribute(
+            page,
+            '[data-route-preview="h-store"]',
+            "data-refused"
+          ),
+          "true"
+        );
+        assert.include(
+          (yield* Effect.promise(() =>
+            page.locator("[data-route-preview] title").first().textContent()
+          )) ?? "",
+          "waiting for the agent"
+        );
+        yield* Effect.promise(() => page.mouse.up());
+
+        // Reset route, from the hop's panel and from the Pending list.
+        yield* Effect.promise(() =>
+          page.locator('[role="tab"][data-tab="pending"]').click()
+        );
+        yield* waitFor(page, '[data-reset-route="h-store"]');
+        yield* Effect.promise(() =>
+          page.locator('[data-reset-route="h-store"]').first().click()
+        );
+        yield* waitFor(page, "[data-discard-refused]");
+        assert.include(
+          (yield* Effect.promise(() =>
+            page.locator("[data-discard-refused]").first().textContent()
+          )) ?? "",
+          "waiting for the agent"
+        );
+
+        // Nothing but the freeze was written.
+        const saved = Option.getOrThrow(yield* proposalsIn(home));
+
+        assert.deepStrictEqual(saved.layout, []);
+        assert.strictEqual(saved.batches?.length, 1);
+      }),
+    120_000
+  );
+
+  it.live(
+    "a committed reroute leaves the override in layout.json, and Reset route works again",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* frozenReroute;
+        const batch = Option.getOrThrow(yield* proposalsIn(home)).batches?.[0];
+        const itemId = batch?.items[0]?.id ?? "";
+
+        for (const args of [
+          ["verdict", home, itemId, "accepted"],
+          ["commit", home],
+        ]) {
+          const result = yield* runCli(home, args);
+
+          assert.strictEqual(result.exitCode, 0, result.stderr);
+        }
+
+        yield* Effect.promise(() =>
+          page.locator('[role="tab"][data-tab="pending"]').click()
+        );
+        yield* waitFor(page, '[data-route-override="h-store"]');
+        yield* Effect.promise(() =>
+          page.locator('[data-reset-route="h-store"]').first().click()
+        );
+
+        // The reroute's write made revision 1, the freeze 2, the commit 3,
+        // and the reset 4.
+        const after = yield* waitForRevision(home, 4);
+
+        assert.deepStrictEqual(
+          Arr.map(reroutesIn(after), ({ points }) => points),
+          [null]
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    120_000
+  );
+});
+
 describe("accepting a reroute", () => {
   it.live(
     "writes the route override to layout.json, saves a revision, and clears the pending look",

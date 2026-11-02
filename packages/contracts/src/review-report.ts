@@ -1,0 +1,70 @@
+import { Schema } from "effect";
+
+import { ChangeId, verdictKinds } from "./proposals.ts";
+
+const Spot = Schema.Struct({ x: Schema.Finite, y: Schema.Finite });
+
+const Size = Schema.Struct({ w: Schema.Finite, d: Schema.Finite });
+
+/**
+ * What an item changes or leaves: positions, a size, a note's text, or a
+ * hop's route, which is "automatic" or a route override's points.
+ */
+const Route = Schema.Struct({
+  route: Schema.Union([Schema.Literal("automatic"), Schema.Array(Spot)]),
+});
+
+export const Facts = Schema.NullOr(
+  Schema.Union([
+    Schema.Record(Schema.String, Spot),
+    Size,
+    Schema.Struct({ text: Schema.String }),
+    Route,
+  ])
+);
+
+export type Facts = typeof Facts.Type;
+
+/** A verdict as `review` reports it. */
+export const VerdictFacts = Schema.Struct({
+  verdict: Schema.Literals(verdictKinds),
+  reason: Schema.optionalKey(Schema.String),
+});
+
+/** One item of the batch, as `review --json` prints it. */
+export const ReportedItem = Schema.Struct({
+  id: ChangeId,
+  kind: Schema.String,
+  /** The structures the item acts on or is pinned to. */
+  targets: Schema.Array(
+    Schema.Struct({ id: Schema.String, name: Schema.String })
+  ),
+  /** What the map has now, or null for an item that adds something. */
+  before: Facts,
+  /** What accepting the item makes. */
+  after: Facts,
+  /** Why accepting the item would break the map, or null when it wouldn't. */
+  breaks: Schema.NullOr(Schema.String),
+  /** The rejected item this one takes up again, or null. */
+  replaces: Schema.NullOr(ChangeId),
+  verdict: Schema.NullOr(VerdictFacts),
+});
+
+export type ReportedItem = typeof ReportedItem.Type;
+
+/** The oldest batch with no commit, with its items. */
+export const ReviewedBatch = Schema.Struct({
+  number: Schema.Int,
+  frozenAt: Schema.String,
+  items: Schema.Array(ReportedItem),
+});
+
+/** What `review --json` prints. */
+export const ReviewReport = Schema.Struct({
+  /** The absolute path of the home folder. */
+  home: Schema.String,
+  /** The oldest batch with no commit, or null when none is waiting. */
+  batch: Schema.NullOr(ReviewedBatch),
+});
+
+export type ReviewReport = typeof ReviewReport.Type;

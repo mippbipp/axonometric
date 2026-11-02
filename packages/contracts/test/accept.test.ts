@@ -520,7 +520,7 @@ describe("the revision file", () => {
       revision: 1,
       savedAt: "2026-11-01T09:00:00.000Z",
       message: "Move Save server",
-      accepted: [{ kind: "layout", change: move("m1", "a", [0, 6]) }],
+      accepted: [{ kind: "layout", id: "m1", change: move("m1", "a", [0, 6]) }],
       rejected: [],
       data,
       layout: snapshot,
@@ -574,6 +574,7 @@ describe("the revision file", () => {
           accepted: [
             {
               kind: "layout",
+              id: "m1",
               change: move("m1", "a", [0, 6]),
               reason: "Looks right.",
             },
@@ -581,6 +582,7 @@ describe("the revision file", () => {
           rejected: [
             {
               kind: "layout",
+              id: "m2",
               change: move("m2", "b", [4, 6]),
               reason: "Too close.",
             },
@@ -594,7 +596,10 @@ describe("the revision file", () => {
   it.effect("refuses a rejected item with no reason", () =>
     Effect.gen(function* () {
       const revision = yield* revisionOf;
-      const rejected = [{ kind: "layout", change: move("m2", "b", [4, 6]) }];
+
+      const rejected = [
+        { kind: "layout", id: "m2", change: move("m2", "b", [4, 6]) },
+      ];
 
       assert.isTrue(
         Result.isFailure(decodeRevision({ ...revision, rejected }))

@@ -4,63 +4,17 @@ import {
   maxMessageLength,
   structuresOf,
 } from "@axonometric/contracts";
-import type { ChangeId, Layout, LayoutChange } from "@axonometric/contracts";
-import { Array as Arr, Option, Record as Rec } from "effect";
+import type { ChangeId, LayoutChange } from "@axonometric/contracts";
+import { Array as Arr, Record as Rec } from "effect";
 import { useId, useState } from "react";
 
 import { useAccepting } from "./accepting-context.ts";
 import { controlClass } from "./control-class.ts";
+import { describeChange } from "./describe-change.ts";
 import { useEditing } from "./editing-context.ts";
+import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
-
-const spot = ({ x, y }: { readonly x: number; readonly y: number }) =>
-  `${x}, ${y}`;
-
-/** Each structure or hop a change acts on, named, and what happens to it. */
-const describe = (
-  change: LayoutChange,
-  accepted: Layout,
-  names: {
-    readonly structure: (id: string) => string;
-    readonly hop: (id: string) => string;
-  }
-) => {
-  const nameOf = names.structure;
-
-  if (change.kind === "reroute") {
-    const hop = names.hop(change.target.id);
-
-    return [
-      change.points === null
-        ? `Route ${hop} reset to automatic routing`
-        : `Route ${hop} set by hand`,
-    ];
-  }
-
-  if (change.kind === "move") {
-    return Arr.map(change.moves, ({ target, position }) => {
-      const before = Rec.get(accepted.structures, target.id);
-
-      const from = Option.match(before, {
-        onNone: () => "",
-        onSome: (placement) => ` from ${spot(placement)}`,
-      });
-
-      return `${nameOf(target.id)} moved${from} to ${spot(position)}`;
-    });
-  }
-
-  const { w, d } = change.footprint;
-  const before = Rec.get(accepted.structures, change.target.id);
-
-  const from = Option.match(before, {
-    onNone: () => "",
-    onSome: (placement) => ` from ${placement.w} × ${placement.d}`,
-  });
-
-  return [`${nameOf(change.target.id)} resized${from} to ${w} × ${d}`];
-};
 
 /**
  * The Pending tab: every pending layout change, with buttons that accept it
@@ -187,7 +141,7 @@ export function PendingTab() {
                 >
                   <span className="min-w-0 flex-1">
                     {Arr.join(
-                      describe(change, accepted, {
+                      describeChange(change, accepted, {
                         structure: nameOf,
                         hop: hopName,
                       }),
@@ -255,6 +209,7 @@ export function PendingTab() {
           </ul>
         </section>
       ) : null}
+      <ReviewList />
     </section>
   );
 }

@@ -27,6 +27,7 @@ import { PacketLayer } from "./packets.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
 import { screenRouteOf } from "./projection.ts";
+import { ReadyForReview } from "./ready-for-review.tsx";
 import { useSelection } from "./selection-context.ts";
 import { useSelectionKeys } from "./selection-keys.ts";
 import { SelectionProvider } from "./selection.tsx";
@@ -170,6 +171,7 @@ function WalkthroughPage({ notices }: Notices) {
           {state.data.overview.title}
         </h1>
         <div className="ml-auto flex items-stretch gap-1.5">
+          <ReadyForReview />
           <ViewToggle
             view={view}
             choose={setView}
