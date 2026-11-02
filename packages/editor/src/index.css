@@ -92,6 +92,19 @@
   stroke: var(--multi);
 }
 
+/* The spotlight fades parts through their opacity attribute, so a file looks
+   the same. On the page the change takes a moment, unless the system asks
+   for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-hop],
+  [data-hidden-hop],
+  [data-hop-label],
+  [data-structure],
+  [data-name-tag] {
+    transition: opacity 120ms ease-out;
+  }
+}
+
 /* A structure being dragged, with its name tag and badge, is see-through, so
    what it's dragged over shows. */
 [data-drag-shifted] {

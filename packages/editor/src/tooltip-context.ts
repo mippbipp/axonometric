@@ -16,6 +16,13 @@ export interface TooltipActions {
 
 export const HoveredContext = createContext<Hovered | null>(null);
 
+/**
+ * The id of the structure under the pointer or keyboard focus, or `null`.
+ * Unlike `HoveredContext` it doesn't change as the pointer moves over the
+ * structure, so what reads only the id doesn't draw again.
+ */
+export const HoveredIdContext = createContext<string | null>(null);
+
 export const TooltipActionsContext = createContext<TooltipActions | null>(null);
 
 /** Shows and hides the structure tooltip. Call it inside a `TooltipProvider`. */

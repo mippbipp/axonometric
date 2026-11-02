@@ -40,6 +40,17 @@ export const dashes = {
   fresh: "5 4",
 } as const;
 
+/**
+ * How strongly the parts outside the spotlight are drawn, as SVG `opacity`
+ * values. The page and every exported file take them from here.
+ */
+export const fadedOpacity = {
+  /** A hop's line, arrowhead, bend marks and label. */
+  line: 0.25,
+  /** A structure, with its name tag and code chip. */
+  structure: 0.5,
+} as const;
+
 /** The "White background" option's colour. */
 export const whiteBackground = "#ffffff";
 

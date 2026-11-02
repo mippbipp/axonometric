@@ -1,10 +1,11 @@
 import type { Status } from "@axonometric/contracts";
-import { dashes } from "@axonometric/contracts";
+import { dashes, fadedOpacity } from "@axonometric/contracts";
 import { createContext, use } from "react";
 import type { SVGProps } from "react";
 
 import { useDrawing } from "./drawing-context.ts";
 import type { Paint } from "./drawing-context.ts";
+import { fadedOpacityOf } from "./fading.ts";
 
 /**
  * How one structure's parts are painted for its status. Live is the plain
@@ -71,8 +72,18 @@ export const useLook = (): Look => {
 /** The fill of a face of the structure being drawn. */
 export const useFace = (): string => useLook().face;
 
-/** What every part of a structure inherits from the group around it. */
-export const frameAttributes = (look: Look): SVGProps<SVGGElement> => ({
+/**
+ * What every part of a structure inherits from the group around it,
+ * including the fading of a structure outside the spotlight.
+ */
+export const frameAttributes = ({
+  look,
+  faded,
+}: {
+  readonly look: Look;
+  readonly faded?: boolean | undefined;
+}): SVGProps<SVGGElement> => ({
+  opacity: fadedOpacityOf({ faded, strength: fadedOpacity.structure }),
   stroke: look.paint.ink,
   strokeWidth: 1.2,
   strokeLinejoin: "round",

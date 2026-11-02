@@ -25,6 +25,7 @@ import { PlaybackContext } from "./playback.ts";
 import { routesOf } from "./projection.ts";
 import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
+import { useSpotlight } from "./spotlight.ts";
 import { Viewport } from "./viewport.tsx";
 
 /** A dashed outline around the footprint of a newly revealed structure. */
@@ -70,8 +71,9 @@ const useSelectedHop = () => use(PlaybackContext)?.selected?.hop.id;
  * the contracts scene, which keeps every name tag, label, zone title and
  * chip clear of each other and of the boxes. The view fits the structures
  * in `fitTo` and the hops between them, and fits again when `fitKey`
- * changes. Switching `view` keeps the viewport, with the same ground point
- * in the middle. `children` draw on top, in the same coordinates, and pan
+ * changes. Parts outside the spotlight are drawn faded; see
+ * `useSpotlight`. Switching `view` keeps the viewport, with the same ground
+ * point in the middle. `children` draw on top, in the same coordinates, and pan
  * and zoom with the drawing.
  */
 export function MapView({
@@ -107,6 +109,7 @@ export function MapView({
   const hatch = `${idPrefix}hatch`;
   const selectedHop = useSelectedHop();
   const [hoveredHop, setHoveredHop] = useState<string | null>(null);
+  const spotlight = useSpotlight(hoveredHop);
   // The zoom the text is sized for, which the viewport reports as it zooms.
   const [textZoom, setTextZoom] = useState(1);
 
@@ -189,6 +192,7 @@ export function MapView({
             scene={scene}
             hatch={hatch}
             newlyRevealed={newlyRevealed}
+            spotlight={spotlight}
             underlay={
               <g>
                 {Arr.map(marked, (item) => (

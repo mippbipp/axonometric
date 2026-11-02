@@ -1,5 +1,5 @@
 import type { ChapterStop, Hop, MapState } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import { Array as Arr, Option } from "effect";
 
 /** What the last chapter's flow picker has chosen to play. */
 export type FlowChoice =
@@ -94,4 +94,30 @@ export const chapterPlayOf = ({
     key: `${stop.id}|${flowChoiceKey(choice)}`,
     runs: Arr.flatMap(lists, (list) => run(list.id, list.name, list.hops)),
   };
+};
+
+/**
+ * The hops a flow choice highlights, for the spotlight: the chapter's hops,
+ * one flow's, or `"all"` for every flow, which highlights nothing in
+ * particular.
+ */
+export const playedHopsOf = ({
+  state,
+  stop,
+  choice,
+}: ChapterOfMap & {
+  readonly choice: FlowChoice;
+}): readonly string[] | "all" => {
+  if (choice.kind === "all") {
+    return "all";
+  }
+
+  if (choice.kind === "chapter") {
+    return stop.plays;
+  }
+
+  return Arr.findFirst(state.data.flows, (flow) => flow.id === choice.id).pipe(
+    Option.map((flow) => flow.hops),
+    Option.getOrElse((): readonly string[] => [])
+  );
 };

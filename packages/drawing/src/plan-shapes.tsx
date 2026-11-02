@@ -393,6 +393,7 @@ export function PlanStructure({
   placed: { structure, bounds, chip },
   hatch,
   isNew,
+  faded,
 }: StructureDrawingProps) {
   const { paint, Frame } = useDrawing();
   const look = looksOf(paint)[structure.status];
@@ -408,6 +409,7 @@ export function PlanStructure({
       shape={structure.shape}
       status={structure.status}
       isNew={isNew}
+      faded={faded}
       look={look}
     >
       <LookContext value={look}>
