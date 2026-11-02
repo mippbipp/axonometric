@@ -1,4 +1,5 @@
 import {
+  droppedIntoGroup,
   groundProjections,
   samePlacement,
   samePosition,
@@ -10,7 +11,7 @@ import type {
   StructureMove,
   View,
 } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import { Array as Arr, Option } from "effect";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
@@ -19,6 +20,7 @@ import { shiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { useDropOutlines } from "./outlines-context.ts";
+import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -168,9 +170,10 @@ export function LayoutEditor({
   readonly children: ReactNode;
 }) {
   const editing = useEditing();
+  const proposing = useProposed();
   const preview = useDragPreview();
   const setOutlines = useDropOutlines()?.set;
-  const { state } = useWalkthrough();
+  const { state, revealed } = useWalkthrough();
   const { selected, multiSelection } = useSelection();
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
@@ -388,7 +391,8 @@ export function LayoutEditor({
               ? editing.refusalOfMoves(
                   movesOf(ids, placements, { start: current.start, next })
                 )
-              : editing.refusalOf(current.id, next),
+              : (proposing?.refusalOfPlace(current.id, next) ??
+                editing.refusalOf(current.id, next)),
           }
     );
   };
@@ -411,8 +415,30 @@ export function LayoutEditor({
     ) {
       if (drag.ids.length > 1) {
         editing.arrange(() => movesOf(drag.ids, placements, drag));
+      } else if (proposing?.isOpenAdd(drag.id) === true) {
+        // A structure that is only proposed moves with its proposal.
+        proposing.place(drag.id, drag.next, () => {});
       } else {
         editing.place(drag.id, drag.next);
+
+        // A drop in another group's zone proposes that group as well. In
+        // its own zone, or in none, the move is a layout change alone.
+        const group = Option.getOrUndefined(
+          droppedIntoGroup({
+            data: state.data,
+            layout: state.layout,
+            id: drag.id,
+            at: drag.next,
+            revealed,
+          })
+        );
+
+        if (group !== undefined) {
+          proposing?.propose(
+            { action: "group", structure: drag.id, group },
+            () => {}
+          );
+        }
       }
     }
 

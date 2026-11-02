@@ -17,6 +17,7 @@ import {
   idOfTargetKey,
   layoutRefusal,
   sharedTarget,
+  structuresOf,
 } from "./proposals.ts";
 import type {
   Batch,
@@ -113,6 +114,53 @@ export const frozenRefusal: {
 const keyOf = (change: LayoutChange) => JSON.stringify(change);
 
 /**
+ * Why layout changes `after` can't act on a structure the engineer proposed.
+ * Such a structure moves with its proposal: an open one when it is dragged,
+ * and a frozen one not until the agent commits.
+ */
+const proposedStructureRefusal = (
+  proposals: Proposals,
+  after: readonly LayoutChange[]
+): Option.Option<string> => {
+  const before = new Set(Arr.map(proposals.layout, keyOf));
+
+  const touched = new Set(
+    Arr.flatMap(
+      Arr.filter(after, (change) => !before.has(keyOf(change))),
+      structuresOf
+    )
+  );
+
+  const open = Arr.flatMap(proposals.structures ?? [], ({ change }) =>
+    change.action === "add" ? [change.structure.id] : []
+  );
+
+  const waiting = Arr.flatMap(batchesOf(proposals), (batch) =>
+    isOpenBatch(batch)
+      ? Arr.flatMap(batch.items, (item) =>
+          item.kind === "structure" && item.change.action === "add"
+            ? [item.change.structure.id]
+            : []
+        )
+      : []
+  );
+
+  const inBatch = Arr.findFirst(waiting, (id) => touched.has(id));
+
+  if (Option.isSome(inBatch)) {
+    return Option.some(
+      `"${inBatch.value}" is a new structure in a batch that is waiting for the agent. It can be moved once the agent commits.`
+    );
+  }
+
+  return Option.map(
+    Arr.findFirst(open, (id) => touched.has(id)),
+    (id) =>
+      `"${id}" is a structure you proposed. Move it by dragging it, which changes the proposal.`
+  );
+};
+
+/**
  * Why a write that sets the open layout changes to `after` has to wait, or
  * nothing when it can go ahead.
  *
@@ -137,6 +185,12 @@ export const frozenWriteRefusal = ({
   /** The list of open layout changes the write would leave. */
   readonly after: readonly LayoutChange[];
 }): Option.Option<string> => {
+  const proposedOnly = proposedStructureRefusal(proposals, after);
+
+  if (Option.isSome(proposedOnly)) {
+    return proposedOnly;
+  }
+
   const frozen = Arr.filter(
     frozenLayoutChanges(proposals),
     (change) => change.kind === "reroute"
@@ -653,17 +707,40 @@ export const commitBatch = ({
         );
 
   return Result.map(applied, (nextLayout): Committing => {
-    const batches = Arr.map(proposals.batches ?? [], (other) =>
-      other.number === batch.number
-        ? { ...other, committed: { revision, at } }
-        : other
+    const retargetItems = (items: readonly BatchItem[]) =>
+      renames.size === 0
+        ? items
+        : Arr.map(items, (one) => specOf(one).retargeted(one, renames));
+
+    // Batches that still wait, and the open items, point at the id the
+    // agent gave the structure, so the page follows it.
+    const batches = Arr.map(proposals.batches ?? [], (other) => {
+      if (other.number === batch.number) {
+        return {
+          ...other,
+          items: retargetItems(other.items),
+          committed: { revision, at },
+        };
+      }
+
+      return other.committed === undefined
+        ? { ...other, items: retargetItems(other.items) }
+        : other;
+    });
+
+    const retargetedOpen = Arr.reduce(allKinds, proposals, (held, kind) =>
+      Arr.reduce(
+        retargetItems(kind.open(proposals)),
+        kind.clear(held),
+        (so, one) => kind.add(so, one)
+      )
     );
 
     return {
       batch,
       layout: nextLayout,
       proposals: {
-        ...proposals,
+        ...(renames.size === 0 ? proposals : retargetedOpen),
         revision: proposals.revision + 1,
         batches,
       },

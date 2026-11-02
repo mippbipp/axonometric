@@ -18,6 +18,8 @@ export interface ProposedMap {
   readonly touches: ReadonlyMap<string, Touches>;
   /** Every structure some proposal adds, changes, moves or removes. */
   readonly structures: ReadonlySet<string>;
+  /** The structures that proposals add, by provisional id. */
+  readonly adds: ReadonlySet<string>;
   /** Every hop some proposal reroutes. */
   readonly hops: ReadonlySet<string>;
   /** The structures proposed for deletion, which the page crosses out. */
@@ -92,6 +94,7 @@ export const proposedMap = ({
     state: { ...state, data: applied.data, layout: applied.layout },
     touches,
     structures: new Set(Arr.flatMap(all, ({ structures }) => structures)),
+    adds: new Set(Arr.flatMap(all, ({ adds }) => adds)),
     hops: new Set(Arr.flatMap(all, ({ hops }) => hops)),
     removes: new Set(Arr.flatMap(all, ({ removes }) => removes)),
   };

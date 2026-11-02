@@ -2,7 +2,9 @@ import {
   applyLayoutChanges,
   emptyProposals,
   frozenLayoutChanges,
+  proposedMap,
   reviewEntries,
+  structureRenames,
 } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
@@ -17,6 +19,10 @@ import type { Editing } from "./editing-context.ts";
 import { HistoryContext } from "./history-context.ts";
 import { useHistoryView } from "./history-view.tsx";
 import { RestoreDialog } from "./restore-dialog.tsx";
+import { ExportStateContext } from "./export-state-context.ts";
+import { ProposedContext } from "./proposed-context.ts";
+import type { ProposedStructures } from "./proposed-context.ts";
+import { RenamesContext } from "./renames-context.ts";
 import { ReviewContext } from "./review-context.ts";
 import type { Review } from "./review-context.ts";
 import type {
@@ -120,9 +126,31 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
   const proposals = view.state.proposals ?? emptyProposals;
   const frozen = useMemo(() => frozenLayoutChanges(proposals), [proposals]);
 
-  // Frozen layout changes wait for the agent. They stay drawn as pending,
-  // under the open ones.
+  // Frozen items wait for the agent. They stay drawn as pending, under the
+  // open ones. Layout changes land on the accepted layout last, so a
+  // structure that is only proposed can be dragged like any other.
+  const proposed = useMemo(
+    () =>
+      proposedMap({
+        state: view.state,
+        proposals: { ...proposals, layout: pending },
+      }),
+    [view.state, proposals, pending]
+  );
+
   const shown = useMemo(
+    () => ({
+      ...proposed.state,
+      layout: applyLayoutChanges(proposed.state.layout, frozen),
+    }),
+    [proposed.state, frozen]
+  );
+
+  const renames = useMemo(() => structureRenames(proposals), [proposals]);
+
+  // What an export saves: the map as it was before proposals, with the
+  // pending layout changes it always showed.
+  const exported = useMemo(
     () => ({
       ...view.state,
       layout: applyLayoutChanges(accepted, [...frozen, ...pending]),
@@ -174,6 +202,25 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [view.stopped, view.accepting, store]
   );
 
+  const proposing = useMemo((): ProposedStructures | null => {
+    const names = new Map(
+      Arr.map(proposed.state.data.structures, ({ id, name }) => [id, name])
+    );
+
+    return {
+      proposed,
+      canPropose: !view.stopped,
+      open: proposals.structures ?? [],
+      nameOf: (id) => names.get(id) ?? id,
+      propose: store.structures.propose,
+      refusalOf: store.structures.refusalOf,
+      isOpenAdd: store.structures.isOpenAdd,
+      refusalOfPlace: store.structures.refusalOfPlace,
+      place: store.structures.place,
+      discard: store.structures.discard,
+    };
+  }, [proposed, proposals.structures, view.stopped, store]);
+
   const review = useMemo((): Review => {
     const entries = reviewEntries(proposals);
 
@@ -182,6 +229,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       entries,
       notes: Arr.filter(entries, ({ item }) => item.kind === "note"),
       openNotes: proposals.notes?.length ?? 0,
+      openStructures: proposals.structures?.length ?? 0,
       replaces: proposals.replaces ?? {},
       ops: store.review,
     };
@@ -191,6 +239,9 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     <EditingContext value={editing}>
       <AcceptingContext value={accepting}>
         <ReviewContext value={review}>
+          <ProposedContext value={history.past ? null : proposing}>
+            <RenamesContext value={renames}>
+              <ExportStateContext value={history.past ? null : exported}>
           <HistoryContext value={history.panel}>
             <CompareContext value={history.marks}>
               <App
@@ -215,6 +266,9 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
               )}
             </CompareContext>
           </HistoryContext>
+              </ExportStateContext>
+            </RenamesContext>
+          </ProposedContext>
         </ReviewContext>
       </AcceptingContext>
     </EditingContext>

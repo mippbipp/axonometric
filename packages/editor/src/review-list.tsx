@@ -6,8 +6,10 @@ import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
+import { describeStructureChange } from "./describe-structure.ts";
 import { useEditing } from "./editing-context.ts";
 import { NoteForm } from "./note-form.tsx";
+import { useProposed } from "./proposed-context.ts";
 import { useReview } from "./review-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -53,14 +55,26 @@ export function VerdictBadge({
 const useItemDescription = () => {
   const byId = useStructuresById();
   const editing = useEditing();
+  const proposed = useProposed();
   const { state } = useWalkthrough();
-  const nameOf = (id: string) => byId.get(id)?.name ?? id;
+  const nameOf = (id: string) =>
+    byId.get(id)?.name ?? proposed?.nameOf(id) ?? id;
+
+  const groupTitleOf = (id: string) =>
+    Arr.findFirst(state.data.groups, (group) => group.id === id).pipe(
+      Option.map(({ title }) => title),
+      Option.getOrElse(() => id)
+    );
 
   const hopName = hopLabelOf(state.data.hops);
 
   return (item: BatchItem): string => {
     if (item.kind === "note") {
       return `Note on ${nameOf(item.target.id)}: ${item.text}`;
+    }
+
+    if (item.kind === "structure") {
+      return describeStructureChange(item.change, nameOf, groupTitleOf);
     }
 
     return editing === null

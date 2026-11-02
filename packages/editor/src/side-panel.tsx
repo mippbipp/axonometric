@@ -267,6 +267,7 @@ const useWaitingCount = () =>
     ({ item, status }) =>
       status.state === "frozen" ||
       (status.state === "open" && item.kind === "note") ||
+      (status.state === "open" && item.kind === "structure") ||
       (status.state === "reviewed" &&
         !status.dismissed &&
         status.verdict.verdict === "rejected")

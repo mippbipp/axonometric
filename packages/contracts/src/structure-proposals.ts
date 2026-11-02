@@ -245,6 +245,21 @@ export const proposeStructure = ({
 
   const target = structureOf(change);
 
+  if (
+    change.action === "add" &&
+    Arr.some(
+      open,
+      (other) =>
+        other.id !== id &&
+        other.change.action === "add" &&
+        other.change.structure.id === target
+    )
+  ) {
+    return Result.fail(
+      `Another proposal already adds a structure with the id "${target}".`
+    );
+  }
+
   if (Arr.some(frozenAdds(proposals), (waiting) => waiting === target)) {
     return Result.fail(
       `"${target}" is a new structure in a batch that is waiting for the agent. Edits go in the next batch, once the agent commits.`

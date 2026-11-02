@@ -122,7 +122,8 @@ export function ReadyForReview() {
     return null;
   }
 
-  const open = (editing?.pending.length ?? 0) + review.openNotes;
+  const open =
+    (editing?.pending.length ?? 0) + review.openNotes + review.openStructures;
 
   const press = () => {
     setBusy(true);

@@ -71,6 +71,8 @@ export interface MapShape {
  */
 export interface Touches {
   readonly structures: readonly string[];
+  /** Structures the item adds, which exist only as a proposal so far. */
+  readonly adds: readonly string[];
   readonly hops: readonly string[];
   /** Structures proposed for deletion, which stay on the map until reviewed. */
   readonly removes: readonly string[];
@@ -79,6 +81,7 @@ export interface Touches {
 /** An item that draws nothing differently. */
 export const touchesNothing: Touches = {
   structures: [],
+  adds: [],
   hops: [],
   removes: [],
 };
@@ -299,6 +302,7 @@ const layoutKind: KindSpec<LayoutItem> = {
   }),
   touches: ({ change }) => ({
     structures: structuresOf(change),
+    adds: [],
     hops: hopsOf(change),
     removes: [],
   }),
@@ -537,6 +541,7 @@ const structureKind: KindSpec<StructureItem> = {
 
     return {
       structures: [...marks.added, ...marks.removed, ...marks.changed],
+      adds: marks.added,
       hops: [],
       removes: marks.removed,
     };

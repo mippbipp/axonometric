@@ -363,6 +363,7 @@ export {
   maxReasonLength,
   Reason,
   RequiredReason,
+  StructureProposal,
   Verdict,
   verdictKinds,
 } from "./proposals.ts";
@@ -448,6 +449,7 @@ export type { ProposedMap } from "./proposed-map.ts";
 export {
   maxStructureNameLength,
   NewStructure,
+  provisionalIdOf,
   ProvisionalId,
   StructureChange,
   StructureId,
@@ -458,6 +460,7 @@ export {
 export {
   codeOfName,
   describePlacement,
+  droppedIntoGroup,
   layoutWithAdds,
   marksOfStructureChange,
   proposedDetails,

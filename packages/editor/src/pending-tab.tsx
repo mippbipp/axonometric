@@ -13,6 +13,7 @@ import { useAccepting } from "./accepting-context.ts";
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditing } from "./editing-context.ts";
+import { PendingStructures } from "./pending-structures.tsx";
 import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -204,6 +205,7 @@ export function PendingTab() {
           </ul>
         </section>
       ) : null}
+      <PendingStructures />
       <ReviewList />
     </section>
   );

@@ -60,7 +60,7 @@ const reportItem = ({
 }): ReportedItem => {
   const spec = specOf(item);
   const { before, after } = spec.facts(item, layout, data);
-  const structureIds = new Set(names.keys());
+  const structureIds = new Set([...names.keys(), ...proposedNames.keys()]);
 
   // A reroute acts on a hop, which the engineer knows by its label. A
   // structure the engineer proposes has no name in data.mjs yet.

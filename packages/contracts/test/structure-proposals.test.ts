@@ -5,9 +5,11 @@ import {
   breakageOf,
   commitBatch,
   discardStructureProposal,
+  droppedIntoGroup,
   freezeOpen,
   proposedMap,
   proposeStructure,
+  provisionalIdOf,
   recordVerdict,
   summaryLine,
 } from "../src/index.ts";
@@ -779,5 +781,45 @@ describe("the prompt line and review's before and after", () => {
     );
 
     assert.notInclude(hostile, "\n");
+  });
+});
+
+describe("dropping a structure into a zone", () => {
+  // g1 holds a (0,0) and b (4,0); g2 holds c (8,0). Zones reach 1 past them.
+  const dropped = (id: string, x: number, y: number) =>
+    droppedIntoGroup({
+      data,
+      layout,
+      id,
+      at: { x, y, w: 2, d: 2 },
+    });
+
+  it("proposes the other group when the footprint's centre is in its zone", () => {
+    assert.deepStrictEqual(dropped("a", 8, 0), Option.some("g2"));
+  });
+
+  it("proposes nothing for a drop in the structure's own zone", () => {
+    // b is a's only neighbour; its zone covers x 3 to 7.
+    assert.deepStrictEqual(dropped("a", 4, 0), Option.none());
+    assert.deepStrictEqual(dropped("a", 3, 0), Option.none());
+  });
+
+  it("proposes nothing for a drop in no zone", () => {
+    assert.deepStrictEqual(dropped("a", 0, 12), Option.none());
+  });
+
+  it("is not stretched by the dropped structure itself", () => {
+    // c is alone in g2: with c gone, g2 has no zone to land in.
+    assert.deepStrictEqual(dropped("c", 8, 0), Option.none());
+    assert.deepStrictEqual(dropped("b", 8, 0), Option.some("g2"));
+  });
+});
+
+describe("a provisional id", () => {
+  it("is the name as a slug and a suffix, and fits the id pattern", () => {
+    assert.strictEqual(provisionalIdOf("Build Cache!", "4f2a"), "build-cache-4f2a");
+    assert.strictEqual(provisionalIdOf("  ", "4f2a"), "structure-4f2a");
+    assert.strictEqual(provisionalIdOf("Über", "ab12"), "ber-ab12");
+    assert.match(provisionalIdOf("x".repeat(100), "ab12"), /^[\w-]{1,64}$/u);
   });
 });

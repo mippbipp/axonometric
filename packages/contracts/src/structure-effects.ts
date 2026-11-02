@@ -5,6 +5,7 @@ import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { quoteText } from "./quote.ts";
 import { structureOf } from "./structure-change.ts";
+import { zonesOf } from "./zones.ts";
 import type { NewStructure, StructureChange } from "./structure-change.ts";
 
 /** What a structure the engineer proposes says until the agent writes it. */
@@ -297,3 +298,52 @@ export const layoutWithAdds = (
   Arr.reduce(changes, layout, (so, change) =>
     structureChangeToLayout(so, change)
   );
+
+/**
+ * The group whose zone a structure dropped at `at` lands in, when that is
+ * not the group it is in, or nothing. The zones are those of the other
+ * structures, so the structure itself neither stretches its own zone nor
+ * the one it is dropped in. A drop is in a zone when the footprint's centre
+ * is inside it. A drop in the structure's own zone, or in none, is a layout
+ * change only.
+ */
+export const droppedIntoGroup = ({
+  data,
+  layout,
+  id,
+  at,
+  revealed,
+}: {
+  readonly data: Pick<MapData, "groups" | "structures">;
+  readonly layout: Layout;
+  readonly id: string;
+  readonly at: Placement;
+  readonly revealed?: ReadonlySet<string> | undefined;
+}): Option.Option<string> => {
+  const own = Arr.findFirst(data.structures, (structure) => structure.id === id);
+
+  if (Option.isNone(own)) {
+    return Option.none();
+  }
+
+  const zones = zonesOf({
+    data,
+    layout: { ...layout, structures: Rec.remove(layout.structures, id) },
+    revealed,
+  });
+
+  const centre = { x: at.x + at.w / 2, y: at.y + at.d / 2 };
+
+  const inside = Arr.filter(
+    zones,
+    ({ box }) =>
+      centre.x >= box.x &&
+      centre.x <= box.x + box.w &&
+      centre.y >= box.y &&
+      centre.y <= box.y + box.d
+  );
+
+  return Arr.some(inside, ({ group }) => group.id === own.value.group)
+    ? Option.none()
+    : Option.map(Arr.head(inside), ({ group }) => group.id);
+};

@@ -120,3 +120,19 @@ export const structureOf = (change: StructureChange): string =>
 /** Whether two changes act on the same structure in the same way. */
 export const sameSubject = (a: StructureChange, b: StructureChange): boolean =>
   a.action === b.action && structureOf(a) === structureOf(b);
+
+/**
+ * A provisional id for a structure called `name`: its words as a slug, then
+ * `suffix`, such as `build-cache-4f2a`. The agent can use it as the
+ * structure's id as it stands.
+ */
+export const provisionalIdOf = (name: string, suffix: string): string => {
+  const slug = name
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/gu, "-")
+    .replaceAll(/^-+|-+$/gu, "")
+    .slice(0, 40)
+    .replaceAll(/-+$/gu, "");
+
+  return `${slug === "" ? "structure" : slug}-${suffix}`;
+};

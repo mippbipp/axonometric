@@ -8,6 +8,7 @@ import {
   hopLabelOf,
   MapFilesUnreadable,
   proposedMap,
+  proposedNames,
   ProposalRefused,
   proposeStructure,
   reopenItem,
@@ -167,7 +168,12 @@ const editing =
 export const addNoteWrite = editing<NoteAdd>(
   "addNoteWrite",
   ({ proposals, structures }, { baseFileRevision: _base, ...note }) =>
-    addNote({ proposals, note, known: new Set(structures.keys()) })
+    addNote({
+      proposals,
+      note,
+      // A note can be pinned to a structure that is only proposed so far.
+      known: new Set([...structures.keys(), ...proposedNames(proposals).keys()]),
+    })
 );
 
 /** Changes the text of an open note. */

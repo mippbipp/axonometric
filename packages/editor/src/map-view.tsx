@@ -27,10 +27,12 @@ import { NoteMarkers } from "./note-markers.tsx";
 import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
+import { RemovedMarks } from "./removed-marks.tsx";
 import { routesOf } from "./projection.ts";
 import { RouteEditor } from "./route-editor.tsx";
 import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
+import { SpotPicker } from "./spot-picker.tsx";
 import { useSpotlight, useSpotlightActions } from "./spotlight-context.ts";
 import { Viewport } from "./viewport.tsx";
 
@@ -222,6 +224,8 @@ export function MapView({
                     view={view}
                   />
                   <AcceptedOutlines structures={scene.structures} view={view} />
+                  <RemovedMarks structures={scene.structures} view={view} />
+                  <SpotPicker view={view} />
                   <CompareRings
                     structures={scene.structures}
                     view={view}
