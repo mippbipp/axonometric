@@ -58,7 +58,10 @@ import { openBrowser } from "./open-browser.ts";
 import { renderPage } from "./page.ts";
 import { writeGuardLayer, writePendingLayout } from "./pending-writes.ts";
 import {
+  addAnswerWrite,
   addNoteWrite,
+  addQuestionWrite,
+  addSuggestionWrite,
   discardNoteWrite,
   dismissWrite,
   editNoteWrite,
@@ -470,6 +473,9 @@ const routes = ({
     notes: Str.slice(1)(serverPaths.notes),
     editNote: Str.slice(1)(serverPaths.editNote),
     discardNote: Str.slice(1)(serverPaths.discardNote),
+    suggestions: Str.slice(1)(serverPaths.suggestions),
+    answers: Str.slice(1)(serverPaths.answers),
+    questions: Str.slice(1)(serverPaths.questions),
     freeze: Str.slice(1)(serverPaths.freeze),
     dismiss: Str.slice(1)(serverPaths.dismiss),
     reopen: Str.slice(1)(serverPaths.reopen),
@@ -574,6 +580,9 @@ const routes = ({
       .handle("addNote", reviewing(addNoteWrite))
       .handle("editNote", reviewing(editNoteWrite))
       .handle("discardNote", reviewing(discardNoteWrite))
+      .handle("addSuggestion", reviewing(addSuggestionWrite))
+      .handle("addAnswer", reviewing(addAnswerWrite))
+      .handle("addQuestion", reviewing(addQuestionWrite))
       .handle("freeze", reviewing(freezeWrite))
       .handle("dismiss", reviewing(dismissWrite))
       .handle("reopen", reviewing(reopenWrite))

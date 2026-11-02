@@ -124,7 +124,7 @@ describe("a note on a structure", () => {
 
         assert.deepStrictEqual(
           Arr.map(proposals.notes ?? [], ({ target, text }) => [
-            target.id,
+            target.kind === "spot" ? "spot" : target.id,
             text,
           ]),
           [["server", "Why a server, not a file watcher?"]]

@@ -1,20 +1,12 @@
-import {
-  Array as Arr,
-  Match,
-  Option,
-  pipe,
-  Record as Rec,
-  Result,
-  Schema,
-  String as Str,
-} from "effect";
-import { dual } from "effect/Function";
+import { Array as Arr, Match, Option, Record as Rec } from "effect";
 
 import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
+import type { MapData } from "./map-data.ts";
 import {
   applyLayoutChanges,
   layoutRefusal,
+  maxNoteLength,
   structuresOf,
   targetIdsOf,
 } from "./proposals.ts";
@@ -25,34 +17,16 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
+import {
+  answerKind,
+  questionKind,
+  suggestionKind,
+} from "./review-kinds-words.ts";
+import { decorate, oneLine, quoteText } from "./review-quote.ts";
 import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
-const encodeString = Schema.encodeResult(Schema.fromJsonString(Schema.String));
-
-/**
- * `text` as a JSON string literal on one line. The quotes and escapes keep
- * whatever the engineer typed inside its own literal, so it can't pass for
- * a line of the prompt. The line separators JSON leaves bare are escaped
- * too.
- */
-export const quoteText = (text: string): string =>
-  pipe(
-    Result.getOrElse(encodeString(text), () => '""'),
-    Str.replaceAll("\u0085", String.raw`\u0085`),
-    Str.replaceAll("\u2028", String.raw`\u2028`),
-    Str.replaceAll("\u2029", String.raw`\u2029`)
-  );
-
-/** `text` on one line, cut to `limit` characters. */
-export const oneLine: {
-  (limit: number): (text: string) => string;
-  (text: string, limit: number): string;
-} = dual(2, (text: string, limit: number): string => {
-  const flat = Arr.join(Str.split(/[\s\u0085]+/u)(Str.trim(text)), " ");
-
-  return flat.length <= limit ? flat : `${Str.slice(0, limit - 1)(flat)}…`;
-});
+export { oneLine, quoteText } from "./review-quote.ts";
 
 /** What a kind of item needs to know about the map. */
 export interface Landing {
@@ -62,21 +36,13 @@ export interface Landing {
   readonly structureIds: ReadonlySet<string>;
   /** The hops data.mjs has, which say where a reroute's ends belong. */
   readonly hops: readonly HopEnds[];
+  /**
+   * The map as data.mjs has it now, for the kinds that point into its text,
+   * such as a suggestion or an answer. Left out where the caller has only
+   * the ids; those kinds then check what they can.
+   */
+  readonly data?: MapData | undefined;
 }
-
-const decorate = <A extends object>(
-  base: A,
-  verdict: Verdict
-): A & { readonly reason?: string; readonly changed?: true } => {
-  const withReason =
-    "reason" in verdict && verdict.reason !== undefined
-      ? { ...base, reason: verdict.reason }
-      : base;
-
-  return verdict.verdict === "changed"
-    ? { ...withReason, changed: true }
-    : withReason;
-};
 
 /**
  * Everything the review loop needs to know about one kind of item. A new
@@ -111,8 +77,15 @@ export interface KindSpec<I extends BatchItem> {
     nameOf: (id: string) => string,
     hopLabelOf: (id: string) => string
   ): string;
-  /** What the item changes, from `layout`, for `review`. */
-  facts(item: I, layout: Layout): { before: Facts; after: Facts };
+  /**
+   * What the item changes, from `layout` and, for the kinds that point into
+   * its text, `data`, for `review`.
+   */
+  facts(
+    item: I,
+    layout: Layout,
+    data?: MapData
+  ): { before: Facts; after: Facts };
   /** Why accepting the item would break the map, or nothing. */
   breakage(item: I, landing: Landing): Option.Option<string>;
   /** The layout changes that take effect when the item gets `verdict`. */
@@ -123,6 +96,25 @@ export interface KindSpec<I extends BatchItem> {
   rejected(item: I, reason: string): RejectedItem;
   /** The item again under a new id, for an engineer who edits it after a rejection. */
   reopened(item: I, newId: ChangeId, text: string | undefined): I;
+  /** The most characters the kind's words hold. */
+  readonly textLimit: number;
+  /**
+   * Why the item was written against something data.mjs no longer says, or
+   * nothing. Unlike `breakage`, accepting it would not break the map; the
+   * agent should know before it judges the item.
+   */
+  outOfDate?(item: I, data: MapData): Option.Option<string>;
+  /**
+   * Why `item` can't join the items still waiting on the agent (`waiting`:
+   * open, or in a batch with no commit), or nothing. One answer per question,
+   * say.
+   */
+  clash?(item: I, waiting: readonly BatchItem[]): Option.Option<string>;
+  /**
+   * A line for the prompt and for `review` that tells the agent how to
+   * fold this kind in, said once when the batch holds an item of the kind.
+   */
+  notice?: string;
 }
 
 type LayoutItem = Extract<BatchItem, { kind: "layout" }>;
@@ -160,6 +152,7 @@ const routeOf = (layout: Layout, hop: string): Facts => {
 };
 
 const layoutKind: KindSpec<LayoutItem> = {
+  textLimit: Number.POSITIVE_INFINITY,
   open: (proposals) =>
     Arr.map(proposals.layout, (change): LayoutItem => ({
       id: change.id,
@@ -227,6 +220,7 @@ const layoutKind: KindSpec<LayoutItem> = {
 };
 
 const noteKind: KindSpec<NoteItem> = {
+  textLimit: maxNoteLength,
   open: (proposals) =>
     Arr.map(proposals.notes ?? [], (note): NoteItem => ({
       id: note.id,
@@ -240,16 +234,52 @@ const noteKind: KindSpec<NoteItem> = {
     notes: [...(proposals.notes ?? []), { id, target, text }],
   }),
   name: () => "note",
-  targets: (item) => [item.target.id],
-  summary: (item, nameOf) =>
-    `note ${item.id} on ${quoteText(nameOf(item.target.id))}: ${quoteText(oneLine(item.text, 80))}`,
-  facts: (item) => ({ before: null, after: { text: item.text } }),
-  breakage: (item, { structureIds }) =>
-    structureIds.has(item.target.id)
-      ? Option.none()
-      : Option.some(
-          `No structure in data.mjs has the id "${item.target.id}", so this note has nothing to point at.`
-        ),
+  targets: ({ target }) => (target.kind === "spot" ? [] : [target.id]),
+  summary: ({ id, target, text }, nameOf, hopLabelOf) => {
+    const said = quoteText(oneLine(text, 80));
+
+    return Match.value(target).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        structure: ({ id: on }) =>
+          `note ${id} on ${quoteText(nameOf(on))}: ${said}`,
+        hop: ({ id: on }) =>
+          `note ${id} on hop ${quoteText(hopLabelOf(on))}: ${said}`,
+        spot: ({ x, y }) => `note ${id} at the spot ${x}, ${y}: ${said}`,
+      })
+    );
+  },
+  facts: ({ target, text }) => ({
+    before: null,
+    after:
+      target.kind === "spot"
+        ? { text, spot: { x: target.x, y: target.y } }
+        : { text },
+  }),
+  breakage: ({ target, text }, { structureIds, hops }) => {
+    if (text.length > maxNoteLength) {
+      return Option.some(
+        `The note is ${text.length} characters, over the limit of ${maxNoteLength}.`
+      );
+    }
+
+    return Match.value(target).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        structure: ({ id }) =>
+          structureIds.has(id)
+            ? Option.none()
+            : Option.some(
+                `No structure in data.mjs has the id "${id}", so this note has nothing to point at.`
+              ),
+        hop: ({ id }) =>
+          Arr.some(hops, (hop) => hop.id === id)
+            ? Option.none()
+            : Option.some(
+                `No hop in data.mjs has the id "${id}", so this note has nothing to point at.`
+              ),
+        spot: () => Option.none(),
+      })
+    );
+  },
   applies: () => [],
   accepted: (item, verdict) =>
     decorate(
@@ -282,6 +312,9 @@ const noteKind: KindSpec<NoteItem> = {
 export const kindTable = {
   layout: layoutKind,
   note: noteKind,
+  suggestion: suggestionKind,
+  answer: answerKind,
+  question: questionKind,
 } satisfies {
   readonly [K in BatchItem["kind"]]: KindSpec<Extract<BatchItem, { kind: K }>>;
 };

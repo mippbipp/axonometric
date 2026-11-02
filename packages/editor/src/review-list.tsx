@@ -1,4 +1,8 @@
-import { hopLabelOf } from "@axonometric/contracts";
+import {
+  hopLabelOf,
+  maxNoteLength,
+  maxSuggestionLength,
+} from "@axonometric/contracts";
 import type { BatchItem, ReviewEntry, Verdict } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr, Match, Option, Record as Rec, Result } from "effect";
@@ -6,6 +10,7 @@ import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
+import { describeWords, wordsOf } from "./describe-words.ts";
 import { useEditing } from "./editing-context.ts";
 import { NoteForm } from "./note-form.tsx";
 import { useReview } from "./review-context.ts";
@@ -59,8 +64,11 @@ const useItemDescription = () => {
   const hopName = hopLabelOf(state.data.hops);
 
   return (item: BatchItem): string => {
-    if (item.kind === "note") {
-      return `Note on ${nameOf(item.target.id)}: ${item.text}`;
+    if (item.kind !== "layout") {
+      return Option.getOrElse(
+        describeWords(item, { structure: nameOf, hop: hopName }),
+        () => item.id
+      );
     }
 
     return editing === null
@@ -96,8 +104,10 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
   const isRejected =
     status.state === "reviewed" && status.verdict.verdict === "rejected";
 
+  const words = Option.getOrUndefined(wordsOf(item));
+
   const reopen = () => {
-    if (item.kind === "note") {
+    if (words !== undefined) {
       setEditing(true);
 
       return;
@@ -146,10 +156,13 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
           {failure}
         </span>
       )}
-      {editing && item.kind === "note" ? (
+      {editing && words !== undefined ? (
         <NoteForm
-          label="Your note, edited again"
-          initial={item.text}
+          label="Your words, edited again"
+          initial={words}
+          limit={
+            item.kind === "suggestion" ? maxSuggestionLength : maxNoteLength
+          }
           submit="Send in next batch"
           onSubmit={(text, done) => {
             review.ops.reopen(item.id, text, (outcome) => {
@@ -166,7 +179,7 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
         />
       ) : (
         <span className="flex flex-wrap gap-1.5">
-          {status.state === "open" && item.kind === "note" ? (
+          {status.state === "open" && item.kind !== "layout" ? (
             <button
               type="button"
               className={controlClass}
@@ -228,7 +241,7 @@ export function ReviewList() {
   const entries = Arr.filter(
     review.entries,
     ({ item, status }) =>
-      (item.kind === "note" || status.state !== "open") &&
+      (item.kind !== "layout" || status.state !== "open") &&
       !(status.state === "reviewed" && status.dismissed)
   );
 

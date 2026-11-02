@@ -2,20 +2,23 @@ import {
   normalSourcePath,
   sourceKey,
   statusLabels,
+  stepDetailField,
+  stepNameField,
   uniqueSources,
 } from "@axonometric/contracts";
 import type { Source, Structure } from "@axonometric/contracts";
-import { Array as Arr, Option, Result, String as Str } from "effect";
+import { Array as Arr, String as Str } from "effect";
 import type { ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { MapLink } from "./map-link.tsx";
-import { NoteForm } from "./note-form.tsx";
+import { NotesSection } from "./notes-section.tsx";
+import { QuestionAnswer, RaisedQuestions } from "./question-actions.tsx";
 import { QuestionBody } from "./questions.tsx";
 import { useReview } from "./review-context.ts";
-import { VerdictBadge } from "./review-list.tsx";
 import { useSelection } from "./selection-context.ts";
 import { hasSteps } from "./structures.ts";
+import { SuggestableText } from "./suggestable-text.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 function Section({
@@ -33,15 +36,38 @@ function Section({
   );
 }
 
-function StepList({ structure }: { readonly structure: Structure }) {
+function StepList({
+  structure,
+  suggestable = false,
+}: {
+  readonly structure: Structure;
+  /** Whether each step's name and detail can be edited in place. */
+  readonly suggestable?: boolean;
+}) {
   return (
     <ol className="flex flex-col gap-1.5 text-sm">
       {Arr.map(structure.steps ?? [], (step, index) => (
         <li key={step.name} className="grid grid-cols-[1.5rem_1fr] gap-1">
           <span className="opacity-70">{index + 1}</span>
-          <span>
-            <b className="font-medium">{step.name}.</b> {step.detail}
-          </span>
+          {suggestable ? (
+            <span className="flex min-w-0 flex-col gap-1.5">
+              <SuggestableText
+                structure={structure.id}
+                field={stepNameField(index)}
+                text={step.name}
+                className="font-medium"
+              />
+              <SuggestableText
+                structure={structure.id}
+                field={stepDetailField(index)}
+                text={step.detail}
+              />
+            </span>
+          ) : (
+            <span>
+              <b className="font-medium">{step.name}.</b> {step.detail}
+            </span>
+          )}
         </li>
       ))}
     </ol>
@@ -79,72 +105,6 @@ function SourceList({ sources }: { readonly sources: readonly Source[] }) {
   );
 }
 
-/**
- * The notes on a structure, each with its status and verdict, and a form that
- * pins another. Only a page that can write has the form.
- */
-function NotesSection({ structure }: { readonly structure: Structure }) {
-  const review = useReview();
-
-  if (review === null) {
-    return null;
-  }
-
-  const notes = Arr.filter(
-    review.notes,
-    ({ item, status }) =>
-      item.kind === "note" &&
-      item.target.id === structure.id &&
-      !(status.state === "reviewed" && status.dismissed)
-  );
-
-  return (
-    <section data-notes-section className="flex flex-col gap-2">
-      <h3 className="text-xs tracking-widest uppercase opacity-70">Notes</h3>
-      {notes.length === 0 ? null : (
-        <ul className="flex flex-col gap-2">
-          {Arr.map(notes, ({ item, status }) => (
-            <li
-              key={item.id}
-              data-panel-note={item.id}
-              data-note-state={status.state}
-              className="border-pending flex flex-col gap-1 border-l-2 pl-2 text-sm"
-            >
-              <span className="break-words">
-                {item.kind === "note" ? item.text : null}
-              </span>
-              {status.state === "open" ? (
-                <span className="text-xs opacity-70">
-                  Open. It goes in the next batch.
-                </span>
-              ) : null}
-              {status.state === "frozen" ? (
-                <span className="text-xs opacity-70">
-                  In batch {status.batch}, waiting for the agent.
-                </span>
-              ) : null}
-              {status.state === "reviewed" ? (
-                <VerdictBadge verdict={status.verdict} batch={status.batch} />
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-      {review.canWrite ? (
-        <NoteForm
-          label="Pin a note"
-          submit="Pin note"
-          onSubmit={(text, done) => {
-            review.ops.addNote(structure.id, text, (outcome) => {
-              done(Option.getOrUndefined(Result.getFailure(outcome)));
-            });
-          }}
-        />
-      ) : null}
-    </section>
-  );
-}
-
 /** The pinned structure: what it is, how it's built and its questions. */
 export function StructurePanel({
   structure,
@@ -155,6 +115,7 @@ export function StructurePanel({
   const { newlyRevealed } = useWalkthrough();
   const questions = structure.questions ?? [];
   const sources = structure.sources ?? [];
+  const review = useReview();
 
   return (
     <section
@@ -175,12 +136,27 @@ export function StructurePanel({
           {statusLabels[structure.status]}
         </span>
       </p>
-      <p className="text-sm">{structure.oneLiner}</p>
+      <SuggestableText
+        structure={structure.id}
+        field="oneLiner"
+        text={structure.oneLiner}
+        className="text-sm"
+      />
       <Section title="What it does">
-        <p className="text-sm">{structure.whatItDoes}</p>
+        <SuggestableText
+          structure={structure.id}
+          field="whatItDoes"
+          text={structure.whatItDoes}
+          className="text-sm"
+        />
       </Section>
       <Section title="How it's built">
-        <p className="text-sm">{structure.howItsBuilt}</p>
+        <SuggestableText
+          structure={structure.id}
+          field="howItsBuilt"
+          text={structure.howItsBuilt}
+          className="text-sm"
+        />
       </Section>
       {sources.length === 0 ? null : (
         <Section title="Sources">
@@ -189,7 +165,7 @@ export function StructurePanel({
       )}
       {hasSteps(structure) ? (
         <Section title="Steps">
-          <StepList structure={structure} />
+          <StepList structure={structure} suggestable={review !== null} />
         </Section>
       ) : null}
       {questions.length === 0 ? null : (
@@ -202,12 +178,19 @@ export function StructurePanel({
                 data-state={question.state}
               >
                 <QuestionBody question={question} />
+                {question.state === "open" ? (
+                  <QuestionAnswer
+                    structure={structure.id}
+                    question={question.id}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
         </Section>
       )}
-      <NotesSection structure={structure} />
+      <RaisedQuestions structure={structure.id} />
+      <NotesSection target={{ kind: "structure", id: structure.id }} />
       <div className="flex gap-1.5">
         {hasSteps(structure) ? (
           <button

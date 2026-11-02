@@ -1,29 +1,66 @@
 import { Schema } from "effect";
 
 import {
+  answerFields,
   Batch,
   ChangeId,
+  NoteTarget,
   NoteText,
   Proposals,
-  StructureTarget,
+  raisedFields,
+  SuggestionText,
+  suggestionFields,
 } from "./proposals.ts";
 
-/** Adds a note to the open notes. The page makes the id, so a retry can't add it twice. */
+/**
+ * Adds a note to the open notes, pinned to a structure, a hop or an empty
+ * spot. The page makes the id, so a retry can't add it twice.
+ */
 export const NoteAdd = Schema.Struct({
   /** The `proposals.json` revision the page based the write on. */
   baseFileRevision: Schema.Int,
   id: ChangeId,
-  target: StructureTarget,
+  target: NoteTarget,
   text: NoteText,
 });
 
 export type NoteAdd = typeof NoteAdd.Type;
 
-/** Changes the text of an open note. */
+/** Adds a text suggestion: the field, the original as the page showed it, and the new text. */
+export const SuggestionAdd = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  ...suggestionFields,
+});
+
+export type SuggestionAdd = typeof SuggestionAdd.Type;
+
+/** Adds an answer to an open question, with the day the engineer gave it. */
+export const AnswerAdd = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  ...answerFields,
+});
+
+export type AnswerAdd = typeof AnswerAdd.Type;
+
+/** Raises a new question on a structure. It has no question id; the agent assigns one. */
+export const QuestionAdd = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  ...raisedFields,
+});
+
+export type QuestionAdd = typeof QuestionAdd.Type;
+
+/**
+ * Changes the words of an open note, suggestion, answer or raised question:
+ * the note's text, or the suggestion's new text.
+ */
 export const NoteEdit = Schema.Struct({
   baseFileRevision: Schema.Int,
   id: ChangeId,
-  text: NoteText,
+  text: SuggestionText,
 });
 
 export type NoteEdit = typeof NoteEdit.Type;
@@ -41,8 +78,8 @@ export const ReopenWrite = Schema.Struct({
   baseFileRevision: Schema.Int,
   id: ChangeId,
   newId: ChangeId,
-  /** For a note, the new words. Left out, the new note copies the old one. */
-  text: Schema.optionalKey(NoteText),
+  /** For an item of words, the new words. Left out, the new item copies the old one. */
+  text: Schema.optionalKey(SuggestionText),
 });
 
 export type ReopenWrite = typeof ReopenWrite.Type;

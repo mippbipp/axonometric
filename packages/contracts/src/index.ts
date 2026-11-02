@@ -352,12 +352,22 @@ export { dragSegment, routeVertices, segmentGuides } from "./route-drag.ts";
 export type { RouteEnds, SegmentGuide } from "./route-drag.ts";
 
 export {
+  Answer,
+  AnswerDate,
   Batch,
   BatchItem,
   Committed,
   maxNoteLength,
+  maxSuggestionLength,
   Note,
+  NoteTarget,
   NoteText,
+  QuestionRef,
+  RaisedQuestion,
+  SpotTarget,
+  Suggestion,
+  SuggestionText,
+  TextField,
   maxReasonLength,
   Reason,
   RequiredReason,
@@ -367,14 +377,15 @@ export {
 
 export {
   acceptRefusal,
+  addItem,
   addNote,
   batchesOf,
   breakageOf,
   commitBatch,
   commitMessage,
-  discardNote,
+  discardOpen,
   dismissItem,
-  editNote,
+  editOpen,
   findBatchItem,
   freezeOpen,
   frozenLayoutChanges,
@@ -390,6 +401,7 @@ export {
   reviewPrompt,
   changedLayoutNotice,
   engineerTextNotice,
+  kindNotices,
   summaryLine,
   withoutVerdict,
 } from "./review.ts";
@@ -397,24 +409,37 @@ export {
 export type {
   Committing,
   FreezeResult,
+  Known,
   ItemStatus,
   Names,
   ReviewEntry,
 } from "./review.ts";
 
 export {
+  AnswerAdd,
   FreezeWrite,
   FreezeAnswer,
   ItemWrite,
   NoteAdd,
   NoteEdit,
   ProposalRefused,
+  QuestionAdd,
   ReopenWrite,
+  SuggestionAdd,
 } from "./review-server.ts";
 
-export { noteMarkerRadius, noteMarkerSpots } from "./note-markers.ts";
+export {
+  noteMarkerRadius,
+  noteMarkerSpots,
+  placeNoteMarkers,
+  spotKey,
+} from "./note-markers.ts";
 
-export type { NoteMarkerSpot } from "./note-markers.ts";
+export type {
+  NoteBearers,
+  NoteMarkerSpot,
+  PlacedMarkers,
+} from "./note-markers.ts";
 
 export {
   allKinds,
@@ -425,6 +450,13 @@ export {
 } from "./review-kinds.ts";
 
 export type { KindSpec, Landing } from "./review-kinds.ts";
+
+export {
+  fieldLabel,
+  stepDetailField,
+  stepNameField,
+  textOfField,
+} from "./text-fields.ts";
 
 export {
   Facts,

@@ -3,6 +3,8 @@ import { dual } from "effect/Function";
 
 import { convexOverlap, distanceToPolyline, rectPolygon } from "./geometry.ts";
 import type { ScreenPoint, ScreenRect } from "./iso.ts";
+import type { GridPoint } from "./layout.ts";
+import type { GroundProjection } from "./plan.ts";
 import type { Scene } from "./scene.ts";
 
 /** The radius of a note marker's ring, in screen units. */
@@ -112,6 +114,33 @@ const candidatesOf = ({
 const routesOf = (scene: Scene): readonly (readonly ScreenPoint[])[] =>
   Arr.map(scene.hops, ({ points }) => points);
 
+/** Whether a ring at `spot` is clear of every solid, line and marker in `taken`. */
+const isClear = ({
+  spot,
+  solids,
+  lines,
+  taken,
+}: {
+  readonly spot: NoteMarkerSpot;
+  readonly solids: readonly (readonly ScreenPoint[])[];
+  readonly lines: readonly (readonly ScreenPoint[])[];
+  readonly taken: readonly NoteMarkerSpot[];
+}) => {
+  const square = rectPolygon(squareAround(spot));
+
+  return (
+    !Arr.some(solids, (other) => convexOverlap(square, other)) &&
+    !Arr.some(taken, (other) =>
+      convexOverlap(square, rectPolygon(squareAround(other)))
+    ) &&
+    !Arr.some(
+      lines,
+      (line) =>
+        distanceToPolyline(line, spot) < noteMarkerRadius + lineClearance
+    )
+  );
+};
+
 /**
  * Where each structure in `ids` puts its note marker: the first spot against
  * its outline or name tag where the marker's ring shares no area with a box,
@@ -130,41 +159,176 @@ export const noteMarkerSpots: {
   (
     scene: Scene,
     ids: ReadonlySet<string>
-  ): ReadonlyMap<string, NoteMarkerSpot> => {
-    const solids = solidsOf(scene);
-    const lines = routesOf(scene);
-    const placed = new Map<string, NoteMarkerSpot>();
+  ): ReadonlyMap<string, NoteMarkerSpot> =>
+    placeNoteMarkers(scene, { structures: ids, hops: new Set(), spots: [] })
+      .structures
+);
 
-    for (const placedStructure of scene.structures) {
-      const { structure } = placedStructure;
+/** What carries notes: structures and hops by id, and empty spots by position. */
+export interface NoteBearers {
+  readonly structures: ReadonlySet<string>;
+  readonly hops: ReadonlySet<string>;
+  readonly spots: readonly GridPoint[];
+  /** How the view projects the ground, to place the spots. Left out when there are none. */
+  readonly ground?: GroundProjection | undefined;
+}
 
-      if (ids.has(structure.id)) {
-        const taken = Arr.map([...placed.values()], (spot) =>
-          rectPolygon(squareAround(spot))
-        );
+/** The key a spot's marker is stored under: `x,y`. */
+export const spotKey = ({ x, y }: GridPoint): string => `${x},${y}`;
 
-        const free = Arr.findFirst(candidatesOf(placedStructure), (spot) => {
-          const square = rectPolygon(squareAround(spot));
+/** Where every kind of note puts its marker. A bearer with no free spot is left out. */
+export interface PlacedMarkers {
+  readonly structures: ReadonlyMap<string, NoteMarkerSpot>;
+  readonly hops: ReadonlyMap<string, NoteMarkerSpot>;
+  readonly spots: ReadonlyMap<string, NoteMarkerSpot>;
+}
 
-          return (
-            !Arr.some([...solids, ...taken], (other) =>
-              convexOverlap(square, other)
-            ) &&
-            !Arr.some(
-              lines,
-              (line) =>
-                distanceToPolyline(line, spot) <
-                noteMarkerRadius + lineClearance
-            )
-          );
-        });
+/** How far from a hop's line a ring sits: just past the clearance every line needs. */
+const besideLine = noteMarkerRadius + lineClearance + 1;
 
-        if (Option.isSome(free)) {
-          placed.set(structure.id, free.value);
-        }
+/** The shares along a hop's line a ring is tried at, middle first. */
+const alongShares = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9];
+
+/**
+ * Spots on either side of `line`, `besideLine` from it, at the shares along
+ * its length, middle first. The line is a polyline on screen.
+ */
+const besideCandidates = (
+  line: readonly ScreenPoint[]
+): readonly NoteMarkerSpot[] => {
+  const legs = Arr.zip(line, Arr.drop(line, 1));
+
+  const lengths = Arr.map(legs, ([from, to]) =>
+    Math.hypot(to.sx - from.sx, to.sy - from.sy)
+  );
+
+  const total = Arr.reduce(lengths, 0, (sum, length) => sum + length);
+
+  if (total === 0) {
+    return [];
+  }
+
+  return Arr.flatMap(alongShares, (share) => {
+    let remaining = share * total;
+
+    for (const [index, [from, to]] of legs.entries()) {
+      const length = lengths[index] ?? 0;
+
+      if (remaining <= length || index === legs.length - 1) {
+        const t = length === 0 ? 0 : Math.min(remaining / length, 1);
+        const dx = (to.sx - from.sx) / (length || 1);
+        const dy = (to.sy - from.sy) / (length || 1);
+
+        const at = {
+          sx: from.sx + (to.sx - from.sx) * t,
+          sy: from.sy + (to.sy - from.sy) * t,
+        };
+
+        return [
+          { sx: at.sx - dy * besideLine, sy: at.sy + dx * besideLine },
+          { sx: at.sx + dy * besideLine, sy: at.sy - dx * besideLine },
+        ];
       }
+
+      remaining -= length;
     }
 
-    return placed;
+    return [];
+  });
+};
+
+/** How far apart the rings tried around a busy spot are, in screen units. */
+const searchStep = 2 * noteMarkerRadius;
+
+/** How many steps out from its own spot a spot's marker may move. */
+const searchSteps = 4;
+
+/**
+ * Spots around `at`, nearest first: `at` itself, then rings of eight
+ * directions at each step out.
+ */
+const aroundCandidates = (at: NoteMarkerSpot): readonly NoteMarkerSpot[] => [
+  at,
+  ...Arr.flatMap(Arr.range(1, searchSteps), (step) =>
+    Arr.map(Arr.range(0, 7), (turn) => {
+      const angle = (turn * Math.PI) / 4;
+
+      return {
+        sx: at.sx + Math.cos(angle) * step * searchStep,
+        sy: at.sy + Math.sin(angle) * step * searchStep,
+      };
+    })
+  ),
+];
+
+/**
+ * Where every note puts its marker, with the same rules for each kind: a
+ * ring shares no area with a box, name tag, code chip, zone title or hop
+ * label, stays `lineClearance` off every hop's line, and doesn't touch
+ * another marker. Structures place first, as `noteMarkerSpots` does, then
+ * hops, then spots.
+ *
+ * - A hop's marker sits beside its own line, in the first free spot from the
+ *   middle outward.
+ * - A spot's marker sits on the spot when that is free. Otherwise it moves
+ *   to the nearest free place within a few steps, so it never covers text or
+ *   a line.
+ *
+ * A bearer with no free place is left out; the panel and the Pending tab
+ * still list its notes. `ground` projects spots; it is left out when there
+ * are none.
+ */
+export const placeNoteMarkers: {
+  (bearers: NoteBearers): (scene: Scene) => PlacedMarkers;
+  (scene: Scene, bearers: NoteBearers): PlacedMarkers;
+} = dual(2, (scene: Scene, bearers: NoteBearers): PlacedMarkers => {
+  const solids = solidsOf(scene);
+  const lines = routesOf(scene);
+  const taken: NoteMarkerSpot[] = [];
+
+  const settle = (candidates: readonly NoteMarkerSpot[]) => {
+    const free = Arr.findFirst(candidates, (spot) =>
+      isClear({ spot, solids, lines, taken })
+    );
+
+    if (Option.isSome(free)) {
+      taken.push(free.value);
+    }
+
+    return free;
+  };
+
+  const structures = new Map<string, NoteMarkerSpot>();
+
+  for (const placed of scene.structures) {
+    const { id } = placed.structure;
+
+    if (bearers.structures.has(id)) {
+      Option.map(settle(candidatesOf(placed)), (spot) =>
+        structures.set(id, spot)
+      );
+    }
   }
-);
+
+  const hops = new Map<string, NoteMarkerSpot>();
+
+  for (const { hop, points } of scene.hops) {
+    if (bearers.hops.has(hop.id)) {
+      Option.map(settle(besideCandidates(points)), (spot) =>
+        hops.set(hop.id, spot)
+      );
+    }
+  }
+
+  const spots = new Map<string, NoteMarkerSpot>();
+
+  for (const bearer of bearers.spots) {
+    if (bearers.ground !== undefined) {
+      const near = aroundCandidates(bearers.ground.toScreen(bearer));
+
+      Option.map(settle(near), (spot) => spots.set(spotKey(bearer), spot));
+    }
+  }
+
+  return { structures, hops, spots };
+});

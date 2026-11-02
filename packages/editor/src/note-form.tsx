@@ -3,6 +3,8 @@ import { useId, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 
+const always = () => true;
+
 /**
  * A note's text box with a send button. `onSubmit` calls `done` with why the
  * note was refused, or nothing when it went through. The form clears itself on
@@ -13,11 +15,22 @@ export function NoteForm({
   label,
   initial = "",
   submit,
+  placeholder = "Ask a question or ask for a change…",
+  limit = maxNoteLength,
+  rows = 3,
+  canSend = always,
   onSubmit,
   onCancel,
 }: {
   readonly label: string;
   readonly initial?: string;
+  /** What the empty box says. */
+  readonly placeholder?: string;
+  /** The most characters the box takes. */
+  readonly limit?: number;
+  readonly rows?: number;
+  /** Whether `text`, trimmed, may be sent. The button waits for it. */
+  readonly canSend?: (text: string) => boolean;
   readonly submit: string;
   readonly onSubmit: (
     text: string,
@@ -61,11 +74,11 @@ export function NoteForm({
         id={id}
         data-note-text
         name="note"
-        rows={3}
+        rows={rows}
         value={text}
-        maxLength={maxNoteLength}
+        maxLength={limit}
         autoComplete="off"
-        placeholder="Ask a question or ask for a change…"
+        placeholder={placeholder}
         disabled={sending}
         className="border-ink bg-paper text-ink focus-visible:outline-ink resize-y border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
         onChange={(event) => {
@@ -92,7 +105,7 @@ export function NoteForm({
           type="submit"
           data-note-send
           className={controlClass}
-          disabled={sending || text.trim() === ""}
+          disabled={sending || text.trim() === "" || !canSend(text.trim())}
         >
           {sending ? "Saving…" : submit}
         </button>

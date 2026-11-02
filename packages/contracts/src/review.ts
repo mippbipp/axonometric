@@ -4,6 +4,7 @@ import {
   Order,
   Record as Rec,
   Result,
+  Schema,
   String as Str,
 } from "effect";
 import { dual } from "effect/Function";
@@ -11,11 +12,13 @@ import { dual } from "effect/Function";
 import { acceptLayoutChanges } from "./accept.ts";
 import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
+import type { MapData } from "./map-data.ts";
 import {
   applyLayoutChanges,
   idOfTargetKey,
   layoutRefusal,
   sharedTarget,
+  BatchItem as BatchItemSchema,
 } from "./proposals.ts";
 import type {
   Batch,
@@ -182,7 +185,7 @@ export const freezeOpen = ({
 
   if (items.length === 0) {
     return Result.fail(
-      "Nothing is ready for review. Add a note or move a structure first."
+      "Nothing is ready for review. Add a note, a suggestion or an answer, or move a structure first."
     );
   }
 
@@ -207,51 +210,106 @@ export const freezeOpen = ({
   });
 };
 
+const sameItem = Schema.toEquivalence(BatchItemSchema);
+
+/** The items still waiting on the agent: open, or in a batch with no commit. */
+const waitingItems = (proposals: Proposals): readonly BatchItem[] => [
+  ...openItems(proposals),
+  ...Arr.flatMap(batchesOf(proposals), (batch) =>
+    isOpenBatch(batch) ? batch.items : []
+  ),
+];
+
+/** What an item is checked against when it is added: the map as data.mjs has it. */
+export interface Known {
+  /** The ids of the structures data.mjs has. */
+  readonly structureIds: ReadonlySet<string>;
+  /** The hops data.mjs has. */
+  readonly hops?: readonly HopEnds[] | undefined;
+  /** The map itself, for the kinds that point into its text. */
+  readonly data?: MapData | undefined;
+}
+
 /**
- * Adds `note` to the open notes, where the next batch will pick it up.
+ * Adds `item`, of any kind, to its kind's open items, where the next batch
+ * will pick it up.
  *
- * A note that is already here with the same id, target and text is the same
- * write sent again, such as after a lost answer: it succeeds and changes
+ * An item that is already here with the same id and the same contents is the
+ * same write sent again, such as after a lost answer: it succeeds and changes
  * nothing, so a retry never makes a duplicate. Fails, and changes nothing,
- * when the structure isn't in `known`, or the id belongs to something else.
+ * when the id belongs to something else, or the item would break the map
+ * (see `KindSpec.breakage`), such as a note on a structure data.mjs lacks.
+ */
+export const addItem = ({
+  proposals,
+  item,
+  known,
+}: {
+  readonly proposals: Proposals;
+  readonly item: BatchItem;
+  readonly known: Known;
+}): Result.Result<Proposals, string> => {
+  const existing = Arr.findFirst(
+    reviewEntries(proposals),
+    (entry) => entry.item.id === item.id
+  );
+
+  if (Option.isSome(existing)) {
+    return sameItem(existing.value.item, item)
+      ? Result.succeed(proposals)
+      : Result.fail(`The id "${item.id}" is already in use.`);
+  }
+
+  const spec = specOf(item);
+
+  const broken = spec.breakage(item, {
+    layout: emptyLayout,
+    structureIds: known.structureIds,
+    hops: known.hops ?? [],
+    data: known.data,
+  });
+
+  if (Option.isSome(broken)) {
+    return Result.fail(broken.value);
+  }
+
+  const clash = spec.clash?.(item, waitingItems(proposals));
+
+  if (clash !== undefined && Option.isSome(clash)) {
+    return Result.fail(clash.value);
+  }
+
+  return Result.succeed({
+    ...spec.add(proposals, item),
+    revision: proposals.revision + 1,
+  });
+};
+
+const emptyLayout: Layout = { format: 1, revision: 0, structures: {} };
+
+/**
+ * Adds `note` to the open notes. A note can be pinned to a structure, a hop
+ * or an empty spot. Fails, and changes nothing, when the structure or hop
+ * isn't in `known` or the id belongs to something else; see `addItem`.
  */
 export const addNote = ({
   proposals,
   note,
   known,
+  hops,
 }: {
   readonly proposals: Proposals;
   readonly note: Note;
   /** The ids of the structures data.mjs has. */
   readonly known: ReadonlySet<string>;
-}): Result.Result<Proposals, string> => {
-  const existing = Arr.findFirst(
-    reviewEntries(proposals),
-    ({ item }) => item.id === note.id
-  );
-
-  if (Option.isSome(existing)) {
-    const { item } = existing.value;
-
-    return item.kind === "note" &&
-      item.target.id === note.target.id &&
-      item.text === note.text
-      ? Result.succeed(proposals)
-      : Result.fail(`The id "${note.id}" is already in use.`);
-  }
-
-  if (!known.has(note.target.id)) {
-    return Result.fail(
-      `No structure in data.mjs has the id "${note.target.id}", so a note can't be pinned to it.`
-    );
-  }
-
-  return Result.succeed({
-    ...proposals,
-    revision: proposals.revision + 1,
-    notes: [...(proposals.notes ?? []), note],
+  /** The hops data.mjs has, for a note pinned to a hop. */
+  readonly hops?: readonly HopEnds[] | undefined;
+}): Result.Result<Proposals, string> =>
+  addItem({
+    proposals,
+    item: { kind: "note", ...note },
+    known: { structureIds: known, hops },
   });
-};
 
 /**
  * Why accepting open layout changes `ids` has to wait, or nothing when it
@@ -317,6 +375,7 @@ export const reopenItem = ({
   known,
   hops,
   text,
+  data,
 }: {
   readonly proposals: Proposals;
   readonly id: ChangeId;
@@ -325,8 +384,10 @@ export const reopenItem = ({
   readonly known: ReadonlySet<string>;
   /** The map's hops, which say where a reroute's ends belong. */
   readonly hops: readonly HopEnds[];
-  /** For a note, the words the new note starts with instead of the old ones. */
+  /** For an item of words, the words the new item starts with instead of the old ones. */
   readonly text?: string | undefined;
+  /** The map, for the kinds that point into its text. */
+  readonly data?: MapData | undefined;
 }): Result.Result<Proposals, string> => {
   const found = findBatchItem(proposals, id);
 
@@ -361,16 +422,35 @@ export const reopenItem = ({
   }
 
   const spec = specOf(item);
+
+  const tooLong = Option.filter(
+    Option.fromNullishOr(text),
+    (words) => words.length > spec.textLimit
+  );
+
+  if (Option.isSome(tooLong)) {
+    return Result.fail(
+      `The text is ${tooLong.value.length} characters, over the limit of ${spec.textLimit}.`
+    );
+  }
+
   const reopened = spec.reopened(item, newId, text);
 
   const broken = spec.breakage(reopened, {
     layout: applyLayoutChanges(layout, proposals.layout),
     structureIds: known,
     hops,
+    data,
   });
 
   if (Option.isSome(broken)) {
     return Result.fail(broken.value);
+  }
+
+  const clash = spec.clash?.(reopened, waitingItems(dismissed.success));
+
+  if (clash !== undefined && Option.isSome(clash)) {
+    return Result.fail(clash.value);
   }
 
   return Result.succeed(
@@ -384,18 +464,51 @@ export const reopenItem = ({
   );
 };
 
-/** Why note `id` can't be found among the open notes. */
-const noOpenNote = (proposals: Listed, id: string) =>
+/** Why open item `id` can't be found among the open items. */
+const noOpenItem = (proposals: Listed, id: string) =>
   Option.getOrElse(
     frozenRefusal(proposals, id),
-    () => `No open note has the id "${id}". It may have been discarded already.`
+    () =>
+      `No open note, suggestion, answer or question has the id "${id}". It may have been discarded already.`
+  );
+
+/** The open item `id`, if there is one. */
+const openItemNamed = (proposals: Listed, id: string) =>
+  Arr.findFirst(
+    openItems(proposals),
+    (item) => item.id === id && item.kind !== "layout"
   );
 
 /**
- * Changes the text of open note `id`. Fails when the note is in a batch,
- * which is waiting for the agent, or isn't there.
+ * `proposals` with the open item `item` replaced by `next`, or with `next`
+ * left out to drop it, in the same place among its kind's items.
  */
-export const editNote = ({
+const rewriteOpen = (
+  proposals: Proposals,
+  item: BatchItem,
+  next: Option.Option<BatchItem>
+): Proposals => {
+  const spec = specOf(item);
+
+  const kept = Arr.flatMap(spec.open(proposals), (other) =>
+    other.id === item.id ? Option.toArray(next) : [other]
+  );
+
+  return {
+    ...Arr.reduce(kept, spec.clear(proposals), (held, other) =>
+      spec.add(held, other)
+    ),
+    revision: proposals.revision + 1,
+  };
+};
+
+/**
+ * Changes the words of open item `id`: a note's, answer's or raised
+ * question's text, or a suggestion's new text. Fails when the item is in a
+ * batch, which is waiting for the agent, isn't there, or the words are too
+ * long for its kind.
+ */
+export const editOpen = ({
   proposals,
   id,
   text,
@@ -404,40 +517,40 @@ export const editNote = ({
   readonly id: ChangeId;
   readonly text: string;
 }): Result.Result<Proposals, string> => {
-  const notes = proposals.notes ?? [];
+  const found = openItemNamed(proposals, id);
 
-  if (!Arr.some(notes, (note) => note.id === id)) {
-    return Result.fail(noOpenNote(proposals, id));
+  if (Option.isNone(found)) {
+    return Result.fail(noOpenItem(proposals, id));
   }
 
-  return Result.succeed({
-    ...proposals,
-    revision: proposals.revision + 1,
-    notes: Arr.map(notes, (note) =>
-      note.id === id ? { ...note, text } : note
-    ),
-  });
+  const spec = specOf(found.value);
+
+  if (text.length > spec.textLimit) {
+    return Result.fail(
+      `The text is ${text.length} characters, over the limit of ${spec.textLimit}.`
+    );
+  }
+
+  const edited = spec.reopened(found.value, id, text);
+
+  return Result.succeed(
+    rewriteOpen(proposals, found.value, Option.some(edited))
+  );
 };
 
-/** Removes open note `id`. Fails when it is in a batch, or isn't there. */
-export const discardNote = ({
+/** Removes open item `id`. Fails when it is in a batch, or isn't there. */
+export const discardOpen = ({
   proposals,
   id,
 }: {
   readonly proposals: Proposals;
   readonly id: ChangeId;
 }): Result.Result<Proposals, string> => {
-  const notes = proposals.notes ?? [];
+  const found = openItemNamed(proposals, id);
 
-  if (!Arr.some(notes, (note) => note.id === id)) {
-    return Result.fail(noOpenNote(proposals, id));
-  }
-
-  return Result.succeed({
-    ...proposals,
-    revision: proposals.revision + 1,
-    notes: Arr.filter(notes, (note) => note.id !== id),
-  });
+  return Option.isNone(found)
+    ? Result.fail(noOpenItem(proposals, id))
+    : Result.succeed(rewriteOpen(proposals, found.value, Option.none()));
 };
 
 /** What the agent can say about the items still without a verdict. */
@@ -509,13 +622,16 @@ export const breakageOf = ({
   layout,
   structureIds,
   hops,
+  data,
 }: {
   readonly item: BatchItem;
   readonly layout: Layout;
   readonly structureIds: ReadonlySet<string>;
   readonly hops: readonly HopEnds[];
+  /** The map, for the kinds that point into its text. */
+  readonly data?: MapData | undefined;
 }): Option.Option<string> =>
-  specOf(item).breakage(item, { layout, structureIds, hops });
+  specOf(item).breakage(item, { layout, structureIds, hops, data });
 
 /** What committing a batch makes. */
 export interface Committing {
@@ -752,6 +868,19 @@ export const engineerTextNotice =
 export const changedLayoutNotice =
   "To change a layout item, set the layout yourself with axonometric layout, then give it the verdict changed. A reroute has no command: edit the hop's entry under routes in layout.json, then give it the verdict changed.";
 
+/**
+ * One line for each kind of item the batch holds, telling the agent how to
+ * fold that kind into data.mjs. Said in the prompt and in `review`'s output,
+ * after the notices that apply to every batch.
+ */
+export const kindNotices = (items: readonly BatchItem[]): readonly string[] =>
+  Arr.flatMap(allKinds, (spec) =>
+    spec.notice !== undefined &&
+    Arr.some(items, (item) => specOf(item) === spec)
+      ? [spec.notice]
+      : []
+  );
+
 const needsQuotes = /[\s"'$`\\]/u;
 
 const quoted = (path: string) =>
@@ -785,6 +914,7 @@ export const reviewPrompt = ({
       `Run axonometric review ${quoted(home)}, give every item a verdict with axonometric verdict, then run axonometric commit ${quoted(home)}.`,
       changedLayoutNotice,
       engineerTextNotice,
+      ...kindNotices(batch.items),
       "",
       ...Arr.map(batch.items, (item) => `- ${summaryLine(item, names)}`),
     ],

@@ -17,6 +17,7 @@ import { useInsideFocus } from "./inside-focus.ts";
 import { InsideView } from "./inside-view.tsx";
 import { MapSurface } from "./map-surface.tsx";
 import { MapView } from "./map-view.tsx";
+import { NoteToolProvider } from "./note-tool.tsx";
 import { useOverviewPage } from "./overview-context.ts";
 import {
   OverviewButton,
@@ -293,7 +294,9 @@ export function App({
             <DragPreviewProvider state={state}>
               <SpotlightProvider>
                 <OverviewPageProvider>
-                  <WalkthroughPage notices={notices} />
+                  <NoteToolProvider>
+                    <WalkthroughPage notices={notices} />
+                  </NoteToolProvider>
                 </OverviewPageProvider>
               </SpotlightProvider>
             </DragPreviewProvider>

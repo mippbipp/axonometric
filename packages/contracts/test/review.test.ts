@@ -16,8 +16,8 @@ import {
   recordVerdict,
   reopenItem,
   addNote,
-  discardNote,
-  editNote,
+  discardOpen,
+  editOpen,
   reviewEntries,
   reviewPrompt,
   changedLayoutNotice,
@@ -529,19 +529,19 @@ describe("notes", () => {
 
   it("edits and discards an open note", () => {
     const edited = unwrap(
-      editNote({ proposals: open, id: "n1", text: "New words" })
+      editOpen({ proposals: open, id: "n1", text: "New words" })
     );
 
     assert.strictEqual(edited.notes?.[0]?.text, "New words");
 
-    const gone = unwrap(discardNote({ proposals: open, id: "n1" }));
+    const gone = unwrap(discardOpen({ proposals: open, id: "n1" }));
 
     assert.deepStrictEqual(gone.notes, []);
   });
 
   it("refuses to edit or discard a note in a batch, and says it waits for the agent", () => {
-    const edit = editNote({ proposals: frozen(), id: "n1", text: "x" });
-    const discard = discardNote({ proposals: frozen(), id: "n1" });
+    const edit = editOpen({ proposals: frozen(), id: "n1", text: "x" });
+    const discard = discardOpen({ proposals: frozen(), id: "n1" });
 
     assert.include(
       Result.match(edit, { onSuccess: () => "", onFailure: String }),

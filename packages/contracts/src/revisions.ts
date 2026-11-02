@@ -4,12 +4,15 @@ import { formatVersion, objectMessages } from "./fields.ts";
 import { Layout, JsonText } from "./layout.ts";
 import { MapData } from "./map-data.ts";
 import {
+  answerFields,
   ChangeId,
   LayoutChange,
+  NoteTarget,
   NoteText,
+  raisedFields,
   Reason,
   RequiredReason,
-  StructureTarget,
+  suggestionFields,
 } from "./proposals.ts";
 
 /** The folder in the home folder that holds one file per revision. */
@@ -39,7 +42,7 @@ export const AcceptedItem = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("note"),
     id: ChangeId,
-    target: StructureTarget,
+    target: NoteTarget,
     text: NoteText,
     reason: Schema.optionalKey(Reason),
     changed: changedFlag,
@@ -48,9 +51,42 @@ export const AcceptedItem = Schema.Union([
       "An accepted note has only kind, id, target, text, reason and changed."
     )
   ),
+  Schema.Struct({
+    kind: Schema.Literal("suggestion"),
+    id: ChangeId,
+    ...suggestionFields,
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(
+    objectMessages(
+      "An accepted suggestion has only kind, id, target, field, before, after, reason and changed."
+    )
+  ),
+  Schema.Struct({
+    kind: Schema.Literal("answer"),
+    id: ChangeId,
+    ...answerFields,
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(
+    objectMessages(
+      "An accepted answer has only kind, id, target, question, text, answeredOn, reason and changed."
+    )
+  ),
+  Schema.Struct({
+    kind: Schema.Literal("question"),
+    id: ChangeId,
+    ...raisedFields,
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(
+    objectMessages(
+      "An accepted question has only kind, id, target, text, reason and changed."
+    )
+  ),
 ]).annotate({
   message:
-    'expected an accepted item: { kind: "layout", id, change, reason? } or { kind: "note", id, target, text, reason? }.',
+    'expected an accepted item: { kind: "layout", id, change, reason? }, { kind: "note", id, target, text, reason? }, { kind: "suggestion", id, target, field, before, after, reason? }, { kind: "answer", id, target, question, text, answeredOn, reason? } or { kind: "question", id, target, text, reason? }.',
 });
 
 export type AcceptedItem = typeof AcceptedItem.Type;
@@ -70,7 +106,7 @@ export const RejectedItem = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("note"),
     id: ChangeId,
-    target: StructureTarget,
+    target: NoteTarget,
     text: NoteText,
     reason: RequiredReason,
   }).annotate(
@@ -78,9 +114,39 @@ export const RejectedItem = Schema.Union([
       "A rejected note has only kind, id, target, text and reason."
     )
   ),
+  Schema.Struct({
+    kind: Schema.Literal("suggestion"),
+    id: ChangeId,
+    ...suggestionFields,
+    reason: RequiredReason,
+  }).annotate(
+    objectMessages(
+      "A rejected suggestion has only kind, id, target, field, before, after and reason."
+    )
+  ),
+  Schema.Struct({
+    kind: Schema.Literal("answer"),
+    id: ChangeId,
+    ...answerFields,
+    reason: RequiredReason,
+  }).annotate(
+    objectMessages(
+      "A rejected answer has only kind, id, target, question, text, answeredOn and reason."
+    )
+  ),
+  Schema.Struct({
+    kind: Schema.Literal("question"),
+    id: ChangeId,
+    ...raisedFields,
+    reason: RequiredReason,
+  }).annotate(
+    objectMessages(
+      "A rejected question has only kind, id, target, text and reason."
+    )
+  ),
 ]).annotate({
   message:
-    'expected a rejected item: { kind: "layout", id, change, reason } or { kind: "note", id, target, text, reason }.',
+    'expected a rejected item: { kind: "layout", id, change, reason }, { kind: "note", id, target, text, reason }, { kind: "suggestion", id, target, field, before, after, reason }, { kind: "answer", id, target, question, text, answeredOn, reason } or { kind: "question", id, target, text, reason }.',
 });
 
 export type RejectedItem = typeof RejectedItem.Type;

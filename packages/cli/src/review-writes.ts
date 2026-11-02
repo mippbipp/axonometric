@@ -1,10 +1,10 @@
 import {
-  addNote,
+  addItem,
   applyLayoutChanges,
   frozenLayoutChanges,
-  discardNote,
+  discardOpen,
   dismissItem,
-  editNote,
+  editOpen,
   freezeOpen,
   hopLabelOf,
   MapFilesUnreadable,
@@ -13,15 +13,21 @@ import {
   reviewPrompt,
 } from "@axonometric/contracts";
 import type {
+  AnswerAdd,
+  BatchItem,
   FreezeWrite,
   FreezeAnswer,
   Hop,
   Layout,
   ItemWrite,
+  Known,
+  MapData,
   NoteAdd,
   NoteEdit,
   Proposals,
+  QuestionAdd,
   ReopenWrite,
+  SuggestionAdd,
 } from "@axonometric/contracts";
 import { DateTime, Effect, Path, Result } from "effect";
 
@@ -45,6 +51,8 @@ interface Held {
   readonly structures: ReadonlyMap<string, string>;
   /** The map's hops, with their labels. */
   readonly hops: readonly Hop[];
+  /** The map as data.mjs has it, for the items that point into its text. */
+  readonly data: MapData;
   readonly now: string;
 }
 
@@ -84,6 +92,7 @@ const writeProposals = Effect.fnUntraced(
       ),
       structures: structureNames(map.data),
       hops: map.data.hops,
+      data: map.data,
       now,
     });
 
@@ -147,23 +156,60 @@ const editing =
 
 // oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(home, write, written)`, never piped.
 
-/** Adds the note in `write` to the open notes. */
-export const addNoteWrite = editing<NoteAdd>(
-  "addNoteWrite",
-  ({ proposals, structures }, { baseFileRevision: _base, ...note }) =>
-    addNote({ proposals, note, known: new Set(structures.keys()) })
+/** What an item is checked against when it is added. */
+const knownIn = ({ structures, hops, data }: Held): Known => ({
+  structureIds: new Set(structures.keys()),
+  hops,
+  data,
+});
+
+/** A write that adds the item `make` builds from the request. */
+const adding = <W extends { readonly baseFileRevision: number }>(
+  name: string,
+  make: (write: Omit<W, "baseFileRevision">) => BatchItem
+) =>
+  editing<W>(name, (held, { baseFileRevision: _base, ...write }) =>
+    addItem({
+      proposals: held.proposals,
+      item: make(write),
+      known: knownIn(held),
+    })
+  );
+
+/** Adds the note in `write` to the open notes, on a structure, a hop or a spot. */
+export const addNoteWrite = adding<NoteAdd>("addNoteWrite", (note) => ({
+  kind: "note",
+  ...note,
+}));
+
+/** Adds a text suggestion. */
+export const addSuggestionWrite = adding<SuggestionAdd>(
+  "addSuggestionWrite",
+  (suggestion) => ({ kind: "suggestion", ...suggestion })
 );
 
-/** Changes the text of an open note. */
+/** Adds an answer to an open question. */
+export const addAnswerWrite = adding<AnswerAdd>("addAnswerWrite", (answer) => ({
+  kind: "answer",
+  ...answer,
+}));
+
+/** Raises a new question on a structure. */
+export const addQuestionWrite = adding<QuestionAdd>(
+  "addQuestionWrite",
+  (raised) => ({ kind: "question", ...raised })
+);
+
+/** Changes the words of an open note, suggestion, answer or raised question. */
 export const editNoteWrite = editing<NoteEdit>(
   "editNoteWrite",
-  ({ proposals }, { id, text }) => editNote({ proposals, id, text })
+  ({ proposals }, { id, text }) => editOpen({ proposals, id, text })
 );
 
-/** Removes an open note. */
+/** Removes an open note, suggestion, answer or raised question. */
 export const discardNoteWrite = editing<ItemWrite>(
   "discardNoteWrite",
-  ({ proposals }, { id }) => discardNote({ proposals, id })
+  ({ proposals }, { id }) => discardOpen({ proposals, id })
 );
 
 /** Takes a reviewed item off the page. */
@@ -175,7 +221,7 @@ export const dismissWrite = editing<ItemWrite>(
 /** Reopens a rejected item as a new open item linked to it. */
 export const reopenWrite = editing<ReopenWrite>(
   "reopenWrite",
-  ({ proposals, layout, structures, hops }, { id, newId, text }) =>
+  ({ proposals, layout, structures, hops, data }, { id, newId, text }) =>
     reopenItem({
       proposals,
       id,
@@ -184,6 +230,7 @@ export const reopenWrite = editing<ReopenWrite>(
       known: new Set(structures.keys()),
       hops,
       text,
+      data,
     })
 );
 

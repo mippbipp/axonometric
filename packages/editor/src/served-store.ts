@@ -18,6 +18,9 @@ import {
   newChangeId,
   NoteAdd,
   NoteEdit,
+  QuestionAdd,
+  SuggestionAdd,
+  AnswerAdd,
   observeFile,
   PendingLayoutWrite,
   placeRoute,
@@ -38,6 +41,8 @@ import {
 } from "@axonometric/contracts";
 import type {
   ChangeId,
+  NoteTarget,
+  TextField,
   GridPoint,
   HopEnds,
   HistoryList,
@@ -110,6 +115,16 @@ const decodeFrozen = Schema.decodeUnknownOption(
 );
 
 const encodeNoteAdd = Schema.encodeEffect(Schema.fromJsonString(NoteAdd));
+
+const encodeSuggestionAdd = Schema.encodeEffect(
+  Schema.fromJsonString(SuggestionAdd)
+);
+
+const encodeAnswerAdd = Schema.encodeEffect(Schema.fromJsonString(AnswerAdd));
+
+const encodeQuestionAdd = Schema.encodeEffect(
+  Schema.fromJsonString(QuestionAdd)
+);
 
 const encodeNoteEdit = Schema.encodeEffect(Schema.fromJsonString(NoteEdit));
 
@@ -281,19 +296,48 @@ export type ReviewDone<A> = (outcome: ReviewOutcome<A>) => void;
  * so a note typed meanwhile is not lost. `done` runs when it ends.
  */
 export interface ReviewOps {
-  /** Pins a note with `text` to structure `structureId`. */
+  /** Pins a note with `text` to a structure, a hop or an empty spot. */
   readonly addNote: (
+    target: NoteTarget,
+    text: string,
+    done: ReviewDone<ChangeId>
+  ) => void;
+  /**
+   * Suggests that `field` of structure `structureId` read `after`, where
+   * `before` is the text the engineer saw.
+   */
+  readonly addSuggestion: (
+    suggestion: {
+      readonly structureId: string;
+      readonly field: TextField;
+      readonly before: string;
+      readonly after: string;
+    },
+    done: ReviewDone<ChangeId>
+  ) => void;
+  /** Answers open question `question` of structure `structureId`, on the day `answeredOn`. */
+  readonly addAnswer: (
+    answer: {
+      readonly structureId: string;
+      readonly question: string;
+      readonly text: string;
+      readonly answeredOn: string;
+    },
+    done: ReviewDone<ChangeId>
+  ) => void;
+  /** Raises a new question on structure `structureId`. */
+  readonly raiseQuestion: (
     structureId: string,
     text: string,
     done: ReviewDone<ChangeId>
   ) => void;
-  /** Changes the text of an open note. */
+  /** Changes the words of an open note, suggestion, answer or raised question. */
   readonly editNote: (
     id: ChangeId,
     text: string,
     done: ReviewDone<ChangeId>
   ) => void;
-  /** Removes an open note. */
+  /** Removes an open note, suggestion, answer or raised question. */
   readonly discardNote: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /** Freezes every open change and note into the next batch. */
   readonly freeze: (done: ReviewDone<FreezeAnswer>) => void;
@@ -1275,7 +1319,7 @@ export const connectServed = ({
   };
 
   const review: ReviewOps = {
-    addNote: (structureId, text, done) => {
+    addNote: (target, text, done) => {
       const id = newChangeId();
 
       callReview<ChangeId>(
@@ -1283,6 +1327,67 @@ export const connectServed = ({
           url: served.notes,
           encode: (base) =>
             encodeNoteAdd({
+              baseFileRevision: base,
+              id,
+              target,
+              text,
+            }).pipe(Effect.orDie),
+          read: readProposalsWith(id),
+          endsUndo: false,
+        },
+        done
+      );
+    },
+    addSuggestion: ({ structureId, field, before, after }, done) => {
+      const id = newChangeId();
+
+      callReview<ChangeId>(
+        {
+          url: served.suggestions,
+          encode: (base) =>
+            encodeSuggestionAdd({
+              baseFileRevision: base,
+              id,
+              target: { kind: "structure", id: structureId },
+              field,
+              before,
+              after,
+            }).pipe(Effect.orDie),
+          read: readProposalsWith(id),
+          endsUndo: false,
+        },
+        done
+      );
+    },
+    addAnswer: ({ structureId, question, text, answeredOn }, done) => {
+      const id = newChangeId();
+
+      callReview<ChangeId>(
+        {
+          url: served.answers,
+          encode: (base) =>
+            encodeAnswerAdd({
+              baseFileRevision: base,
+              id,
+              target: { kind: "structure", id: structureId },
+              question,
+              text,
+              answeredOn,
+            }).pipe(Effect.orDie),
+          read: readProposalsWith(id),
+          endsUndo: false,
+        },
+        done
+      );
+    },
+    raiseQuestion: (structureId, text, done) => {
+      const id = newChangeId();
+
+      callReview<ChangeId>(
+        {
+          url: served.questions,
+          encode: (base) =>
+            encodeQuestionAdd({
               baseFileRevision: base,
               id,
               target: { kind: "structure", id: structureId },

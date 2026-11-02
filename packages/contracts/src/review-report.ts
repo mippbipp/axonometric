@@ -7,20 +7,27 @@ const Spot = Schema.Struct({ x: Schema.Finite, y: Schema.Finite });
 const Size = Schema.Struct({ w: Schema.Finite, d: Schema.Finite });
 
 /**
- * What an item changes or leaves: positions, a size, a note's text, or a
- * hop's route, which is "automatic" or a route override's points.
+ * Words an item holds: a note's text and the spot it is pinned to, a text
+ * suggestion's field and text, or an answer's question, text and date.
+ */
+const Words = Schema.Struct({
+  text: Schema.String,
+  field: Schema.optionalKey(Schema.String),
+  question: Schema.optionalKey(Schema.String),
+  answeredOn: Schema.optionalKey(Schema.String),
+  spot: Schema.optionalKey(Spot),
+});
+
+/**
+ * What an item changes or leaves: positions, a size, words, or a hop's
+ * route, which is "automatic" or a route override's points.
  */
 const Route = Schema.Struct({
   route: Schema.Union([Schema.Literal("automatic"), Schema.Array(Spot)]),
 });
 
 export const Facts = Schema.NullOr(
-  Schema.Union([
-    Schema.Record(Schema.String, Spot),
-    Size,
-    Schema.Struct({ text: Schema.String }),
-    Route,
-  ])
+  Schema.Union([Schema.Record(Schema.String, Spot), Size, Words, Route])
 );
 
 export type Facts = typeof Facts.Type;
@@ -45,6 +52,11 @@ export const ReportedItem = Schema.Struct({
   after: Facts,
   /** Why accepting the item would break the map, or null when it wouldn't. */
   breaks: Schema.NullOr(Schema.String),
+  /**
+   * Why the item was written against something data.mjs no longer says,
+   * such as a text suggestion whose original has changed, or null.
+   */
+  outOfDate: Schema.NullOr(Schema.String),
   /** The rejected item this one takes up again, or null. */
   replaces: Schema.NullOr(ChangeId),
   verdict: Schema.NullOr(VerdictFacts),

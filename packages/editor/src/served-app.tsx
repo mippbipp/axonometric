@@ -2,6 +2,7 @@ import {
   applyLayoutChanges,
   emptyProposals,
   frozenLayoutChanges,
+  openItems,
   reviewEntries,
 } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
@@ -181,7 +182,10 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       canWrite: !view.stopped,
       entries,
       notes: Arr.filter(entries, ({ item }) => item.kind === "note"),
-      openNotes: proposals.notes?.length ?? 0,
+      openWords: Arr.filter(
+        openItems(proposals),
+        ({ kind }) => kind !== "layout"
+      ).length,
       replaces: proposals.replaces ?? {},
       ops: store.review,
     };

@@ -24,6 +24,7 @@ import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
 import { GroupEditor } from "./group-editor.tsx";
 import { NoteMarkers } from "./note-markers.tsx";
+import { SpotPicker } from "./note-tool.tsx";
 import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
@@ -200,7 +201,12 @@ export function MapView({
             hatch={hatch}
             newlyRevealed={newlyRevealed}
             spotlight={spotlight}
-            ground={<DragOutlines view={view} />}
+            ground={
+              <>
+                <DragOutlines view={view} />
+                <SpotPicker view={view} />
+              </>
+            }
             underlay={
               <>
                 <GroupEditor
