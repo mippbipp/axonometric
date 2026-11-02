@@ -1,7 +1,7 @@
 import type { Structure } from "@axonometric/contracts";
 import { Array as Arr, Match } from "effect";
 import { useId, useMemo, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
@@ -12,6 +12,7 @@ import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
 import { QuestionsTab } from "./questions.tsx";
 import { useRevealedQuestions } from "./revealed-questions.ts";
+import { useReview } from "./review-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { InsidePanel, StructurePanel } from "./structure-panel.tsx";
 import { useStructuresById } from "./structures.ts";
@@ -219,6 +220,49 @@ const tabsOf = ({
 ];
 
 /**
+ * One tab's panel. Its content is only rendered while the tab is open, so a
+ * closed tab does no work.
+ */
+function TabPanel({
+  id,
+  prefix,
+  open,
+  children,
+}: {
+  readonly id: Tab;
+  readonly prefix: string;
+  readonly open: Tab;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div
+      role="tabpanel"
+      id={`${prefix}-${id}`}
+      aria-labelledby={`${prefix}-${id}-tab`}
+      hidden={open !== id}
+      className="min-h-0 flex-1 overflow-y-auto p-4"
+    >
+      {open === id ? children : null}
+    </div>
+  );
+}
+
+/**
+ * How many review items the Pending tab counts beside the pending layout
+ * changes: open notes, and everything waiting on the agent or turned down.
+ */
+const useWaitingCount = () =>
+  Arr.filter(
+    useReview()?.entries ?? [],
+    ({ item, status }) =>
+      status.state === "frozen" ||
+      (status.state === "open" && item.kind === "note") ||
+      (status.state === "reviewed" &&
+        !status.dismissed &&
+        status.verdict.verdict === "rejected")
+  ).length;
+
+/**
  * The side panel next to the view. Details shows one of the `PanelContent`
  * kinds; Open questions lists every question revealed so far; on a page
  * `serve` serves, Pending lists the pending layout changes and History lists
@@ -239,6 +283,7 @@ export function SidePanel() {
   const idPrefix = useId();
   const editing = useEditing();
   const history = useHistory();
+  const waiting = useWaitingCount();
 
   // A tab other than Details stays open until the selection changes.
   const [otherTab, setOtherTab] = useState<{
@@ -248,7 +293,10 @@ export function SidePanel() {
 
   // While a past revision is open there is no editing, but the tab strip
   // keeps its Pending tab and count, so it doesn't move.
-  const pendingCount = editing?.pending.length ?? history?.pendingCount;
+  const layoutPending = editing?.pending.length ?? history?.pendingCount;
+
+  const pendingCount =
+    layoutPending === undefined ? undefined : layoutPending + waiting;
 
   const tabs = tabsOf({
     openCount,
@@ -328,59 +376,31 @@ export function SidePanel() {
           </button>
         ))}
       </div>
-      <div
-        role="tabpanel"
-        id={`${idPrefix}-details`}
-        aria-labelledby={`${idPrefix}-details-tab`}
-        hidden={tab !== "details"}
-        className="min-h-0 flex-1 overflow-y-auto p-4"
-      >
-        {tab === "details"
-          ? renderContent(
-              panelContentOf({
-                packet,
-                pinned: selected === null ? undefined : byId.get(selected),
-                inside: inside === null ? undefined : byId.get(inside),
-              })
-            )
-          : null}
-      </div>
-      <div
-        role="tabpanel"
-        id={`${idPrefix}-questions`}
-        aria-labelledby={`${idPrefix}-questions-tab`}
-        hidden={tab !== "questions"}
-        className="min-h-0 flex-1 overflow-y-auto p-4"
-      >
-        {tab === "questions" ? (
-          <QuestionsTab
-            onPicked={() => {
-              choose("details");
-            }}
-          />
-        ) : null}
-      </div>
+      <TabPanel id="details" prefix={idPrefix} open={tab}>
+        {renderContent(
+          panelContentOf({
+            packet,
+            pinned: selected === null ? undefined : byId.get(selected),
+            inside: inside === null ? undefined : byId.get(inside),
+          })
+        )}
+      </TabPanel>
+      <TabPanel id="questions" prefix={idPrefix} open={tab}>
+        <QuestionsTab
+          onPicked={() => {
+            choose("details");
+          }}
+        />
+      </TabPanel>
       {editing === null ? null : (
-        <div
-          role="tabpanel"
-          id={`${idPrefix}-pending`}
-          aria-labelledby={`${idPrefix}-pending-tab`}
-          hidden={tab !== "pending"}
-          className="min-h-0 flex-1 overflow-y-auto p-4"
-        >
-          {tab === "pending" ? <PendingTab /> : null}
-        </div>
+        <TabPanel id="pending" prefix={idPrefix} open={tab}>
+          <PendingTab />
+        </TabPanel>
       )}
       {history === null ? null : (
-        <div
-          role="tabpanel"
-          id={`${idPrefix}-history`}
-          aria-labelledby={`${idPrefix}-history-tab`}
-          hidden={tab !== "history"}
-          className="min-h-0 flex-1 overflow-y-auto p-4"
-        >
-          {tab === "history" ? <HistoryTab /> : null}
-        </div>
+        <TabPanel id="history" prefix={idPrefix} open={tab}>
+          <HistoryTab />
+        </TabPanel>
       )}
     </aside>
   );

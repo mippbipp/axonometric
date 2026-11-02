@@ -1,5 +1,6 @@
 import {
   acceptanceMessage,
+  acceptRefusal,
   acceptLayoutChanges,
   historyFolder,
   LayoutChangeRefused,
@@ -19,6 +20,7 @@ import {
   Array as Arr,
   DateTime,
   Effect,
+  Option,
   Path,
   Result,
   String as Str,
@@ -82,6 +84,21 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
 
   const current = map.proposals;
 
+  // Frozen changes wait for the agent. An accept on a structure they also
+  // change waits too, and the rest is checked on top of them.
+  const waiting = acceptRefusal({
+    proposals: current,
+    layout: map.layout,
+    ids: write.changeIds,
+  });
+
+  if (Option.isSome(waiting)) {
+    return yield* LayoutChangeRefused.make({
+      reason: waiting.value,
+      proposals: current,
+    });
+  }
+
   const result = acceptLayoutChanges({
     layout: map.layout,
     pending: current.layout,
@@ -120,7 +137,11 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
     revision: number,
     savedAt: DateTime.formatIso(yield* DateTime.now),
     message,
-    accepted: Arr.map(accepted, (change) => ({ kind: "layout", change })),
+    accepted: Arr.map(accepted, (change) => ({
+      kind: "layout",
+      id: change.id,
+      change,
+    })),
     rejected: [],
     data: map.data,
     layout,

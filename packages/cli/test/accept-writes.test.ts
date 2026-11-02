@@ -221,7 +221,11 @@ describe("accepting pending layout changes over HTTP", () => {
       assert.strictEqual(revision.format, 1);
       assert.strictEqual(revision.message, "Lower the page");
       assert.deepStrictEqual(revision.accepted, [
-        { kind: "layout", change: moveOf("m1", "page", { x: 4, y: 3 }) },
+        {
+          kind: "layout",
+          id: "m1",
+          change: moveOf("m1", "page", { x: 4, y: 3 }),
+        },
       ]);
       assert.deepStrictEqual(revision.rejected, []);
       assert.deepStrictEqual(revision.layout, layout);

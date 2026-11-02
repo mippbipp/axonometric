@@ -120,6 +120,7 @@ export {
   distanceToPolyline,
   gapBetween,
   growRect,
+  rectPolygon,
   segmentCrosses,
 } from "./geometry.ts";
 
@@ -325,3 +326,84 @@ export {
   Severity,
   splitProblems,
 } from "./problems.ts";
+
+export {
+  Batch,
+  BatchItem,
+  Committed,
+  maxNoteLength,
+  Note,
+  NoteText,
+  maxReasonLength,
+  Reason,
+  RequiredReason,
+  Verdict,
+  verdictKinds,
+} from "./proposals.ts";
+
+export {
+  acceptRefusal,
+  addNote,
+  batchesOf,
+  breakageOf,
+  commitBatch,
+  commitMessage,
+  discardNote,
+  dismissItem,
+  editNote,
+  findBatchItem,
+  freezeOpen,
+  frozenLayoutChanges,
+  frozenRefusal,
+  nextBatchNumber,
+  oldestOpenBatch,
+  openItemCount,
+  openItems,
+  recordVerdict,
+  reopenItem,
+  reviewEntries,
+  reviewPrompt,
+  changedLayoutNotice,
+  engineerTextNotice,
+  summaryLine,
+  withoutVerdict,
+} from "./review.ts";
+
+export type {
+  Committing,
+  FreezeResult,
+  ItemStatus,
+  ReviewEntry,
+} from "./review.ts";
+
+export {
+  FreezeWrite,
+  FreezeAnswer,
+  ItemWrite,
+  NoteAdd,
+  NoteEdit,
+  ProposalRefused,
+  ReopenWrite,
+} from "./review-server.ts";
+
+export { noteMarkerRadius, noteMarkerSpots } from "./note-markers.ts";
+
+export type { NoteMarkerSpot } from "./note-markers.ts";
+
+export {
+  allKinds,
+  kindTable,
+  oneLine,
+  quoteText,
+  specOf,
+} from "./review-kinds.ts";
+
+export type { KindSpec, Landing } from "./review-kinds.ts";
+
+export {
+  Facts,
+  ReportedItem,
+  ReviewedBatch,
+  ReviewReport,
+  VerdictFacts,
+} from "./review-report.ts";

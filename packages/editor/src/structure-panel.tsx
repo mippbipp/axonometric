@@ -5,12 +5,15 @@ import {
   uniqueSources,
 } from "@axonometric/contracts";
 import type { Source, Structure } from "@axonometric/contracts";
-import { Array as Arr, String as Str } from "effect";
+import { Array as Arr, Option, Result, String as Str } from "effect";
 import type { ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { MapLink } from "./map-link.tsx";
+import { NoteForm } from "./note-form.tsx";
 import { QuestionBody } from "./questions.tsx";
+import { useReview } from "./review-context.ts";
+import { VerdictBadge } from "./review-list.tsx";
 import { useSelection } from "./selection-context.ts";
 import { hasSteps } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -76,6 +79,72 @@ function SourceList({ sources }: { readonly sources: readonly Source[] }) {
   );
 }
 
+/**
+ * The notes on a structure, each with its status and verdict, and a form that
+ * pins another. Only a page that can write has the form.
+ */
+function NotesSection({ structure }: { readonly structure: Structure }) {
+  const review = useReview();
+
+  if (review === null) {
+    return null;
+  }
+
+  const notes = Arr.filter(
+    review.notes,
+    ({ item, status }) =>
+      item.kind === "note" &&
+      item.target.id === structure.id &&
+      !(status.state === "reviewed" && status.dismissed)
+  );
+
+  return (
+    <section data-notes-section className="flex flex-col gap-2">
+      <h3 className="text-xs tracking-widest uppercase opacity-70">Notes</h3>
+      {notes.length === 0 ? null : (
+        <ul className="flex flex-col gap-2">
+          {Arr.map(notes, ({ item, status }) => (
+            <li
+              key={item.id}
+              data-panel-note={item.id}
+              data-note-state={status.state}
+              className="border-pending flex flex-col gap-1 border-l-2 pl-2 text-sm"
+            >
+              <span className="break-words">
+                {item.kind === "note" ? item.text : null}
+              </span>
+              {status.state === "open" ? (
+                <span className="text-xs opacity-70">
+                  Open. It goes in the next batch.
+                </span>
+              ) : null}
+              {status.state === "frozen" ? (
+                <span className="text-xs opacity-70">
+                  In batch {status.batch}, waiting for the agent.
+                </span>
+              ) : null}
+              {status.state === "reviewed" ? (
+                <VerdictBadge verdict={status.verdict} batch={status.batch} />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {review.canWrite ? (
+        <NoteForm
+          label="Pin a note"
+          submit="Pin note"
+          onSubmit={(text, done) => {
+            review.ops.addNote(structure.id, text, (outcome) => {
+              done(Option.getOrUndefined(Result.getFailure(outcome)));
+            });
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
 /** The pinned structure: what it is, how it's built and its questions. */
 export function StructurePanel({
   structure,
@@ -138,6 +207,7 @@ export function StructurePanel({
           </ul>
         </Section>
       )}
+      <NotesSection structure={structure} />
       <div className="flex gap-1.5">
         {hasSteps(structure) ? (
           <button

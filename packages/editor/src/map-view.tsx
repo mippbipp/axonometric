@@ -21,6 +21,7 @@ import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
 import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
+import { NoteMarkers } from "./note-markers.tsx";
 import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
@@ -218,6 +219,7 @@ export function MapView({
                 <CompareHops hops={scene.hops} marks={marks} />
               </g>
             }
+            overlay={<NoteMarkers scene={scene} />}
             onHopHover={hoverHop}
             labelShown={(hop) => hop === selectedHop || hop === hoveredHop}
           />

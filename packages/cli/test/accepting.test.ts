@@ -174,7 +174,9 @@ describe("accepting layout changes in the page", () => {
         assert.strictEqual(revision.revision, 1);
         assert.strictEqual(revision.message, "Move Engineer");
         assert.deepStrictEqual(
-          Arr.map(revision.accepted, ({ change }) => change.id),
+          Arr.flatMap(revision.accepted, (item) =>
+            item.kind === "layout" ? [item.change.id] : []
+          ),
           ["move-engineer"]
         );
         assert.deepStrictEqual(revision.rejected, []);
