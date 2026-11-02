@@ -18,6 +18,7 @@ import { useState } from "react";
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditing } from "./editing-context.ts";
+import { useExportState } from "./export-state-context.ts";
 import { NoteForm } from "./note-form.tsx";
 import { useProposed } from "./proposed-context.ts";
 import { listedEntries, useReview } from "./review-context.ts";
@@ -73,6 +74,8 @@ const useItemDescription = () => {
   const editing = useEditing();
   const proposed = useProposed();
   const { state } = useWalkthrough();
+  // The shown map has the proposed titles; a rename names the accepted ones.
+  const accepted = useExportState() ?? state;
 
   const nameOf = (id: string) =>
     byId.get(id)?.name ?? proposed?.nameOf(id) ?? id;
@@ -85,7 +88,7 @@ const useItemDescription = () => {
     structure: nameOf,
     hop: hopName,
     group: titleOf(proposed?.proposed.state.data.groups ?? state.data.groups),
-    acceptedGroup: titleOf(state.data.groups),
+    acceptedGroup: titleOf(accepted.data.groups),
     chapter: titleOf(state.data.chapters),
   });
 

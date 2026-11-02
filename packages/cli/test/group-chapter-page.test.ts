@@ -213,6 +213,15 @@ describe("renaming a group", () => {
         yield* click(page, "[data-group-rename]");
         yield* waitFor(page, '[data-pending-zone="loop"]');
 
+        // The Pending tab names the title the map has now, not the new one.
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+        yield* waitFor(page, '[data-review-kind="group"]');
+        assert.include(
+          yield* textOf(page, '[data-review-kind="group"]'),
+          "Rename the group The loop to The save loop"
+        );
+        yield* click(page, '[role="tab"][data-tab="details"]');
+
         const held = yield* readProposals(home);
 
         assert.deepStrictEqual(
@@ -486,7 +495,7 @@ describe("exports", () => {
 
         yield* chapter(page, "c-all");
         yield* makeGroup(page, "Data layer");
-        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* unpin(page);
         yield* Effect.promise(() =>
           page.waitForFunction(
             `document.querySelector('[data-structure][data-selected="true"]') === null`,
