@@ -5,6 +5,7 @@ import {
   SchemaIssue,
   SchemaTransformation,
 } from "effect";
+import { dual } from "effect/Function";
 
 import { describeCause } from "./cause.ts";
 import { fileVersionFields, objectMessages } from "./fields.ts";
@@ -43,6 +44,27 @@ export const Placement = Schema.Struct({
 }).annotate(objectMessages("A placement has only x, y, w and d."));
 
 export type Placement = typeof Placement.Type;
+
+/** Whether two placements put the footprint at the same x and y. */
+export const samePosition: {
+  (b: Placement): (a: Placement) => boolean;
+  (a: Placement, b: Placement): boolean;
+} = dual(2, (a: Placement, b: Placement) => a.x === b.x && a.y === b.y);
+
+/** Whether two placements give the footprint the same width and depth. */
+export const sameSize: {
+  (b: Placement): (a: Placement) => boolean;
+  (a: Placement, b: Placement): boolean;
+} = dual(2, (a: Placement, b: Placement) => a.w === b.w && a.d === b.d);
+
+/** Whether two placements are the same position and the same size. */
+export const samePlacement: {
+  (b: Placement): (a: Placement) => boolean;
+  (a: Placement, b: Placement): boolean;
+} = dual(
+  2,
+  (a: Placement, b: Placement) => samePosition(a, b) && sameSize(a, b)
+);
 
 /** A point on the ground grid, in grid units, on a half unit. */
 export const GridPoint = Schema.Struct({

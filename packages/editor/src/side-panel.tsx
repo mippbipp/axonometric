@@ -5,6 +5,8 @@ import type { KeyboardEvent } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
+import { useHistory } from "./history-context.ts";
+import { HistoryTab } from "./history-tab.tsx";
 import { PendingTab } from "./pending-tab.tsx";
 import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
@@ -178,16 +180,50 @@ const renderContent = Match.type<PanelContent>().pipe(
   })
 );
 
-type Tab = "details" | "questions" | "pending";
+type Tab = "details" | "questions" | "pending" | "history";
 
 const tabClass =
-  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-2 py-1 text-xs tracking-wider whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent disabled:cursor-default disabled:opacity-40 px-1.5 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+
+/** The tabs to show: Pending only while the page can edit, History only when served. */
+const tabsOf = ({
+  openCount,
+  pendingCount,
+  hasHistory,
+  pendingOff,
+}: {
+  readonly openCount: number;
+  /** How many changes are pending, or `undefined` on a page that can't edit. */
+  readonly pendingCount: number | undefined;
+  readonly hasHistory: boolean;
+  /** Whether the Pending tab is shown but can't be used, as while a past revision is open. */
+  readonly pendingOff: boolean;
+}): readonly {
+  readonly id: Tab;
+  readonly label: string;
+  readonly disabled: boolean;
+}[] => [
+  { id: "details", label: "Details", disabled: false },
+  { id: "questions", label: `Questions · ${openCount}`, disabled: false },
+  ...(pendingCount === undefined
+    ? []
+    : [
+        {
+          id: "pending" as const,
+          label: `Pending · ${pendingCount}`,
+          disabled: pendingOff,
+        },
+      ]),
+  ...(hasHistory
+    ? [{ id: "history" as const, label: "History", disabled: false }]
+    : []),
+];
 
 /**
  * The side panel next to the view. Details shows one of the `PanelContent`
  * kinds; Open questions lists every question revealed so far; on a page
- * `serve` serves, Pending lists the pending layout changes. Selecting a
- * structure anywhere switches back to Details.
+ * `serve` serves, Pending lists the pending layout changes and History lists
+ * the revisions. Selecting a structure anywhere switches back to Details.
  */
 export function SidePanel() {
   const { selected: packet } = usePlayback();
@@ -203,9 +239,10 @@ export function SidePanel() {
 
   const idPrefix = useId();
   const editing = useEditing();
+  const history = useHistory();
   const review = useReview();
 
-  // Open layout changes, open notes, and everything waiting on the agent.
+  // Open notes, and everything waiting on the agent or turned down.
   const waiting = Arr.filter(
     review?.entries ?? [],
     ({ item, status }) =>
@@ -214,9 +251,7 @@ export function SidePanel() {
       (status.state === "reviewed" &&
         !status.dismissed &&
         status.verdict.verdict === "rejected")
-  );
-
-  const unsettled = (editing?.pending.length ?? 0) + waiting.length;
+  ).length;
 
   // A tab other than Details stays open until the selection changes.
   const [otherTab, setOtherTab] = useState<{
@@ -224,23 +259,24 @@ export function SidePanel() {
     readonly selected: string | null;
   } | null>(null);
 
-  const tabs: readonly { readonly id: Tab; readonly label: string }[] = [
-    { id: "details", label: "Details" },
-    { id: "questions", label: `Questions · ${openCount}` },
-    ...(editing === null
-      ? []
-      : [
-          {
-            id: "pending" as const,
-            label: `Pending · ${unsettled}`,
-          },
-        ]),
-  ];
+  // While a past revision is open there is no editing, but the tab strip
+  // keeps its Pending tab and count, so it doesn't move.
+  const layoutPending = editing?.pending.length ?? history?.pendingCount;
+
+  const pendingCount =
+    layoutPending === undefined ? undefined : layoutPending + waiting;
+
+  const tabs = tabsOf({
+    openCount,
+    pendingCount,
+    hasHistory: history !== null,
+    pendingOff: editing === null,
+  });
 
   const tab: Tab =
     otherTab !== null &&
     otherTab.selected === selected &&
-    Arr.some(tabs, ({ id }) => id === otherTab.tab)
+    Arr.some(tabs, ({ id, disabled }) => id === otherTab.tab && !disabled)
       ? otherTab.tab
       : "details";
 
@@ -257,9 +293,12 @@ export function SidePanel() {
     event.preventDefault();
     event.stopPropagation();
 
-    const at = tabs.findIndex(({ id }) => id === tab);
+    const usable = Arr.filter(tabs, ({ disabled }) => !disabled);
+    const at = usable.findIndex(({ id }) => id === tab);
     const step = event.key === "ArrowRight" ? 1 : -1;
-    const next = tabs[(at + step + tabs.length) % tabs.length]?.id ?? "details";
+
+    const next =
+      usable[(at + step + usable.length) % usable.length]?.id ?? "details";
 
     choose(next);
     event.currentTarget
@@ -270,16 +309,16 @@ export function SidePanel() {
   return (
     <aside
       data-side-panel
-      className="border-ink flex w-80 shrink-0 flex-col border-l"
+      className="border-ink flex w-80 min-w-0 shrink-0 flex-col border-l"
     >
       <div
         tabIndex={0}
         role="tablist"
         aria-label="Side panel"
-        className="border-ink flex gap-0.5 border-b px-2 pt-2"
+        className="border-ink flex min-w-0 gap-0 overflow-x-auto border-b px-1 pt-2"
         onKeyDown={onTabKeyDown}
       >
-        {Arr.map(tabs, ({ id, label }) => (
+        {Arr.map(tabs, ({ id, label, disabled }) => (
           <button
             key={id}
             type="button"
@@ -288,6 +327,13 @@ export function SidePanel() {
             data-tab={id}
             aria-selected={tab === id}
             aria-controls={`${idPrefix}-${id}`}
+            aria-disabled={disabled}
+            disabled={disabled}
+            title={
+              disabled
+                ? "Editing is off while a past revision is open"
+                : undefined
+            }
             tabIndex={tab === id ? 0 : -1}
             className={tabClass}
             onClick={() => {
@@ -339,6 +385,17 @@ export function SidePanel() {
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
           {tab === "pending" ? <PendingTab /> : null}
+        </div>
+      )}
+      {history === null ? null : (
+        <div
+          role="tabpanel"
+          id={`${idPrefix}-history`}
+          aria-labelledby={`${idPrefix}-history-tab`}
+          hidden={tab !== "history"}
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          {tab === "history" ? <HistoryTab /> : null}
         </div>
       )}
     </aside>

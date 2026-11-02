@@ -1,4 +1,4 @@
-import { groundProjections } from "@axonometric/contracts";
+import { groundProjections, samePlacement } from "@axonometric/contracts";
 import type {
   GridPoint,
   Placement,
@@ -106,12 +106,9 @@ interface Drag {
   readonly refusal: string | undefined;
 }
 
-const samePlacement = (a: Placement, b: Placement) =>
-  a.x === b.x && a.y === b.y && a.w === b.w && a.d === b.d;
-
 /**
- * Shifts the drawing of a structure being moved, its name tag and its
- * pending badge by the snapped move, so the box follows the pointer without rerouting every hop
+ * Shifts the drawing of a structure being moved and its name tag by the
+ * snapped move, so the box follows the pointer without rerouting every hop
  * on each step. Both views project the ground linearly, so one offset moves
  * the whole drawing. The routes follow on drop.
  */
@@ -140,7 +137,7 @@ const shiftDrawing = (
     Arr.map(drag.ids, (moving) => {
       const id = CSS.escape(moving);
 
-      return `[data-structure="${id}"], [data-name-tag="${id}"], [data-pending-badge="${id}"]`;
+      return `[data-structure="${id}"], [data-name-tag="${id}"]`;
     }),
     ", "
   );

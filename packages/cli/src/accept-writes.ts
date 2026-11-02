@@ -11,6 +11,7 @@ import {
 import type {
   Accepted,
   AcceptWrite,
+  HistoryList,
   MapState,
   Proposals,
   Revision,
@@ -26,7 +27,7 @@ import {
 } from "effect";
 
 import { siteOutputs, systemOf } from "./build.ts";
-import { encodeRevision, nextRevision } from "./history.ts";
+import { encodeRevision, loadHistory, nextRevision } from "./history.ts";
 import { encodeLayout, encodeProposals, loadMap } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
 import { writeAll } from "./write-files.ts";
@@ -35,6 +36,12 @@ import { writeAll } from "./write-files.ts";
 export interface AcceptedState {
   readonly state: MapState;
   readonly proposals: Proposals;
+  /**
+   * Every revision that reads, newest first, read from `history/` once the
+   * new revision is saved and still under the lock. Taking it from disk
+   * keeps a revision the CLI saved a moment before from being lost.
+   */
+  readonly history: HistoryList;
 }
 
 /**
@@ -175,7 +182,7 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
   ]);
 
   // Still under the lock, so quick writes tell the pages in order.
-  yield* written({ state, proposals });
+  yield* written({ state, proposals, history: yield* loadHistory(home, []) });
 
   return {
     revision: number,

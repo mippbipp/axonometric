@@ -1,9 +1,10 @@
-import { Schema } from "effect";
+import { Schema, SchemaTransformation } from "effect";
 
 import { Layout } from "./layout.ts";
 import { MapState } from "./map-state.ts";
 import { MapProblem } from "./problems.ts";
 import { ChangeId, LayoutChanges, Proposals } from "./proposals.ts";
+import type { Revision } from "./revisions.ts";
 
 /**
  * What `serve` writes to `.axonometric/server.json` in the home folder while
@@ -32,6 +33,8 @@ export const serverPaths = {
   freeze: "/api/review/freeze",
   dismiss: "/api/review/dismiss",
   reopen: "/api/review/reopen",
+  history: "/api/history",
+  revision: "/api/history/:n",
 } as const;
 
 /** The largest request body the server reads, in bytes. */
@@ -135,6 +138,58 @@ export class MapFilesUnreadable extends Schema.TaggedError<
 ) {}
 
 /**
+ * The `:n` in a revision's path: digits only, no sign, no leading zero, no
+ * exponent or hex, so `Number` can't read it as anything but a whole number
+ * of at least 1. Nine digits keep it a safe integer. The server builds the
+ * revision's file name from the number alone, never from the path text.
+ */
+const revisionNumberMessage =
+  "expected a revision number: a whole number from 1, such as 3.";
+
+const wholeFromOne = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(1, { message: revisionNumberMessage })
+);
+
+export const RevisionNumber = Schema.String.annotate({
+  message: revisionNumberMessage,
+})
+  .check(
+    Schema.isPattern(/^[1-9]\d{0,8}$/u, { message: revisionNumberMessage })
+  )
+  .pipe(Schema.decodeTo(wholeFromOne, SchemaTransformation.numberFromString));
+
+/** One line of the History panel: a revision, without its snapshot. */
+export const HistoryEntry = Schema.Struct({
+  revision: Schema.Int,
+  message: Schema.String,
+  /** When the revision was saved, as an ISO date and time in UTC. */
+  savedAt: Schema.String,
+  /** How many items the revision decided on: those it accepted and rejected. */
+  items: Schema.Int,
+});
+
+export type HistoryEntry = typeof HistoryEntry.Type;
+
+/** Every revision that reads, newest first. */
+export const HistoryList = Schema.Array(HistoryEntry);
+
+export type HistoryList = typeof HistoryList.Type;
+
+/** The History panel's line for `revision`. */
+export const historyEntryOf = (revision: Revision): HistoryEntry => ({
+  revision: revision.revision,
+  message: revision.message,
+  savedAt: revision.savedAt,
+  items: revision.accepted.length + revision.rejected.length,
+});
+
+/** No revision has this number. */
+export class RevisionNotFound extends Schema.TaggedError<
+  RevisionNotFound,
+  { readonly brand: unique symbol }
+>()("RevisionNotFound", { revision: Schema.Int }, { httpApiStatus: 404 }) {}
+
+/**
  * One server-sent event:
  *
  * - `MapUpdated`: `state` is the map, with what's pending.
@@ -143,6 +198,8 @@ export class MapFilesUnreadable extends Schema.TaggedError<
  *   `check --json` uses.
  * - `PendingUpdated`: what's pending changed while the map files fail
  *   validation, and `proposals` is what `proposals.json` holds now.
+ * - `HistoryUpdated`: the revisions that read, newest first. Sent when the
+ *   stream opens and whenever a revision is saved or removed.
  * - `Heartbeat`: sent every few seconds, so proxies keep a quiet stream open.
  *
  * The stream sends the map as it is now when it opens, and again after every
@@ -153,6 +210,7 @@ export const ServerEvent = Schema.TaggedUnion({
   MapUpdated: { state: MapState },
   MapRejected: { summary: Schema.String, problems: Schema.Array(MapProblem) },
   PendingUpdated: { proposals: Proposals },
+  HistoryUpdated: { history: HistoryList },
   Heartbeat: {},
 });
 
@@ -179,6 +237,11 @@ export const ServedPage = Schema.Struct({
   dismiss: Schema.String,
   /** Where a rejected item is reopened, relative to the page's URL. */
   reopen: Schema.String,
+  /**
+   * Where the history is, relative to the page's URL: revision `n` is at
+   * this path and `/n`. Its presence turns the History tab on.
+   */
+  history: Schema.String,
 });
 
 export type ServedPage = typeof ServedPage.Type;

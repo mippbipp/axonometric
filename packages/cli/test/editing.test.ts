@@ -343,7 +343,7 @@ describe("moving structures", () => {
 
 describe("the pending look", () => {
   it.live(
-    "draws a moved structure in the accent with a badge, and a faint outline where it was accepted, in both views",
+    "draws a moved structure in the accent with no badge, and a faint outline where it was accepted, in both views",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
@@ -352,7 +352,10 @@ describe("the pending look", () => {
 
         yield* dragBy(page, from, { x: 0, y: unit * 2.2 });
         yield* waitForRevision(home, 1);
-        yield* waitFor(page, '[data-pending-badge="engineer"]');
+        yield* waitFor(
+          page,
+          '[data-structure="engineer"][data-pending="true"]'
+        );
 
         for (const view of ["iso", "plan"] as const) {
           if (view === "plan") {
@@ -373,9 +376,16 @@ describe("the pending look", () => {
             1,
             view
           );
+          // The pending look is the outline and the face tint: no text sits
+          // on the map, and a screen reader hears it in the structure's name.
           assert.strictEqual(
             yield* count(page, "[data-pending-badge]"),
-            1,
+            0,
+            view
+          );
+          assert.include(
+            yield* attribute(page, '[data-structure="engineer"]', "aria-label"),
+            "pending change",
             view
           );
 
@@ -455,26 +465,28 @@ describe("resizing structures", () => {
 });
 
 describe("the side panel tabs", () => {
-  it.live("fit on one line each at 1280 wide, with Pending listed", () =>
-    Effect.gen(function* () {
-      const { page } = yield* servedReview;
+  it.live(
+    "fit on one line each at 1280 wide, with Pending and History listed",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
 
-      yield* Effect.promise(() =>
-        page.locator('[role="tab"][data-tab="pending"]').waitFor()
-      );
+        yield* Effect.promise(() =>
+          page.locator('[role="tab"][data-tab="pending"]').waitFor()
+        );
 
-      const boxes = yield* boxesOf(page, '[role="tab"]');
-      const [first] = boxes;
+        const boxes = yield* boxesOf(page, '[role="tab"]');
+        const [first] = boxes;
 
-      assert.strictEqual(boxes.length, 3);
-      assert.isDefined(first);
+        assert.strictEqual(boxes.length, 4);
+        assert.isDefined(first);
 
-      for (const box of boxes) {
-        // One line of 12px text, with padding, is well under two lines.
-        assert.isBelow(box.height, 30);
-        assert.strictEqual(box.y, first?.y);
-      }
-    })
+        for (const box of boxes) {
+          // One line of 12px text, with padding, is well under two lines.
+          assert.isBelow(box.height, 30);
+          assert.strictEqual(box.y, first?.y);
+        }
+      })
   );
 });
 
