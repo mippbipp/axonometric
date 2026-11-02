@@ -250,7 +250,7 @@ describe("Plan view", () => {
           page,
           `Array.from(document.querySelectorAll("[data-plan-icon]"), (icon) =>
             Array.from(icon.querySelectorAll("*"), (child) =>
-              child.tagName + "." + (child.getAttribute("class") ?? "")
+              [child.tagName, child.getAttribute("fill") ?? "", child.getAttribute("stroke-width") ?? "", child.getAttribute("opacity") ?? ""].join(".")
             ).join(" ")
           )`
         );

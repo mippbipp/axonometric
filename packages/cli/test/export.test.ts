@@ -84,6 +84,8 @@ interface SvgReport {
   readonly text: string;
   readonly classes: number;
   readonly styles: number;
+  /** The text of each <style> element. */
+  readonly styleElements: readonly string[];
   readonly hiddenParts: number;
   readonly drawnParts: number;
 }
@@ -129,7 +131,8 @@ const svgReport = (page: Page, text: string) =>
         external,
         text: root.textContent,
         classes: root.querySelectorAll("[class]").length,
-        styles: root.querySelectorAll("style, [style]").length,
+        styles: root.querySelectorAll("[style]").length,
+        styleElements: [...root.querySelectorAll("style")].map((style) => style.textContent),
         hiddenParts: [...drawn].filter((element) => element.closest('[aria-hidden="true"]') !== null).length,
         drawnParts: drawn.length,
       };
@@ -248,6 +251,13 @@ describe("export", () => {
           );
           assert.strictEqual(report.classes, 0);
           assert.strictEqual(report.styles, 0);
+          // The one <style> is the embedded font, so the file draws in it
+          // wherever it's opened. Nothing in it loads from outside.
+          assert.lengthOf(report.styleElements, 1);
+          assert.match(
+            report.styleElements[0] ?? "",
+            /^(?:@font-face\{[^}]*font\/woff2;base64,[A-Za-z0-9+/=]+\)\}){2}$/u
+          );
           assert.isAbove(report.hiddenParts, report.drawnParts / 2);
           assert.lengthOf(names, 15);
 
@@ -588,13 +598,15 @@ describe("export", () => {
       Effect.gen(function* () {
         const { page } = yield* lastChapter;
 
-        yield* inPage<undefined>(
-          page,
-          `document.querySelector("[data-map-layer] [data-viewport]").removeAttribute("data-viewport")`
-        );
+        // The SVG is drawn from the map's data, not read back from the page,
+        // so a failure comes from the browser: a save that can't start, or a
+        // picture it can't decode.
         yield* Effect.promise(() =>
           page.evaluate(
-            `window.__saved = 0; document.addEventListener("click", (event) => { if (event.target instanceof HTMLAnchorElement && event.target.download) window.__saved += 1; }, true)`
+            `window.__saved = 0;
+             document.addEventListener("click", (event) => { if (event.target instanceof HTMLAnchorElement && event.target.download) window.__saved += 1; }, true);
+             URL.createObjectURL = () => { throw new Error("no saving"); };
+             HTMLImageElement.prototype.decode = () => Promise.reject(new Error("no decoding"));`
           )
         );
 

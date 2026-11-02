@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 import { controlClass } from "./control-class.ts";
-
-type Theme = "light" | "dark";
+import { darkQuery, readChoice, readSystem } from "./theme-state.ts";
+import type { Theme } from "./theme-state.ts";
 
 /** A theme the engineer picked, or `system` to follow the colour scheme. */
 export type ThemeChoice = "system" | Theme;
@@ -12,11 +12,6 @@ export type ThemeChoice = "system" | Theme;
  * before the page draws, so keep the two in step.
  */
 const storageKey = "axonometric-theme";
-
-const darkQuery = "(prefers-color-scheme: dark)";
-
-const isTheme = (value: string | null | undefined): value is Theme =>
-  value === "light" || value === "dark";
 
 /** `localStorage` can throw: a `file://` page may not be allowed to use it. */
 const store = (choice: ThemeChoice) => {
@@ -32,15 +27,6 @@ const store = (choice: ThemeChoice) => {
 };
 
 const listeners = new Set<() => void>();
-
-const readChoice = (): ThemeChoice => {
-  const { theme } = document.documentElement.dataset;
-
-  return isTheme(theme) ? theme : "system";
-};
-
-const readSystem = (): Theme =>
-  globalThis.matchMedia(darkQuery).matches ? "dark" : "light";
 
 const subscribeChoice = (listener: () => void) => {
   listeners.add(listener);

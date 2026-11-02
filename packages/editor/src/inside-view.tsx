@@ -9,6 +9,7 @@ import type {
   Step,
   Structure,
 } from "@axonometric/contracts";
+import { BoxShape, DrawingContext } from "@axonometric/drawing";
 import { Array as Arr, String as Str } from "effect";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
@@ -16,6 +17,7 @@ import type { RefObject } from "react";
 import { controlClass } from "./control-class.ts";
 import { useFrameClock } from "./frame-clock.ts";
 import { clockAtNextHop, packetAt, travelSeconds } from "./packet-schedule.ts";
+import { pageDrawing } from "./page-environment.ts";
 import { reducedMotionNote, useReducedMotion } from "./playback.ts";
 import {
   corners,
@@ -26,7 +28,6 @@ import {
 } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
 import { settledScale } from "./settled-scale.ts";
-import { BoxShape } from "./shapes.tsx";
 
 /** Height of a step's box above the ground, in screen units. */
 const boxHeight = 34;
@@ -329,82 +330,84 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
 
   return (
     <div data-inside-view={structure.id} className="relative size-full">
-      <svg
-        ref={svgRef}
-        aria-labelledby={`${idPrefix}title`}
-        className="text-ink block size-full"
-        viewBox={`${box.minX} ${box.minY} ${box.width} ${box.height}`}
-        preserveAspectRatio="xMidYMid meet"
-      >
-        <title id={`${idPrefix}title`}>{`Inside ${structure.name}`}</title>
-        <defs>
-          <pattern
-            id={hatch}
-            width={6}
-            height={6}
-            patternUnits="userSpaceOnUse"
-            patternTransform="rotate(45)"
-          >
-            <line
-              x1={0}
-              y1={0}
-              x2={0}
-              y2={6}
-              stroke="currentColor"
-              strokeWidth={1.1}
+      <DrawingContext value={pageDrawing}>
+        <svg
+          ref={svgRef}
+          aria-labelledby={`${idPrefix}title`}
+          className="text-ink block size-full"
+          viewBox={`${box.minX} ${box.minY} ${box.width} ${box.height}`}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <title id={`${idPrefix}title`}>{`Inside ${structure.name}`}</title>
+          <defs>
+            <pattern
+              id={hatch}
+              width={6}
+              height={6}
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <line
+                x1={0}
+                y1={0}
+                x2={0}
+                y2={6}
+                stroke="currentColor"
+                strokeWidth={1.1}
+              />
+            </pattern>
+            <marker
+              id={arrowhead}
+              viewBox="0 0 10 10"
+              refX={9}
+              refY={5}
+              markerWidth={7}
+              markerHeight={7}
+              orient="auto-start-reverse"
+            >
+              <path d="M0,0 L10,5 L0,10 z" className="fill-ink stroke-none" />
+            </marker>
+          </defs>
+          <g>
+            {Arr.map(routes, (points, index) => (
+              <polyline
+                key={index}
+                points={toPoints(points)}
+                fill="none"
+                className="stroke-ink"
+                strokeWidth={1.4}
+                markerEnd={`url(#${arrowhead})`}
+              />
+            ))}
+          </g>
+          <g>
+            {Arr.map(steps, (item, index) => (
+              <StepBox key={item.name} index={index} hatch={hatch} />
+            ))}
+          </g>
+          <g>
+            {Arr.map(steps, (item, index) => (
+              <StepTag
+                key={item.name}
+                index={index}
+                label={labelOf(item, index)}
+                rect={tags[index] ?? { left: 0, top: 0, right: 0, bottom: 0 }}
+              />
+            ))}
+          </g>
+          {packet === undefined ? null : (
+            <circle
+              data-inside-packet
+              data-playing={playing}
+              cx={packet.sx}
+              cy={packet.sy}
+              r={5.5}
+              className="fill-ink stroke-paper pointer-events-none"
+              strokeWidth={1.6}
             />
-          </pattern>
-          <marker
-            id={arrowhead}
-            viewBox="0 0 10 10"
-            refX={9}
-            refY={5}
-            markerWidth={7}
-            markerHeight={7}
-            orient="auto-start-reverse"
-          >
-            <path d="M0,0 L10,5 L0,10 z" className="fill-ink stroke-none" />
-          </marker>
-        </defs>
-        <g>
-          {Arr.map(routes, (points, index) => (
-            <polyline
-              key={index}
-              points={toPoints(points)}
-              fill="none"
-              className="stroke-ink"
-              strokeWidth={1.4}
-              markerEnd={`url(#${arrowhead})`}
-            />
-          ))}
-        </g>
-        <g>
-          {Arr.map(steps, (item, index) => (
-            <StepBox key={item.name} index={index} hatch={hatch} />
-          ))}
-        </g>
-        <g>
-          {Arr.map(steps, (item, index) => (
-            <StepTag
-              key={item.name}
-              index={index}
-              label={labelOf(item, index)}
-              rect={tags[index] ?? { left: 0, top: 0, right: 0, bottom: 0 }}
-            />
-          ))}
-        </g>
-        {packet === undefined ? null : (
-          <circle
-            data-inside-packet
-            data-playing={playing}
-            cx={packet.sx}
-            cy={packet.sy}
-            r={5.5}
-            className="fill-ink stroke-paper pointer-events-none"
-            strokeWidth={1.6}
-          />
-        )}
-      </svg>
+          )}
+        </svg>
+      </DrawingContext>
       {routes.length === 0 ? null : (
         <div className="absolute bottom-3 left-3 flex gap-1.5">
           {playing ? (
