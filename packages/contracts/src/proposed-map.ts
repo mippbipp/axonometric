@@ -3,7 +3,7 @@ import { Array as Arr, Order, Record as Rec } from "effect";
 import type { MapState } from "./map-state.ts";
 import { emptyProposals } from "./proposals.ts";
 import type { Batch, BatchItem, Proposals } from "./proposals.ts";
-import { kindTable, specOf } from "./review-kinds.ts";
+import { applyOrder, specOf } from "./review-kinds.ts";
 import type { Touches } from "./review-kinds.ts";
 import { batchesOf, openItems } from "./review.ts";
 
@@ -18,18 +18,17 @@ export interface ProposedMap {
   readonly touches: ReadonlyMap<string, Touches>;
   /** Every structure some proposal adds, changes, moves or removes. */
   readonly structures: ReadonlySet<string>;
-  /** The structures that proposals add, by provisional id. */
-  readonly adds: ReadonlySet<string>;
-  /** Every hop some proposal reroutes. */
+  /** Every hop some proposal touches. */
   readonly hops: ReadonlySet<string>;
-  /** The structures proposed for deletion, which the page crosses out. */
-  readonly removes: ReadonlySet<string>;
+  /**
+   * What kinds mark besides structures and hops, by the name of the mark and
+   * the ids it marks; see `Touches.marks`. Read one with `marked`.
+   */
+  readonly marks: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
-const kindOrder: readonly string[] = Rec.keys(kindTable);
-
 const byKind = Order.mapInput(Order.Number, (item: BatchItem) =>
-  kindOrder.indexOf(item.kind)
+  applyOrder.indexOf(item.kind)
 );
 
 const inKindOrder = (items: readonly BatchItem[]): readonly BatchItem[] =>
@@ -44,6 +43,33 @@ export const frozenItems = (proposals: Proposals): readonly BatchItem[] => {
 
   return inKindOrder(Arr.flatMap(waiting, (batch: Batch) => batch.items));
 };
+
+const marksOf = (
+  touched: readonly Touches[]
+): ReadonlyMap<string, ReadonlySet<string>> => {
+  const named = Arr.flatMap(touched, ({ marks }) => Rec.toEntries(marks));
+  const names = Arr.dedupe(Arr.map(named, ([name]) => name));
+
+  return new Map(
+    Arr.map(names, (name) => [
+      name,
+      new Set(
+        Arr.flatMap(
+          Arr.filter(named, ([other]) => other === name),
+          ([, ids]) => ids
+        )
+      ),
+    ])
+  );
+};
+
+const noIds: ReadonlySet<string> = new Set();
+
+/** The ids that proposals mark under `name`; none when no proposal does. */
+export const marked = (
+  shown: Pick<ProposedMap, "marks">,
+  name: string
+): ReadonlySet<string> => shown.marks.get(name) ?? noIds;
 
 /**
  * The map as proposed: `state`, the accepted map, with the open and frozen
@@ -94,9 +120,8 @@ export const proposedMap = ({
     state: { ...state, data: applied.data, layout: applied.layout },
     touches,
     structures: new Set(Arr.flatMap(all, ({ structures }) => structures)),
-    adds: new Set(Arr.flatMap(all, ({ adds }) => adds)),
     hops: new Set(Arr.flatMap(all, ({ hops }) => hops)),
-    removes: new Set(Arr.flatMap(all, ({ removes }) => removes)),
+    marks: marksOf(all),
   };
 };
 

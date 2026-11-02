@@ -514,10 +514,16 @@ export const recordVerdict = ({
   proposals,
   id,
   verdict,
+  accepted = new Set(),
 }: {
   readonly proposals: Proposals;
   readonly id: string;
   readonly verdict: Verdict;
+  /**
+   * The ids of the structures the accepted map has. `--as` may not name one,
+   * since it gives a new structure its own id. Left out, none is known.
+   */
+  readonly accepted?: ReadonlySet<string>;
 }): Result.Result<Proposals, string> => {
   const oldest = oldestOpenBatch(proposals);
 
@@ -547,8 +553,18 @@ export const recordVerdict = ({
     );
   }
 
+  const taken = new Map(
+    Arr.flatMap(Rec.toEntries(oldest.value.verdicts), ([other, held]) =>
+      held.verdict === "changed" && held.as !== undefined
+        ? [[other, held.as] as const]
+        : []
+    )
+  );
+
   const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
-    Option.flatMap((item) => specOf(item).verdictRefusal(item, verdict))
+    Option.flatMap((item) =>
+      specOf(item).verdictRefusal(item, verdict, { accepted, taken })
+    )
   );
 
   if (Option.isSome(refused)) {

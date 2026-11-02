@@ -14,8 +14,10 @@ import {
   discardStructureProposal,
   droppedIntoGroup,
   freezeOpen,
+  marked,
   proposedMap,
   proposeStructure,
+  removedMark,
   provisionalIdOf,
   recordVerdict,
   summaryLine,
@@ -255,17 +257,18 @@ describe("the proposed map, for each structure action", () => {
     assert.strictEqual(made?.group, "g2");
     assert.strictEqual(made?.status, "planned");
     assert.deepStrictEqual(shown.state.layout.structures["new-1"], add.at);
-    assert.include(revealedFirst(shown), "new-1");
+    // Chapter data is left alone: the page shows a proposed add in every chapter.
+    assert.notInclude(revealedFirst(shown), "new-1");
     assert.deepStrictEqual([...shown.structures], ["new-1"]);
     assert.deepStrictEqual([...touchedBy(shown, "p1")], ["new-1"]);
-    assert.strictEqual(shown.removes.size, 0);
+    assert.strictEqual(marked(shown, removedMark).size, 0);
   });
 
   it("keeps a deleted structure on the map and lists it as removed", () => {
     const shown = proposed({ action: "delete", structure: "b" });
 
     assert.isTrue(Arr.some(shown.state.data.structures, (s) => s.id === "b"));
-    assert.deepStrictEqual([...shown.removes], ["b"]);
+    assert.deepStrictEqual([...marked(shown, removedMark)], ["b"]);
     assert.deepStrictEqual([...shown.structures], ["b"]);
   });
 

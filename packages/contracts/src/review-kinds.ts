@@ -1,5 +1,4 @@
 import { Array as Arr, Match, Option, Record as Rec } from "effect";
-import type { Schema } from "effect";
 
 import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
@@ -22,14 +21,17 @@ import { oneLine, quoteText } from "./quote.ts";
 import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 import { structureOf } from "./structure-change.ts";
+import { actionOf } from "./structure-actions.ts";
 import {
-  marksOfStructureChange,
   structureBreakage,
   structureChangeToData,
   structureChangeToLayout,
 } from "./structure-effects.ts";
 
 export { oneLine, quoteText } from "./quote.ts";
+
+/** The name of the mark for structures proposed for deletion, in `Touches.marks`. */
+export const removedMark = "removed";
 
 /** What a kind of item needs to know about the map. */
 export interface Landing {
@@ -44,6 +46,18 @@ export interface Landing {
     MapData,
     "structures" | "hops" | "flows" | "chapters" | "groups"
   >;
+}
+
+/** What `verdict` knows when it checks a verdict. */
+export interface VerdictContext {
+  /**
+   * The ids of the structures the accepted map had before the agent edited
+   * data.mjs: those in the last revision, or the layout when there is none.
+   * `--as` may not name one of them.
+   */
+  readonly accepted: ReadonlySet<string>;
+  /** The `--as` ids the batch's other items already have, by item id. */
+  readonly taken: ReadonlyMap<string, string>;
 }
 
 /** What a commit knows when it takes an item. */
@@ -63,24 +77,23 @@ export interface MapShape {
 }
 
 /**
- * What an item changes in how the map is drawn: the structures and hops it
- * draws in the pending look, and the structures it draws crossed out.
+ * What an item changes in how the map is drawn. `structures` and `hops` are
+ * what it draws in the pending look. `marks` is for anything else a kind
+ * draws: a name for the mark and the ids it marks, such as the structures
+ * proposed for deletion. The page reads the marks it knows by name, and a
+ * kind's marks stay behind its own entry.
  */
 export interface Touches {
   readonly structures: readonly string[];
-  /** Structures the item adds, which exist only as a proposal so far. */
-  readonly adds: readonly string[];
   readonly hops: readonly string[];
-  /** Structures proposed for deletion, which stay on the map until reviewed. */
-  readonly removes: readonly string[];
+  readonly marks: Readonly<Record<string, readonly string[]>>;
 }
 
 /** An item that draws nothing differently. */
 export const touchesNothing: Touches = {
   structures: [],
-  adds: [],
   hops: [],
-  removes: [],
+  marks: {},
 };
 
 /** `--as` names a structure's final id, so it only fits an item that adds one. */
@@ -172,7 +185,11 @@ export interface KindSpec<I extends BatchItem> {
    * Why `verdict` can't be given to the item, or nothing. Checked when the
    * agent runs `verdict`, before anything is written.
    */
-  verdictRefusal(item: I, verdict: Verdict): Option.Option<string>;
+  verdictRefusal(
+    item: I,
+    verdict: Verdict,
+    context: VerdictContext
+  ): Option.Option<string>;
   /**
    * The structure ids the item makes new when it is taken with `verdict`,
    * as `[provisional, final]` pairs, when the agent used another id.
@@ -220,22 +237,6 @@ const retargetLayoutChange = (
       reroute: (reroute) => reroute,
     })
   );
-};
-
-/** Fields of a structure, as `review` prints them. */
-const structureFacts = (
-  fields: Readonly<Record<string, Schema.Json>>
-): Facts => ({ structure: fields });
-
-const positionOf = (
-  layout: Layout,
-  id: string
-): Readonly<Record<string, number>> => {
-  const placement = layout.structures[id];
-
-  return placement === undefined
-    ? {}
-    : { x: placement.x, y: placement.y, w: placement.w, d: placement.d };
 };
 
 const positionsOf = (layout: Layout, ids: readonly string[]): Facts => {
@@ -299,9 +300,8 @@ const layoutKind: KindSpec<LayoutItem> = {
   }),
   touches: ({ change }) => ({
     structures: structuresOf(change),
-    adds: [],
     hops: hopsOf(change),
-    removes: [],
+    marks: {},
   }),
   facts: ({ change }, layout) => {
     const next = applyLayoutChanges(layout, [change]);
@@ -384,9 +384,10 @@ const noteKind: KindSpec<NoteItem> = {
   retargeted: (item, renames) => {
     const id = renames.get(item.target.id);
 
-    return id === undefined
-      ? item
-      : { ...item, target: { ...item.target, id } };
+    // Only a structure can be renamed; a hop or a spot keeps its target.
+    return item.target.kind === "structure" && id !== undefined
+      ? { ...item, target: { ...item.target, id } }
+      : item;
   },
   appliesToData: (_item, map) => map,
   touches: () => touchesNothing,
@@ -439,120 +440,55 @@ const structureKind: KindSpec<StructureItem> = {
     ...proposals,
     structures: [...(proposals.structures ?? []), { id, change }],
   }),
-  name: ({ change }) =>
-    Match.value(change).pipe(
-      Match.discriminatorsExhaustive("action")({
-        add: () => "add structure",
-        delete: () => "delete structure",
-        rename: () => "rename structure",
-        shape: () => "change shape",
-        group: () => "change group",
-        status: () => "change status",
-      })
-    ),
+  name: ({ change }) => actionOf(change).label,
   targets: ({ change }) => [structureOf(change)],
-  summary: ({ id, change }, nameOf) => {
-    const target = quoteText(nameOf(structureOf(change)));
-
-    return Match.value(change).pipe(
-      Match.discriminatorsExhaustive("action")({
-        add: ({ structure, at }) =>
-          `add structure ${id}: ${quoteText(structure.name)}, shape ${structure.shape}, status ${structure.status}, group ${quoteText(structure.group)}, at x ${at.x}, y ${at.y}, provisional id ${structure.id}`,
-        delete: () => `delete structure ${id}: ${target}`,
-        rename: ({ name }) =>
-          `rename structure ${id}: ${target} to ${quoteText(name)}`,
-        shape: ({ shape }) => `change shape ${id}: ${target} to ${shape}`,
-        group: ({ group }) =>
-          `change group ${id}: ${target} to ${quoteText(group)}`,
-        status: ({ status }) => `change status ${id}: ${target} to ${status}`,
-      })
-    );
-  },
-  facts: ({ change }, layout, data) => {
-    const current = Arr.findFirst(
-      data.structures,
-      ({ id }) => id === structureOf(change)
-    );
-
-    const before = (key: "name" | "shape" | "group" | "status"): Facts =>
-      Option.match(current, {
-        onNone: () => null,
-        onSome: (found) => structureFacts({ [key]: found[key] }),
-      });
-
-    return Match.value(change).pipe(
-      Match.discriminatorsExhaustive("action")({
-        add: ({ structure, at }) => ({
-          before: null,
-          after: structureFacts({
-            id: structure.id,
-            name: structure.name,
-            shape: structure.shape,
-            group: structure.group,
-            status: structure.status,
-            x: at.x,
-            y: at.y,
-            w: at.w,
-            d: at.d,
-          }),
-        }),
-        delete: () => ({
-          before: Option.match(current, {
-            onNone: () => null,
-            onSome: (found) =>
-              structureFacts({
-                id: found.id,
-                name: found.name,
-                shape: found.shape,
-                group: found.group,
-                status: found.status,
-                ...positionOf(layout, found.id),
-              }),
-          }),
-          after: structureFacts({ deleted: true }),
-        }),
-        rename: ({ name }) => ({
-          before: before("name"),
-          after: structureFacts({ name }),
-        }),
-        shape: ({ shape }) => ({
-          before: before("shape"),
-          after: structureFacts({ shape }),
-        }),
-        group: ({ group }) => ({
-          before: before("group"),
-          after: structureFacts({ group }),
-        }),
-        status: ({ status }) => ({
-          before: before("status"),
-          after: structureFacts({ status }),
-        }),
-      })
-    );
-  },
+  summary: ({ id, change }, nameOf) =>
+    actionOf(change).summary(change, id, nameOf),
+  facts: ({ change }, layout, data) =>
+    actionOf(change).facts(
+      change,
+      Arr.findFirst(data.structures, ({ id }) => id === structureOf(change)),
+      layout
+    ),
   appliesToData: ({ change }, map) => ({
     data: structureChangeToData(map.data, change),
     layout: structureChangeToLayout(map.layout, change),
   }),
-  touches: ({ change }) => {
-    const marks = marksOfStructureChange(change);
-
-    return {
-      structures: [...marks.added, ...marks.removed, ...marks.changed],
-      adds: marks.added,
-      hops: [],
-      removes: marks.removed,
-    };
-  },
+  touches: ({ change }) => ({
+    structures: [structureOf(change)],
+    hops: [],
+    marks: { [removedMark]: change.action === "delete" ? [structureOf(change)] : [] },
+  }),
   breakage: ({ change }, landing) => structureBreakage(change, landing),
-  verdictRefusal: ({ change }, verdict) =>
-    verdict.verdict === "changed" &&
-    verdict.as !== undefined &&
-    change.action !== "add"
-      ? Option.some(
-          "--as gives a new structure the id you used for it in data.mjs. This item does not add a structure."
-        )
-      : Option.none(),
+  verdictRefusal: (item, verdict, { accepted, taken }) => {
+    if (verdict.verdict !== "changed" || verdict.as === undefined) {
+      return Option.none();
+    }
+
+    const { change } = item;
+    const as = verdict.as;
+
+    if (change.action !== "add") {
+      return Option.some(
+        "--as gives a new structure the id you used for it in data.mjs. This item does not add a structure."
+      );
+    }
+
+    if (accepted.has(as)) {
+      return Option.some(
+        `--as ${as} names a structure the accepted map already has. Pick the id of the new structure you added to data.mjs.`
+      );
+    }
+
+    return Option.map(
+      Arr.findFirst(
+        [...taken.entries()],
+        ([other, id]) => other !== item.id && id === as
+      ),
+      ([other]) =>
+        `--as ${as} is already the final id of item ${other} in this batch. Give each new structure its own id.`
+    );
+  },
   renames: (item, verdict) => {
     if (verdict.verdict === "rejected" || item.change.action !== "add") {
       return [];
@@ -674,14 +610,32 @@ const structureKind: KindSpec<StructureItem> = {
  * union, so a kind added there without an entry here fails to compile.
  */
 export const kindTable = {
-  // Structures come first: a layout change may act on a structure that a
-  // structure item adds, so the list applies structure items before it.
   structure: structureKind,
   layout: layoutKind,
   note: noteKind,
 } satisfies {
   readonly [K in BatchItem["kind"]]: KindSpec<Extract<BatchItem, { kind: K }>>;
 };
+
+/** `kinds` if it lists every kind of item exactly once; a missing kind won't compile. */
+function satisfiesEvery<const K extends readonly BatchItem["kind"][]>(
+  kinds: K &
+    ([BatchItem["kind"]] extends [K[number]] ? unknown : "a kind is missing")
+): K {
+  return kinds;
+}
+
+/**
+ * The order the kinds apply to the map, first to last. A kind that others
+ * depend on goes first: a layout change may act on a structure that a
+ * structure item adds, so structures apply before layout changes. It is typed
+ * by `BatchItem["kind"]`, so a kind missing from it fails to compile.
+ */
+export const applyOrder: readonly BatchItem["kind"][] = satisfiesEvery([
+  "structure",
+  "layout",
+  "note",
+]);
 
 /** The table seen through `BatchItem`, for code that handles any kind. */
 const kinds: Readonly<Record<BatchItem["kind"], KindSpec<BatchItem>>> =

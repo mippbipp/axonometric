@@ -16,7 +16,12 @@ import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
-import { StructureChange, StructureId } from "./structure-change.ts";
+import { FinalId, StructureChange } from "./structure-change.ts";
+import {
+  addedIds,
+  frozenStructureChanges,
+  openStructureChanges,
+} from "./structure-held.ts";
 
 /** How much ground a footprint covers, in grid units, on half units. */
 export const Footprint = Placement.mapFields(({ w, d }) => ({ w, d })).annotate(
@@ -312,7 +317,7 @@ export const Verdict = Schema.Union([
     verdict: Schema.Literal("changed"),
     reason: RequiredReason,
     /** For a new structure the agent took under another id: the final id. */
-    as: Schema.optionalKey(StructureId),
+    as: Schema.optionalKey(FinalId),
   }).annotate(
     objectMessages("A changed verdict has only verdict, reason and as.")
   ),
@@ -478,35 +483,6 @@ export const emptyProposals: Proposals = {
   revision: 0,
   layout: [],
 };
-
-/** Every structure item in a batch that no commit has closed, and every open one. */
-const waitingStructureChanges = (
-  proposals: Pick<Proposals, "structures" | "batches">
-) => [
-  ...Arr.map(proposals.structures ?? [], ({ change }) => change),
-  ...Arr.flatMap(proposals.batches ?? [], (batch) =>
-    batch.committed === undefined
-      ? Arr.flatMap(batch.items, (item) =>
-          item.kind === "structure" ? [item.change] : []
-        )
-      : []
-  ),
-];
-
-/**
- * The structures that open and frozen proposals add, by their provisional id,
- * with the name each was proposed under. data.mjs has none of them yet.
- */
-export const proposedNames = (
-  proposals: Pick<Proposals, "structures" | "batches">
-): ReadonlyMap<string, string> =>
-  new Map(
-    Arr.flatMap(waitingStructureChanges(proposals), (change) =>
-      change.action === "add"
-        ? [[change.structure.id, change.structure.name] as const]
-        : []
-    )
-  );
 
 /**
  * The provisional ids that committed batches gave final ids, keyed by
@@ -1090,12 +1066,16 @@ export const checkProposals: {
     layout: Layout,
     proposals: Proposals
   ): readonly MapProblem[] => {
-    const proposed = proposedNames(proposals);
+    // A structure the engineer proposed is known to the changes that follow.
+    const proposed = addedIds([
+      ...openStructureChanges(proposals),
+      ...frozenStructureChanges(proposals),
+    ]);
 
     const known = {
       structure: new Set([
         ...Arr.map(data.structures, ({ id }) => id),
-        ...proposed.keys(),
+        ...proposed,
       ]),
       hop: new Set(Arr.map(data.hops, ({ id }) => id)),
     };
@@ -1166,38 +1146,6 @@ export const checkProposals: {
           ]
     );
 
-    const mapIds = new Set(Arr.map(data.structures, ({ id }) => id));
-
-    const staleStructures = Arr.flatMap(
-      proposals.structures ?? [],
-      ({ change }, index) => {
-        const id =
-          change.action === "add" ? change.structure.id : change.structure;
-
-        if (change.action === "add") {
-          return mapIds.has(id)
-            ? [
-                mapWarning({
-                  file: "proposals.json",
-                  path: ["structures", index, "change", "structure", "id"],
-                  message: `data.mjs already has a structure with the id "${id}", which this proposal adds. Discard it from the page's Pending list.`,
-                }),
-              ]
-            : [];
-        }
-
-        return mapIds.has(id)
-          ? []
-          : [
-              mapWarning({
-                file: "proposals.json",
-                path: ["structures", index, "change", "structure"],
-                message: `no structure in data.mjs has the id "${id}", so this ${change.action} does nothing. Discard it from the page's Pending list.`,
-              }),
-            ];
-      }
-    );
-
-    return [...stale, ...overlaps, ...offEnds, ...orphaned, ...staleStructures];
+    return [...stale, ...overlaps, ...offEnds, ...orphaned];
   }
 );

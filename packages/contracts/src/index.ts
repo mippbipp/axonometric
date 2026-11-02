@@ -287,7 +287,6 @@ export {
   newChangeId,
   placeRoute,
   placeStructure,
-  proposedNames,
   Proposals,
   ProposalsFile,
   RerouteChange,
@@ -424,9 +423,11 @@ export type { NoteMarkerSpot } from "./note-markers.ts";
 
 export {
   allKinds,
+  applyOrder,
   kindTable,
   oneLine,
   quoteText,
+  removedMark,
   specOf,
 } from "./review-kinds.ts";
 
@@ -441,16 +442,22 @@ export type {
 export {
   frozenItems,
   layoutUnderProposals,
+  marked,
   proposedMap,
 } from "./proposed-map.ts";
 
 export type { ProposedMap } from "./proposed-map.ts";
 
 export {
+  FinalId,
+  maxProposedReach,
+  maxProposedSide,
   maxStructureNameLength,
   NewStructure,
+  ProposedPlacement,
   provisionalIdOf,
   ProvisionalId,
+  sameStructureChange,
   StructureChange,
   StructureId,
   StructureName,
@@ -458,23 +465,37 @@ export {
 } from "./structure-change.ts";
 
 export {
+  actionOf,
   codeOfName,
-  describePlacement,
-  droppedIntoGroup,
-  marksOfStructureChange,
   proposedDetails,
   proposedOneLiner,
+  structureActions,
+  structureOfNew,
+} from "./structure-actions.ts";
+
+export type { DescribeNames, StructureAction } from "./structure-actions.ts";
+
+export {
+  describePlacement,
+  droppedIntoGroup,
   referencesTo,
   structureBreakage,
   structureChangeToData,
   structureChangeToLayout,
-  structureOfNew,
 } from "./structure-effects.ts";
 
-export type { StructureLanding, StructureMarks } from "./structure-effects.ts";
+export type { StructureLanding } from "./structure-effects.ts";
 
 export {
+  addedIds,
+  frozenStructureChanges,
+  openStructureChanges,
+} from "./structure-held.ts";
+
+export {
+  checkStructureProposals,
   discardStructureProposal,
+  newProvisionalId,
   proposeStructure,
 } from "./structure-proposals.ts";
 

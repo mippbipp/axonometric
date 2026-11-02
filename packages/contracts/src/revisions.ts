@@ -11,7 +11,7 @@ import {
   RequiredReason,
   StructureTarget,
 } from "./proposals.ts";
-import { StructureChange, StructureId } from "./structure-change.ts";
+import { FinalId, StructureChange } from "./structure-change.ts";
 
 /** The folder in the home folder that holds one file per revision. */
 export const historyFolder = "history";
@@ -54,7 +54,7 @@ export const AcceptedItem = Schema.Union([
     id: ChangeId,
     change: StructureChange,
     /** For an added structure: the id it has on the map now. */
-    as: Schema.optionalKey(StructureId),
+    as: Schema.optionalKey(FinalId),
     reason: Schema.optionalKey(Reason),
     changed: changedFlag,
   }).annotate(

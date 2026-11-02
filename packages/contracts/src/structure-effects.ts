@@ -1,110 +1,26 @@
-import {
-  Array as Arr,
-  Match,
-  Option,
-  Record as Rec,
-  String as Str,
-} from "effect";
+import { Array as Arr, Option, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
 import { footprintsOverlap } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
-import type { MapData, Structure } from "./map-data.ts";
+import type { MapData } from "./map-data.ts";
 import { quoteText } from "./quote.ts";
-import { structureOf } from "./structure-change.ts";
-import type { NewStructure, StructureChange } from "./structure-change.ts";
+import { actionOf } from "./structure-actions.ts";
+import type { StructureChange } from "./structure-change.ts";
 import { zonesOf } from "./zones.ts";
-
-/** What a structure the engineer proposes says until the agent writes it. */
-export const proposedOneLiner =
-  "Proposed on the page. The agent writes this if it accepts the structure.";
-
-export const proposedDetails = "Proposed on the page, with no description yet.";
-
-/**
- * A short code for a new structure: the capitals of its first words, or its
- * first letters, one to three of them. The agent sets the real code when it
- * folds the structure into data.mjs.
- */
-export const codeOfName = (name: string): string => {
-  const words = Arr.filter(Str.split(/[^\p{L}\p{N}]+/u)(name), (w) => w !== "");
-
-  const initials = Arr.join(
-    Arr.flatMap(Arr.take(words, 2), (word) => {
-      const letter = /\p{L}/u.exec(word)?.[0];
-
-      return letter === undefined || !/^[A-Za-z]$/u.test(letter)
-        ? []
-        : [Str.toUpperCase(letter)];
-    }),
-    ""
-  );
-
-  return initials === "" ? "N" : initials;
-};
-
-/** The structure the map draws for a proposed one. */
-export const structureOfNew = (made: NewStructure): Structure => ({
-  id: made.id,
-  code: codeOfName(made.name),
-  name: made.name,
-  shape: made.shape,
-  group: made.group,
-  status: made.status,
-  oneLiner: proposedOneLiner,
-  whatItDoes: proposedDetails,
-  howItsBuilt: proposedDetails,
-});
-
-const changeStructure = (
-  data: MapData,
-  id: string,
-  change: (structure: Structure) => Structure
-): MapData => ({
-  ...data,
-  structures: Arr.map(data.structures, (structure) =>
-    structure.id === id ? change(structure) : structure
-  ),
-});
 
 /**
  * `data` with `change` applied, as the page shows it before the agent has
  * decided. A deletion leaves the structure in: the page draws it crossed out.
+ * A proposed structure is not added to any chapter's reveals; the page shows
+ * it in every chapter on its own.
  */
 export const structureChangeToData: {
   (change: StructureChange): (data: MapData) => MapData;
   (data: MapData, change: StructureChange): MapData;
-} = dual(2, (data: MapData, change: StructureChange): MapData => {
-  const edit = (apply: (structure: Structure) => Structure) =>
-    changeStructure(data, structureOf(change), apply);
-
-  return Match.value(change).pipe(
-    Match.discriminatorsExhaustive("action")({
-      add: ({ structure: made }): MapData => {
-        if (Arr.some(data.structures, ({ id }) => id === made.id)) {
-          return data;
-        }
-
-        // Reveals add up from the first chapter, so the structure shows in
-        // every chapter, not only the one the engineer happens to be in.
-        return {
-          ...data,
-          structures: [...data.structures, structureOfNew(made)],
-          chapters: Arr.map(data.chapters, (chapter, index) =>
-            index === 0
-              ? { ...chapter, reveals: [...chapter.reveals, made.id] }
-              : chapter
-          ),
-        };
-      },
-      delete: (): MapData => data,
-      rename: ({ name }) => edit((structure) => ({ ...structure, name })),
-      shape: ({ shape }) => edit((structure) => ({ ...structure, shape })),
-      group: ({ group }) => edit((structure) => ({ ...structure, group })),
-      status: ({ status }) => edit((structure) => ({ ...structure, status })),
-    })
-  );
-});
+} = dual(2, (data: MapData, change: StructureChange): MapData =>
+  actionOf(change).toData(change, data)
+);
 
 /** `layout` with a proposed structure placed where it was dropped. */
 export const structureChangeToLayout: {
@@ -121,25 +37,6 @@ export const structureChangeToLayout: {
       }
     : layout
 );
-
-/** The structures a change adds, removes or alters. */
-export interface StructureMarks {
-  readonly added: readonly string[];
-  readonly removed: readonly string[];
-  readonly changed: readonly string[];
-}
-
-export const marksOfStructureChange = (
-  change: StructureChange
-): StructureMarks => {
-  const id = structureOf(change);
-
-  return {
-    added: change.action === "add" ? [id] : [],
-    removed: change.action === "delete" ? [id] : [],
-    changed: change.action === "add" || change.action === "delete" ? [] : [id],
-  };
-};
 
 /** A footprint in words, such as `x 4, y 2, w 2, d 2`. */
 export const describePlacement = ({ x, y, w, d }: Placement) =>
