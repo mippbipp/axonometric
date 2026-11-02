@@ -71,6 +71,7 @@ export {
 export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 
 export {
+  changedProblems,
   checkLayout,
   clashWarnings,
   draggedProblems,
@@ -82,6 +83,7 @@ export {
 } from "./layout-checks.ts";
 
 export type {
+  Checkable,
   DraggedProblem,
   HopEnds,
   OffEnd,
@@ -476,6 +478,8 @@ export {
 export type { DescribeNames, StructureAction } from "./structure-actions.ts";
 
 export {
+  candidateProblems,
+  defaultSpotFor,
   describePlacement,
   droppedIntoGroup,
   referencesTo,

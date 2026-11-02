@@ -11,10 +11,13 @@ import { vi } from "vitest";
 
 import {
   breakageOf,
+  candidateProblems,
   codeOfName,
   commitBatch,
+  defaultSpotFor,
   discardStructureProposal,
   droppedIntoGroup,
+  footprintsOverlap,
   freezeOpen,
   marked,
   proposedMap,
@@ -1076,5 +1079,121 @@ describe("a note on a hop or a spot after --as", () => {
       kind: "structure",
       id: "cache",
     });
+  });
+});
+
+/** A map with three groups in a row, each a zone with room between. */
+const rowData: MapData = {
+  ...data,
+  groups: [
+    { id: "g1", title: "One" },
+    { id: "g2", title: "Two" },
+    { id: "g3", title: "Three" },
+  ],
+  structures: [
+    structure("a", { group: "g1" }),
+    structure("b", { group: "g2" }),
+    structure("c", { group: "g3" }),
+  ],
+  hops: [],
+  flows: [],
+  chapters: [],
+};
+
+const rowLayout: Layout = {
+  ...layout,
+  structures: {
+    a: { x: 0, y: 0, w: 2, d: 2 },
+    b: { x: 8, y: 0, w: 2, d: 2 },
+    c: { x: 16, y: 0, w: 2, d: 2 },
+  },
+};
+
+const candidate = (...changes: readonly StructureChange[]) =>
+  candidateProblems({ data: rowData, layout: rowLayout }, changes);
+
+const zoneWarnings = (found: ReturnType<typeof candidate>) =>
+  Arr.filter(found, ({ problem }) => problem.message.includes("zones of groups"));
+
+describe("what a proposal would add to check's report", () => {
+  it("is silent for a structure placed inside its own group's zone", () => {
+    const found = candidate({
+      ...add,
+      structure: { ...add.structure, group: "g1" },
+      at: { x: 4, y: 0, w: 2, d: 2 },
+    });
+
+    assert.deepStrictEqual(zoneWarnings(found), []);
+  });
+
+  it("reports a zone that a new structure stretches over another group's, marked new", () => {
+    const found = candidate({
+      ...add,
+      structure: { ...add.structure, group: "g1" },
+      at: { x: 20, y: 0, w: 2, d: 2 },
+    });
+
+    const [warning] = zoneWarnings(found);
+
+    assert.isTrue(warning?.added);
+    assert.include(warning?.problem.message ?? "", '"g1"');
+  });
+
+  it("reports the zone a group change grows or makes overlap, which a drag never checked", () => {
+    const found = candidate({ action: "group", structure: "a", group: "g3" });
+
+    assert.isAbove(zoneWarnings(found).length, 0);
+    assert.isTrue(Arr.every(zoneWarnings(found), ({ added }) => added));
+  });
+
+  it("does not mark a problem the map already had", () => {
+    const crowded: Layout = {
+      ...rowLayout,
+      structures: { ...rowLayout.structures, b: { x: 3, y: 0, w: 2, d: 2 } },
+    };
+
+    const found = candidateProblems(
+      { data: rowData, layout: crowded },
+      [{ action: "rename", structure: "a", name: "Alpha" }]
+    );
+
+    assert.isTrue(Arr.every(found, ({ added }) => !added));
+  });
+});
+
+describe("the default spot for a new structure", () => {
+  it("is a free 2 by 2 slot beside the group's zone, clear of every footprint", () => {
+    const spot = defaultSpotFor({
+      data: rowData,
+      layout: rowLayout,
+      group: "g2",
+      shape: "box",
+    });
+
+    assert.deepStrictEqual({ w: spot.w, d: spot.d }, { w: 2, d: 2 });
+    assert.isTrue(
+      Arr.every(Rec.values(rowLayout.structures), (other) => !footprintsOverlap(spot, other))
+    );
+    // Beside g2's zone: nearer to b than to a or c.
+    assert.isBelow(Math.abs(spot.x - 8) + Math.abs(spot.y), Math.abs(spot.x - 0) + Math.abs(spot.y));
+    assert.isBelow(Math.abs(spot.x - 8) + Math.abs(spot.y), Math.abs(spot.x - 16) + Math.abs(spot.y));
+  });
+
+  it("changes with the group, and starts a group with no structures clear of the rest", () => {
+    const first = defaultSpotFor({ data: rowData, layout: rowLayout, group: "g1", shape: "box" });
+    const third = defaultSpotFor({ data: rowData, layout: rowLayout, group: "g3", shape: "box" });
+
+    assert.notDeepEqual(first, third);
+
+    const empty = defaultSpotFor({
+      data: { ...rowData, groups: [...rowData.groups, { id: "g4", title: "Four" }] },
+      layout: rowLayout,
+      group: "g4",
+      shape: "box",
+    });
+
+    assert.isTrue(
+      Arr.every(Rec.values(rowLayout.structures), (other) => !footprintsOverlap(empty, other))
+    );
   });
 });

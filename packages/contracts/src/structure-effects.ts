@@ -1,9 +1,11 @@
 import { Array as Arr, Option, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
-import { footprintsOverlap } from "./layout-checks.ts";
+import { changedProblems, footprintsOverlap } from "./layout-checks.ts";
+import type { Checkable, DraggedProblem } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
-import type { MapData } from "./map-data.ts";
+import type { MapData, Structure } from "./map-data.ts";
+import { defaultFootprint, placeStructures } from "./placement.ts";
 import { quoteText } from "./quote.ts";
 import { actionOf } from "./structure-actions.ts";
 import type { StructureChange } from "./structure-change.ts";
@@ -252,3 +254,67 @@ export const droppedIntoGroup = ({
     ? Option.none()
     : Option.map(Arr.head(inside), ({ group }) => group.id);
 };
+
+/** The id `defaultSpotFor` gives the structure it asks `placeStructures` to place. */
+const probeId = "__spot-probe__";
+
+/**
+ * Where a new structure of `shape` in group `group` would sit if the engineer
+ * didn't pick a spot: the first free slot beside the group's zone, as
+ * `placeStructures` finds it. It stands in a probe structure, so the same
+ * slot rules apply that `build` uses for any structure with no position.
+ * `data` and `layout` are the map as proposed, so the slot is clear of the
+ * structures already proposed.
+ */
+export const defaultSpotFor = ({
+  data,
+  layout,
+  group,
+  shape,
+}: {
+  readonly data: MapData;
+  readonly layout: Layout;
+  readonly group: string;
+  readonly shape: Structure["shape"];
+}): Placement => {
+  const probe: Structure = {
+    id: probeId,
+    code: "ZZZ",
+    name: "Probe",
+    shape,
+    group,
+    status: "planned",
+    oneLiner: "Probe.",
+    whatItDoes: "Probe.",
+    howItsBuilt: "Probe.",
+  };
+
+  const placed = placeStructures(
+    { ...data, structures: [...data.structures, probe] },
+    layout
+  ).layout.structures[probeId];
+
+  return placed ?? { x: 0, y: 0, ...defaultFootprint };
+};
+
+/**
+ * Everything `check` would report for the map as proposed with `changes`
+ * added, each marked `added` when the map as proposed now didn't have it.
+ * This is the check a drag runs, on the proposed map instead of the accepted
+ * one, so a new structure, or a group change, that stretches a zone over
+ * another group is reported the same way a drag that does it is.
+ */
+export const candidateProblems: {
+  (changes: readonly StructureChange[]): (before: Checkable) => readonly DraggedProblem[];
+  (before: Checkable, changes: readonly StructureChange[]): readonly DraggedProblem[];
+} = dual(
+  2,
+  (before: Checkable, changes: readonly StructureChange[]): readonly DraggedProblem[] =>
+    changedProblems(
+      Arr.reduce(changes, before, (map, change) => ({
+        data: structureChangeToData(map.data, change),
+        layout: structureChangeToLayout(map.layout, change),
+      })),
+      before
+    )
+);

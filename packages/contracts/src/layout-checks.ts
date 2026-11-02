@@ -546,24 +546,49 @@ const checkLayoutOnce = (data: MapData, layout: Layout) => {
   return found;
 };
 
+/** A map as `check` sees it: its meaning and its layout. */
+export interface Checkable {
+  readonly data: MapData;
+  readonly layout: Layout;
+}
+
 /**
- * Everything `check` would report for the layout `after`, in the order it
- * reports it, each marked `added` when the layout `before` didn't have it.
- * It is the check `check` runs, on the layout a drag would leave, so the
- * page lists exactly what `check` would then print, and can set apart what
- * the drag made.
+ * Everything `check` would report for the map `after`, in the order it
+ * reports it, each marked `added` when the map `before` didn't have it. It
+ * is the check `check` runs, on the map a drag or a proposal would leave, so
+ * the page lists exactly what `check` would then print, and can set apart
+ * what the change made.
+ *
+ * A drag changes the layout alone, so `draggedProblems` takes one `data`. A
+ * proposal can change the data as well, such as a structure's group, which
+ * moves it between zones; `changedProblems` takes both maps whole.
+ */
+export const changedProblems: {
+  (before: Checkable): (after: Checkable) => readonly DraggedProblem[];
+  (after: Checkable, before: Checkable): readonly DraggedProblem[];
+} = dual(
+  2,
+  (after: Checkable, before: Checkable): readonly DraggedProblem[] => {
+    const known = new Set(
+      Arr.map(checkLayoutOnce(before.data, before.layout), lineOf)
+    );
+
+    return Arr.map(checkLayoutOnce(after.data, after.layout), (problem) => ({
+      problem,
+      added: !known.has(lineOf(problem)),
+    }));
+  }
+);
+
+/**
+ * `changedProblems` for a change to the layout alone, such as a drag: the
+ * map's data is the same before and after.
  */
 export const draggedProblems: {
   (before: Layout, after: Layout): (data: MapData) => readonly DraggedProblem[];
   (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[];
 } = dual(
   3,
-  (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[] => {
-    const known = new Set(Arr.map(checkLayoutOnce(data, before), lineOf));
-
-    return Arr.map(checkLayoutOnce(data, after), (problem) => ({
-      problem,
-      added: !known.has(lineOf(problem)),
-    }));
-  }
+  (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[] =>
+    changedProblems({ data, layout: after }, { data, layout: before })
 );
