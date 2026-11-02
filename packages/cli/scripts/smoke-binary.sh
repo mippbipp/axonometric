@@ -42,8 +42,24 @@ for output in SYSTEM.md pipeline.html; do
   fi
 done
 
-echo "serve and status"
+echo "export"
 map="$work/pipeline/map"
+out="$work/pipeline"
+run_binary export "$map" --format svg --view plan --output "$out/plan.svg"
+run_binary export "$map" --format png --view plan --output "$out/plan.png"
+
+# The SVG says how big it is, and the PNG is drawn at twice that. od reads the
+# PNG's IHDR (width at byte 16, height at byte 20) the same on every OS.
+svg_size=$(sed -n '1,3s/.*<svg[^>]* width="\([0-9]*\)" height="\([0-9]*\)".*/\1 \2/p' "$out/plan.svg")
+png_size=$(od -An -tu1 -j16 -N8 "$out/plan.png" | awk '{ print $1*16777216 + $2*65536 + $3*256 + $4, $5*16777216 + $6*65536 + $7*256 + $8 }')
+expected=$(printf '%s\n' "$svg_size" | awk '{ print $1*2, $2*2 }')
+if [ -z "$svg_size" ] || [ "$png_size" != "$expected" ]; then
+  echo "export wrote a PNG of $png_size, not $expected (twice the SVG's $svg_size)." >&2
+  exit 1
+fi
+echo "plan.png is $png_size"
+
+echo "serve and status"
 state_file="$map/.axonometric/server.json"
 # Started directly, not through run_binary, so $! is the binary itself and
 # kill reaches it.

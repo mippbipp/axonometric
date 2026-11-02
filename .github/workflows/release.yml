@@ -16,6 +16,11 @@ on:
       - packages/cli/tsdown.config.ts
       - packages/cli/scripts/**
       - packages/cli/package.json
+      # The PNG export's font and renderer, and the drawing it renders, ride
+      # inside the binaries.
+      - packages/cli/assets/**
+      - packages/cli/src/rasterise*.ts
+      - packages/drawing/**
       - scripts/**
       - package.json
       - pnpm-lock.yaml
