@@ -271,7 +271,7 @@ describe("export --format svg", () => {
           // A faded name tag fades its border and text, and keeps its fill.
           assert.match(
             fromCli,
-            /<g data-faded="true"><rect[^>]* stroke-opacity="0.25"[^>]*\/><text[^>]* opacity="0.25"/u
+            /<g data-faded="true"><rect[^>]* fill="#e6dfbe"[^>]* stroke-opacity="0.25"[^>]*><\/rect><text[^>]* opacity="0.25"/u
           );
           assert.notInclude(fromCli, '<g data-faded="true" opacity=');
 
