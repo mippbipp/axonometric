@@ -7,8 +7,15 @@ import type { Verdict } from "@axonometric/contracts";
 import { Console, Effect, Option, Path, Result, String as Str } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
+import { acceptedStructureIds } from "./history.ts";
 import { withLock } from "./lock.ts";
-import { MapInvalid, encodeProposals, loadProposals } from "./map-files.ts";
+import {
+  MapInvalid,
+  emptyLayout,
+  encodeProposals,
+  loadLayout,
+  loadProposals,
+} from "./map-files.ts";
 import { ReviewRefused } from "./review-shared.ts";
 import { writeAll } from "./write-files.ts";
 
@@ -100,6 +107,7 @@ const verdict = Effect.fn("verdict")(function* ({
   yield* withLock(home, "verdict");
 
   const loaded = yield* loadProposals(home);
+  const layout = yield* loadLayout(home);
 
   if (Result.isFailure(loaded)) {
     return yield* MapInvalid.make({
@@ -113,6 +121,10 @@ const verdict = Effect.fn("verdict")(function* ({
     proposals: loaded.success,
     id: item,
     verdict: decided.success,
+    accepted: yield* acceptedStructureIds(
+      home,
+      Result.isSuccess(layout) ? layout.success : emptyLayout
+    ),
   });
 
   if (Result.isFailure(recorded)) {

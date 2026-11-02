@@ -31,4 +31,3 @@ export const addedIds = (
   Arr.flatMap(changes, (change) =>
     change.action === "add" ? [change.structure.id] : []
   );
-

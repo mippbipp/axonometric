@@ -72,8 +72,7 @@ export const StructureName = Schema.String.annotate({
   Schema.isMaxLength(maxStructureNameLength, { message: nameFix })
 );
 
-const groupFix =
-  "expected the id of one of the map's groups, on one line.";
+const groupFix = "expected the id of one of the map's groups, on one line.";
 
 const GroupRef = Schema.String.annotate({ message: groupFix }).check(
   Schema.isNonEmpty({ message: groupFix }),

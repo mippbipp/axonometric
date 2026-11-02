@@ -20,8 +20,8 @@ import type {
 import { oneLine, quoteText } from "./quote.ts";
 import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
-import { structureOf } from "./structure-change.ts";
 import { actionOf } from "./structure-actions.ts";
+import { structureOf } from "./structure-change.ts";
 import {
   structureBreakage,
   structureChangeToData,
@@ -457,7 +457,9 @@ const structureKind: KindSpec<StructureItem> = {
   touches: ({ change }) => ({
     structures: [structureOf(change)],
     hops: [],
-    marks: { [removedMark]: change.action === "delete" ? [structureOf(change)] : [] },
+    marks: {
+      [removedMark]: change.action === "delete" ? [structureOf(change)] : [],
+    },
   }),
   breakage: ({ change }, landing) => structureBreakage(change, landing),
   verdictRefusal: (item, verdict, { accepted, taken }) => {

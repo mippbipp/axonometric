@@ -105,7 +105,10 @@ const worldRefusal = (
 };
 
 /** Whether the map already has the value `change` proposes. */
-const currentValue = (world: StructureWorld, change: StructureChange): boolean =>
+const currentValue = (
+  world: StructureWorld,
+  change: StructureChange
+): boolean =>
   Option.match(
     Arr.findFirst(
       world.data.structures,

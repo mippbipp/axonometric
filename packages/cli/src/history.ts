@@ -11,6 +11,7 @@ import {
 } from "@axonometric/contracts";
 import type {
   HistoryEntry,
+  Layout,
   MapFile,
   MapProblem,
   Revision,
@@ -22,6 +23,7 @@ import {
   Option,
   Order,
   Path,
+  Record as Rec,
   Result,
   Schema,
 } from "effect";
@@ -182,4 +184,25 @@ export const loadHistory = Effect.fnUntraced(function* (
   });
 
   return Arr.reverse(Arr.flatMap(entries, Option.toArray));
+});
+
+/**
+ * The ids of the structures the accepted map had before the agent last edited
+ * data.mjs: those in the newest revision that reads, else the ones
+ * `layout.json` places. `verdict --as` may not name one of these, since it
+ * gives a new structure an id of its own.
+ */
+export const acceptedStructureIds = Effect.fnUntraced(function* (
+  home: string,
+  layout: Layout
+) {
+  const newest = (yield* revisionsIn(home)).at(-1);
+  const found =
+    newest === undefined ? undefined : yield* readRevision(home, newest);
+
+  return new Set(
+    found === undefined || Option.isNone(found)
+      ? Rec.keys(layout.structures)
+      : Arr.map(found.value.data.structures, ({ id }) => id)
+  );
 });

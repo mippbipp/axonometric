@@ -4,12 +4,14 @@ import {
   Option,
   Record as Rec,
   Result,
+  Schema,
   String as Str,
 } from "effect";
 import { vi } from "vitest";
 
 import {
   breakageOf,
+  codeOfName,
   commitBatch,
   discardStructureProposal,
   droppedIntoGroup,
@@ -20,7 +22,10 @@ import {
   removedMark,
   provisionalIdOf,
   recordVerdict,
+  specOf,
+  StructureChange,
   summaryLine,
+  Verdict,
 } from "../src/index.ts";
 import type {
   AcceptedItem,
@@ -29,8 +34,6 @@ import type {
   MapData,
   MapState,
   Proposals,
-  StructureChange,
-  Verdict,
 } from "../src/index.ts";
 
 // Seam 3: the pure functions behind structure proposals, with plain data.
@@ -892,5 +895,186 @@ describe("a provisional id", () => {
       provisionalIdOf(Str.repeat(100)("x"), "ab12"),
       /^[\w-]{1,64}$/u
     );
+  });
+});
+
+describe("a code for a proposed structure", () => {
+  it("is one to three capitals that no other structure has", () => {
+    assert.strictEqual(codeOfName("Build Cache", new Set()), "BC");
+    assert.strictEqual(codeOfName("Build Cache", new Set(["BC"])), "B");
+    assert.strictEqual(codeOfName("Build Cache", new Set(["BC", "B"])), "BU");
+    assert.strictEqual(
+      codeOfName("Build Cache", new Set(["BC", "B", "BU"])),
+      "BUI"
+    );
+    assert.strictEqual(codeOfName("日本語", new Set()), "A");
+    assert.match(
+      codeOfName("Alpha", new Set(["A", "AL", "ALP"])),
+      /^[A-Z]{1,3}$/u
+    );
+  });
+
+  it("is checked against the codes the map already has when a structure is proposed", () => {
+    const shown = proposedMap({
+      state: {
+        ...state,
+        data: {
+          ...data,
+          structures: [
+            structure("a", { code: "BC" }),
+            ...data.structures.slice(1),
+          ],
+        },
+      },
+      proposals: withStructures([
+        "p1",
+        { ...add, structure: { ...add.structure, name: "Build Cache" } },
+      ]),
+    });
+
+    const made = Arr.findFirst(
+      shown.state.data.structures,
+      (s) => s.id === "new-1"
+    );
+
+    assert.notStrictEqual(Option.getOrThrow(made).code, "BC");
+  });
+});
+
+describe("what a proposed structure may hold", () => {
+  const decodeChange = Schema.decodeUnknownResult(StructureChange);
+
+  it("refuses line breaks of every kind in a name and a group", () => {
+    for (const mark of ["\n", "\r", "\u0085", "\u2028", "\u2029"]) {
+      assert.isTrue(
+        Result.isFailure(
+          decodeChange({ action: "rename", structure: "a", name: `A${mark}B` })
+        ),
+        JSON.stringify(mark)
+      );
+      assert.isTrue(
+        Result.isFailure(
+          decodeChange({ action: "group", structure: "a", group: `g${mark}` })
+        ),
+        JSON.stringify(mark)
+      );
+    }
+  });
+
+  it("caps where an add lands and how big it is", () => {
+    const at = (spot: object) => decodeChange({ ...add, at: spot });
+
+    assert.isTrue(Result.isSuccess(at({ x: 1000, y: -1000, w: 10, d: 10 })));
+    assert.isTrue(Result.isFailure(at({ x: 1000.5, y: 0, w: 2, d: 2 })));
+    assert.isTrue(Result.isFailure(at({ x: 0, y: -1001, w: 2, d: 2 })));
+    assert.isTrue(Result.isFailure(at({ x: 0, y: 0, w: 11, d: 2 })));
+    assert.isTrue(Result.isFailure(at({ x: 0, y: 0, w: 2, d: 10.5 })));
+  });
+});
+
+describe("--as", () => {
+  const frozenAdds = (...ids: readonly string[]): Proposals =>
+    unwrap(
+      freezeOpen({
+        proposals: withStructures(
+          ...Arr.map(ids, (id): readonly [string, StructureChange] => [
+            `p-${id}`,
+            { ...add, structure: { ...add.structure, id } },
+          ])
+        ),
+        at,
+      })
+    ).proposals;
+
+  const changedAs = (as: string): Verdict => ({
+    verdict: "changed",
+    reason: "Renamed.",
+    as,
+  });
+
+  it("is an id of letters, digits, - and _", () => {
+    const decode = Schema.decodeUnknownResult(Verdict);
+
+    assert.isTrue(Result.isSuccess(decode(changedAs("build-cache_2"))));
+    assert.isTrue(Result.isFailure(decode(changedAs("a b"))));
+    assert.isTrue(Result.isFailure(decode(changedAs("a\nb"))));
+    assert.isTrue(Result.isFailure(decode(changedAs(""))));
+  });
+
+  it("is refused when it names a structure the accepted map already has", () => {
+    const refused = recordVerdict({
+      proposals: frozenAdds("n1"),
+      id: "p-n1",
+      verdict: changedAs("b"),
+      accepted: new Set(["a", "b", "c"]),
+    });
+
+    assert.include(Result.merge(refused), "already has");
+    assert.isTrue(
+      Result.isSuccess(
+        recordVerdict({
+          proposals: frozenAdds("n1"),
+          id: "p-n1",
+          verdict: changedAs("fresh"),
+          accepted: new Set(["a", "b", "c"]),
+        })
+      )
+    );
+  });
+
+  it("is refused when another item in the batch has it", () => {
+    const first = unwrap(
+      recordVerdict({
+        proposals: frozenAdds("n1", "n2"),
+        id: "p-n1",
+        verdict: changedAs("cache"),
+      })
+    );
+
+    const refused = recordVerdict({
+      proposals: first,
+      id: "p-n2",
+      verdict: changedAs("cache"),
+    });
+
+    assert.include(Result.merge(refused), "item p-n1");
+
+    // The same item may be given its verdict again.
+    assert.isTrue(
+      Result.isSuccess(
+        recordVerdict({
+          proposals: first,
+          id: "p-n1",
+          verdict: changedAs("cache"),
+        })
+      )
+    );
+  });
+});
+
+describe("a note on a hop or a spot after --as", () => {
+  it("keeps its target, and only a structure target is renamed", () => {
+    const renames = new Map([["new-1", "cache"]]);
+    const spec = specOf({
+      id: "n1",
+      kind: "note",
+      target: { kind: "structure", id: "new-1" },
+      text: "x",
+    });
+
+    const renamed = spec.retargeted(
+      {
+        id: "n1",
+        kind: "note",
+        target: { kind: "structure", id: "new-1" },
+        text: "x",
+      },
+      renames
+    );
+
+    assert.deepStrictEqual(renamed.kind === "note" ? renamed.target : null, {
+      kind: "structure",
+      id: "cache",
+    });
   });
 });

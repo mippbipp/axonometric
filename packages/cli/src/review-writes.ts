@@ -8,13 +8,14 @@ import {
   hopLabelOf,
   MapFilesUnreadable,
   proposedMap,
-  proposedNames,
   ProposalRefused,
   proposeStructure,
   reopenItem,
   reviewPrompt,
 } from "@axonometric/contracts";
 import type {
+  Mappable,
+  ProposedMap,
   FreezeWrite,
   FreezeAnswer,
   Hop,
@@ -44,18 +45,20 @@ import { writeAll } from "./write-files.ts";
 /** What a write's change is given: the files as read under the lock. */
 interface Held {
   readonly proposals: Proposals;
-  /** The layout open changes land on: the accepted one with frozen changes applied. */
+  /** The layout open changes land on: the accepted one with frozen items applied. */
   readonly layout: Layout;
+  /** The names of the structures the map shows, proposed ones included. */
   readonly structures: ReadonlyMap<string, string>;
   /** The map's hops, with their labels. */
   readonly hops: readonly Hop[];
   /** The map's data, as the last build left it. */
   readonly data: MapData;
   /**
-   * The layout structure proposals land on: the accepted layout with the
-   * frozen items applied and every proposed structure placed.
+   * The map as proposed, with every frozen and open item applied. Checks
+   * read it, so a structure or group an earlier proposal adds is known to
+   * the later ones.
    */
-  readonly shownLayout: Layout;
+  readonly proposed: ProposedMap<Mappable>;
   readonly now: string;
 }
 
@@ -85,22 +88,19 @@ const writeProposals = Effect.fnUntraced(
 
     const now = DateTime.formatIso(yield* DateTime.now);
 
+    // Built once per write: the frozen items alone are what open changes land
+    // on, and all of them are what the checks read.
+    const state = { data: map.data, layout: map.layout };
+    const proposed = proposedMap({ state, proposals: map.proposals });
+
     const changed = change({
       proposals: map.proposals,
-      // The layout an open change lands on: the accepted one with the
-      // items frozen in batches applied.
-      layout: proposedMap({
-        state: { system: "", data: map.data, layout: map.layout },
-        proposals: map.proposals,
-        open: false,
-      }).state.layout,
-      structures: structureNames(map.data),
+      layout: proposedMap({ state, proposals: map.proposals, open: false })
+        .state.layout,
+      structures: structureNames(proposed.state.data),
       hops: map.data.hops,
       data: map.data,
-      shownLayout: proposedMap({
-        state: { system: "", data: map.data, layout: map.layout },
-        proposals: map.proposals,
-      }).state.layout,
+      proposed,
       now,
     });
 
@@ -172,10 +172,7 @@ export const addNoteWrite = editing<NoteAdd>(
       proposals,
       note,
       // A note can be pinned to a structure that is only proposed so far.
-      known: new Set([
-        ...structures.keys(),
-        ...proposedNames(proposals).keys(),
-      ]),
+      known: new Set(structures.keys()),
     })
 );
 
@@ -220,12 +217,12 @@ export const reopenWrite = editing<ReopenWrite>(
  */
 export const setStructureWrite = editing<StructureWrite>(
   "setStructureWrite",
-  ({ proposals, data, shownLayout }, { id, change }) =>
+  ({ proposals, proposed }, { id, change }) =>
     proposeStructure({
       proposals,
       id,
       change,
-      world: { data, layout: shownLayout },
+      world: { data: proposed.state.data, layout: proposed.state.layout },
     })
 );
 

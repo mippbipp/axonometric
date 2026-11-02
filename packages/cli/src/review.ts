@@ -4,8 +4,9 @@ import {
   engineerTextNotice,
   hopLabelOf,
   oldestOpenBatch,
-  proposedNames,
+  proposedMap,
   ReviewReport,
+  quoteText,
   specOf,
   structureNotice,
 } from "@axonometric/contracts";
@@ -93,7 +94,7 @@ const textOf = Effect.fnUntraced(function* (item: ReportedItem) {
 
   const targets = Arr.map(
     item.targets,
-    ({ id, name }) => `${JSON.stringify(name)} (${id})`
+    ({ id, name }) => `${quoteText(name)} (${id})`
   );
 
   const verdict =
@@ -135,7 +136,12 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
           replaces: map.proposals.replaces,
           layout: map.layout,
           names,
-          proposed: proposedNames(map.proposals),
+          proposed: structureNames(
+            proposedMap({
+              state: { data: map.data, layout: map.layout },
+              proposals: map.proposals,
+            }).state.data
+          ),
           hops: map.data.hops,
           data: map.data,
         })

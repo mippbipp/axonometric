@@ -446,7 +446,7 @@ export {
   proposedMap,
 } from "./proposed-map.ts";
 
-export type { ProposedMap } from "./proposed-map.ts";
+export type { Mappable, ProposedMap } from "./proposed-map.ts";
 
 export {
   FinalId,

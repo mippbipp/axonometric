@@ -2,9 +2,9 @@ import { Array as Arr, Option } from "effect";
 
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
+import { statusLabels } from "./map-data.ts";
 import { quoteText } from "./quote.ts";
 import type { Facts } from "./review-report.ts";
-import { statusLabels } from "./map-data.ts";
 import { structureOf } from "./structure-change.ts";
 import type { NewStructure, StructureChange } from "./structure-change.ts";
 
@@ -27,7 +27,10 @@ const capitals = /\p{Lu}/gu;
  * The agent sets the real code when it folds the structure into data.mjs. A
  * name that gives nothing free falls back to the letters A to Z, then pairs.
  */
-export const codeOfName = (name: string, taken: ReadonlySet<string>): string => {
+export const codeOfName = (
+  name: string,
+  taken: ReadonlySet<string>
+): string => {
   const letters = Arr.filter(
     [...name.toUpperCase()],
     (char) => char >= "A" && char <= "Z"
@@ -52,10 +55,9 @@ export const codeOfName = (name: string, taken: ReadonlySet<string>): string => 
   ];
 
   return (
-    Arr.findFirst(
-      candidates,
-      (code) => code !== "" && !taken.has(code)
-    ).pipe(Option.getOrUndefined) ?? "ZZZ"
+    Arr.findFirst(candidates, (code) => code !== "" && !taken.has(code)).pipe(
+      Option.getOrUndefined
+    ) ?? "ZZZ"
   );
 };
 
