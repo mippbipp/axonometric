@@ -1,12 +1,14 @@
 import {
   groundOutline,
   groundProjections,
-  toPoints,
+  textBoxesOf,
 } from "@axonometric/contracts";
-import type { SceneHop, SceneStructure, View } from "@axonometric/contracts";
+import type { Scene, View } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
+import { useMemo } from "react";
 
 import { useChapterMarks } from "./chapter-marks-context.ts";
+import { OutlineLines } from "./outline-paths.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /**
@@ -20,18 +22,18 @@ const ringGap = 0.45;
  * The chapter proposals' pending look, in the current chapter only: a dashed
  * ring on the ground round each structure the chapter would reveal, a solid
  * refused-colour ring round each it would hide, and a pending-colour line along
- * each hop it would play, a refused-colour one along each it would stop playing.
- * Outlines and tints only, so nothing here can meet a name tag or a label.
+ * each hop it would play, a refused-colour dotted one along each it would stop
+ * playing. They are outlines and tints only, and every one is drawn as separate
+ * lines that stop short of the scene's text, so none crosses a name tag, a code
+ * chip, a zone title or a hop label.
  *
  * It is an editing layer: a file's drawing never includes it.
  */
 export function ChapterPendingLook({
-  structures,
-  hops,
+  scene,
   view,
 }: {
-  readonly structures: readonly SceneStructure[];
-  readonly hops: readonly SceneHop[];
+  readonly scene: Scene;
   readonly view: View;
 }) {
   const { stop } = useWalkthrough();
@@ -40,10 +42,11 @@ export function ChapterPendingLook({
   const playing = useChapterMarks(stop.id, "play");
   const stopping = useChapterMarks(stop.id, "unplay");
   const ground = groundProjections[view];
+  const text = useMemo(() => textBoxesOf(scene), [scene]);
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
-      {Arr.flatMap(structures, ({ structure, placement }) => {
+      {Arr.flatMap(scene.structures, ({ structure, placement }) => {
         const reveals = revealing.has(structure.id);
         const hides = hiding.has(structure.id);
 
@@ -54,29 +57,31 @@ export function ChapterPendingLook({
         const { x, y, w, d } = placement;
 
         return [
-          <polygon
+          <OutlineLines
             key={structure.id}
-            data-chapter-mark={reveals ? "reveal" : "hide"}
-            data-chapter-mark-of={structure.id}
-            points={toPoints(
-              groundOutline(
-                {
-                  x: x - ringGap,
-                  y: y - ringGap,
-                  w: w + ringGap * 2,
-                  d: d + ringGap * 2,
-                },
-                ground
-              )
+            id={structure.id}
+            points={groundOutline(
+              {
+                x: x - ringGap,
+                y: y - ringGap,
+                w: w + ringGap * 2,
+                d: d + ringGap * 2,
+              },
+              ground
             )}
-            fill="none"
+            text={text}
+            closed
             className={reveals ? "stroke-pending" : "stroke-refused"}
-            strokeWidth={1.6}
-            strokeDasharray={reveals ? "5 3" : undefined}
+            width={1.6}
+            dash={reveals ? "5 3" : undefined}
+            mark={{
+              "data-chapter-mark": reveals ? "reveal" : "hide",
+              "data-chapter-mark-of": structure.id,
+            }}
           />,
         ];
       })}
-      {Arr.flatMap(hops, ({ hop, points }) => {
+      {Arr.flatMap(scene.hops, ({ hop, points }) => {
         const plays = playing.has(hop.id);
         const stops = stopping.has(hop.id);
 
@@ -85,17 +90,19 @@ export function ChapterPendingLook({
         }
 
         return [
-          <polyline
+          <OutlineLines
             key={hop.id}
-            data-chapter-mark={plays ? "play" : "unplay"}
-            data-chapter-mark-of={hop.id}
-            points={toPoints(points)}
-            fill="none"
-            strokeLinejoin="round"
+            id={hop.id}
+            points={points}
+            text={text}
+            closed={false}
             className={plays ? "stroke-pending" : "stroke-refused"}
-            strokeWidth={plays ? 2.4 : 3}
-            strokeDasharray={plays ? undefined : "2 4"}
-            opacity={0.8}
+            width={plays ? 2.4 : 3}
+            dash={plays ? undefined : "2 4"}
+            mark={{
+              "data-chapter-mark": plays ? "play" : "unplay",
+              "data-chapter-mark-of": hop.id,
+            }}
           />,
         ];
       })}

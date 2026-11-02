@@ -1,9 +1,11 @@
 import type { DraggedProblem, StructureChange } from "@axonometric/contracts";
-import { Option, Result } from "effect";
-import { useEffect, useState } from "react";
+import { Result } from "effect";
+import { useEffect } from "react";
 
 import { useChangePreview } from "./drag-preview-context.ts";
+import { structureItem } from "./proposal-items.ts";
 import { useProposed } from "./proposed-context.ts";
+import { useSending } from "./use-sending.ts";
 
 /**
  * Sends structure proposals, keeps the reason the last one was refused, and
@@ -16,8 +18,7 @@ import { useProposed } from "./proposed-context.ts";
 export const usePropose = () => {
   const proposing = useProposed();
   const panel = useChangePreview();
-  const [failure, setFailure] = useState<string | undefined>();
-  const [sending, setSending] = useState(false);
+  const { failure, sending, clear, refuse, run } = useSending();
 
   // The panel is the page's, not this control's: it clears when the control goes.
   useEffect(
@@ -27,9 +28,8 @@ export const usePropose = () => {
     [panel]
   );
 
-  const problemsOf = (
-    changes: readonly StructureChange[]
-  ): readonly DraggedProblem[] => proposing?.problemsOf(changes) ?? [];
+  const problemsOf = (change: StructureChange): readonly DraggedProblem[] =>
+    proposing?.problemsOf([structureItem(change)]) ?? [];
 
   const send = (change: StructureChange, done?: () => void) => {
     if (proposing === null) {
@@ -39,40 +39,35 @@ export const usePropose = () => {
     const refusal = proposing.refusalOf(change);
 
     if (refusal !== undefined) {
-      setFailure(refusal);
+      refuse(refusal);
       panel?.show({ refusal, problems: [] });
 
       return;
     }
 
-    setFailure(undefined);
-    setSending(true);
-
     // What the change adds to check's report stays up for the engineer to read.
-    panel?.show({ problems: problemsOf([change]) });
-    proposing.propose(change, (outcome) => {
-      setSending(false);
+    panel?.show({ problems: problemsOf(change) });
+    run(
+      (finish) => {
+        proposing.propose(change, (outcome) => {
+          if (Result.isFailure(outcome)) {
+            panel?.show({ refusal: outcome.failure, problems: [] });
+          }
 
-      const why = Option.getOrUndefined(Result.getFailure(outcome));
-
-      setFailure(why);
-
-      if (why === undefined) {
-        // What the proposal added stays up, so the engineer can read it.
+          finish(outcome);
+        });
+      },
+      () => {
         done?.();
-      } else {
-        panel?.show({ refusal: why, problems: [] });
       }
-    });
+    );
   };
 
   return {
     send,
     sending,
     failure,
-    clear: () => {
-      setFailure(undefined);
-    },
+    clear,
     canPropose: proposing?.canPropose === true,
   };
 };

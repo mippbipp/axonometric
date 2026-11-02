@@ -65,9 +65,9 @@ export const suggestionKind: KindSpec<SuggestionItem> = {
   textLimit: maxSuggestionLength,
   listKey: "suggestions",
   text: ({ after }) => Option.some(after),
-  describe: ({ target, field, after }, nameOf) =>
+  describe: ({ target, field, after }, called) =>
     Option.some(
-      `Suggestion for the ${fieldLabel(field)} of ${nameOf(target.id)}: ${after}`
+      `Suggestion for the ${fieldLabel(field)} of ${called.structure(target.id)}: ${after}`
     ),
   open: (proposals) =>
     Arr.map(proposals.suggestions ?? [], (suggestion): SuggestionItem => ({
@@ -84,8 +84,8 @@ export const suggestionKind: KindSpec<SuggestionItem> = {
     { kind: "structure", id: item.target.id },
   ],
   dangling: (item, known) => danglingStructure(item.target.id, known),
-  summary: (item, nameOf) =>
-    `suggestion ${item.id} on ${quoteText(nameOf(item.target.id))}, ${fieldLabel(item.field)}: from ${quoteText(oneLine(item.before, 60))} to ${quoteText(oneLine(item.after, 60))}`,
+  summary: (item, called) =>
+    `suggestion ${item.id} on ${quoteText(called.structure(item.target.id))}, ${fieldLabel(item.field)}: from ${quoteText(oneLine(item.before, 60))} to ${quoteText(oneLine(item.after, 60))}`,
   facts: (item) => ({
     before: { field: item.field, text: item.before },
     after: { field: item.field, text: item.after },
@@ -173,8 +173,10 @@ export const answerKind: KindSpec<AnswerItem> = {
   textLimit: maxNoteLength,
   listKey: "answers",
   text: ({ text }) => Option.some(text),
-  describe: ({ target, question, text }, nameOf) =>
-    Option.some(`Answer to ${question} on ${nameOf(target.id)}: ${text}`),
+  describe: ({ target, question, text }, called) =>
+    Option.some(
+      `Answer to ${question} on ${called.structure(target.id)}: ${text}`
+    ),
   open: (proposals) =>
     Arr.map(proposals.answers ?? [], (answer): AnswerItem => ({
       kind: "answer",
@@ -190,8 +192,8 @@ export const answerKind: KindSpec<AnswerItem> = {
     { kind: "structure", id: item.target.id },
   ],
   dangling: (item, known) => danglingStructure(item.target.id, known),
-  summary: (item, nameOf) =>
-    `answer ${item.id} to ${item.question} on ${quoteText(nameOf(item.target.id))}, given ${item.answeredOn}: ${quoteText(oneLine(item.text, 80))}`,
+  summary: (item, called) =>
+    `answer ${item.id} to ${item.question} on ${quoteText(called.structure(item.target.id))}, given ${item.answeredOn}: ${quoteText(oneLine(item.text, 80))}`,
   facts: (item, _layout, data) => ({
     before: {
       question: item.question,
@@ -281,8 +283,8 @@ export const questionKind: KindSpec<QuestionItem> = {
   textLimit: maxNoteLength,
   listKey: "raised",
   text: ({ text }) => Option.some(text),
-  describe: ({ target, text }, nameOf) =>
-    Option.some(`New question on ${nameOf(target.id)}: ${text}`),
+  describe: ({ target, text }, called) =>
+    Option.some(`New question on ${called.structure(target.id)}: ${text}`),
   open: (proposals) =>
     Arr.map(proposals.raised ?? [], (raised): QuestionItem => ({
       kind: "question",
@@ -298,8 +300,8 @@ export const questionKind: KindSpec<QuestionItem> = {
     { kind: "structure", id: item.target.id },
   ],
   dangling: (item, known) => danglingStructure(item.target.id, known),
-  summary: (item, nameOf) =>
-    `question ${item.id} on ${quoteText(nameOf(item.target.id))}: ${quoteText(oneLine(item.text, 80))}`,
+  summary: (item, called) =>
+    `question ${item.id} on ${quoteText(called.structure(item.target.id))}: ${quoteText(oneLine(item.text, 80))}`,
   facts: (item) => ({ before: null, after: { text: item.text } }),
   breakage: (item, { structureIds }) =>
     noStructure(item.target.id, structureIds, "question"),

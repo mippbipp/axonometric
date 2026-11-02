@@ -7,7 +7,7 @@ import type { KindSpec, Touches } from "./review-kinds.ts";
 export const touchesNothing: Touches = {
   structures: [],
   hops: [],
-  marks: {},
+  marks: [],
 };
 
 /** `--as` names a structure's final id, so it only fits an item that adds one. */

@@ -1,12 +1,15 @@
 import { maxGroupTitleLength } from "@axonometric/contracts";
-import type { Group } from "@axonometric/contracts";
-import { Array as Arr, Option, Result } from "effect";
-import { useId, useState } from "react";
+import type { BatchItem, CheckScope, Group } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
+import { useId, useMemo, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { fieldClass } from "./field-class.ts";
-import { useGroupOps } from "./group-ops-context.ts";
+import { groupItem } from "./proposal-items.ts";
+import { useGroupOps } from "./proposal-ops-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { useItemPreview } from "./use-propose-item.ts";
+import { useSending } from "./use-sending.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /**
@@ -19,9 +22,10 @@ export function GroupPanel({ group }: { readonly group: Group }) {
   const ops = useGroupOps();
   const { state } = useWalkthrough();
   const { selectGroup } = useSelection();
+  const { stop } = useWalkthrough();
   const titleId = useId();
   const [typed, setTyped] = useState<string | undefined>();
-  const [failure, setFailure] = useState<string | undefined>();
+  const { failure, run, clear } = useSending();
 
   const members = Arr.filter(
     state.data.structures,
@@ -29,6 +33,25 @@ export function GroupPanel({ group }: { readonly group: Group }) {
   );
 
   const title = typed ?? group.title;
+
+  // While the title is edited the panel shows what the rename would add to
+  // `check`'s report, judged on the chapter being viewed.
+  const wanted = typed?.trim();
+
+  const preview = useMemo(
+    (): readonly BatchItem[] =>
+      wanted === undefined || wanted === "" || wanted === group.title
+        ? []
+        : [groupItem({ action: "rename", group: group.id, title: wanted })],
+    [wanted, group.id, group.title]
+  );
+
+  const scope = useMemo(
+    (): CheckScope => ({ of: "chapter", chapter: stop.id }),
+    [stop.id]
+  );
+
+  const { keep } = useItemPreview(preview, scope);
 
   const canSubmit =
     ops?.canPropose === true &&
@@ -64,14 +87,14 @@ export function GroupPanel({ group }: { readonly group: Group }) {
               return;
             }
 
-            setFailure(undefined);
-            ops.propose(
-              { action: "rename", group: group.id, title: title.trim() },
-              [],
-              (outcome) => {
-                setFailure(Option.getOrUndefined(Result.getFailure(outcome)));
-              }
-            );
+            keep();
+            run((finish) => {
+              ops.propose(
+                { action: "rename", group: group.id, title: title.trim() },
+                [],
+                finish
+              );
+            });
           }}
         >
           <label htmlFor={titleId} className="text-xs opacity-70">
@@ -88,7 +111,7 @@ export function GroupPanel({ group }: { readonly group: Group }) {
               disabled={!ops.canPropose}
               className={`${fieldClass} min-w-0 flex-1`}
               onChange={(event) => {
-                setFailure(undefined);
+                clear();
                 setTyped(event.target.value);
               }}
             />

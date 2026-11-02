@@ -1,11 +1,11 @@
 import {
   addedIds,
   applyLayoutChanges,
-  candidateProblems,
   emptyProposals,
   frozenStructureChanges,
   openStructureChanges,
   frozenLayoutChanges,
+  proposalProblems,
   proposedMap,
   openItems,
   reviewEntries,
@@ -18,17 +18,14 @@ import { useMemo, useSyncExternalStore } from "react";
 import { AcceptingContext } from "./accepting-context.ts";
 import type { Accepting } from "./accepting-context.ts";
 import { App } from "./app.tsx";
-import { ChapterMarksContext } from "./chapter-marks-context.ts";
-import { ChapterOpsContext } from "./chapter-ops-context.ts";
-import type { ChapterOps } from "./chapter-ops-context.ts";
 import { CompareContext } from "./compare-context.ts";
 import { EditingContext } from "./editing-context.ts";
 import type { Editing } from "./editing-context.ts";
 import { ExportStateContext } from "./export-state-context.ts";
-import { GroupOpsContext } from "./group-ops-context.ts";
-import type { GroupOps } from "./group-ops-context.ts";
 import { HistoryContext } from "./history-context.ts";
 import { useHistoryView } from "./history-view.tsx";
+import { ProposalOpsContext } from "./proposal-ops-context.ts";
+import type { ProposalOps } from "./proposal-ops-context.ts";
 import { ProposedAddsContext } from "./proposed-adds-context.ts";
 import { ProposedContext } from "./proposed-context.ts";
 import type { ProposedStructures } from "./proposed-context.ts";
@@ -236,11 +233,12 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       nameOf: (id) => names.get(id) ?? id,
       propose: store.structures.propose,
       refusalOf: store.structures.refusalOf,
-      problemsOf: (changes, moved) =>
-        candidateProblems({
+      problemsOf: (items, options) =>
+        proposalProblems({
           before: { data: shown.data, layout: shown.layout },
-          changes,
-          moved,
+          items,
+          scope: options?.scope,
+          moved: options?.moved,
         }),
       isOpenAdd: store.structures.isOpenAdd,
       refusalOfPlace: store.structures.refusalOfPlace,
@@ -249,24 +247,30 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     };
   }, [proposed, shown, proposals.structures, view.stopped, store]);
 
-  const groupOps = useMemo(
-    (): GroupOps => ({
+  const proposalOps = useMemo(
+    (): ProposalOps => ({
       canPropose: !view.stopped,
-      open: proposals.groups ?? [],
-      propose: store.groups.propose,
-      discard: store.groups.discard,
+      groups: {
+        open: proposals.groups ?? [],
+        propose: store.groups.propose,
+        discard: store.groups.discard,
+      },
+      chapters: {
+        open: proposals.chapters ?? [],
+        propose: store.chapters.propose,
+        discard: store.chapters.discard,
+      },
+      proposed,
+      acceptedChapters: view.state.data.chapters,
     }),
-    [proposals.groups, view.stopped, store]
-  );
-
-  const chapterOps = useMemo(
-    (): ChapterOps => ({
-      canPropose: !view.stopped,
-      open: proposals.chapters ?? [],
-      propose: store.chapters.propose,
-      discard: store.chapters.discard,
-    }),
-    [proposals.chapters, view.stopped, store]
+    [
+      proposals.groups,
+      proposals.chapters,
+      view.stopped,
+      view.state.data.chapters,
+      proposed,
+      store,
+    ]
   );
 
   const review = useMemo((): Review => {
@@ -289,42 +293,38 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       <AcceptingContext value={accepting}>
         <ReviewContext value={review}>
           <ProposedContext value={history.past ? null : proposing}>
-            <GroupOpsContext value={history.past ? null : groupOps}>
-              <ChapterOpsContext value={history.past ? null : chapterOps}>
-                <ChapterMarksContext value={history.past ? null : proposed}>
-                  <RenamesContext value={renames}>
-                    <ExportStateContext value={history.past ? null : exported}>
-                      <ProposedAddsContext value={history.past ? none : adds}>
-                        <HistoryContext value={history.panel}>
-                          <CompareContext value={history.marks}>
-                            <App
-                              state={history.drawn}
-                              notices={
-                                <>
-                                  {history.banner}
-                                  <ServedNotices
-                                    rejection={view.rejection}
-                                    stopped={view.stopped}
-                                    notice={view.notice}
-                                    saved={view.saved}
-                                  />
-                                </>
-                              }
-                            />
-                            {history.report === null ? null : (
-                              <RestoreDialog
-                                report={history.report}
-                                onClose={history.handleCloseReport}
+            <ProposalOpsContext value={history.past ? null : proposalOps}>
+              <RenamesContext value={renames}>
+                <ExportStateContext value={history.past ? null : exported}>
+                  <ProposedAddsContext value={history.past ? none : adds}>
+                    <HistoryContext value={history.panel}>
+                      <CompareContext value={history.marks}>
+                        <App
+                          state={history.drawn}
+                          notices={
+                            <>
+                              {history.banner}
+                              <ServedNotices
+                                rejection={view.rejection}
+                                stopped={view.stopped}
+                                notice={view.notice}
+                                saved={view.saved}
                               />
-                            )}
-                          </CompareContext>
-                        </HistoryContext>
-                      </ProposedAddsContext>
-                    </ExportStateContext>
-                  </RenamesContext>
-                </ChapterMarksContext>
-              </ChapterOpsContext>
-            </GroupOpsContext>
+                            </>
+                          }
+                        />
+                        {history.report === null ? null : (
+                          <RestoreDialog
+                            report={history.report}
+                            onClose={history.handleCloseReport}
+                          />
+                        )}
+                      </CompareContext>
+                    </HistoryContext>
+                  </ProposedAddsContext>
+                </ExportStateContext>
+              </RenamesContext>
+            </ProposalOpsContext>
           </ProposedContext>
         </ReviewContext>
       </AcceptingContext>

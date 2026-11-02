@@ -1,4 +1,5 @@
 import { Array as Arr, Option, Order } from "effect";
+import { dual } from "effect/Function";
 
 import { clipToConvex, rectPolygon } from "./geometry.ts";
 import type { Segment } from "./geometry.ts";
@@ -11,12 +12,15 @@ import type { GroundProjection } from "./plan.ts";
 const clearance = 6;
 
 /** `rect` grown by `by` on every side. */
-const grown = (rect: ScreenRect, by: number): ScreenRect => ({
+export const grown: {
+  (by: number): (rect: ScreenRect) => ScreenRect;
+  (rect: ScreenRect, by: number): ScreenRect;
+} = dual(2, (rect: ScreenRect, by: number): ScreenRect => ({
   left: rect.left - by,
   top: rect.top - by,
   right: rect.right + by,
   bottom: rect.bottom + by,
-});
+}));
 
 /** The share of the segment between `from` and `to`, 0 at its start and 1 at its end. */
 interface Share {
@@ -51,9 +55,11 @@ const gapsOutside = (cuts: readonly Share[]): readonly Share[] => {
 export const minStrikePiece = 5;
 
 /** The parts of `segment` that lie outside the convex `holes`. */
-const without = (
+// oxlint-disable-next-line effecttsgo/missing-pipeable-signature -- three arguments, the last optional; called as `without(segment, holes, minPiece)`, never piped.
+export const without = (
   segment: Segment,
-  holes: readonly (readonly ScreenPoint[])[]
+  holes: readonly (readonly ScreenPoint[])[],
+  minPiece: number = minStrikePiece
 ): readonly Segment[] => {
   const cuts = Arr.flatMap(holes, (hole) =>
     Option.toArray(Option.fromNullishOr(clipToConvex(segment, hole)))
@@ -71,7 +77,7 @@ const without = (
 
   const long = Arr.filter(
     gapsOutside(cuts),
-    ({ from, to }) => (to - from) * length >= minStrikePiece
+    ({ from, to }) => (to - from) * length >= minPiece
   );
 
   return Arr.map(long, ({ from, to }) => ({ start: at(from), end: at(to) }));

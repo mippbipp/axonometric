@@ -13,7 +13,7 @@ import {
   SuggestionText,
   suggestionFields,
 } from "./proposals.ts";
-import { StructureChange } from "./structure-change.ts";
+import { StructureChange, StructureId } from "./structure-change.ts";
 
 /**
  * Adds a note to the open notes, pinned to a structure, a hop or an empty
@@ -96,13 +96,23 @@ export type StructureWrite = typeof StructureWrite.Type;
  * the id of its own group change, which the server adds in the same write, so
  * a group made from a selection is all there or not at all.
  */
-const GroupMember = Schema.Struct({ id: ChangeId, structure: Schema.String });
+/** The most structures a new group takes in when it is made from a selection. */
+export const maxGroupMembers = 200;
+
+const membersFix = `expected up to ${maxGroupMembers} structures to move into the group.`;
+
+/** A structure that moves into a new group, with the id of its group change. */
+const GroupMember = Schema.Struct({ id: ChangeId, structure: StructureId });
+
+const GroupMembers = Schema.Array(GroupMember)
+  .annotate({ message: membersFix })
+  .check(Schema.isMaxLength(maxGroupMembers, { message: membersFix }));
 
 export const GroupWrite = Schema.Struct({
   baseFileRevision: Schema.Int,
   id: ChangeId,
   change: GroupChange,
-  members: Schema.optionalKey(Schema.Array(GroupMember)),
+  members: Schema.optionalKey(GroupMembers),
 });
 
 export type GroupWrite = typeof GroupWrite.Type;

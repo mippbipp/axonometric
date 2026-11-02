@@ -3,14 +3,23 @@ import {
   newChangeId,
   newProvisionalGroupId,
 } from "@axonometric/contracts";
-import { Array as Arr, Option, Result } from "effect";
-import { useId, useState } from "react";
+import type {
+  BatchItem,
+  CheckScope,
+  GroupChange,
+} from "@axonometric/contracts";
+import { Array as Arr } from "effect";
+import { useId, useMemo, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { fieldClass } from "./field-class.ts";
-import { useGroupOps } from "./group-ops-context.ts";
+import { groupItem, structureItem } from "./proposal-items.ts";
+import { useGroupOps } from "./proposal-ops-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
+import { useItemPreview } from "./use-propose-item.ts";
+import { useSending } from "./use-sending.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 /**
  * The form that creates a group, in the side panel. With structures in the
@@ -23,16 +32,50 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
   const { multiSelection } = useSelection();
   const byId = useStructuresById();
   const titleId = useId();
+  const { stop } = useWalkthrough();
   const [title, setTitle] = useState("");
-  const [failure, setFailure] = useState<string | undefined>();
-  const [sending, setSending] = useState(false);
+  const { failure, sending, clear, run } = useSending();
 
-  const members = Arr.filter(
-    Arr.map([...multiSelection], (id) => byId.get(id)),
-    (found) => found !== undefined
+  const members = useMemo(
+    () =>
+      Arr.filter(
+        Arr.map([...multiSelection], (id) => byId.get(id)),
+        (found) => found !== undefined
+      ),
+    [multiSelection, byId]
   );
 
   const trimmed = title.trim();
+
+  // The id the group will be sent under, made once per title, so the warnings
+  // while the form is open read as they do after it is sent.
+  const groupId = useMemo(
+    () => (trimmed === "" ? "" : newProvisionalGroupId(trimmed)),
+    [trimmed]
+  );
+
+  // While the form is open the panel shows what the group would add to
+  // `check`'s report, judged on the chapter being viewed: a zone round the
+  // members, and the new group's own.
+  const preview = useMemo((): readonly BatchItem[] => {
+    const moves = Arr.map(members, ({ id }) =>
+      structureItem({ action: "group", structure: id, group: groupId })
+    );
+
+    return trimmed === ""
+      ? []
+      : [
+          groupItem({ action: "add", group: { id: groupId, title: trimmed } }),
+          ...moves,
+        ];
+  }, [trimmed, groupId, members]);
+
+  const scope = useMemo(
+    (): CheckScope => ({ of: "chapter", chapter: stop.id }),
+    [stop.id]
+  );
+
+  const { keep } = useItemPreview(preview, scope);
 
   return (
     <form
@@ -45,26 +88,22 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
           return;
         }
 
-        setSending(true);
-        setFailure(undefined);
-        ops.propose(
-          {
-            action: "add",
-            group: { id: newProvisionalGroupId(trimmed), title: trimmed },
-          },
-          Arr.map(members, ({ id }) => ({ id: newChangeId(), structure: id })),
-          (outcome) => {
-            setSending(false);
+        const added: GroupChange = {
+          action: "add",
+          group: { id: groupId, title: trimmed },
+        };
 
-            const why = Option.getOrUndefined(Result.getFailure(outcome));
-
-            setFailure(why);
-
-            if (why === undefined) {
-              onDone();
-            }
-          }
-        );
+        keep();
+        run((finish) => {
+          ops.propose(
+            added,
+            Arr.map(members, ({ id }) => ({
+              id: newChangeId(),
+              structure: id,
+            })),
+            finish
+          );
+        }, onDone);
       }}
     >
       <label htmlFor={titleId} className="text-xs opacity-70">
@@ -79,7 +118,7 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
         autoComplete="off"
         className={fieldClass}
         onChange={(event) => {
-          setFailure(undefined);
+          clear();
           setTitle(event.target.value);
         }}
       />

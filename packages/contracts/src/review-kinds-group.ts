@@ -1,17 +1,16 @@
-// oxlint-disable eslint/max-params -- KindSpec passes a kind the titles of groups and chapters as a fourth argument, after the names every kind gets.
-
 import { Array as Arr, Option } from "effect";
 
 import {
-  groupKey,
   groupOf,
   maxGroupTitleLength,
   titleOf,
+  titleRefusal,
 } from "./group-change.ts";
+import { groupFit } from "./group-fit.ts";
 import type { MapData } from "./map-data.ts";
 import type { BatchItem, LayoutChange, Verdict } from "./proposals.ts";
 import { plain, touchesNothing } from "./review-kind-defaults.ts";
-import type { KindSpec, Pointer } from "./review-kinds.ts";
+import type { KindSpec, Pointer, Rename } from "./review-kinds.ts";
 import { decorate, quoteText } from "./review-quote.ts";
 
 // The kind for a proposed change to the groups: a new group, or a new title
@@ -50,17 +49,20 @@ export const groupKind: KindSpec<GroupItem> = {
   textLimit: maxGroupTitleLength,
   listKey: "groups",
   // The title has its own rules, so an edit goes through the panel's rename.
-  text: () => Option.none(),
-  describe: ({ change }, _nameOf, _hopLabelOf, titles) =>
+  text: ({ change }) => Option.some(titleOf(change)),
+  textRefusal: titleRefusal,
+  describe: ({ change }, called) =>
     Option.some(
       change.action === "add"
         ? `Add the group ${change.group.title}`
-        : `Rename the group ${titles?.acceptedGroup(change.group) ?? change.group} to ${change.title}`
+        : `Rename the group ${called.acceptedGroup(change.group)} to ${change.title}`
     ),
   dangling: ({ change }, known) =>
     change.action === "add" || known.groups.has(change.group)
       ? Option.none()
       : Option.some(`no group in data.mjs has the id "${change.group}"`),
+  // The checks `proposeGroup` runs on a fresh proposal.
+  fits: ({ change }, data) => groupFit(change, data),
   notice: groupNotice,
   open: (proposals) =>
     Arr.map(proposals.groups ?? [], (proposal): GroupItem => ({
@@ -78,10 +80,10 @@ export const groupKind: KindSpec<GroupItem> = {
   targets: ({ change }): readonly Pointer[] => [
     { kind: "group", id: groupOf(change) },
   ],
-  summary: ({ id, change }, _nameOf, _hopLabelOf, titles) =>
+  summary: ({ id, change }, called) =>
     change.action === "add"
       ? `add group ${id}: ${quoteText(change.group.title)}, provisional id ${change.group.id}`
-      : `rename group ${id}: ${quoteText(titles?.acceptedGroup(change.group) ?? change.group)} to ${quoteText(change.title)}`,
+      : `rename group ${id}: ${quoteText(called.acceptedGroup(change.group))} to ${quoteText(change.title)}`,
   facts: ({ change }, _layout, data) => ({
     before:
       change.action === "add" || data === undefined
@@ -118,7 +120,7 @@ export const groupKind: KindSpec<GroupItem> = {
   }),
   touches: ({ change }) => ({
     ...touchesNothing,
-    marks: { [groupMark]: [groupOf(change)] },
+    marks: [{ name: groupMark, ids: [groupOf(change)] }],
   }),
   breakage: ({ change }, { data }) =>
     data === undefined || change.action === "add"
@@ -154,17 +156,16 @@ export const groupKind: KindSpec<GroupItem> = {
         `--as ${verdict.as} is already the final id of item ${other} in this batch. Give each new group its own id.`
     );
   },
-  renames: (item, verdict) => {
+  renames: (item, verdict): readonly Rename[] => {
     if (verdict.verdict === "rejected" || item.change.action !== "add") {
       return [];
     }
 
     const to = finalIdOf(item, verdict);
 
-    // The key is namespaced: structures and groups share one map of renames.
     return to === item.change.group.id
       ? []
-      : [[groupKey(item.change.group.id), to]];
+      : [{ kind: "group", from: item.change.group.id, to }];
   },
   dependents: ({ change }, proposals) =>
     change.action === "add"
@@ -213,5 +214,14 @@ export const groupKind: KindSpec<GroupItem> = {
     change: item.change,
     reason,
   }),
-  reopened: (item, newId) => ({ ...item, id: newId }),
+  reopened: (item, newId, text) => ({
+    ...item,
+    id: newId,
+    change:
+      text === undefined
+        ? item.change
+        : item.change.action === "add"
+          ? { ...item.change, group: { ...item.change.group, title: text } }
+          : { ...item.change, title: text },
+  }),
 };

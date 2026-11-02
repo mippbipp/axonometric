@@ -4,8 +4,8 @@ import {
   dismissItem,
   editProposal,
   freezeOpen,
-  hopLabelOf,
   MapFilesUnreadable,
+  namesOf,
   proposedMap,
   ProposalRefused,
   proposeChapter,
@@ -36,27 +36,12 @@ import type {
   StructureWrite,
   SuggestionAdd,
 } from "@axonometric/contracts";
-import { Array as Arr, DateTime, Effect, Option, Path, Result } from "effect";
+import { Array as Arr, DateTime, Effect, Path, Result } from "effect";
 
 import { encodeProposals } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
 import { loadReviewMap, structureNames } from "./review-shared.ts";
 import { writeAll } from "./write-files.ts";
-
-/**
- * What every review write does, under the lock: reads the map and
- * `proposals.json`, refuses a write based on an older revision, asks `change`
- * for the next `proposals.json`, writes it atomically, and runs `written`,
- * still under the lock, to tell the open pages. A `change` that fails
- * refuses the write with its reason and writes nothing.
- */
-/** The title of the group or chapter `id` in `held`, or the id when there is none. */
-const titleIn =
-  (held: readonly { readonly id: string; readonly title: string }[]) =>
-  (id: string): string =>
-    Arr.findFirst(held, (found) => found.id === id).pipe(
-      Option.match({ onNone: () => id, onSome: ({ title }) => title })
-    );
 
 /** What a write's change is given: the files as read under the lock. */
 interface Held {
@@ -78,6 +63,13 @@ interface Held {
   readonly now: string;
 }
 
+/**
+ * What every review write does, under the lock: reads the map and
+ * `proposals.json`, refuses a write based on an older revision, asks `change`
+ * for the next `proposals.json`, writes it atomically, and runs `written`,
+ * still under the lock, to tell the open pages. A `change` that fails
+ * refuses the write with its reason and writes nothing.
+ */
 const writeProposals = Effect.fnUntraced(
   function* <A>({
     home,
@@ -333,7 +325,7 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, structures, hops, data, proposed, now }) =>
+    change: ({ proposals, data, proposed, now }) =>
       Result.map(
         freezeOpen({
           proposals,
@@ -350,14 +342,7 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
             prompt: reviewPrompt({
               home: absolute,
               batch: frozen.batch,
-              names: {
-                structure: (id) => structures.get(id) ?? id,
-                hop: hopLabelOf(hops),
-                group: titleIn(proposed.state.data.groups),
-                // A rename names the group as data.mjs has it now.
-                acceptedGroup: titleIn(data.groups),
-                chapter: titleIn(data.chapters),
-              },
+              names: namesOf({ shown: proposed.state.data, accepted: data }),
             }),
           },
         })

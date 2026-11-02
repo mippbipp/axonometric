@@ -11,7 +11,7 @@ import {
   quoteText,
   sectionTitles,
   specOf,
-  titlesOf,
+  namesOf,
 } from "@axonometric/contracts";
 import type {
   Batch,
@@ -64,14 +64,6 @@ const withoutRenamed = (
   });
 };
 
-/** The title of the group or chapter `id` in `held`, or the id when there is none. */
-const titleIn =
-  (held: readonly { readonly id: string; readonly title: string }[]) =>
-  (id: string): string =>
-    Arr.findFirst(held, (found) => found.id === id).pipe(
-      Option.match({ onNone: () => id, onSome: ({ title }) => title })
-    );
-
 const reportItem = ({
   item,
   batch,
@@ -91,12 +83,9 @@ const reportItem = ({
   /** The groups of the proposed map, so a new group has its title. */
   readonly groups: MapData["groups"];
 }): ReportedItem => {
-  const titles = titlesOf({
-    structure: (id) => names.get(id) ?? id,
-    hop: hopLabelOf(data.hops),
-    group: titleIn(groups),
-    acceptedGroup: titleIn(data.groups),
-    chapter: titleIn(data.chapters),
+  const called = namesOf({
+    shown: { ...data, structures: data.structures, groups },
+    accepted: data,
   });
 
   const { hops } = data;
@@ -118,8 +107,8 @@ const reportItem = ({
       id,
       name: Match.value(kind).pipe(
         Match.when("hop", () => hopLabelOf(hops, id)),
-        Match.when("group", () => titles.group(id)),
-        Match.when("chapter", () => titles.chapter(id)),
+        Match.when("group", () => called.group(id)),
+        Match.when("chapter", () => called.chapter(id)),
         Match.orElse(() => names.get(id) ?? id)
       ),
     })),

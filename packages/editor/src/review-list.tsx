@@ -1,9 +1,8 @@
 import {
   bySection,
-  hopLabelOf,
+  namesOf,
   sectionTitles,
   specOf,
-  titlesOf,
 } from "@axonometric/contracts";
 import type {
   BatchItem,
@@ -22,7 +21,6 @@ import { useExportState } from "./export-state-context.ts";
 import { NoteForm } from "./note-form.tsx";
 import { useProposed } from "./proposed-context.ts";
 import { listedEntries, useReview } from "./review-context.ts";
-import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 const verdictLabels = {
@@ -62,38 +60,23 @@ export function VerdictBadge({
   );
 }
 
-/** The title of the group or chapter `id` in `held`, or the id when there is none. */
-const titleOf =
-  (held: readonly { readonly id: string; readonly title: string }[]) =>
-  (id: string): string =>
-    held.find((found) => found.id === id)?.title ?? id;
-
 /** What an item is, in a few words. */
 const useItemDescription = () => {
-  const byId = useStructuresById();
   const editing = useEditing();
   const proposed = useProposed();
   const { state } = useWalkthrough();
-  // The shown map has the proposed titles; a rename names the accepted ones.
-  const accepted = useExportState() ?? state;
-
-  const nameOf = (id: string) =>
-    byId.get(id)?.name ?? proposed?.nameOf(id) ?? id;
-
-  const hopName = hopLabelOf(state.data.hops);
+  const exported = useExportState();
 
   // A new group is on the proposed map under its title, and a rename names
-  // the group as it stands now, so both are told apart.
-  const titles = titlesOf({
-    structure: nameOf,
-    hop: hopName,
-    group: titleOf(proposed?.proposed.state.data.groups ?? state.data.groups),
-    acceptedGroup: titleOf(accepted.data.groups),
-    chapter: titleOf(state.data.chapters),
+  // the group as the accepted map has it now, so both are told apart. A
+  // structure that is only proposed is named from the proposed map.
+  const called = namesOf({
+    shown: proposed?.proposed.state.data ?? state.data,
+    accepted: (exported ?? state).data,
   });
 
   return (item: BatchItem): string => {
-    const described = specOf(item).describe(item, nameOf, hopName, titles);
+    const described = specOf(item).describe(item, called);
 
     if (Option.isSome(described)) {
       return described.value;
@@ -103,13 +86,19 @@ const useItemDescription = () => {
       ? item.id
       : Arr.join(
           describeChange(item.change, editing.accepted, {
-            structure: nameOf,
-            hop: hopName,
+            structure: called.structure,
+            hop: called.hop,
           }),
           "; "
         );
   };
 };
+
+/** What an item does, such as "group" for a structure's group change, or nothing. */
+const actionOf = (item: BatchItem): string | undefined =>
+  item.kind === "structure" || item.kind === "group" || item.kind === "chapter"
+    ? item.change.action
+    : undefined;
 
 /** The failure text of an outcome, or `undefined` when it worked. */
 const failureOf = <A,>(outcome: Result.Result<A, string>) =>
@@ -150,6 +139,7 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
     <li
       data-review-item={item.id}
       data-review-kind={item.kind}
+      data-review-action={actionOf(item)}
       data-review-state={status.state}
       className="border-pending flex flex-col gap-1.5 border-l-2 pl-2 text-sm"
     >

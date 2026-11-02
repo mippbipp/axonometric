@@ -1,8 +1,8 @@
 import type { Structure } from "@axonometric/contracts";
 
-import { useChapterOps } from "./chapter-ops-context.ts";
 import { useRevealToggle } from "./chapter-reveal.ts";
 import { controlClass } from "./control-class.ts";
+import { useChapterOps } from "./proposal-ops-context.ts";
 import { useChapterPropose } from "./use-chapter-propose.ts";
 
 /**

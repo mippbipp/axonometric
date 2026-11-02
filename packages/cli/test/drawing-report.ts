@@ -130,7 +130,25 @@ export const drawingReport = `(() => {
     };
   });
 
-  return { text, chips, strikes, structures, firstLegs };
+  // The pending rings and lines the page draws for group and chapter
+  // proposals: each piece is a straight run, as segments on screen.
+  const rings = [
+    ...document.querySelectorAll("[data-outline] polyline, [data-pending-zone] polyline"),
+  ].map((line) => {
+    const [a, b] = [...line.points];
+
+    return {
+      id:
+        "ring:" +
+        (line.closest("[data-outline]")?.dataset.outline ?? "?"),
+      segment: toScreen(line, [
+        { x: a.x, y: a.y },
+        { x: b.x, y: b.y },
+      ]),
+    };
+  });
+
+  return { text, chips, strikes, rings, structures, firstLegs };
 })()`;
 
 interface Point {
@@ -147,6 +165,11 @@ export interface DrawingReport {
   readonly text: readonly Drawn[];
   /** Each structure's code chip, as the page draws it. */
   readonly chips: readonly Drawn[];
+  /** The straight pieces of the pending rings and lines of group and chapter proposals. */
+  readonly rings: readonly {
+    readonly id: string;
+    readonly segment: readonly { readonly x: number; readonly y: number }[];
+  }[];
   /** The pieces of the cross through a structure proposed for deletion. */
   readonly strikes: readonly {
     readonly id: string;

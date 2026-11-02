@@ -1,14 +1,25 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Match, Option, Result, String as Str } from "effect";
+import {
+  Array as Arr,
+  Match,
+  Option,
+  Result,
+  Schema,
+  String as Str,
+} from "effect";
 import { vi } from "vitest";
 
 import {
   breakageOf,
+  GroupTitle,
+  GroupWrite,
+  maxGroupMembers,
+  StructureName,
   bySection,
   commitBatch,
   freezeOpen,
   groupMark,
-  chapterMark,
+  chapterMarkName,
   marked,
   proposedMap,
   proposeChapter,
@@ -462,8 +473,18 @@ describe("the proposed map, for each chapter action", () => {
 
     assert.deepStrictEqual(chapterOf(shown, "ch1").reveals, ["a", "b", "c"]);
     assert.deepStrictEqual(chapterOf(shown, "ch2").reveals, ["c"]);
-    assert.isTrue(marked(shown, chapterMark("reveal", "ch1")).has("c"));
-    assert.strictEqual(marked(shown, chapterMark("reveal", "ch2")).size, 0);
+    assert.isTrue(
+      marked(shown, {
+        name: chapterMarkName,
+        scope: "ch1",
+        kind: "reveal",
+      }).has("c")
+    );
+    assert.strictEqual(
+      marked(shown, { name: chapterMarkName, scope: "ch2", kind: "reveal" })
+        .size,
+      0
+    );
   });
 
   it("hide keeps the structure in the chapter, marked, until the agent decides", () => {
@@ -476,7 +497,11 @@ describe("the proposed map, for each chapter action", () => {
     });
 
     assert.deepStrictEqual(chapterOf(shown, "ch1").reveals, ["a", "b"]);
-    assert.isTrue(marked(shown, chapterMark("hide", "ch1")).has("b"));
+    assert.isTrue(
+      marked(shown, { name: chapterMarkName, scope: "ch1", kind: "hide" }).has(
+        "b"
+      )
+    );
   });
 
   it("play adds the hop to the chapter's plays", () => {
@@ -493,7 +518,11 @@ describe("the proposed map, for each chapter action", () => {
       "h-ca",
       "h-ab",
     ]);
-    assert.isTrue(marked(shown, chapterMark("play", "ch2")).has("h-ab"));
+    assert.isTrue(
+      marked(shown, { name: chapterMarkName, scope: "ch2", kind: "play" }).has(
+        "h-ab"
+      )
+    );
   });
 
   it("unplay keeps the hop, marked, until the agent decides", () => {
@@ -506,7 +535,13 @@ describe("the proposed map, for each chapter action", () => {
     });
 
     assert.deepStrictEqual(chapterOf(shown, "ch2").plays, ["h-bc", "h-ca"]);
-    assert.isTrue(marked(shown, chapterMark("unplay", "ch2")).has("h-ca"));
+    assert.isTrue(
+      marked(shown, {
+        name: chapterMarkName,
+        scope: "ch2",
+        kind: "unplay",
+      }).has("h-ca")
+    );
   });
 
   it("order puts the plays in the new order, in that chapter only", () => {
@@ -520,7 +555,11 @@ describe("the proposed map, for each chapter action", () => {
 
     assert.deepStrictEqual(chapterOf(shown, "ch2").plays, ["h-ca", "h-bc"]);
     assert.deepStrictEqual(chapterOf(shown, "ch1").plays, ["h-ab"]);
-    assert.isTrue(marked(shown, chapterMark("order", "ch2")).has("ch2"));
+    assert.isTrue(
+      marked(shown, { name: chapterMarkName, scope: "ch2", kind: "order" }).has(
+        "ch2"
+      )
+    );
   });
 
   it("changes nothing about the diagram: structures, hops, groups and layout", () => {
@@ -1002,5 +1041,78 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
     assert.strictEqual(specOf(reveal).section, "chapter");
     assert.strictEqual(specOf(group).section, "diagram");
     assert.strictEqual(specOf(note).section, "diagram");
+  });
+});
+
+const decodeTitle = Schema.decodeUnknownResult(GroupTitle);
+
+const decodeName = Schema.decodeUnknownResult(StructureName);
+
+const decodeWrite = Schema.decodeUnknownResult(GroupWrite);
+
+/** Whether `text` is refused as a group title. */
+const titleRefused = (text: string) => Result.isFailure(decodeTitle(text));
+
+/** Whether `text` is refused as a structure name. */
+const nameRefused = (text: string) => Result.isFailure(decodeName(text));
+
+/** Whether a group write with `members` is refused. */
+const writeRefused = (members: readonly unknown[]) =>
+  Result.isFailure(
+    decodeWrite({
+      baseFileRevision: 0,
+      id: "g-1",
+      change: addGroup,
+      members,
+    })
+  );
+
+/** `count` members, each a different structure. */
+const membersOf = (count: number) =>
+  Arr.map(Arr.range(1, count), (n) => ({ id: `s-${n}`, structure: `a${n}` }));
+
+const longTitle = Str.repeat(81)("x");
+
+describe("the text of a group title and a structure name", () => {
+  it("refuses U+0085 and the other line breaks at either end, in both", () => {
+    for (const bad of ["\u0085Data", "Data\u0085", "Data\u2028", "\nData"]) {
+      assert.isTrue(titleRefused(bad), bad);
+      assert.isTrue(nameRefused(bad), bad);
+    }
+  });
+
+  it("takes one trimmed line, and refuses a longer one", () => {
+    assert.isFalse(titleRefused("Data layer"));
+    assert.isTrue(titleRefused(longTitle));
+    assert.isTrue(titleRefused(" Data"));
+  });
+});
+
+describe("a group write", () => {
+  it("refuses a rename or a new group whose title carries a line break", () => {
+    const rename = { action: "rename", group: "g1", title: "Front\u0085" };
+
+    const created = {
+      action: "add",
+      group: { id: "x-1", title: "\u0085Front" },
+    };
+
+    for (const proposed of [rename, created]) {
+      assert.isTrue(
+        Result.isFailure(
+          decodeWrite({ baseFileRevision: 0, id: "g", change: proposed })
+        )
+      );
+    }
+  });
+
+  it("takes a structure id with no line break", () => {
+    assert.isFalse(writeRefused(membersOf(1)));
+    assert.isTrue(writeRefused([{ id: "s-1", structure: "a\nb" }]));
+  });
+
+  it("caps the members", () => {
+    assert.isFalse(writeRefused(membersOf(maxGroupMembers)));
+    assert.isTrue(writeRefused(membersOf(maxGroupMembers + 1)));
   });
 });

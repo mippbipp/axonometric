@@ -65,15 +65,45 @@ export const sectionTitles: Readonly<Record<Section, string>> = {
 };
 
 /**
- * How a description names the groups and chapters it mentions: by title, or
- * by id when the map has no such one. Kinds that mention neither ignore it.
+ * How a description names what it mentions: a structure by its name, a hop by
+ * its label, and a group or a chapter by its title, each by id when the map
+ * has no such one. A kind uses the names it needs.
  */
-export interface Titles {
+export interface Names {
+  readonly structure: (id: string) => string;
+  readonly hop: (id: string) => string;
   /** A group's title on the proposed map, so a new group has its title. */
   readonly group: (id: string) => string;
   /** A group's title as data.mjs has it now, which a rename changes. */
   readonly acceptedGroup: (id: string) => string;
   readonly chapter: (id: string) => string;
+}
+
+/** What an id was renamed from and to, told apart by what it names. */
+export interface Rename {
+  readonly kind: "structure" | "group";
+  readonly from: string;
+  readonly to: string;
+}
+
+/** The renames of a batch, by what they name, for `retargeted`. */
+export interface Renames {
+  readonly structure: ReadonlyMap<string, string>;
+  readonly group: ReadonlyMap<string, string>;
+}
+
+/**
+ * One mark a kind draws besides structures and hops. `name` says what the
+ * mark is, `scope` where it shows (such as the chapter a proposal is for), and
+ * `ids` what it marks.
+ */
+export interface Mark {
+  readonly name: string;
+  /** Where the mark shows, such as the chapter a proposal is for. */
+  readonly scope?: string | undefined;
+  /** Which of the kind's looks it is, such as "hide" for a chapter proposal. */
+  readonly kind?: string | undefined;
+  readonly ids: readonly string[];
 }
 
 /** An item still waiting on the agent, and the batch it is in, if any. */
@@ -122,14 +152,14 @@ export interface MapShape {
 /**
  * What an item changes in how the map is drawn. `structures` and `hops` are
  * what it draws in the pending look. `marks` is for anything else a kind
- * draws: a name for the mark and the ids it marks, such as the structures
- * proposed for deletion. The page reads the marks it knows by name, and a
+ * draws: a name for the mark, where it shows and the ids it marks, such as
+ * the structures proposed for deletion. The page reads the marks it knows by name, and a
  * kind's marks stay behind its own entry.
  */
 export interface Touches {
   readonly structures: readonly string[];
   readonly hops: readonly string[];
-  readonly marks: Readonly<Record<string, readonly string[]>>;
+  readonly marks: readonly Mark[];
 }
 
 /** What a kind of item needs to know about the map. */
@@ -185,12 +215,7 @@ export interface KindSpec<I extends BatchItem> {
    * The item in a few words for the Pending tab, or nothing for a kind the
    * page describes itself, such as a layout change.
    */
-  describe(
-    item: I,
-    nameOf: (id: string) => string,
-    hopLabelOf: (id: string) => string,
-    titles?: Titles
-  ): Option.Option<string>;
+  describe(item: I, names: Names): Option.Option<string>;
   /**
    * Why the item points at a structure or hop that data.mjs lacks, or
    * nothing. `check` warns with it for the item.
@@ -198,14 +223,9 @@ export interface KindSpec<I extends BatchItem> {
   dangling(item: I, known: Existing): Option.Option<string>;
   /**
    * One line for the prompt. Text the engineer wrote goes through
-   * `quoteText`. `hopLabelOf` gives a hop's label, for a reroute.
+   * `quoteText`.
    */
-  summary(
-    item: I,
-    nameOf: (id: string) => string,
-    hopLabelOf: (id: string) => string,
-    titles?: Titles
-  ): string;
+  summary(item: I, names: Names): string;
   /**
    * What the item changes, from `layout` and, for the kinds that point into
    * its text, `data`, for `review`.
@@ -222,6 +242,13 @@ export interface KindSpec<I extends BatchItem> {
    * has decided. `proposedMap` runs every open and frozen item through this.
    */
   appliesToData(item: I, map: MapShape): MapShape;
+  /**
+   * The map once the agent has taken the item as it stands, for the layout
+   * checks of a proposal. It differs from `appliesToData` only where the page
+   * keeps something drawn in the pending look, such as a hide. Left out, it is
+   * `appliesToData`.
+   */
+  whenTaken?(item: I, map: MapShape): MapShape;
   /** What the item changes in the drawing; see `Touches`. */
   touches(item: I): Touches;
   /** The layout changes that take effect when the item gets `verdict`. */
@@ -249,18 +276,16 @@ export interface KindSpec<I extends BatchItem> {
     context: VerdictContext
   ): Option.Option<string>;
   /**
-   * The structure ids the item makes new when it is taken with `verdict`, as
-   * `[provisional, final]` pairs, when the agent used another id.
+   * The structure and group ids the item makes new when it is taken with
+   * `verdict`, from the provisional id to the final one, when the agent used
+   * another id.
    */
-  renames(
-    item: I,
-    verdict: Verdict
-  ): readonly (readonly [from: string, to: string])[];
+  renames(item: I, verdict: Verdict): readonly Rename[];
   /**
-   * The item with each structure id in `renames` replaced by the id it
-   * became, for an item that points at a structure accepted under another id.
+   * The item with each id in `renames` replaced by the id it became, for an
+   * item that points at a structure or group accepted under another id.
    */
-  retargeted(item: I, renames: ReadonlyMap<string, string>): I;
+  retargeted(item: I, renames: Renames): I;
   /** The item as a revision records it when taken: accepted or changed. */
   accepted(item: I, verdict: Verdict): AcceptedItem;
   /** The item as a revision records it when rejected. */
@@ -275,6 +300,12 @@ export interface KindSpec<I extends BatchItem> {
   /** The most characters the kind's text holds. */
   readonly textLimit: number;
   /**
+   * Why `text`, an edit of the item's text, breaks the kind's own schema, such
+   * as a group title with a line break, or nothing. Checked besides
+   * `textLimit`. A kind with no text leaves it out.
+   */
+  textRefusal?(text: string): Option.Option<string>;
+  /**
    * Why the item was written against something data.mjs no longer says, or
    * nothing. Unlike `breakage`, accepting it would not break the map; the
    * agent should know before it judges the item.
@@ -286,6 +317,13 @@ export interface KindSpec<I extends BatchItem> {
    * say.
    */
   clash?(item: I, waiting: readonly Waiting[]): Option.Option<string>;
+  /**
+   * Why `item` doesn't fit the map as proposed, `data`, which is what a fresh
+   * proposal of it is checked against, or nothing. `reopenItem` asks it too,
+   * so an item edited again after a rejection passes the checks a new one
+   * does: a group title another group has, an id the map has taken.
+   */
+  fits?(item: I, data: MapData): Option.Option<string>;
   /**
    * A line for the prompt and for `review` that tells the agent how to
    * fold this kind in, said once when the batch holds an item of the kind.
@@ -329,9 +367,9 @@ const routeOf = (layout: Layout, hop: string): Facts => {
 
 const retargetLayoutChange = (
   change: LayoutChange,
-  renames: ReadonlyMap<string, string>
+  renames: Renames
 ): LayoutChange => {
-  const id = (from: string) => renames.get(from) ?? from;
+  const id = (from: string) => renames.structure.get(from) ?? from;
 
   return Match.value(change).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -361,7 +399,7 @@ const layoutKind: KindSpec<LayoutItem> = {
   touches: ({ change }) => ({
     structures: structuresOf(change),
     hops: hopsOf(change),
-    marks: {},
+    marks: [],
   }),
   retargeted: (item, renames) => {
     const change = retargetLayoutChange(item.change, renames);
@@ -392,16 +430,18 @@ const layoutKind: KindSpec<LayoutItem> = {
     })),
     ...Arr.map(hopsOf(change), (id): Pointer => ({ kind: "hop", id })),
   ],
-  summary: (item, nameOf, hopLabelOf) => {
+  summary: (item, called) => {
     const { change } = item;
 
     if (change.kind === "reroute") {
-      return `reroute ${item.id} on ${quoteText(hopLabelOf(change.target.id))}`;
+      return `reroute ${item.id} on ${quoteText(called.hop(change.target.id))}`;
     }
 
-    const names = Arr.map(structuresOf(change), (id) => quoteText(nameOf(id)));
+    const named = Arr.map(structuresOf(change), (id) =>
+      quoteText(called.structure(id))
+    );
 
-    return `${change.kind} ${item.id}: ${Arr.join(names, ", ")}`;
+    return `${change.kind} ${item.id}: ${Arr.join(named, ", ")}`;
   },
   facts: ({ change }, layout) => {
     const next = applyLayoutChanges(layout, [change]);
@@ -449,7 +489,7 @@ const noteKind: KindSpec<NoteItem> = {
   ...plain<NoteItem>(),
   textLimit: maxNoteLength,
   retargeted: (item, renames) => {
-    const id = renames.get(
+    const id = renames.structure.get(
       item.target.kind === "structure" ? item.target.id : ""
     );
 
@@ -473,12 +513,12 @@ const noteKind: KindSpec<NoteItem> = {
   name: () => "note",
   listKey: "notes",
   text: ({ text }) => Option.some(text),
-  describe: ({ target, text }, nameOf, hopLabelOf) =>
+  describe: ({ target, text }, called) =>
     Option.some(
       Match.value(target).pipe(
         Match.discriminatorsExhaustive("kind")({
-          structure: ({ id }) => `Note on ${nameOf(id)}: ${text}`,
-          hop: ({ id }) => `Note on hop ${hopLabelOf(id)}: ${text}`,
+          structure: ({ id }) => `Note on ${called.structure(id)}: ${text}`,
+          hop: ({ id }) => `Note on hop ${called.hop(id)}: ${text}`,
           spot: ({ x, y }) => `Note at the spot ${x}, ${y}: ${text}`,
         })
       )
@@ -505,15 +545,15 @@ const noteKind: KindSpec<NoteItem> = {
         spot: (): readonly Pointer[] => [],
       })
     ),
-  summary: ({ id, target, text }, nameOf, hopLabelOf) => {
+  summary: ({ id, target, text }, called) => {
     const said = quoteText(oneLine(text, 80));
 
     return Match.value(target).pipe(
       Match.discriminatorsExhaustive("kind")({
         structure: ({ id: on }) =>
-          `note ${id} on ${quoteText(nameOf(on))}: ${said}`,
+          `note ${id} on ${quoteText(called.structure(on))}: ${said}`,
         hop: ({ id: on }) =>
-          `note ${id} on hop ${quoteText(hopLabelOf(on))}: ${said}`,
+          `note ${id} on hop ${quoteText(called.hop(on))}: ${said}`,
         spot: ({ x, y }) => `note ${id} at the spot ${x}, ${y}: ${said}`,
       })
     );

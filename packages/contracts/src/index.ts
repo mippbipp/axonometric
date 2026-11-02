@@ -71,7 +71,9 @@ export {
 export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 
 export {
+  changedChapterProblems,
   changedProblems,
+  checkChapter,
   checkLayout,
   clashWarnings,
   draggedProblems,
@@ -352,6 +354,8 @@ export {
 
 export { strikeSegments } from "./strike.ts";
 
+export { clearOfText, outlineClearance, textBoxesOf } from "./clear-of-text.ts";
+
 export { dragSegment, routeVertices, segmentGuides } from "./route-drag.ts";
 
 export type { RouteEnds, SegmentGuide } from "./route-drag.ts";
@@ -411,7 +415,7 @@ export {
   engineerTextNotice,
   kindNotices,
   summaryLine,
-  titlesOf,
+  fullNames,
   bySection,
   inSections,
   sectionOf,
@@ -423,7 +427,7 @@ export type {
   FreezeResult,
   Known,
   ItemStatus,
-  Names,
+  PartialNames,
   ReviewEntry,
 } from "./review.ts";
 
@@ -439,6 +443,7 @@ export {
   ReopenWrite,
   ChapterWrite,
   GroupWrite,
+  maxGroupMembers,
   StructureWrite,
   SuggestionAdd,
 } from "./review-server.ts";
@@ -481,9 +486,12 @@ export type {
   KindSpec,
   Landing,
   MapShape,
+  Mark,
+  Names,
   Pointer,
+  Rename,
+  Renames,
   Section,
-  Titles,
   Touches,
   VerdictContext,
   Waiting,
@@ -496,7 +504,13 @@ export {
   proposedMap,
 } from "./proposed-map.ts";
 
-export type { Mappable, ProposedMap } from "./proposed-map.ts";
+export type { Mappable, MarkQuery, ProposedMap } from "./proposed-map.ts";
+
+export { namesOf } from "./review-names.ts";
+
+export { proposalProblems } from "./proposal-problems.ts";
+
+export type { CheckScope } from "./proposal-problems.ts";
 
 export {
   FinalId,
@@ -555,13 +569,11 @@ export type { StructureWorld } from "./structure-proposals.ts";
 export {
   GroupChange,
   GroupId,
-  groupKey,
   groupOf,
   GroupTitle,
   maxGroupTitleLength,
   NewGroup,
   provisionalGroupIdOf,
-  sameGroupChange,
   sameGroupSubject,
   titleOf,
 } from "./group-change.ts";
@@ -578,6 +590,7 @@ export { groupMark } from "./review-kinds-group.ts";
 
 export {
   applyChapterChange,
+  chapterActions,
   chapterBreakage,
   ChapterChange,
   ChapterId,
@@ -589,7 +602,6 @@ export {
   maxPlayedHops,
   resequenced,
   revealedUpTo,
-  sameChapterChange,
   structuresOfChange,
   subjectOf,
 } from "./chapter-change.ts";
@@ -600,7 +612,7 @@ export { proposeChapter } from "./chapter-proposals.ts";
 
 export type { ChapterWorld } from "./chapter-proposals.ts";
 
-export { chapterMark, orderMark } from "./review-kinds-chapter.ts";
+export { chapterMarkName } from "./review-kinds-chapter.ts";
 
 export {
   fieldLabel,

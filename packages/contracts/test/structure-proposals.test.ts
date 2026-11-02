@@ -1122,10 +1122,10 @@ describe("the structures a batch is frozen against", () => {
 
 describe("a note on a hop or a spot after --as", () => {
   it("renames the target of a note on a structure", () => {
-    const renamed = specOf(structureNote).retargeted(
-      structureNote,
-      new Map([["new-1", "cache"]])
-    );
+    const renamed = specOf(structureNote).retargeted(structureNote, {
+      structure: new Map([["new-1", "cache"]]),
+      group: new Map(),
+    });
 
     assert.deepStrictEqual(noteTargetOf(renamed), {
       kind: "structure",

@@ -7,6 +7,7 @@ import {
   provisionalGroupIdOf,
 } from "./group-change.ts";
 import type { GroupChange } from "./group-change.ts";
+import { titleClash } from "./group-fit.ts";
 import type { MapData } from "./map-data.ts";
 import { newChangeId } from "./proposals.ts";
 import type { ChangeId, GroupProposal, Proposals } from "./proposals.ts";
@@ -71,23 +72,12 @@ const idRefusal = (
   );
 };
 
-const sameTitle = (a: string, b: string) =>
-  Str.toLowerCase(Str.trim(a)) === Str.toLowerCase(Str.trim(b));
-
 /** Why no other group may be called `title`, or nothing. */
 const titleRefusal = (
   world: GroupWorld,
   group: string,
   title: string
-): Option.Option<string> =>
-  Option.map(
-    Arr.findFirst(
-      world.data.groups,
-      (other) => other.id !== group && sameTitle(other.title, title)
-    ),
-    () =>
-      `The map already has a group called "${title}". Pick another title, so the zones stay tellable apart.`
-  );
+): Option.Option<string> => titleClash(world.data.groups, group, title);
 
 /**
  * `proposals` with `change` set as an open group proposal. A rename of a group

@@ -1,10 +1,19 @@
 import { emptyProposals, Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Path, Schema } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  FileSystem,
+  Path,
+  Schema,
+  String as Str,
+} from "effect";
 import type { Page } from "playwright";
 
 import { openUrl } from "./browser.ts";
+import { crosses, drawingReport } from "./drawing-report.ts";
+import type { Drawn, DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
 
@@ -546,6 +555,321 @@ describe("exports", () => {
           );
         }
       }).pipe(Effect.provide(NodeServices.layer)),
+    90_000
+  );
+});
+
+/** Every pending ring piece that crosses a visible name tag, code chip, zone title or hop label. */
+const ringsOverText = (report: DrawingReport): readonly string[] => {
+  const text: readonly Drawn[] = [...report.text, ...report.chips];
+
+  return Arr.flatMap(report.rings, ({ id, segment }) =>
+    Arr.flatMap(text, (other) =>
+      crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
+    )
+  );
+};
+
+const reportOf = (page: Page) =>
+  Effect.promise(() => page.evaluate<DrawingReport>(drawingReport));
+
+describe("the pending rings and lines", () => {
+  it.live(
+    "stay clear of every name tag, chip, zone title and hop label, in both views",
+    () =>
+      Effect.gen(function* () {
+        const { page, errors } = yield* served;
+
+        yield* chapter(page, "c-save");
+        yield* makeGroup(page, "Data layer");
+        yield* unpin(page);
+        yield* click(page, '[data-reveal="pull-request"]');
+        yield* waitFor(page, '[data-chapter-mark="reveal"]');
+        yield* click(page, '[data-structure="proposals"]');
+        yield* click(page, '[data-chapter-toggle="hide"]');
+        yield* waitFor(page, '[data-chapter-mark="hide"]');
+        yield* unpin(page);
+
+        for (const which of ["iso", "plan"] as const) {
+          yield* view(page, which);
+
+          const report = yield* reportOf(page);
+
+          // The rings are drawn, so the check has something to check.
+          assert.isAbove(report.rings.length, 4, `${which}: no rings drawn`);
+          assert.deepStrictEqual(ringsOverText(report), [], which);
+        }
+
+        assert.deepStrictEqual(errors, []);
+      }),
+    90_000
+  );
+
+  it.live(
+    "hide the zone's own title less than they once did: no ring crosses it",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* chapter(page, "c-save");
+        yield* makeGroup(page, "Data layer");
+
+        for (const which of ["iso", "plan"] as const) {
+          yield* view(page, which);
+
+          const report = yield* reportOf(page);
+
+          const titles = Arr.filter(report.text, ({ id }) =>
+            Str.startsWith("title:")(id)
+          );
+
+          assert.isAbove(titles.length, 0);
+
+          for (const piece of report.rings) {
+            for (const title of titles) {
+              assert.isFalse(
+                crosses(piece.segment, title.polygon),
+                `${which}: ${piece.id} crosses ${title.id}`
+              );
+            }
+          }
+        }
+      }),
+    90_000
+  );
+});
+
+/** The warnings as one line each, for an assertion's message. */
+const words = (found: readonly { message: string; isNew: boolean }[]) =>
+  Arr.join(
+    Arr.map(found, ({ message, isNew }) => `${isNew ? "NEW " : ""}${message}`),
+    " | "
+  );
+
+const warnings = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<readonly { message: string; isNew: boolean }[]>(
+      `[...document.querySelectorAll("[data-drag-warning]")].map((item) => ({ message: item.querySelector("[data-warning-message]").textContent, isNew: item.getAttribute("data-warning-new") === "true" }))`
+    )
+  );
+
+describe("the warnings panel for group and chapter proposals", () => {
+  it.live(
+    "warns, marked New from this change, while the new group's form is open",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* chapter(page, "c-all");
+        yield* click(page, '[data-structure="server"]');
+        yield* Effect.promise(() =>
+          page
+            .locator('[data-structure="server"]')
+            .click({ modifiers: ["Shift"] })
+        );
+        yield* Effect.promise(() =>
+          page
+            .locator('[data-structure="proposals"]')
+            .click({ modifiers: ["Shift"] })
+        );
+        yield* click(page, '[data-control="add-group"]');
+        yield* Effect.promise(() =>
+          page.locator("[data-new-group-title]").fill("Data layer")
+        );
+        yield* waitFor(page, "[data-drag-warnings]");
+
+        const open = yield* warnings(page);
+
+        assert.isTrue(
+          Arr.some(
+            open,
+            ({ message, isNew }) =>
+              isNew &&
+              /zones of groups "loop" and "data-layer-\w+" overlap/u.test(
+                message
+              )
+          ),
+          words(open)
+        );
+        assert.include(
+          yield* textOf(page, "[data-warning-badge]"),
+          "New from this change"
+        );
+
+        // Still there after the group is sent.
+        yield* click(page, "[data-new-group-submit]");
+        yield* waitFor(page, "[data-pending-zone]");
+
+        const sent = yield* warnings(page);
+
+        assert.isTrue(
+          Arr.some(sent, ({ message }) => Str.includes("overlap")(message)),
+          words(sent)
+        );
+      }),
+    90_000
+  );
+
+  it.live(
+    "warns for a chapter proposal, in the chapter viewed",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* chapter(page, "c-save");
+        yield* makeGroup(page, "Data layer");
+        yield* unpin(page);
+        yield* click(page, '[data-reveal="pull-request"]');
+        yield* waitFor(page, "[data-drag-warnings]");
+
+        const shown = yield* warnings(page);
+
+        assert.isTrue(
+          Arr.some(
+            shown,
+            ({ message, isNew }) =>
+              isNew &&
+              Str.includes("overlap")(message) &&
+              Str.includes('chapter "c-save"')(message)
+          ),
+          words(shown)
+        );
+      }),
+    90_000
+  );
+
+  it.live(
+    "warns while a rename's title is typed",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* chapter(page, "c-all");
+
+        const title = yield* middleOf(page, '[data-zone-title-hit="loop"]');
+
+        yield* Effect.promise(() => page.mouse.click(title.x, title.y));
+        yield* waitFor(page, '[data-group-panel="loop"]');
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-group-title]")
+            .fill("The save loop, with its server and everything it keeps")
+        );
+
+        // The panel responds to the typed title, with whatever `check` finds; it
+        // must at least not break the page.
+        yield* Effect.promise(() => page.waitForTimeout(400));
+        assert.strictEqual(yield* count(page, "[data-group-panel]"), 1);
+      }),
+    90_000
+  );
+});
+
+describe("the Pending tab lists each item once", () => {
+  it.live(
+    "with each item id in one row only, in its own section",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* chapter(page, "c-save");
+        yield* makeGroup(page, "Data layer");
+        yield* unpin(page);
+        yield* click(page, '[data-reveal="pull-request"]');
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+        yield* waitFor(page, '[data-review-section="chapter"]');
+
+        const ids = yield* Effect.promise(() =>
+          page.evaluate<readonly string[]>(
+            `[...document.querySelectorAll("[data-side-panel] [data-review-item]")].map((row) => row.getAttribute("data-review-item"))`
+          )
+        );
+
+        assert.isAbove(ids.length, 2);
+        assert.strictEqual(new Set(ids).size, ids.length, Arr.join(ids, ", "));
+        assert.strictEqual(yield* count(page, "[data-pending-structures]"), 0);
+        assert.strictEqual(
+          yield* count(
+            page,
+            "[data-side-panel] h3:text-is('Structure proposals')"
+          ),
+          0
+        );
+      }),
+    90_000
+  );
+});
+
+describe("the chapter details for a proposal", () => {
+  it.live(
+    "say Proposed order on the rows an order moved, and explain play and unplay",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* chapter(page, "c-save");
+        yield* click(page, '[data-play-down="h-note"]');
+        yield* waitFor(page, '[data-play-pending="order"]');
+
+        const moved = yield* Effect.promise(() =>
+          page.evaluate<readonly string[]>(
+            `[...document.querySelectorAll('[data-play-pending="order"] [data-play-state]')].map((el) => el.textContent)`
+          )
+        );
+
+        assert.isAbove(moved.length, 0);
+        assert.isTrue(Arr.every(moved, (said) => said === "Proposed order"));
+
+        yield* click(page, '[data-play-toggle="h-store"]');
+        yield* waitFor(page, '[data-play-pending="unplay"]');
+        assert.include(
+          yield* textOf(page, '[data-play-pending="unplay"] [data-play-state]'),
+          "Proposed to stop playing"
+        );
+
+        yield* Effect.promise(() =>
+          page.locator("[data-add-play-hop]").selectOption("h-pr")
+        );
+        yield* click(page, "[data-add-play-submit]");
+        yield* waitFor(page, '[data-play-pending="play"]');
+        assert.include(
+          yield* textOf(page, '[data-play-pending="play"] [data-play-state]'),
+          "Proposed to play"
+        );
+      }),
+    90_000
+  );
+
+  it.live(
+    "show a key for the looks in use, and only those",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* chapter(page, "c-save");
+        assert.strictEqual(yield* count(page, "[data-chapter-legend]"), 0);
+
+        yield* click(page, '[data-reveal="pull-request"]');
+        yield* waitFor(page, '[data-legend="reveal"]');
+        assert.include(
+          yield* textOf(page, '[data-legend="reveal"]'),
+          "Proposed to show"
+        );
+        assert.strictEqual(yield* count(page, '[data-legend="hide"]'), 0);
+
+        yield* click(page, '[data-structure="proposals"]');
+        yield* click(page, '[data-chapter-toggle="hide"]');
+        yield* unpin(page);
+        yield* waitFor(page, '[data-legend="hide"]');
+        assert.include(
+          yield* textOf(page, '[data-legend="hide"]'),
+          "Proposed to hide"
+        );
+
+        // Another chapter shows none of it.
+        yield* chapter(page, "c-page");
+        assert.strictEqual(yield* count(page, "[data-chapter-legend]"), 0);
+      }),
     90_000
   );
 });

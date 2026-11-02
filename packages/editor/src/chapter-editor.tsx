@@ -3,7 +3,8 @@ import { Array as Arr, Option } from "effect";
 import { useState } from "react";
 import type { DragEvent } from "react";
 
-import { useChapterMarks } from "./chapter-marks-context.ts";
+import { ChapterLegend } from "./chapter-legend.tsx";
+import { useAcceptedPlays, useChapterMarks } from "./chapter-marks-context.ts";
 import { controlClass } from "./control-class.ts";
 import { fieldClass } from "./field-class.ts";
 import { useChapterPropose } from "./use-chapter-propose.ts";
@@ -26,6 +27,13 @@ const moved = (
   return [...rest.slice(0, to), item, ...rest.slice(to)];
 };
 
+/** What a row says about a proposal that changes it. */
+const proposedWords = {
+  play: "Proposed to play",
+  unplay: "Proposed to stop playing",
+  order: "Proposed order",
+} as const;
+
 /**
  * The side panel's chapter editing, under the chapter's story: which hops the
  * chapter plays, in what order, and the structures it hasn't revealed yet.
@@ -43,6 +51,7 @@ export function ChapterEditor() {
   const removing = useChapterMarks(stop.id, "unplay");
   const revealing = useChapterMarks(stop.id, "reveal");
   const hiding = useChapterMarks(stop.id, "hide");
+  const acceptedPlays = useAcceptedPlays(stop.id);
   const [dragging, setDragging] = useState<number | undefined>();
   const [over, setOver] = useState<number | undefined>();
   const [addHop, setAddHop] = useState("");
@@ -69,12 +78,24 @@ export function ChapterEditor() {
     return Arr.filter(Arr.dedupe(ends), (end) => !revealed.has(end));
   };
 
-  const pendingOf = (hop: string): "play" | "unplay" | undefined => {
+  // A hop the proposals add is in `plays` already; one they stop is still
+  // there; one an order moved is in a different place than the accepted
+  // chapter has it.
+  const pendingOf = (
+    hop: string,
+    index: number
+  ): "play" | "unplay" | "order" | undefined => {
     if (adding.has(hop)) {
       return "play";
     }
 
-    return removing.has(hop) ? "unplay" : undefined;
+    if (removing.has(hop)) {
+      return "unplay";
+    }
+
+    return acceptedPlays.includes(hop) && acceptedPlays[index] !== hop
+      ? "order"
+      : undefined;
   };
 
   const playable = Arr.filter(state.data.hops, ({ id }) => !plays.includes(id));
@@ -99,6 +120,7 @@ export function ChapterEditor() {
 
   return (
     <section data-chapter-editor={stop.id} className="flex flex-col gap-3">
+      <ChapterLegend />
       <div className="flex flex-col gap-1.5">
         <h3 className="text-xs tracking-widest uppercase opacity-70">
           Hops it plays
@@ -111,7 +133,7 @@ export function ChapterEditor() {
           <ol data-plays className="flex flex-col gap-1">
             {Arr.map(plays, (hop, index) => {
               const missing = lacking(hop);
-              const pending = pendingOf(hop);
+              const pending = pendingOf(hop, index);
 
               return (
                 // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dragging a row is a pointer shortcut; the move up and move down buttons in the row do the same from the keyboard.
@@ -121,7 +143,7 @@ export function ChapterEditor() {
                   data-play-pending={pending}
                   data-play-over={over === index && dragging !== index}
                   draggable={canPropose && plays.length > 1}
-                  className="border-ink data-[play-pending=play]:border-pending data-[play-pending=unplay]:border-refused flex items-center gap-1.5 border px-1.5 py-1 text-xs data-[play-over=true]:border-dashed data-[play-pending=unplay]:border-dashed"
+                  className="border-ink data-[play-pending=order]:border-pending data-[play-pending=play]:border-pending data-[play-pending=unplay]:border-refused flex items-center gap-1.5 border px-1.5 py-1 text-xs data-[play-over=true]:border-dashed data-[play-pending=unplay]:border-dashed"
                   onDragStart={(event: DragEvent<HTMLLIElement>) => {
                     event.dataTransfer.effectAllowed = "move";
                     event.dataTransfer.setData("text/plain", hop);
@@ -155,9 +177,7 @@ export function ChapterEditor() {
                     </span>
                     {pending === undefined ? null : (
                       <span data-play-state className="block opacity-70">
-                        {pending === "play"
-                          ? "Proposed: play it here"
-                          : "Proposed: stop playing it here"}
+                        {proposedWords[pending]}
                       </span>
                     )}
                     {missing.length === 0 ? null : (

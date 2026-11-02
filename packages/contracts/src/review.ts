@@ -32,7 +32,7 @@ import type {
   Verdict,
 } from "./proposals.ts";
 import { allKinds, sections, sectionTitles, specOf } from "./review-kinds.ts";
-import type { Section, Titles, Waiting } from "./review-kinds.ts";
+import type { Names, Renames, Section, Waiting } from "./review-kinds.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
 type Listed = Proposals;
@@ -517,17 +517,45 @@ export const reopenItem = ({
     );
   }
 
+  const refusedText = Option.flatMap(Option.fromNullishOr(text), (given) =>
+    spec.textRefusal === undefined ? Option.none() : spec.textRefusal(given)
+  );
+
+  if (Option.isSome(refusedText)) {
+    return Result.fail(refusedText.value);
+  }
+
+  // A kind with no text of its own leaves nothing for `text` to edit.
+  if (text !== undefined && Option.isNone(spec.text(item))) {
+    return Result.fail(`A ${spec.name(item)} has no text to edit.`);
+  }
+
   const reopened = spec.reopened(item, newId, text);
 
+  // The same checks a fresh proposal runs: against the other items waiting,
+  // as a batch is judged, and against the map as proposed.
   const broken = spec.breakage(reopened, {
     layout: applyLayoutChanges(layout, proposals.layout),
     structureIds: known,
     hops,
     data,
+    siblings: [...openItems(dismissed.success), reopened],
   });
 
   if (Option.isSome(broken)) {
     return Result.fail(broken.value);
+  }
+
+  // The map the item lands on: as proposed, without the rejected item it
+  // replaces, which has left the page.
+  const unfit = Option.flatMap(Option.fromNullishOr(data), (map) =>
+    spec.fits === undefined
+      ? Option.none()
+      : spec.fits(reopened, proposedData(map, dismissed.success))
+  );
+
+  if (Option.isSome(unfit)) {
+    return Result.fail(unfit.value);
   }
 
   const clash = spec.clash?.(reopened, waitingItems(dismissed.success));
@@ -545,6 +573,23 @@ export const reopenItem = ({
       reopened
     )
   );
+};
+
+/** `data` with every open and frozen item of `proposals` applied. */
+const proposedData = (data: MapData, proposals: Proposals): MapData => {
+  const waiting: readonly Batch[] = Arr.filter(
+    batchesOf(proposals),
+    isOpenBatch
+  );
+
+  const items: readonly BatchItem[] = [
+    ...Arr.flatMap(waiting, ({ items: held }) => held),
+    ...openItems(proposals),
+  ];
+
+  return Arr.reduce(items, { data, layout: emptyLayout }, (map, item) =>
+    specOf(item).appliesToData(item, map)
+  ).data;
 };
 
 /** Why open item `id` can't be found among the open items. */
@@ -857,11 +902,24 @@ export const commitBatch = ({
 
   // A structure the agent accepted under another id: items that point at the
   // provisional one now point at the final one.
-  const renames = new Map(
-    Arr.flatMap(verdicts, ({ item, verdict }) =>
-      specOf(item).renames(item, verdict)
-    )
+  const renamed = Arr.flatMap(verdicts, ({ item, verdict }) =>
+    specOf(item).renames(item, verdict)
   );
+
+  const renames: Renames = {
+    structure: new Map(
+      Arr.flatMap(renamed, ({ kind, from, to }) =>
+        kind === "structure" ? [[from, to] as const] : []
+      )
+    ),
+    group: new Map(
+      Arr.flatMap(renamed, ({ kind, from, to }) =>
+        kind === "group" ? [[from, to] as const] : []
+      )
+    ),
+  };
+
+  const anyRenamed = renamed.length > 0;
 
   const decided = Arr.map(verdicts, ({ item, verdict }) => ({
     item: specOf(item).retargeted(item, renames),
@@ -903,9 +961,9 @@ export const commitBatch = ({
 
   return Result.map(applied, (nextLayout): Committing => {
     const retargetItems = (items: readonly BatchItem[]) =>
-      renames.size === 0
-        ? items
-        : Arr.map(items, (one) => specOf(one).retargeted(one, renames));
+      anyRenamed
+        ? Arr.map(items, (one) => specOf(one).retargeted(one, renames))
+        : items;
 
     // Batches that still wait, and the open items, point at the id the
     // agent gave the structure, so the page follows it.
@@ -935,7 +993,7 @@ export const commitBatch = ({
       batch,
       layout: nextLayout,
       proposals: {
-        ...(renames.size === 0 ? proposals : retargetedOpen),
+        ...(anyRenamed ? retargetedOpen : proposals),
         revision: proposals.revision + 1,
         batches,
       },
@@ -1048,30 +1106,25 @@ export const dismissItem = ({
   });
 };
 
-/** How a summary names what an item acts on. */
-export interface Names {
-  /** A structure's name. */
-  readonly structure: (id: string) => string;
-  /** A hop's label. */
-  readonly hop: (id: string) => string;
-  /** A group's title on the proposed map, or its id when there is no such group. */
-  readonly group?: (id: string) => string;
-  /** A group's title as data.mjs has it now, or its id. */
-  readonly acceptedGroup?: (id: string) => string;
-  /** A chapter's title, or its id when the map has no such chapter. */
-  readonly chapter?: (id: string) => string;
-}
-
 /** One line that says what an item is. */
 export const summaryLine: {
-  (names: Names): (item: BatchItem) => string;
-  (item: BatchItem, names: Names): string;
-} = dual(2, (item: BatchItem, names: Names): string =>
-  specOf(item).summary(item, names.structure, names.hop, titlesOf(names))
+  (names: PartialNames): (item: BatchItem) => string;
+  (item: BatchItem, names: PartialNames): string;
+} = dual(2, (item: BatchItem, names: PartialNames): string =>
+  specOf(item).summary(item, fullNames(names))
 );
 
-/** `names` as the titles the kinds ask for, with the id standing in for a missing one. */
-export const titlesOf = (names: Names): Titles => ({
+/**
+ * `Names` with the group and chapter titles left out where a caller has none:
+ * the id stands in for the title.
+ */
+export type PartialNames = Pick<Names, "structure" | "hop"> &
+  Partial<Pick<Names, "group" | "acceptedGroup" | "chapter">>;
+
+/** `names` with an id standing in for each title it lacks. */
+export const fullNames = (names: PartialNames): Names => ({
+  structure: names.structure,
+  hop: names.hop,
   group: names.group ?? ((id) => id),
   acceptedGroup: names.acceptedGroup ?? names.group ?? ((id) => id),
   chapter: names.chapter ?? ((id) => id),
@@ -1162,7 +1215,7 @@ export const reviewPrompt = ({
   /** The absolute path of the home folder. */
   readonly home: string;
   readonly batch: Batch;
-  readonly names: Names;
+  readonly names: PartialNames;
 }): string =>
   Arr.join(
     [

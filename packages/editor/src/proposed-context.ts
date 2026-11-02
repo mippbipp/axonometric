@@ -1,5 +1,7 @@
 import type {
+  BatchItem,
   ChangeId,
+  CheckScope,
   DraggedProblem,
   Placement,
   ProposedMap,
@@ -34,13 +36,20 @@ export interface ProposedStructures {
   /** Why `change` would be refused, or `undefined`. */
   readonly refusalOf: (change: StructureChange) => string | undefined;
   /**
-   * What `check` would report for the map as proposed with `changes` added,
-   * each marked new when the map as proposed now didn't have it.
+   * What `check` would report for the map as proposed with `items` added,
+   * each marked new when the map as proposed now didn't have it. `items` are
+   * open items of any kind, built by the control that proposes them; each
+   * says through the kind table what it does to the map. `scope` is the whole
+   * map, or the chapter being viewed, for a proposal that changes how a
+   * chapter draws.
    */
   readonly problemsOf: (
-    changes: readonly StructureChange[],
-    /** Structures moved first, such as the one a drop just moved, by id. */
-    moved?: Readonly<Record<string, Placement>>
+    items: readonly BatchItem[],
+    options?: {
+      readonly scope?: CheckScope;
+      /** Structures moved first, such as the one a drop just moved, by id. */
+      readonly moved?: Readonly<Record<string, Placement>>;
+    }
   ) => readonly DraggedProblem[];
   /** Whether `id` is a structure the engineer proposed and hasn't sent yet. */
   readonly isOpenAdd: (id: string) => boolean;

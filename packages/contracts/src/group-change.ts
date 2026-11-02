@@ -1,21 +1,18 @@
-import { pipe, Schema, String as Str } from "effect";
+import { Option, pipe, Result, Schema, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import { objectMessages } from "./fields.ts";
 import { ProvisionalId } from "./structure-change.ts";
+import { oneLineText } from "./text-schema.ts";
 
 /** The most characters a group title holds. */
 export const maxGroupTitleLength = 80;
 
-const titleFix = `expected a title of 1 to ${maxGroupTitleLength} characters on one line, with no space at either end.`;
-
 /** A group's title: one line, trimmed, not longer than the limit. */
-export const GroupTitle = Schema.String.annotate({ message: titleFix }).check(
-  Schema.isPattern(/^\S(?:[^\r\n\u0085\u2028\u2029]*\S)?$/u, {
-    message: titleFix,
-  }),
-  Schema.isMaxLength(maxGroupTitleLength, { message: titleFix })
-);
+export const GroupTitle = oneLineText({
+  noun: "title",
+  max: maxGroupTitleLength,
+});
 
 const groupFix = "expected the id of one of the map's groups, on one line.";
 
@@ -56,12 +53,6 @@ export const GroupChange = Schema.Union([
 
 export type GroupChange = typeof GroupChange.Type;
 
-/**
- * The key a new group's rename is stored under in the commit's map of renames,
- * which structures share. It keeps a group's id apart from a structure's.
- */
-export const groupKey = (id: string): string => `group:${id}`;
-
 /** The id of the group a change acts on: the provisional id for an add. */
 export const groupOf = (change: GroupChange): string =>
   change.action === "add" ? change.group.id : change.group;
@@ -69,13 +60,6 @@ export const groupOf = (change: GroupChange): string =>
 /** The title a change gives its group. */
 export const titleOf = (change: GroupChange): string =>
   change.action === "add" ? change.group.title : change.title;
-
-const equivalent = Schema.toEquivalence(GroupChange);
-
-export const sameGroupChange: {
-  (b: GroupChange): (a: GroupChange) => boolean;
-  (a: GroupChange, b: GroupChange): boolean;
-} = dual(2, (a: GroupChange, b: GroupChange): boolean => equivalent(a, b));
 
 /** Whether two changes act on the same group in the same way. */
 export const sameGroupSubject: {
@@ -106,3 +90,12 @@ export const provisionalGroupIdOf: {
 
   return `${slug === "" ? "group" : slug}-${suffix}`;
 });
+
+const decodeTitle = Schema.decodeUnknownResult(GroupTitle);
+
+/** Why `text` is no group title, in the schema's words, or nothing. */
+export const titleRefusal = (text: string): Option.Option<string> =>
+  Result.match(decodeTitle(text), {
+    onSuccess: () => Option.none(),
+    onFailure: (failure) => Option.some(failure.message),
+  });

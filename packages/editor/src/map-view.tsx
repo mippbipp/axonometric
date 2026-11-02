@@ -250,7 +250,7 @@ export function MapView({
             }
             underlay={
               <>
-                <PendingZones zones={scene.zones} />
+                <PendingZones scene={scene} />
                 <GroupEditor
                   view={view}
                   data={state.data}
@@ -288,11 +288,7 @@ export function MapView({
                   placements={state.layout.structures}
                   onHover={hoverHop}
                 />
-                <ChapterPendingLook
-                  structures={scene.structures}
-                  hops={scene.hops}
-                  view={view}
-                />
+                <ChapterPendingLook scene={scene} view={view} />
               </>
             }
             overlay={
