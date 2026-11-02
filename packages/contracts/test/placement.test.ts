@@ -512,12 +512,16 @@ describe("layout checks", () => {
         );
 
         assert.deepStrictEqual(
-          Arr.map(overlaps, ({ path, message }) => ({ path, message })),
+          Arr.map(overlaps, ({ path, message, hint }) => ({
+            path,
+            message,
+            hint,
+          })),
           [
             {
               path: "structures.b",
-              message:
-                'footprint overlaps "a". Move one of them, for example with axonometric layout <home> b --x <x> --y <y>.',
+              message: 'footprint overlaps "a".',
+              hint: "Move one of them, for example with axonometric layout <home> b --x <x> --y <y>.",
             },
           ]
         );

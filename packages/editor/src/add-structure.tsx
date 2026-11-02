@@ -1,10 +1,12 @@
 import { maxStructureNameLength } from "@axonometric/contracts";
+import type { GridPoint } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { useId } from "react";
 
 import { addChangeOf, previewId, sentId } from "./add-change.ts";
 import { controlClass } from "./control-class.ts";
 import { useDraftSpot } from "./draft-spot.ts";
+import type { DraftSpot } from "./draft-spot.ts";
 import { fieldClass } from "./field-class.ts";
 import { newStructureFootprint } from "./new-structure.ts";
 import { usePlacing } from "./place-context.ts";
@@ -14,6 +16,21 @@ import { shapeChoices, statusChoices } from "./structure-actions.ts";
 import { useDraftPreview } from "./use-draft-preview.ts";
 import { usePropose } from "./use-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
+
+const footprintWords = `Footprint ${newStructureFootprint.w} × ${newStructureFootprint.d}`;
+
+/** What the form says about where the structure goes. */
+const spotHint = (picked: GridPoint | null, drafted: DraftSpot | null) => {
+  if (picked !== null) {
+    return `${footprintWords} at ${picked.x}, ${picked.y}.`;
+  }
+
+  const added = drafted?.added ?? 0;
+
+  return added === 0
+    ? `${footprintWords}, in the nearest spot to the group where check finds nothing new. Click the map to move it.`
+    : `${footprintWords}. No spot near the group is clear: this one adds ${added === 1 ? "1 warning" : `${added} warnings`}, the fewest found. Click the map to move it.`;
+};
 
 /**
  * The form that adds a structure: its name, shape, group, status and
@@ -31,7 +48,8 @@ export function AddStructureForm() {
   const proposing = useProposed();
   const { state } = useWalkthrough();
   const { send, sending, failure, clear, canPropose } = usePropose();
-  const spot = useDraftSpot();
+  const drafted = useDraftSpot();
+  const spot = drafted?.spot ?? null;
   const id = useId();
 
   const draft = placing?.draft;
@@ -208,9 +226,7 @@ export function AddStructureForm() {
           </button>
         </div>
         <p data-add-hint className="opacity-70">
-          {placing.spot === null
-            ? `Footprint ${newStructureFootprint.w} × ${newStructureFootprint.d}, in the first free slot beside the group. Click the map to move it.`
-            : `Footprint ${newStructureFootprint.w} × ${newStructureFootprint.d} at ${placing.spot.x}, ${placing.spot.y}.`}
+          {spotHint(placing.spot, drafted)}
         </p>
       </fieldset>
       {failure === undefined ? null : (

@@ -390,7 +390,11 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
 
       assert.strictEqual(result.exitCode, 0, result.stdout);
       assert.deepStrictEqual(
-        Arr.map(report.warnings, ({ path, message }) => `${path}: ${message}`),
+        Arr.map(
+          report.warnings,
+          ({ path, message, hint }) =>
+            `${path}: ${message}${hint === undefined ? "" : ` ${hint}`}`
+        ),
         [
           'structures.page: footprint overlaps "engineer". Move one of them, for example with axonometric layout <home> page --x <x> --y <y>.',
           'structures.engineer: name tag is drawn on top of "page". Move one of them apart, so the tag under the front corner has room.',

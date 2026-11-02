@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
+  Effect,
   Option,
   Record as Rec,
   Result,
@@ -38,6 +39,7 @@ import type {
   MapState,
   Proposals,
 } from "../src/index.ts";
+import { fixture } from "./fixture-maps.ts";
 
 // Seam 3: the pure functions behind structure proposals, with plain data.
 
@@ -1182,14 +1184,18 @@ describe("what a proposal would add to check's report", () => {
   });
 });
 
+const spotFor = (group: string, mapData = rowData, map = rowLayout) =>
+  defaultSpotFor({
+    data: mapData,
+    layout: map,
+    group,
+    shape: "box",
+    name: "New",
+  });
+
 describe("the default spot for a new structure", () => {
   it("is a free 2 by 2 slot beside the group's zone, clear of every footprint", () => {
-    const spot = defaultSpotFor({
-      data: rowData,
-      layout: rowLayout,
-      group: "g2",
-      shape: "box",
-    });
+    const { spot } = spotFor("g2");
 
     assert.deepStrictEqual({ w: spot.w, d: spot.d }, { w: 2, d: 2 });
     assert.isTrue(
@@ -1203,38 +1209,109 @@ describe("the default spot for a new structure", () => {
     assert.isBelow(distanceFromB(spot), distanceFrom(spot, 16));
   });
 
+  it("adds no warning, as the panel counts them", () => {
+    for (const group of ["g1", "g2", "g3"]) {
+      const { spot, added } = spotFor(group);
+
+      const found = candidateProblems({
+        before: { data: rowData, layout: rowLayout },
+        changes: [
+          {
+            ...add,
+            structure: {
+              ...add.structure,
+              name: "New",
+              shape: "box",
+              group,
+            },
+            at: spot,
+          },
+        ],
+      });
+
+      assert.strictEqual(added, 0, group);
+      assert.deepStrictEqual(
+        Arr.filter(found, (one) => one.added),
+        [],
+        group
+      );
+    }
+  });
+
   it("changes with the group, and starts a group with no structures clear of the rest", () => {
-    const first = defaultSpotFor({
-      data: rowData,
-      layout: rowLayout,
-      group: "g1",
-      shape: "box",
-    });
+    assert.notDeepEqual(spotFor("g1").spot, spotFor("g3").spot);
 
-    const third = defaultSpotFor({
-      data: rowData,
-      layout: rowLayout,
-      group: "g3",
-      shape: "box",
-    });
-
-    assert.notDeepEqual(first, third);
-
-    const blank = defaultSpotFor({
-      data: {
-        ...rowData,
-        groups: [...rowData.groups, { id: "g4", title: "Four" }],
-      },
-      layout: rowLayout,
-      group: "g4",
-      shape: "box",
+    const { spot } = spotFor("g4", {
+      ...rowData,
+      groups: [...rowData.groups, { id: "g4", title: "Four" }],
     });
 
     assert.isTrue(
       Arr.every(
         Rec.values(rowLayout.structures),
-        (other) => !footprintsOverlap(blank, other)
+        (other) => !footprintsOverlap(spot, other)
       )
     );
   });
+
+  it("takes the spot that adds the fewest warnings when none adds nothing, and says how many", () => {
+    // Every spot within reach of g1 overlaps another group's zone.
+    const walled: Layout = {
+      ...rowLayout,
+      structures: {
+        ...rowLayout.structures,
+        b: { x: 0, y: 4, w: 2, d: 2 },
+        c: { x: 0, y: -4, w: 2, d: 2 },
+      },
+    };
+
+    const { added } = spotFor("g1", rowData, walled);
+
+    assert.isAtLeast(added, 0);
+  });
+});
+
+describe("the default spot on the review map", () => {
+  it.effect("adds no warning for any group", () =>
+    Effect.gen(function* () {
+      const { data: reviewData, layout: map } = yield* fixture("review");
+
+      for (const { id } of reviewData.groups) {
+        const { spot, added } = spotFor(id, reviewData, map);
+
+        const found = candidateProblems({
+          before: { data: reviewData, layout: map },
+          changes: [
+            {
+              ...add,
+              structure: {
+                ...add.structure,
+                name: "New",
+                shape: "box",
+                group: id,
+              },
+              at: spot,
+            },
+          ],
+        });
+
+        assert.strictEqual(added, 0, id);
+        assert.deepStrictEqual(
+          Arr.map(
+            Arr.filter(found, (one) => one.added),
+            (one) => [one.problem.path, one.problem.message, spot]
+          ),
+          [],
+          id
+        );
+        assert.isTrue(
+          Arr.every(
+            Rec.values(map.structures),
+            (other) => !footprintsOverlap(spot, other)
+          ),
+          id
+        );
+      }
+    })
+  );
 });

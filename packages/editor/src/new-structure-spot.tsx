@@ -73,7 +73,9 @@ export function NewStructureSpot({ view }: { readonly view: View }) {
   const drafted = useDraftSpot();
 
   const shown =
-    picking && over !== null ? { ...over, ...newStructureFootprint } : drafted;
+    picking && over !== null
+      ? { ...over, ...newStructureFootprint }
+      : (drafted?.spot ?? null);
 
   return (
     <g ref={root} aria-hidden="true" className="pointer-events-none">

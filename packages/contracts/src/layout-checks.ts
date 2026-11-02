@@ -66,7 +66,8 @@ const overlaps = (placed: readonly PlacedStructure[]) =>
             mapWarning({
               file: "layout.json",
               path: at(second.structure.id),
-              message: `footprint overlaps "${first.structure.id}". Move one of them, for example with axonometric layout <home> ${second.structure.id} --x <x> --y <y>.`,
+              message: `footprint overlaps "${first.structure.id}".`,
+              hint: `Move one of them, for example with axonometric layout <home> ${second.structure.id} --x <x> --y <y>.`,
             }),
           ]
         : []
@@ -98,7 +99,8 @@ const overlappingZones = (data: MapData, layout: Layout) => {
             mapWarning({
               file: "layout.json",
               path: [],
-              message: `the zones of groups "${first.group.id}" and "${second.group.id}" overlap. Move one group's structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.`,
+              message: `the zones of groups "${first.group.id}" and "${second.group.id}" overlap.`,
+              hint: "Move one group's structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.",
             }),
           ]
         : []

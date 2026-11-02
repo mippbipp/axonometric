@@ -155,7 +155,56 @@ const warnings = Effect.fnUntraced(function* (page: Page) {
   return yield* Effect.forEach(items, warningOf);
 });
 
+/** Whether the candidate footprint's outline is inside the drawing canvas. */
+const outlineOnCanvas = Effect.fnUntraced(function* (page: Page) {
+  const outline = yield* boxOf(page, "[data-spot-outline]");
+  const canvas = yield* boxOf(page, "[data-walkthrough] svg");
+  const panel = yield* boxOf(page, "[data-side-panel]");
+  const right = Math.min(canvas.x + canvas.width, panel.x);
+
+  return (
+    outline.x >= canvas.x - 0.5 &&
+    outline.y >= canvas.y - 0.5 &&
+    outline.x + outline.width <= right + 0.5 &&
+    outline.y + outline.height <= canvas.y + canvas.height + 0.5
+  );
+});
+
 describe("the add form", () => {
+  for (const view of ["iso", "plan"] as const) {
+    it.live(
+      `keeps the candidate footprint on the canvas for every group, in the ${view} view at 1280×800`,
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* served;
+
+          yield* chapter(page, "c-all");
+          yield* click(page, `[data-view-toggle] [data-view="${view}"]`);
+          yield* Effect.promise(() => page.keyboard.press("0"));
+          yield* openForm(page);
+          yield* Effect.promise(() =>
+            page.locator('[data-add="name"]').fill("Build cache")
+          );
+
+          for (const group of ["people", "loop", "outside"]) {
+            yield* Effect.promise(() =>
+              page.locator('[data-add="group"]').selectOption(group)
+            );
+            yield* Effect.promise(() => page.waitForTimeout(600));
+            yield* waitFor(page, "[data-spot-outline]");
+
+            assert.isTrue(yield* outlineOnCanvas(page), `${view} ${group}`);
+            assert.strictEqual(
+              yield* count(page, "[data-drag-warning][data-warning-new=true]"),
+              0,
+              `${view} ${group}`
+            );
+          }
+        }),
+      90_000
+    );
+  }
+
   it.live(
     "starts at the first free slot beside the group, so Propose is ready, and follows the group",
     () =>

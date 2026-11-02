@@ -94,6 +94,7 @@ export const drawingReport = `(() => {
 
   const chips = [...document.querySelectorAll("[data-code-chip]")].map((chip) => ({
     id: "chip:" + chip.closest("[data-structure]").dataset.structure,
+    // The chip's rendered box, with its stroke.
     polygon: rectPolygon(chip.getBoundingClientRect()),
   }));
 

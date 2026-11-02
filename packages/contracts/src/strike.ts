@@ -8,7 +8,7 @@ import type { Placement } from "./layout.ts";
 import type { GroundProjection } from "./plan.ts";
 
 /** How much room the cross keeps from text, in screen units. */
-const clearance = 2;
+const clearance = 6;
 
 /** `rect` grown by `by` on every side. */
 const grown = (rect: ScreenRect, by: number): ScreenRect => ({
@@ -42,6 +42,14 @@ const gapsOutside = (cuts: readonly Share[]): readonly Share[] => {
   return reach < 1 ? [...gaps, { from: reach, to: 1 }] : gaps;
 };
 
+/**
+ * The shortest piece of the cross worth drawing, in screen units. A shorter
+ * one is a speck left by a text box that nearly reaches a corner. A longer
+ * stub stays, so the cross still reaches its corners and the text reads as a
+ * gap in the line.
+ */
+export const minStrikePiece = 5;
+
 /** The parts of `segment` that lie outside the convex `holes`. */
 const without = (
   segment: Segment,
@@ -56,10 +64,17 @@ const without = (
     sy: segment.start.sy + (segment.end.sy - segment.start.sy) * share,
   });
 
-  return Arr.map(gapsOutside(cuts), ({ from, to }) => ({
-    start: at(from),
-    end: at(to),
-  }));
+  const length = Math.hypot(
+    segment.end.sx - segment.start.sx,
+    segment.end.sy - segment.start.sy
+  );
+
+  const long = Arr.filter(
+    gapsOutside(cuts),
+    ({ from, to }) => (to - from) * length >= minStrikePiece
+  );
+
+  return Arr.map(long, ({ from, to }) => ({ start: at(from), end: at(to) }));
 };
 
 /**

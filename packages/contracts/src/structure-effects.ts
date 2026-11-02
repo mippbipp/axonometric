@@ -1,4 +1,4 @@
-import { Array as Arr, Option, Record as Rec } from "effect";
+import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
 import { changedProblems, footprintsOverlap } from "./layout-checks.ts";
@@ -7,7 +7,7 @@ import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { defaultFootprint, placeStructures } from "./placement.ts";
 import { quoteText } from "./review-quote.ts";
-import { actionOf } from "./structure-actions.ts";
+import { actionOf, structureOfNew } from "./structure-actions.ts";
 import type { StructureChange } from "./structure-change.ts";
 import { zonesOf } from "./zones.ts";
 
@@ -255,46 +255,143 @@ export const droppedIntoGroup = ({
     : Option.map(Arr.head(inside), ({ group }) => group.id);
 };
 
-/** The id `defaultSpotFor` gives the structure it asks `placeStructures` to place. */
+/** The id `defaultSpotFor` gives the structure it tries at each spot. */
 const probeId = "__spot-probe__";
 
+/** How far from the group's zone, in grid units, `defaultSpotFor` looks. */
+export const defaultSpotRadius = 12;
+
+/** The most spots `defaultSpotFor` runs the full checks on. */
+const checkedSpots = 300;
+
+/** Where a new structure goes when the engineer hasn't picked a spot. */
+export interface DefaultSpot {
+  readonly spot: Placement;
+  /**
+   * How many warnings the proposed map gains from a structure at `spot`.
+   * Nothing is the aim; more than that means no spot within reach was clear.
+   */
+  readonly added: number;
+}
+
+/** The gap between two ground rectangles, 0 when they touch or overlap. */
+const gapBetween = (a: Placement, b: Placement): number =>
+  Math.hypot(
+    Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w), 0),
+    Math.max(b.y - (a.y + a.d), a.y - (b.y + b.d), 0)
+  );
+
+const centreGap = (a: Placement, b: Placement): number =>
+  Math.hypot(a.x + a.w / 2 - (b.x + b.w / 2), a.y + a.d / 2 - (b.y + b.d / 2));
+
 /**
- * Where a new structure of `shape` in group `group` would sit if the engineer
- * didn't pick a spot: the first free slot beside the group's zone, as
- * `placeStructures` finds it. It stands in a probe structure, so the same
- * slot rules apply that `build` uses for any structure with no position.
- * `data` and `layout` are the map as proposed, so the slot is clear of the
- * structures already proposed.
+ * Where a new structure called `name`, of `shape`, in group `group` goes if
+ * the engineer doesn't pick a spot: the nearest spot to the group's zone, on
+ * the half-unit grid, where the proposed map gains no `check` warning. A
+ * spot inside the zone's bounds is the best. The search is the one the
+ * warnings panel makes: it adds the structure to `data` and `layout`, the
+ * map as proposed, and asks `changedProblems` what is new. When no spot
+ * within `defaultSpotRadius` adds nothing, it is the one that adds the
+ * fewest, and `added` says how many.
  */
 export const defaultSpotFor = ({
   data,
   layout,
   group,
   shape,
+  name,
 }: {
   readonly data: MapData;
   readonly layout: Layout;
   readonly group: string;
   readonly shape: Structure["shape"];
-}): Placement => {
-  const probe: Structure = {
-    id: probeId,
-    code: "ZZZ",
-    name: "Probe",
-    shape,
-    group,
-    status: "planned",
-    oneLiner: "Probe.",
-    whatItDoes: "Probe.",
-    howItsBuilt: "Probe.",
+  readonly name: string;
+}): DefaultSpot => {
+  // The structure the page would draw for this add, code and all: the name
+  // tag holds the code, so a probe with another code is checked at another
+  // width.
+  const probe: Structure = structureOfNew(
+    { id: probeId, name, shape, group, status: "planned" },
+    new Set(Arr.map(data.structures, ({ code }) => code))
+  );
+
+  const withProbe: MapData = {
+    ...data,
+    structures: [...data.structures, probe],
   };
 
-  const placed = placeStructures(
-    { ...data, structures: [...data.structures, probe] },
-    layout
-  ).layout.structures[probeId];
+  const before: Checkable = { data, layout };
 
-  return placed ?? { x: 0, y: 0, ...defaultFootprint };
+  const addedAt = (spot: Placement): number =>
+    Arr.filter(
+      changedProblems(
+        {
+          data: withProbe,
+          layout: {
+            ...layout,
+            structures: { ...layout.structures, [probeId]: spot },
+          },
+        },
+        before
+      ),
+      ({ added }) => added
+    ).length;
+
+  const beside: Placement = {
+    ...defaultFootprint,
+    ...(placeStructures(withProbe, layout).layout.structures[probeId] ?? {
+      x: 0,
+      y: 0,
+    }),
+  };
+
+  const base = Option.match(
+    Arr.findFirst(zonesOf({ data, layout }), (zone) => zone.group.id === group),
+    { onNone: () => beside, onSome: ({ box }) => box }
+  );
+
+  const { w, d } = defaultFootprint;
+  const others = Rec.values(layout.structures);
+  const columns = Math.ceil((base.w + w + 2 * defaultSpotRadius) / 0.5);
+  const rows = Math.ceil((base.d + d + 2 * defaultSpotRadius) / 0.5);
+
+  const grid = Arr.flatMap(Arr.range(0, columns), (column) =>
+    Arr.map(Arr.range(0, rows), (row): Placement => ({
+      x: base.x - w - defaultSpotRadius + column * 0.5,
+      y: base.y - d - defaultSpotRadius + row * 0.5,
+      w,
+      d,
+    }))
+  );
+
+  const nearest = Arr.sort(
+    Arr.filter(
+      grid,
+      (spot) =>
+        gapBetween(spot, base) <= defaultSpotRadius &&
+        !Arr.some(others, (other) => footprintsOverlap(spot, other))
+    ),
+    Order.combine(
+      Order.mapInput(Order.Number, (spot: Placement) => gapBetween(spot, base)),
+      Order.mapInput(Order.Number, (spot: Placement) => centreGap(spot, base))
+    )
+  );
+
+  let best: DefaultSpot | undefined;
+
+  for (const spot of nearest.slice(0, checkedSpots)) {
+    const added = addedAt(spot);
+
+    if (best === undefined || added < best.added) {
+      best = { spot, added };
+    }
+
+    if (added === 0) {
+      break;
+    }
+  }
+
+  return best ?? { spot: beside, added: addedAt(beside) };
 };
 
 /**

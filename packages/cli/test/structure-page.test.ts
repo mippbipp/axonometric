@@ -106,8 +106,26 @@ const strokeOf = (page: Page, selector: string) =>
 
 /** The pieces of the cross that run over a code chip or a name tag. */
 const strikesOverText = (report: DrawingReport): readonly string[] => {
+  // The chip's rendered box, with 3 pixels of air round it.
+  const aired = Arr.map(report.chips, ({ id, polygon }): Drawn => {
+    const xs = Arr.map(polygon, ({ x }) => x);
+    const ys = Arr.map(polygon, ({ y }) => y);
+    const [left, right] = [Math.min(...xs) - 3, Math.max(...xs) + 3];
+    const [top, bottom] = [Math.min(...ys) - 3, Math.max(...ys) + 3];
+
+    return {
+      id,
+      polygon: [
+        { x: left, y: top },
+        { x: right, y: top },
+        { x: right, y: bottom },
+        { x: left, y: bottom },
+      ],
+    };
+  });
+
   const text: readonly Drawn[] = [
-    ...report.chips,
+    ...aired,
     ...Arr.filter(report.text, ({ id }) => Str.startsWith("tag:")(id)),
   ];
 
