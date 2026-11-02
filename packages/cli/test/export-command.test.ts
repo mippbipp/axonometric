@@ -59,6 +59,16 @@ const expectedExcalidraw = Effect.fnUntraced(function* (
   );
 });
 
+/** The `data-faded` of the part `kind`-`id` of chapter 8's SVG. */
+const fadedOf = (text: string, kind: string, id: string) => {
+  const tag = new RegExp(
+    `<g id="flake-pipeline-iso-chapter-8-${kind}-${id}"[^>]*>`,
+    "u"
+  ).exec(text)?.[0];
+
+  return /data-faded="(?<value>[^"]*)"/u.exec(tag ?? "")?.groups?.value;
+};
+
 describe("export", () => {
   describe("--format excalidraw", () => {
     it.effect(
@@ -254,6 +264,75 @@ describe("export", () => {
           assert.include(result.stderr, "export wrote nothing.");
           assert.isUndefined(result.files["crowded/crowded.excalidraw"]);
         }
+      }).pipe(Effect.provide(NodeServices.layer))
+    );
+
+    it.effect("--flow draws a picked flow's hops in the spotlight", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const home = yield* makeHome(yield* pipelineMap);
+        const map = path.join(home, "flake-pipeline", "map");
+        const file = "flake-pipeline/flake-pipeline-iso-chapter-8.svg";
+
+        const stale = yield* runCli(home, ["export", map, "--flow", "f-stale"]);
+
+        assert.strictEqual(stale.exitCode, 0, stale.stderr);
+
+        const staleText = stale.files[file] ?? "";
+
+        assert.strictEqual(
+          fadedOf(staleText, "hop", "h-main-watchdog"),
+          "false"
+        );
+        assert.strictEqual(fadedOf(staleText, "hop", "h-pr-build"), "true");
+        assert.strictEqual(
+          fadedOf(staleText, "structure", "watchdog"),
+          "false"
+        );
+        assert.strictEqual(fadedOf(staleText, "structure", "build"), "true");
+
+        // The last chapter plays nothing, so no --flow means all flows.
+        const all = yield* runCli(home, ["export", map, "--flow", "all"]);
+        const none = yield* runCli(home, ["export", map]);
+
+        assert.strictEqual(all.files[file], none.files[file]);
+        assert.notInclude(all.files[file] ?? "", 'data-faded="true"');
+      }).pipe(Effect.provide(NodeServices.layer))
+    );
+
+    it.effect("--flow names a flow of the map, in the last chapter", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const home = yield* makeHome(yield* pipelineMap);
+        const map = path.join(home, "flake-pipeline", "map");
+
+        const unknown = yield* runCli(home, [
+          "export",
+          map,
+          "--flow",
+          "f-nope",
+        ]);
+
+        assert.strictEqual(unknown.exitCode, 1);
+        assert.include(unknown.stderr, 'Unknown flow "f-nope"');
+        assert.include(unknown.stderr, "f-weekly");
+        assert.include(unknown.stderr, "export wrote nothing.");
+
+        const early = yield* runCli(home, [
+          "export",
+          map,
+          "--chapter",
+          "2",
+          "--flow",
+          "f-stale",
+        ]);
+
+        assert.strictEqual(early.exitCode, 1);
+        assert.include(early.stderr, "isn't the last");
+        assert.include(early.stderr, "export wrote nothing.");
+        assert.isUndefined(
+          early.files["flake-pipeline/flake-pipeline-iso-chapter-2.svg"]
+        );
       }).pipe(Effect.provide(NodeServices.layer))
     );
 

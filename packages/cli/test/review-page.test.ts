@@ -494,6 +494,18 @@ describe("exports", () => {
         yield* pinNote(page, "Why a server?");
         yield* waitFor(page, '[data-note-marker="server"]');
 
+        // Unpin the structure, so the spotlight is the chapter's own play,
+        // as the CLI draws it.
+        yield* Effect.promise(() =>
+          page.evaluate("document.activeElement?.blur()")
+        );
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-structure-panel][data-pinned]")
+            .waitFor({ state: "detached" })
+        );
+
         yield* click(page, '[data-control="export"]');
 
         const [download] = yield* Effect.promise(() =>

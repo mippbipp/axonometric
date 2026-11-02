@@ -2,6 +2,7 @@ import {
   arrowheadOf,
   arrowPolygon,
   dashes,
+  fadedOpacity,
   nameTagText,
   textSizes,
   toPoints,
@@ -11,27 +12,39 @@ import type {
   SceneHop,
   SceneStructure,
   ScreenPoint,
+  Spotlight,
 } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
 import { useDrawing } from "./drawing-context.ts";
+import { fadeAttributes, fadingOf } from "./fading.ts";
 import { viewDrawings } from "./views.tsx";
 import { Zones } from "./zones.tsx";
 
 function NameTag({
   placed,
   grow,
+  faded,
 }: {
   readonly placed: SceneStructure;
+  /** Whether the spotlight fades the structure, and so its tag. */
+  readonly faded: boolean | undefined;
   /** How much the text is grown, to match the size the scene placed it at. */
   readonly grow: number;
 }) {
   const { paint } = useDrawing();
   const { tag } = placed;
+  // The border and text fade like a hop's line. The fill stays opaque, so
+  // the tag still masks the lines behind it and its text stays legible.
+  const fade = fadeAttributes({ faded, strength: fadedOpacity.line });
 
   return (
-    <g data-name-tag={placed.structure.id} pointerEvents="none">
+    <g
+      data-name-tag={placed.structure.id}
+      data-faded={fade["data-faded"]}
+      pointerEvents="none"
+    >
       <rect
         x={tag.left}
         y={tag.top}
@@ -39,6 +52,7 @@ function NameTag({
         height={tag.bottom - tag.top}
         fill={paint.paper}
         stroke={paint.ink}
+        strokeOpacity={fade.opacity}
         strokeWidth={0.9}
       />
       <text
@@ -48,6 +62,7 @@ function NameTag({
         fontSize={textSizes.tag.font * grow}
         fill={paint.ink}
         stroke="none"
+        opacity={fade.opacity}
       >
         {nameTagText(placed.structure)}
       </text>
@@ -115,9 +130,12 @@ function Arrow({
 function HopArrow({
   routed,
   markBends,
+  faded,
   onHover,
 }: {
   readonly routed: SceneHop;
+  /** Whether the spotlight fades the hop, or `undefined` without one. */
+  readonly faded: boolean | undefined;
   /** Whether to mark the route's bends with diamonds. */
   readonly markBends: boolean;
   /** Called with the hop's id while the pointer is on its line, else null. */
@@ -133,6 +151,7 @@ function HopArrow({
       id={idOf("hop", hop.id) ?? undefined}
       data-route={toPoints(points)}
       stroke={paint.ink}
+      {...fadeAttributes({ faded, strength: fadedOpacity.line })}
       onPointerEnter={() => {
         onHover?.(hop.id);
       }}
@@ -170,11 +189,21 @@ function HopArrow({
  * the solid one is under the box; an end on a visible edge has its solid
  * head and no faint one.
  */
-function HiddenHop({ routed }: { readonly routed: SceneHop }) {
+function HiddenHop({
+  routed,
+  faded,
+}: {
+  readonly routed: SceneHop;
+  readonly faded: boolean | undefined;
+}) {
   const { paint } = useDrawing();
 
   return (
-    <g data-hidden-hop={routed.hop.id} stroke={paint.ink}>
+    <g
+      data-hidden-hop={routed.hop.id}
+      stroke={paint.ink}
+      {...fadeAttributes({ faded, strength: fadedOpacity.line })}
+    >
       {Arr.map(routed.hidden, (stretch) => (
         <Arrow
           key={toPoints(stretch.points)}
@@ -195,8 +224,10 @@ function HopLabel({
   routed,
   shown,
   grow,
+  faded,
 }: {
   readonly routed: SceneHop;
+  readonly faded: boolean | undefined;
   /** Whether to show the label even where the scene found no room. */
   readonly shown: boolean;
   /** How much the text is grown, to match the size the scene placed it at. */
@@ -218,6 +249,7 @@ function HopLabel({
       stroke={paint.paper}
       strokeWidth={3}
       paintOrder="stroke"
+      {...fadeAttributes({ faded, strength: fadedOpacity.line })}
     >
       {hop.label}
     </text>
@@ -257,6 +289,7 @@ export function MapDrawing({
   scene,
   hatch,
   newlyRevealed,
+  spotlight,
   underlay,
   hopsOverlay,
   overlay,
@@ -268,6 +301,12 @@ export function MapDrawing({
   readonly hatch: string;
   /** The structures to draw as new. */
   readonly newlyRevealed: ReadonlySet<string>;
+  /**
+   * What to draw at full strength. Every other hop, with its label, and
+   * structure, with its name tag and code chip, is faded. Without one,
+   * nothing fades.
+   */
+  readonly spotlight?: Spotlight | null | undefined;
   readonly underlay?: ReactNode;
   readonly hopsOverlay?: ReactNode;
   readonly overlay?: ReactNode;
@@ -278,6 +317,7 @@ export function MapDrawing({
   const drawing = viewDrawings[scene.view];
   const { Structure } = drawing;
   const { Layers } = useDrawing();
+  const fading = fadingOf(spotlight);
 
   return (
     <>
@@ -292,6 +332,7 @@ export function MapDrawing({
             key={item.hop.id}
             routed={item}
             markBends={drawing.markBends}
+            faded={fading.hop(item.hop.id)}
             onHover={onHopHover}
           />
         ))}
@@ -305,12 +346,17 @@ export function MapDrawing({
               placed={item}
               hatch={hatch}
               isNew={newlyRevealed.has(item.structure.id)}
+              faded={fading.structure(item.structure.id)}
             />
           ))}
         </g>
         <g aria-hidden="true" pointerEvents="none" opacity={0.4}>
           {Arr.map(scene.hops, (item) => (
-            <HiddenHop key={item.hop.id} routed={item} />
+            <HiddenHop
+              key={item.hop.id}
+              routed={item}
+              faded={fading.hop(item.hop.id)}
+            />
           ))}
         </g>
         <g>
@@ -319,6 +365,7 @@ export function MapDrawing({
               key={item.structure.id}
               placed={item}
               grow={scene.growth.tag}
+              faded={fading.structure(item.structure.id)}
             />
           ))}
         </g>
@@ -331,6 +378,7 @@ export function MapDrawing({
             routed={item}
             shown={labelShown?.(item.hop.id) === true}
             grow={scene.growth.label}
+            faded={fading.hop(item.hop.id)}
           />
         ))}
       </g>

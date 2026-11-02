@@ -7,7 +7,7 @@ import {
   sceneOf,
   whiteBackground,
 } from "@axonometric/contracts";
-import type { MapState, View } from "@axonometric/contracts";
+import type { MapState, Spotlight, View } from "@axonometric/contracts";
 import { String as Str } from "effect";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -35,6 +35,12 @@ export interface SvgRequest {
    * dark-theme ink doesn't vanish on it.
    */
   readonly theme: "light" | "dark";
+  /**
+   * What to draw at full strength, or `null` to fade nothing. The page
+   * passes the spotlight it shows; the `export` command passes the chapter's
+   * or the picked flow's, from `chapterSpotlightOf`.
+   */
+  readonly spotlight: Spotlight | null;
 }
 
 /** An SVG file's text and its size in pixels. */
@@ -57,13 +63,17 @@ const xmlDeclaration = '<?xml version="1.0" encoding="UTF-8"?>\n';
 const decorative =
   /<(?<tag>defs|rect|polygon|polyline|path|circle|ellipse|line)(?![^>]* aria-hidden=)(?=[\s/>])/gu;
 
-/** The attributes only the live page uses. */
-const livePage = /\s(?:data-[\w-]+|pointer-events)="[^"]*"/gu;
+/**
+ * The attributes only the live page uses. `data-faded` stays: it says which
+ * parts the spotlight fades, for a reader of the file.
+ */
+const livePage = /\s(?:data-(?!faded=)[\w-]+|pointer-events)="[^"]*"/gu;
 
 /**
  * Writes the finishing touches that need markup rather than components:
- * leaves out `data-*` attributes and `pointer-events`, which only the live
- * page uses, and hides every decorative part from assistive technology.
+ * leaves out `data-*` attributes, except `data-faded`, and `pointer-events`,
+ * which only the live page uses, and hides every decorative part from
+ * assistive technology.
  */
 const finished = (markup: string) =>
   Str.replaceAll(
@@ -84,8 +94,9 @@ const viewNames = {
  *
  * It holds the drawing at its full extent with an accessible title and
  * description, ids prefixed with the export's name, and decorative parts
- * hidden from assistive technology. Packets, the selection, the new-structure
- * ring and hover-only labels are left out.
+ * hidden from assistive technology. Parts outside the spotlight are faded.
+ * Packets, the selection, the new-structure ring and hover-only labels are
+ * left out.
  */
 export const svgFileOf = ({
   state,
@@ -93,6 +104,7 @@ export const svgFileOf = ({
   chapter,
   background,
   theme,
+  spotlight,
 }: SvgRequest): SvgFile => {
   const stops = chapterStopsOf(state);
   const index = Math.min(Math.max(chapter, 0), stops.length - 1);
@@ -159,6 +171,7 @@ export const svgFileOf = ({
           scene={scene}
           hatch={`${prefix}pattern-1`}
           newlyRevealed={new Set(stop.newlyRevealed)}
+          spotlight={spotlight}
         />
       </svg>
     </DrawingContext>

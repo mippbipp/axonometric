@@ -1,11 +1,10 @@
-import type { ChapterStop, Hop, MapState } from "@axonometric/contracts";
+import type {
+  ChapterStop,
+  FlowChoice,
+  Hop,
+  MapState,
+} from "@axonometric/contracts";
 import { Array as Arr } from "effect";
-
-/** What the last chapter's flow picker has chosen to play. */
-export type FlowChoice =
-  | { readonly kind: "chapter" }
-  | { readonly kind: "flow"; readonly id: string }
-  | { readonly kind: "all" };
 
 /**
  * The hops one packet carries, in order, on a loop. A chapter's own hops make
@@ -24,19 +23,6 @@ export interface ChapterOfMap {
   readonly state: MapState;
   readonly stop: ChapterStop;
 }
-
-/**
- * What a chapter plays before anyone uses the flow picker: its own hops, or
- * every flow when it's the last chapter and plays none.
- */
-export const defaultFlowChoice = ({
-  state,
-  stop,
-  isLast,
-}: ChapterOfMap & { readonly isLast: boolean }): FlowChoice =>
-  isLast && stop.plays.length === 0 && state.data.flows.length > 0
-    ? { kind: "all" }
-    : { kind: "chapter" };
 
 /**
  * A string that names a flow choice, equal for equal choices. Playback

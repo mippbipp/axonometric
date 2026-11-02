@@ -12,6 +12,7 @@ export function FileFrame({
   shape,
   status,
   isNew,
+  faded,
   look,
   children,
 }: StructureFrameProps) {
@@ -24,7 +25,7 @@ export function FileFrame({
       data-shape={shape}
       data-status={status}
       data-new={isNew}
-      {...frameAttributes(look)}
+      {...frameAttributes({ look, faded })}
     >
       <title>{name}</title>
       {children}

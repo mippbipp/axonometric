@@ -3,7 +3,11 @@ import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { useStructuresById } from "./structures.ts";
-import { HoveredContext, TooltipActionsContext } from "./tooltip-context.ts";
+import {
+  HoveredContext,
+  HoveredIdContext,
+  TooltipActionsContext,
+} from "./tooltip-context.ts";
 import type { Hovered, TooltipActions } from "./tooltip-context.ts";
 import { tooltipPlacement } from "./tooltip-placement.ts";
 import type { Box } from "./tooltip-placement.ts";
@@ -41,7 +45,11 @@ export function TooltipProvider({
 
   return (
     <TooltipActionsContext value={actions}>
-      <HoveredContext value={hovered}>{children}</HoveredContext>
+      <HoveredContext value={hovered}>
+        <HoveredIdContext value={hovered?.id ?? null}>
+          {children}
+        </HoveredIdContext>
+      </HoveredContext>
     </TooltipActionsContext>
   );
 }

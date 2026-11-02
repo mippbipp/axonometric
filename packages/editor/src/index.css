@@ -104,10 +104,38 @@
   stroke: var(--multi);
 }
 
+/* How strongly a structure outside the spotlight is drawn: the value of
+   `fadedOpacity.structure` in @axonometric/contracts, which a test keeps
+   equal. The rules below multiply it into the looks that set opacity here,
+   since CSS opacity replaces the fade attribute. */
+:root {
+  --faded-structure: 0.5;
+}
+
+/* The spotlight fades parts through their opacity attribute, so a file looks
+   the same. On the page the change takes a moment, unless the system asks
+   for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-hop],
+  [data-hidden-hop],
+  [data-hop-label],
+  [data-structure],
+  [data-name-tag] rect,
+  [data-name-tag] text {
+    transition:
+      opacity 120ms ease-out,
+      stroke-opacity 120ms ease-out;
+  }
+}
+
 /* A structure being dragged, with its name tag, is see-through, so
    what it's dragged over shows. */
 [data-drag-shifted] {
   opacity: 0.55;
+}
+
+[data-structure][data-drag-shifted][data-faded="true"] {
+  opacity: calc(0.55 * var(--faded-structure));
 }
 
 /* The label of a hop with an end on a structure being dragged. The hop stays
@@ -121,4 +149,8 @@
    under the rings that mark it. */
 [data-structure][data-compare~="removed"] {
   opacity: 0.45;
+}
+
+[data-structure][data-compare~="removed"][data-faded="true"] {
+  opacity: calc(0.45 * var(--faded-structure));
 }
