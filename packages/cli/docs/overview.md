@@ -8,15 +8,7 @@ These docs ship inside the CLI, so they match the version you are running. Read 
 
 - Building or updating a map: read `process` first. Read `data` when you write `data.mjs`, `chapters` when you plan the walkthrough, and `design` for shapes, wording and layout. Finish with `visual-check`.
 - A prompt that starts "Use the axonometric skill to review batch N ...": read `review`.
-- Flags and arguments: `axonometric <command> --help`. These docs say how to use the commands well. They don't repeat every flag. `review`, `check` and `status` take `--json` for output you can parse.
 
 ## Commands
 
-- `axonometric init <home>` writes a starter `data.mjs`.
-- `axonometric build <home>` checks the map, places new structures, and writes `SYSTEM.md` and the page.
-- `axonometric check <home>` reports errors and warnings and writes nothing.
-- `axonometric layout <home> <structure>` moves or resizes a structure.
-- `axonometric export <home>` writes an SVG, PNG or Excalidraw file.
-- `axonometric serve <home>` runs the save server and the live page. `axonometric status <home>` prints its URL.
-- `axonometric review <home>`, `axonometric verdict <home> <item>` and `axonometric commit <home>` are the review loop.
-- `axonometric docs [topic]` prints these docs.
+`init`, `build`, `check`, `layout`, `export`, `serve`, `status`, `review`, `verdict`, `commit` and `docs`. The topics show how to use each one. `axonometric <command> --help` lists its flags. `review`, `check` and `status` take `--json`.

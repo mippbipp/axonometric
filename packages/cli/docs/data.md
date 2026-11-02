@@ -67,7 +67,7 @@ The lede is one sentence. The story is two or three sentences.
 
 ## Questions
 
-Every question has an id of the form `Q-<code><n>`, such as `Q-G1`: the structure's code, then a number that starts at 1. The id is assigned once and never changes or gets reused, even after the question is resolved, so "Q-F1" means the same thing next week. For a new question, use the next number never used anywhere on the map, resolved questions included. `check` rejects a repeated id.
+Every question has an id of the form `Q-<code><n>`, such as `Q-G1`: the structure's code, then a number that starts at 1. The id is assigned once and never changes or gets reused, even after the question is resolved, so "Q-F1" means the same thing next week. When you add a question, use the next number never used anywhere on the map, resolved questions included. `check` rejects a repeated id.
 
 An open question is `{ id, state: "open", text }`. Write the text as one sentence.
 
@@ -86,10 +86,10 @@ A resolved question adds the answer:
 
 `answeredOn` is a real date as `YYYY-MM-DD`. `answeredBy` is the engineer who answered.
 
-Rules from earlier rounds:
+How to handle the engineer's words:
 
-- Record the engineer's own words in `answer`.
-- If they say a question isn't a question, resolve it with that as the answer. Don't delete it, because its id stays taken.
+- Record their own words in `answer`.
+- If they say a question isn't a question, resolve it with that as the answer. Its id stays taken, so don't delete it.
 - If they say they don't get a question, explain it with a concrete example before you resolve it.
 - Ask only what the code and docs can't tell you. Take defaults for the rest and say which you took.
 - The Questions tab lists every question revealed so far, open ones first.

@@ -6,8 +6,6 @@ Work through these steps in order. Each ends with the condition that says it is 
 
 Read the code and docs the map is about, the repo's `GLOSSARY.md` and ADRs if it has them, and any design document the engineer names. Ask which prior art you may use. They may forbid a branch or a source.
 
-If the system runs on a framework, hand the framework's long docs to a subagent with your specific design questions. Ask for a primer with its gotchas and a list of what it doesn't give you.
-
 Boxes drawn before this step don't map to anything real. Done when you can name the real file, service or person behind each structure you plan, and say what you haven't read.
 
 ## 2. Discuss before drawing
@@ -20,7 +18,7 @@ Done when the engineer has seen the structures and groups, and the defaults you 
 
 The home folder is `.scratch/<system>/map/`, or `docs/<system>/map/` in repos that commit design docs. `build` writes `SYSTEM.md` and `<system>.html` into the home folder's parent, so `.scratch/<system>/` or `docs/<system>/` holds the finished map.
 
-If the repo's docs policy is unclear, ask the engineer which one applies before you create or commit anything. A `docs/` folder full of design docs points to `docs/`. A `.scratch/` line in `.gitignore` points to scratch. Some repos commit only ADRs and the glossary, and keep specs in the issue tracker. For those, use `.scratch/` and keep `SYSTEM.md` and any research there too. Attach `SYSTEM.md` to the spec issue when the spec is published, and commit only the ADRs and glossary. Committing a whole set of design files once produced a 3,900-line docs PR and four review rounds that reconciled three restatements of one design.
+If the repo's docs policy is unclear, ask the engineer which one applies before you create or commit anything. A `docs/` folder full of design docs points to `docs/`. A `.scratch/` line in `.gitignore` points to scratch. A repo that commits only ADRs and a glossary is one example: use `.scratch/`, and keep the map out of git.
 
 `.scratch/` has to be ignored by git. `init` warns when it isn't. Tell the engineer, or add `.scratch/` to the repo's `.gitignore` if they agree.
 
@@ -52,7 +50,15 @@ Done when `build` succeeds.
 
 ## 5. Make it legible
 
-No text overlaps. `check` reports overlapping boxes, name tags on boxes, routes under boxes and overlapping zones. It also reports labels, arrowheads and chips that land on other things, and routes that take a long way round.
+No text overlaps. `check` reports these, and each warning names the structures or hop involved:
+
+- overlapping boxes
+- name tags on boxes
+- routes under boxes
+- overlapping zones
+- labels, arrowheads and chips drawn over other things
+- routes that take a long way round
+- route overrides that don't start and end on a footprint's edge
 
 ```sh
 axonometric check <home>
@@ -87,7 +93,7 @@ Run `check` again immediately before you report, and report only a map with 0 er
 axonometric check <home>
 ```
 
-Tell the engineer where the files are and how to open the map (`axonometric serve <home>`, or the `<system>.html` file). Say what each chapter teaches, in a line. List the defaults you took. Then ask the 3 to 5 questions only the engineer can answer, not a generic list. Each one becomes a question in `data.mjs` with an ID. See `data`. Don't open issues unless asked.
+Tell the engineer where the files are and how to open the map (`axonometric serve <home>`, or the `<system>.html` file). Say what each chapter teaches, in a line. List the defaults you took. Then ask the few questions only the engineer can answer, not a generic list. Each one becomes a question in `data.mjs` with an ID (see `data`). Don't open issues unless asked.
 
 ## 8. Keep it current
 
@@ -104,9 +110,3 @@ axonometric serve <home>
 `serve` runs in the foreground until Ctrl-C, so start it in the background. It prints the page's URL, and `axonometric status <home>` prints it again with the process ID. Pass `--port` to insist on one port (it fails if the port is busy), `--open` to open the engineer's browser, and `--allow-host <name>` behind a reverse proxy.
 
 The server rebuilds and updates open pages whenever `data.mjs` or `layout.json` changes. If `data.mjs` fails validation, the page keeps the last good map and shows the error. Run `check` to see it. The engineer's proposals reach you through `review`.
-
-## Deep dives feed back
-
-When a question needs research, give subagents one shared brief: the interface you own, the requirements that separate the candidates, a usage model for cost, and a fixed deliverable shape. Synthesise their reports into one comparison with the same cost columns for every candidate. Record the result in `overview.deepDives`, and resolve the questions it answers with the date, such as "from the deep dive, 2026-11-02".
-
-State every price with its source and the date you fetched it. Fetch prices live, because cached ones go stale.

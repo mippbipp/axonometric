@@ -1,17 +1,50 @@
-import { ProposalsFile, Structure } from "@axonometric/contracts";
+import {
+  Chapter,
+  chapterActions,
+  Decision,
+  DeepDive,
+  Flow,
+  flowActions,
+  Group,
+  Hop,
+  hopActions,
+  kindTable,
+  MapData,
+  OpenQuestion,
+  Overview,
+  ProposalsFile,
+  ResolvedQuestion,
+  Source,
+  Stat,
+  Step,
+  Structure,
+  structureActions,
+} from "@axonometric/contracts";
 import type { Batch, BatchItem, Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
   Effect,
+  FileSystem,
+  Order,
   Path,
-  Option,
   Record as Rec,
   Schema,
   String as Str,
 } from "effect";
 
+import {
+  allDocs,
+  codeWordsIn,
+  fieldListsIn,
+  flagsIn,
+  flagTokensIn,
+  groupOf,
+  listedTopics,
+  printed,
+  subcommandsIn,
+} from "./docs-text.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
 
@@ -31,6 +64,38 @@ const requiredTopics = [
 
 /** Fields the schema rejects in data.mjs, which the docs mention only in passing. */
 const rejectedFields = ["ghost", "x", "y", "w", "d", "h", "gx", "gy"];
+
+/**
+ * Words the glossary says to avoid for one term that are ordinary words, or
+ * field names, in another use: a hop's label, a source's path and commit, the
+ * `group` field, "step" in "this step", a reply to a request, and so on.
+ * ghost stays in the docs only to say that status replaced it.
+ */
+const ordinaryWords = [
+  "label",
+  "link",
+  "path",
+  "edge",
+  "commit",
+  "pin",
+  "position",
+  "decision",
+  "reply",
+  "version",
+  "comment",
+  "step",
+  "group",
+  "port",
+  "kind",
+  "focus",
+  "draft",
+  "resolution",
+  "type",
+  "verdict",
+  "depth",
+  "highlight",
+  "ghost",
+];
 
 const at = "2026-11-01T09:00:00.000Z";
 
@@ -81,25 +146,6 @@ const reviewHome = Effect.gen(function* () {
   return { root, home: path.join(root, "review", "map") };
 }).pipe(Effect.provide(NodeServices.layer));
 
-const printed = Effect.fnUntraced(function* (topic?: string) {
-  const home = yield* makeHome({});
-  const result = yield* runCli(home, ["docs", ...Arr.fromNullishOr(topic)]);
-
-  assert.strictEqual(result.exitCode, 0, result.stderr);
-  assert.strictEqual(result.stderr, "");
-
-  return result.stdout;
-});
-
-/** The topics the overview lists, as `axonometric docs <topic>`. */
-const listedTopics = (overview: string) =>
-  Arr.map(
-    Arr.fromIterable(
-      Str.matchAll(/`axonometric docs (?<topic>[a-z-]+)`/gu)(overview)
-    ),
-    (found) => groupOf(found, "topic")
-  );
-
 /**
  * The commands in a topic's fenced `sh` blocks. Every line in such a block is
  * a command, so a stray non-axonometric line fails the test instead of going
@@ -124,28 +170,6 @@ const commandsIn = (text: string): readonly string[] =>
       }
 
       return lines;
-    }
-  );
-
-/** The text a named group matched, or "" when the match or group is missing. */
-const groupOf = (
-  match: { readonly groups?: Record<string, string | undefined> } | null,
-  name: string
-): string =>
-  Option.fromNullishOr(match?.groups).pipe(
-    Option.flatMap((groups) => Rec.get(groups, name)),
-    Option.flatMap(Option.fromNullishOr),
-    Option.getOrElse(() => "")
-  );
-
-/** The subcommand names in `--help`'s SUBCOMMANDS list. */
-const subcommandsIn = (help: string): readonly string[] =>
-  Arr.flatMap(
-    Arr.dropWhile(Str.split("\n")(help), (line) => line !== "SUBCOMMANDS"),
-    (line: string) => {
-      const name = groupOf(/^ {2}(?<name>\S+) {2,}/u.exec(line), "name");
-
-      return name === "" ? [] : [name];
     }
   );
 
@@ -333,25 +357,84 @@ describe("axonometric docs", () => {
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
-  it.effect("data names every field the schema has, and no other", () =>
+  it.effect("every --flag in the docs is a flag the CLI has", () =>
     Effect.gen(function* () {
-      const text = yield* printed("data");
+      const home = yield* makeHome({});
+      const root = yield* runCli(home, ["--help"]);
+      const { texts } = yield* allDocs;
 
-      const wanted = Arr.filter(
-        Rec.keys(Structure.fields),
-        (name) => !Arr.contains(rejectedFields, name)
+      const helps = yield* Effect.forEach(subcommandsIn(root.stdout), (name) =>
+        runCli(home, [name, "--help"])
       );
 
-      for (const name of wanted) {
-        assert.include(
-          text,
-          `\`${name}\``,
-          `data never mentions structure.${name}`
+      const known = new Set(
+        Arr.flatMap([root, ...helps], ({ stdout }) => flagsIn(stdout))
+      );
+
+      assert.isAbove(known.size, 15);
+
+      for (const [topic, text] of Rec.toEntries(texts)) {
+        for (const flag of flagTokensIn(text)) {
+          assert.isTrue(known.has(flag), `docs ${topic} shows ${flag}`);
+        }
+      }
+    })
+  );
+
+  it.effect("data covers every field of every type the schema has", () =>
+    Effect.gen(function* () {
+      const { texts } = yield* allDocs;
+      const data = texts["data"] ?? "";
+      const mentioned = codeWordsIn(data);
+
+      const types: Readonly<Record<string, readonly string[]>> = {
+        MapData: Rec.keys(MapData.fields),
+        Overview: Rec.keys(Overview.fields),
+        Structure: Rec.keys(Structure.fields),
+        Hop: Rec.keys(Hop.fields),
+        Flow: Rec.keys(Flow.fields),
+        Chapter: Rec.keys(Chapter.fields),
+        Group: Rec.keys(Group.fields),
+        Stat: Rec.keys(Stat.fields),
+        Step: Rec.keys(Step.fields),
+        Source: Rec.keys(Source.fields),
+        Decision: Rec.keys(Decision.fields),
+        DeepDive: Rec.keys(DeepDive.fields),
+        OpenQuestion: Rec.keys(OpenQuestion.fields),
+        ResolvedQuestion: Rec.keys(ResolvedQuestion.fields),
+      };
+
+      for (const [name, fields] of Rec.toEntries(types)) {
+        for (const field of fields) {
+          if (!Arr.contains(rejectedFields, field)) {
+            assert.isTrue(
+              mentioned.has(field),
+              `data never mentions ${name}.${field}`
+            );
+          }
+        }
+      }
+
+      // Every `{ a, b }` list in the topic is one of those types, whole.
+      const wholeTypes = Arr.map(Rec.values(types), (fields) =>
+        Arr.join(Arr.sort(fields, Order.String), ",")
+      );
+
+      const lists = fieldListsIn(data);
+
+      assert.isAbove(lists.length, 8);
+
+      for (const list of lists) {
+        const key = Arr.join(Arr.sort(list, Order.String), ",");
+
+        assert.isTrue(
+          Arr.contains(wholeTypes, key),
+          `data lists { ${Arr.join(list, ", ")} }, which is no schema type's fields`
         );
       }
 
       // The structures table: its first column names real fields.
-      const rows = Arr.flatMap(Str.split("\n")(text), (line) => {
+      const rows = Arr.flatMap(Str.split("\n")(data), (line) => {
         const name = groupOf(/^\| `(?<name>\w+)` \|/u.exec(line), "name");
 
         return name === "" ? [] : [name];
@@ -363,5 +446,133 @@ describe("axonometric docs", () => {
         assert.include(Rec.keys(Structure.fields), name);
       }
     })
+  );
+
+  it.effect("every topic the docs point to exists", () =>
+    Effect.gen(function* () {
+      const { topics, texts } = yield* allDocs;
+      let pointers = 0;
+
+      for (const [topic, text] of Rec.toEntries(texts)) {
+        for (const found of Str.matchAll(
+          /(?:[Ss]ee|[Rr]ead|following|Finish with) `(?<named>[a-z-]+)`/gu
+        )(text)) {
+          pointers += 1;
+          assert.include(
+            topics,
+            groupOf(found, "named"),
+            `docs ${topic} points to ${groupOf(found, "named")}`
+          );
+        }
+      }
+
+      assert.isAbove(pointers, 5);
+    })
+  );
+
+  it.effect("the README lists the topics the CLI has", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { topics } = yield* allDocs;
+
+      const readme = yield* fs.readFileString(
+        path.join(import.meta.dirname, "..", "..", "..", "README.md")
+      );
+
+      const sentence = groupOf(
+        /prints one: (?<list>[^.]*)\./u.exec(readme),
+        "list"
+      );
+
+      assert.isNotEmpty(sentence);
+      assert.sameMembers(
+        [...codeWordsIn(sentence)],
+        [...topics],
+        "the README's topic list"
+      );
+    }).pipe(Effect.provide(NodeServices.layer))
+  );
+
+  it.effect("review says what to do for every kind of item", () =>
+    Effect.gen(function* () {
+      const { texts } = yield* allDocs;
+      const review = texts["review"] ?? "";
+
+      // The names `review` prints for each kind, from the contracts' tables.
+      const names = {
+        layout: ["move", "resize", "reroute"],
+        note: ["note"],
+        suggestion: ["suggestion"],
+        answer: ["answer"],
+        question: ["question"],
+        structure: Arr.map(Rec.values(structureActions), ({ label }) => label),
+        hop: Arr.map(Rec.values(hopActions), ({ label }) => label),
+        flow: Arr.map(Rec.values(flowActions), ({ label }) => label),
+        group: ["add group", "rename group"],
+        chapter: Arr.map(Rec.values(chapterActions), ({ label }) => label),
+      };
+
+      // A new kind of item fails here until it is named above, and so
+      // documented below.
+      assert.sameMembers(Rec.keys(kindTable), Rec.keys(names));
+
+      for (const [kind, labels] of Rec.toEntries(names)) {
+        for (const label of labels) {
+          assert.include(
+            review,
+            `\`${label}\``,
+            `review.md never names the ${kind} item \`${label}\``
+          );
+        }
+      }
+    })
+  );
+
+  it.effect("uses the glossary's terms, not the ones it says to avoid", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { texts } = yield* allDocs;
+
+      const glossary = yield* fs.readFileString(
+        path.join(import.meta.dirname, "..", "..", "..", "GLOSSARY.md")
+      );
+
+      const avoided = Arr.filter(
+        Arr.flatMap(Str.split("\n")(glossary), (line) =>
+          Str.startsWith("_Avoid_: ")(line)
+            ? Arr.map(
+                Str.split(", ")(
+                  Str.replace(/\(.*?\)/gu, "")(Str.slice(9)(line))
+                ),
+                (term) => Str.toLowerCase(Str.trim(term))
+              )
+            : []
+        ),
+        (term) => Str.isNonEmpty(term) && !Arr.contains(ordinaryWords, term)
+      );
+
+      assert.isAbove(avoided.length, 40);
+
+      for (const [topic, text] of Rec.toEntries(texts)) {
+        // design lists the words to avoid, as "- **map**, not atlas."
+        const prose = Arr.filter(
+          Str.split("\n")(text),
+          (line) => !(topic === "design" && /^- \*\*.*, not /u.test(line))
+        );
+
+        for (const term of avoided) {
+          const pattern = new RegExp(`(?<![\\w-])${term}(?![\\w-])`, "iu");
+
+          for (const line of prose) {
+            assert.isFalse(
+              pattern.test(line),
+              `docs ${topic} says "${term}", which GLOSSARY.md says to avoid: ${line}`
+            );
+          }
+        }
+      }
+    }).pipe(Effect.provide(NodeServices.layer))
   );
 });

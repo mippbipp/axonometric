@@ -1,6 +1,6 @@
 # The chapter recipe
 
-A whole system at once reads as noise. "Hard to parse" was the first correction a real map got. Split the walkthrough into chapters that each reveal a few structures, so the engineer learns the system in a sensible order.
+A whole system at once is hard to parse. Split the walkthrough into chapters that each reveal a few structures, so the engineer learns the system in a sensible order.
 
 ## The rules
 
@@ -28,7 +28,7 @@ Start from this arc and change the nouns. Keep its shape.
 9. Later: the structures with status `planned`.
 10. The whole system: the last chapter, with the flow picker.
 
-A small system needs 4 to 6 chapters. The real map of a 15-structure update pipeline has 8: the timer, one branch and one PR, the build gate, scope and merge, when the gate is red, telling a person, the watchdog, and the whole pipeline.
+A small system needs 4 to 6 chapters. A 15-structure update pipeline fits in 8: the timer, one branch and one PR, the build gate, scope and merge, when the gate is red, telling a person, the watchdog, and the whole pipeline.
 
 ## Writing a chapter
 
@@ -52,4 +52,4 @@ axonometric check <home>
 
 Done when `check` has no errors, and each chapter, read alone, adds something the reader can say in one sentence. If a chapter needs a long story, split it.
 
-A chapter change from the engineer is the same thing as an edit to one chapter's `reveals` or `plays`. See `review`.
+The engineer can propose changes to one chapter's `reveals` or `plays` in the browser. See `review` for how to fold them in.

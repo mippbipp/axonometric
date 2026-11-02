@@ -2,6 +2,7 @@ import { Array as Arr, Console, Effect, Option, Record as Rec } from "effect";
 import { Argument, Command } from "effect/cli";
 
 import { docsContent } from "./docs-content.ts";
+import { DocsNotFound } from "./docs-error.ts";
 
 /** The topics, in the order the overview lists them, with what each covers. */
 export const topics = {
@@ -27,7 +28,7 @@ const topicList = Arr.join(
 const topicHelp = `One of ${Arr.join(topicNames, ", ")}. Without it, docs prints an overview and lists the topics.`;
 
 const missing = (name: string) =>
-  Effect.die(new Error(`The docs have no ${name}.md.`));
+  Effect.fail(DocsNotFound.make({ file: `${name}.md` }));
 
 const docs = Effect.fn("docs")(function* (topic: Option.Option<string>) {
   const content = yield* docsContent;

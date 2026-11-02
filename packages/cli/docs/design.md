@@ -1,6 +1,6 @@
 # The design language
 
-The reference is a "codebase as interactive isometric diagram" picture: khaki paper, black hatched structures, a left index of structures, a right panel with what each does, moving dots that are data packets, an inside view of each structure's steps. The CLI draws all of it. You choose the shapes, names, wording and positions. This topic says how to choose them well.
+Choose each structure's shape, name, wording and position with this topic. The CLI draws the rest: khaki paper, hatched structures, a side index of structures, a side panel for what each does, packets that carry each hop's payload, and an inside view of each structure's steps.
 
 ## What the engineer sees
 
@@ -72,23 +72,13 @@ You don't write coordinates. `build` places each structure that has no position 
 
 Aim for a layout where the eye follows the flows left to right or top to bottom, with groups clustered. A hop should not need to pass under a box, so leave a gap of 2 units between structures, as `build` does.
 
-Fix legibility with `axonometric layout` or by editing `layout.json`, then run `axonometric check` again. `check` reports:
-
-- overlapping boxes
-- name tags on boxes
-- routes under boxes
-- overlapping zones
-- labels, arrowheads and chips drawn over other things
-- routes that take a long way round
-- route overrides that don't start and end on a footprint's edge
-
-No text overlaps. A warning about text is a defect in the map, not a style note.
+Fix legibility with `axonometric layout` or by editing `layout.json`, then run `axonometric check` again. `process` lists what `check` reports. A warning about text is a defect in the map, not a style note.
 
 Iso heights follow the shape. You can't set them.
 
 ## Hops
 
-Hops route themselves at right angles around boxes. Two hops between the same pair draw side by side, so a request and its reply never sit on top of each other. A hop that passes behind a taller box in the Iso view is drawn faintly over it. If the router can't find a clear route, `check` warns. Move the structures apart, or write a route override. See `process`.
+Hops route themselves at right angles around boxes. Two hops between the same pair draw side by side, so a request and its reply never sit on top of each other. A hop that passes behind a taller box in the Iso view is drawn faintly over it. If the router can't find a clear route, `check` warns. Move the structures apart, or write a route override (see `process`).
 
 ## Exports
 
