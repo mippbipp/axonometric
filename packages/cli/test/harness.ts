@@ -70,11 +70,20 @@ const readFiles = Effect.fnUntraced(function* (home: string) {
 
   for (const entry of entries) {
     const absolute = path.join(home, entry);
-    const info = yield* fs.stat(absolute);
 
-    if (info.type === "File") {
-      const key = Arr.join(Str.split(entry, path.sep), "/");
-      files[key] = yield* fs.readFileString(absolute);
+    // A running server takes and releases its lock while this reads, so a
+    // file that was listed may be gone a moment later. Skip it.
+    const content = yield* fs.stat(absolute).pipe(
+      Effect.flatMap((info) =>
+        info.type === "File"
+          ? Effect.asSome(fs.readFileString(absolute))
+          : Effect.succeedNone
+      ),
+      Effect.catchReason("PlatformError", "NotFound", () => Effect.succeedNone)
+    );
+
+    if (Option.isSome(content)) {
+      files[Arr.join(Str.split(entry, path.sep), "/")] = content.value;
     }
   }
 
