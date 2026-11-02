@@ -209,7 +209,7 @@ const renderContent = Match.type<PanelContent>().pipe(
 type Tab = "details" | "questions" | "flows" | "pending" | "history";
 
 const tabClass =
-  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent disabled:cursor-default disabled:opacity-40 px-1.5 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent disabled:cursor-default disabled:opacity-40 px-1 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
 
 /** The tabs to show: Pending only while the page can edit, History only when served. */
 const tabsOf = ({

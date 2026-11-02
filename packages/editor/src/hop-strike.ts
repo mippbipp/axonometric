@@ -1,14 +1,20 @@
 import type { ScreenPoint, ScreenRect } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 
-/** How far a strike reaches from its centre, in drawing units. */
-export const strikeReach = 7;
+/**
+ * How far a strike reaches from its centre, in drawing units: the full size
+ * first, then smaller ones for a short route whose label leaves no room.
+ */
+const reaches: readonly number[] = [7, 5, 3.5];
 
 /** The air kept between a strike and text, in drawing units. */
-const air = 3;
+const air = 2;
 
 /** Where along the route a strike tries to sit, as a share of its length. */
-const shares: readonly number[] = [0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85];
+const shares: readonly number[] = Arr.flatMap(Arr.range(0, 9), (step) => [
+  0.5 + step * 0.05,
+  0.5 - (step + 1) * 0.05,
+]);
 
 /** A point on a route, and the direction the route runs there. */
 interface Along {
@@ -58,14 +64,22 @@ export interface Strike {
   readonly lines: readonly (readonly [ScreenPoint, ScreenPoint])[];
 }
 
-const clear = (at: ScreenPoint, texts: readonly ScreenRect[]) =>
+const clear = ({
+  at,
+  reach,
+  texts,
+}: {
+  readonly at: ScreenPoint;
+  readonly reach: number;
+  readonly texts: readonly ScreenRect[];
+}) =>
   !Arr.some(
     texts,
     (rect) =>
-      at.sx + strikeReach + air > rect.left &&
-      at.sx - strikeReach - air < rect.right &&
-      at.sy + strikeReach + air > rect.top &&
-      at.sy - strikeReach - air < rect.bottom
+      at.sx + reach + air > rect.left &&
+      at.sx - reach - air < rect.right &&
+      at.sy + reach + air > rect.top &&
+      at.sy - reach - air < rect.bottom
   );
 
 /**
@@ -83,10 +97,12 @@ export const strikeOnRoute = ({
 }): Option.Option<Strike> =>
   Option.map(
     Arr.findFirst(
-      Arr.map(shares, (share) => alongRoute(route, share)),
-      ({ at }) => clear(at, texts)
+      Arr.flatMap(reaches, (reach) =>
+        Arr.map(shares, (share) => ({ ...alongRoute(route, share), reach }))
+      ),
+      ({ at, reach }) => clear({ at, reach, texts })
     ),
-    ({ at, dx, dy }) => {
+    ({ at, dx, dy, reach: strikeReach }) => {
       // The diagonals are the route's direction turned a quarter either way
       // from the cross-wise line, so the cross sits square on the route.
       const px = -dy;

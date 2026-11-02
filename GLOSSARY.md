@@ -56,6 +56,10 @@ _Avoid_: manual route, waypoints
 A named, ordered list of hops.
 _Avoid_: path, sequence
 
+**Edge handle**:
+A small circle on the edge of the selected or hovered structure. Dragging from one to another structure draws a new hop.
+_Avoid_: port, anchor, connector
+
 **Group**:
 A named set of structures that belong together.
 _Avoid_: cluster, layer
