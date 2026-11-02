@@ -272,7 +272,7 @@ describe("verdict", () => {
       ]);
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
-      assert.include(result.stdout, "move-engineer: accepted");
+      assert.include(result.stdout, "Recorded accepted on move-engineer");
     })
   );
 

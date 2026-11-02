@@ -75,7 +75,7 @@ function PromptBox({
         data-review-prompt
         readOnly
         spellCheck={false}
-        rows={8}
+        rows={10}
         value={prompt}
         className="border-ink bg-face text-ink focus-visible:outline-ink resize-y border p-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
         onFocus={(event) => {

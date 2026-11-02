@@ -93,8 +93,13 @@ const verdict = Effect.fn("verdict")(function* ({
     },
   ]);
 
+  const why = Option.match(reason, {
+    onNone: () => "",
+    onSome: (given) => ` (${given})`,
+  });
+
   return yield* Console.log(
-    `${item}: ${decision}${Option.match(reason, { onNone: () => "", onSome: (why) => `, ${why}` })}. Run axonometric commit ${path.resolve(home)} once every item has a verdict.`
+    `Recorded ${decision} on ${item}${why}. Run axonometric commit ${path.resolve(home)} once every item has a verdict.`
   );
 }, Effect.scoped);
 
