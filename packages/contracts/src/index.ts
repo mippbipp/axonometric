@@ -375,6 +375,7 @@ export {
   acceptRefusal,
   addNote,
   batchesOf,
+  batchNotices,
   breakageOf,
   commitBatch,
   commitMessage,
@@ -396,7 +397,6 @@ export {
   reviewPrompt,
   changedLayoutNotice,
   engineerTextNotice,
-  structureNotice,
   summaryLine,
   withoutVerdict,
 } from "./review.ts";

@@ -12,8 +12,8 @@ import {
 import type { Page } from "playwright";
 
 import { literal, openUrl } from "./browser.ts";
-import { drawingReport, overlap } from "./drawing-report.ts";
-import type { DrawingReport } from "./drawing-report.ts";
+import { crosses, drawingReport, overlap } from "./drawing-report.ts";
+import type { Drawn, DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
 
@@ -103,6 +103,20 @@ const strokeOf = (page: Page, selector: string) =>
       `getComputedStyle(document.querySelector(${literal(selector)})).stroke`
     )
   );
+
+/** The pieces of the cross that run over a code chip or a name tag. */
+const strikesOverText = (report: DrawingReport): readonly string[] => {
+  const text: readonly Drawn[] = [
+    ...report.chips,
+    ...Arr.filter(report.text, ({ id }) => Str.startsWith("tag:")(id)),
+  ];
+
+  return Arr.flatMap(report.strikes, ({ id, segment }) =>
+    Arr.flatMap(text, (other) =>
+      crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
+    )
+  );
+};
 
 const clashes = Effect.fnUntraced(function* (page: Page) {
   const report = yield* Effect.promise(() =>
@@ -332,14 +346,13 @@ describe("deleting a structure", () => {
           const mark = page.locator('[data-removed-mark="upstream"]');
 
           assert.strictEqual(yield* Effect.promise(() => mark.count()), 1);
-          assert.strictEqual(
-            yield* Effect.promise(() => mark.locator("[data-strike]").count()),
-            2
+          // The cross keeps clear of every chip and tag, wherever it is cut.
+          const report = yield* Effect.promise(() =>
+            page.evaluate<DrawingReport>(drawingReport)
           );
-          assert.strictEqual(
-            yield* Effect.promise(() => mark.locator("text").count()),
-            0
-          );
+
+          assert.isAtLeast(report.strikes.length, 2);
+          assert.deepStrictEqual(strikesOverText(report), []);
           assert.deepStrictEqual(yield* clashes(page), []);
         }
 

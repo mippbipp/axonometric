@@ -1,4 +1,5 @@
 import {
+  batchNotices,
   breakageOf,
   changedLayoutNotice,
   engineerTextNotice,
@@ -8,7 +9,6 @@ import {
   ReviewReport,
   quoteText,
   specOf,
-  structureNotice,
 } from "@axonometric/contracts";
 import type {
   Batch,
@@ -175,9 +175,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
         `Full details are in ${path.join(absolute, "proposals.json")}.`,
         engineerTextNotice,
         changedLayoutNotice,
-        ...(Arr.some(oldest.value.items, ({ kind }) => kind === "structure")
-          ? [structureNotice]
-          : []),
+        ...batchNotices(oldest.value),
         "",
         Arr.join(described, "\n\n"),
         "",

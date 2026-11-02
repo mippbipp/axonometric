@@ -900,8 +900,18 @@ export const changedLayoutNotice =
  * Said in the prompt and in `review`'s output, for the structure items. A new
  * structure has a provisional id; data.mjs is the agent's to edit.
  */
-export const structureNotice =
-  "A structure item changes data.mjs, which only you edit. A new structure comes with a provisional id: add it to data.mjs under that id, or under another and give the verdict changed with --as <id>. commit writes its position to layout.json under the final id.";
+const structureNotice =
+  "A structure item changes data.mjs, which only you edit. A new structure comes with a provisional id: add it to data.mjs under that id, or under another and give the verdict changed with --as <id>. Add an accepted new structure to the reveals of the chapter that should show it first, or the last chapter fails to check; until you do, the page shows it in every chapter. commit writes its position to layout.json under the final id.";
+
+/**
+ * The lines the prompt and `review` both say about the kinds of item in
+ * `batch`: nothing for a batch of notes and layout changes, and the structure
+ * notice for one with a structure item. Each says it once, here.
+ */
+export const batchNotices = (batch: Pick<Batch, "items">): readonly string[] =>
+  Arr.some(batch.items, ({ kind }) => kind === "structure")
+    ? [structureNotice]
+    : [];
 
 const needsQuotes = /[\s"'$`\\]/u;
 
@@ -935,9 +945,7 @@ export const reviewPrompt = ({
       "",
       `Run axonometric review ${quoted(home)}, give every item a verdict with axonometric verdict, then run axonometric commit ${quoted(home)}.`,
       changedLayoutNotice,
-      ...(Arr.some(batch.items, (item) => item.kind === "structure")
-        ? [structureNotice]
-        : []),
+      ...batchNotices(batch),
       engineerTextNotice,
       "",
       ...Arr.map(batch.items, (item) => `- ${summaryLine(item, names)}`),

@@ -61,6 +61,9 @@ export const usePropose = () => {
 
     setFailure(undefined);
     setSending(true);
+
+    // What the change adds to check's report stays up for the engineer to read.
+    panel?.show({ problems: problemsOf([change]) });
     proposing.propose(change, (outcome) => {
       setSending(false);
 
