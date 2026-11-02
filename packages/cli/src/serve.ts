@@ -48,6 +48,13 @@ import type { MapInvalid } from "./map-files.ts";
 import { openBrowser } from "./open-browser.ts";
 import { renderPage } from "./page.ts";
 import { writeGuardLayer, writePendingLayout } from "./pending-writes.ts";
+import {
+  addNoteWrite,
+  discardNoteWrite,
+  dismissWrite,
+  editNoteWrite,
+  freezeWrite,
+} from "./review-writes.ts";
 import { recordServer, runningServer } from "./server-state.ts";
 
 /** The port `serve` tries first. */
@@ -410,7 +417,23 @@ const routes = ({
     events: Str.slice(1)(serverPaths.events),
     pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
     accept: Str.slice(1)(serverPaths.accept),
+    notes: Str.slice(1)(serverPaths.notes),
+    editNote: Str.slice(1)(serverPaths.editNote),
+    discardNote: Str.slice(1)(serverPaths.discardNote),
+    freeze: Str.slice(1)(serverPaths.freeze),
+    dismiss: Str.slice(1)(serverPaths.dismiss),
   };
+
+  const tell = (proposals: Proposals) =>
+    SubscriptionRef.update(held, (current) => ({ ...current, proposals }));
+
+  const reviewDefects = [
+    "PlatformError",
+    "LockHeld",
+    "SchemaError",
+    "BadArgument",
+    "OutputExists",
+  ] as const;
 
   const mapHandlers = HttpApiBuilder.group(ServerApi, "map", (group) =>
     group
@@ -466,8 +489,37 @@ const routes = ({
         )
   );
 
+  const reviewHandlers = HttpApiBuilder.group(ServerApi, "review", (group) =>
+    group
+      .handle("addNote", ({ payload }) =>
+        addNoteWrite(home, payload, tell).pipe(
+          Effect.catchTag(reviewDefects, Effect.die)
+        )
+      )
+      .handle("editNote", ({ payload }) =>
+        editNoteWrite(home, payload, tell).pipe(
+          Effect.catchTag(reviewDefects, Effect.die)
+        )
+      )
+      .handle("discardNote", ({ payload }) =>
+        discardNoteWrite(home, payload, tell).pipe(
+          Effect.catchTag(reviewDefects, Effect.die)
+        )
+      )
+      .handle("freeze", ({ payload }) =>
+        freezeWrite(home, payload, tell).pipe(
+          Effect.catchTag(reviewDefects, Effect.die)
+        )
+      )
+      .handle("dismiss", ({ payload }) =>
+        dismissWrite(home, payload, tell).pipe(
+          Effect.catchTag(reviewDefects, Effect.die)
+        )
+      )
+  );
+
   const api = HttpApiBuilder.layer(ServerApi).pipe(
-    Layer.provide([mapHandlers, proposalHandlers]),
+    Layer.provide([mapHandlers, proposalHandlers, reviewHandlers]),
     Layer.provide(writeGuardLayer)
   );
 

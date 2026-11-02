@@ -162,6 +162,141 @@ export const freezeOpen = ({
   });
 };
 
+/** The committed batch that holds rejected note `id`, when there is one. */
+const batchOfRejectedNote = (proposals: Listed, id: string) =>
+  Option.flatMap(findBatchItem(proposals, id), ({ batch, item }) =>
+    batch.committed !== undefined &&
+    item.kind === "note" &&
+    Option.exists(
+      Rec.get(batch.verdicts, id),
+      ({ verdict }) => verdict === "rejected"
+    )
+      ? Option.some(batch)
+      : Option.none()
+  );
+
+/**
+ * Adds `note` to the open notes, where the next batch will pick it up.
+ * Fails, and changes nothing, when its structure isn't in `known`, its id is
+ * taken, or `replaces` names something other than a rejected note. A note
+ * that replaces a rejected one takes that note off the page, as a dismiss
+ * would: the new note carries the link.
+ */
+export const addNote = ({
+  proposals,
+  note,
+  known,
+}: {
+  readonly proposals: Proposals;
+  readonly note: Note;
+  /** The ids of the structures data.mjs has. */
+  readonly known: ReadonlySet<string>;
+}): Result.Result<Proposals, string> => {
+  if (!known.has(note.target.id)) {
+    return Result.fail(
+      `No structure in data.mjs has the id "${note.target.id}", so a note can't be pinned to it.`
+    );
+  }
+
+  const taken = Arr.some(
+    reviewEntries(proposals),
+    ({ item }) => item.id === note.id
+  );
+
+  if (taken) {
+    return Result.fail(`The id "${note.id}" is already in use.`);
+  }
+
+  if (note.replaces === undefined) {
+    return Result.succeed({
+      ...proposals,
+      revision: proposals.revision + 1,
+      notes: [...(proposals.notes ?? []), note],
+    });
+  }
+
+  const replaced = batchOfRejectedNote(proposals, note.replaces);
+
+  if (Option.isNone(replaced)) {
+    return Result.fail(
+      `"${note.replaces}" is not a rejected note, so there is nothing to replace.`
+    );
+  }
+
+  const { number } = replaced.value;
+  const replacedId = note.replaces;
+
+  return Result.succeed({
+    ...proposals,
+    revision: proposals.revision + 1,
+    notes: [...(proposals.notes ?? []), note],
+    batches: Arr.map(proposals.batches ?? [], (other) =>
+      other.number === number
+        ? {
+            ...other,
+            dismissed: Arr.dedupe([...(other.dismissed ?? []), replacedId]),
+          }
+        : other
+    ),
+  });
+};
+
+/** Why note `id` can't be found among the open notes. */
+const noOpenNote = (proposals: Listed, id: string) =>
+  Option.getOrElse(
+    frozenRefusal(proposals, id),
+    () => `No open note has the id "${id}". It may have been discarded already.`
+  );
+
+/**
+ * Changes the text of open note `id`. Fails when the note is in a batch,
+ * which is waiting for the agent, or isn't there.
+ */
+export const editNote = ({
+  proposals,
+  id,
+  text,
+}: {
+  readonly proposals: Proposals;
+  readonly id: ChangeId;
+  readonly text: string;
+}): Result.Result<Proposals, string> => {
+  const notes = proposals.notes ?? [];
+
+  if (!Arr.some(notes, (note) => note.id === id)) {
+    return Result.fail(noOpenNote(proposals, id));
+  }
+
+  return Result.succeed({
+    ...proposals,
+    revision: proposals.revision + 1,
+    notes: Arr.map(notes, (note) =>
+      note.id === id ? { ...note, text } : note
+    ),
+  });
+};
+
+/** Removes open note `id`. Fails when it is in a batch, or isn't there. */
+export const discardNote = ({
+  proposals,
+  id,
+}: {
+  readonly proposals: Proposals;
+  readonly id: ChangeId;
+}): Result.Result<Proposals, string> => {
+  const notes = proposals.notes ?? [];
+
+  if (!Arr.some(notes, (note) => note.id === id)) {
+    return Result.fail(noOpenNote(proposals, id));
+  }
+
+  return Result.succeed({
+    ...proposals,
+    revision: proposals.revision + 1,
+    notes: Arr.filter(notes, (note) => note.id !== id),
+  });
+};
+
 /** What the agent can say about the items still without a verdict. */
 export const withoutVerdict = (batch: Batch): readonly BatchItem[] =>
   Arr.filter(batch.items, ({ id }) => !Rec.has(batch.verdicts, id));

@@ -281,11 +281,14 @@ export {
 } from "./proposals.ts";
 
 export {
+  addNote,
   batchesOf,
   breakageOf,
   commitBatch,
   commitMessage,
+  discardNote,
   dismissItem,
+  editNote,
   findBatchItem,
   freezeOpen,
   frozenLayoutChanges,
@@ -302,3 +305,12 @@ export {
 } from "./review.ts";
 
 export type { Committing, Frozen, ItemStatus, ReviewEntry } from "./review.ts";
+
+export {
+  FreezeWrite,
+  Frozen as FrozenReview,
+  ItemWrite,
+  NoteAdd,
+  NoteEdit,
+  ProposalRefused,
+} from "./review-server.ts";
