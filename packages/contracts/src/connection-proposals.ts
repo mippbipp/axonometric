@@ -8,6 +8,7 @@ import {
   frozenHopChanges,
   openFlowChanges,
   openHopChanges,
+  withoutOpenHop,
 } from "./connection-held.ts";
 import {
   flowOf,
@@ -193,43 +194,6 @@ const editedHopAdd = (
 };
 
 /**
- * `proposals` without hop `hop` in the open flow proposals: a flow that
- * listed it loses it, and a flow left with no hop loses its proposal.
- */
-export const withoutOpenHop: {
-  (hop: string): (proposals: Proposals) => Proposals;
-  (proposals: Proposals, hop: string): Proposals;
-} = dual(2, (proposals: Proposals, hop: string): Proposals => {
-  const open = flowsOpen(proposals);
-
-  if (
-    !Arr.some(open, ({ change }) =>
-      change.action === "add" || change.action === "hops"
-        ? change.hops.includes(hop)
-        : false
-    )
-  ) {
-    return proposals;
-  }
-
-  const kept = Arr.flatMap(open, (proposal): readonly FlowProposal[] => {
-    const { change } = proposal;
-
-    if (change.action !== "add" && change.action !== "hops") {
-      return [proposal];
-    }
-
-    const hops = Arr.filter(change.hops, (other) => other !== hop);
-
-    return Arr.isReadonlyArrayNonEmpty(hops)
-      ? [{ ...proposal, change: { ...change, hops } }]
-      : [];
-  });
-
-  return bumpFlows(proposals, kept);
-});
-
-/**
  * Sets the open hop proposal `id` to `change`: how the page draws a hop,
  * deletes or relabels one.
  *
@@ -264,6 +228,13 @@ export const proposeHop = ({
 
   if (Option.isSome(refused)) {
     return Result.fail(refused.value);
+  }
+
+  // The same write sent again, such as after a lost answer.
+  const sent = Arr.findFirst(open, (proposal) => proposal.id === id);
+
+  if (Option.exists(sent, (held) => sameHopChange(held.change, change))) {
+    return Result.succeed(proposals);
   }
 
   const target = hopOf(change);
@@ -456,6 +427,13 @@ export const proposeFlow = ({
 
   if (Option.isSome(refused)) {
     return Result.fail(refused.value);
+  }
+
+  // The same write sent again, such as after a lost answer.
+  const sent = Arr.findFirst(open, (proposal) => proposal.id === id);
+
+  if (Option.exists(sent, (held) => sameFlowChange(held.change, change))) {
+    return Result.succeed(proposals);
   }
 
   const target = flowOf(change);

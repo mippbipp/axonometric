@@ -4,11 +4,15 @@ import { useId, useMemo, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import { AddStructureForm } from "./add-structure.tsx";
+import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { DragWarnings } from "./drag-preview.tsx";
+import { DrawHopForm } from "./draw-hop-form.tsx";
 import { useEditing } from "./editing-context.ts";
+import { FlowsTab } from "./flows-tab.tsx";
 import { useHistory } from "./history-context.ts";
 import { HistoryTab } from "./history-tab.tsx";
+import { useHopDraft } from "./hop-draft-context.ts";
 import { HopPanel } from "./hop-panel.tsx";
 import { useNoteTool } from "./note-tool-context.ts";
 import { PendingTab } from "./pending-tab.tsx";
@@ -202,7 +206,7 @@ const renderContent = Match.type<PanelContent>().pipe(
   })
 );
 
-type Tab = "details" | "questions" | "pending" | "history";
+type Tab = "details" | "questions" | "flows" | "pending" | "history";
 
 const tabClass =
   "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent disabled:cursor-default disabled:opacity-40 px-1.5 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
@@ -213,7 +217,10 @@ const tabsOf = ({
   pendingCount,
   hasHistory,
   pendingOff,
+  hasFlows,
 }: {
+  /** Whether the page can propose changes to flows, which gives it a Flows tab. */
+  readonly hasFlows: boolean;
   readonly openCount: number;
   /** How many changes are pending, or `undefined` on a page that can't edit. */
   readonly pendingCount: number | undefined;
@@ -227,6 +234,9 @@ const tabsOf = ({
 }[] => [
   { id: "details", label: "Details", disabled: false },
   { id: "questions", label: `Questions · ${openCount}`, disabled: false },
+  ...(hasFlows
+    ? [{ id: "flows" as const, label: "Flows", disabled: false }]
+    : []),
   ...(pendingCount === undefined
     ? []
     : [
@@ -286,6 +296,44 @@ const useWaitingCount = () =>
   ).length;
 
 /**
+ * The forms docked under the tabs, so the add form and the draw-hop form,
+ * and what a drag or a proposal would leave, never cover the drawing.
+ */
+function DockedForms() {
+  const placing = usePlacing();
+  const drafting = useHopDraft();
+
+  return (
+    <>
+      {placing?.open === true ? (
+        <section
+          data-add-structure-panel
+          aria-label="Add a structure"
+          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+        >
+          <h2 className="text-xs tracking-widest uppercase opacity-70">
+            Add a structure
+          </h2>
+          <AddStructureForm />
+        </section>
+      ) : null}
+      {drafting?.draft === null ? null : (
+        <section
+          data-draw-hop-panel
+          aria-label="Draw a hop"
+          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+        >
+          <h2 className="text-xs tracking-widest uppercase opacity-70">
+            Draw a hop
+          </h2>
+          <DrawHopForm />
+        </section>
+      )}
+    </>
+  );
+}
+
+/**
  * The side panel next to the view. Details shows one of the `PanelContent`
  * kinds; Open questions lists every question revealed so far; on a page
  * `serve` serves, Pending lists the pending layout changes and History lists
@@ -308,7 +356,7 @@ export function SidePanel() {
   const editing = useEditing();
   const history = useHistory();
   const waiting = useWaitingCount();
-  const placing = usePlacing();
+  const connections = useConnections();
 
   // A tab other than Details stays open until the selection changes.
   const picked =
@@ -336,6 +384,7 @@ export function SidePanel() {
     pendingCount,
     hasHistory: history !== null,
     pendingOff: editing === null,
+    hasFlows: connections !== null,
   });
 
   const tab: Tab =
@@ -427,6 +476,11 @@ export function SidePanel() {
           }}
         />
       </TabPanel>
+      {connections === null ? null : (
+        <TabPanel id="flows" prefix={idPrefix} open={tab}>
+          <FlowsTab />
+        </TabPanel>
+      )}
       {editing === null ? null : (
         <TabPanel id="pending" prefix={idPrefix} open={tab}>
           <PendingTab />
@@ -437,20 +491,7 @@ export function SidePanel() {
           <HistoryTab />
         </TabPanel>
       )}
-      {/* Docked under the tabs, so the add form and what a drag or a proposal
-          would leave never cover the drawing. */}
-      {placing?.open === true ? (
-        <section
-          data-add-structure-panel
-          aria-label="Add a structure"
-          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
-        >
-          <h2 className="text-xs tracking-widest uppercase opacity-70">
-            Add a structure
-          </h2>
-          <AddStructureForm />
-        </section>
-      ) : null}
+      <DockedForms />
       <DragWarnings className="border-x-0 border-b-0" />
     </aside>
   );

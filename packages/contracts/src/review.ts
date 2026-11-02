@@ -10,6 +10,11 @@ import {
 import { dual } from "effect/Function";
 
 import { acceptLayoutChanges } from "./accept.ts";
+import {
+  addedHopIds,
+  frozenHopChanges,
+  openHopChanges,
+} from "./connection-held.ts";
 import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
@@ -227,9 +232,15 @@ export const checkOpenItems: {
   (proposals: Proposals): (data: MapData) => readonly MapProblem[];
   (data: MapData, proposals: Proposals): readonly MapProblem[];
 } = dual(2, (data: MapData, proposals: Proposals): readonly MapProblem[] => {
+  // A hop the engineer drew is known to the notes that follow.
+  const drawn = addedHopIds([
+    ...openHopChanges(proposals),
+    ...frozenHopChanges(proposals),
+  ]);
+
   const existing = {
     structures: new Set(Arr.map(data.structures, ({ id }) => id)),
-    hops: new Set(Arr.map(data.hops, ({ id }) => id)),
+    hops: new Set([...Arr.map(data.hops, ({ id }) => id), ...drawn]),
   };
 
   return Arr.flatMap(allKinds, (spec) =>
@@ -635,9 +646,14 @@ export const discardProposal = ({
 }): Result.Result<Proposals, string> => {
   const found = openItemNamed(proposals, id);
 
-  return Option.isNone(found)
-    ? Result.fail(noOpenItem(proposals, id))
-    : Result.succeed(rewriteOpen(proposals, found.value, Option.none()));
+  if (Option.isNone(found)) {
+    return Result.fail(noOpenItem(proposals, id));
+  }
+
+  const dropped = rewriteOpen(proposals, found.value, Option.none());
+  const spec = specOf(found.value);
+
+  return Result.succeed(spec.discarded?.(dropped, found.value) ?? dropped);
 };
 
 /** What the agent can say about the items still without a verdict. */

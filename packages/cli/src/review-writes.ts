@@ -173,9 +173,10 @@ const editing =
 // oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(home, write, written)`, never piped.
 
 /** What an item is checked against when it is added. */
-const knownIn = ({ structures, hops, data }: Held): Known => ({
+const knownIn = ({ structures, proposed, data }: Held): Known => ({
   structureIds: new Set(structures.keys()),
-  hops,
+  // A hop the engineer drew can carry a note before the agent adds it.
+  hops: proposed.state.data.hops,
   data,
 });
 

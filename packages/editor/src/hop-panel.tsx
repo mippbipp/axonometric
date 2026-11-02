@@ -1,8 +1,11 @@
 import { Array as Arr, Option, Record as Rec } from "effect";
 import { useState } from "react";
 
+import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { pendingHops, useEditing } from "./editing-context.ts";
+import { HopEdit } from "./hop-edit.tsx";
+import { useHopProposals } from "./hop-proposals.ts";
 import { NotesSection } from "./notes-section.tsx";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
@@ -19,9 +22,13 @@ export function HopPanel({ id }: { readonly id: string }) {
   const { selectHop } = useSelection();
   const byId = useStructuresById();
   const editing = useEditing();
+  const connections = useConnections();
+  const proposals = useHopProposals(id);
   const [refusal, setRefusal] = useState<string | undefined>();
 
-  const hop = Arr.findFirst(state.data.hops, (item) => item.id === id).pipe(
+  const hops = connections?.proposed.state.data.hops ?? state.data.hops;
+
+  const hop = Arr.findFirst(hops, (item) => item.id === id).pipe(
     Option.getOrUndefined
   );
 
@@ -32,6 +39,7 @@ export function HopPanel({ id }: { readonly id: string }) {
   const { from, to, label } = hop;
   const nameOf = (structure: string) => byId.get(structure)?.name ?? structure;
   const overridden = Rec.has(state.layout.routes ?? {}, id);
+  const removed = proposals?.deleted === true;
   const pending = pendingHops(editing).has(id);
 
   return (
@@ -41,6 +49,12 @@ export function HopPanel({ id }: { readonly id: string }) {
       <p className="text-sm">
         {nameOf(from)} → {nameOf(to)}
       </p>
+      {removed ? (
+        <p data-hop-deleting className="border-refused border-l-2 pl-2 text-sm">
+          Proposed for deletion: it stays on the map, crossed out, until the
+          agent has reviewed it.
+        </p>
+      ) : null}
       <p data-hop-route-kind className="text-sm opacity-80">
         {overridden
           ? `This route is set by hand${pending ? " and not yet accepted" : ""}.`
@@ -53,6 +67,7 @@ export function HopPanel({ id }: { readonly id: string }) {
           Drag a segment of the arrow to move it. It snaps to half units.
         </p>
       ) : null}
+      <HopEdit id={id} label={label} />
       <NotesSection target={{ kind: "hop", id }} />
       {refusal === undefined ? null : (
         <p
@@ -62,7 +77,7 @@ export function HopPanel({ id }: { readonly id: string }) {
           {refusal}
         </p>
       )}
-      <div className="flex gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
         {editing?.canEdit === true && overridden ? (
           <button
             type="button"

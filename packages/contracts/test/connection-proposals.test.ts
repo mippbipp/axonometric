@@ -11,6 +11,7 @@ import {
   hopLabelOf,
   hopRenameKey,
   marked,
+  proposedHopMark,
   proposedMap,
   proposeFlow,
   proposeHop,
@@ -301,6 +302,7 @@ describe("the proposed map, for each hop action", () => {
       label: "skips b",
     });
     assert.deepStrictEqual([...shown.hops], ["new-hop"]);
+    assert.deepStrictEqual([...marked(shown, proposedHopMark)], ["new-hop"]);
     assert.deepStrictEqual(touchedHops(shown, "p1"), ["new-hop"]);
     assert.notInclude(playedFirst(shown), "new-hop");
     assert.strictEqual(marked(shown, removedHopMark).size, 0);
@@ -313,6 +315,7 @@ describe("the proposed map, for each hop action", () => {
 
     assert.isDefined(hopOfId(shown, "h-bc"));
     assert.deepStrictEqual([...marked(shown, removedHopMark)], ["h-bc"]);
+    assert.strictEqual(marked(shown, proposedHopMark).size, 0);
     assert.deepStrictEqual([...shown.hops], ["h-bc"]);
   });
 

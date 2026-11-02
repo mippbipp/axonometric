@@ -172,7 +172,7 @@ const isTyping = (target: EventTarget | null) =>
 const startsOnStructure = (target: EventTarget | null) =>
   target instanceof Element &&
   target.closest(
-    "[data-structure], [data-packet], [data-resize-handle], [data-route-segment], [data-zone-title-hit]"
+    "[data-structure], [data-packet], [data-resize-handle], [data-edge-handle], [data-route-segment], [data-zone-title-hit]"
   ) !== null;
 
 interface Gestures {

@@ -1,5 +1,6 @@
 import { Array as Arr, Match, Option, Record as Rec } from "effect";
 
+import { hopRenameKey } from "./hop-change.ts";
 import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
@@ -226,6 +227,11 @@ export interface KindSpec<I extends BatchItem> {
   /** The most characters the kind's text holds. */
   readonly textLimit: number;
   /**
+   * `proposals` once the open `item` is discarded, for what else has to go
+   * with it: a hop drawn on the page leaves the open flows that list it.
+   */
+  discarded?(proposals: Proposals, item: I): Proposals;
+  /**
    * Why the item was written against something data.mjs no longer says, or
    * nothing. Unlike `breakage`, accepting it would not break the map; the
    * agent should know before it judges the item.
@@ -400,14 +406,23 @@ const noteKind: KindSpec<NoteItem> = {
   ...plain<NoteItem>(),
   textLimit: maxNoteLength,
   retargeted: (item, renames) => {
-    const id = renames.get(
-      item.target.kind === "structure" ? item.target.id : ""
-    );
+    const { target } = item;
 
-    // Only a structure can be renamed; a hop or a spot keeps its target.
-    return item.target.kind === "structure" && id !== undefined
-      ? { ...item, target: { ...item.target, id } }
-      : item;
+    // A spot has no id to follow. A structure or a hop accepted under another
+    // id is followed; hops are told apart from structures by their key.
+    if (target.kind === "structure") {
+      const id = renames.get(target.id);
+
+      return id === undefined ? item : { ...item, target: { ...target, id } };
+    }
+
+    if (target.kind === "hop") {
+      const id = renames.get(hopRenameKey(target.id));
+
+      return id === undefined ? item : { ...item, target: { ...target, id } };
+    }
+
+    return item;
   },
   open: (proposals) =>
     Arr.map(proposals.notes ?? [], (note): NoteItem => ({

@@ -1,5 +1,6 @@
 import { Array as Arr, Match, Option } from "effect";
 
+import { withoutOpenHop } from "./connection-held.ts";
 import { hopOf, maxHopLabelLength, hopRenameKey } from "./hop-change.ts";
 import {
   hopBreakage,
@@ -22,6 +23,13 @@ type HopItem = Extract<BatchItem, { kind: "hop" }>;
 
 /** The name of the mark for hops proposed for deletion, in `Touches.marks`. */
 export const removedHopMark = "removed-hop";
+
+/**
+ * The name of the mark for hops a proposal draws or relabels, in
+ * `Touches.marks`. A hop a reroute touches is not marked: it keeps the look
+ * of a rerouted hop.
+ */
+export const proposedHopMark = "proposed-hop";
 
 /** Said once, in the prompt and in `review`, when a batch holds a hop item. */
 const hopNotice =
@@ -63,6 +71,10 @@ export const hopKind: KindSpec<HopItem> = {
       change: proposal.change,
     })),
   clear: (proposals) => ({ ...proposals, hops: [] }),
+  discarded: (proposals, { change }) =>
+    change.action === "add"
+      ? withoutOpenHop(proposals, change.hop.id)
+      : proposals,
   add: (proposals, { id, change }) => ({
     ...proposals,
     hops: [...(proposals.hops ?? []), { id, change }],
@@ -87,6 +99,7 @@ export const hopKind: KindSpec<HopItem> = {
     hops: [hopOf(change)],
     marks: {
       [removedHopMark]: change.action === "delete" ? [hopOf(change)] : [],
+      [proposedHopMark]: change.action === "delete" ? [] : [hopOf(change)],
     },
   }),
   breakage: ({ change }, { structureIds, hops, data }) =>

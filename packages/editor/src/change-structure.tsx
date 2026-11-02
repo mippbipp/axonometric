@@ -7,8 +7,10 @@ import type { Structure } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { useId, useState } from "react";
 
+import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { fieldClass } from "./field-class.ts";
+import { useHopDraft } from "./hop-draft-context.ts";
 import { useProposed } from "./proposed-context.ts";
 import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
 import { usePropose } from "./use-propose.ts";
@@ -29,6 +31,8 @@ export function ChangeStructure({
   readonly structure: Structure;
 }) {
   const proposing = useProposed();
+  const connections = useConnections();
+  const drafting = useHopDraft();
   const { state } = useWalkthrough();
   const { send, failure, clear, canPropose } = usePropose();
   const renameId = useId();
@@ -170,7 +174,20 @@ export function ChangeStructure({
           {failure}
         </p>
       )}
-      <div className="flex gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        {connections === null || drafting === null ? null : (
+          <button
+            type="button"
+            data-change="draw-hop"
+            className={controlClass}
+            disabled={!connections.canPropose || deleted}
+            onClick={() => {
+              drafting.begin(structure.id);
+            }}
+          >
+            Draw hop from here
+          </button>
+        )}
         <button
           type="button"
           data-change="delete"

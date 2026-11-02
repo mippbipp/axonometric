@@ -15,6 +15,7 @@ import {
 import { Array as Arr, Option } from "effect";
 import { useEffect, useState } from "react";
 
+import { useHopDraft } from "./hop-draft-context.ts";
 import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
@@ -44,6 +45,7 @@ export function StructureMenu() {
   const { state } = useWalkthrough();
   const { select } = useSelection();
   const { send, failure } = usePropose();
+  const drafting = useHopDraft();
   const [opened, setOpened] = useState<Opened | null>(null);
 
   const canPropose = proposing?.canPropose === true;
@@ -195,6 +197,17 @@ export function StructureMenu() {
           </MenuSubContent>
         </MenuSub>
         <MenuSeparator />
+        {drafting === null ? null : (
+          <MenuItem
+            data-menu="draw-hop"
+            disabled={deleted}
+            onClick={() => {
+              drafting.begin(structure.id);
+            }}
+          >
+            Draw hop from here…
+          </MenuItem>
+        )}
         <MenuItem
           data-menu="delete"
           disabled={deleted}

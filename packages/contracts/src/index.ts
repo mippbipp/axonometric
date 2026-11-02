@@ -623,6 +623,7 @@ export {
   frozenHopChanges,
   openFlowChanges,
   openHopChanges,
+  withoutOpenHop,
 } from "./connection-held.ts";
 
 export {
@@ -631,11 +632,10 @@ export {
   newHopId,
   proposeFlow,
   proposeHop,
-  withoutOpenHop,
 } from "./connection-proposals.ts";
 
 export type { ConnectionWorld } from "./connection-proposals.ts";
 
 export { changedFlowMark } from "./review-kinds-flow.ts";
 
-export { removedHopMark } from "./review-kinds-hop.ts";
+export { proposedHopMark, removedHopMark } from "./review-kinds-hop.ts";
