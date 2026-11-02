@@ -207,10 +207,22 @@ const flowWorldRefusal = (
 
   const removed = removedHopsIn(proposals);
 
-  // A flow can't list a hop that is being deleted. A flow the proposals
-  // already list it in is the engineer's to fix by withdrawing the deletion.
+  // The hops a flow already lists stay as they are, so a flow with a hop under
+  // deletion can still be reordered. Only a hop the change newly puts in a
+  // flow, in a new flow or an existing one, may not be one being deleted.
+  const listedNow = new Set(
+    change.action === "hops"
+      ? Arr.flatMap(world.data.flows, (flow) =>
+          flow.id === change.flow ? flow.hops : []
+        )
+      : []
+  );
+
   const deleting = Option.map(
-    Arr.findFirst(action.hops(), (hop) => removed.has(hop)),
+    Arr.findFirst(
+      action.hops(),
+      (hop) => removed.has(hop) && !listedNow.has(hop)
+    ),
     (hop) =>
       `Hop "${hop}" is proposed for deletion, so a flow can't list it. Leave it out, or withdraw the deletion.`
   );

@@ -1484,3 +1484,34 @@ describe.each(["iso", "plan"] as const)(
     );
   }
 );
+
+describe("a flow that lists a hop proposed for deletion", () => {
+  it.live(
+    "can still be reordered with the move buttons",
+    () =>
+      Effect.gen(function* () {
+        const { page, home } = yield* served;
+
+        yield* chapter(page, "c-all");
+        yield* selectHop(page, "h-save");
+        yield* click(page, '[data-hop-delete="h-save"]');
+        yield* waitAttached(
+          page,
+          '[data-hop="h-save"][data-hop-state="removed"]'
+        );
+        yield* openFlows(page);
+        yield* click(page, '[data-sort-down="h-note"]');
+        yield* waitForFlowHops(page, "f-note", ["h-save", "h-note", "h-store"]);
+
+        assert.strictEqual(yield* count(page, "[data-flow-failure]"), 0);
+
+        const [saved] = (yield* readProposals(home)).flows ?? [];
+
+        assert.deepStrictEqual(
+          saved?.change.action === "hops" ? saved.change.hops : [],
+          ["h-save", "h-note", "h-store"]
+        );
+      }),
+    60_000
+  );
+});

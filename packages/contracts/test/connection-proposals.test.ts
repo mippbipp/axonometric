@@ -1129,10 +1129,21 @@ describe("a new flow that lists a hop being deleted", () => {
     assert.include(said, "proposed for deletion");
   });
 
-  it("is refused for a hops change too", () => {
-    const said = into({ action: "hops", flow: "f1", hops: ["h-ab", "h-bc"] });
+  it("is refused when a hops change newly puts it in a flow", () => {
+    const said = into({ action: "hops", flow: "f2", hops: ["h-ca", "h-bc"] });
 
     assert.include(said, "proposed for deletion");
+  });
+
+  it("lets a flow that already lists it be reordered", () => {
+    const reordered = proposeFlow({
+      proposals: deleting,
+      id: "p1",
+      change: { action: "hops", flow: "f1", hops: ["h-bc", "h-ab"] },
+      world: { ...world, data },
+    });
+
+    assert.isTrue(Result.isSuccess(reordered));
   });
 
   it("is allowed once the deletion is withdrawn", () => {
