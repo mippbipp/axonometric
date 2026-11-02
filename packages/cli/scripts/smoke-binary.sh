@@ -33,6 +33,38 @@ if [ "$actual" != "axonometric v$version" ]; then
   exit 1
 fi
 
+# The guide is embedded in the binary, so docs works with no files beside it.
+echo "docs"
+overview=$(run_binary docs)
+case "$overview" in
+  *'axonometric docs review'*) ;;
+  *)
+    echo "docs didn't print an overview that lists the topics." >&2
+    exit 1
+    ;;
+esac
+# Every topic the overview lists must print. Reading the list from the
+# overview keeps this step from naming topics of its own.
+topics=$(printf '%s\n' "$overview" | sed -n 's/^- `axonometric docs \([a-z-]*\)`.*/\1/p')
+if [ -z "$topics" ]; then
+  echo "The docs overview lists no topics." >&2
+  exit 1
+fi
+for topic in $topics; do
+  if [ "$(run_binary docs "$topic" | wc -l)" -lt 20 ]; then
+    echo "docs $topic printed fewer than 20 lines." >&2
+    exit 1
+  fi
+done
+if run_binary docs no-such-topic >/dev/null 2>"$work/docs-error.txt"; then
+  echo "docs accepted a topic that doesn't exist." >&2
+  exit 1
+fi
+if ! grep -q '"visual-check"' "$work/docs-error.txt"; then
+  echo "docs didn't list the valid topics for an unknown one." >&2
+  exit 1
+fi
+
 echo "build"
 (cd "$work" && run_binary build pipeline/map)
 for output in SYSTEM.md pipeline.html; do

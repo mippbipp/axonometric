@@ -43,7 +43,21 @@ Use `planned` for structures in a "later" chapter, and `off` for something that 
 
 ## Names and wording
 
-- Plain words from the user's side. "Confirm card", not "HITL prompt". Use the repo's glossary for the system's own nouns.
+Use the project's terms, in chat and in `data.mjs`. Each one has words to avoid.
+
+- **map**, not atlas.
+- **structure**, not component or node.
+- **hop**, not edge, link or connection.
+- **group** and its **zone**, not cluster, layer or plate.
+- **chapter**, not step, scene or slide. A **step** is one stage inside a structure.
+- **status** is `live`, `planned` or `off`. There is no ghost flag.
+- **home folder**, not map folder or workspace.
+
+If the user's repo has a `GLOSSARY.md`, read it and use its terms for the system's own nouns. The repo's glossary is theirs. Don't create one for the map.
+
+For the text itself:
+
+- Plain words from the user's side. "Confirm card", not "HITL prompt".
 - A structure's `name` is a noun. `oneLiner` is one sentence. `whatItDoes` is for a newcomer who isn't an engineer. `howItsBuilt` names files, tables and APIs.
 - `tag` is the text on the name tag. Short tags fit better, so keep a long name's tag to a few words. The tag text is widest in Iso view, and `check` warns when a name tag lands on a neighbouring box.
 - The `code` is 1 to 3 capital letters. The chip fits on the top face, so make it a letter or two.

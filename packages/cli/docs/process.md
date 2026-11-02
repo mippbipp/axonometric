@@ -20,7 +20,7 @@ Done when the engineer has seen the structures and groups, and the defaults you 
 
 The home folder is `.scratch/<system>/map/`, or `docs/<system>/map/` in repos that commit design docs. `build` writes `SYSTEM.md` and `<system>.html` into the home folder's parent, so `.scratch/<system>/` or `docs/<system>/` holds the finished map.
 
-If the repo's docs policy is unclear, ask the engineer which one applies before you create or commit anything. A `docs/` folder full of design docs points to `docs/`. A `.scratch/` line in `.gitignore` points to scratch. Some repos commit only ADRs and the glossary, and keep specs in the issue tracker. For those, use `.scratch/`, and attach `SYSTEM.md` to the spec issue when the spec is published. Committing a whole set of design files once produced a 3,900-line docs PR and four review rounds that reconciled three restatements of one design.
+If the repo's docs policy is unclear, ask the engineer which one applies before you create or commit anything. A `docs/` folder full of design docs points to `docs/`. A `.scratch/` line in `.gitignore` points to scratch. Some repos commit only ADRs and the glossary, and keep specs in the issue tracker. For those, use `.scratch/` and keep `SYSTEM.md` and any research there too. Attach `SYSTEM.md` to the spec issue when the spec is published, and commit only the ADRs and glossary. Committing a whole set of design files once produced a 3,900-line docs PR and four review rounds that reconciled three restatements of one design.
 
 `.scratch/` has to be ignored by git. `init` warns when it isn't. Tell the engineer, or add `.scratch/` to the repo's `.gitignore` if they agree.
 
@@ -40,13 +40,13 @@ The home folder holds:
 axonometric init <home>
 ```
 
-This writes a starter `data.mjs`. Replace its contents with the real system, following `data`, `chapters` and `design`. Write the whole system in the first pass, not a slice of it. Don't write positions. `build` places every structure that has none.
+This writes a starter `data.mjs`. Replace its contents with the real system, following `data`, `chapters` and `design`. Write the whole system in the first pass, not a slice of it. Don't write positions. `build` places every structure that has none. Write `data.mjs` with your file-editing tool, not a shell heredoc, which is brittle for long text.
 
 ```sh
 axonometric build <home>
 ```
 
-`build` runs `check`, saves the positions it chose to `layout.json`, and writes `SYSTEM.md` and the page. Errors block it, and each one names the field and the fix. Fix every error in one pass, then build again. Write files with your file-editing tool, not shell heredocs.
+`build` runs `check`, saves the positions it chose to `layout.json`, and writes `SYSTEM.md` and the page. Errors block it, and each one names the field and the fix. Fix every error in one pass, then build again.
 
 Done when `build` succeeds.
 
