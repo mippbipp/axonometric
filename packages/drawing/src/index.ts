@@ -6,7 +6,9 @@ export { frameAttributes } from "./look.ts";
 
 export type { Look } from "./look.ts";
 
-export { drawnIn, MapDrawing } from "./map-drawing.tsx";
+export { drawnIn } from "./extent.ts";
+
+export { MapDrawing } from "./map-drawing.tsx";
 
 export { svgFileOf } from "./svg-file.tsx";
 

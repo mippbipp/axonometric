@@ -17,10 +17,9 @@ import { Array as Arr, String as Str } from "effect";
 import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { BoxSelect } from "./box-select.tsx";
+import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
-import { LayoutEditor } from "./layout-editor.tsx";
-import { pageDrawing } from "./page-drawing.tsx";
+import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { routesOf } from "./projection.ts";
@@ -141,7 +140,7 @@ export function MapView({
 
   const fitAt = useCallback(
     (zoom: number) => {
-      const drawn = drawnIn(sceneAt(textZoomOf(zoom)), drawing);
+      const drawn = drawnIn({ scene: sceneAt(textZoomOf(zoom)), drawing });
 
       return fitOf({ drawn, fitTo: fitIds }).bounds;
     },
@@ -170,50 +169,49 @@ export function MapView({
 
   const key = fitKey ?? fitOf({ drawn: [], fitTo: fitIds }).key;
 
+  const editorView = useMemo(
+    () => ({ view, placements: state.layout.structures, revealed }),
+    [view, state.layout.structures, revealed]
+  );
+
   return (
     <DrawingContext value={pageDrawing}>
-      <Viewport
-        title={`${drawing.title} of ${state.data.overview.title}`}
-        fitAt={fitAt}
-        fitKey={key}
-        fitFloor={fitFloor}
-        onTextZoom={setTextZoom}
-        ground={groundProjections[view]}
-      >
-        <MapDrawing
-          scene={scene}
-          hatch={hatch}
-          newlyRevealed={newlyRevealed}
-          underlay={
-            <g>
-              {Arr.map(marked, (item) => (
-                <NewMarker key={item.structure.id} placed={item} view={view} />
-              ))}
-              <SelectionMarker
-                placements={state.layout.structures}
-                view={view}
-              />
-              <AcceptedOutlines structures={scene.structures} view={view} />
-            </g>
-          }
-          wrap={(inner) => (
-            <>
-              <BoxSelect
-                view={view}
-                placements={state.layout.structures}
-                revealed={revealed}
-              />
-              <LayoutEditor view={view} placements={state.layout.structures}>
-                {inner}
-              </LayoutEditor>
-            </>
-          )}
-          overlay={<PendingBadges structures={scene.structures} />}
-          onHopHover={setHoveredHop}
-          labelShown={(hop) => hop === selectedHop || hop === hoveredHop}
-        />
-        {children}
-      </Viewport>
+      <EditorViewContext value={editorView}>
+        <Viewport
+          title={`${drawing.title} of ${state.data.overview.title}`}
+          fitAt={fitAt}
+          fitKey={key}
+          fitFloor={fitFloor}
+          onTextZoom={setTextZoom}
+          ground={groundProjections[view]}
+        >
+          <MapDrawing
+            scene={scene}
+            hatch={hatch}
+            newlyRevealed={newlyRevealed}
+            underlay={
+              <g>
+                {Arr.map(marked, (item) => (
+                  <NewMarker
+                    key={item.structure.id}
+                    placed={item}
+                    view={view}
+                  />
+                ))}
+                <SelectionMarker
+                  placements={state.layout.structures}
+                  view={view}
+                />
+                <AcceptedOutlines structures={scene.structures} view={view} />
+              </g>
+            }
+            overlay={<PendingBadges structures={scene.structures} />}
+            onHopHover={setHoveredHop}
+            labelShown={(hop) => hop === selectedHop || hop === hoveredHop}
+          />
+          {children}
+        </Viewport>
+      </EditorViewContext>
     </DrawingContext>
   );
 }

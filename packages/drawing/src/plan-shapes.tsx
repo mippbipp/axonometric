@@ -4,7 +4,7 @@ import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
 import { useDrawing } from "./drawing-context.ts";
-import { LookContext, lookOf, useHatching, useLook } from "./look.ts";
+import { LookContext, looksOf, useHatching, useLook } from "./look.ts";
 import { CodeChip, OffMark } from "./shapes.tsx";
 import type { StructureDrawingProps } from "./structure-drawing.ts";
 
@@ -395,7 +395,7 @@ export function PlanStructure({
   isNew,
 }: StructureDrawingProps) {
   const { paint, Frame } = useDrawing();
-  const look = lookOf(structure.status, paint);
+  const look = looksOf(paint)[structure.status];
   const Icon = icons[structure.shape];
   const external = structure.shape === "external";
   const box = external ? growRect(bounds, -haloInset) : bounds;

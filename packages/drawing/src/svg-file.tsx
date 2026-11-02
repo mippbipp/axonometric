@@ -13,8 +13,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { DrawingContext } from "./drawing-context.ts";
 import type { DrawingEnvironment, Paint } from "./drawing-context.ts";
-import { FileFrame } from "./file-frame.tsx";
-import { extentOf, MapDrawing } from "./map-drawing.tsx";
+import { extentOf } from "./extent.ts";
+import { FileFrame, PassThrough } from "./file-frame.tsx";
+import { MapDrawing } from "./map-drawing.tsx";
 
 /** Space around the drawing, in drawing units. */
 const margin = 16;
@@ -46,27 +47,27 @@ const exportZoom = 1;
 
 const xmlDeclaration = '<?xml version="1.0" encoding="UTF-8"?>\n';
 
-/** Elements that carry no meaning of their own: every line and fill. */
+/**
+ * Opening tags of elements that carry no meaning of their own, every line
+ * and fill, that aren't already hidden. Text and attribute values escape
+ * `<`, so a tag never hides in them.
+ */
 const decorative =
-  /<(?<tag>defs|rect|polygon|polyline|path|circle|ellipse|line)(?<attributes>[\s/][^>]*)?>/gu;
+  /<(?<tag>defs|rect|polygon|polyline|path|circle|ellipse|line)(?![^>]* aria-hidden=)(?=[\s/>])/gu;
+
+/** The attributes only the live page uses. */
+const livePage = /\s(?:data-[\w-]+|pointer-events)="[^"]*"/gu;
 
 /**
  * Writes the finishing touches that need markup rather than components:
  * leaves out `data-*` attributes and `pointer-events`, which only the live
  * page uses, and hides every decorative part from assistive technology.
- * Text and attribute values escape `<` and `>`, so a tag never hides in them.
  */
 const finished = (markup: string) =>
   Str.replaceAll(
-    /\s(?:data-[\w-]+|pointer-events)="[^"]*"/gu,
-    ""
-  )(markup).replaceAll(
     decorative,
-    (match, tag: string, attributes: string | undefined) =>
-      (attributes ?? "").includes(" aria-hidden=")
-        ? match
-        : `<${tag} aria-hidden="true"${attributes ?? ""}>`
-  );
+    '<$<tag> aria-hidden="true"'
+  )(Str.replaceAll(livePage, "")(markup));
 
 const viewNames = {
   iso: "Iso view",
@@ -110,7 +111,7 @@ export const svgFileOf = ({
     zoom: exportZoom,
   });
 
-  const extent = extentOf(scene, view);
+  const extent = extentOf({ scene, view });
   const x = extent.left - margin;
   const y = extent.top - margin;
   const width = Math.ceil(extent.right - extent.left + margin * 2);
@@ -122,7 +123,8 @@ export const svgFileOf = ({
     paint,
     live: false,
     Frame: FileFrame,
-    idPrefix: prefix,
+    Layers: PassThrough,
+    idOf: (kind, id) => `${prefix}${kind}-${id}`,
   };
 
   const markup = renderToStaticMarkup(
@@ -132,6 +134,7 @@ export const svgFileOf = ({
         viewBox={`${x} ${y} ${width} ${height}`}
         width={width}
         height={height}
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- an <svg> has no <img> form; role="img" is how a standalone SVG is named for assistive technology.
         role="img"
         aria-labelledby={`${prefix}title ${prefix}desc`}
         fontFamily={exportFontStack}

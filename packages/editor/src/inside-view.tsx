@@ -17,7 +17,7 @@ import type { RefObject } from "react";
 import { controlClass } from "./control-class.ts";
 import { useFrameClock } from "./frame-clock.ts";
 import { clockAtNextHop, packetAt, travelSeconds } from "./packet-schedule.ts";
-import { pageDrawing } from "./page-drawing.tsx";
+import { pageDrawing } from "./page-environment.ts";
 import { reducedMotionNote, useReducedMotion } from "./playback.ts";
 import {
   corners,

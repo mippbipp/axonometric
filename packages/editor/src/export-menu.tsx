@@ -14,7 +14,7 @@ import type { KeyboardEvent, ReactNode, Ref } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { download, ExportFailed, pngOf } from "./svg-export.ts";
-import { shownTheme } from "./theme.tsx";
+import { shownTheme } from "./theme-state.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 const items = ["svg", "png", "excalidraw", "background"] as const;

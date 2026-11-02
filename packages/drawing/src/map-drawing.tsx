@@ -1,7 +1,6 @@
 import {
   arrowheadOf,
   arrowPolygon,
-  boundsOfPoints,
   dashes,
   nameTagText,
   textSizes,
@@ -12,15 +11,12 @@ import type {
   SceneHop,
   SceneStructure,
   ScreenPoint,
-  ScreenRect,
-  View,
 } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
-import { partId, useDrawing } from "./drawing-context.ts";
+import { useDrawing } from "./drawing-context.ts";
 import { viewDrawings } from "./views.tsx";
-import type { ViewDrawing } from "./views.tsx";
 import { Zones } from "./zones.tsx";
 
 function NameTag({
@@ -127,15 +123,14 @@ function HopArrow({
   /** Called with the hop's id while the pointer is on its line, else null. */
   readonly onHover: ((hop: string | null) => void) | undefined;
 }) {
-  const environment = useDrawing();
-  const { paint, live } = environment;
+  const { paint, live, idOf } = useDrawing();
   const { hop, points } = routed;
   const bends = markBends ? routed.bends : [];
 
   return (
     <g
       data-hop={hop.id}
-      id={partId(environment, "hop", hop.id)}
+      id={idOf("hop", hop.id) ?? undefined}
       data-route={toPoints(points)}
       stroke={paint.ink}
       onPointerEnter={() => {
@@ -246,35 +241,6 @@ function HatchPattern({ id }: { readonly id: string }) {
   );
 }
 
-/** Everything a scene draws, with the structures each belongs to. */
-export const drawnIn = (scene: Scene, drawing: ViewDrawing) => [
-  ...Arr.map(scene.structures, (item) => ({
-    ids: [item.structure.id],
-    points: drawing.extentOf(item),
-  })),
-  ...Arr.map(scene.hops, ({ hop, points, label }) => ({
-    ids: [hop.from, hop.to],
-    points:
-      label === undefined
-        ? points
-        : [
-            ...points,
-            { sx: label.left, sy: label.top },
-            { sx: label.right, sy: label.bottom },
-          ],
-  })),
-  ...Arr.map(scene.zones, ({ zone, plate, title }) => ({
-    ids: zone.members,
-    points: [...plate, ...(title ?? [])],
-  })),
-];
-
-/** The smallest rect holding everything the scene draws. */
-export const extentOf = (scene: Scene, view: View): ScreenRect =>
-  boundsOfPoints(
-    Arr.flatMap(drawnIn(scene, viewDrawings[view]), ({ points }) => points)
-  );
-
 /**
  * A scene drawn: each zone as a plate, each hop as an arrow, each revealed
  * structure as its shape with a name tag, and the hop labels on top. The
@@ -282,19 +248,18 @@ export const extentOf = (scene: Scene, view: View): ScreenRect =>
  * `DrawingContext` that says how to paint it.
  *
  * The page fills the slots with what only an editor has: `underlay` is
- * drawn under the hops, `wrap` surrounds the structures, their hidden hops
- * and their tags, and `overlay` goes on top of the tags inside it. A file
- * leaves them all out.
+ * drawn under the hops, the context's `Layers` surround the structures,
+ * their hidden hops and their tags, and `overlay` goes on top of the tags
+ * inside them. A file leaves them all out.
  */
 export function MapDrawing({
   scene,
   hatch,
   newlyRevealed,
   underlay,
-  wrap = (inner) => inner,
   overlay,
   onHopHover,
-  labelShown = () => false,
+  labelShown,
 }: {
   readonly scene: Scene;
   /** The id of the hatch pattern this draws and its faces use. */
@@ -302,14 +267,14 @@ export function MapDrawing({
   /** The structures to draw as new. */
   readonly newlyRevealed: ReadonlySet<string>;
   readonly underlay?: ReactNode;
-  readonly wrap?: (inner: ReactNode) => ReactNode;
   readonly overlay?: ReactNode;
-  readonly onHopHover?: (hop: string | null) => void;
+  readonly onHopHover?: ((hop: string | null) => void) | undefined;
   /** Whether a hop's label shows even where the scene found no room. */
-  readonly labelShown?: (hop: string) => boolean;
+  readonly labelShown?: ((hop: string) => boolean) | undefined;
 }) {
   const drawing = viewDrawings[scene.view];
   const { Structure } = drawing;
+  const { Layers } = useDrawing();
 
   return (
     <>
@@ -328,41 +293,39 @@ export function MapDrawing({
           />
         ))}
       </g>
-      {wrap(
-        <>
-          <g>
-            {Arr.map(scene.structures, (item) => (
-              <Structure
-                key={item.structure.id}
-                placed={item}
-                hatch={hatch}
-                isNew={newlyRevealed.has(item.structure.id)}
-              />
-            ))}
-          </g>
-          <g aria-hidden="true" pointerEvents="none" opacity={0.4}>
-            {Arr.map(scene.hops, (item) => (
-              <HiddenHop key={item.hop.id} routed={item} />
-            ))}
-          </g>
-          <g>
-            {Arr.map(scene.structures, (item) => (
-              <NameTag
-                key={item.structure.id}
-                placed={item}
-                grow={scene.growth.tag}
-              />
-            ))}
-          </g>
-          {overlay}
-        </>
-      )}
+      <Layers>
+        <g>
+          {Arr.map(scene.structures, (item) => (
+            <Structure
+              key={item.structure.id}
+              placed={item}
+              hatch={hatch}
+              isNew={newlyRevealed.has(item.structure.id)}
+            />
+          ))}
+        </g>
+        <g aria-hidden="true" pointerEvents="none" opacity={0.4}>
+          {Arr.map(scene.hops, (item) => (
+            <HiddenHop key={item.hop.id} routed={item} />
+          ))}
+        </g>
+        <g>
+          {Arr.map(scene.structures, (item) => (
+            <NameTag
+              key={item.structure.id}
+              placed={item}
+              grow={scene.growth.tag}
+            />
+          ))}
+        </g>
+        {overlay}
+      </Layers>
       <g pointerEvents="none">
         {Arr.map(scene.hops, (item) => (
           <HopLabel
             key={item.hop.id}
             routed={item}
-            shown={labelShown(item.hop.id)}
+            shown={labelShown?.(item.hop.id) === true}
             grow={scene.growth.label}
           />
         ))}

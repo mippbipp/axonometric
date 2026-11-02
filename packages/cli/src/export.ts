@@ -139,7 +139,11 @@ interface Drawing {
 const contentOf = Effect.fnUntraced(function* (
   format: Format,
   drawing: Drawing
-): Effect.fn.Return<string | Uint8Array, RasteriseFailed> {
+): Effect.fn.Return<
+  string | Uint8Array,
+  RasteriseFailed,
+  FileSystem.FileSystem | Path.Path
+> {
   if (format === "excalidraw") {
     return excalidrawText(
       excalidrawOf({

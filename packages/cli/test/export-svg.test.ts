@@ -101,6 +101,16 @@ const fixtures: readonly Fixture[] = [
   },
 ];
 
+/** The size in pixels an SVG file says it is. */
+const sizeOf = (text: string) => {
+  const header =
+    /<svg[^>]* width="(?<width>\d+)" height="(?<height>\d+)"/u.exec(
+      text
+    )?.groups;
+
+  return { width: Number(header?.width), height: Number(header?.height) };
+};
+
 describe("export --format svg", () => {
   for (const fixture of fixtures) {
     it.live(
@@ -160,6 +170,7 @@ describe("export --format svg", () => {
                 const fromPage = normalised(
                   decoder.decode(yield* exportFile(page, "svg"))
                 );
+
                 const fromCli = normalised(yield* fs.readFileString(target));
 
                 assert.isTrue(
@@ -243,21 +254,10 @@ describe("export --format png", () => {
         const home = yield* makeHome(yield* crowdedMap);
         const map = path.join(home, "crowded", "map");
 
-        const sizeOf = (text: string) => {
-          const header =
-            /<svg[^>]* width="(?<width>\d+)" height="(?<height>\d+)"/u.exec(
-              text
-            )?.groups;
-
-          return {
-            width: Number(header?.width),
-            height: Number(header?.height),
-          };
-        };
-
         const corner = Effect.fnUntraced(function* (background: string) {
           const svg = path.join(home, `${background}.svg`);
           const png = path.join(home, `${background}.png`);
+
           const args = [
             "export",
             map,
@@ -266,6 +266,7 @@ describe("export --format png", () => {
             "--background",
             background,
           ];
+
           const drawn = yield* runCli(home, [
             ...args,
             "--format",
@@ -273,6 +274,7 @@ describe("export --format png", () => {
             "-o",
             svg,
           ]);
+
           const rasterised = yield* runCli(home, [
             ...args,
             "--format",

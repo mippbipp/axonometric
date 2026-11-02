@@ -1,9 +1,9 @@
 import { planZoneRadius, toPoints } from "@axonometric/contracts";
 import type { SceneZone } from "@axonometric/contracts";
-import { String as Str } from "effect";
+import { Array as Arr, String as Str } from "effect";
 import type { ComponentType } from "react";
 
-import { partId, useDrawing } from "./drawing-context.ts";
+import { useDrawing } from "./drawing-context.ts";
 
 /** How strong a zone's fill and outline are, as shares of ink. */
 const plateFill = 0.05;
@@ -26,10 +26,9 @@ function ZoneTitle({ drawing }: { readonly drawing: SceneZone }) {
       fontSize={10}
       fontWeight={500}
       letterSpacing={1}
-      // The page keeps the title as written and sets it in capitals with CSS;
-      // a file has no stylesheet, so it holds the capitals.
-      style={live ? { textTransform: "uppercase" } : undefined}
     >
+      {/* The page sets titles in capitals with CSS, keeping them as written
+          for assistive technology; a file has no stylesheet. */}
       {live ? title : Str.toUpperCase(title)}
     </text>
   );
@@ -37,13 +36,12 @@ function ZoneTitle({ drawing }: { readonly drawing: SceneZone }) {
 
 /** A zone in the Iso view: a plate on the ground, with its title. */
 export function IsoPlate({ drawing }: { readonly drawing: SceneZone }) {
-  const environment = useDrawing();
-  const { paint } = environment;
+  const { paint, idOf } = useDrawing();
 
   return (
     <g
       data-zone={drawing.zone.group.id}
-      id={partId(environment, "zone", drawing.zone.group.id)}
+      id={idOf("zone", drawing.zone.group.id) ?? undefined}
     >
       <polygon
         data-zone-plate=""
@@ -61,14 +59,13 @@ export function IsoPlate({ drawing }: { readonly drawing: SceneZone }) {
 
 /** A zone in Plan view: a rounded outline from above, with its title. */
 export function PlanPlate({ drawing }: { readonly drawing: SceneZone }) {
-  const environment = useDrawing();
-  const { paint } = environment;
+  const { paint, idOf } = useDrawing();
   const { bounds } = drawing;
 
   return (
     <g
       data-zone={drawing.zone.group.id}
-      id={partId(environment, "zone", drawing.zone.group.id)}
+      id={idOf("zone", drawing.zone.group.id) ?? undefined}
     >
       <rect
         data-zone-plate=""
@@ -103,7 +100,7 @@ export function Zones({
 }) {
   return (
     <g data-zones="">
-      {zones.map((drawing) => (
+      {Arr.map(zones, (drawing) => (
         <Plate key={drawing.zone.group.id} drawing={drawing} />
       ))}
     </g>

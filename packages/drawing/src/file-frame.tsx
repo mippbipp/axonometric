@@ -1,4 +1,6 @@
-import { partId, useDrawing } from "./drawing-context.ts";
+import type { ReactNode } from "react";
+
+import { useDrawing } from "./drawing-context.ts";
 import { frameAttributes } from "./look.ts";
 import type { StructureFrameProps } from "./structure-drawing.ts";
 
@@ -15,11 +17,11 @@ export function FileFrame({
   look,
   children,
 }: StructureFrameProps) {
-  const environment = useDrawing();
+  const { idOf } = useDrawing();
 
   return (
     <g
-      id={partId(environment, "structure", id)}
+      id={idOf("structure", id) ?? undefined}
       data-structure={id}
       data-shape={shape}
       data-status={status}
@@ -30,4 +32,9 @@ export function FileFrame({
       {children}
     </g>
   );
+}
+
+/** A file has no editor around its structures. */
+export function PassThrough({ children }: { readonly children: ReactNode }) {
+  return <>{children}</>;
 }

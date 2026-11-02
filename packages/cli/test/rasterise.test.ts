@@ -1,6 +1,3 @@
-import { promisify } from "node:util";
-import { inflate } from "node:zlib";
-
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";

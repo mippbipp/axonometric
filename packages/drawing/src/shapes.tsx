@@ -1,23 +1,25 @@
-import { dashes, isoHeights, textSizes } from "@axonometric/contracts";
-import type {
-  Placement,
-  ScreenRect,
-  Shape,
-  Structure,
-} from "@axonometric/contracts";
 import {
   corners,
+  dashes,
+  isoHeights,
   project,
+  textSizes,
   tileHeight,
   tileWidth,
   toPoints,
 } from "@axonometric/contracts";
-import type { ScreenPoint } from "@axonometric/contracts";
+import type {
+  Placement,
+  ScreenPoint,
+  ScreenRect,
+  Shape,
+  Structure,
+} from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
 import { useDrawing } from "./drawing-context.ts";
-import { LookContext, lookOf, useHatching, useLook } from "./look.ts";
+import { LookContext, looksOf, useHatching, useLook } from "./look.ts";
 import type { StructureDrawingProps } from "./structure-drawing.ts";
 
 // How each shape is drawn in the Iso view. Every shape stands on its
@@ -595,7 +597,7 @@ export function IsoStructure({
 }: StructureDrawingProps) {
   const { paint, Frame } = useDrawing();
   const Drawing = drawings[structure.shape];
-  const look = lookOf(structure.status, paint);
+  const look = looksOf(paint)[structure.status];
 
   return (
     <Frame

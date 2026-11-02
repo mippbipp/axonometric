@@ -20,8 +20,7 @@ const stylesheet = Effect.gen(function* () {
 }).pipe(Effect.orDie, Effect.provide(NodeServices.layer));
 
 /** `faceOff` is `--face-off`. */
-const kebab = (name: string) =>
-  name.replaceAll(/[A-Z]/gu, (letter) => `-${Str.toLowerCase(letter)}`);
+const kebab = (name: string) => Str.snakeToKebab(Str.camelToSnake(name));
 
 describe("map colours", () => {
   it.effect(

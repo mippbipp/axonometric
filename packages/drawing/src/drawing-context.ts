@@ -1,7 +1,7 @@
 import { palette } from "@axonometric/contracts";
 import { Record as Rec, String as Str } from "effect";
 import { createContext, use } from "react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 import type { StructureFrameProps } from "./structure-drawing.ts";
 
@@ -15,7 +15,7 @@ export type Paint = Readonly<Record<keyof typeof palette.light, string>>;
 
 /** `faceOff` is `--face-off`, as `index.css` writes it. */
 const variableOf = (name: string) =>
-  `var(--${name.replaceAll(/[A-Z]/gu, (letter) => `-${Str.toLowerCase(letter)}`)})`;
+  `var(--${Str.snakeToKebab(Str.camelToSnake(name))})`;
 
 /** The page's paint: one CSS variable for each colour in the palette. */
 export const pagePaint: Paint = Rec.map(palette.light, (_value, name) =>
@@ -34,18 +34,20 @@ export interface DrawingEnvironment {
   /** The group one structure's parts are drawn in. */
   readonly Frame: ComponentType<StructureFrameProps>;
   /**
-   * What starts the `id` of a part of a file, such as `chapter-3-`, or
-   * `undefined` on the page, where parts have no ids.
+   * Surrounds the structures, their hidden hops and their name tags. The
+   * page's editor goes here, to drag and select; a file's just passes them
+   * through.
    */
-  readonly idPrefix: string | undefined;
+  readonly Layers: ComponentType<{ readonly children: ReactNode }>;
+  /**
+   * The `id` of a part of a file, such as `chapter-3-structure-gate`, or
+   * `null` on the page, where parts have no ids.
+   */
+  readonly idOf: (
+    kind: "structure" | "hop" | "zone",
+    id: string
+  ) => string | null;
 }
-
-/** The `id` of a map part, or `undefined` where the drawing has no ids. */
-export const partId = (
-  { idPrefix }: DrawingEnvironment,
-  kind: "structure" | "hop" | "zone",
-  id: string
-) => (idPrefix === undefined ? undefined : `${idPrefix}${kind}-${id}`);
 
 export const DrawingContext = createContext<DrawingEnvironment | null>(null);
 

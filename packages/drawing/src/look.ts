@@ -29,37 +29,33 @@ export interface Look {
 /** How faint a switched-off structure's hatching is. */
 const offHatchOpacity = 0.3;
 
-export const lookOf = (status: Status, paint: Paint): Look => {
-  switch (status) {
-    case "planned":
-      return {
-        paint,
-        face: paint.paper,
-        solid: paint.ink,
-        dash: dashes.planned,
-        hatched: false,
-        hatchOpacity: undefined,
-      };
-    case "off":
-      return {
-        paint,
-        face: paint.faceOff,
-        solid: paint.muted,
-        dash: undefined,
-        hatched: true,
-        hatchOpacity: offHatchOpacity,
-      };
-    case "live":
-      return {
-        paint,
-        face: paint.face,
-        solid: paint.ink,
-        dash: undefined,
-        hatched: true,
-        hatchOpacity: undefined,
-      };
-  }
-};
+/** The look of each status in `paint`. */
+export const looksOf = (paint: Paint): Readonly<Record<Status, Look>> => ({
+  live: {
+    paint,
+    face: paint.face,
+    solid: paint.ink,
+    dash: undefined,
+    hatched: true,
+    hatchOpacity: undefined,
+  },
+  planned: {
+    paint,
+    face: paint.paper,
+    solid: paint.ink,
+    dash: dashes.planned,
+    hatched: false,
+    hatchOpacity: undefined,
+  },
+  off: {
+    paint,
+    face: paint.faceOff,
+    solid: paint.muted,
+    dash: undefined,
+    hatched: true,
+    hatchOpacity: offHatchOpacity,
+  },
+});
 
 /** The look of the structure being drawn, set by its drawing. */
 export const LookContext = createContext<Look | null>(null);
@@ -69,7 +65,7 @@ export const useLook = (): Look => {
   const look = use(LookContext);
   const { paint } = useDrawing();
 
-  return look ?? lookOf("live", paint);
+  return look ?? looksOf(paint).live;
 };
 
 /** The fill of a face of the structure being drawn. */
