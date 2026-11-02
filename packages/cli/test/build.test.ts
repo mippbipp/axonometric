@@ -109,7 +109,12 @@ describe("build", () => {
       );
       assert.include(page, String.raw`"name":"\u003c/script>\u003cb>gate"`);
       assert.notInclude(page, "</script><b>gate");
-      assert.notMatch(page, /<(?:link|script)[^>]+(?:src|href)=/u);
+      // The inlined scripts hold strings that look like tags, such as React's
+      // server renderer's, so only the markup around them is checked.
+      assert.notMatch(
+        Str.replace(/(?<=<script[^>]*>)[^]*?(?=<\/script>)/gu, "")(page),
+        /<(?:link|script)[^>]+(?:src|href)=/u
+      );
     })
   );
 

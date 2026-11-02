@@ -588,13 +588,15 @@ describe("export", () => {
       Effect.gen(function* () {
         const { page } = yield* lastChapter;
 
-        yield* inPage<undefined>(
-          page,
-          `document.querySelector("[data-map-layer] [data-viewport]").removeAttribute("data-viewport")`
-        );
+        // The SVG is drawn from the map's data, not read back from the page,
+        // so a failure comes from the browser: a save that can't start, or a
+        // picture it can't decode.
         yield* Effect.promise(() =>
           page.evaluate(
-            `window.__saved = 0; document.addEventListener("click", (event) => { if (event.target instanceof HTMLAnchorElement && event.target.download) window.__saved += 1; }, true)`
+            `window.__saved = 0;
+             document.addEventListener("click", (event) => { if (event.target instanceof HTMLAnchorElement && event.target.download) window.__saved += 1; }, true);
+             URL.createObjectURL = () => { throw new Error("no saving"); };
+             HTMLImageElement.prototype.decode = () => Promise.reject(new Error("no decoding"));`
           )
         );
 
