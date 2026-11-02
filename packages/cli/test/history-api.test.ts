@@ -15,6 +15,7 @@ import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
 import { makeHome, startServe } from "./harness.ts";
+import { acceptChanges, get, moveOf } from "./revisions.ts";
 
 // The history routes of a real serve, over plain HTTP: what they list, what
 // they refuse, and the event that tells open pages a revision was saved.
@@ -29,78 +30,16 @@ const decodeEvent = Schema.decodeUnknownEffect(
   Schema.fromJsonString(ServerEvent)
 );
 
-const ownOrigin = (url: string) => ({
-  origin: url,
-  "content-type": "application/json",
-});
-
-const pageTo = (x: number, y: number) => [
-  {
-    id: `move-${x}-${y}`,
-    kind: "move",
-    moves: [{ target: { kind: "structure", id: "page" }, position: { x, y } }],
-  },
-];
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
-
-const send = (request: HttpClientRequest.HttpClientRequest) =>
-  HttpClient.HttpClient.use((client) => client.execute(request)).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (body): Sent => ({
-        status: response.status,
-        body,
-      }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
-  );
-
-const get = (url: string, target: string) =>
-  send(HttpClientRequest.get(new URL(target, url)));
-
-const write = (
-  method: "put" | "post",
-  url: string,
-  target: string,
-  body: unknown
-) =>
-  send(
-    HttpClientRequest[method](new URL(target, url)).pipe(
-      HttpClientRequest.setHeaders(ownOrigin(url)),
-      HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
-    )
-  );
-
 /**
  * Moves the page to `[x, y]` and accepts it, through the API, as the next
  * revision. `base` is the file revision of proposals.json before the move.
  */
-const acceptMove = Effect.fnUntraced(function* (
+const acceptMove = (
   url: string,
   base: number,
   to: readonly [number, number],
   message: string
-) {
-  const put = yield* write("put", url, "/api/proposals/layout", {
-    baseFileRevision: base,
-    layout: pageTo(to[0], to[1]),
-  });
-
-  assert.strictEqual(put.status, 200, put.body);
-
-  const accepted = yield* write("post", url, "/api/proposals/accept", {
-    baseFileRevision: base + 1,
-    changeIds: "all",
-    message,
-  });
-
-  assert.strictEqual(accepted.status, 200, accepted.body);
-});
+) => acceptChanges(url, base, [moveOf(`move-${to[0]}-${to[1]}`, "page", to[0], to[1])], message);
 
 /** The review map served on a free port, with two revisions saved. */
 const servedWithTwo = Effect.gen(function* () {
