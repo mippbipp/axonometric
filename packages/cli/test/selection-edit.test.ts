@@ -863,11 +863,10 @@ describe("undo and redo", () => {
   );
 });
 
-/** What a structure looks like on screen: its outline, face, badge and ring. */
+/** What a structure looks like on screen: its outline, face and ring. */
 interface Look {
   readonly stroke: string;
   readonly face: string;
-  readonly badge: boolean;
   readonly ring: string | null;
   readonly ringDash: string | null;
 }
@@ -876,7 +875,6 @@ const LookJson = Schema.fromJsonString(
   Schema.Struct({
     stroke: Schema.String,
     face: Schema.String,
-    badge: Schema.Boolean,
     ring: Schema.NullOr(Schema.String),
     ringDash: Schema.NullOr(Schema.String),
   })
@@ -886,23 +884,18 @@ const decodeLook = Schema.decodeUnknownEffect(LookJson);
 
 /** A look as one line, for telling looks apart. */
 const lookKey = (look: Look) =>
-  Arr.join(
-    [look.stroke, look.face, String(look.badge), look.ring ?? "none"],
-    "|"
-  );
+  Arr.join([look.stroke, look.face, look.ring ?? "none"], "|");
 
 const lookOf = (page: Page, id: string) =>
   Effect.promise(() =>
     page.evaluate<string>(`(() => {
       const box = document.querySelector('[data-structure="${id}"]');
       const face = box.querySelector("[data-face]");
-      const badge = document.querySelector('[data-pending-badge="${id}"]');
       const ring = document.querySelector('[data-multi-selection-marker="${id}"]');
 
       return JSON.stringify({
         stroke: getComputedStyle(box).stroke,
         face: getComputedStyle(face).fill,
-        badge: badge !== null,
         ring: ring === null ? null : getComputedStyle(ring).stroke,
         ringDash: ring === null ? null : getComputedStyle(ring).strokeDasharray,
       });

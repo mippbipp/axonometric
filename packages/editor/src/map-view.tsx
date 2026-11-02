@@ -17,10 +17,12 @@ import { Array as Arr, String as Str } from "effect";
 import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { useCompare } from "./compare-context.ts";
+import { CompareHops, CompareRings } from "./compare-look.tsx";
 import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
 import { pageDrawing } from "./page-environment.ts";
-import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
+import { AcceptedOutlines } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { routesOf } from "./projection.ts";
 import { cachedSceneOf } from "./scene-cache.ts";
@@ -106,6 +108,7 @@ export function MapView({
   const idPrefix = Str.replaceAll(/\W/gu, "")(useId());
   const hatch = `${idPrefix}hatch`;
   const selectedHop = useSelectedHop();
+  const marks = useCompare();
   const [hoveredHop, setHoveredHop] = useState<string | null>(null);
   // The zoom the text is sized for, which the viewport reports as it zooms.
   const [textZoom, setTextZoom] = useState(1);
@@ -203,9 +206,14 @@ export function MapView({
                   view={view}
                 />
                 <AcceptedOutlines structures={scene.structures} view={view} />
+                <CompareRings
+                  structures={scene.structures}
+                  view={view}
+                  marks={marks}
+                />
+                <CompareHops hops={scene.hops} marks={marks} />
               </g>
             }
-            overlay={<PendingBadges structures={scene.structures} />}
             onHopHover={setHoveredHop}
             labelShown={(hop) => hop === selectedHop || hop === hoveredHop}
           />
