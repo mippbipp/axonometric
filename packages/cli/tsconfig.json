@@ -1,7 +1,8 @@
 {
   "extends": "@axonometric/config/tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "*.config.ts"],
   "exclude": ["node_modules"]

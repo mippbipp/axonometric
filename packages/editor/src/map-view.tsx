@@ -1,231 +1,32 @@
-import type {
-  MapState,
-  Scene,
-  SceneHop,
-  SceneStructure,
-  View,
+import type { MapState, SceneStructure, View } from "@axonometric/contracts";
+import {
+  dashes,
+  fitFloorOf,
+  groundOutline,
+  groundProjections,
+  textZoomOf,
+  toPoints,
 } from "@axonometric/contracts";
 import {
-  arrowheadOf,
-  arrowPolygon,
-  fitFloorOf,
-  groundProjections,
-  nameTagText,
-  textSizes,
-  textZoomOf,
-} from "@axonometric/contracts";
+  DrawingContext,
+  drawnIn,
+  MapDrawing,
+  viewDrawings,
+} from "@axonometric/drawing";
 import { Array as Arr, String as Str } from "effect";
 import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { BoxSelect } from "./box-select.tsx";
+import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
-import { LayoutEditor } from "./layout-editor.tsx";
 import { NoteMarkers } from "./note-markers.tsx";
+import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
-import { groundOutline, routesOf, toPoints } from "./projection.ts";
-import type { ScreenPoint } from "./projection.ts";
+import { routesOf } from "./projection.ts";
 import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
 import { Viewport } from "./viewport.tsx";
-import { viewDrawings } from "./views.tsx";
-import type { ViewDrawing } from "./views.tsx";
-import { Zones } from "./zones.tsx";
-
-function NameTag({
-  placed,
-  grow,
-}: {
-  readonly placed: SceneStructure;
-  /** How much the text is grown, to match the size the scene placed it at. */
-  readonly grow: number;
-}) {
-  const { tag } = placed;
-
-  return (
-    <g data-name-tag={placed.structure.id} className="pointer-events-none">
-      <rect
-        x={tag.left}
-        y={tag.top}
-        width={tag.right - tag.left}
-        height={tag.bottom - tag.top}
-        className="fill-paper stroke-ink"
-        strokeWidth={0.9}
-      />
-      <text
-        x={(tag.left + tag.right) / 2}
-        y={tag.top + textSizes.tag.baseline * grow}
-        textAnchor="middle"
-        fontSize={textSizes.tag.font * grow}
-        className="fill-ink stroke-none font-mono"
-      >
-        {nameTagText(placed.structure)}
-      </text>
-    </g>
-  );
-}
-
-const diamond = (at: ScreenPoint) =>
-  toPoints([
-    { sx: at.sx, sy: at.sy - 3.5 },
-    { sx: at.sx + 3.5, sy: at.sy },
-    { sx: at.sx, sy: at.sy + 3.5 },
-    { sx: at.sx - 3.5, sy: at.sy },
-  ]);
-
-/**
- * The arrowhead on the last leg: its tip on the route's end and its base
- * across the line, `arrowLength` back.
- */
-const arrowPoints = (points: readonly ScreenPoint[]) => {
-  const head = arrowheadOf(points);
-  const polygon = arrowPolygon(points);
-
-  return head === undefined || polygon === undefined
-    ? null
-    : { base: head.base, polygon: toPoints(polygon) };
-};
-
-/** A hop's line, with the arrowhead drawn as part of its last segment. */
-function Arrow({
-  points,
-  dashed = false,
-  head,
-}: {
-  readonly points: readonly ScreenPoint[];
-  readonly dashed?: boolean;
-  readonly head: boolean;
-}) {
-  const arrow = head ? arrowPoints(points) : null;
-
-  // The line stops at the arrowhead's base, so the head's tip is the end.
-  const line = arrow === null ? points : [...points.slice(0, -1), arrow.base];
-
-  return (
-    <>
-      <polyline
-        points={toPoints(line)}
-        fill="none"
-        strokeWidth={1.4}
-        strokeDasharray={dashed ? "4 3" : undefined}
-      />
-      {arrow === null ? null : (
-        <polygon
-          data-arrowhead=""
-          points={arrow.polygon}
-          className="fill-ink"
-          stroke="none"
-        />
-      )}
-    </>
-  );
-}
-
-function HopArrow({
-  routed,
-  markBends,
-  onHover,
-}: {
-  readonly routed: SceneHop;
-  /** Whether to mark the route's bends with diamonds. */
-  readonly markBends: boolean;
-  /** Called with the hop's id while the pointer is on its line, else null. */
-  readonly onHover: (hop: string | null) => void;
-}) {
-  const { hop, points } = routed;
-  const bends = markBends ? routed.bends : [];
-
-  return (
-    <g
-      data-hop={hop.id}
-      data-route={toPoints(points)}
-      className="stroke-ink"
-      onPointerEnter={() => {
-        onHover(hop.id);
-      }}
-      onPointerLeave={() => {
-        onHover(null);
-      }}
-    >
-      <title>{hop.label}</title>
-      {/* A wide, invisible line, so the hop is easy to point at. */}
-      <polyline
-        points={toPoints(points)}
-        fill="none"
-        stroke="transparent"
-        strokeWidth={10}
-      />
-      <Arrow points={points} head />
-      {Arr.map(bends, (bend) => (
-        <polygon
-          key={`${bend.sx},${bend.sy}`}
-          points={diamond(bend)}
-          className="fill-ink"
-          stroke="none"
-        />
-      ))}
-    </g>
-  );
-}
-
-/**
- * The stretches of a hop's route that boxes are drawn over, drawn again
- * faintly on top of those boxes, so the hop never disappears. The stretch
- * that reaches an end hidden behind a box carries a faint arrowhead, since
- * the solid one is under the box; an end on a visible edge has its solid
- * head and no faint one.
- */
-function HiddenHop({ routed }: { readonly routed: SceneHop }) {
-  return (
-    <g data-hidden-hop={routed.hop.id} className="stroke-ink">
-      {Arr.map(routed.hidden, (stretch) => (
-        <Arrow
-          key={toPoints(stretch.points)}
-          points={stretch.points}
-          dashed
-          head={stretch.reachesEnd}
-        />
-      ))}
-    </g>
-  );
-}
-
-/**
- * A hop's label, drawn above every box so none hides it. A label the scene
- * found no room for shows only while the pointer is on its hop or its
- * packet is selected.
- */
-function HopLabel({
-  routed,
-  shown,
-  grow,
-}: {
-  readonly routed: SceneHop;
-  /** Whether to show the label even where the scene found no room. */
-  readonly shown: boolean;
-  /** How much the text is grown, to match the size the scene placed it at. */
-  readonly grow: number;
-}) {
-  const { hop, label, hoverLabel } = routed;
-  const at = label ?? (shown ? hoverLabel : undefined);
-
-  return at === undefined ? null : (
-    <text
-      data-hop-label={hop.id}
-      data-hop-label-fits={label !== undefined}
-      x={(at.left + at.right) / 2}
-      y={at.bottom - textSizes.label.baseline * grow}
-      textAnchor="middle"
-      fontSize={textSizes.label.font * grow}
-      className="fill-ink stroke-paper font-mono"
-      strokeWidth={3}
-      paintOrder="stroke"
-    >
-      {hop.label}
-    </text>
-  );
-}
 
 /** A dashed outline around the footprint of a newly revealed structure. */
 function NewMarker({
@@ -249,35 +50,12 @@ function NewMarker({
       fill="none"
       className="stroke-ink motion-safe:animate-pulse"
       strokeWidth={1.4}
-      strokeDasharray="5 4"
+      strokeDasharray={dashes.fresh}
     />
   );
 }
 
 const none: ReadonlySet<string> = new Set();
-
-/** Everything a scene draws, with the structures each belongs to. */
-const drawnIn = (scene: Scene, drawing: ViewDrawing) => [
-  ...Arr.map(scene.structures, (item) => ({
-    ids: [item.structure.id],
-    points: drawing.extentOf(item),
-  })),
-  ...Arr.map(scene.hops, ({ hop, points, label }) => ({
-    ids: [hop.from, hop.to],
-    points:
-      label === undefined
-        ? points
-        : [
-            ...points,
-            { sx: label.left, sy: label.top },
-            { sx: label.right, sy: label.bottom },
-          ],
-  })),
-  ...Arr.map(scene.zones, ({ zone, plate, title }) => ({
-    ids: zone.members,
-    points: [...plate, ...(title ?? [])],
-  })),
-];
 
 /**
  * The hop whose packet is selected, or `undefined` outside a playback
@@ -352,7 +130,6 @@ export function MapView({
   const scene = sceneAt(textZoom);
 
   const drawing = viewDrawings[view];
-  const { Structure } = drawing;
 
   const marked = drawing.newRing
     ? Arr.filter(scene.structures, ({ structure }) =>
@@ -364,7 +141,7 @@ export function MapView({
 
   const fitAt = useCallback(
     (zoom: number) => {
-      const drawn = drawnIn(sceneAt(textZoomOf(zoom)), drawing);
+      const drawn = drawnIn({ scene: sceneAt(textZoomOf(zoom)), drawing });
 
       return fitOf({ drawn, fitTo: fitIds }).bounds;
     },
@@ -393,95 +170,54 @@ export function MapView({
 
   const key = fitKey ?? fitOf({ drawn: [], fitTo: fitIds }).key;
 
+  const editorView = useMemo(
+    () => ({ view, placements: state.layout.structures, revealed }),
+    [view, state.layout.structures, revealed]
+  );
+
   return (
-    <Viewport
-      title={`${drawing.title} of ${state.data.overview.title}`}
-      fitAt={fitAt}
-      fitKey={key}
-      fitFloor={fitFloor}
-      onTextZoom={setTextZoom}
-      ground={groundProjections[view]}
-    >
-      <defs>
-        <pattern
-          id={hatch}
-          width={6}
-          height={6}
-          patternUnits="userSpaceOnUse"
-          patternTransform="rotate(45)"
+    <DrawingContext value={pageDrawing}>
+      <EditorViewContext value={editorView}>
+        <Viewport
+          title={`${drawing.title} of ${state.data.overview.title}`}
+          fitAt={fitAt}
+          fitKey={key}
+          fitFloor={fitFloor}
+          onTextZoom={setTextZoom}
+          ground={groundProjections[view]}
         >
-          <line
-            x1={0}
-            y1={0}
-            x2={0}
-            y2={6}
-            stroke="currentColor"
-            strokeWidth={1.1}
+          <MapDrawing
+            scene={scene}
+            hatch={hatch}
+            newlyRevealed={newlyRevealed}
+            underlay={
+              <g>
+                {Arr.map(marked, (item) => (
+                  <NewMarker
+                    key={item.structure.id}
+                    placed={item}
+                    view={view}
+                  />
+                ))}
+                <SelectionMarker
+                  placements={state.layout.structures}
+                  view={view}
+                />
+                <AcceptedOutlines structures={scene.structures} view={view} />
+              </g>
+            }
+            overlay={
+              <>
+                <PendingBadges structures={scene.structures} />
+                <NoteMarkers scene={scene} />
+              </>
+            }
+            onHopHover={setHoveredHop}
+            labelShown={(hop) => hop === selectedHop || hop === hoveredHop}
           />
-        </pattern>
-      </defs>
-      <Zones zones={scene.zones} Plate={drawing.Plate} />
-      <g>
-        {Arr.map(marked, (item) => (
-          <NewMarker key={item.structure.id} placed={item} view={view} />
-        ))}
-        <SelectionMarker placements={state.layout.structures} view={view} />
-        <AcceptedOutlines structures={scene.structures} view={view} />
-      </g>
-      <g>
-        {Arr.map(scene.hops, (item) => (
-          <HopArrow
-            key={item.hop.id}
-            routed={item}
-            markBends={drawing.markBends}
-            onHover={setHoveredHop}
-          />
-        ))}
-      </g>
-      <BoxSelect
-        view={view}
-        placements={state.layout.structures}
-        revealed={revealed}
-      />
-      <LayoutEditor view={view} placements={state.layout.structures}>
-        <g>
-          {Arr.map(scene.structures, (item) => (
-            <Structure
-              key={item.structure.id}
-              placed={item}
-              hatch={hatch}
-              isNew={newlyRevealed.has(item.structure.id)}
-            />
-          ))}
-        </g>
-        <g aria-hidden="true" className="pointer-events-none opacity-40">
-          {Arr.map(scene.hops, (item) => (
-            <HiddenHop key={item.hop.id} routed={item} />
-          ))}
-        </g>
-        <g>
-          {Arr.map(scene.structures, (item) => (
-            <NameTag
-              key={item.structure.id}
-              placed={item}
-              grow={scene.growth.tag}
-            />
-          ))}
-        </g>
-        <PendingBadges structures={scene.structures} />
-        <NoteMarkers structures={scene.structures} />
-      </LayoutEditor>
-      <g className="pointer-events-none">
-        {Arr.map(scene.hops, (item) => (
-          <HopLabel
-            key={item.hop.id}
-            routed={item}
-            shown={item.hop.id === selectedHop || item.hop.id === hoveredHop}
-            grow={scene.growth.label}
-          />
-        ))}
-      </g>
-      {children}
-    </Viewport>
+          {children}
+        </Viewport>
+      </EditorViewContext>
+    </DrawingContext>
   );
 }

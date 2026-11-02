@@ -48,7 +48,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     pnpm = pnpm_12;
     fetcherVersion = 5;
     # Changes whenever pnpm-lock.yaml changes. See CONTRIBUTING.md.
-    hash = "sha256-Vxv6LOT4KZDwh4uIHef3ZuUlWQas4TLTqurOCA91tGk=";
+    hash = "sha256-3w3LXNwqAsV2Ko7FIh6ztC8yzu4QcAeYl13bO6Z4Hxc=";
   };
 
   nativeBuildInputs = [

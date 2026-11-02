@@ -478,6 +478,54 @@ describe("the agent's verdicts", () => {
   );
 });
 
+describe("exports", () => {
+  it.live(
+    "carry no note marker, and equal the CLI's SVG while a note sits on the map",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { home, root, page } = yield* servedReview();
+
+        yield* pinServer(page);
+        yield* pinNote(page, "Why a server?");
+        yield* waitFor(page, '[data-note-marker="server"]');
+
+        yield* click(page, '[data-control="export"]');
+
+        const [download] = yield* Effect.promise(() =>
+          Promise.all([
+            page.waitForEvent("download"),
+            page.locator('[data-export-item="svg"]').click(),
+          ])
+        );
+
+        const saved = yield* Effect.promise(() => download.path());
+        const fromPage = yield* fs.readFileString(saved);
+        const target = path.join(root, "out.svg");
+
+        const exported = yield* runCli(home, [
+          "export",
+          home,
+          "--format",
+          "svg",
+          "--view",
+          "iso",
+          "--chapter",
+          "2",
+          "--output",
+          target,
+        ]);
+
+        assert.strictEqual(exported.exitCode, 0, exported.stderr);
+        assert.notInclude(fromPage, "data-note-marker");
+        assert.notInclude(fromPage, "data-verdict");
+        assert.isTrue(fromPage === (yield* fs.readFileString(target)));
+      }).pipe(Effect.provide(NodeServices.layer)),
+    90_000
+  );
+});
+
 describe("the CLI and the page writing at once", () => {
   it.live(
     "a commit running while the page writes a note loses neither",
