@@ -69,7 +69,10 @@ export const sectionTitles: Readonly<Record<Section, string>> = {
  * by id when the map has no such one. Kinds that mention neither ignore it.
  */
 export interface Titles {
+  /** A group's title on the proposed map, so a new group has its title. */
   readonly group: (id: string) => string;
+  /** A group's title as data.mjs has it now, which a rename changes. */
+  readonly acceptedGroup: (id: string) => string;
   readonly chapter: (id: string) => string;
 }
 

@@ -354,7 +354,9 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
                 structure: (id) => structures.get(id) ?? id,
                 hop: hopLabelOf(hops),
                 group: titleIn(proposed.state.data.groups),
-                chapter: titleIn(proposed.state.data.chapters),
+                // A rename names the group as data.mjs has it now.
+                acceptedGroup: titleIn(data.groups),
+                chapter: titleIn(data.chapters),
               },
             }),
           },

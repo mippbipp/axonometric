@@ -1,15 +1,19 @@
-import type { GridPoint, Structure } from "@axonometric/contracts";
-import { Array as Arr, Match } from "effect";
+import type { GridPoint, Group, Structure } from "@axonometric/contracts";
+import { Array as Arr, Match, Option } from "effect";
 import { useId, useMemo, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import { AddStructureForm } from "./add-structure.tsx";
+import { ChapterEditor } from "./chapter-editor.tsx";
 import { controlClass } from "./control-class.ts";
 import { DragWarnings } from "./drag-preview.tsx";
 import { useEditing } from "./editing-context.ts";
+import { GroupPanel } from "./group-panel.tsx";
 import { useHistory } from "./history-context.ts";
 import { HistoryTab } from "./history-tab.tsx";
 import { HopPanel } from "./hop-panel.tsx";
+import { useNewGroupForm } from "./new-group-context.ts";
+import { NewGroupForm } from "./new-group.tsx";
 import { useNoteTool } from "./note-tool-context.ts";
 import { PendingTab } from "./pending-tab.tsx";
 import { usePlacing } from "./place-context.ts";
@@ -63,6 +67,7 @@ function ChapterStory() {
           </ul>
         </div>
       )}
+      <ChapterEditor />
       <div className="flex gap-1.5">
         <button
           type="button"
@@ -150,6 +155,7 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
 export type PanelContent =
   | { readonly kind: "chapter" }
   | { readonly kind: "hop"; readonly hop: string }
+  | { readonly kind: "group"; readonly group: Group }
   | { readonly kind: "spot"; readonly spot: GridPoint }
   | { readonly kind: "packet"; readonly packet: SelectedPacket }
   | { readonly kind: "structure"; readonly structure: Structure }
@@ -160,12 +166,14 @@ const panelContentOf = ({
   pinned,
   inside,
   hop,
+  group,
   spot,
 }: {
   readonly packet: SelectedPacket | null;
   readonly pinned: Structure | undefined;
   readonly inside: Structure | undefined;
   readonly hop: string | null;
+  readonly group: Group | undefined;
   readonly spot: GridPoint | null;
 }): PanelContent => {
   if (inside !== undefined) {
@@ -178,6 +186,10 @@ const panelContentOf = ({
 
   if (hop !== null) {
     return { kind: "hop", hop };
+  }
+
+  if (group !== undefined) {
+    return { kind: "group", group };
   }
 
   if (spot !== null) {
@@ -193,6 +205,7 @@ const renderContent = Match.type<PanelContent>().pipe(
   Match.discriminatorsExhaustive("kind")({
     chapter: () => <ChapterStory />,
     hop: ({ hop }) => <HopPanel key={hop} id={hop} />,
+    group: ({ group }) => <GroupPanel key={group.id} group={group} />,
     spot: ({ spot }) => <SpotPanel key={`${spot.x},${spot.y}`} spot={spot} />,
     packet: ({ packet }) => <PacketDetails packet={packet} />,
     structure: ({ structure }) => (
@@ -286,6 +299,36 @@ const useWaitingCount = () =>
   ).length;
 
 /**
+ * Names what the side panel is pinned to, so a tab other than Details stays
+ * open until it changes: the structure, else the group, the hop or the spot.
+ */
+const pickedOf = ({
+  selected,
+  selectedGroup,
+  selectedHop,
+  spot,
+}: {
+  readonly selected: string | null;
+  readonly selectedGroup: string | null;
+  readonly selectedHop: string | null;
+  readonly spot: GridPoint | null;
+}): string | null => {
+  if (selected !== null) {
+    return selected;
+  }
+
+  if (selectedGroup !== null) {
+    return `group:${selectedGroup}`;
+  }
+
+  if (selectedHop !== null) {
+    return `hop:${selectedHop}`;
+  }
+
+  return spot === null ? null : `spot:${spot.x},${spot.y}`;
+};
+
+/**
  * The side panel next to the view. Details shows one of the `PanelContent`
  * kinds; Open questions lists every question revealed so far; on a page
  * `serve` serves, Pending lists the pending layout changes and History lists
@@ -293,7 +336,9 @@ const useWaitingCount = () =>
  */
 export function SidePanel() {
   const { selected: packet } = usePlayback();
-  const { selected, selectedHop, inside } = useSelection();
+  const { selected, selectedHop, selectedGroup, inside } = useSelection();
+  const { state } = useWalkthrough();
+  const newGroup = useNewGroupForm();
   const spot = useNoteTool()?.spot ?? null;
   const byId = useStructuresById();
   const { open } = useRevealedQuestions();
@@ -311,13 +356,7 @@ export function SidePanel() {
   const placing = usePlacing();
 
   // A tab other than Details stays open until the selection changes.
-  const picked =
-    selected ??
-    (selectedHop === null
-      ? spot === null
-        ? null
-        : `spot:${spot.x},${spot.y}`
-      : `hop:${selectedHop}`);
+  const picked = pickedOf({ selected, selectedGroup, selectedHop, spot });
 
   const [otherTab, setOtherTab] = useState<{
     readonly tab: Tab;
@@ -416,6 +455,10 @@ export function SidePanel() {
             pinned: selected === null ? undefined : byId.get(selected),
             inside: inside === null ? undefined : byId.get(inside),
             hop: selectedHop,
+            group: Arr.findFirst(
+              state.data.groups,
+              ({ id }) => id === selectedGroup
+            ).pipe(Option.getOrUndefined),
             spot,
           })
         )}
@@ -449,6 +492,22 @@ export function SidePanel() {
             Add a structure
           </h2>
           <AddStructureForm />
+        </section>
+      ) : null}
+      {newGroup?.open === true ? (
+        <section
+          data-new-group-panel
+          aria-label="Create a group"
+          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+        >
+          <h2 className="text-xs tracking-widest uppercase opacity-70">
+            Create a group
+          </h2>
+          <NewGroupForm
+            onDone={() => {
+              newGroup.setOpen(false);
+            }}
+          />
         </section>
       ) : null}
       <DragWarnings className="border-x-0 border-b-0" />

@@ -1,4 +1,4 @@
-import { Array as Arr, Option, Result } from "effect";
+import { Array as Arr, Option, Order, Result } from "effect";
 
 import { chapterHolds, subjectOf } from "./chapter-change.ts";
 import type { ChapterChange } from "./chapter-change.ts";
@@ -23,13 +23,22 @@ export interface ChapterWorld {
 const openOf = (proposals: Proposals): readonly ChapterProposal[] =>
   proposals.chapters ?? [];
 
+const orderLast = Order.mapInput(Order.Number, (found: ChapterProposal) =>
+  found.change.action === "order" ? 1 : 0
+);
+
+/**
+ * `proposals` with `chapters` as the open chapter proposals. An order goes
+ * after the plays, so a hop the engineer adds is in the chapter when the order
+ * that lists it applies.
+ */
 const bump = (
   proposals: Proposals,
   chapters: readonly ChapterProposal[]
 ): Proposals => ({
   ...proposals,
   revision: proposals.revision + 1,
-  chapters,
+  chapters: Arr.sort(chapters, orderLast),
 });
 
 const idInUse = (proposals: Proposals, id: string) =>

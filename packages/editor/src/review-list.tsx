@@ -1,5 +1,16 @@
-import { hopLabelOf, specOf } from "@axonometric/contracts";
-import type { BatchItem, ReviewEntry, Verdict } from "@axonometric/contracts";
+import {
+  bySection,
+  hopLabelOf,
+  sectionTitles,
+  specOf,
+  titlesOf,
+} from "@axonometric/contracts";
+import type {
+  BatchItem,
+  ReviewEntry,
+  Section,
+  Verdict,
+} from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr, Match, Option, Record as Rec, Result } from "effect";
 import { useState } from "react";
@@ -50,6 +61,12 @@ export function VerdictBadge({
   );
 }
 
+/** The title of the group or chapter `id` in `held`, or the id when there is none. */
+const titleOf =
+  (held: readonly { readonly id: string; readonly title: string }[]) =>
+  (id: string): string =>
+    held.find((found) => found.id === id)?.title ?? id;
+
 /** What an item is, in a few words. */
 const useItemDescription = () => {
   const byId = useStructuresById();
@@ -62,8 +79,18 @@ const useItemDescription = () => {
 
   const hopName = hopLabelOf(state.data.hops);
 
+  // A new group is on the proposed map under its title, and a rename names
+  // the group as it stands now, so both are told apart.
+  const titles = titlesOf({
+    structure: nameOf,
+    hop: hopName,
+    group: titleOf(proposed?.proposed.state.data.groups ?? state.data.groups),
+    acceptedGroup: titleOf(state.data.groups),
+    chapter: titleOf(state.data.chapters),
+  });
+
   return (item: BatchItem): string => {
-    const described = specOf(item).describe(item, nameOf, hopName);
+    const described = specOf(item).describe(item, nameOf, hopName, titles);
 
     if (Option.isSome(described)) {
       return described.value;
@@ -224,7 +251,9 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
 /**
  * The proposals for the agent, in the Pending tab: the open notes,
  * suggestions, answers and questions, the items waiting in a batch, and the
- * reviewed ones with the agent's verdict and reason.
+ * reviewed ones with the agent's verdict and reason. Diagram changes and
+ * chapter changes are listed in sections of their own, as the prompt and
+ * `review` list them.
  */
 export function ReviewList() {
   const review = useReview();
@@ -239,10 +268,39 @@ export function ReviewList() {
     return null;
   }
 
+  const sections = bySection(Arr.map(entries, ({ item }) => item));
+
   return (
-    <section data-review-list className="flex flex-col gap-2">
+    <>
+      {Arr.map(sections, ({ section, items }) => (
+        <ReviewSection
+          key={section}
+          section={section}
+          entries={Arr.filter(entries, ({ item }) =>
+            items.some((held) => held.id === item.id)
+          )}
+        />
+      ))}
+    </>
+  );
+}
+
+/** One section of the review list: a heading and its rows. */
+function ReviewSection({
+  section,
+  entries,
+}: {
+  readonly section: Section;
+  readonly entries: readonly ReviewEntry[];
+}) {
+  return (
+    <section
+      data-review-list
+      data-review-section={section}
+      className="flex flex-col gap-2"
+    >
       <h3 className="text-xs tracking-widest uppercase opacity-70">
-        Proposals for the agent
+        {sectionTitles[section]}
       </h3>
       <ul className="flex flex-col gap-2">
         {Arr.map(entries, (entry) => (

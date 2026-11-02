@@ -3,6 +3,7 @@ import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
 
+import { useChapterPendingStructures } from "./chapter-marks-context.ts";
 import { spokenMarks, useCompare } from "./compare-context.ts";
 import { pendingStructures, useEditing } from "./editing-context.ts";
 import { useProposed } from "./proposed-context.ts";
@@ -44,8 +45,13 @@ export function StructureTarget({
   const isRemoved =
     proposed !== undefined && marksOf(proposed, removedMark).has(id);
 
+  // A chapter proposal tints the structure in its own chapter only.
+  const chapterPending = useChapterPendingStructures().has(id);
+
   const isPending =
-    pendingStructures(editing).has(id) || proposed?.structures.has(id) === true;
+    pendingStructures(editing).has(id) ||
+    proposed?.structures.has(id) === true ||
+    chapterPending;
 
   const marks = useCompare();
   const kinds = marks?.structures.get(id);

@@ -27,6 +27,12 @@ export interface Selection {
    */
   readonly selectedHop: string | null;
   /**
+   * The selected group's id, or `null`. A group is never selected together
+   * with a structure or a hop. Its panel, with the rename form, is pinned in
+   * the side panel.
+   */
+  readonly selectedGroup: string | null;
+  /**
    * The structures in the multi-selection, all revealed in the current
    * chapter. A chapter that hides one drops it.
    */
@@ -38,6 +44,8 @@ export interface Selection {
   readonly select: (id: string | null) => void;
   /** Selects a hop, or clears the selection with `null`. */
   readonly selectHop: (id: string | null) => void;
+  /** Selects a group, or clears the selection with `null`. */
+  readonly selectGroup: (id: string | null) => void;
   /**
    * Adds structure `id` to the multi-selection, or takes it out when it's
    * there. When the multi-selection is empty and another structure is

@@ -17,6 +17,7 @@ import { Array as Arr, String as Str } from "effect";
 import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { ChapterPendingLook } from "./chapter-pending-look.tsx";
 import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
 import { useDraftSpot } from "./draft-spot.ts";
@@ -30,6 +31,7 @@ import { NoteMarkers } from "./note-markers.tsx";
 import { SpotCursor, SpotPicker } from "./note-tool.tsx";
 import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines } from "./pending-look.tsx";
+import { PendingZones } from "./pending-zones.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { routesOf } from "./projection.ts";
 import { RemovedMarks } from "./removed-marks.tsx";
@@ -248,6 +250,7 @@ export function MapView({
             }
             underlay={
               <>
+                <PendingZones zones={scene.zones} />
                 <GroupEditor
                   view={view}
                   data={state.data}
@@ -278,12 +281,19 @@ export function MapView({
               </>
             }
             hopsOverlay={
-              <RouteEditor
-                view={view}
-                hops={scene.hops}
-                placements={state.layout.structures}
-                onHover={hoverHop}
-              />
+              <>
+                <RouteEditor
+                  view={view}
+                  hops={scene.hops}
+                  placements={state.layout.structures}
+                  onHover={hoverHop}
+                />
+                <ChapterPendingLook
+                  structures={scene.structures}
+                  hops={scene.hops}
+                  view={view}
+                />
+              </>
             }
             overlay={
               <>

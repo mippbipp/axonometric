@@ -485,7 +485,7 @@ describe("the Pending tab with proposals", () => {
         assert.include(intro, "agent");
         assert.include(
           yield* textOf(page, "[data-review-list] h3"),
-          "Proposals for the agent"
+          "Diagram changes"
         );
       }),
     60_000

@@ -79,6 +79,7 @@ const reportItem = ({
   layout,
   names,
   data,
+  groups,
 }: {
   readonly item: BatchItem;
   readonly batch: Batch;
@@ -87,11 +88,14 @@ const reportItem = ({
   readonly layout: Layout;
   readonly names: ReadonlyMap<string, string>;
   readonly data: MapData;
+  /** The groups of the proposed map, so a new group has its title. */
+  readonly groups: MapData["groups"];
 }): ReportedItem => {
   const titles = titlesOf({
     structure: (id) => names.get(id) ?? id,
     hop: hopLabelOf(data.hops),
-    group: titleIn(data.groups),
+    group: titleIn(groups),
+    acceptedGroup: titleIn(data.groups),
     chapter: titleIn(data.chapters),
   });
 
@@ -192,12 +196,12 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
 
   // A structure the engineer proposed has a name on the page and none in
   // data.mjs yet, so review names it from the proposed map.
-  const names = structureNames(
-    proposedMap({
-      state: { data: map.data, layout: map.layout },
-      proposals: map.proposals,
-    }).state.data
-  );
+  const proposedData = proposedMap({
+    state: { data: map.data, layout: map.layout },
+    proposals: map.proposals,
+  }).state.data;
+
+  const names = structureNames(proposedData);
 
   const oldest = oldestOpenBatch(map.proposals);
   const absolute = path.resolve(home);
@@ -213,6 +217,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
           layout: map.layout,
           names,
           data: map.data,
+          groups: proposedData.groups,
         })
       ),
   });

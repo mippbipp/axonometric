@@ -15,10 +15,13 @@ import {
 import { Array as Arr, Option } from "effect";
 import { useEffect, useState } from "react";
 
+import { useRevealToggle } from "./chapter-reveal.ts";
+import { useNewGroupForm } from "./new-group-context.ts";
 import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
 import { useStructuresById } from "./structures.ts";
+import { useChapterPropose } from "./use-chapter-propose.ts";
 import { usePropose } from "./use-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -44,7 +47,11 @@ export function StructureMenu() {
   const { state } = useWalkthrough();
   const { select } = useSelection();
   const { send, failure } = usePropose();
+  const chapter = useChapterPropose();
+  const newGroup = useNewGroupForm();
+  const { multiSelection, setMultiSelection } = useSelection();
   const [opened, setOpened] = useState<Opened | null>(null);
+  const reveal = useRevealToggle(opened?.id ?? "");
 
   const canPropose = proposing?.canPropose === true;
 
@@ -195,6 +202,33 @@ export function StructureMenu() {
           </MenuSubContent>
         </MenuSub>
         <MenuSeparator />
+        {reveal === undefined ? null : (
+          <MenuItem
+            data-menu="chapter-toggle"
+            disabled={reveal.unavailable !== undefined}
+            onClick={() => {
+              chapter.send(reveal.change);
+            }}
+          >
+            {reveal.label}
+          </MenuItem>
+        )}
+        <MenuItem
+          data-menu="new-group"
+          onClick={() => {
+            // The structure joins the multi-selection, so the form's
+            // "moves … into it" line names it.
+            if (!multiSelection.has(structure.id)) {
+              setMultiSelection([...multiSelection, structure.id]);
+            }
+
+            newGroup?.setOpen(true);
+          }}
+        >
+          Create a group from{" "}
+          {multiSelection.size > 1 ? "the selection" : "this"}…
+        </MenuItem>
+        <MenuSeparator />
         <MenuItem
           data-menu="delete"
           disabled={deleted}
@@ -204,6 +238,15 @@ export function StructureMenu() {
         >
           Propose deleting
         </MenuItem>
+        {chapter.failure === undefined ? null : (
+          <p
+            role="alert"
+            data-menu-chapter-failure
+            className="border-refused max-w-56 border-l-2 px-2 py-1"
+          >
+            {chapter.failure}
+          </p>
+        )}
         {failure === undefined ? null : (
           <p
             role="alert"

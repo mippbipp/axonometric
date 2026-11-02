@@ -55,7 +55,7 @@ export const groupKind: KindSpec<GroupItem> = {
     Option.some(
       change.action === "add"
         ? `Add the group ${change.group.title}`
-        : `Rename the group ${titles?.group(change.group) ?? change.group} to ${change.title}`
+        : `Rename the group ${titles?.acceptedGroup(change.group) ?? change.group} to ${change.title}`
     ),
   dangling: ({ change }, known) =>
     change.action === "add" || known.groups.has(change.group)
@@ -81,7 +81,7 @@ export const groupKind: KindSpec<GroupItem> = {
   summary: ({ id, change }, _nameOf, _hopLabelOf, titles) =>
     change.action === "add"
       ? `add group ${id}: ${quoteText(change.group.title)}, provisional id ${change.group.id}`
-      : `rename group ${id}: ${quoteText(titles?.group(change.group) ?? change.group)} to ${quoteText(change.title)}`,
+      : `rename group ${id}: ${quoteText(titles?.acceptedGroup(change.group) ?? change.group)} to ${quoteText(change.title)}`,
   facts: ({ change }, _layout, data) => ({
     before:
       change.action === "add" || data === undefined

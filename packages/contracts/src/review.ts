@@ -1054,8 +1054,10 @@ export interface Names {
   readonly structure: (id: string) => string;
   /** A hop's label. */
   readonly hop: (id: string) => string;
-  /** A group's title, or its id when the map has no such group. */
+  /** A group's title on the proposed map, or its id when there is no such group. */
   readonly group?: (id: string) => string;
+  /** A group's title as data.mjs has it now, or its id. */
+  readonly acceptedGroup?: (id: string) => string;
   /** A chapter's title, or its id when the map has no such chapter. */
   readonly chapter?: (id: string) => string;
 }
@@ -1071,6 +1073,7 @@ export const summaryLine: {
 /** `names` as the titles the kinds ask for, with the id standing in for a missing one. */
 export const titlesOf = (names: Names): Titles => ({
   group: names.group ?? ((id) => id),
+  acceptedGroup: names.acceptedGroup ?? names.group ?? ((id) => id),
   chapter: names.chapter ?? ((id) => id),
 });
 

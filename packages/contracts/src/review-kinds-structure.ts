@@ -1,3 +1,5 @@
+// oxlint-disable eslint/max-params -- KindSpec passes a kind the titles of groups and chapters as a fourth argument, after the names every kind gets.
+
 import { Array as Arr, Option, Record as Rec } from "effect";
 
 import { groupKey } from "./group-change.ts";
@@ -73,11 +75,11 @@ export const structureKind: KindSpec<StructureItem> = {
     Option.some(
       change.action === "add" ? change.structure.name : structureOf(change)
     ),
-  describe: ({ change }, nameOf) =>
+  describe: ({ change }, nameOf, _hopLabelOf, titles) =>
     Option.some(
       actionOf(change).describe({
         structure: nameOf,
-        group: (id) => id,
+        group: titles?.group ?? ((id) => id),
       })
     ),
   dangling: ({ change }, known) =>
