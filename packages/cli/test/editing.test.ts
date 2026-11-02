@@ -455,7 +455,7 @@ describe("resizing structures", () => {
 });
 
 describe("the side panel tabs", () => {
-  it.live("fit on one line each at 1280 wide, with Pending listed", () =>
+  it.live("fit on one line each at 1280 wide, with Pending and History listed", () =>
     Effect.gen(function* () {
       const { page } = yield* servedReview;
 
@@ -466,7 +466,7 @@ describe("the side panel tabs", () => {
       const boxes = yield* boxesOf(page, '[role="tab"]');
       const [first] = boxes;
 
-      assert.strictEqual(boxes.length, 3);
+      assert.strictEqual(boxes.length, 4);
       assert.isDefined(first);
 
       for (const box of boxes) {
