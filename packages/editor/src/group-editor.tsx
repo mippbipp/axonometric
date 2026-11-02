@@ -17,6 +17,7 @@ import { shiftDrawing } from "./drag-shift.ts";
 import { DragOrigin, DropOutline } from "./drop-outline.tsx";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** How far a press must move before it drags a group, in pixels. */
 const dragThreshold = 4;
@@ -80,6 +81,7 @@ export function GroupEditor({
   readonly zones: readonly SceneZone[];
 }) {
   const editing = useEditing();
+  const { state } = useWalkthrough();
   const preview = useDragPreview();
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
@@ -117,10 +119,11 @@ export function GroupEditor({
         view,
         ids: drag === undefined ? [] : Arr.map(drag.members, ([id]) => id),
         groups: drag === undefined ? [] : [drag.group],
+        hops: state.data.hops,
         by: drag?.by,
       });
     }
-  }, [drag, view]);
+  }, [drag, view, state.data.hops]);
 
   useEffect(() => {
     const moves =

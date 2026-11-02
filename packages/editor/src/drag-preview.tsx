@@ -1,6 +1,5 @@
 import {
   applyLayoutChanges,
-  formatProblem,
   problemsAdded,
   shiftedRoutes,
 } from "@axonometric/contracts";
@@ -113,8 +112,10 @@ export function DragPreviewProvider({
 }
 
 /**
- * The warnings the drag in progress would add, one line each, worded as
- * `check` prints them. Nothing shows when there are none.
+ * The warnings the drag in progress would add. They are the problems
+ * `check` finds, so each reads as `check` words it: the message is the main
+ * text, and the file and field it's about sit small beneath it. Nothing
+ * shows when there are none.
  */
 export function DragWarnings({ className }: { readonly className?: string }) {
   const problems = useDragWarnings();
@@ -130,13 +131,25 @@ export function DragWarnings({ className }: { readonly className?: string }) {
       aria-live="polite"
       className={`border-refused bg-paper text-ink max-h-40 max-w-xl overflow-auto border-2 px-3 py-2 text-xs ${className ?? ""}`}
     >
-      <p className="mb-1 tracking-widest uppercase opacity-70">
+      <h2 className="mb-1 tracking-widest uppercase opacity-70">
         This would leave {problems.length === 1 ? "a warning" : "warnings"}
-      </p>
-      <ul className="flex flex-col gap-1">
+      </h2>
+      <ul className="flex flex-col gap-1.5">
         {Arr.map(problems, (problem) => (
-          <li key={formatProblem(problem)} data-drag-warning="">
-            {formatProblem(problem)}
+          <li
+            key={`${problem.file} ${problem.path} ${problem.message}`}
+            data-drag-warning=""
+            className="flex flex-col"
+          >
+            <span data-warning-message="">{problem.message}</span>
+            <span
+              data-warning-where=""
+              className="text-2xs font-mono opacity-60"
+            >
+              {problem.path === ""
+                ? problem.file
+                : `${problem.file} ${problem.path}`}
+            </span>
           </li>
         ))}
       </ul>

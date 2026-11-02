@@ -97,3 +97,10 @@
 [data-drag-shifted] {
   opacity: 0.55;
 }
+
+/* The label of a hop with an end on a structure being dragged. The hop stays
+   where it was until the drop, so its label would lie on whatever the
+   structure passes over. */
+[data-drag-hidden] {
+  visibility: hidden;
+}

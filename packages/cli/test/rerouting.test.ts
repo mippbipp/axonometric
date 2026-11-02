@@ -1,4 +1,9 @@
-import { LayoutFile, Proposals, Revision } from "@axonometric/contracts";
+import {
+  LayoutFile,
+  MapProblem,
+  Proposals,
+  Revision,
+} from "@axonometric/contracts";
 import type { StructureMove } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
@@ -218,11 +223,66 @@ const drawnRoute = Effect.fnUntraced(function* (
 const segmentSelector = (hop: string, segment: number) =>
   `[data-route-segment][data-hop-id="${hop}"][data-segment="${segment}"]`;
 
+/** What the warnings list shows: each message, and the place under it. */
 const warningsOf = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<readonly string[]>(
-      `[...document.querySelectorAll("[data-drag-warning]")].map((item) => item.textContent ?? "")`
+    page.evaluate<readonly { message: string; where: string }[]>(
+      `[...document.querySelectorAll("[data-drag-warning]")].map((item) => ({ message: item.querySelector("[data-warning-message]").textContent, where: item.querySelector("[data-warning-where]").textContent }))`
     )
+  );
+
+const CheckWarnings = Schema.Struct({ warnings: Schema.Array(MapProblem) });
+
+const decodeReport = Schema.decodeEffect(Schema.fromJsonString(CheckWarnings));
+
+/** A warning as one string, for comparing lists of them. */
+const placed = (item: { message: string; where: string }) =>
+  `${item.where}|${item.message}`;
+
+/** Whether any two visible texts on the page share ground, as pairs of names. */
+const overlappingTexts = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<readonly string[]>(`(() => {
+      const visible = (element) => {
+        const style = getComputedStyle(element);
+
+        return style.visibility !== "hidden" && style.display !== "none";
+      };
+
+      const texts = [
+        ...[...document.querySelectorAll("[data-name-tag]")].map((tag) => ({
+          name: "tag:" + tag.getAttribute("data-name-tag"),
+          element: tag.querySelector("text"),
+        })),
+        ...[...document.querySelectorAll("[data-hop-label]")].map((label) => ({
+          name: "label:" + label.getAttribute("data-hop-label"),
+          element: label,
+        })),
+        ...[...document.querySelectorAll("[data-zone-title]")].map((title) => ({
+          name: "title:" + title.closest("[data-zone]").getAttribute("data-zone"),
+          element: title,
+        })),
+      ]
+        .filter(({ element }) => element !== null && visible(element))
+        .map(({ name, element }) => ({ name, box: element.getBoundingClientRect() }));
+
+      const found = [];
+
+      texts.forEach((a, index) => {
+        texts.slice(index + 1).forEach((b) => {
+          if (
+            a.box.left < b.box.right &&
+            b.box.left < a.box.right &&
+            a.box.top < b.box.bottom &&
+            b.box.top < a.box.bottom
+          ) {
+            found.push(a.name + " over " + b.name);
+          }
+        });
+      });
+
+      return found;
+    })()`)
   );
 
 const reroutesIn = (proposals: Proposals) =>
@@ -280,14 +340,14 @@ describe("rerouting a hop by dragging a segment", () => {
             )
           );
 
-          yield* waitFor(page, '[data-hop="h-store"][data-pending="true"]');
+          yield* waitFor(page, '[data-hop-pending="h-store"]');
 
           // Both views draw the same route: the saved points, on the ground.
           const other = view === "plan" ? "iso" : "plan";
           const inThisView = yield* drawnRoute(page, "h-store", view);
 
           yield* toView(page, other);
-          yield* waitFor(page, '[data-hop="h-store"][data-pending="true"]');
+          yield* waitFor(page, '[data-hop-pending="h-store"]');
 
           const inOther = yield* drawnRoute(page, "h-store", other);
 
@@ -346,7 +406,7 @@ describe("rerouting a hop by dragging a segment", () => {
 
         yield* dragBy(page, from, screenDelta("plan", unit, { x: 1, y: 0 }));
         yield* waitForRevision(home, 1);
-        yield* waitFor(page, '[data-hop="h-store"][data-pending="true"]');
+        yield* waitFor(page, '[data-hop-pending="h-store"]');
 
         // Accept it, so the override is in layout.json and a reset has
         // something to remove.
@@ -410,7 +470,7 @@ describe("rerouting a hop by dragging a segment", () => {
         const saved = yield* waitForRevision(home, 2);
 
         assert.deepStrictEqual(saved.layout, []);
-        yield* waitGone(page, '[data-hop="h-store"][data-pending="true"]');
+        yield* waitGone(page, '[data-hop-pending="h-store"]');
       }),
     90_000
   );
@@ -464,7 +524,7 @@ describe("accepting a reroute", () => {
         const after = yield* waitForRevision(home, 2);
 
         assert.deepStrictEqual(after.layout, []);
-        yield* waitGone(page, '[data-hop][data-pending="true"]');
+        yield* waitGone(page, "[data-hop-pending]");
 
         // check passes on what was written.
         const checked = yield* runCli(home, ["check", home]);
@@ -584,6 +644,109 @@ describe("moving a group by its zone title", () => {
   );
 });
 
+describe("text while dragging", () => {
+  // The proposals store has hops at both ends whose labels the last chapter
+  // draws, so they would lie on the tags and zone around it.
+  const spots = {
+    structure: () =>
+      ({
+        selector: '[data-structure="proposals"]',
+        by: { x: -1.5, y: -2 },
+      }) as const,
+    group: () =>
+      ({
+        selector: '[data-zone-title-hit="loop"]',
+        by: { x: 0.5, y: 2 },
+      }) as const,
+  };
+
+  for (const view of ["plan", "iso"] as const) {
+    for (const [what, spot] of [
+      ["a group", spots.group()],
+      ["a structure", spots.structure()],
+    ] as const) {
+      it.live(
+        `no visible text lies on another while ${what} is dragged in ${view} view, and hop labels return after the drop`,
+        () =>
+          Effect.gen(function* () {
+            const { home, page } = yield* servedReview;
+
+            yield* toView(page, view);
+
+            const unit = yield* unitOnScreen(page, view);
+            const from = yield* middleOf(page, spot.selector);
+            const before = yield* overlappingTexts(page);
+
+            yield* pressAndMove(page, from, screenDelta(view, unit, spot.by));
+            yield* Effect.sleep("300 millis");
+
+            // The overlaps the map already had don't count; the drag adds none.
+            const during = yield* overlappingTexts(page);
+
+            assert.deepStrictEqual(
+              Arr.filter(during, (pair) => !Arr.contains(before, pair)),
+              []
+            );
+
+            // Labels of hops with an end on what moves are hidden.
+            const hidden = yield* count(
+              page,
+              "[data-hop-label][data-drag-hidden]"
+            );
+
+            assert.isAbove(hidden, 0);
+
+            yield* Effect.promise(() => page.mouse.up());
+            yield* waitForRevision(home, 1);
+            yield* waitGone(page, "[data-drag-hidden]");
+            assert.deepStrictEqual(
+              Arr.filter(
+                yield* overlappingTexts(page),
+                (pair) => !Arr.contains(before, pair)
+              ),
+              []
+            );
+          }),
+        90_000
+      );
+    }
+  }
+
+  it.live(
+    "a resize hides the labels of the hops at the resized structure",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* toView(page, "plan");
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="proposals"]').click()
+        );
+        yield* waitFor(page, '[data-resize-handle="se"]');
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, '[data-resize-handle="se"]');
+
+        yield* pressAndMove(page, from, { x: unit, y: unit });
+        yield* Effect.sleep("300 millis");
+
+        const hiddenFor = yield* Effect.promise(() =>
+          page.evaluate<readonly string[]>(
+            `[...document.querySelectorAll("[data-hop-label][data-drag-hidden]")].map((label) => label.getAttribute("data-hop-label"))`
+          )
+        );
+
+        assert.deepStrictEqual(Arr.sort(hiddenFor, Order.String), [
+          "h-pr",
+          "h-store",
+        ]);
+        yield* Effect.promise(() => page.mouse.up());
+        yield* waitForRevision(home, 1);
+        yield* waitGone(page, "[data-drag-hidden]");
+      })
+  );
+});
+
 describe("the warnings while dragging", () => {
   it.live(
     "show the same text that check prints for the layout the drop would leave",
@@ -642,16 +805,31 @@ describe("the warnings while dragging", () => {
           })
         );
 
-        const checked = yield* runCli(home, ["check", home]);
+        const printed = yield* runCli(home, ["check", "--json", home]);
 
-        const printed = Arr.filter(Str.split(checked.stdout, "\n"), (line) =>
-          Str.startsWith("warning")(line)
-        );
+        const report = yield* decodeReport(printed.stdout);
 
+        // The page shows check's problems as objects: the message, and the
+        // file and field under it. Same problems, not check's printed line.
         assert.deepStrictEqual(
-          Arr.sort(shown, Order.String),
-          Arr.sort(printed, Order.String)
+          Arr.sort(Arr.map(shown, placed), Order.String),
+          Arr.sort(
+            Arr.map(report.warnings, (problem) =>
+              placed({
+                message: problem.message,
+                where:
+                  problem.path === ""
+                    ? problem.file
+                    : `${problem.file} ${problem.path}`,
+              })
+            ),
+            Order.String
+          )
         );
+
+        for (const item of shown) {
+          assert.notInclude(item.message, "warning layout.json");
+        }
       }).pipe(Effect.provide(NodeServices.layer)),
     120_000
   );
@@ -702,7 +880,9 @@ describe("the warnings while dragging", () => {
         const shown = yield* warningsOf(page);
 
         assert.isTrue(
-          Arr.some(shown, (line) => Str.includes("zones of groups")(line))
+          Arr.some(shown, ({ message }) =>
+            Str.includes("zones of groups")(message)
+          )
         );
 
         yield* Effect.promise(() => page.mouse.up());

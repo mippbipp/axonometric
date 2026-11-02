@@ -14,6 +14,7 @@ import { DragOrigin, DropOutline } from "./drop-outline.tsx";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { useSelection } from "./selection-context.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** How far a press must move before it drags a structure, in pixels. */
 const dragThreshold = 4;
@@ -156,6 +157,7 @@ export function LayoutEditor({
   readonly children: ReactNode;
 }) {
   const editing = useEditing();
+  const { state } = useWalkthrough();
   const { selected, multiSelection } = useSelection();
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
@@ -164,18 +166,23 @@ export function LayoutEditor({
   const live = editing?.canEdit === true;
 
   useEffect(() => {
-    if (root.current !== null) {
+    // Hop labels are drawn outside this group, so look from the canvas.
+    const canvas = root.current?.ownerSVGElement;
+
+    if (canvas !== null && canvas !== undefined) {
       shiftDrawing({
-        root: root.current,
+        root: canvas,
         view,
         ids: drag === undefined || drag.resizing ? [] : drag.ids,
+        changing: drag?.ids,
+        hops: state.data.hops,
         by:
           drag === undefined
             ? undefined
             : { x: drag.next.x - drag.start.x, y: drag.next.y - drag.start.y },
       });
     }
-  }, [drag, view]);
+  }, [drag, view, state.data.hops]);
 
   // A drag ends with a click, which would pin the structure or, landing on
   // the group, clear the selection. The map surface listens for clicks
