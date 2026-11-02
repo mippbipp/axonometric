@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
+import { NoteToolButton, NoteToolHint } from "./note-tool.tsx";
 import { usePlacing } from "./place-context.ts";
 import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
@@ -296,7 +297,9 @@ export function EditToolbar({
         >
           <span aria-hidden="true">Redo ↷</span>
         </button>
+        <NoteToolButton />
       </div>
+      <NoteToolHint />
       {many ? (
         <div
           role="toolbar"

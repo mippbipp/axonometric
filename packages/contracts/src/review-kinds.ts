@@ -5,10 +5,10 @@ import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import {
   applyLayoutChanges,
-  hopsOf,
   layoutRefusal,
+  maxNoteLength,
+  hopsOf,
   structuresOf,
-  targetIdsOf,
 } from "./proposals.ts";
 import type {
   BatchItem,
@@ -17,35 +17,37 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
-import { oneLine, quoteText } from "./quote.ts";
+import { plain } from "./review-kind-defaults.ts";
+import { structureKind } from "./review-kinds-structure.ts";
+import {
+  answerKind,
+  questionKind,
+  suggestionKind,
+} from "./review-kinds-text.ts";
+import { decorate, oneLine, quoteText } from "./review-quote.ts";
 import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
-import { actionOf } from "./structure-actions.ts";
-import { structureOf } from "./structure-change.ts";
-import {
-  structureBreakage,
-  structureChangeToData,
-  structureChangeToLayout,
-} from "./structure-effects.ts";
 
-export { oneLine, quoteText } from "./quote.ts";
+export { oneLine, quoteText } from "./review-quote.ts";
+export { plain, removedMark, touchesNothing } from "./review-kind-defaults.ts";
 
-/** The name of the mark for structures proposed for deletion, in `Touches.marks`. */
-export const removedMark = "removed";
+/** A structure or a hop, named by its id. */
+export interface Pointer {
+  readonly kind: "structure" | "hop";
+  readonly id: string;
+}
 
-/** What a kind of item needs to know about the map. */
-export interface Landing {
-  /** The layout the item lands on. */
-  readonly layout: Layout;
-  /** The ids of the structures data.mjs has. */
-  readonly structureIds: ReadonlySet<string>;
-  /** The hops data.mjs has, which say where a reroute's ends belong. */
-  readonly hops: readonly HopEnds[];
-  /** The map's data, which a deletion is checked against. */
-  readonly data: Pick<
-    MapData,
-    "structures" | "hops" | "flows" | "chapters" | "groups"
-  >;
+/** The ids of what data.mjs has, for an item to check its pointers against. */
+export interface Existing {
+  readonly structures: ReadonlySet<string>;
+  readonly hops: ReadonlySet<string>;
+}
+
+/** An item still waiting on the agent, and the batch it is in, if any. */
+export interface Waiting {
+  readonly item: BatchItem;
+  /** The number of the batch holding the item, or nothing while it is open. */
+  readonly batch: number | undefined;
 }
 
 /** What `verdict` knows when it checks a verdict. */
@@ -89,34 +91,21 @@ export interface Touches {
   readonly marks: Readonly<Record<string, readonly string[]>>;
 }
 
-/** An item that draws nothing differently. */
-export const touchesNothing: Touches = {
-  structures: [],
-  hops: [],
-  marks: {},
-};
-
-/** `--as` names a structure's final id, so it only fits an item that adds one. */
-const asRefusal = (verdict: Verdict): Option.Option<string> =>
-  verdict.verdict === "changed" && verdict.as !== undefined
-    ? Option.some(
-        "--as gives a new structure the id you used for it in data.mjs. This item adds no structure."
-      )
-    : Option.none();
-
-const decorate = <A extends object>(
-  base: A,
-  verdict: Verdict
-): A & { readonly reason?: string; readonly changed?: true } => {
-  const withReason =
-    "reason" in verdict && verdict.reason !== undefined
-      ? { ...base, reason: verdict.reason }
-      : base;
-
-  return verdict.verdict === "changed"
-    ? { ...withReason, changed: true }
-    : withReason;
-};
+/** What a kind of item needs to know about the map. */
+export interface Landing {
+  /** The layout the item lands on. */
+  readonly layout: Layout;
+  /** The ids of the structures data.mjs has. */
+  readonly structureIds: ReadonlySet<string>;
+  /** The hops data.mjs has, which say where a reroute's ends belong. */
+  readonly hops: readonly HopEnds[];
+  /**
+   * The map as data.mjs has it now, for the kinds that point into its text,
+   * such as a suggestion or an answer. Left out where the caller has only
+   * the ids; those kinds then check what they can.
+   */
+  readonly data?: MapData | undefined;
+}
 
 /**
  * Everything the review loop needs to know about one kind of item. A new
@@ -137,11 +126,26 @@ export interface KindSpec<I extends BatchItem> {
   add(proposals: Proposals, item: I): Proposals;
   /** A word for what the item is, such as "move". */
   name(item: I): string;
+  /** What the item acts on or points at: structures and hops, each told apart by kind. */
+  targets(item: I): readonly Pointer[];
+  /** The key of the kind's open list in `proposals.json`, for a warning's path. */
+  readonly listKey: string;
+  /** The text the engineer wrote in the item, or nothing for a kind with none. */
+  text(item: I): Option.Option<string>;
   /**
-   * The ids of what the item acts on or points at: structures, and for a
-   * reroute the hop.
+   * The item in a few words for the Pending tab, or nothing for a kind the
+   * page describes itself, such as a layout change.
    */
-  targets(item: I): readonly string[];
+  describe(
+    item: I,
+    nameOf: (id: string) => string,
+    hopLabelOf: (id: string) => string
+  ): Option.Option<string>;
+  /**
+   * Why the item points at a structure or hop that data.mjs lacks, or
+   * nothing. `check` warns with it for the item.
+   */
+  dangling(item: I, known: Existing): Option.Option<string>;
   /**
    * One line for the prompt. Text the engineer wrote goes through
    * `quoteText`. `hopLabelOf` gives a hop's label, for a reroute.
@@ -151,12 +155,17 @@ export interface KindSpec<I extends BatchItem> {
     nameOf: (id: string) => string,
     hopLabelOf: (id: string) => string
   ): string;
-  /** What the item changes, from `layout` and `data`, for `review`. */
+  /**
+   * What the item changes, from `layout` and, for the kinds that point into
+   * its text, `data`, for `review`.
+   */
   facts(
     item: I,
     layout: Layout,
-    data: MapData
+    data?: MapData
   ): { before: Facts; after: Facts };
+  /** Why accepting the item would break the map, or nothing. */
+  breakage(item: I, landing: Landing): Option.Option<string>;
   /**
    * The map once the item is applied, as the page shows it before the agent
    * has decided. `proposedMap` runs every open and frozen item through this.
@@ -164,8 +173,6 @@ export interface KindSpec<I extends BatchItem> {
   appliesToData(item: I, map: MapShape): MapShape;
   /** What the item changes in the drawing; see `Touches`. */
   touches(item: I): Touches;
-  /** Why accepting the item would break the map, or nothing. */
-  breakage(item: I, landing: Landing): Option.Option<string>;
   /** The layout changes that take effect when the item gets `verdict`. */
   applies(
     item: I,
@@ -191,8 +198,8 @@ export interface KindSpec<I extends BatchItem> {
     context: VerdictContext
   ): Option.Option<string>;
   /**
-   * The structure ids the item makes new when it is taken with `verdict`,
-   * as `[provisional, final]` pairs, when the agent used another id.
+   * The structure ids the item makes new when it is taken with `verdict`, as
+   * `[provisional, final]` pairs, when the agent used another id.
    */
   renames(
     item: I,
@@ -209,35 +216,30 @@ export interface KindSpec<I extends BatchItem> {
   rejected(item: I, reason: string): RejectedItem;
   /** The item again under a new id, for an engineer who edits it after a rejection. */
   reopened(item: I, newId: ChangeId, text: string | undefined): I;
+  /** The most characters the kind's text holds. */
+  readonly textLimit: number;
+  /**
+   * Why the item was written against something data.mjs no longer says, or
+   * nothing. Unlike `breakage`, accepting it would not break the map; the
+   * agent should know before it judges the item.
+   */
+  outOfDate?(item: I, data: MapData): Option.Option<string>;
+  /**
+   * Why `item` can't join the items still waiting on the agent (`waiting`:
+   * open, or in a batch with no commit), or nothing. One answer per question,
+   * say.
+   */
+  clash?(item: I, waiting: readonly Waiting[]): Option.Option<string>;
+  /**
+   * A line for the prompt and for `review` that tells the agent how to
+   * fold this kind in, said once when the batch holds an item of the kind.
+   */
+  notice?: string;
 }
 
 type LayoutItem = Extract<BatchItem, { kind: "layout" }>;
 
 type NoteItem = Extract<BatchItem, { kind: "note" }>;
-
-const retargetLayoutChange = (
-  change: LayoutChange,
-  renames: ReadonlyMap<string, string>
-): LayoutChange => {
-  const id = (from: string) => renames.get(from) ?? from;
-
-  return Match.value(change).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      move: (move) => ({
-        ...move,
-        moves: Arr.map(move.moves, (one) => ({
-          ...one,
-          target: { ...one.target, id: id(one.target.id) },
-        })),
-      }),
-      resize: (resize) => ({
-        ...resize,
-        target: { ...resize.target, id: id(resize.target.id) },
-      }),
-      reroute: (reroute) => reroute,
-    })
-  );
-};
 
 const positionsOf = (layout: Layout, ids: readonly string[]): Facts => {
   const found = Arr.flatMap(ids, (id) => {
@@ -269,7 +271,47 @@ const routeOf = (layout: Layout, hop: string): Facts => {
   };
 };
 
+const retargetLayoutChange = (
+  change: LayoutChange,
+  renames: ReadonlyMap<string, string>
+): LayoutChange => {
+  const id = (from: string) => renames.get(from) ?? from;
+
+  return Match.value(change).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      move: (move) => ({
+        ...move,
+        moves: Arr.map(move.moves, (one) => ({
+          ...one,
+          target: { ...one.target, id: id(one.target.id) },
+        })),
+      }),
+      resize: (resize) => ({
+        ...resize,
+        target: { ...resize.target, id: id(resize.target.id) },
+      }),
+      reroute: (reroute) => reroute,
+    })
+  );
+};
+
 const layoutKind: KindSpec<LayoutItem> = {
+  ...plain<LayoutItem>(),
+  textLimit: Number.POSITIVE_INFINITY,
+  appliesToData: (item, map) => ({
+    ...map,
+    layout: applyLayoutChanges(map.layout, [item.change]),
+  }),
+  touches: ({ change }) => ({
+    structures: structuresOf(change),
+    hops: hopsOf(change),
+    marks: {},
+  }),
+  retargeted: (item, renames) => {
+    const change = retargetLayoutChange(item.change, renames);
+
+    return change === item.change ? item : { ...item, change };
+  },
   open: (proposals) =>
     Arr.map(proposals.layout, (change): LayoutItem => ({
       id: change.id,
@@ -282,7 +324,18 @@ const layoutKind: KindSpec<LayoutItem> = {
     layout: [...proposals.layout, item.change],
   }),
   name: (item) => item.change.kind,
-  targets: (item) => targetIdsOf(item.change),
+  listKey: "layout",
+  text: () => Option.none(),
+  describe: () => Option.none(),
+  // `check` already warns about layout changes, with the change's own wording.
+  dangling: () => Option.none(),
+  targets: ({ change }) => [
+    ...Arr.map(structuresOf(change), (id): Pointer => ({
+      kind: "structure",
+      id,
+    })),
+    ...Arr.map(hopsOf(change), (id): Pointer => ({ kind: "hop", id })),
+  ],
   summary: (item, nameOf, hopLabelOf) => {
     const { change } = item;
 
@@ -294,15 +347,6 @@ const layoutKind: KindSpec<LayoutItem> = {
 
     return `${change.kind} ${item.id}: ${Arr.join(names, ", ")}`;
   },
-  appliesToData: (item, map) => ({
-    ...map,
-    layout: applyLayoutChanges(map.layout, [item.change]),
-  }),
-  touches: ({ change }) => ({
-    structures: structuresOf(change),
-    hops: hopsOf(change),
-    marks: {},
-  }),
   facts: ({ change }, layout) => {
     const next = applyLayoutChanges(layout, [change]);
 
@@ -325,14 +369,6 @@ const layoutKind: KindSpec<LayoutItem> = {
   },
   breakage: (item, { layout, hops }) =>
     layoutRefusal({ accepted: layout, before: [], after: [item.change], hops }),
-  commitRefusal: () => Option.none(),
-  verdictRefusal: (_item, verdict) => asRefusal(verdict),
-  renames: () => [],
-  retargeted: (item, renames) => {
-    const change = retargetLayoutChange(item.change, renames);
-
-    return change === item.change ? item : { ...item, change };
-  },
   // A changed layout item is not applied: the agent set the layout itself.
   applies: (item, { verdict }) => (verdict === "accepted" ? [item.change] : []),
   accepted: (item, verdict) =>
@@ -354,6 +390,18 @@ const layoutKind: KindSpec<LayoutItem> = {
 };
 
 const noteKind: KindSpec<NoteItem> = {
+  ...plain<NoteItem>(),
+  textLimit: maxNoteLength,
+  retargeted: (item, renames) => {
+    const id = renames.get(
+      item.target.kind === "structure" ? item.target.id : ""
+    );
+
+    // Only a structure can be renamed; a hop or a spot keeps its target.
+    return item.target.kind === "structure" && id !== undefined
+      ? { ...item, target: { ...item.target, id } }
+      : item;
+  },
   open: (proposals) =>
     Arr.map(proposals.notes ?? [], (note): NoteItem => ({
       id: note.id,
@@ -367,30 +415,86 @@ const noteKind: KindSpec<NoteItem> = {
     notes: [...(proposals.notes ?? []), { id, target, text }],
   }),
   name: () => "note",
-  targets: (item) => [item.target.id],
-  summary: (item, nameOf) =>
-    `note ${item.id} on ${quoteText(nameOf(item.target.id))}: ${quoteText(oneLine(item.text, 80))}`,
-  facts: (item) => ({ before: null, after: { text: item.text } }),
-  breakage: (item, { structureIds }) =>
-    structureIds.has(item.target.id)
-      ? Option.none()
-      : Option.some(
-          `No structure in data.mjs has the id "${item.target.id}", so this note has nothing to point at.`
-        ),
-  applies: () => [],
-  commitRefusal: () => Option.none(),
-  verdictRefusal: (_item, verdict) => asRefusal(verdict),
-  renames: () => [],
-  retargeted: (item, renames) => {
-    const id = renames.get(item.target.id);
+  listKey: "notes",
+  text: ({ text }) => Option.some(text),
+  describe: ({ target, text }, nameOf, hopLabelOf) =>
+    Option.some(
+      Match.value(target).pipe(
+        Match.discriminatorsExhaustive("kind")({
+          structure: ({ id }) => `Note on ${nameOf(id)}: ${text}`,
+          hop: ({ id }) => `Note on hop ${hopLabelOf(id)}: ${text}`,
+          spot: ({ x, y }) => `Note at the spot ${x}, ${y}: ${text}`,
+        })
+      )
+    ),
+  dangling: ({ target }, known) =>
+    Match.value(target).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        structure: ({ id }) =>
+          known.structures.has(id)
+            ? Option.none()
+            : Option.some(`no structure in data.mjs has the id "${id}"`),
+        hop: ({ id }) =>
+          known.hops.has(id)
+            ? Option.none()
+            : Option.some(`no hop in data.mjs has the id "${id}"`),
+        spot: () => Option.none(),
+      })
+    ),
+  targets: ({ target }): readonly Pointer[] =>
+    Match.value(target).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        structure: ({ id }): readonly Pointer[] => [{ kind: "structure", id }],
+        hop: ({ id }): readonly Pointer[] => [{ kind: "hop", id }],
+        spot: (): readonly Pointer[] => [],
+      })
+    ),
+  summary: ({ id, target, text }, nameOf, hopLabelOf) => {
+    const said = quoteText(oneLine(text, 80));
 
-    // Only a structure can be renamed; a hop or a spot keeps its target.
-    return item.target.kind === "structure" && id !== undefined
-      ? { ...item, target: { ...item.target, id } }
-      : item;
+    return Match.value(target).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        structure: ({ id: on }) =>
+          `note ${id} on ${quoteText(nameOf(on))}: ${said}`,
+        hop: ({ id: on }) =>
+          `note ${id} on hop ${quoteText(hopLabelOf(on))}: ${said}`,
+        spot: ({ x, y }) => `note ${id} at the spot ${x}, ${y}: ${said}`,
+      })
+    );
   },
-  appliesToData: (_item, map) => map,
-  touches: () => touchesNothing,
+  facts: ({ target, text }) => ({
+    before: null,
+    after:
+      target.kind === "spot"
+        ? { text, spot: { x: target.x, y: target.y } }
+        : { text },
+  }),
+  breakage: ({ target, text }, { structureIds, hops }) => {
+    if (text.length > maxNoteLength) {
+      return Option.some(
+        `The note is ${text.length} characters, over the limit of ${maxNoteLength}.`
+      );
+    }
+
+    return Match.value(target).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        structure: ({ id }) =>
+          structureIds.has(id)
+            ? Option.none()
+            : Option.some(
+                `No structure in data.mjs has the id "${id}", so this note has nothing to point at.`
+              ),
+        hop: ({ id }) =>
+          Arr.some(hops, (hop) => hop.id === id)
+            ? Option.none()
+            : Option.some(
+                `No hop in data.mjs has the id "${id}", so this note has nothing to point at.`
+              ),
+        spot: () => Option.none(),
+      })
+    );
+  },
+  applies: () => [],
   accepted: (item, verdict) =>
     decorate(
       {
@@ -415,208 +519,22 @@ const noteKind: KindSpec<NoteItem> = {
   }),
 };
 
-type StructureItem = Extract<BatchItem, { kind: "structure" }>;
-
-/**
- * The id a taken structure item ends up with: the provisional id, or the one
- * the agent gave with `--as`.
- */
-const finalIdOf = (item: StructureItem, verdict: Verdict): string =>
-  item.change.action === "add" &&
-  verdict.verdict === "changed" &&
-  verdict.as !== undefined
-    ? verdict.as
-    : structureOf(item.change);
-
-const structureKind: KindSpec<StructureItem> = {
-  open: (proposals) =>
-    Arr.map(proposals.structures ?? [], (proposal): StructureItem => ({
-      id: proposal.id,
-      kind: "structure",
-      change: proposal.change,
-    })),
-  clear: (proposals) => ({ ...proposals, structures: [] }),
-  add: (proposals, { id, change }) => ({
-    ...proposals,
-    structures: [...(proposals.structures ?? []), { id, change }],
-  }),
-  name: ({ change }) => actionOf(change).label,
-  targets: ({ change }) => [structureOf(change)],
-  summary: ({ id, change }, nameOf) => actionOf(change).summary(id, nameOf),
-  facts: ({ change }, layout, data) =>
-    actionOf(change).facts(
-      Arr.findFirst(data.structures, ({ id }) => id === structureOf(change)),
-      layout
-    ),
-  appliesToData: ({ change }, map) => ({
-    data: structureChangeToData(map.data, change),
-    layout: structureChangeToLayout(map.layout, change),
-  }),
-  touches: ({ change }) => ({
-    structures: [structureOf(change)],
-    hops: [],
-    marks: {
-      [removedMark]: change.action === "delete" ? [structureOf(change)] : [],
-    },
-  }),
-  breakage: ({ change }, landing) => structureBreakage(change, landing),
-  verdictRefusal: (item, verdict, { accepted, taken }) => {
-    if (verdict.verdict !== "changed" || verdict.as === undefined) {
-      return Option.none();
-    }
-
-    const { change } = item;
-
-    if (change.action !== "add") {
-      return Option.some(
-        "--as gives a new structure the id you used for it in data.mjs. This item does not add a structure."
-      );
-    }
-
-    if (accepted.has(verdict.as)) {
-      return Option.some(
-        `--as ${verdict.as} names a structure the accepted map already has. Pick the id of the new structure you added to data.mjs.`
-      );
-    }
-
-    return Option.map(
-      Arr.findFirst(
-        [...taken.entries()],
-        ([other, id]) => other !== item.id && id === verdict.as
-      ),
-      ([other]) =>
-        `--as ${verdict.as} is already the final id of item ${other} in this batch. Give each new structure its own id.`
-    );
-  },
-  renames: (item, verdict) => {
-    if (verdict.verdict === "rejected" || item.change.action !== "add") {
-      return [];
-    }
-
-    const to = finalIdOf(item, verdict);
-
-    return to === item.change.structure.id
-      ? []
-      : [[item.change.structure.id, to]];
-  },
-  retargeted: (item, renames) => {
-    const { change } = item;
-
-    if (change.action === "add") {
-      return item;
-    }
-
-    const to = renames.get(change.structure);
-
-    return to === undefined
-      ? item
-      : { ...item, change: { ...change, structure: to } };
-  },
-  applies: (item, verdict, { layout, saved }): readonly LayoutChange[] => {
-    const { change } = item;
-
-    if (verdict.verdict === "rejected" || change.action !== "add") {
-      return [];
-    }
-
-    const id = finalIdOf(item, verdict);
-    const placed = Rec.get(layout.structures, id);
-
-    // A structure the agent already placed with `axonometric layout` stays
-    // where it put it.
-    if (Option.isNone(placed) || Rec.has(saved.structures, id)) {
-      return [];
-    }
-
-    const target = { kind: "structure" as const, id };
-    const { x, y, w, d } = change.at;
-    const there = placed.value;
-
-    return [
-      ...(there.x === x && there.y === y
-        ? []
-        : [
-            {
-              id: `${item.id}-move`,
-              kind: "move" as const,
-              moves: [{ target, position: { x, y } }] as const,
-            },
-          ]),
-      ...(there.w === w && there.d === d
-        ? []
-        : [
-            {
-              id: `${item.id}-size`,
-              kind: "resize" as const,
-              target,
-              footprint: { w, d },
-            },
-          ]),
-    ];
-  },
-  commitRefusal: (item, verdict, { data }) => {
-    const { change } = item;
-
-    if (verdict.verdict === "rejected") {
-      return Option.none();
-    }
-
-    if (change.action === "add") {
-      const id = finalIdOf(item, verdict);
-
-      return Arr.some(data.structures, (structure) => structure.id === id)
-        ? Option.none()
-        : Option.some(
-            `data.mjs has no structure with the id "${id}", so item ${item.id} can't be taken. Add the structure to data.mjs${id === change.structure.id ? `, or give the id you used with: verdict ... changed --as <id>` : ""}. Or reject the item.`
-          );
-    }
-
-    return change.action === "delete" &&
-      verdict.verdict === "accepted" &&
-      Arr.some(data.structures, ({ id }) => id === change.structure)
-      ? Option.some(
-          `data.mjs still has the structure "${change.structure}", so item ${item.id} can't be taken as accepted. Remove it from data.mjs, with what refers to it, or reject the item.`
-        )
-      : Option.none();
-  },
-  accepted: (item, verdict) => {
-    const base = {
-      kind: "structure",
-      id: item.id,
-      change: item.change,
-    } as const;
-
-    const final = finalIdOf(item, verdict);
-
-    return decorate(
-      item.change.action === "add" && final !== item.change.structure.id
-        ? { ...base, as: final }
-        : base,
-      verdict
-    );
-  },
-  rejected: (item, reason) => ({
-    kind: "structure",
-    id: item.id,
-    change: item.change,
-    reason,
-  }),
-  reopened: (item, newId) => ({ ...item, id: newId }),
-};
-
 /**
  * The table: one entry for every `kind` of `BatchItem`. It is typed by that
  * union, so a kind added there without an entry here fails to compile.
  */
 export const kindTable = {
-  structure: structureKind,
   layout: layoutKind,
   note: noteKind,
+  suggestion: suggestionKind,
+  answer: answerKind,
+  question: questionKind,
+  structure: structureKind,
 } satisfies {
   readonly [K in BatchItem["kind"]]: KindSpec<Extract<BatchItem, { kind: K }>>;
 };
 
-/** `kinds` if it lists every kind of item exactly once; a missing kind won't compile. */
+/** `kinds` if it lists every kind of item; a missing kind won't compile. */
 function satisfiesEvery<const K extends readonly BatchItem["kind"][]>(
   kinds: K &
     ([BatchItem["kind"]] extends [K[number]] ? unknown : "a kind is missing")
@@ -627,13 +545,16 @@ function satisfiesEvery<const K extends readonly BatchItem["kind"][]>(
 /**
  * The order the kinds apply to the map, first to last. A kind that others
  * depend on goes first: a layout change may act on a structure that a
- * structure item adds, so structures apply before layout changes. It is typed
- * by `BatchItem["kind"]`, so a kind missing from it fails to compile.
+ * structure item adds, so structures apply before layout changes. Listing
+ * every kind is checked by the compiler.
  */
 export const applyOrder: readonly BatchItem["kind"][] = satisfiesEvery([
   "structure",
   "layout",
   "note",
+  "suggestion",
+  "answer",
+  "question",
 ]);
 
 /** The table seen through `BatchItem`, for code that handles any kind. */

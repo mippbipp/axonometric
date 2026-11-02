@@ -4,7 +4,7 @@ import { dual } from "effect/Function";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { statusLabels } from "./map-data.ts";
-import { quoteText } from "./quote.ts";
+import { quoteText } from "./review-quote.ts";
 import type { Facts } from "./review-report.ts";
 import type { NewStructure, StructureChange } from "./structure-change.ts";
 

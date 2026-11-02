@@ -88,9 +88,14 @@ const pinServer = Effect.fnUntraced(function* (page: Page) {
 /** Types `text` in the pinned structure's note form and pins it. */
 const pinNote = Effect.fnUntraced(function* (page: Page, text: string) {
   yield* Effect.promise(() =>
-    page.locator("[data-structure-panel] [data-note-text]").fill(text)
+    page
+      .locator("[data-structure-panel] [data-notes-section] [data-note-text]")
+      .fill(text)
   );
-  yield* click(page, "[data-structure-panel] [data-note-send]");
+  yield* click(
+    page,
+    "[data-structure-panel] [data-notes-section] [data-note-send]"
+  );
 });
 
 const readProposals = Effect.fnUntraced(function* (home: string) {
@@ -124,7 +129,7 @@ describe("a note on a structure", () => {
 
         assert.deepStrictEqual(
           Arr.map(proposals.notes ?? [], ({ target, text }) => [
-            target.id,
+            target.kind === "spot" ? "spot" : target.id,
             text,
           ]),
           [["server", "Why a server, not a file watcher?"]]

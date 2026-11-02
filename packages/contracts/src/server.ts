@@ -28,10 +28,12 @@ export const serverPaths = {
   pendingLayout: "/api/proposals/layout",
   accept: "/api/proposals/accept",
   notes: "/api/notes",
-  editNote: "/api/notes/edit",
-  discardNote: "/api/notes/discard",
   structure: "/api/structures",
-  discardStructure: "/api/structures/discard",
+  editItem: "/api/items/edit",
+  discardItem: "/api/items/discard",
+  suggestions: "/api/suggestions",
+  answers: "/api/answers",
+  questions: "/api/questions",
   freeze: "/api/review/freeze",
   dismiss: "/api/review/dismiss",
   reopen: "/api/review/reopen",
@@ -231,12 +233,18 @@ export const ServedPage = Schema.Struct({
   accept: Schema.String,
   /** Where to add a note, relative to the page's URL. */
   notes: Schema.String,
-  editNote: Schema.String,
-  discardNote: Schema.String,
+  /** Where to change the text of an open note, suggestion, answer or question. */
+  editItem: Schema.String,
+  /** Where to discard an open note, suggestion, answer or question. */
+  discardItem: Schema.String,
+  /** Where to add a text suggestion, relative to the page's URL. */
+  suggestions: Schema.String,
+  /** Where to add an answer to a question. */
+  answers: Schema.String,
+  /** Where to raise a new question. */
+  questions: Schema.String,
   /** Where a structure proposal is set, relative to the page's URL. */
   structure: Schema.String,
-  /** Where an open structure proposal is discarded. */
-  discardStructure: Schema.String,
   /** Where "Ready for review" freezes a batch, relative to the page's URL. */
   freeze: Schema.String,
   /** Where a reviewed item is dismissed, relative to the page's URL. */

@@ -338,38 +338,6 @@ export const proposeStructure = ({
 
   return Result.succeed(setProposal({ proposals, id, change, world }));
 };
-
-/**
- * Removes open structure proposal `id`. Fails when it is in a batch, which is
- * waiting for the agent, or isn't there.
- */
-export const discardStructureProposal = ({
-  proposals,
-  id,
-}: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
-}): Result.Result<Proposals, string> => {
-  const open = openOf(proposals);
-
-  if (!Arr.some(open, (proposal) => proposal.id === id)) {
-    return Result.fail(
-      Option.getOrElse(
-        frozenRefusal(proposals, id),
-        () =>
-          `No open structure proposal has the id "${id}". It may have been discarded already.`
-      )
-    );
-  }
-
-  return Result.succeed(
-    bump(
-      proposals,
-      Arr.filter(open, (proposal) => proposal.id !== id)
-    )
-  );
-};
-
 /** A fresh provisional id for a structure called `name`, such as `build-cache-4f2a`. */
 export const newProvisionalId = (name: string): string =>
   provisionalIdOf(name, Str.slice(0, 4)(newChangeId()));

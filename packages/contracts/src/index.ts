@@ -357,12 +357,22 @@ export { dragSegment, routeVertices, segmentGuides } from "./route-drag.ts";
 export type { RouteEnds, SegmentGuide } from "./route-drag.ts";
 
 export {
+  Answer,
+  AnswerDate,
   Batch,
   BatchItem,
   Committed,
   maxNoteLength,
+  maxSuggestionLength,
   Note,
+  NoteTarget,
   NoteText,
+  QuestionRef,
+  RaisedQuestion,
+  SpotTarget,
+  Suggestion,
+  SuggestionText,
+  TextField,
   maxReasonLength,
   Reason,
   RequiredReason,
@@ -373,15 +383,15 @@ export {
 
 export {
   acceptRefusal,
-  addNote,
+  addItem,
   batchesOf,
-  batchNotices,
   breakageOf,
+  checkOpenItems,
   commitBatch,
   commitMessage,
-  discardNote,
+  discardProposal,
   dismissItem,
-  editNote,
+  editProposal,
   findBatchItem,
   freezeOpen,
   frozenLayoutChanges,
@@ -397,6 +407,7 @@ export {
   reviewPrompt,
   changedLayoutNotice,
   engineerTextNotice,
+  kindNotices,
   summaryLine,
   withoutVerdict,
 } from "./review.ts";
@@ -404,26 +415,45 @@ export {
 export type {
   Committing,
   FreezeResult,
+  Known,
   ItemStatus,
   Names,
   ReviewEntry,
 } from "./review.ts";
 
 export {
+  AnswerAdd,
   FreezeWrite,
   FreezeAnswer,
   ItemWrite,
   NoteAdd,
-  NoteEdit,
+  ItemEdit,
   ProposalRefused,
+  QuestionAdd,
   ReopenWrite,
-  StructureDiscard,
   StructureWrite,
+  SuggestionAdd,
 } from "./review-server.ts";
 
-export { noteMarkerRadius, noteMarkerSpots } from "./note-markers.ts";
+export {
+  boxStroke,
+  centreClearance,
+  edgeStroke,
+  gapAt,
+  hopStroke,
+  minScreenGap,
+  noteMarkerRadius,
+  noteMarkerStroke,
+  placeNoteMarkers,
+  visibleGap,
+} from "./note-markers.ts";
 
-export type { NoteMarkerSpot } from "./note-markers.ts";
+export type {
+  NoteBearers,
+  NoteMarkerSpot,
+  PlacedMarkers,
+  PlacedSpot,
+} from "./note-markers.ts";
 
 export {
   allKinds,
@@ -437,10 +467,14 @@ export {
 
 export type {
   CommitContext,
+  Existing,
   KindSpec,
   Landing,
   MapShape,
+  Pointer,
   Touches,
+  VerdictContext,
+  Waiting,
 } from "./review-kinds.ts";
 
 export {
@@ -500,12 +534,23 @@ export {
 
 export {
   checkStructureProposals,
-  discardStructureProposal,
   newProvisionalId,
   proposeStructure,
 } from "./structure-proposals.ts";
 
 export type { StructureWorld } from "./structure-proposals.ts";
+
+export {
+  fieldLabel,
+  isTextField,
+  parseTextField,
+  plainFields,
+  stepDetailField,
+  stepNameField,
+  textOfField,
+} from "./text-fields.ts";
+
+export type { FieldPath, StepPart } from "./text-fields.ts";
 
 export {
   Facts,

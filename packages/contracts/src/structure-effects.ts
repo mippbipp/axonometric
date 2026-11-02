@@ -6,7 +6,7 @@ import type { Checkable, DraggedProblem } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { defaultFootprint, placeStructures } from "./placement.ts";
-import { quoteText } from "./quote.ts";
+import { quoteText } from "./review-quote.ts";
 import { actionOf } from "./structure-actions.ts";
 import type { StructureChange } from "./structure-change.ts";
 import { zonesOf } from "./zones.ts";

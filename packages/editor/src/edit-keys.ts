@@ -5,6 +5,7 @@ import { useEffect, useEffectEvent } from "react";
 
 import { isTyping } from "./chapter-keys.ts";
 import { useEditing } from "./editing-context.ts";
+import { useNoteTool } from "./note-tool-context.ts";
 import { useSelection } from "./selection-context.ts";
 
 /** How far an arrow key nudges the multi-selection, in grid units. */
@@ -30,11 +31,12 @@ const stepOf = (key: string): GridPoint | undefined =>
   );
 
 /** What the arrow keys do now. */
-export type ArrowOwner = "nudge" | "selection" | "chapter";
+export type ArrowOwner = "spot" | "nudge" | "selection" | "chapter";
 
 /**
  * The one place that decides what the arrow keys do:
  *
+ * - `spot` moves the Note tool's grid cursor, while the tool is armed.
  * - `nudge` moves the multi-selection, while the page can edit and some
  *   structures are picked.
  * - `selection` takes → inside the pinned structure and ← out of it.
@@ -46,6 +48,11 @@ export type ArrowOwner = "nudge" | "selection" | "chapter";
 export const useArrowOwner = (): ArrowOwner => {
   const editing = useEditing();
   const { selected, multiSelection } = useSelection();
+  const armed = useNoteTool()?.armed === true;
+
+  if (armed) {
+    return "spot";
+  }
 
   if (editing?.canEdit === true && multiSelection.size > 0) {
     return "nudge";

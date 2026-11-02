@@ -5,6 +5,7 @@ import {
   layoutRefusal,
   MapFilesUnreadable,
   maxWriteBytes,
+  openItems,
   StaleProposals,
 } from "@axonometric/contracts";
 import type {
@@ -165,7 +166,9 @@ const usedElsewhere = (
   layout: readonly LayoutChange[]
 ): Option.Option<string> => {
   const taken = new Set([
-    ...Arr.map(current.notes ?? [], ({ id }) => id),
+    ...Arr.flatMap(openItems(current), ({ id, kind }) =>
+      kind === "layout" ? [] : [id]
+    ),
     ...Arr.flatMap(current.batches ?? [], ({ items }) =>
       Arr.map(items, ({ id }) => id)
     ),
@@ -174,7 +177,7 @@ const usedElsewhere = (
   return Option.map(
     Arr.findFirst(layout, ({ id }) => taken.has(id)),
     ({ id }) =>
-      `"${id}" is already a note or an item in a batch, so it can't be a layout change too. Frozen items can't be edited while the agent reviews them.`
+      `"${id}" is already an open item or an item in a batch, so it can't be a layout change too. Frozen items can't be edited while the agent reviews them.`
   );
 };
 

@@ -10,15 +10,17 @@ import {
 import { MapState } from "./map-state.ts";
 import { Proposals } from "./proposals.ts";
 import {
+  AnswerAdd,
   FreezeWrite,
   FreezeAnswer,
   ItemWrite,
   NoteAdd,
-  NoteEdit,
+  ItemEdit,
   ProposalRefused,
+  QuestionAdd,
   ReopenWrite,
-  StructureDiscard,
   StructureWrite,
+  SuggestionAdd,
 } from "./review-server.ts";
 import { Revision } from "./revisions.ts";
 import {
@@ -101,7 +103,7 @@ export class ProposalsApiGroup extends HttpApiGroup.make("proposals")
   .middleware(WriteGuard) {}
 
 /**
- * Notes and the review loop. Every write names the file revision it was
+ * Notes, text suggestions, answers, questions and the review loop. Every write names the file revision it was
  * based on, goes through the write guard, and takes the same lock as the
  * CLI's `verdict` and `commit`. Editing or discarding an item in a frozen
  * batch is refused with `ProposalRefused`.
@@ -113,23 +115,33 @@ export class ReviewApiGroup extends HttpApiGroup.make("review")
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
-    HttpApiEndpoint.post("editNote", serverPaths.editNote, {
-      payload: NoteEdit,
+    HttpApiEndpoint.post("editItem", serverPaths.editItem, {
+      payload: ItemEdit,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
-    HttpApiEndpoint.post("discardNote", serverPaths.discardNote, {
+    HttpApiEndpoint.post("discardItem", serverPaths.discardItem, {
       payload: ItemWrite,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("addSuggestion", serverPaths.suggestions, {
+      payload: SuggestionAdd,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("addAnswer", serverPaths.answers, {
+      payload: AnswerAdd,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("addQuestion", serverPaths.questions, {
+      payload: QuestionAdd,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("setStructure", serverPaths.structure, {
       payload: StructureWrite,
-      success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
-    }),
-    HttpApiEndpoint.post("discardStructure", serverPaths.discardStructure, {
-      payload: StructureDiscard,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),

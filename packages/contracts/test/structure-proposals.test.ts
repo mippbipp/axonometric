@@ -15,7 +15,7 @@ import {
   codeOfName,
   commitBatch,
   defaultSpotFor,
-  discardStructureProposal,
+  discardProposal,
   droppedIntoGroup,
   footprintsOverlap,
   freezeOpen,
@@ -194,7 +194,7 @@ const changedOf = (entry: AcceptedItem) =>
   "changed" in entry ? entry.changed : undefined;
 
 const targetOf = (entry: AcceptedItem) =>
-  "target" in entry ? entry.target.id : "";
+  "target" in entry && "id" in entry.target ? entry.target.id : "";
 
 /** What `build` does: a structure with no saved position is placed. */
 const placedLike = (nextData: MapData, saved: Layout): Layout => ({
@@ -684,7 +684,7 @@ describe("proposing a structure", () => {
     );
 
     assert.deepStrictEqual(
-      unwrap(discardStructureProposal({ proposals: first, id: "p1" }))
+      unwrap(discardProposal({ proposals: first, id: "p1" }))
         .structures,
       []
     );
@@ -692,7 +692,7 @@ describe("proposing a structure", () => {
     const frozen = unwrap(freezeOpen({ proposals: first, at })).proposals;
 
     assert.include(
-      Result.merge(discardStructureProposal({ proposals: frozen, id: "p1" })),
+      Result.merge(discardProposal({ proposals: frozen, id: "p1" })),
       "waiting for the agent"
     );
     assert.include(
@@ -1084,10 +1084,10 @@ describe("a note on a hop or a spot after --as", () => {
       new Map([["new-1", "cache"]])
     );
 
-    assert.deepStrictEqual(
-      Option.fromNullishOr(noteTargetOf(renamed)),
-      Option.some({ kind: "structure", id: "cache" })
-    );
+    assert.deepStrictEqual(noteTargetOf(renamed), {
+      kind: "structure",
+      id: "cache",
+    });
   });
 });
 

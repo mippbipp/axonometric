@@ -20,7 +20,7 @@ import { snap } from "./snap.ts";
  *
  * This is an editing layer: a file's drawing never includes it.
  */
-export function SpotPicker({ view }: { readonly view: View }) {
+export function NewStructureSpot({ view }: { readonly view: View }) {
   const placing = usePlacing();
   const root = useRef<SVGGElement>(null);
   const [over, setOver] = useState<GridPoint | null>(null);

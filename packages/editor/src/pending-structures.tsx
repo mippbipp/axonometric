@@ -1,8 +1,8 @@
+import { actionOf } from "@axonometric/contracts";
 import { Array as Arr, Option, Result } from "effect";
 import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { describeStructureChange } from "./describe-structure.ts";
 import { useProposed } from "./proposed-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -47,11 +47,10 @@ export function PendingStructures() {
             className="border-pending flex items-start gap-2 border-l-2 pl-2 text-sm"
           >
             <span className="min-w-0 flex-1 break-words">
-              {describeStructureChange(
-                change,
-                proposing.nameOf,
-                (group) => groups.get(group) ?? group
-              )}
+              {actionOf(change).describe({
+                structure: proposing.nameOf,
+                group: (group) => groups.get(group) ?? group,
+              })}
             </span>
             {proposing.canPropose ? (
               <button

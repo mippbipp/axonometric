@@ -1,9 +1,8 @@
 import {
-  addNote,
-  discardNote,
-  discardStructureProposal,
+  addItem,
+  discardProposal,
   dismissItem,
-  editNote,
+  editProposal,
   freezeOpen,
   hopLabelOf,
   MapFilesUnreadable,
@@ -14,19 +13,24 @@ import {
   reviewPrompt,
 } from "@axonometric/contracts";
 import type {
-  Mappable,
-  ProposedMap,
+  AnswerAdd,
+  BatchItem,
   FreezeWrite,
   FreezeAnswer,
   Hop,
-  ItemWrite,
   Layout,
+  ItemWrite,
+  Known,
+  Mappable,
   MapData,
+  ProposedMap,
   NoteAdd,
-  NoteEdit,
+  ItemEdit,
   Proposals,
+  QuestionAdd,
   ReopenWrite,
   StructureWrite,
+  SuggestionAdd,
 } from "@axonometric/contracts";
 import { DateTime, Effect, Path, Result } from "effect";
 
@@ -51,7 +55,7 @@ interface Held {
   readonly structures: ReadonlyMap<string, string>;
   /** The map's hops, with their labels. */
   readonly hops: readonly Hop[];
-  /** The map's data, as the last build left it. */
+  /** The map as data.mjs has it, for the items that point into its text. */
   readonly data: MapData;
   /**
    * The map as proposed, with every frozen and open item applied. Checks
@@ -88,8 +92,8 @@ const writeProposals = Effect.fnUntraced(
 
     const now = DateTime.formatIso(yield* DateTime.now);
 
-    // Built once per write: the frozen items alone are what open changes land
-    // on, and all of them are what the checks read.
+    // Built once per write: the frozen items alone are what open changes
+    // land on, and all of them are what the checks read.
     const state = { data: map.data, layout: map.layout };
     const proposed = proposedMap({ state, proposals: map.proposals });
 
@@ -164,28 +168,76 @@ const editing =
 
 // oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(home, write, written)`, never piped.
 
-/** Adds the note in `write` to the open notes. */
-export const addNoteWrite = editing<NoteAdd>(
-  "addNoteWrite",
-  ({ proposals, structures }, { baseFileRevision: _base, ...note }) =>
-    addNote({
-      proposals,
-      note,
-      // A note can be pinned to a structure that is only proposed so far.
-      known: new Set(structures.keys()),
+/** What an item is checked against when it is added. */
+const knownIn = ({ structures, hops, data }: Held): Known => ({
+  structureIds: new Set(structures.keys()),
+  hops,
+  data,
+});
+
+/** A write that adds the item `make` builds from the request. */
+const adding = <W extends { readonly baseFileRevision: number }>(
+  name: string,
+  make: (write: Omit<W, "baseFileRevision">) => BatchItem
+) =>
+  editing<W>(name, (held, { baseFileRevision: _base, ...write }) =>
+    addItem({
+      proposals: held.proposals,
+      item: make(write),
+      known: knownIn(held),
     })
+  );
+
+/** Adds the note in `write` to the open notes, on a structure, a hop or a spot. */
+export const addNoteWrite = adding<NoteAdd>("addNoteWrite", (note) => ({
+  kind: "note",
+  ...note,
+}));
+
+/** Adds a text suggestion. */
+export const addSuggestionWrite = adding<SuggestionAdd>(
+  "addSuggestionWrite",
+  (suggestion) => ({ kind: "suggestion", ...suggestion })
 );
 
-/** Changes the text of an open note. */
-export const editNoteWrite = editing<NoteEdit>(
-  "editNoteWrite",
-  ({ proposals }, { id, text }) => editNote({ proposals, id, text })
+/** Adds an answer to an open question. */
+export const addAnswerWrite = adding<AnswerAdd>("addAnswerWrite", (answer) => ({
+  kind: "answer",
+  ...answer,
+}));
+
+/** Raises a new question on a structure. */
+export const addQuestionWrite = adding<QuestionAdd>(
+  "addQuestionWrite",
+  (raised) => ({ kind: "question", ...raised })
 );
 
-/** Removes an open note. */
-export const discardNoteWrite = editing<ItemWrite>(
-  "discardNoteWrite",
-  ({ proposals }, { id }) => discardNote({ proposals, id })
+/** Changes the text of an open note, suggestion, answer or raised question. */
+export const editItemWrite = editing<ItemEdit>(
+  "editItemWrite",
+  ({ proposals }, { id, text }) => editProposal({ proposals, id, text })
+);
+
+/** Removes an open note, suggestion, answer or raised question. */
+export const discardItemWrite = editing<ItemWrite>(
+  "discardItemWrite",
+  ({ proposals }, { id }) => discardProposal({ proposals, id })
+);
+
+/**
+ * Sets an open structure proposal: adds a structure, deletes or changes one,
+ * or moves a structure the engineer proposed. Refused when it names a group
+ * the map lacks or lands on another footprint.
+ */
+export const setStructureWrite = editing<StructureWrite>(
+  "setStructureWrite",
+  ({ proposals, proposed }, { id, change }) =>
+    proposeStructure({
+      proposals,
+      id,
+      change,
+      world: { data: proposed.state.data, layout: proposed.state.layout },
+    })
 );
 
 /** Takes a reviewed item off the page. */
@@ -205,31 +257,9 @@ export const reopenWrite = editing<ReopenWrite>(
       layout,
       known: new Set(structures.keys()),
       hops,
-      data,
       text,
+      data,
     })
-);
-
-/**
- * Sets an open structure proposal: adds a structure, deletes or changes one,
- * or moves a structure the engineer proposed. Refused when it names a group
- * the map lacks or lands on another footprint.
- */
-export const setStructureWrite = editing<StructureWrite>(
-  "setStructureWrite",
-  ({ proposals, proposed }, { id, change }) =>
-    proposeStructure({
-      proposals,
-      id,
-      change,
-      world: { data: proposed.state.data, layout: proposed.state.layout },
-    })
-);
-
-/** Removes an open structure proposal. */
-export const discardStructureWrite = editing<ItemWrite>(
-  "discardStructureWrite",
-  ({ proposals }, { id }) => discardStructureProposal({ proposals, id })
 );
 
 /**

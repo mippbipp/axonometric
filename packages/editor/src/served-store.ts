@@ -17,7 +17,10 @@ import {
   MapFilesUnreadable,
   newChangeId,
   NoteAdd,
-  NoteEdit,
+  ItemEdit,
+  QuestionAdd,
+  SuggestionAdd,
+  AnswerAdd,
   observeFile,
   PendingLayoutWrite,
   placeRoute,
@@ -35,13 +38,14 @@ import {
   servedPageElementId,
   ServerEvent,
   StaleProposals,
-  StructureDiscard,
   StructureWrite,
   undoStep,
   wroteFile,
 } from "@axonometric/contracts";
 import type {
   ChangeId,
+  NoteTarget,
+  TextField,
   GridPoint,
   HopEnds,
   HistoryList,
@@ -116,16 +120,22 @@ const decodeFrozen = Schema.decodeUnknownOption(
 
 const encodeNoteAdd = Schema.encodeEffect(Schema.fromJsonString(NoteAdd));
 
-const encodeNoteEdit = Schema.encodeEffect(Schema.fromJsonString(NoteEdit));
+const encodeSuggestionAdd = Schema.encodeEffect(
+  Schema.fromJsonString(SuggestionAdd)
+);
+
+const encodeAnswerAdd = Schema.encodeEffect(Schema.fromJsonString(AnswerAdd));
+
+const encodeQuestionAdd = Schema.encodeEffect(
+  Schema.fromJsonString(QuestionAdd)
+);
+
+const encodeItemEdit = Schema.encodeEffect(Schema.fromJsonString(ItemEdit));
 
 const encodeItem = Schema.encodeEffect(Schema.fromJsonString(ItemWrite));
 
 const encodeStructure = Schema.encodeEffect(
   Schema.fromJsonString(StructureWrite)
-);
-
-const encodeStructureDiscard = Schema.encodeEffect(
-  Schema.fromJsonString(StructureDiscard)
 );
 
 const encodeFreeze = Schema.encodeEffect(Schema.fromJsonString(FreezeWrite));
@@ -333,33 +343,63 @@ export type ReviewOutcome<A> = Result.Result<A, string>;
 export type ReviewDone<A> = (outcome: ReviewOutcome<A>) => void;
 
 /**
+ * What the engineer adds: one of the kinds of proposal that carries text,
+ * without the id the page makes.
+ */
+export type NewItem =
+  | {
+      readonly kind: "note";
+      readonly target: NoteTarget;
+      readonly text: string;
+    }
+  | {
+      readonly kind: "suggestion";
+      readonly structureId: string;
+      readonly field: TextField;
+      readonly before: string;
+      readonly after: string;
+    }
+  | {
+      readonly kind: "answer";
+      readonly structureId: string;
+      readonly question: string;
+      readonly text: string;
+      readonly answeredOn: string;
+    }
+  | {
+      readonly kind: "question";
+      readonly structureId: string;
+      readonly text: string;
+    };
+
+/**
  * The review loop's writes. Each goes after the layout writes already on
  * their way, is based on the latest file revision, and is sent again on a
  * fresher file when another writer got in first, such as the agent's commit,
  * so a note typed meanwhile is not lost. `done` runs when it ends.
  */
 export interface ReviewOps {
-  /** Pins a note with `text` to structure `structureId`. */
-  readonly addNote: (
-    structureId: string,
-    text: string,
-    done: ReviewDone<ChangeId>
-  ) => void;
-  /** Changes the text of an open note. */
-  readonly editNote: (
+  /**
+   * Adds a note, text suggestion, answer or raised question as an open
+   * proposal, and returns its id. The page makes the id, so a retry can't
+   * add it twice.
+   */
+  readonly add: (item: NewItem, done: ReviewDone<ChangeId>) => void;
+  /** Changes the text of an open note, suggestion, answer or raised question. */
+  readonly editProposal: (
     id: ChangeId,
     text: string,
     done: ReviewDone<ChangeId>
   ) => void;
-  /** Removes an open note. */
-  readonly discardNote: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+  /** Removes an open note, suggestion, answer or raised question. */
+  readonly discardProposal: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /** Freezes every open change and note into the next batch. */
   readonly freeze: (done: ReviewDone<FreezeAnswer>) => void;
   /** Takes a reviewed item off the page. */
   readonly dismiss: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /**
    * Reopens a rejected item as a new open item, and returns its id. For a
-   * note, `text` replaces the old words.
+   * note, `text` replaces the old text.
    */
   readonly reopen: (
     id: ChangeId,
@@ -558,6 +598,51 @@ const noticeOf = Match.type<typeof WriteRefusal.Type>().pipe(
     }),
   })
 );
+
+/** Where an item of this kind is added, on the page `served` describes. */
+const urlOfNew = (served: ServedPage, item: NewItem): string =>
+  Match.value(item).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      note: () => served.notes,
+      suggestion: () => served.suggestions,
+      answer: () => served.answers,
+      question: () => served.questions,
+    })
+  );
+
+/** The body that adds `item` as `id`, on the file revision `base`. */
+const encodeNew = (item: NewItem, id: ChangeId, base: number) =>
+  Match.value(item).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      note: ({ target, text }) =>
+        encodeNoteAdd({ baseFileRevision: base, id, target, text }),
+      suggestion: ({ structureId, field, before, after }) =>
+        encodeSuggestionAdd({
+          baseFileRevision: base,
+          id,
+          target: { kind: "structure", id: structureId },
+          field,
+          before,
+          after,
+        }),
+      answer: ({ structureId, question, text, answeredOn }) =>
+        encodeAnswerAdd({
+          baseFileRevision: base,
+          id,
+          target: { kind: "structure", id: structureId },
+          question,
+          text,
+          answeredOn,
+        }),
+      question: ({ structureId, text }) =>
+        encodeQuestionAdd({
+          baseFileRevision: base,
+          id,
+          target: { kind: "structure", id: structureId },
+          text,
+        }),
+    })
+  );
 
 /**
  * Connects to the server's events and keeps the latest map. The browser
@@ -1335,31 +1420,25 @@ export const connectServed = ({
   };
 
   const review: ReviewOps = {
-    addNote: (structureId, text, done) => {
+    add: (item, done) => {
       const id = newChangeId();
 
       callReview<ChangeId>(
         {
-          url: served.notes,
-          encode: (base) =>
-            encodeNoteAdd({
-              baseFileRevision: base,
-              id,
-              target: { kind: "structure", id: structureId },
-              text,
-            }).pipe(Effect.orDie),
+          url: urlOfNew(served, item),
+          encode: (base) => encodeNew(item, id, base).pipe(Effect.orDie),
           read: readProposalsWith(id),
           endsUndo: false,
         },
         done
       );
     },
-    editNote: (id, text, done) => {
+    editProposal: (id, text, done) => {
       callReview<ChangeId>(
         {
-          url: served.editNote,
+          url: served.editItem,
           encode: (base) =>
-            encodeNoteEdit({ baseFileRevision: base, id, text }).pipe(
+            encodeItemEdit({ baseFileRevision: base, id, text }).pipe(
               Effect.orDie
             ),
           read: readProposalsWith(id),
@@ -1368,8 +1447,8 @@ export const connectServed = ({
         done
       );
     },
-    discardNote: (id, done) => {
-      writeItem(id, served.discardNote, done);
+    discardProposal: (id, done) => {
+      writeItem(id, served.discardItem, done);
     },
     dismiss: (id, done) => {
       writeItem(id, served.dismiss, done);
@@ -1495,18 +1574,7 @@ export const connectServed = ({
       return refusal;
     },
     discard: (id, done) => {
-      callReview<ChangeId>(
-        {
-          url: served.discardStructure,
-          encode: (base) =>
-            encodeStructureDiscard({ baseFileRevision: base, id }).pipe(
-              Effect.orDie
-            ),
-          read: readProposalsWith(id),
-          endsUndo: false,
-        },
-        done
-      );
+      review.discardProposal(id, done);
     },
   };
 

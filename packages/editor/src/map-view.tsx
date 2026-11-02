@@ -23,7 +23,10 @@ import { DragOutlines } from "./drop-outline.tsx";
 import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
 import { GroupEditor } from "./group-editor.tsx";
+import { NewStructureSpot } from "./new-structure-spot.tsx";
+import { spotDrawn, useNoteBearers } from "./note-bearers.ts";
 import { NoteMarkers } from "./note-markers.tsx";
+import { SpotCursor, SpotPicker } from "./note-tool.tsx";
 import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
@@ -32,7 +35,6 @@ import { RemovedMarks } from "./removed-marks.tsx";
 import { RouteEditor } from "./route-editor.tsx";
 import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
-import { SpotPicker } from "./spot-picker.tsx";
 import { useSpotlight, useSpotlightActions } from "./spotlight-context.ts";
 import { Viewport } from "./viewport.tsx";
 
@@ -150,13 +152,23 @@ export function MapView({
 
   const fitIds = useMemo(() => [...fitTo], [fitTo]);
 
+  const bearers = useNoteBearers();
+
   const fitAt = useCallback(
     (zoom: number) => {
-      const drawn = drawnIn({ scene: sceneAt(textZoomOf(zoom)), drawing });
+      const fitted = sceneAt(textZoomOf(zoom));
+
+      // A spot can lie far from everything else, so its ring counts in the
+      // fit. It is the page's editing layer, so an export's extent, which
+      // `drawnIn` alone gives, leaves it out.
+      const drawn = [
+        ...drawnIn({ scene: fitted, drawing }),
+        ...spotDrawn(fitted, bearers, fitIds),
+      ];
 
       return fitOf({ drawn, fitTo: fitIds }).bounds;
     },
-    [sceneAt, drawing, fitIds]
+    [sceneAt, drawing, fitIds, bearers]
   );
 
   // The floor looks at name tags only, which place quickly.
@@ -202,7 +214,12 @@ export function MapView({
             hatch={hatch}
             newlyRevealed={newlyRevealed}
             spotlight={spotlight}
-            ground={<DragOutlines view={view} />}
+            ground={
+              <>
+                <DragOutlines view={view} />
+                <SpotPicker view={view} />
+              </>
+            }
             underlay={
               <>
                 <GroupEditor
@@ -224,7 +241,7 @@ export function MapView({
                     view={view}
                   />
                   <AcceptedOutlines structures={scene.structures} view={view} />
-                  <SpotPicker view={view} />
+                  <NewStructureSpot view={view} />
                   <CompareRings
                     structures={scene.structures}
                     view={view}
@@ -246,6 +263,7 @@ export function MapView({
               <>
                 <NoteMarkers scene={scene} />
                 <RemovedMarks structures={scene.structures} view={view} />
+                <SpotCursor view={view} />
               </>
             }
             onHopHover={hoverHop}

@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   checkMap,
+  checkOpenItems,
   checkProposals,
   describeCause,
   emptyProposals,
@@ -395,6 +396,7 @@ export const inspectMap = Effect.fnUntraced(function* (
       ),
       ...proposals.problems,
       ...checkProposals(data.success, layout, proposals.found),
+      ...checkOpenItems(data.success, proposals.found),
       ...history,
     ];
 
