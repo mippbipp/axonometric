@@ -29,6 +29,7 @@ import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
 export { oneLine, quoteText } from "./review-quote.ts";
+
 export { plain, removedMark, touchesNothing } from "./review-kind-defaults.ts";
 
 /** A structure or a hop, named by its id. */

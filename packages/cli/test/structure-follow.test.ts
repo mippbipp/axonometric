@@ -416,10 +416,15 @@ describe("the open page after verdict changed --as and commit", () => {
         yield* waitFor(page, `[data-structure-panel="${provisional}"]`);
         yield* Effect.promise(() =>
           page
-            .locator("[data-structure-panel] [data-note-text]")
+            .locator(
+              "[data-structure-panel] [data-notes-section] [data-note-text]"
+            )
             .fill("Why a store?")
         );
-        yield* click(page, "[data-structure-panel] [data-note-send]");
+        yield* click(
+          page,
+          "[data-structure-panel] [data-notes-section] [data-note-send]"
+        );
         yield* waitFor(page, "[data-panel-note]");
 
         yield* click(page, "[data-ready-for-review]");

@@ -534,7 +534,7 @@ describe("structure writes over HTTP", () => {
         assert.strictEqual(edit.status, 422);
         assert.include(edit.text, "waiting for the agent");
 
-        const discard = yield* post(serve.url, "/api/structures/discard", {
+        const discard = yield* post(serve.url, "/api/items/discard", {
           baseFileRevision: 2,
           id: "p1",
         });

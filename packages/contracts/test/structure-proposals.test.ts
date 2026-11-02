@@ -684,8 +684,7 @@ describe("proposing a structure", () => {
     );
 
     assert.deepStrictEqual(
-      unwrap(discardProposal({ proposals: first, id: "p1" }))
-        .structures,
+      unwrap(discardProposal({ proposals: first, id: "p1" })).structures,
       []
     );
 

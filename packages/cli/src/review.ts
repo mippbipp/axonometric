@@ -116,6 +116,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
   yield* withLock(home, "review");
 
   const map = yield* loadReviewMap(home, "review");
+
   // A structure the engineer proposed has a name on the page and none in
   // data.mjs yet, so review names it from the proposed map.
   const names = structureNames(
@@ -124,6 +125,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
       proposals: map.proposals,
     }).state.data
   );
+
   const oldest = oldestOpenBatch(map.proposals);
   const absolute = path.resolve(home);
 

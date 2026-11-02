@@ -1,7 +1,6 @@
 import { Array as Arr, Option, Record as Rec } from "effect";
 
-import type { BatchItem, LayoutChange } from "./proposals.ts";
-import type { Verdict } from "./proposals.ts";
+import type { BatchItem, LayoutChange, Verdict } from "./proposals.ts";
 import { plain, removedMark } from "./review-kind-defaults.ts";
 import type { KindSpec, Pointer } from "./review-kinds.ts";
 import { decorate } from "./review-quote.ts";

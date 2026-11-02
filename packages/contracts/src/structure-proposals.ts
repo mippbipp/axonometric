@@ -338,6 +338,7 @@ export const proposeStructure = ({
 
   return Result.succeed(setProposal({ proposals, id, change, world }));
 };
+
 /** A fresh provisional id for a structure called `name`, such as `build-cache-4f2a`. */
 export const newProvisionalId = (name: string): string =>
   provisionalIdOf(name, Str.slice(0, 4)(newChangeId()));
