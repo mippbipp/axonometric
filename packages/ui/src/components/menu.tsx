@@ -139,11 +139,15 @@ function MenuGroup(props: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group {...props} />;
 }
 
-function MenuLabel({ className, ...props }: MenuPrimitive.GroupLabel.Props) {
+/** A heading at the top of a menu. For a labelled group, use `MenuGroup` with its own label. */
+function MenuLabel({ className, ...props }: ComponentProps<"div">) {
   return (
-    <MenuPrimitive.GroupLabel
+    <div
       data-slot="menu-label"
-      className={cn("px-2 py-1 text-2xs tracking-widest uppercase opacity-70", className)}
+      className={cn(
+        "px-2 py-1 text-2xs tracking-widest uppercase opacity-70",
+        className
+      )}
       {...props}
     />
   );
