@@ -11,7 +11,7 @@ describe("axonometric", () => {
       const result = yield* runCli(home, ["--version"]);
 
       assert.strictEqual(result.exitCode, 0);
-      assert.strictEqual(result.stdout, "axonometric v0.0.0\n");
+      assert.strictEqual(result.stdout, "axonometric v0.1.0\n");
       assert.strictEqual(result.stderr, "");
       assert.deepStrictEqual(result.files, {});
     })
