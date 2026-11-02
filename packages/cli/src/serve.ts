@@ -396,14 +396,11 @@ const heartbeats = Stream.tick(heartbeatInterval).pipe(
 /** The HTTP routes: the API, behind the Host check and the write guard. */
 const routes = ({
   home,
-  absoluteHome,
   held,
   stopping,
   answeredHosts,
 }: {
   readonly home: string;
-  /** `home` as an absolute path, which the page shows in the review prompt. */
-  readonly absoluteHome: string;
   readonly held: SubscriptionRef.SubscriptionRef<Held>;
   readonly stopping: Latch.Latch;
   /** The host names the server answers; any other Host gets a 403. */
@@ -418,7 +415,6 @@ const routes = ({
   );
 
   const served = {
-    home: absoluteHome,
     events: Str.slice(1)(serverPaths.events),
     pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
     accept: Str.slice(1)(serverPaths.accept),
@@ -432,14 +428,6 @@ const routes = ({
 
   const tell = (proposals: Proposals) =>
     SubscriptionRef.update(held, (current) => ({ ...current, proposals }));
-
-  const reviewDefects = [
-    "PlatformError",
-    "LockHeld",
-    "SchemaError",
-    "BadArgument",
-    "OutputExists",
-  ] as const;
 
   const mapHandlers = HttpApiBuilder.group(ServerApi, "map", (group) =>
     group
@@ -495,38 +483,26 @@ const routes = ({
         )
   );
 
+  /** A handler for one of the review writes. */
+  const reviewing =
+    <P, A, E, R>(
+      write: (
+        home: string,
+        payload: P,
+        written: (proposals: Proposals) => Effect.Effect<void>
+      ) => Effect.Effect<A, E, R>
+    ) =>
+    ({ payload }: { readonly payload: P }) =>
+      write(home, payload, tell);
+
   const reviewHandlers = HttpApiBuilder.group(ServerApi, "review", (group) =>
     group
-      .handle("addNote", ({ payload }) =>
-        addNoteWrite(home, payload, tell).pipe(
-          Effect.catchTag(reviewDefects, Effect.die)
-        )
-      )
-      .handle("editNote", ({ payload }) =>
-        editNoteWrite(home, payload, tell).pipe(
-          Effect.catchTag(reviewDefects, Effect.die)
-        )
-      )
-      .handle("discardNote", ({ payload }) =>
-        discardNoteWrite(home, payload, tell).pipe(
-          Effect.catchTag(reviewDefects, Effect.die)
-        )
-      )
-      .handle("freeze", ({ payload }) =>
-        freezeWrite(home, payload, tell).pipe(
-          Effect.catchTag(reviewDefects, Effect.die)
-        )
-      )
-      .handle("dismiss", ({ payload }) =>
-        dismissWrite(home, payload, tell).pipe(
-          Effect.catchTag(reviewDefects, Effect.die)
-        )
-      )
-      .handle("reopen", ({ payload }) =>
-        reopenWrite(home, payload, tell).pipe(
-          Effect.catchTag(reviewDefects, Effect.die)
-        )
-      )
+      .handle("addNote", reviewing(addNoteWrite))
+      .handle("editNote", reviewing(editNoteWrite))
+      .handle("discardNote", reviewing(discardNoteWrite))
+      .handle("freeze", reviewing(freezeWrite))
+      .handle("dismiss", reviewing(dismissWrite))
+      .handle("reopen", reviewing(reopenWrite))
   );
 
   const api = HttpApiBuilder.layer(ServerApi).pipe(
@@ -607,12 +583,10 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   ]);
 
   const stopping = yield* Latch.make();
-  const path = yield* Path.Path;
 
   const app = yield* HttpRouter.toHttpEffect(
     routes({
       home,
-      absoluteHome: path.resolve(home),
       held,
       stopping,
       answeredHosts,

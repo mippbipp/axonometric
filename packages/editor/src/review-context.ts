@@ -10,8 +10,6 @@ import type { ReviewOps } from "./served-store.ts";
 export interface Review {
   /** Whether writes can be sent now. False while the server is down. */
   readonly canWrite: boolean;
-  /** The absolute path of the map's home folder. */
-  readonly home: string;
   /**
    * Every note, open or in a batch, with its status. A reviewed note that
    * the engineer dismissed is left out.

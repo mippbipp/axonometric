@@ -1,11 +1,17 @@
 import {
-  applyLayoutChanges,
   breakageOf,
+  changedLayoutNotice,
+  engineerTextNotice,
   oldestOpenBatch,
-  placeStructures,
-  structuresOf,
+  ReviewReport,
+  specOf,
 } from "@axonometric/contracts";
-import type { Batch, BatchItem, Layout } from "@axonometric/contracts";
+import type {
+  Batch,
+  BatchItem,
+  Layout,
+  ReportedItem,
+} from "@axonometric/contracts";
 import {
   Array as Arr,
   Console,
@@ -18,107 +24,13 @@ import {
 import { Argument, Command, Flag } from "effect/cli";
 
 import { withLock } from "./lock.ts";
-import { loadMap } from "./map-files.ts";
-
-const Spot = Schema.Struct({ x: Schema.Finite, y: Schema.Finite });
-
-const Size = Schema.Struct({ w: Schema.Finite, d: Schema.Finite });
-
-/** What an item changes or leaves: positions, a size, or a note's text. */
-const Facts = Schema.NullOr(
-  Schema.Union([
-    Schema.Record(Schema.String, Spot),
-    Size,
-    Schema.Struct({ text: Schema.String }),
-  ])
-);
-
-type Facts = typeof Facts.Type;
-
-const Decision = Schema.Struct({
-  verdict: Schema.Literals(["accepted", "changed", "rejected"]),
-  reason: Schema.optionalKey(Schema.String),
-});
-
-const ReportedItem = Schema.Struct({
-  id: Schema.String,
-  kind: Schema.String,
-  /** The structures the item acts on or is pinned to. */
-  targets: Schema.Array(
-    Schema.Struct({ id: Schema.String, name: Schema.String })
-  ),
-  /** What the map has now, or null for an item that adds something. */
-  before: Facts,
-  /** What accepting the item makes. */
-  after: Facts,
-  /** Why accepting the item would break the map, or null when it wouldn't. */
-  breaks: Schema.NullOr(Schema.String),
-  /** The rejected item this one takes up again, or null. */
-  replaces: Schema.NullOr(Schema.String),
-  verdict: Schema.NullOr(Decision),
-});
-
-type Reported = typeof ReportedItem.Type;
-
-/** What `review --json` prints. */
-const ReviewedBatch = Schema.Struct({
-  number: Schema.Int,
-  frozenAt: Schema.String,
-  items: Schema.Array(ReportedItem),
-});
-
-export const ReviewReport = Schema.Struct({
-  home: Schema.String,
-  /** The oldest batch with no commit, or null when none is waiting. */
-  batch: Schema.NullOr(ReviewedBatch),
-});
+import { loadReviewMap, structureNames } from "./review-shared.ts";
 
 const encodeReport = Schema.encodeEffect(Schema.fromJsonString(ReviewReport));
 
-const encodeFacts = Schema.encodeEffect(Schema.fromJsonString(Facts));
-
-const positionsOf = (layout: Layout, ids: readonly string[]): Facts =>
-  Rec.fromEntries(
-    Arr.flatMap(ids, (id) =>
-      Option.match(Rec.get(layout.structures, id), {
-        onNone: () => [],
-        onSome: ({ x, y }) => [[id, { x, y }] as const],
-      })
-    )
-  );
-
-const sizeOf = (layout: Layout, id: string): Facts =>
-  Option.match(Rec.get(layout.structures, id), {
-    onNone: () => null,
-    onSome: ({ w, d }) => ({ w, d }),
-  });
-
-/** What the item changes, before and after, from the accepted `layout`. */
-const beforeAndAfter = (item: BatchItem, layout: Layout) => {
-  if (item.kind === "note") {
-    return { before: null, after: { text: item.text } };
-  }
-
-  const { change } = item;
-  const next = applyLayoutChanges(layout, [change]);
-
-  if (change.kind === "move") {
-    const ids = structuresOf(change);
-
-    return {
-      before: positionsOf(layout, ids),
-      after: positionsOf(next, ids),
-    };
-  }
-
-  return {
-    before: sizeOf(layout, change.target.id),
-    after: sizeOf(next, change.target.id),
-  };
-};
-
-const targetsOf = (item: BatchItem) =>
-  item.kind === "note" ? [item.target.id] : structuresOf(item.change);
+const encodeFacts = Schema.encodeEffect(
+  Schema.fromJsonString(Schema.NullOr(Schema.Json))
+);
 
 const reportItem = ({
   item,
@@ -133,14 +45,15 @@ const reportItem = ({
   readonly replaces: Readonly<Record<string, string>> | undefined;
   readonly layout: Layout;
   readonly names: ReadonlyMap<string, string>;
-}): Reported => {
-  const { before, after } = beforeAndAfter(item, layout);
+}): ReportedItem => {
+  const spec = specOf(item);
+  const { before, after } = spec.facts(item, layout);
   const structureIds = new Set(names.keys());
 
   return {
     id: item.id,
-    kind: item.kind === "note" ? "note" : item.change.kind,
-    targets: Arr.map(targetsOf(item), (id) => ({
+    kind: spec.name(item),
+    targets: Arr.map(spec.targets(item), (id) => ({
       id,
       name: names.get(id) ?? id,
     })),
@@ -152,11 +65,15 @@ const reportItem = ({
   };
 };
 
-const textOf = Effect.fnUntraced(function* (item: Reported) {
+const textOf = Effect.fnUntraced(function* (item: ReportedItem) {
   const before = yield* encodeFacts(item.before);
   const after = yield* encodeFacts(item.after);
-  const targets = Arr.map(item.targets, ({ id, name }) => `${name} (${id})`);
   const why = Option.fromNullishOr(item.verdict?.reason);
+
+  const targets = Arr.map(
+    item.targets,
+    ({ id, name }) => `${JSON.stringify(name)} (${id})`
+  );
 
   const verdict =
     item.verdict === null
@@ -182,18 +99,8 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
 
   yield* withLock(home, "review");
 
-  const map = yield* loadMap({
-    home,
-    output: path.dirname(home),
-    command: "review",
-    arrange: (data, saved) => placeStructures(data, saved).layout,
-    strictProposals: true,
-  });
-
-  const names = new Map(
-    Arr.map(map.data.structures, ({ id, name }) => [id, name])
-  );
-
+  const map = yield* loadReviewMap(home, "review");
+  const names = structureNames(map.data);
   const oldest = oldestOpenBatch(map.proposals);
   const absolute = path.resolve(home);
 
@@ -236,6 +143,8 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
       [
         `Batch ${number}, frozen ${frozenAt}: ${items.length} ${noun}, ${undecided.length} without a verdict.`,
         `Full details are in ${path.join(absolute, "proposals.json")}.`,
+        engineerTextNotice,
+        changedLayoutNotice,
         "",
         Arr.join(described, "\n\n"),
         "",

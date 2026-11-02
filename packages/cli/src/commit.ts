@@ -27,13 +27,13 @@ export const commitCommand = Command.make(
     message: Flag.String("message").pipe(
       Flag.optional,
       Flag.withDescription(
-        "The revision's message. Without it, commit writes one from the verdicts."
+        "The revision's message, up to 500 characters. Without it, commit writes one from the verdicts."
       )
     ),
   },
   ({ home, message }) => commit(home, message)
 ).pipe(
   Command.withDescription(
-    "Commit the oldest batch that has no commit: refuses while an item has no verdict, validates data.mjs, applies the accepted and changed layout changes to layout.json, saves a revision with the reasons, and rebuilds SYSTEM.md and the page. Open pages update on their own."
+    "Commit the oldest batch that has no commit: refuses while an item has no verdict, validates data.mjs, applies the accepted layout changes to layout.json (a changed item is not applied: you set the layout yourself first), saves a revision with the reasons, and rebuilds SYSTEM.md and the page. Open pages update on their own."
   )
 );

@@ -190,7 +190,10 @@ describe("the Ready for review button", () => {
         assert.include(prompt, "batch 1");
         assert.include(prompt, "summary");
         assert.include(prompt, `${home}/proposals.json`);
-        assert.match(prompt, /^- note \S+ on Save server: "Why a server\?"$/mu);
+        assert.match(
+          prompt,
+          /^- note \S+ on "Save server": "Why a server\?"$/mu
+        );
 
         const dialog = yield* textOf(page, "[data-review-dialog]");
 

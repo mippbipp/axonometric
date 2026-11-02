@@ -1,4 +1,4 @@
-import type { FrozenReview } from "@axonometric/contracts";
+import type { FreezeAnswer } from "@axonometric/contracts";
 import { Result } from "effect";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -8,7 +8,7 @@ import { useReview } from "./review-context.ts";
 
 /** What the dialog shows once a batch is frozen. */
 interface Sent {
-  readonly frozen: FrozenReview;
+  readonly frozen: FreezeAnswer;
   /** Whether the prompt reached the clipboard. */
   readonly copied: boolean;
 }
@@ -204,7 +204,7 @@ export function ReadyForReview() {
             </p>
             <p data-review-summary-note className="text-xs opacity-80">
               The list in the prompt is a summary. The full details are in{" "}
-              <code translate="no">{review.home}/proposals.json</code>.
+              <code translate="no">{sent.frozen.home}/proposals.json</code>.
             </p>
             <PromptBox
               prompt={sent.frozen.prompt}

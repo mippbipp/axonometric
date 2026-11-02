@@ -154,7 +154,6 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
 
     return {
       canWrite: !view.stopped,
-      home: store.home,
       entries,
       notes: Arr.filter(entries, ({ item }) => item.kind === "note"),
       openNotes: proposals.notes?.length ?? 0,

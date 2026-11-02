@@ -163,8 +163,6 @@ export type ServerEvent = typeof ServerEvent.Type;
  * file. Its presence tells the page to connect to the server.
  */
 export const ServedPage = Schema.Struct({
-  /** The absolute path of the map's home folder, for the review prompt. */
-  home: Schema.String,
   /** The events stream, relative to the page's URL. */
   events: Schema.String,
   /** Where to write the pending layout changes, relative to the page's URL. */

@@ -49,15 +49,17 @@ export const FreezeWrite = Schema.Struct({
 export type FreezeWrite = typeof FreezeWrite.Type;
 
 /** The batch just frozen, and the prompt that names it. */
-export const Frozen = Schema.Struct({
+export const FreezeAnswer = Schema.Struct({
   batch: Batch,
+  /** The absolute path of the map's home folder, which the prompt names. */
+  home: Schema.String,
   /** The review prompt for the engineer to paste into an agent harness. */
   prompt: Schema.String,
   /** What `proposals.json` holds now. */
   proposals: Proposals,
 });
 
-export type Frozen = typeof Frozen.Type;
+export type FreezeAnswer = typeof FreezeAnswer.Type;
 
 /**
  * The write isn't allowed, such as editing a note that is waiting for the

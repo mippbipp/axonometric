@@ -3,7 +3,7 @@ import {
   commitMessage,
   historyFolder,
   Layout,
-  placeStructures,
+  maxMessageLength,
   revisionFileName,
 } from "@axonometric/contracts";
 import type {
@@ -23,23 +23,13 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { CliError } from "effect/cli";
 
 import { siteOutputs, systemOf } from "./build.ts";
 import { encodeRevision, nextRevision } from "./history.ts";
 import { withLock } from "./lock.ts";
-import { encodeLayout, encodeProposals, loadMap } from "./map-files.ts";
+import { encodeLayout, encodeProposals } from "./map-files.ts";
+import { loadReviewMap, ReviewRefused } from "./review-shared.ts";
 import { writeAll } from "./write-files.ts";
-
-/** A `verdict` or `commit` the batch can't take. Nothing was written. */
-export class ReviewRefused extends Schema.TaggedError<
-  ReviewRefused,
-  { readonly brand: unique symbol }
->()("ReviewRefused", { command: Schema.String, reason: Schema.String }) {
-  public override get [CliError.userMessage]() {
-    return `${this.reason} ${this.command} wrote nothing.`;
-  }
-}
 
 const sameLayout = Schema.toEquivalence(Layout);
 
@@ -69,15 +59,21 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
 ) {
   const path = yield* Path.Path;
 
+  const tooLong = Option.filter(
+    Option.map(given, Str.trim),
+    (message) => message.length > maxMessageLength
+  );
+
+  if (Option.isSome(tooLong)) {
+    return yield* ReviewRefused.make({
+      command: "commit",
+      reason: `The message is ${tooLong.value.length} characters, over the limit of ${maxMessageLength}. Say it shorter.`,
+    });
+  }
+
   yield* withLock(home, "commit");
 
-  const map = yield* loadMap({
-    home,
-    output: path.dirname(home),
-    command: "commit",
-    arrange: (data, saved) => placeStructures(data, saved).layout,
-    strictProposals: true,
-  });
+  const map = yield* loadReviewMap(home, "commit");
 
   const number = yield* nextRevision(home);
   const at = DateTime.formatIso(yield* DateTime.now);

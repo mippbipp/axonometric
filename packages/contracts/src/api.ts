@@ -11,7 +11,7 @@ import { MapState } from "./map-state.ts";
 import { Proposals } from "./proposals.ts";
 import {
   FreezeWrite,
-  Frozen,
+  FreezeAnswer,
   ItemWrite,
   NoteAdd,
   NoteEdit,
@@ -104,7 +104,7 @@ export class ReviewApiGroup extends HttpApiGroup.make("review")
     }),
     HttpApiEndpoint.post("freeze", serverPaths.freeze, {
       payload: FreezeWrite,
-      success: Frozen,
+      success: FreezeAnswer,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("dismiss", serverPaths.dismiss, {

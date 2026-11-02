@@ -1,18 +1,20 @@
-import { recordVerdict } from "@axonometric/contracts";
+import {
+  maxReasonLength,
+  recordVerdict,
+  verdictKinds,
+} from "@axonometric/contracts";
 import type { Verdict } from "@axonometric/contracts";
 import { Console, Effect, Option, Path, Result, String as Str } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
-import { ReviewRefused } from "./commit-writes.ts";
 import { withLock } from "./lock.ts";
 import { MapInvalid, encodeProposals, loadProposals } from "./map-files.ts";
+import { ReviewRefused } from "./review-shared.ts";
 import { writeAll } from "./write-files.ts";
 
-const decisions = ["accepted", "changed", "rejected"] as const;
-
-/** The verdict for `decision`, or why the reason is missing. */
+/** The verdict for `kind`, or why its reason is missing or too long. */
 const verdictOf = (
-  decision: (typeof decisions)[number],
+  kind: Verdict["verdict"],
   reason: Option.Option<string>
 ): Result.Result<Verdict, string> => {
   const text = Option.filter(
@@ -20,7 +22,18 @@ const verdictOf = (
     (trimmed) => trimmed !== ""
   );
 
-  if (decision === "accepted") {
+  const tooLong = Option.filter(
+    text,
+    (given) => given.length > maxReasonLength
+  );
+
+  if (Option.isSome(tooLong)) {
+    return Result.fail(
+      `The reason is ${tooLong.value.length} characters, over the limit of ${maxReasonLength}. Say it shorter; the details can go in data.mjs.`
+    );
+  }
+
+  if (kind === "accepted") {
     return Result.succeed(
       Option.match(text, {
         onNone: (): Verdict => ({ verdict: "accepted" }),
@@ -32,27 +45,27 @@ const verdictOf = (
   return Option.match(text, {
     onNone: () =>
       Result.fail(
-        decision === "changed"
+        kind === "changed"
           ? 'A changed verdict needs --reason, saying what you changed and why. Add --reason "...".'
           : 'A rejected verdict needs --reason, saying why. Add --reason "...".'
       ),
-    onSome: (given) => Result.succeed({ verdict: decision, reason: given }),
+    onSome: (given) => Result.succeed({ verdict: kind, reason: given }),
   });
 };
 
 const verdict = Effect.fn("verdict")(function* ({
   home,
   item,
-  decision,
+  kind,
   reason,
 }: {
   readonly home: string;
   readonly item: string;
-  readonly decision: (typeof decisions)[number];
+  readonly kind: Verdict["verdict"];
   readonly reason: Option.Option<string>;
 }) {
   const path = yield* Path.Path;
-  const decided = verdictOf(decision, reason);
+  const decided = verdictOf(kind, reason);
 
   if (Result.isFailure(decided)) {
     return yield* ReviewRefused.make({
@@ -99,7 +112,7 @@ const verdict = Effect.fn("verdict")(function* ({
   });
 
   return yield* Console.log(
-    `Recorded ${decision} on ${item}${why}. Run axonometric commit ${path.resolve(home)} once every item has a verdict.`
+    `Recorded ${kind} on ${item}${why}. Run axonometric commit ${path.resolve(home)} once every item has a verdict.`
   );
 }, Effect.scoped);
 
@@ -114,7 +127,7 @@ export const verdictCommand = Command.make(
     item: Argument.String("item").pipe(
       Argument.withDescription("The id of an item in the batch review printed")
     ),
-    decision: Argument.Literals("verdict", decisions).pipe(
+    kind: Argument.Literals("verdict", verdictKinds).pipe(
       Argument.withDescription(
         "accepted, changed (you took it in another form) or rejected"
       )

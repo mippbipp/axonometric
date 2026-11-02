@@ -7,7 +7,7 @@ import {
   emptyHistory,
   emptyProposals,
   FreezeWrite,
-  FrozenReview,
+  FreezeAnswer,
   frozenLayoutChanges,
   frozenRefusal,
   ItemWrite,
@@ -97,7 +97,7 @@ const decodeReviewRefusal = Schema.decodeUnknownOption(
 );
 
 const decodeFrozen = Schema.decodeUnknownOption(
-  Schema.fromJsonString(FrozenReview)
+  Schema.fromJsonString(FreezeAnswer)
 );
 
 const encodeNoteAdd = Schema.encodeEffect(Schema.fromJsonString(NoteAdd));
@@ -182,8 +182,6 @@ export type Edit = (
 ) => readonly LayoutChange[];
 
 export interface ServedStore {
-  /** The absolute path of the map's home folder, as `serve` reports it. */
-  readonly home: string;
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => ServedView;
   /**
@@ -264,7 +262,7 @@ export interface ReviewOps {
   /** Removes an open note. */
   readonly discardNote: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /** Freezes every open change and note into the next batch. */
-  readonly freeze: (done: ReviewDone<FrozenReview>) => void;
+  readonly freeze: (done: ReviewDone<FreezeAnswer>) => void;
   /** Takes a reviewed item off the page. */
   readonly dismiss: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /**
@@ -1209,7 +1207,7 @@ export const connectServed = ({
       writeItem(id, served.dismiss, done);
     },
     freeze: (done) => {
-      callReview<FrozenReview>(
+      callReview<FreezeAnswer>(
         {
           url: served.freeze,
           encode: (base) =>
@@ -1250,7 +1248,6 @@ export const connectServed = ({
   connect();
 
   return {
-    home: served.home,
     review,
     subscribe: (listener) => {
       listeners.add(listener);

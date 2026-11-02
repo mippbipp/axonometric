@@ -7,14 +7,13 @@ import {
   editNote,
   freezeOpen,
   MapFilesUnreadable,
-  placeStructures,
   ProposalRefused,
   reopenItem,
   reviewPrompt,
 } from "@axonometric/contracts";
 import type {
   FreezeWrite,
-  FrozenReview,
+  FreezeAnswer,
   Layout,
   ItemWrite,
   NoteAdd,
@@ -22,10 +21,11 @@ import type {
   Proposals,
   ReopenWrite,
 } from "@axonometric/contracts";
-import { Array as Arr, DateTime, Effect, Path, Result } from "effect";
+import { DateTime, Effect, Path, Result } from "effect";
 
-import { encodeProposals, loadMap } from "./map-files.ts";
+import { encodeProposals } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
+import { loadReviewMap, structureNames } from "./review-shared.ts";
 import { writeAll } from "./write-files.ts";
 
 /**
@@ -35,193 +35,156 @@ import { writeAll } from "./write-files.ts";
  * still under the lock, to tell the open pages. A `change` that fails
  * refuses the write with its reason and writes nothing.
  */
-const writeProposals = Effect.fnUntraced(function* <A>({
-  home,
-  baseFileRevision,
-  change,
-  written,
-}: {
-  readonly home: string;
-  readonly baseFileRevision: number;
-  readonly change: (held: {
-    readonly proposals: Proposals;
-    readonly layout: Layout;
-    readonly structures: ReadonlyMap<string, string>;
-    readonly now: string;
-  }) => Result.Result<
-    { readonly proposals: Proposals; readonly answer: A },
-    string
-  >;
-  readonly written: (proposals: Proposals) => Effect.Effect<void>;
-}) {
-  const path = yield* Path.Path;
+/** What a write's change is given: the files as read under the lock. */
+interface Held {
+  readonly proposals: Proposals;
+  /** The layout open changes land on: the accepted one with frozen changes applied. */
+  readonly layout: Layout;
+  readonly structures: ReadonlyMap<string, string>;
+  readonly now: string;
+}
 
-  const map = yield* loadForWrite(
+const writeProposals = Effect.fnUntraced(
+  function* <A>({
     home,
     baseFileRevision,
-    loadMap({
+    change,
+    written,
+  }: {
+    readonly home: string;
+    readonly baseFileRevision: number;
+    readonly change: (held: Held) => Change<A>;
+    readonly written: (proposals: Proposals) => Effect.Effect<void>;
+  }) {
+    const path = yield* Path.Path;
+
+    const map = yield* loadForWrite(
       home,
-      output: path.dirname(home),
-      command: "serve",
-      arrange: (data, saved) => placeStructures(data, saved).layout,
-      strictProposals: true,
-    }).pipe(
-      Effect.catchTag("MapInvalid", ({ problems }) =>
-        MapFilesUnreadable.make({ problems })
+      baseFileRevision,
+      loadReviewMap(home, "serve").pipe(
+        Effect.catchTag("MapInvalid", ({ problems }) =>
+          MapFilesUnreadable.make({ problems })
+        )
       )
-    )
-  );
+    );
 
-  const now = DateTime.formatIso(yield* DateTime.now);
+    const now = DateTime.formatIso(yield* DateTime.now);
 
-  const changed = change({
-    proposals: map.proposals,
-    // The layout an open change lands on: the accepted one with the
-    // changes frozen in batches applied.
-    layout: applyLayoutChanges(map.layout, frozenLayoutChanges(map.proposals)),
-    structures: new Map(
-      Arr.map(map.data.structures, ({ id, name }) => [id, name])
-    ),
-    now,
-  });
-
-  if (Result.isFailure(changed)) {
-    return yield* ProposalRefused.make({
-      reason: changed.failure,
+    const changed = change({
       proposals: map.proposals,
+      // The layout an open change lands on: the accepted one with the
+      // changes frozen in batches applied.
+      layout: applyLayoutChanges(
+        map.layout,
+        frozenLayoutChanges(map.proposals)
+      ),
+      structures: structureNames(map.data),
+      now,
     });
-  }
 
-  const { proposals, answer } = changed.success;
+    if (Result.isFailure(changed)) {
+      return yield* ProposalRefused.make({
+        reason: changed.failure,
+        proposals: map.proposals,
+      });
+    }
 
-  yield* writeAll([
-    {
-      file: path.join(home, "proposals.json"),
-      content: yield* encodeProposals(proposals),
-    },
-  ]);
+    const { proposals, answer } = changed.success;
 
-  yield* written(proposals);
+    yield* writeAll([
+      {
+        file: path.join(home, "proposals.json"),
+        content: yield* encodeProposals(proposals),
+      },
+    ]);
 
-  return answer;
-}, Effect.scoped);
+    yield* written(proposals);
+
+    return answer;
+  },
+  Effect.scoped,
+  Effect.catchTag(
+    ["PlatformError", "LockHeld", "SchemaError", "BadArgument", "OutputExists"],
+    Effect.die
+  )
+);
 
 type Told = (proposals: Proposals) => Effect.Effect<void>;
 
-/** Adds the note in `write` to the open notes. */
-export const addNoteWrite = Effect.fn("addNoteWrite")(function* (
-  home: string,
-  write: NoteAdd,
-  written: Told
-) {
-  const { baseFileRevision, ...note } = write;
+/** What a write changes, and what it answers. */
+type Change<A> = Result.Result<
+  { readonly proposals: Proposals; readonly answer: A },
+  string
+>;
 
-  return yield* writeProposals({
-    home,
-    baseFileRevision,
-    written,
-    change: ({ proposals, structures }) => {
-      const added = addNote({
-        proposals,
-        note,
-        known: new Set(structures.keys()),
-      });
-
-      return Result.map(added, (next) => ({ proposals: next, answer: next }));
-    },
-  });
-});
-
-/** Changes the text of an open note. */
-export const editNoteWrite = Effect.fn("editNoteWrite")(function* (
-  home: string,
-  write: NoteEdit,
-  written: Told
-) {
-  return yield* writeProposals({
-    home,
-    baseFileRevision: write.baseFileRevision,
-    written,
-    change: ({ proposals }) => {
-      const edited = editNote({ proposals, id: write.id, text: write.text });
-
-      return Result.map(edited, (next) => ({ proposals: next, answer: next }));
-    },
-  });
-});
-
-/** Removes an open note. */
-export const discardNoteWrite = Effect.fn("discardNoteWrite")(function* (
-  home: string,
-  write: ItemWrite,
-  written: Told
-) {
-  return yield* writeProposals({
-    home,
-    baseFileRevision: write.baseFileRevision,
-    written,
-    change: ({ proposals }) => {
-      const discarded = discardNote({ proposals, id: write.id });
-
-      return Result.map(discarded, (next) => ({
-        proposals: next,
-        answer: next,
-      }));
-    },
-  });
-});
-
-/** Takes a reviewed item off the page. */
-export const dismissWrite = Effect.fn("dismissWrite")(function* (
-  home: string,
-  write: ItemWrite,
-  written: Told
-) {
-  return yield* writeProposals({
-    home,
-    baseFileRevision: write.baseFileRevision,
-    written,
-    change: ({ proposals }) => {
-      const dismissed = dismissItem({ proposals, id: write.id });
-
-      return Result.map(dismissed, (next) => ({
-        proposals: next,
-        answer: next,
-      }));
-    },
-  });
-});
-
-/** Reopens a rejected item as a new open item linked to it. */
-export const reopenWrite = Effect.fn("reopenWrite")(function* (
-  home: string,
-  write: ReopenWrite,
-  written: Told
-) {
-  return yield* writeProposals({
-    home,
-    baseFileRevision: write.baseFileRevision,
-    written,
-    change: ({ proposals, layout }) => {
-      const reopened = reopenItem({
-        proposals,
-        id: write.id,
-        newId: write.newId,
-        layout,
-        text: write.text,
-      });
-
-      return Result.map(reopened, (next) => ({
-        proposals: next,
-        answer: next,
-      }));
-    },
-  });
-});
+/** A change that answers with the file it makes. */
+const answeringWithFile = (
+  made: Result.Result<Proposals, string>
+): Change<Proposals> =>
+  Result.map(made, (proposals) => ({ proposals, answer: proposals }));
 
 /**
- * Freezes every open layout change and note into the next batch, and builds
- * the prompt for it. The prompt names the absolute path of the home folder.
+ * A write that edits `proposals.json` and answers with the file. The edit
+ * is given what the lock holder read.
+ */
+const editing =
+  <W extends { readonly baseFileRevision: number }>(
+    name: string,
+    edit: (held: Held, write: W) => Result.Result<Proposals, string>
+  ) =>
+  (home: string, write: W, written: Told) =>
+    writeProposals({
+      home,
+      baseFileRevision: write.baseFileRevision,
+      written,
+      change: (held) => answeringWithFile(edit(held, write)),
+    }).pipe(Effect.withSpan(name));
+
+// oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(home, write, written)`, never piped.
+
+/** Adds the note in `write` to the open notes. */
+export const addNoteWrite = editing<NoteAdd>(
+  "addNoteWrite",
+  ({ proposals, structures }, { baseFileRevision: _base, ...note }) =>
+    addNote({ proposals, note, known: new Set(structures.keys()) })
+);
+
+/** Changes the text of an open note. */
+export const editNoteWrite = editing<NoteEdit>(
+  "editNoteWrite",
+  ({ proposals }, { id, text }) => editNote({ proposals, id, text })
+);
+
+/** Removes an open note. */
+export const discardNoteWrite = editing<ItemWrite>(
+  "discardNoteWrite",
+  ({ proposals }, { id }) => discardNote({ proposals, id })
+);
+
+/** Takes a reviewed item off the page. */
+export const dismissWrite = editing<ItemWrite>(
+  "dismissWrite",
+  ({ proposals }, { id }) => dismissItem({ proposals, id })
+);
+
+/** Reopens a rejected item as a new open item linked to it. */
+export const reopenWrite = editing<ReopenWrite>(
+  "reopenWrite",
+  ({ proposals, layout, structures }, { id, newId, text }) =>
+    reopenItem({
+      proposals,
+      id,
+      newId,
+      layout,
+      known: new Set(structures.keys()),
+      text,
+    })
+);
+
+/**
+ * Freezes every open item into the next batch, and builds the prompt for it.
+ * The answer names the absolute path of the home folder, which the prompt
+ * does too.
  */
 export const freezeWrite = Effect.fn("freezeWrite")(function* (
   home: string,
@@ -231,25 +194,23 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
   const path = yield* Path.Path;
   const absolute = path.resolve(home);
 
-  return yield* writeProposals<FrozenReview>({
+  return yield* writeProposals<FreezeAnswer>({
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, structures, now }) => {
-      const frozen = freezeOpen({ proposals, at: now });
-
-      return Result.map(frozen, ({ batch, proposals: next }) => ({
-        proposals: next,
+    change: ({ proposals, structures, now }) =>
+      Result.map(freezeOpen({ proposals, at: now }), (frozen) => ({
+        proposals: frozen.proposals,
         answer: {
-          batch,
-          proposals: next,
+          batch: frozen.batch,
+          home: absolute,
+          proposals: frozen.proposals,
           prompt: reviewPrompt({
             home: absolute,
-            batch,
+            batch: frozen.batch,
             nameOf: (id) => structures.get(id) ?? id,
           }),
         },
-      }));
-    },
+      })),
   });
 });

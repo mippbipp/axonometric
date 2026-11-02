@@ -1,7 +1,7 @@
 import { Proposals } from "@axonometric/contracts";
 import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Path, Schema, String as Str } from "effect";
+import { Array as Arr, Effect, Path, Schema, String as Str } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
@@ -480,6 +480,146 @@ describe("the review routes", () => {
 
         assert.strictEqual(onto.status, 422);
         assert.strictEqual(yield* proposalsText(home), before);
+      })
+  );
+
+  it.live(
+    "accepting a change on a structure a frozen change touches waits for the agent",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* served;
+
+        // An open move of the engineer, the structure the frozen move acts on.
+        const open = yield* put(
+          url,
+          "/api/proposals/layout",
+          own(url),
+          json({
+            baseFileRevision: 3,
+            layout: [
+              {
+                id: "open-move",
+                kind: "move",
+                moves: [
+                  {
+                    target: { kind: "structure", id: "engineer" },
+                    position: { x: 0, y: 12 },
+                  },
+                ],
+              },
+            ],
+          })
+        );
+
+        assert.strictEqual(open.status, 200, open.body);
+
+        const before = yield* proposalsText(home);
+
+        const accepted = yield* post(
+          url,
+          "/api/proposals/accept",
+          own(url),
+          json({ baseFileRevision: 4, changeIds: "all" })
+        );
+
+        assert.strictEqual(accepted.status, 422, accepted.body);
+        assert.include(accepted.body, "Wait for the agent");
+        assert.strictEqual(yield* proposalsText(home), before);
+
+        const layout = yield* runCli(home, ["--version"]);
+
+        assert.strictEqual(layout.files["history/0001.json"], undefined);
+      })
+  );
+
+  it.live(
+    "accepting a change on another structure goes ahead, checked on top of the frozen one",
+    () =>
+      Effect.gen(function* () {
+        const { url } = yield* served;
+
+        const open = yield* put(
+          url,
+          "/api/proposals/layout",
+          own(url),
+          json({
+            baseFileRevision: 3,
+            layout: [
+              {
+                id: "page-move",
+                kind: "move",
+                moves: [
+                  {
+                    target: { kind: "structure", id: "page" },
+                    position: { x: 4, y: 12 },
+                  },
+                ],
+              },
+            ],
+          })
+        );
+
+        assert.strictEqual(open.status, 200, open.body);
+
+        const accepted = yield* post(
+          url,
+          "/api/proposals/accept",
+          own(url),
+          json({ baseFileRevision: 4, changeIds: "all" })
+        );
+
+        assert.strictEqual(accepted.status, 200, accepted.body);
+      })
+  );
+
+  it.live(
+    "take the same note sent twice as one, so a lost answer can't duplicate it",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* served;
+
+        const note = {
+          id: "n-retry",
+          target: { kind: "structure", id: "page" },
+          text: "Sent twice",
+        } as const;
+
+        const first = yield* post(
+          url,
+          "/api/notes",
+          own(url),
+          json({ baseFileRevision: 3, ...note })
+        );
+
+        assert.strictEqual(first.status, 200, first.body);
+
+        // The answer was lost, so the page sends it again, now on the file the
+        // first write made.
+        const again = yield* post(
+          url,
+          "/api/notes",
+          own(url),
+          json({ baseFileRevision: 4, ...note })
+        );
+
+        assert.strictEqual(again.status, 200, again.body);
+
+        const saved = yield* decodeProposals(yield* proposalsText(home));
+
+        assert.deepStrictEqual(
+          Arr.map(saved.notes ?? [], ({ id }) => id),
+          ["n-retry"]
+        );
+
+        // The same id with other words is a different note, and is refused.
+        const other = yield* post(
+          url,
+          "/api/notes",
+          own(url),
+          json({ baseFileRevision: 4, ...note, text: "Other words" })
+        );
+
+        assert.strictEqual(other.status, 422);
       })
   );
 });

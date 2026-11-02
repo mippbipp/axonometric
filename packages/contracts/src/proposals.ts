@@ -158,37 +158,35 @@ export const NoteText = Schema.String.annotate({ message: noteFix }).check(
   Schema.isMaxLength(maxNoteLength, { message: noteFix })
 );
 
-/**
- * A note pinned to a target, for the agent to read. `replaces` links a note
- * the engineer wrote again to the rejected note it replaces.
- */
+/** A note pinned to a target, for the agent to read. */
 export const Note = Schema.Struct({
   id: ChangeId,
   target: Target,
   text: NoteText,
-  replaces: Schema.optionalKey(ChangeId),
-}).annotate(objectMessages("A note has only id, target, text and replaces."));
+}).annotate(objectMessages("A note has only id, target and text."));
 
 export type Note = typeof Note.Type;
 
-const reasonMessage = "expected the reason as a non-empty string.";
+/** The most characters a verdict's reason holds. */
+export const maxReasonLength = 1000;
+
+const reasonMessage = `expected a reason of 1 to ${maxReasonLength} characters.`;
 
 /** Why the agent decided as it did. */
 export const Reason = Schema.String.annotate({
   message: reasonMessage,
-}).check(Schema.isNonEmpty({ message: reasonMessage }));
+}).check(
+  Schema.isNonEmpty({ message: reasonMessage }),
+  Schema.isMaxLength(maxReasonLength, { message: reasonMessage })
+);
 
 export type Reason = typeof Reason.Type;
 
-const changedReason = Reason.pipe(
+/** A reason that must be there: for a verdict that changes or turns down an item, and for a revision's rejected items. */
+export const RequiredReason = Reason.pipe(
   Schema.annotateKey({
-    messageMissingKey: "missing. Say what you changed and why.",
-  })
-);
-
-const rejectedReason = Reason.pipe(
-  Schema.annotateKey({
-    messageMissingKey: "missing. Say why the item was rejected.",
+    messageMissingKey:
+      "missing. Say why: what you changed and why, or why you rejected the item.",
   })
 );
 
@@ -205,11 +203,11 @@ export const Verdict = Schema.Union([
   ),
   Schema.Struct({
     verdict: Schema.Literal("changed"),
-    reason: changedReason,
+    reason: RequiredReason,
   }).annotate(objectMessages("A changed verdict has only verdict and reason.")),
   Schema.Struct({
     verdict: Schema.Literal("rejected"),
-    reason: rejectedReason,
+    reason: RequiredReason,
   }).annotate(
     objectMessages("A rejected verdict has only verdict and reason.")
   ),
@@ -220,7 +218,7 @@ export const Verdict = Schema.Union([
 
 export type Verdict = typeof Verdict.Type;
 
-/** The three decisions a verdict can be. */
+/** The three things a verdict can say. */
 export const verdictKinds = ["accepted", "changed", "rejected"] as const;
 
 /**

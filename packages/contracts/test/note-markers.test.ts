@@ -1,9 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect } from "effect";
+import { Array as Arr, Effect, Option } from "effect";
 import { vi } from "vitest";
 
 import {
   convexOverlap,
+  distanceToPolyline,
+  gapBetween,
   noteMarkerRadius,
   noteMarkerSpots,
   rectPolygon,
@@ -68,6 +70,36 @@ describe("note markers", () => {
                     convexOverlap(square(spot), other)
                   ),
                   `marker of ${id} covers something in ${chapter.id}`
+                );
+
+                for (const { hop, points } of scene.hops) {
+                  assert.isAbove(
+                    distanceToPolyline(points, spot),
+                    noteMarkerRadius,
+                    `marker of ${id} sits on the line of hop ${hop.id} in ${chapter.id}`
+                  );
+                }
+
+                // Next to its structure: close to the outline or the tag.
+                const owner = Arr.findFirst(
+                  scene.structures,
+                  ({ structure }) => structure.id === id
+                );
+
+                const { outline, tag } = Option.getOrThrow(owner);
+
+                const nearest = Math.min(
+                  distanceToPolyline(
+                    [...outline, ...Arr.take(outline, 1)],
+                    spot
+                  ),
+                  gapBetween(tag, [spot])
+                );
+
+                assert.isBelow(
+                  nearest,
+                  noteMarkerRadius + 4,
+                  `marker of ${id} floats ${nearest.toFixed(1)} from its structure in ${chapter.id}`
                 );
               }
             }
