@@ -8,6 +8,8 @@ import {
   MapFilesUnreadable,
   proposedMap,
   ProposalRefused,
+  proposeChapter,
+  proposeGroupWithMembers,
   proposeStructure,
   reopenItem,
   reviewPrompt,
@@ -29,10 +31,12 @@ import type {
   Proposals,
   QuestionAdd,
   ReopenWrite,
+  ChapterWrite,
+  GroupWrite,
   StructureWrite,
   SuggestionAdd,
 } from "@axonometric/contracts";
-import { Array as Arr, DateTime, Effect, Path, Result } from "effect";
+import { Array as Arr, DateTime, Effect, Option, Path, Result } from "effect";
 
 import { encodeProposals } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
@@ -46,6 +50,14 @@ import { writeAll } from "./write-files.ts";
  * still under the lock, to tell the open pages. A `change` that fails
  * refuses the write with its reason and writes nothing.
  */
+/** The title of the group or chapter `id` in `held`, or the id when there is none. */
+const titleIn =
+  (held: readonly { readonly id: string; readonly title: string }[]) =>
+  (id: string): string =>
+    Arr.findFirst(held, (found) => found.id === id).pipe(
+      Option.match({ onNone: () => id, onSome: ({ title }) => title })
+    );
+
 /** What a write's change is given: the files as read under the lock. */
 interface Held {
   readonly proposals: Proposals;
@@ -240,6 +252,48 @@ export const setStructureWrite = editing<StructureWrite>(
     })
 );
 
+/**
+ * Sets an open group proposal: creates a group, with the structures that go
+ * into it as their own group changes in the same write, or renames one. All of
+ * it goes in or none of it.
+ */
+export const setGroupWrite = editing<GroupWrite>(
+  "setGroupWrite",
+  ({ proposals, proposed, layout, data }, { id, change, members }) =>
+    proposeGroupWithMembers({
+      proposals,
+      id,
+      change,
+      members: members ?? [],
+      // A title is judged against the groups the map shows, and a rename
+      // against the groups only frozen items have changed.
+      world: {
+        data: proposed.state.data,
+        base: proposedMap({
+          state: { data, layout },
+          proposals,
+          open: false,
+        }).state.data,
+      },
+      structures: { data: proposed.state.data, layout: proposed.state.layout },
+    })
+);
+
+/**
+ * Sets an open chapter proposal: reveals or hides a structure in one chapter,
+ * adds or removes a hop it plays, or puts its hops in a new order.
+ */
+export const setChapterWrite = editing<ChapterWrite>(
+  "setChapterWrite",
+  ({ proposals, proposed, data }, { id, change }) =>
+    proposeChapter({
+      proposals,
+      id,
+      change,
+      world: { data, proposed: proposed.state.data },
+    })
+);
+
 /** Takes a reviewed item off the page. */
 export const dismissWrite = editing<ItemWrite>(
   "dismissWrite",
@@ -279,12 +333,13 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, structures, hops, data, now }) =>
+    change: ({ proposals, structures, hops, data, proposed, now }) =>
       Result.map(
         freezeOpen({
           proposals,
           at: now,
           structures: Arr.map(data.structures, ({ id }) => id),
+          groups: Arr.map(data.groups, ({ id }) => id),
         }),
         (frozen) => ({
           proposals: frozen.proposals,
@@ -298,6 +353,8 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
               names: {
                 structure: (id) => structures.get(id) ?? id,
                 hop: hopLabelOf(hops),
+                group: titleIn(proposed.state.data.groups),
+                chapter: titleIn(proposed.state.data.chapters),
               },
             }),
           },

@@ -1,5 +1,6 @@
 import {
   breakageOf,
+  inSections,
   changedLayoutNotice,
   engineerTextNotice,
   hopLabelOf,
@@ -8,7 +9,9 @@ import {
   proposedMap,
   ReviewReport,
   quoteText,
+  sectionTitles,
   specOf,
+  titlesOf,
 } from "@axonometric/contracts";
 import type {
   Batch,
@@ -23,6 +26,7 @@ import {
   Console,
   Effect,
   Option,
+  Match,
   Path,
   Record as Rec,
   Schema,
@@ -60,6 +64,14 @@ const withoutRenamed = (
   });
 };
 
+/** The title of the group or chapter `id` in `held`, or the id when there is none. */
+const titleIn =
+  (held: readonly { readonly id: string; readonly title: string }[]) =>
+  (id: string): string =>
+    Arr.findFirst(held, (found) => found.id === id).pipe(
+      Option.match({ onNone: () => id, onSome: ({ title }) => title })
+    );
+
 const reportItem = ({
   item,
   batch,
@@ -76,6 +88,13 @@ const reportItem = ({
   readonly names: ReadonlyMap<string, string>;
   readonly data: MapData;
 }): ReportedItem => {
+  const titles = titlesOf({
+    structure: (id) => names.get(id) ?? id,
+    hop: hopLabelOf(data.hops),
+    group: titleIn(data.groups),
+    chapter: titleIn(data.chapters),
+  });
+
   const { hops } = data;
   const spec = specOf(item);
   const { before, after } = spec.facts(item, layout, data);
@@ -90,14 +109,27 @@ const reportItem = ({
   return {
     id: item.id,
     kind: spec.name(item),
+    section: spec.section,
     targets: Arr.map(pointers, ({ kind, id }) => ({
       id,
-      name: kind === "hop" ? hopLabelOf(hops, id) : (names.get(id) ?? id),
+      name: Match.value(kind).pipe(
+        Match.when("hop", () => hopLabelOf(hops, id)),
+        Match.when("group", () => titles.group(id)),
+        Match.when("chapter", () => titles.chapter(id)),
+        Match.orElse(() => names.get(id) ?? id)
+      ),
     })),
     before,
     after,
     breaks: Option.getOrNull(
-      breakageOf({ item, layout: landing, structureIds, hops, data })
+      breakageOf({
+        item,
+        layout: landing,
+        structureIds,
+        hops,
+        data,
+        siblings: batch.items,
+      })
     ),
     outOfDate: Option.getOrNull(spec.outOfDate?.(item, data) ?? Option.none()),
     replaces: Option.getOrNull(Rec.get(replaces ?? {}, item.id)),
@@ -134,6 +166,22 @@ const textOf = Effect.fnUntraced(function* (item: ReportedItem) {
 
   return Arr.join(lines, "\n");
 });
+
+/**
+ * The items' text, under a heading for each section that has one. Each pair
+ * is a reported item and the text `review` prints for it.
+ */
+const listedBySection = (
+  pairs: readonly (readonly [ReportedItem, string])[]
+): readonly string[] =>
+  Arr.flatMap(
+    inSections(pairs, ([reported]) => reported.section),
+    ({ section, items: held }) => {
+      const texts = Arr.map(held, ([, text]) => text);
+
+      return ["", `${sectionTitles[section]}:`, "", Arr.join(texts, "\n\n")];
+    }
+  );
 
 const review = Effect.fn("review")(function* (home: string, json: boolean) {
   const path = yield* Path.Path;
@@ -187,6 +235,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
   const { number, frozenAt } = oldest.value;
   const undecided = Arr.filter(items, ({ verdict }) => verdict === null);
   const described = yield* Effect.forEach(items, textOf);
+  const listing = listedBySection(Arr.zip(items, described));
   const noun = items.length === 1 ? "item" : "items";
 
   return yield* Console.log(
@@ -197,8 +246,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
         engineerTextNotice,
         changedLayoutNotice,
         ...kindNotices(oldest.value.items),
-        "",
-        Arr.join(described, "\n\n"),
+        ...listing,
         "",
         `Give each item a verdict with: axonometric verdict ${absolute} <item> accepted|changed|rejected --reason "..."`,
         `Then run: axonometric commit ${absolute}`,

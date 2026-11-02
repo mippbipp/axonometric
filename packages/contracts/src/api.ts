@@ -17,6 +17,8 @@ import {
   NoteAdd,
   ItemEdit,
   ProposalRefused,
+  ChapterWrite,
+  GroupWrite,
   QuestionAdd,
   ReopenWrite,
   StructureWrite,
@@ -142,6 +144,16 @@ export class ReviewApiGroup extends HttpApiGroup.make("review")
     }),
     HttpApiEndpoint.post("setStructure", serverPaths.structure, {
       payload: StructureWrite,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("setGroup", serverPaths.group, {
+      payload: GroupWrite,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("setChapter", serverPaths.chapter, {
+      payload: ChapterWrite,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),

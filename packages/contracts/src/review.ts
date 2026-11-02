@@ -31,13 +31,7 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
-import {
-  allKinds,
-  sections,
-  sectionTitles,
-  specOf,
-  kindTable,
-} from "./review-kinds.ts";
+import { allKinds, sections, sectionTitles, specOf } from "./review-kinds.ts";
 import type { Section, Titles, Waiting } from "./review-kinds.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
@@ -1085,19 +1079,39 @@ export const sectionOf = (item: BatchItem): Section => specOf(item).section;
 
 /**
  * `items` split by section, in the order sections are listed, leaving out a
- * section with no item. Items keep their order within a section.
+ * section with no item. Items keep their order within a section. `sectionOfItem`
+ * says which section an item is in.
  */
-export const bySection = <A extends { readonly kind: BatchItem["kind"] }>(
-  items: readonly A[]
-): readonly { readonly section: Section; readonly items: readonly A[] }[] =>
-  Arr.flatMap(sections, (section) => {
-    const held = Arr.filter(
-      items,
-      (item) => kindTable[item.kind].section === section
-    );
+export const inSections: {
+  <A>(
+    sectionOfItem: (item: A) => Section
+  ): (
+    items: readonly A[]
+  ) => readonly { readonly section: Section; readonly items: readonly A[] }[];
+  <A>(
+    items: readonly A[],
+    sectionOfItem: (item: A) => Section
+  ): readonly { readonly section: Section; readonly items: readonly A[] }[];
+} = dual(
+  2,
+  <A>(
+    items: readonly A[],
+    sectionOfItem: (item: A) => Section
+  ): readonly { readonly section: Section; readonly items: readonly A[] }[] =>
+    Arr.flatMap(sections, (section) => {
+      const held = Arr.filter(items, (item) => sectionOfItem(item) === section);
 
-    return held.length === 0 ? [] : [{ section, items: held }];
-  });
+      return held.length === 0 ? [] : [{ section, items: held }];
+    })
+);
+
+/** Batch items split by section; see `inSections`. */
+export const bySection = (
+  items: readonly BatchItem[]
+): readonly {
+  readonly section: Section;
+  readonly items: readonly BatchItem[];
+}[] => inSections(items, sectionOf);
 
 /**
  * Said in the prompt and in `review`'s output. The engineer's text reaches the

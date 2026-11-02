@@ -413,6 +413,7 @@ export {
   summaryLine,
   titlesOf,
   bySection,
+  inSections,
   sectionOf,
   withoutVerdict,
 } from "./review.ts";

@@ -205,3 +205,21 @@ export const acceptedStructureIds = Effect.fnUntraced(function* (home: string) {
       : Arr.map(found.value.data.structures, ({ id }) => id)
   );
 });
+
+/**
+ * The ids of the groups in the newest revision that reads, for a batch frozen
+ * before it recorded `groups`. With no revision, nothing is known, and the
+ * check of `--as` on a new group against the accepted map is skipped.
+ */
+export const acceptedGroupIds = Effect.fnUntraced(function* (home: string) {
+  const saved = yield* revisionsIn(home);
+
+  const newest = saved.at(-1);
+
+  const found =
+    newest === undefined ? undefined : yield* readRevision(home, newest);
+
+  return found === undefined || Option.isNone(found)
+    ? undefined
+    : new Set(Arr.map(found.value.data.groups, ({ id }) => id));
+});

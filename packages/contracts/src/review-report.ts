@@ -68,6 +68,8 @@ export const VerdictFacts = Schema.Struct({
 export const ReportedItem = Schema.Struct({
   id: ChangeId,
   kind: Schema.String,
+  /** Where the item is listed: a diagram change or a chapter change. */
+  section: Schema.Literals(["diagram", "chapter"]),
   /** The structures the item acts on or is pinned to. */
   targets: Schema.Array(
     Schema.Struct({ id: Schema.String, name: Schema.String })
