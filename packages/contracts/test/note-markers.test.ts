@@ -8,9 +8,11 @@ import {
   convexOverlap,
   distanceToPolyline,
   edgeStroke,
+  gapAt,
   gapBetween,
   groundProjections,
   hopStroke,
+  minScreenGap,
   noteMarkerRadius,
   noteMarkerStroke,
   placeNoteMarkers,
@@ -186,10 +188,17 @@ describe("note markers", () => {
 
   it("counts both strokes in the clearance a line asks for", () => {
     assert.strictEqual(
-      centreClearance(hopStroke),
+      centreClearance(hopStroke, 1),
+      noteMarkerRadius + noteMarkerStroke / 2 + hopStroke / 2 + gapAt(1)
+    );
+    assert.strictEqual(
+      centreClearance(hopStroke, 100),
       noteMarkerRadius + noteMarkerStroke / 2 + hopStroke / 2 + visibleGap
     );
-    assert.isAbove(centreClearance(boxStroke), noteMarkerRadius + visibleGap);
+    assert.isAbove(
+      centreClearance(boxStroke, 1),
+      noteMarkerRadius + visibleGap
+    );
   });
 
   it.effect("rests a structure's ring against it, not floating off it", () =>
@@ -263,7 +272,7 @@ describe("note markers", () => {
       assert.isDefined(spot);
       assert.isBelow(
         distanceToPolyline(route.points, spot ?? { sx: 1e9, sy: 1e9 }),
-        centreClearance(hopStroke) + 8,
+        centreClearance(hopStroke, 1) + 8,
         "the marker floats away from its hop"
       );
     })
@@ -364,4 +373,65 @@ describe("note markers", () => {
       }
     })
   );
+});
+
+describe("note markers at a zoomed-out view", () => {
+  /** The zooms a view settles at, from full size down to a crowded map's fit. */
+  const zooms = [1, 0.5, 0.3, 0.2] as const;
+
+  for (const view of views) {
+    it.effect(
+      `keep ${minScreenGap} screen pixels from every hop's line in ${view}, at the scale the view shows them`,
+      () =>
+        Effect.gen(function* () {
+          const { data, layout } = yield* fixture("review");
+          let placedHops = 0;
+
+          for (const zoom of zooms) {
+            const scene = sceneOf({
+              data,
+              layout,
+              revealed: new Set(Arr.map(data.structures, ({ id }) => id)),
+              view,
+              zoom,
+            });
+
+            const placed = placeNoteMarkers(scene, {
+              structures: new Set(),
+              hops: new Set(Arr.map(scene.hops, ({ hop }) => hop.id)),
+              spots: [],
+            });
+
+            placedHops += placed.hops.size;
+
+            for (const [id, spot] of placed.hops) {
+              for (const { hop, points } of scene.hops) {
+                // The view never shows the scene smaller than its zoom, so
+                // the pixels measured at `zoom` are the fewest there can be.
+                const pixels =
+                  visibleGapBetween(distanceToPolyline(points, spot), [
+                    noteMarkerStroke,
+                    hopStroke,
+                  ]) * zoom;
+
+                assert.isAtLeast(
+                  pixels + 1e-6,
+                  minScreenGap,
+                  `the ring of ${id} is ${pixels.toFixed(2)} px from hop ${hop.id} at zoom ${zoom} in ${view}`
+                );
+              }
+            }
+          }
+
+          assert.isAbove(placedHops, 0);
+        })
+    );
+  }
+
+  it("grows the gap as the view zooms out, and keeps the drawn one at full size", () => {
+    assert.strictEqual(gapAt(1), 3);
+    assert.strictEqual(gapAt(0.5), 6);
+    assert.isAtLeast(gapAt(10), 1.5);
+    assert.strictEqual(gapAt(100), 1.5);
+  });
 });

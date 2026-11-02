@@ -203,6 +203,11 @@ export interface Scene {
   readonly view: View;
   /** How much the text is grown, from the zoom the scene is drawn for. */
   readonly growth: TextGrowth;
+  /**
+   * The zoom the scene is drawn for. The view's own scale is never below it,
+   * so a length of `n` screen pixels is at most `n / zoom` drawing units.
+   */
+  readonly zoom: number;
   /** In painter's order: every box after the boxes it stands in front of. */
   readonly structures: readonly SceneStructure[];
   readonly zones: readonly SceneZone[];
@@ -1361,6 +1366,7 @@ interface RoutedHop {
 interface Frame {
   readonly geometry: ViewGeometry;
   readonly growth: TextGrowth;
+  readonly zoom: number;
   readonly structures: readonly SceneStructure[];
   readonly outlines: readonly (readonly ScreenPoint[])[];
   readonly chips: readonly (readonly ScreenPoint[])[];
@@ -1512,6 +1518,7 @@ const frameOf = ({
   return {
     geometry,
     growth,
+    zoom,
     structures,
     outlines,
     chips,
@@ -1529,11 +1536,13 @@ const frameOf = ({
  * zooms to see where tags go and how far the drawing reaches.
  */
 export const tagScene = (source: SceneSource): Scene => {
-  const { geometry, growth, structures, routed, zoneList } = frameOf(source);
+  const { geometry, growth, zoom, structures, routed, zoneList } =
+    frameOf(source);
 
   return {
     view: source.view ?? "iso",
     growth,
+    zoom,
     structures,
     zones: Arr.map(zoneList, (zone) => {
       const plate = geometry.plate(zone);
@@ -1572,6 +1581,7 @@ export const sceneOf = (source: SceneSource): Scene => {
   const {
     geometry,
     growth,
+    zoom,
     structures,
     outlines,
     chips,
@@ -1699,7 +1709,7 @@ export const sceneOf = (source: SceneSource): Scene => {
     Option.toArray(Option.fromNullishOr(byHop.get(hop.id)))
   );
 
-  return { view, growth, structures, zones, hops };
+  return { view, growth, zoom, structures, zones, hops };
 };
 
 /** One way a scene breaks the overlap rule. */

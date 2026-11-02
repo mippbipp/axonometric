@@ -734,3 +734,98 @@ describe("the keyboard", () => {
       })
   );
 });
+
+/**
+ * The fewest screen pixels between the outer edge of every hop ring and the
+ * outer edge of every hop line, from what the page really draws: each point
+ * goes through the screen matrix, and the strokes are measured at the scale
+ * they show at.
+ */
+const ringToLinePixels = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<
+      readonly { ring: string; hop: string; pixels: number }[]
+    >(`(() => {
+      const near = (p, a, b) => {
+        const dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy;
+        const t = len === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len));
+
+        return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+      };
+
+      const rings = [...document.querySelectorAll("[data-note-marker^='hop:'][data-note-placed='ring']")];
+      const lines = [...document.querySelectorAll("[data-hop]")];
+      const found = [];
+
+      for (const ring of rings) {
+        const circle = ring.querySelector("circle");
+        const m = circle.getScreenCTM();
+        const scale = Math.hypot(m.a, m.b);
+        const centre = new DOMPoint(Number(circle.getAttribute("cx")), Number(circle.getAttribute("cy"))).matrixTransform(m);
+        const outer = (Number(circle.getAttribute("r")) + Number(circle.getAttribute("stroke-width")) / 2) * scale;
+
+        for (const line of lines) {
+          const stroke = line.querySelector("polyline:not([stroke='transparent'])");
+          const points = stroke.getAttribute("points").split(" ").map((pair) => {
+            const [x, y] = pair.split(",").map(Number);
+
+            return new DOMPoint(x, y).matrixTransform(stroke.getScreenCTM());
+          });
+          const half = (Number(stroke.getAttribute("stroke-width")) / 2) * scale;
+          let best = Infinity;
+
+          for (let i = 0; i + 1 < points.length; i++) {
+            best = Math.min(best, near(centre, points[i], points[i + 1]));
+          }
+
+          found.push({
+            ring: ring.getAttribute("data-note-marker"),
+            hop: line.getAttribute("data-hop"),
+            pixels: best - outer - half,
+          });
+        }
+      }
+
+      return found;
+    })()`)
+  );
+
+describe("hop rings at fit", () => {
+  for (const view of views) {
+    it.live(
+      `keep 3 screen pixels from every hop's line at 1280×800 in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { page, errors } = yield* served;
+
+          yield* openAll(page);
+          yield* showView(page, view);
+
+          for (const hop of ["h-save", "h-store", "h-pr"]) {
+            yield* selectHop(page, hop);
+            yield* noteOnHop(page, `A thought on ${hop}`);
+            yield* waitFor(page, `[data-note-marker="hop:${hop}"]`);
+            yield* Effect.promise(() => page.keyboard.press("Escape"));
+          }
+
+          yield* click(page, 'button[title="Zoom to fit (0)"]');
+          yield* Effect.promise(() => page.waitForTimeout(500));
+
+          const gaps = yield* ringToLinePixels(page);
+
+          assert.isAtLeast(gaps.length, 9);
+
+          for (const { ring, hop, pixels } of gaps) {
+            assert.isAtLeast(
+              pixels,
+              3 - 0.05,
+              `${ring} is ${pixels.toFixed(2)} px from the line of ${hop} in ${view}`
+            );
+          }
+
+          assert.deepStrictEqual(errors, []);
+        }),
+      90_000
+    );
+  }
+});

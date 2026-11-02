@@ -26,16 +26,38 @@ export const edgeStroke = 1;
  * The gap a ring keeps from everything it must clear, measured between the
  * edges of the strokes: its own and the line's or box's. Every kind of
  * thing gets the same one, so a ring sits as far from a hop's line as from
- * a box.
+ * a box. This is the gap in drawing units at full size.
  */
 export const visibleGap = 1.5;
 
 /**
- * How far a ring's centre must be from the middle of a stroke `stroke` wide
- * so that the visible gap between the two strokes is `visibleGap`.
+ * The fewest screen pixels between the edge of a ring and the edge of what
+ * it clears. A view zoomed out shrinks the gap in drawing units, so the gap
+ * grows to keep this many pixels.
  */
-export const centreClearance = (stroke: number): number =>
-  noteMarkerRadius + noteMarkerStroke / 2 + stroke / 2 + visibleGap;
+export const minScreenGap = 3;
+
+/**
+ * The gap, in drawing units, a ring keeps in a scene drawn for `zoom`: at
+ * least `visibleGap`, and at least `minScreenGap` screen pixels. The view's
+ * scale is never below the scene's zoom, so the pixels hold at any scale the
+ * scene is shown at.
+ */
+export const gapAt = (zoom: number): number =>
+  Math.max(visibleGap, minScreenGap / zoom);
+
+/**
+ * How far a ring's centre must be from the middle of a stroke `stroke` wide
+ * so that the gap between the two strokes' edges is `gapAt(zoom)`.
+ */
+export const centreClearance: {
+  (zoom: number): (stroke: number) => number;
+  (stroke: number, zoom: number): number;
+} = dual(
+  2,
+  (stroke: number, zoom: number): number =>
+    noteMarkerRadius + noteMarkerStroke / 2 + stroke / 2 + gapAt(zoom)
+);
 
 /** A marker's spot: the centre of its ring. */
 export interface NoteMarkerSpot {
@@ -91,11 +113,13 @@ const solidsOf = (scene: Scene): readonly Solid[] => [
 const candidatesOf = ({
   outline,
   tag,
+  zoom,
 }: {
   readonly outline: readonly ScreenPoint[];
   readonly tag: ScreenRect;
+  readonly zoom: number;
 }): readonly NoteMarkerSpot[] => {
-  const reach = centreClearance(boxStroke);
+  const reach = centreClearance(boxStroke, zoom);
 
   const ring = [...outline, ...Arr.take(outline, 1)];
 
@@ -145,7 +169,7 @@ const candidatesOf = ({
 
   // Beside the name tag, left and right of it.
   const middle = (tag.top + tag.bottom) / 2;
-  const byTag = centreClearance(edgeStroke);
+  const byTag = centreClearance(edgeStroke, zoom);
 
   const beside = [
     { sx: tag.right + byTag, sy: middle },
@@ -184,7 +208,9 @@ const isClear = ({
   solids,
   lines,
   taken,
+  zoom,
 }: {
+  readonly zoom: number;
   readonly spot: NoteMarkerSpot;
   readonly solids: readonly Solid[];
   readonly lines: readonly (readonly ScreenPoint[])[];
@@ -197,14 +223,15 @@ const isClear = ({
     !Arr.some(
       solids,
       ({ polygon, stroke }) =>
-        distanceToEdge(polygon, spot) < centreClearance(stroke)
+        distanceToEdge(polygon, spot) < centreClearance(stroke, zoom)
     ) &&
     !Arr.some(taken, (other) =>
       convexOverlap(square, rectPolygon(squareAround(other)))
     ) &&
     !Arr.some(
       lines,
-      (line) => distanceToPolyline(line, spot) < centreClearance(hopStroke)
+      (line) =>
+        distanceToPolyline(line, spot) < centreClearance(hopStroke, zoom)
     )
   );
 };
@@ -232,18 +259,21 @@ export interface PlacedMarkers {
 }
 
 /** How far from a hop's line a ring sits: just past the clearance every line needs. */
-const besideLine = centreClearance(hopStroke) + 0.01;
+const besideLine = (zoom: number) => centreClearance(hopStroke, zoom) + 0.01;
 
 /** The shares along a hop's line a ring is tried at, middle first. */
 const alongShares = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9];
 
 /**
- * Spots on either side of `line`, `besideLine` from it, at the shares along
+ * Spots on either side of `line`, a clearance from it, at the shares along
  * its length, middle first. The line is a polyline on screen.
  */
 const besideCandidates = (
-  line: readonly ScreenPoint[]
+  line: readonly ScreenPoint[],
+  zoom: number
 ): readonly NoteMarkerSpot[] => {
+  const away = besideLine(zoom);
+
   const legs = Arr.zip(line, Arr.drop(line, 1));
 
   const lengths = Arr.map(legs, ([from, to]) =>
@@ -273,8 +303,8 @@ const besideCandidates = (
         };
 
         return [
-          { sx: at.sx - dy * besideLine, sy: at.sy + dx * besideLine },
-          { sx: at.sx + dy * besideLine, sy: at.sy - dx * besideLine },
+          { sx: at.sx - dy * away, sy: at.sy + dx * away },
+          { sx: at.sx + dy * away, sy: at.sy - dx * away },
         ];
       }
 
@@ -336,7 +366,7 @@ export const placeNoteMarkers: {
 
   const settle = (candidates: readonly NoteMarkerSpot[]) => {
     const free = Arr.findFirst(candidates, (spot) =>
-      isClear({ spot, solids, lines, taken })
+      isClear({ spot, solids, lines, taken, zoom: scene.zoom })
     );
 
     if (Option.isSome(free)) {
@@ -352,7 +382,7 @@ export const placeNoteMarkers: {
     const { id } = placed.structure;
 
     if (bearers.structures.has(id)) {
-      const found = settle(candidatesOf(placed));
+      const found = settle(candidatesOf({ ...placed, zoom: scene.zoom }));
 
       if (Option.isSome(found)) {
         structures.set(id, found.value);
@@ -364,7 +394,7 @@ export const placeNoteMarkers: {
 
   for (const { hop, points } of scene.hops) {
     if (bearers.hops.has(hop.id)) {
-      const found = settle(besideCandidates(points));
+      const found = settle(besideCandidates(points, scene.zoom));
 
       if (Option.isSome(found)) {
         hops.set(hop.id, found.value);

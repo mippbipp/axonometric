@@ -8,9 +8,11 @@ import { Array as Arr, Option, Record as Rec, Result } from "effect";
 import { useId, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { ItemStatusLine } from "./item-status.tsx";
 import { useReview } from "./review-context.ts";
 import {
   DiscardSuggestion,
+  EditSuggestion,
   StartButton,
   TextAndSuggestion,
 } from "./suggestable-text.tsx";
@@ -225,11 +227,19 @@ function StepForm({
   );
 }
 
-/** The Discard of an open suggestion, or nothing when there is none to discard. */
-const discardFor = (found: Entry | undefined) => {
+/**
+ * The suggestion's own buttons, together inside its block: Edit, which opens
+ * the step's form, and Discard. Nothing when the suggestion is not open.
+ */
+const suggestionButtons = (found: Entry | undefined, onEdit: () => void) => {
   const open = openOf(found);
 
-  return open === undefined ? null : <DiscardSuggestion entry={open} />;
+  return open === undefined ? null : (
+    <>
+      <EditSuggestion entry={open} onEdit={onEdit} />
+      <DiscardSuggestion entry={open} />
+    </>
+  );
 };
 
 /**
@@ -294,51 +304,70 @@ export function SuggestableStep({
     ({ found }) => found?.status.state === "reviewed" && !wasTaken(found.status)
   );
 
+  const stepNumber = `step ${index + 1}`;
+
+  const head = (
+    <span className="flex items-baseline justify-between gap-2">
+      <span>
+        <span className="opacity-70">{index + 1}</span>{" "}
+        <b className="font-medium">{step.name}</b>
+      </span>
+      {review.canWrite && !editing && editable ? (
+        <StartButton
+          field={stepNameField(index)}
+          what={stepNumber}
+          again={again}
+          onStart={start}
+        />
+      ) : null}
+    </span>
+  );
+
   return (
     <span
       data-suggestable-step={index}
       className="flex min-w-0 flex-col gap-1.5"
     >
+      {head}
       {editing ? (
-        <>
-          <span>
-            <b className="font-medium">{step.name}.</b> {step.detail}
-          </span>
-          <StepForm
-            structure={structure}
-            parts={parts}
-            index={index}
-            onDone={() => {
-              setEditing(false);
-            }}
-          />
-        </>
-      ) : (
-        Arr.map(parts, ({ field, text, found }) => (
-          <span
-            key={field}
-            data-suggestable={field}
-            data-suggestion-state={found?.status.state ?? "none"}
-            className="flex flex-col gap-1.5"
-          >
-            <TextAndSuggestion
-              found={found}
-              text={text}
-              className={field === parts[0]?.field ? "font-medium" : undefined}
-            >
-              {discardFor(found)}
-            </TextAndSuggestion>
-          </span>
-        ))
-      )}
-      {review.canWrite && !editing && editable ? (
-        <StartButton
-          field={stepNameField(index)}
-          what={`step ${index + 1}`}
-          again={again}
-          onStart={start}
+        <StepForm
+          structure={structure}
+          parts={parts}
+          index={index}
+          onDone={() => {
+            setEditing(false);
+          }}
         />
-      ) : null}
+      ) : (
+        Arr.map(parts, ({ field, text, found }) =>
+          // The heading already shows the name, so it gets a block of its own
+          // only to show a suggestion or a verdict.
+          field === parts[0]?.field && found === undefined ? null : (
+            <span
+              key={field}
+              data-suggestable={field}
+              data-suggestion-state={found?.status.state ?? "none"}
+              className="flex flex-col gap-1.5"
+            >
+              {field === parts[0]?.field &&
+              found !== undefined &&
+              wasTaken(found.status) ? (
+                <ItemStatusLine status={found.status} />
+              ) : (
+                <TextAndSuggestion
+                  found={found}
+                  text={text}
+                  className={
+                    field === parts[0]?.field ? "font-medium" : undefined
+                  }
+                >
+                  {suggestionButtons(found, start)}
+                </TextAndSuggestion>
+              )}
+            </span>
+          )
+        )
+      )}
     </span>
   );
 }

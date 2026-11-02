@@ -46,6 +46,7 @@ export function NotesSection({ target }: { readonly target: NoteTarget }) {
       {review.canWrite ? (
         <NoteForm
           label="Pin a note"
+          hideLabel
           submit="Pin note"
           onSubmit={(text, done) => {
             review.ops.add({ kind: "note", target, text }, (outcome) => {

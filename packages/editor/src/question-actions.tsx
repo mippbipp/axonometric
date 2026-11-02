@@ -168,6 +168,7 @@ export function RaisedQuestions({
       {review.canWrite ? (
         <NoteForm
           label="A new question about this"
+          hideLabel
           submit="Raise question"
           placeholder="Write the question as one sentence…"
           limit={maxNoteLength}

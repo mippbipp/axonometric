@@ -5,10 +5,10 @@ import { Option, Result } from "effect";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
+import { controlClass } from "./control-class.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
 import { useReview } from "./review-context.ts";
-import { smallButton } from "./small-button.ts";
 import {
   canSuggest,
   openOf,
@@ -30,7 +30,7 @@ export function DiscardSuggestion({ entry }: { readonly entry: Entry }) {
     <button
       type="button"
       data-suggestion-discard={entry.item.field}
-      className={smallButton}
+      className={controlClass}
       aria-label={`Discard suggestion: ${fieldLabel(entry.item.field)}`}
       disabled={review?.canWrite !== true}
       onClick={() => {
@@ -56,7 +56,7 @@ export function EditSuggestion({
     <button
       type="button"
       data-suggestion-edit={entry.item.field}
-      className={smallButton}
+      className={controlClass}
       aria-label={`Edit suggestion: ${fieldLabel(entry.item.field)}`}
       disabled={review?.canWrite !== true}
       onClick={onEdit}
@@ -234,7 +234,7 @@ export function StartButton({
       <button
         type="button"
         data-suggest={field}
-        className={smallButton}
+        className={controlClass}
         aria-label={`${label}: ${what}`}
         onClick={onStart}
       >

@@ -46,8 +46,12 @@ function StepList({
   return (
     <ol className="flex flex-col gap-1.5 text-sm">
       {Arr.map(structure.steps ?? [], (step, index) => (
-        <li key={step.name} className="grid grid-cols-[1.5rem_1fr] gap-1">
-          <span className="opacity-70">{index + 1}</span>
+        <li
+          key={step.name}
+          className={
+            suggestable ? undefined : "grid grid-cols-[1.5rem_1fr] gap-1"
+          }
+        >
           {suggestable ? (
             <SuggestableStep
               structure={structure.id}
@@ -55,9 +59,12 @@ function StepList({
               step={step}
             />
           ) : (
-            <span>
-              <b className="font-medium">{step.name}.</b> {step.detail}
-            </span>
+            <>
+              <span className="opacity-70">{index + 1}</span>
+              <span>
+                <b className="font-medium">{step.name}.</b> {step.detail}
+              </span>
+            </>
           )}
         </li>
       ))}

@@ -11,7 +11,7 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
+import { literal, openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
 
@@ -678,5 +678,162 @@ describe("buttons", () => {
         assert.include(names, name);
       }
     })
+  );
+});
+
+/** Each button's height and font size in pixels, by its accessible name. */
+const sizesOf = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<Record<string, { height: number; font: number }>>(`(() => {
+      const sizes = {};
+
+      for (const button of document.querySelectorAll("[data-structure-panel] button[aria-label], [data-structure-panel] [data-note-send]")) {
+        const style = getComputedStyle(button);
+
+        sizes[button.getAttribute("aria-label") ?? button.textContent] = {
+          height: button.getBoundingClientRect().height,
+          font: parseFloat(style.fontSize),
+        };
+      }
+
+      return sizes;
+    })()`)
+  );
+
+describe("the panel's buttons and headings", () => {
+  it.live(
+    "use one size, and the step's Edit sits by its heading",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* click(page, '[data-chapter-rail] button[data-chapter="c-page"]');
+        yield* click(page, '[data-structure="page"]');
+        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
+        yield* Effect.promise(() =>
+          page.getByRole("button", { name: "Edit: step 2" }).click()
+        );
+        yield* fill(
+          page,
+          `${panel} [data-step-text="steps.1.detail"]`,
+          "The page posts the note to the save server."
+        );
+        yield* click(page, `${panel} [data-step-send]`);
+        yield* waitFor(
+          page,
+          `${panel} [data-suggestable="steps.1.detail"] [data-suggested]`
+        );
+        yield* click(
+          page,
+          `${panel} [data-panel-question="Q-P1"] [data-answer-open]`
+        );
+
+        const sizes = yield* sizesOf(page);
+
+        const wanted = [
+          "Edit: step 2",
+          "Edit suggestion: step 2 detail",
+          "Discard suggestion: step 2 detail",
+          "Pin note",
+        ];
+
+        for (const name of wanted) {
+          assert.isDefined(sizes[name], `${name} is not in the panel`);
+        }
+
+        // Every button is the size of the panel's other buttons.
+        const reference = sizes["Pin note"];
+
+        for (const name of wanted) {
+          assert.strictEqual(sizes[name]?.font, reference?.font, name);
+          assert.isAtLeast(
+            sizes[name]?.height ?? 0,
+            (reference?.height ?? 0) - 1,
+            name
+          );
+        }
+
+        assert.isAtLeast(reference?.font ?? 0, 11);
+
+        // The step's Edit is in the step's heading row, above its blocks.
+        const where = yield* Effect.promise(() =>
+          page.evaluate<{
+            editTop: number;
+            headTop: number;
+            blockTop: number;
+          }>(`(() => {
+          const step = document.querySelector('[data-suggestable-step="1"]');
+          const top = (element) => element.getBoundingClientRect().top;
+
+          return {
+            editTop: top(step.querySelector('[data-suggest]')),
+            headTop: top(step.firstElementChild),
+            blockTop: top(step.querySelector('[data-suggested]')),
+          };
+        })()`)
+        );
+
+        assert.isBelow(Math.abs(where.editTop - where.headTop), 12);
+        assert.isBelow(where.editTop, where.blockTop);
+
+        // The suggestion's own Edit and Discard sit together in its block.
+        assert.strictEqual(
+          yield* count(
+            page,
+            `${panel} [data-suggestable="steps.1.detail"] [data-suggested] button`
+          ),
+          2
+        );
+        assert.strictEqual(
+          yield* count(
+            page,
+            `${panel} [data-suggestable="steps.1.detail"] [data-suggested] [data-suggest]`
+          ),
+          0
+        );
+      }),
+    60_000
+  );
+
+  it.live(
+    "use one heading for each section, with the field named for a screen reader",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* pin(page, "server");
+
+        const headed = (heading: string, label: string) =>
+          Effect.promise(() =>
+            page.evaluate<{ shown: number; named: boolean }>(`(() => {
+            const section = [...document.querySelectorAll("[data-structure-panel] section")]
+              .find((candidate) => candidate.querySelector("h3")?.textContent === ${literal(heading)});
+            const area = section.querySelector("textarea");
+
+            return {
+              shown: [...section.querySelectorAll("label")].filter((label) => getComputedStyle(label).position !== "absolute").length,
+              named: document.querySelector('label[for="' + area.id + '"]').textContent === ${literal(label)},
+            };
+          })()`)
+          );
+
+        for (const [heading, label] of [
+          ["Raise a question", "A new question about this"],
+          ["Notes", "Pin a note"],
+        ] as const) {
+          const found = yield* headed(heading, label);
+
+          // The heading is shown once; the box's label is not shown again.
+          assert.strictEqual(found.shown, 0, heading);
+          assert.isTrue(found.named, heading);
+          assert.strictEqual(
+            yield* Effect.promise(() =>
+              page.getByRole("textbox", { name: label }).count()
+            ),
+            1,
+            heading
+          );
+        }
+      })
   );
 });

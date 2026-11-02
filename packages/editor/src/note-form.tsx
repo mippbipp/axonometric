@@ -13,6 +13,7 @@ const always = () => true;
  */
 export function NoteForm({
   label,
+  hideLabel = false,
   initial = "",
   submit,
   placeholder = "Ask a question or ask for a change…",
@@ -22,7 +23,13 @@ export function NoteForm({
   onSubmit,
   onCancel,
 }: {
+  /** What the box is for. It names the field to a screen reader. */
   readonly label: string;
+  /**
+   * Whether the label is left off the screen, because the section's own
+   * heading already says it. The box keeps the label as its accessible name.
+   */
+  readonly hideLabel?: boolean;
   readonly initial?: string;
   /** What the empty box says. */
   readonly placeholder?: string;
@@ -66,7 +73,9 @@ export function NoteForm({
     >
       <label
         htmlFor={id}
-        className="text-xs tracking-widest uppercase opacity-70"
+        className={
+          hideLabel ? "sr-only" : "text-xs tracking-widest uppercase opacity-70"
+        }
       >
         {label}
       </label>
