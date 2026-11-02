@@ -21,6 +21,13 @@
   --multi: light-dark(#a21caf, #f0abfc);
   /* A drop that would be refused, such as onto another footprint. */
   --refused: light-dark(#b91c1c, #ff7b72);
+  /* What a compare marks, each kind in a hue of its own and a different dash:
+     none is the pending blue or the refused red. */
+  --moved: light-dark(#7e22ce, #c4a1ff);
+  --resized: light-dark(#0f766e, #5eead4);
+  --changed: light-dark(#b45309, #fbbf24);
+  --added: light-dark(#15803d, #86efac);
+  --removed: light-dark(#be185d, #f9a8d4);
 }
 
 :root[data-theme="light"] {
@@ -60,6 +67,11 @@
   --color-pending: var(--pending);
   --color-multi: var(--multi);
   --color-refused: var(--refused);
+  --color-moved: var(--moved);
+  --color-resized: var(--resized);
+  --color-changed: var(--changed);
+  --color-added: var(--added);
+  --color-removed: var(--removed);
   --text-2xs: 10px;
   /* The embedded font first, for the drawing and the controls alike. The
      rest is for glyphs it lacks. The page must work offline from disk. */
@@ -86,7 +98,7 @@
 
 /* A structure in the multi-selection: outlined in the multi-selection
    colour, and ringed on the ground under it. This comes after the pending
-   rule, so a structure that is both keeps the pending face tint and badge
+   rule, so a structure that is both keeps the pending face tint
    but takes the multi-selection outline. */
 [data-structure][data-multi-selected="true"] {
   stroke: var(--multi);
@@ -105,8 +117,14 @@
   }
 }
 
-/* A structure being dragged, with its name tag and badge, is see-through, so
+/* A structure being dragged, with its name tag, is see-through, so
    what it's dragged over shows. */
 [data-drag-shifted] {
   opacity: 0.55;
+}
+
+/* A compare draws a structure only the accepted map has as a ghost: faint,
+   under the rings that mark it. */
+[data-structure][data-compare~="removed"] {
+  opacity: 0.45;
 }

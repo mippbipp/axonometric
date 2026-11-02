@@ -9,12 +9,16 @@ import {
 
 import { MapState } from "./map-state.ts";
 import { Proposals } from "./proposals.ts";
+import { Revision } from "./revisions.ts";
 import {
   Accepted,
   AcceptWrite,
+  HistoryList,
   LayoutChangeRefused,
   PendingLayoutWrite,
   MapFilesUnreadable,
+  RevisionNotFound,
+  RevisionNumber,
   ServerEvent,
   serverPaths,
   StaleProposals,
@@ -33,6 +37,21 @@ export class MapApiGroup extends HttpApiGroup.make("map").add(
   }),
   HttpApiEndpoint.get("events", serverPaths.events, {
     success: HttpApiSchema.StreamSse({ data: ServerEvent }),
+  })
+) {}
+
+/**
+ * Reading the history. The list has a line per revision, newest first. A
+ * revision's path takes a whole number from 1 and nothing else; anything
+ * else is a 400 before the handler runs, and a number with no revision is a
+ * 404. The server reads `history/` through `revisionFileName(n)` only.
+ */
+export class HistoryApiGroup extends HttpApiGroup.make("history").add(
+  HttpApiEndpoint.get("list", serverPaths.history, { success: HistoryList }),
+  HttpApiEndpoint.get("revision", serverPaths.revision, {
+    params: { n: RevisionNumber },
+    success: Revision,
+    error: RevisionNotFound,
   })
 ) {}
 
@@ -75,6 +94,7 @@ export class ProposalsApiGroup extends HttpApiGroup.make("proposals")
 /** The API that `axonometric serve` answers. */
 export class ServerApi extends HttpApi.make("axonometric")
   .add(MapApiGroup)
+  .add(HistoryApiGroup)
   .add(ProposalsApiGroup)
   .annotate(HttpApi.PayloadParseOptions, {
     errors: "all",
