@@ -449,7 +449,7 @@ describe("accepting reroutes", () => {
 
     assert.include(
       refusal([reroute("r1", "h-ab", off)], "all"),
-      "isn't on the edge"
+      "off the edge of"
     );
   });
 

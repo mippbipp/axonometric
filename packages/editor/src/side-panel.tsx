@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { DragWarnings } from "./drag-preview.tsx";
 import { useEditing } from "./editing-context.ts";
 import { useHistory } from "./history-context.ts";
 import { HistoryTab } from "./history-tab.tsx";
@@ -415,6 +416,9 @@ export function SidePanel() {
           <HistoryTab />
         </TabPanel>
       )}
+      {/* Docked under the tabs, so what a drag would leave never covers the
+          drawing. */}
+      <DragWarnings className="border-x-0 border-b-0" />
     </aside>
   );
 }

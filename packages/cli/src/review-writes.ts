@@ -6,6 +6,7 @@ import {
   dismissItem,
   editNote,
   freezeOpen,
+  hopLabelOf,
   MapFilesUnreadable,
   ProposalRefused,
   reopenItem,
@@ -22,7 +23,7 @@ import type {
   Proposals,
   ReopenWrite,
 } from "@axonometric/contracts";
-import { Array as Arr, DateTime, Effect, Option, Path, Result } from "effect";
+import { DateTime, Effect, Path, Result } from "effect";
 
 import { encodeProposals } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
@@ -215,11 +216,7 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
             batch: frozen.batch,
             names: {
               structure: (id) => structures.get(id) ?? id,
-              hop: (id) =>
-                Arr.findFirst(hops, (hop) => hop.id === id).pipe(
-                  Option.map(({ label }) => label),
-                  Option.getOrElse(() => id)
-                ),
+              hop: hopLabelOf(hops),
             },
           }),
         },

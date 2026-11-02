@@ -10,6 +10,7 @@ import {
   FreezeAnswer,
   frozenLayoutChanges,
   frozenRefusal,
+  frozenWriteRefusal,
   ItemWrite,
   LayoutChangeRefused,
   layoutRefusal,
@@ -887,22 +888,29 @@ export const connectServed = ({
   };
 
   /**
-   * Why hop `hop` can't be rerouted or reset now: its reroute is frozen in a
-   * batch that waits for the agent. A frozen item can't be edited, so a new
-   * route waits for the commit, as a frozen note does.
+   * Why the list `after` is refused: the server's check of a frozen item
+   * first, so every edit that would touch one gets the server's answer
+   * before it is sent, then the layout's.
    */
-  const frozenRouteRefusal = (hop: string): string | undefined => {
-    const proposals = proposalsOf(view.state);
-
-    const waiting = Arr.findFirst(
-      frozenLayoutChanges(proposals),
-      (change) => change.kind === "reroute" && change.target.id === hop
+  const refusalOfList = ({
+    accepted,
+    before,
+    after,
+  }: {
+    readonly accepted: Layout;
+    readonly before: readonly LayoutChange[];
+    readonly after: readonly LayoutChange[];
+  }) =>
+    Option.orElse(
+      frozenWriteRefusal({ proposals: proposalsOf(view.state), after }),
+      () =>
+        layoutRefusal({
+          accepted,
+          before,
+          after,
+          hops: view.state.data.hops,
+        })
     );
-
-    return Option.getOrUndefined(
-      Option.flatMap(waiting, ({ id }) => frozenRefusal(proposals, id))
-    );
-  };
 
   /** Why `edit` would be refused, and the list it would make. */
   const tryEdit = (edit: Edit) => {
@@ -910,15 +918,7 @@ export const connectServed = ({
     const before = view.pending;
     const after = edit(before, accepted);
 
-    return {
-      after,
-      refusal: layoutRefusal({
-        accepted,
-        before,
-        after,
-        hops: view.state.data.hops,
-      }),
-    };
+    return { after, refusal: refusalOfList({ accepted, before, after }) };
   };
 
   /** Queues the write of list `after`, based on the revision the queue ends at. */
@@ -1020,11 +1020,10 @@ export const connectServed = ({
 
     const { target, history: next } = stepped.value;
 
-    const refusal = layoutRefusal({
+    const refusal = refusalOfList({
       accepted: baseLayout(),
       before,
       after: target,
-      hops: view.state.data.hops,
     });
 
     if (Option.isSome(refusal)) {
@@ -1377,19 +1376,8 @@ export const connectServed = ({
         tryEdit(moving(moves, view.state.data.hops)).refusal
       ),
     arrange: (plan) => runShowingRefusal(arranging(plan, view.state.data.hops)),
-    reroute: (hop, points) => {
-      const waiting = frozenRouteRefusal(hop);
-
-      if (waiting !== undefined) {
-        update({ notice: { kind: "refused", message: waiting } });
-
-        return waiting;
-      }
-
-      return runShowingRefusal(rerouting(hop, points));
-    },
+    reroute: (hop, points) => runShowingRefusal(rerouting(hop, points)),
     refusalOfReroute: (hop, points) =>
-      frozenRouteRefusal(hop) ??
       Option.getOrUndefined(tryEdit(rerouting(hop, points)).refusal),
     undo: () => {
       stepThrough("undo");

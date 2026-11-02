@@ -13,9 +13,9 @@ import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import {
   applyLayoutChanges,
-  hopsOf,
+  idOfTargetKey,
   layoutRefusal,
-  structuresOf,
+  sharedTarget,
 } from "./proposals.ts";
 import type {
   Batch,
@@ -107,6 +107,57 @@ export const frozenRefusal: {
       : Option.none()
   )
 );
+
+const keyOf = (change: LayoutChange) => JSON.stringify(change);
+
+/**
+ * Why a write that sets the open layout changes to `after` has to wait, or
+ * nothing when it can go ahead.
+ *
+ * A route is one setting per hop, so a reroute frozen in a batch belongs to
+ * the agent until the commit: no write may add, change, reset or remove a
+ * reroute of that hop. Structures differ. An engineer who moves a structure
+ * again after sending it makes a new open move, which goes in the next batch
+ * and stacks on the frozen one, so those writes are allowed; accepting such a
+ * move waits for the commit (`acceptRefusal`).
+ *
+ * Targets are told apart by kind, so a hop and a structure that share an id
+ * never collide. This is the server's check, for every write, so it holds
+ * for an undo, which is a write too, and for a client that doesn't ask the
+ * page first. A change counts when it is new or different from `proposals`'
+ * open list, or when it is removed from it.
+ */
+export const frozenWriteRefusal = ({
+  proposals,
+  after,
+}: {
+  readonly proposals: Proposals;
+  /** The list of open layout changes the write would leave. */
+  readonly after: readonly LayoutChange[];
+}): Option.Option<string> => {
+  const frozen = Arr.filter(
+    frozenLayoutChanges(proposals),
+    (change) => change.kind === "reroute"
+  );
+
+  const before = proposals.layout;
+  const beforeKeys = new Set(Arr.map(before, keyOf));
+  const afterKeys = new Set(Arr.map(after, keyOf));
+
+  const touched = Arr.filter(
+    [
+      ...Arr.filter(after, (change) => !beforeKeys.has(keyOf(change))),
+      ...Arr.filter(before, (change) => !afterKeys.has(keyOf(change))),
+    ],
+    (change) => change.kind === "reroute"
+  );
+
+  return Option.map(
+    sharedTarget(touched, frozen),
+    (key) =>
+      `The route of hop "${idOfTargetKey(key)}" is in a batch that is waiting for the agent. A new route goes in the next batch, once the agent commits.`
+  );
+};
 
 /** The result of freezing the open items. */
 export interface FreezeResult {
@@ -232,25 +283,11 @@ export const acceptRefusal = ({
       : Arr.filter(proposals.layout, ({ id }) => ids.includes(id));
 
   const frozen = frozenLayoutChanges(proposals);
-
-  const frozenTargets = new Set(
-    Arr.flatMap(frozen, (change) => [
-      ...structuresOf(change),
-      ...hopsOf(change),
-    ])
-  );
-
-  const shared = Arr.findFirst(
-    Arr.flatMap(wanted, (change) => [
-      ...structuresOf(change),
-      ...hopsOf(change),
-    ]),
-    (id) => frozenTargets.has(id)
-  );
+  const shared = sharedTarget(wanted, frozen);
 
   if (Option.isSome(shared)) {
     return Option.some(
-      `"${shared.value}" has a change waiting in a batch for the agent. Wait for the agent's commit, then accept this change.`
+      `"${idOfTargetKey(shared.value)}" has a change waiting in a batch for the agent. Wait for the agent's commit, then accept this change.`
     );
   }
 

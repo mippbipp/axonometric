@@ -151,7 +151,7 @@ describe("review shows a reroute", () => {
 
         const report = yield* decodeReview(json.stdout);
 
-        assert.include(report.batch?.items[0]?.breaks, "isn't on the edge");
+        assert.include(report.batch?.items[0]?.breaks, "off the edge of");
       })
   );
 

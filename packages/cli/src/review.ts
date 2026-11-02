@@ -2,6 +2,7 @@ import {
   breakageOf,
   changedLayoutNotice,
   engineerTextNotice,
+  hopLabelOf,
   oldestOpenBatch,
   ReviewReport,
   specOf,
@@ -50,18 +51,14 @@ const reportItem = ({
   readonly hops: readonly Hop[];
 }): ReportedItem => {
   const spec = specOf(item);
+  const { before, after } = spec.facts(item, layout);
+  const structureIds = new Set(names.keys());
 
   // A reroute acts on a hop, which the engineer knows by its label.
   const nameOf = (id: string) =>
     item.kind === "layout" && item.change.kind === "reroute"
-      ? Arr.findFirst(hops, (hop) => hop.id === id).pipe(
-          Option.map(({ label }) => label),
-          Option.getOrElse(() => id)
-        )
+      ? hopLabelOf(hops, id)
       : (names.get(id) ?? id);
-
-  const { before, after } = spec.facts(item, layout);
-  const structureIds = new Set(names.keys());
 
   return {
     id: item.id,

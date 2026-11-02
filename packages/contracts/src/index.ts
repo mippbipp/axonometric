@@ -73,14 +73,20 @@ export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 export {
   checkLayout,
   clashWarnings,
+  draggedProblems,
   footprintsOverlap,
   offEndFindings,
+  onOutline,
   placedStructures,
-  problemsAdded,
   tagCovers,
 } from "./layout-checks.ts";
 
-export type { HopEnds, OffEnd, PlacedStructure } from "./layout-checks.ts";
+export type {
+  DraggedProblem,
+  HopEnds,
+  OffEnd,
+  PlacedStructure,
+} from "./layout-checks.ts";
 
 export { isoHeights } from "./iso-heights.ts";
 
@@ -99,6 +105,8 @@ export {
   GridPoint,
   Layout,
   LayoutFile,
+  maxRoutePoints,
+  maxRouteReach,
   Placement,
   RouteOverride,
   samePlacement,
@@ -198,6 +206,7 @@ export {
   Flow,
   Group,
   Hop,
+  hopLabelOf,
   MapData,
   OpenQuestion,
   Overview,
@@ -269,6 +278,7 @@ export {
   Footprint,
   hopsOf,
   HopTarget,
+  idOfTargetKey,
   LayoutChange,
   layoutChangeKey,
   LayoutChanges,
@@ -283,10 +293,13 @@ export {
   ResizeChange,
   sameLayoutChanges,
   shiftedRoutes,
+  sharedTarget,
   StructureMove,
   StructureTarget,
   structuresOf,
   Target,
+  targetIdsOf,
+  targetKeysOf,
 } from "./proposals.ts";
 
 export type { Clash, Placing, PlacingRoute } from "./proposals.ts";
@@ -365,6 +378,7 @@ export {
   findBatchItem,
   freezeOpen,
   frozenLayoutChanges,
+  frozenWriteRefusal,
   frozenRefusal,
   nextBatchNumber,
   oldestOpenBatch,

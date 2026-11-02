@@ -1,6 +1,11 @@
-import { groundProjections, samePlacement } from "@axonometric/contracts";
+import {
+  groundProjections,
+  samePlacement,
+  samePosition,
+} from "@axonometric/contracts";
 import type {
   GridPoint,
+  LayoutChange,
   Placement,
   StructureMove,
   View,
@@ -9,10 +14,11 @@ import { Array as Arr } from "effect";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
+import { useDragPreview } from "./drag-preview-context.ts";
 import { shiftDrawing } from "./drag-shift.ts";
-import { DragOrigin, DropOutline } from "./drop-outline.tsx";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
+import { useDropOutlines } from "./outlines-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -108,6 +114,14 @@ interface Drag {
   readonly refusal: string | undefined;
 }
 
+/** The moves as the one move change a drop would make, or none. */
+const movesChange = (
+  moves: readonly StructureMove[]
+): readonly LayoutChange[] =>
+  Arr.isReadonlyArrayNonEmpty(moves)
+    ? [{ id: "preview", kind: "move", moves }]
+    : [];
+
 /** Where each of `ids` goes when the pressed structure goes from `start` to `next`. */
 const movesOf = (
   ids: readonly string[],
@@ -154,6 +168,8 @@ export function LayoutEditor({
   readonly children: ReactNode;
 }) {
   const editing = useEditing();
+  const preview = useDragPreview();
+  const setOutlines = useDropOutlines()?.set;
   const { state } = useWalkthrough();
   const { selected, multiSelection } = useSelection();
   const root = useRef<SVGGElement>(null);
@@ -180,6 +196,56 @@ export function LayoutEditor({
       });
     }
   }, [drag, view, state.data.hops]);
+
+  // Whatever is dragged or resized, the panel beside the map says what the
+  // drop would leave: its reason when refused, else every warning `check`
+  // would report.
+  useEffect(() => {
+    if (drag === undefined) {
+      preview?.clear();
+
+      return;
+    }
+
+    const changes: readonly LayoutChange[] = drag.resizing
+      ? [
+          {
+            id: "preview",
+            kind: "resize",
+            target: { kind: "structure", id: drag.id },
+            footprint: { w: drag.next.w, d: drag.next.d },
+          },
+          ...(samePosition(drag.next, drag.start)
+            ? []
+            : movesChange(movesOf([drag.id], placements, drag)).slice(0, 1)),
+        ]
+      : movesChange(movesOf(drag.ids, placements, drag));
+
+    preview?.show({ changes, refusal: drag.refusal });
+  }, [drag, placements, preview]);
+
+  // The outlines are drawn in a layer under the zones and the text.
+  useEffect(() => {
+    setOutlines?.(
+      drag === undefined
+        ? undefined
+        : {
+            moving: drag.resizing
+              ? [{ id: drag.id, from: drag.start, to: drag.next }]
+              : Arr.flatMap(
+                  movesOf(drag.ids, placements, drag),
+                  ({ target, position }) => {
+                    const from = placements[target.id];
+
+                    return from === undefined
+                      ? []
+                      : [{ id: target.id, from, to: { ...from, ...position } }];
+                  }
+                ),
+            refusal: drag.refusal,
+          }
+    );
+  }, [drag, placements, setOutlines]);
 
   // A drag ends with a click, which would pin the structure or, landing on
   // the group, clear the selection. The map surface listens for clicks
@@ -378,18 +444,6 @@ export function LayoutEditor({
       }}
     >
       {children}
-      {drag === undefined ? null : (
-        <DragOutlines drag={drag} placements={placements} view={view} />
-      )}
-      {drag === undefined || drag.resizing
-        ? null
-        : Arr.flatMap(drag.ids, (id) => {
-            const at = placements[id];
-
-            return at === undefined
-              ? []
-              : [<DragOrigin key={id} id={id} at={at} view={view} />];
-          })}
       {live && selected !== null && handlesAt !== undefined ? (
         <ResizeHandles
           id={selected}
@@ -401,47 +455,6 @@ export function LayoutEditor({
         />
       ) : null}
     </g>
-  );
-}
-
-/** Where a drop would put each footprint, red while the drop is refused. */
-function DragOutlines({
-  drag,
-  placements,
-  view,
-}: {
-  readonly drag: Drag;
-  readonly placements: Readonly<Partial<Record<string, Placement>>>;
-  readonly view: View;
-}) {
-  if (drag.ids.length === 1) {
-    return (
-      <DropOutline
-        refusal={drag.refusal}
-        id={drag.id}
-        at={drag.next}
-        view={view}
-      />
-    );
-  }
-
-  return Arr.flatMap(
-    movesOf(drag.ids, placements, drag),
-    ({ target, position }) => {
-      const at = placements[target.id];
-
-      return at === undefined
-        ? []
-        : [
-            <DropOutline
-              key={target.id}
-              refusal={drag.refusal}
-              id={target.id}
-              at={{ ...at, ...position }}
-              view={view}
-            />,
-          ];
-    }
   );
 }
 

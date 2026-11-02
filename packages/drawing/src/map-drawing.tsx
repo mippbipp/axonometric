@@ -279,8 +279,9 @@ function HatchPattern({ id }: { readonly id: string }) {
  * page and every exported file draw a map with this one component, in a
  * `DrawingContext` that says how to paint it.
  *
- * The page fills the slots with what only an editor has: `underlay` is
- * drawn under the hops, `hopsOverlay` over the hops and under the
+ * The page fills the slots with what only an editor has: `ground` is drawn
+ * first, under the zones and their titles, `underlay` is drawn under the
+ * hops, `hopsOverlay` over the hops and under the
  * structures, the context's `Layers` surround the structures, their hidden
  * hops and their tags, and `overlay` goes on top of the tags inside them. A
  * file leaves them all out.
@@ -290,6 +291,7 @@ export function MapDrawing({
   hatch,
   newlyRevealed,
   spotlight,
+  ground,
   underlay,
   hopsOverlay,
   overlay,
@@ -307,6 +309,7 @@ export function MapDrawing({
    * nothing fades.
    */
   readonly spotlight?: Spotlight | null | undefined;
+  readonly ground?: ReactNode;
   readonly underlay?: ReactNode;
   readonly hopsOverlay?: ReactNode;
   readonly overlay?: ReactNode;
@@ -324,6 +327,7 @@ export function MapDrawing({
       <defs>
         <HatchPattern id={hatch} />
       </defs>
+      {ground}
       <Zones zones={scene.zones} Plate={drawing.Plate} />
       {underlay}
       <g>

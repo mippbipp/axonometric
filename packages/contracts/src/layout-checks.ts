@@ -169,14 +169,17 @@ const routeWarnings = (
 };
 
 /** Whether a point sits on a footprint's outline, edges and corners included. */
-const onOutline = (point: GridPoint, box: Placement) => {
+export const onOutline: {
+  (box: Placement): (point: GridPoint) => boolean;
+  (point: GridPoint, box: Placement): boolean;
+} = dual(2, (point: GridPoint, box: Placement) => {
   const withinX = point.x >= box.x && point.x <= box.x + box.w;
   const withinY = point.y >= box.y && point.y <= box.y + box.d;
   const onX = point.x === box.x || point.x === box.x + box.w;
   const onY = point.y === box.y || point.y === box.y + box.d;
 
   return (onX && withinY) || (onY && withinX);
-};
+});
 
 /** A hop's id and the structures at its ends. */
 export interface HopEnds {
@@ -519,23 +522,48 @@ export const checkLayout: {
 const lineOf = (problem: MapProblem) =>
   `${problem.severity} ${problem.file} ${problem.path}: ${problem.message}`;
 
+/** A problem `checkLayout` finds in a dragged layout, and whether the drag made it. */
+export interface DraggedProblem {
+  readonly problem: MapProblem;
+  /** Whether the layout before the drag didn't have it. */
+  readonly added: boolean;
+}
+
+const checked = new WeakMap<MapData, WeakMap<Layout, readonly MapProblem[]>>();
+
 /**
- * The problems `checkLayout` finds in `after` that it doesn't find in
- * `before`, in `after`'s order. It's the check `check` runs, on the layout a
- * drag would leave, so the page warns of exactly what `check` would then
- * print.
+ * `checkLayout`, remembered for this data and this layout. A drag asks about
+ * the same layout before it again at every step, and the check is the slow
+ * part.
  */
-export const problemsAdded: {
-  (before: Layout, after: Layout): (data: MapData) => readonly MapProblem[];
-  (data: MapData, before: Layout, after: Layout): readonly MapProblem[];
+const checkLayoutOnce = (data: MapData, layout: Layout) => {
+  const byLayout = checked.get(data) ?? new WeakMap();
+  const found = byLayout.get(layout) ?? checkLayout(data, layout);
+
+  byLayout.set(layout, found);
+  checked.set(data, byLayout);
+
+  return found;
+};
+
+/**
+ * Everything `check` would report for the layout `after`, in the order it
+ * reports it, each marked `added` when the layout `before` didn't have it.
+ * It is the check `check` runs, on the layout a drag would leave, so the
+ * page lists exactly what `check` would then print, and can set apart what
+ * the drag made.
+ */
+export const draggedProblems: {
+  (before: Layout, after: Layout): (data: MapData) => readonly DraggedProblem[];
+  (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[];
 } = dual(
   3,
-  (data: MapData, before: Layout, after: Layout): readonly MapProblem[] => {
-    const known = new Set(Arr.map(checkLayout(data, before), lineOf));
+  (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[] => {
+    const known = new Set(Arr.map(checkLayoutOnce(data, before), lineOf));
 
-    return Arr.filter(
-      checkLayout(data, after),
-      (problem) => !known.has(lineOf(problem))
-    );
+    return Arr.map(checkLayoutOnce(data, after), (problem) => ({
+      problem,
+      added: !known.has(lineOf(problem)),
+    }));
   }
 );

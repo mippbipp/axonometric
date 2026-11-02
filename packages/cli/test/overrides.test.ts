@@ -13,6 +13,9 @@ const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 const encodeLayout = Schema.encodeEffect(LayoutFile);
 
+/** JSON text for any value, with no layout schema in the way. */
+const encodeRaw = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+
 /**
  * A route override for h-update from the updater (x 0–2, y 4–6) to the
  * gate (x 4–6, y 0–1.5): out of the updater's +x face, up, and into the
@@ -41,6 +44,25 @@ const withRoutes = Effect.fnUntraced(function* (
   return changed;
 });
 
+/**
+ * The minimal map with `routes` written into layout.json as text, the way a
+ * person might write it. `withRoutes` encodes through the schema, which
+ * refuses what these tests need to write.
+ */
+const withRawRoutes = Effect.fnUntraced(function* (
+  routes: Readonly<Record<string, readonly GridPoint[]>>
+) {
+  const files = yield* minimalMap;
+  const saved = yield* decodeLayout(files[layoutFile] ?? "");
+
+  const changed: HomeFiles = {
+    ...files,
+    [layoutFile]: `${yield* encodeRaw({ ...saved, routes })}\n`,
+  };
+
+  return changed;
+});
+
 const checkIn = Effect.fnUntraced(function* (files: HomeFiles) {
   const home = yield* makeHome(files);
 
@@ -56,6 +78,37 @@ describe("route overrides", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stdout + result.stderr);
       assert.include(result.stdout, ": 0 errors, 0 warnings.");
+    })
+  );
+
+  it.effect("check rejects an override with too many points", () =>
+    Effect.gen(function* () {
+      // A staircase of 201 right-angled points, one over the cap.
+      const many = Arr.makeBy(201, (index) => ({
+        x: 2 + Math.ceil(index / 2) / 2,
+        y: 5 + Math.floor(index / 2) / 2,
+      }));
+
+      const result = yield* checkIn(yield* withRawRoutes({ "h-update": many }));
+
+      assert.notStrictEqual(result.exitCode, 0);
+      assert.include(result.stdout, "expected at most 200 points");
+    })
+  );
+
+  it.effect("check rejects an override that lies far off the map", () =>
+    Effect.gen(function* () {
+      const result = yield* checkIn(
+        yield* withRawRoutes({
+          "h-update": [
+            { x: 2, y: 5 },
+            { x: 5000, y: 5 },
+          ],
+        })
+      );
+
+      assert.notStrictEqual(result.exitCode, 0);
+      assert.include(result.stdout, "within 1000 units of the origin");
     })
   );
 

@@ -2,6 +2,7 @@ import { Array as Arr, Option, Order } from "effect";
 
 import { endRange } from "./ends.ts";
 import { routeCorners } from "./lanes.ts";
+import { onOutline } from "./layout-checks.ts";
 import type { GridPoint, Placement } from "./layout.ts";
 
 /**
@@ -94,21 +95,33 @@ const pushedOut = (value: number, { edge, out }: Meeting) =>
     ? Math.max(value, edge + stubLength)
     : Math.min(value, edge - stubLength);
 
-/** Whether a point sits on a footprint's outline, corners included. */
-const onOutline = (point: GridPoint, box: Placement) => {
-  const withinX = point.x >= box.x && point.x <= box.x + box.w;
-  const withinY = point.y >= box.y && point.y <= box.y + box.d;
-  const onX = point.x === box.x || point.x === box.x + box.w;
-  const onY = point.y === box.y || point.y === box.y + box.d;
-
-  return (onX && withinY) || (onY && withinX);
-};
-
 /** The two footprints a route runs between. */
 export interface RouteEnds {
   readonly from: Placement;
   readonly to: Placement;
 }
+
+/** The first two and last two vertices of a route, which its end legs run between. */
+interface EndLegs {
+  readonly first: GridPoint;
+  readonly second: GridPoint;
+  readonly before: GridPoint;
+  readonly last: GridPoint;
+}
+
+/** The end legs of `vertices`, or nothing when it has fewer than two points. */
+const endLegsOf = (vertices: readonly GridPoint[]): EndLegs | undefined => {
+  const [first, second] = vertices;
+  const last = vertices.at(-1);
+  const before = vertices.at(-2);
+
+  return first === undefined ||
+    second === undefined ||
+    last === undefined ||
+    before === undefined
+    ? undefined
+    : { first, second, before, last };
+};
 
 /** What a route must keep, as `check` requires, to be drawn between two footprints. */
 interface Keeping {
@@ -128,18 +141,13 @@ const keeps = (
   vertices: readonly GridPoint[],
   { ends, startAxis, endAxis, exit, entry }: Keeping
 ) => {
-  const [first, second] = vertices;
-  const last = vertices.at(-1);
-  const before = vertices.at(-2);
+  const legs = endLegsOf(vertices);
 
-  if (
-    first === undefined ||
-    second === undefined ||
-    last === undefined ||
-    before === undefined
-  ) {
+  if (legs === undefined) {
     return false;
   }
+
+  const { first, second, before, last } = legs;
 
   return (
     onOutline(first, ends.from) &&
@@ -164,19 +172,13 @@ const anatomyOf = (
   vertices: readonly GridPoint[],
   ends: RouteEnds
 ): Anatomy | undefined => {
-  const [first, second] = vertices;
-  const last = vertices.at(-1);
-  const before = vertices.at(-2);
+  const legs = endLegsOf(vertices);
 
-  if (
-    first === undefined ||
-    second === undefined ||
-    last === undefined ||
-    before === undefined
-  ) {
+  if (legs === undefined) {
     return undefined;
   }
 
+  const { first, second, before, last } = legs;
   const startAxis = axisOf(first, second);
   const endAxis = axisOf(before, last);
 

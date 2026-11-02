@@ -1,6 +1,7 @@
 import {
   applyLayoutChanges,
   frozenLayoutChanges,
+  frozenWriteRefusal,
   LayoutChangeRefused,
   layoutRefusal,
   MapFilesUnreadable,
@@ -206,13 +207,19 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   // change is checked against the layout they would make.
   const base = applyLayoutChanges(accepted, frozenLayoutChanges(current));
 
-  const refusal = Option.orElse(usedElsewhere(current, write.layout), () =>
-    layoutRefusal({
-      accepted: base,
-      before: current.layout,
-      after: write.layout,
-      hops,
-    })
+  // The server holds this line for every client, the page's undo included:
+  // a write can't touch what a frozen item acts on.
+  const refusal = Option.orElse(
+    Option.orElse(usedElsewhere(current, write.layout), () =>
+      frozenWriteRefusal({ proposals: current, after: write.layout })
+    ),
+    () =>
+      layoutRefusal({
+        accepted: base,
+        before: current.layout,
+        after: write.layout,
+        hops,
+      })
   );
 
   if (Option.isSome(refusal)) {

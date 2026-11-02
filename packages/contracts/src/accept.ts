@@ -8,6 +8,7 @@ import {
   hopsOf,
   layoutRefusal,
   structuresOf,
+  targetIdsOf,
 } from "./proposals.ts";
 import type { LayoutChange } from "./proposals.ts";
 
@@ -52,9 +53,7 @@ const settingOf = (kind: LayoutChange["kind"], id: string) =>
   );
 
 const settings = (change: LayoutChange) =>
-  Arr.map([...structuresOf(change), ...hopsOf(change)], (id) =>
-    settingOf(change.kind, id)
-  );
+  Arr.map(targetIdsOf(change), (id) => settingOf(change.kind, id));
 
 /** What is left of a pending change, and what was taken out of it. */
 interface Overridden {
@@ -201,13 +200,14 @@ export const acceptLayoutChanges = ({
 
 /** What a message calls a change, by kind. A reset reroute has its own. */
 const verbOf = (change: LayoutChange) =>
-  change.kind === "move"
-    ? "Move"
-    : change.kind === "resize"
-      ? "Resize"
-      : change.points === null
-        ? "Reset the route of"
-        : "Reroute";
+  Match.value(change).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      move: () => "Move",
+      resize: () => "Resize",
+      reroute: ({ points }) =>
+        points === null ? "Reset the route of" : "Reroute",
+    })
+  );
 
 /** Past this many structures, a kind of change names three and counts the rest. */
 const namedInFull = 4;

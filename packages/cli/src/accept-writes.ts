@@ -1,6 +1,7 @@
 import {
   acceptanceMessage,
   acceptRefusal,
+  hopLabelOf,
   acceptLayoutChanges,
   historyFolder,
   LayoutChangeRefused,
@@ -120,20 +121,13 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
     Arr.map(map.data.structures, ({ id, name }) => [id, name])
   );
 
-  const hopNames = new Map(
-    Arr.map(map.data.hops, ({ id, from, to }) => [
-      id,
-      `${structureNames.get(from) ?? from} to ${structureNames.get(to) ?? to}`,
-    ])
-  );
-
   const given = Str.trim(write.message ?? "");
 
   const message =
     given === ""
       ? acceptanceMessage(accepted, (id) => structureNames.get(id) ?? id, {
           dropped,
-          hopNameOf: (id) => hopNames.get(id) ?? id,
+          hopNameOf: hopLabelOf(map.data.hops),
         })
       : given;
 

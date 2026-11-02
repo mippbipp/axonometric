@@ -1,5 +1,6 @@
 import {
   Array as Arr,
+  Match,
   Option,
   pipe,
   Record as Rec,
@@ -13,9 +14,9 @@ import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import {
   applyLayoutChanges,
-  hopsOf,
   layoutRefusal,
   structuresOf,
+  targetIdsOf,
 } from "./proposals.ts";
 import type {
   BatchItem,
@@ -171,7 +172,7 @@ const layoutKind: KindSpec<LayoutItem> = {
     layout: [...proposals.layout, item.change],
   }),
   name: (item) => item.change.kind,
-  targets: (item) => [...structuresOf(item.change), ...hopsOf(item.change)],
+  targets: (item) => targetIdsOf(item.change),
   summary: (item, nameOf, hopLabelOf) => {
     const { change } = item;
 
@@ -186,24 +187,22 @@ const layoutKind: KindSpec<LayoutItem> = {
   facts: ({ change }, layout) => {
     const next = applyLayoutChanges(layout, [change]);
 
-    if (change.kind === "move") {
-      return {
-        before: positionsOf(layout, structuresOf(change)),
-        after: positionsOf(next, structuresOf(change)),
-      };
-    }
-
-    if (change.kind === "resize") {
-      return {
-        before: sizeOf(layout, change.target.id),
-        after: sizeOf(next, change.target.id),
-      };
-    }
-
-    return {
-      before: routeOf(layout, change.target.id),
-      after: routeOf(next, change.target.id),
-    };
+    return Match.value(change).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        move: () => ({
+          before: positionsOf(layout, structuresOf(change)),
+          after: positionsOf(next, structuresOf(change)),
+        }),
+        resize: ({ target }) => ({
+          before: sizeOf(layout, target.id),
+          after: sizeOf(next, target.id),
+        }),
+        reroute: ({ target }) => ({
+          before: routeOf(layout, target.id),
+          after: routeOf(next, target.id),
+        }),
+      })
+    );
   },
   breakage: (item, { layout, hops }) =>
     layoutRefusal({ accepted: layout, before: [], after: [item.change], hops }),

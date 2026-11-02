@@ -14,9 +14,9 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
 import { shiftDrawing } from "./drag-shift.ts";
-import { DragOrigin, DropOutline } from "./drop-outline.tsx";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
+import { useDropOutlines } from "./outlines-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** How far a press must move before it drags a group, in pixels. */
@@ -83,6 +83,7 @@ export function GroupEditor({
   const editing = useEditing();
   const { state } = useWalkthrough();
   const preview = useDragPreview();
+  const setOutlines = useDropOutlines()?.set;
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
   const dragged = useRef(false);
@@ -125,17 +126,35 @@ export function GroupEditor({
     }
   }, [drag, view, state.data.hops]);
 
+  // The outlines are drawn in a layer under the zones.
   useEffect(() => {
-    const moves =
-      drag === undefined || drag.refusal !== undefined
-        ? []
-        : movesBy(drag.members, drag.by);
-
-    preview?.show(
-      Arr.isReadonlyArrayNonEmpty(moves)
-        ? [{ id: "preview", kind: "move", moves }]
-        : undefined
+    setOutlines?.(
+      drag === undefined
+        ? undefined
+        : {
+            moving: Arr.map(drag.members, ([id, from]) => ({
+              id,
+              from,
+              to: { ...from, x: from.x + drag.by.x, y: from.y + drag.by.y },
+            })),
+            refusal: drag.refusal,
+          }
     );
+  }, [drag, setOutlines]);
+
+  useEffect(() => {
+    const moves = drag === undefined ? [] : movesBy(drag.members, drag.by);
+
+    if (drag === undefined || !Arr.isReadonlyArrayNonEmpty(moves)) {
+      preview?.clear();
+
+      return;
+    }
+
+    preview?.show({
+      changes: [{ id: "preview", kind: "move", moves }],
+      refusal: drag.refusal,
+    });
   }, [drag, preview]);
 
   const onPointerDown = (event: ReactPointerEvent<SVGGElement>) => {
@@ -313,19 +332,6 @@ export function GroupEditor({
                 ]
           )
         : null}
-      {drag === undefined
-        ? null
-        : Arr.map(drag.members, ([id, at]) => (
-            <g key={id} className="pointer-events-none">
-              <DragOrigin id={id} at={at} view={view} />
-              <DropOutline
-                id={id}
-                at={{ ...at, x: at.x + drag.by.x, y: at.y + drag.by.y }}
-                view={view}
-                refusal={drag.refusal}
-              />
-            </g>
-          ))}
     </g>
   );
 }

@@ -25,9 +25,10 @@ export const shiftDrawing = ({
   readonly ids?: readonly string[];
   /**
    * The map's hops. Hops stay where they were while their structures move,
-   * so the label of any hop with an end on a moving structure would lie on
-   * whatever the structure is dragged over. Those labels are hidden until
-   * the drop routes the hops again.
+   * so any hop with an end on a moving structure would point at an empty
+   * outline, and its label would lie on whatever the structure is dragged
+   * over. Those hops, line, head and label, are hidden until the drop routes
+   * them again.
    */
   readonly hops?: readonly HopEnds[];
   /**
@@ -65,9 +66,12 @@ export const shiftDrawing = ({
     (hop) => changing.includes(hop.from) || changing.includes(hop.to)
   );
 
+  // The hop's line and head, its dashed stretches over boxes, and its label.
   for (const { id } of hidden) {
+    const hop = CSS.escape(id);
+
     for (const element of root.querySelectorAll<SVGElement>(
-      `[data-hop-label="${CSS.escape(id)}"]`
+      `[data-hop="${hop}"], [data-hidden-hop="${hop}"], [data-hop-label="${hop}"], [data-hop-pending="${hop}"]`
     )) {
       element.dataset.dragHidden = "";
     }

@@ -1,3 +1,4 @@
+import { hopLabelOf } from "@axonometric/contracts";
 import type { BatchItem, ReviewEntry, Verdict } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr, Match, Option, Record as Rec, Result } from "effect";
@@ -55,14 +56,7 @@ const useItemDescription = () => {
   const { state } = useWalkthrough();
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
 
-  const hopName = (id: string) => {
-    const hop = Arr.findFirst(state.data.hops, (other) => other.id === id);
-
-    return Option.match(hop, {
-      onNone: () => id,
-      onSome: ({ from, to }) => `${nameOf(from)} to ${nameOf(to)}`,
-    });
-  };
+  const hopName = hopLabelOf(state.data.hops);
 
   return (item: BatchItem): string => {
     if (item.kind === "note") {

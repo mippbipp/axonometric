@@ -19,7 +19,7 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
-import { literal, openUrl } from "./browser.ts";
+import { attributesOf, literal, openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
 
@@ -226,8 +226,10 @@ const segmentSelector = (hop: string, segment: number) =>
 /** What the warnings list shows: each message, and the place under it. */
 const warningsOf = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<readonly { message: string; where: string }[]>(
-      `[...document.querySelectorAll("[data-drag-warning]")].map((item) => ({ message: item.querySelector("[data-warning-message]").textContent, where: item.querySelector("[data-warning-where]").textContent }))`
+    page.evaluate<
+      readonly { message: string; where: string; isNew: boolean }[]
+    >(
+      `[...document.querySelectorAll("[data-drag-warning]")].map((item) => ({ message: item.querySelector("[data-warning-message]").textContent, where: item.querySelector("[data-warning-where]").textContent, isNew: item.getAttribute("data-warning-new") === "true" }))`
     )
   );
 
@@ -476,6 +478,8 @@ describe("rerouting a hop by dragging a segment", () => {
   );
 });
 
+const waitingForAgent = "waiting for the agent";
+
 describe("a reroute in the review loop", () => {
   /** Drags h-store right, then sends it to the agent with Ready for review. */
   const frozenReroute = Effect.gen(function* () {
@@ -598,6 +602,44 @@ describe("a reroute in the review loop", () => {
 
         assert.deepStrictEqual(saved.layout, []);
         assert.strictEqual(saved.batches?.length, 1);
+      }),
+    120_000
+  );
+
+  it.live(
+    "refuses a group drag that would carry a frozen route along, with the waiting message",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* frozenReroute;
+
+        // The reroute sits in layout changes as pending (frozen). A drag of
+        // the whole loop group would shift h-store's override with it, a new
+        // reroute of a hop that is waiting for the agent.
+        yield* waitFor(page, '[data-hop-pending="h-store"]');
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, '[data-zone-title-hit="loop"]');
+
+        yield* pressAndMove(
+          page,
+          from,
+          screenDelta("plan", unit, { x: 0, y: 2 })
+        );
+        yield* waitFor(page, "[data-drag-refusal]");
+
+        assert.include(
+          (yield* Effect.promise(() =>
+            page.locator("[data-drag-refusal]").first().textContent()
+          )) ?? "",
+          waitingForAgent
+        );
+
+        yield* Effect.promise(() => page.mouse.up());
+
+        // The drop wrote nothing but the freeze.
+        const saved = Option.getOrThrow(yield* proposalsIn(home));
+
+        assert.deepStrictEqual(saved.layout, []);
       }),
     120_000
   );
@@ -915,6 +957,297 @@ describe("text while dragging", () => {
   );
 });
 
+/** The boxes, on screen, of everything a drag mustn't be covered by. */
+const drawingBoxes = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<
+      readonly {
+        name: string;
+        left: number;
+        top: number;
+        right: number;
+        bottom: number;
+      }[]
+    >(`(() => {
+      const rect = (name, element) => {
+        const box = element.getBoundingClientRect();
+
+        return { name, left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+      };
+
+      return [
+        ...[...document.querySelectorAll("[data-structure]")].map((element) =>
+          rect("structure:" + element.getAttribute("data-structure"), element)
+        ),
+        ...[...document.querySelectorAll("[data-name-tag] text")].map((element) =>
+          rect("tag:" + element.textContent, element)
+        ),
+        ...[...document.querySelectorAll("[data-hop-label]")]
+          .filter((element) => getComputedStyle(element).visibility !== "hidden")
+          .map((element) => rect("label:" + element.getAttribute("data-hop-label"), element)),
+        ...[...document.querySelectorAll("[data-zone-title]")].map((element) =>
+          rect("title:" + element.textContent, element)
+        ),
+      ];
+    })()`)
+  );
+
+const panelBox = (page: Page) =>
+  Effect.promise(() =>
+    page.locator("[data-drag-warnings]").first().boundingBox()
+  );
+
+describe("a rerouted hop's label", () => {
+  {
+    const view = "plan";
+
+    it.live(
+      "is placed from the rerouted points, at the scene's label gap, in Plan view",
+      () =>
+        Effect.gen(function* () {
+          const { home, page } = yield* servedReview;
+
+          yield* toView(page, view);
+
+          const unit = yield* unitOnScreen(page, view);
+          const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+          yield* dragBy(page, from, screenDelta(view, unit, { x: 1, y: 0 }));
+          yield* waitForRevision(home, 1);
+          yield* waitFor(page, '[data-hop-pending="h-store"]');
+          yield* waitFor(page, '[data-hop-label="h-store"]');
+
+          // The label's box against the hop's drawn line: the gap between
+          // them is the scene's own label gap, never a touch.
+          const gap = yield* Effect.promise(() =>
+            page.evaluate<number>(`(() => {
+              const label = document.querySelector('[data-hop-label="h-store"]').getBoundingClientRect();
+              const route = document.querySelector('[data-hop="h-store"]').getAttribute("data-route").split(" ").map((pair) => pair.split(",").map(Number));
+              const svg = document.querySelector("svg[data-scale]");
+              const scale = Number(svg.getAttribute("data-scale"));
+              const matrix = document.querySelector('[data-hop="h-store"]').getScreenCTM();
+              const points = route.map(([x, y]) => ({ x: x * matrix.a + y * matrix.c + matrix.e, y: x * matrix.b + y * matrix.d + matrix.f }));
+              let least = Infinity;
+
+              for (let index = 0; index + 1 < points.length; index++) {
+                const [a, b] = [points[index], points[index + 1]];
+
+                for (let step = 0; step <= 40; step++) {
+                  const x = a.x + ((b.x - a.x) * step) / 40;
+                  const y = a.y + ((b.y - a.y) * step) / 40;
+                  const dx = Math.max(label.left - x, 0, x - label.right);
+                  const dy = Math.max(label.top - y, 0, y - label.bottom);
+
+                  least = Math.min(least, Math.hypot(dx, dy));
+                }
+              }
+
+              return least / scale;
+            })()`)
+          );
+
+          // The scene sets a label beside its leg at least 3 drawing units
+          // away (its nearest `labelGaps`), measured from the rerouted
+          // points. The Iso view may put it on the line instead, on a paper
+          // backing, so only Plan view has a gap to measure.
+          assert.isAbove(gap, 2.5);
+        }),
+      90_000
+    );
+  }
+});
+
+describe("the panel for what a drag would leave", () => {
+  it.live(
+    "lists warnings for a drag of one structure, and for a resize",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
+
+        yield* toView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+
+        // Drag the proposals store up under the server's tag: the tag then
+        // sits on a box, which check reports.
+        const store = yield* middleOf(page, '[data-structure="proposals"]');
+
+        yield* pressAndMove(
+          page,
+          store,
+          screenDelta("plan", unit, { x: 0, y: -2.5 })
+        );
+        yield* waitFor(page, "[data-drag-warning]");
+        assert.isAbove((yield* warningsOf(page)).length, 0);
+        yield* Effect.promise(() => page.mouse.up());
+        yield* waitGone(page, "[data-drag-warnings]");
+
+        // A resize of the same structure, out to where it covers the tag.
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="server"]').click()
+        );
+        yield* waitFor(page, '[data-resize-handle="se"]');
+
+        const corner = yield* middleOf(page, '[data-resize-handle="se"]');
+
+        yield* pressAndMove(
+          page,
+          corner,
+          screenDelta("plan", unit, { x: 0.5, y: 3.5 })
+        );
+        yield* waitFor(page, "[data-drag-warnings]");
+        yield* Effect.promise(() => page.mouse.up());
+      }),
+    120_000
+  );
+
+  it.live(
+    "shows the reason in the panel when a drop would be refused, with the fix in words",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* toView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+        // Give h-store an override and accept it, so a move of its end
+        // structure is a move that would leave it off its footprint.
+        yield* dragBy(page, from, screenDelta("plan", unit, { x: 1, y: 0 }));
+        yield* waitForRevision(home, 1);
+        yield* Effect.promise(() =>
+          page.locator('[role="tab"][data-tab="pending"]').click()
+        );
+        yield* Effect.promise(() => page.locator("[data-accept-all]").click());
+        yield* waitFor(page, "[data-saved-revision]");
+
+        // Move the proposals store down: the override's last point is no
+        // longer on its edge, which check reports as an error.
+        const store = yield* middleOf(page, '[data-structure="proposals"]');
+
+        yield* pressAndMove(
+          page,
+          store,
+          screenDelta("plan", unit, { x: 0, y: 2.5 })
+        );
+        yield* waitFor(page, "[data-drag-refusal]");
+
+        const reason =
+          (yield* Effect.promise(() =>
+            page.locator("[data-drag-refusal]").first().textContent()
+          )) ?? "";
+
+        assert.include(reason, 'Reset the route of hop "h-store" first');
+        assert.include(reason, "check reports as an error");
+
+        // The panel says it in the open, not in a tooltip, and nothing is
+        // listed as a warning meanwhile.
+        assert.strictEqual(yield* count(page, "[data-drag-warning]"), 0);
+        yield* Effect.promise(() => page.mouse.up());
+        yield* waitGone(page, "[data-drag-warnings]");
+      }),
+    120_000
+  );
+
+  it.live(
+    "stays off the drawing: it covers no structure, tag, label or title",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
+
+        yield* toView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+        yield* pressAndMove(
+          page,
+          from,
+          screenDelta("plan", unit, { x: 4, y: 0 })
+        );
+        yield* waitFor(page, "[data-drag-warning]");
+
+        const panel = yield* panelBox(page);
+
+        assert.isNotNull(panel);
+
+        const covered = Arr.filter(
+          yield* drawingBoxes(page),
+          (box) =>
+            panel !== null &&
+            box.left < panel.x + panel.width &&
+            panel.x < box.right &&
+            box.top < panel.y + panel.height &&
+            panel.y < box.bottom
+        );
+
+        assert.deepStrictEqual(
+          Arr.map(covered, ({ name }) => name),
+          []
+        );
+        yield* Effect.promise(() => page.mouse.up());
+      }),
+    90_000
+  );
+});
+
+describe("a group drag's hops", () => {
+  it.live(
+    "hides the lines and heads of hops at a moving structure, not only their labels, and shows them again routed on the drop",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* toView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, '[data-zone-title-hit="loop"]');
+        const hidden = "[data-hop][data-drag-hidden]";
+
+        yield* pressAndMove(
+          page,
+          from,
+          screenDelta("plan", unit, { x: 0.5, y: 2 })
+        );
+        yield* Effect.sleep("300 millis");
+
+        // Every hop with an end in the loop group has an end on a moving
+        // structure: h-note ends at the page.
+        const lines = yield* attributesOf(page, hidden, "data-hop");
+
+        assert.deepStrictEqual(Arr.sort(lines, Order.String), [
+          "h-note",
+          "h-pr",
+          "h-save",
+          "h-store",
+        ]);
+
+        const visible = yield* Effect.promise(() =>
+          page.evaluate<readonly string[]>(
+            `[...document.querySelectorAll("[data-hop]")].filter((hop) => getComputedStyle(hop).visibility !== "hidden").map((hop) => hop.getAttribute("data-hop"))`
+          )
+        );
+
+        assert.deepStrictEqual(visible, []);
+
+        // The origin outlines lie under the zone titles and name tags.
+        const order = yield* Effect.promise(() =>
+          page.evaluate<boolean>(
+            `(() => { const outlines = document.querySelector("[data-drag-outlines]"); const title = document.querySelector("[data-zone-title]"); return outlines !== null && title !== null && Boolean(outlines.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING); })()`
+          )
+        );
+
+        assert.isTrue(order);
+        yield* Effect.promise(() => page.mouse.up());
+        yield* waitForRevision(home, 1);
+        yield* waitGone(page, "[data-drag-hidden]");
+        assert.isAbove(yield* count(page, "[data-hop]"), 0);
+      }),
+    120_000
+  );
+});
+
 describe("the warnings while dragging", () => {
   it.live(
     "show the same text that check prints for the layout the drop would leave",
@@ -998,6 +1331,10 @@ describe("the warnings while dragging", () => {
         for (const item of shown) {
           assert.notInclude(item.message, "warning layout.json");
         }
+
+        // Every warning check reports is listed, and the ones this drag made
+        // are marked: the review map had none before, so all are new.
+        assert.isTrue(Arr.every(shown, ({ isNew }) => isNew));
       }).pipe(Effect.provide(NodeServices.layer)),
     120_000
   );

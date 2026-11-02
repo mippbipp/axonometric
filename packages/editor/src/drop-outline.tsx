@@ -1,6 +1,8 @@
 import { groundProjections } from "@axonometric/contracts";
 import type { Placement, View } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
 
+import { useDropOutlines } from "./outlines-context.ts";
 import { groundOutline, toPoints } from "./projection.ts";
 
 /**
@@ -58,5 +60,30 @@ export function DragOrigin({
       strokeWidth={1.2}
       strokeDasharray="3 3"
     />
+  );
+}
+
+/**
+ * The outlines of a drag in progress: a dashed one where each moving
+ * structure was, and one where it would land, red while the drop is refused.
+ * It sits in the drawing's ground layer, under the zones, so it never lies
+ * over a zone title, a name tag or a label.
+ */
+export function DragOutlines({ view }: { readonly view: View }) {
+  const outlines = useDropOutlines()?.outlines;
+
+  if (outlines === undefined) {
+    return null;
+  }
+
+  return (
+    <g data-drag-outlines="" className="pointer-events-none">
+      {Arr.map(outlines.moving, ({ id, from, to }) => (
+        <g key={id}>
+          <DragOrigin id={id} at={from} view={view} />
+          <DropOutline id={id} at={to} view={view} refusal={outlines.refusal} />
+        </g>
+      ))}
+    </g>
   );
 }

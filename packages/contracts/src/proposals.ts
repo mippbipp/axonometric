@@ -154,7 +154,62 @@ export const structuresOf = (change: LayoutChange): readonly string[] =>
 
 /** The ids of the hops a change acts on. Only a reroute acts on one. */
 export const hopsOf = (change: LayoutChange): readonly string[] =>
-  change.kind === "reroute" ? [change.target.id] : [];
+  Match.value(change).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      move: () => [],
+      resize: () => [],
+      reroute: ({ target }) => [target.id],
+    })
+  );
+
+/**
+ * The ids of everything a change acts on, structures first and then hops.
+ * They may repeat across kinds; `targetKeysOf` tells those apart.
+ */
+export const targetIdsOf = (change: LayoutChange): readonly string[] => [
+  ...structuresOf(change),
+  ...hopsOf(change),
+];
+
+/**
+ * What a change acts on, keyed by what it is: `structure:engineer` and
+ * `hop:engineer` are different targets, so a structure and a hop that share
+ * an id never collide.
+ */
+export const targetKeysOf = (change: LayoutChange): readonly string[] => [
+  ...Arr.map(structuresOf(change), (id) => `structure:${id}`),
+  ...Arr.map(hopsOf(change), (id) => `hop:${id}`),
+];
+
+/** The id inside a key from `targetKeysOf`, for a message. */
+export const idOfTargetKey = (key: string): string =>
+  Str.slice(Str.indexOf(":")(key).pipe(Option.getOrElse(() => -1)) + 1)(key);
+
+/**
+ * The first target that a change in `candidates` shares with a change in
+ * `held`, or nothing. Structures and hops are told apart by kind.
+ */
+export const sharedTarget: {
+  (
+    held: readonly LayoutChange[]
+  ): (candidates: readonly LayoutChange[]) => Option.Option<string>;
+  (
+    candidates: readonly LayoutChange[],
+    held: readonly LayoutChange[]
+  ): Option.Option<string>;
+} = dual(
+  2,
+  (
+    candidates: readonly LayoutChange[],
+    held: readonly LayoutChange[]
+  ): Option.Option<string> => {
+    const taken = new Set(Arr.flatMap(held, targetKeysOf));
+
+    return Arr.findFirst(Arr.flatMap(candidates, targetKeysOf), (key) =>
+      taken.has(key)
+    );
+  }
+);
 
 /** Whether two lists make the same changes in the same order. */
 export const sameLayoutChanges: {
@@ -412,6 +467,19 @@ export const newChangeId = (): ChangeId => {
   );
 };
 
+/** One thing a change sets on the layout. */
+type Setting =
+  | {
+      readonly what: "place";
+      readonly id: string;
+      readonly placement: Partial<Placement>;
+    }
+  | {
+      readonly what: "route";
+      readonly id: string;
+      readonly points: readonly GridPoint[] | null;
+    };
+
 /**
  * The layout the page shows while editing: the accepted layout with every
  * pending change applied in list order. A change for a structure the layout
@@ -437,17 +505,39 @@ export const applyLayoutChanges: {
     }
   };
 
-  for (const change of changes) {
-    if (change.kind === "move") {
-      for (const { target, position } of change.moves) {
-        place(target.id, position);
-      }
-    } else if (change.kind === "resize") {
-      place(change.target.id, change.footprint);
-    } else if (change.points === null) {
-      routes.delete(change.target.id);
+  const setRoute = (hop: string, points: readonly GridPoint[] | null) => {
+    if (points === null) {
+      routes.delete(hop);
     } else {
-      routes.set(change.target.id, change.points);
+      routes.set(hop, points);
+    }
+  };
+
+  // Each kind says what it sets; the setting happens here, in list order.
+  const settings = Arr.flatMap(changes, (change) =>
+    Match.value(change).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        move: ({ moves }): readonly Setting[] =>
+          Arr.map(moves, ({ target, position }) => ({
+            what: "place",
+            id: target.id,
+            placement: position,
+          })),
+        resize: ({ target, footprint }): readonly Setting[] => [
+          { what: "place", id: target.id, placement: footprint },
+        ],
+        reroute: ({ target, points }): readonly Setting[] => [
+          { what: "route", id: target.id, points },
+        ],
+      })
+    )
+  );
+
+  for (const setting of settings) {
+    if (setting.what === "place") {
+      place(setting.id, setting.placement);
+    } else {
+      setRoute(setting.id, setting.points);
     }
   }
 
@@ -848,8 +938,10 @@ export const layoutRefusal = ({
   );
 
   if (Option.isSome(nowOff)) {
+    const { hop, end } = nowOff.value;
+
     return Option.some(
-      `${nowOff.value.problem.message} Reset the route of hop "${nowOff.value.hop.id}" first, or drag its ends back onto the footprints.`
+      `This would leave the route of hop "${hop.id}" ${end === "first" ? "starting" : "ending"} off the edge of "${end === "first" ? hop.from : hop.to}", which check reports as an error. Reset the route of hop "${hop.id}" first, then move the structure.`
     );
   }
 

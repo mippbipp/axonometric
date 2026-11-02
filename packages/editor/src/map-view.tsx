@@ -19,6 +19,7 @@ import type { ReactNode } from "react";
 
 import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
+import { DragOutlines } from "./drop-outline.tsx";
 import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
 import { GroupEditor } from "./group-editor.tsx";
@@ -199,6 +200,7 @@ export function MapView({
             hatch={hatch}
             newlyRevealed={newlyRevealed}
             spotlight={spotlight}
+            ground={<DragOutlines view={view} />}
             underlay={
               <>
                 <GroupEditor

@@ -1,4 +1,5 @@
 import {
+  hopLabelOf,
   hopsOf,
   layoutChangeKey,
   maxMessageLength,
@@ -38,13 +39,7 @@ export function PendingTab() {
 
   const { pending, accepted, canEdit, discard } = editing;
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
-  const hopNames = new Map(Arr.map(state.data.hops, (hop) => [hop.id, hop]));
-
-  const hopName = (id: string) => {
-    const hop = hopNames.get(id);
-
-    return hop === undefined ? id : `${nameOf(hop.from)} to ${nameOf(hop.to)}`;
-  };
+  const hopName = hopLabelOf(state.data.hops);
 
   const namesOf = (change: LayoutChange) =>
     Arr.join(

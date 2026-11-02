@@ -7,11 +7,17 @@ import {
   checkProposals,
   discardChange,
   groupMembers,
+  hopLabelOf,
+  idOfTargetKey,
   layoutRefusal,
+  maxRoutePoints,
+  maxRouteReach,
   placeRoute,
   placeStructure,
   Proposals,
   shiftedRoutes,
+  sharedTarget,
+  targetKeysOf,
 } from "../src/index.ts";
 import type { Layout, LayoutChange, MapData, Structure } from "../src/index.ts";
 
@@ -184,6 +190,13 @@ const reroute = (
   points,
 });
 
+/** A staircase: right half a unit, down half a unit, and so on. */
+const staircase = (count: number) =>
+  Arr.makeBy(count, (index) => ({
+    x: Math.ceil(index / 2) / 2,
+    y: Math.floor(index / 2) / 2,
+  }));
+
 describe("rerouting", () => {
   it("sets the hop's route override, and a reset takes it away", () => {
     const set = applyLayoutChanges(accepted, [reroute("r1", via)]);
@@ -233,6 +246,31 @@ describe("rerouting", () => {
     );
   });
 
+  it("caps a route override's points and how far they lie from the origin", () => {
+    const exact = staircase(maxRoutePoints);
+
+    const over = staircase(maxRoutePoints + 1);
+
+    assert.isTrue(decodes([reroute("r1", exact)]));
+    assert.isFalse(decodes([reroute("r1", over)]));
+    assert.isTrue(
+      decodes([
+        reroute("r1", [
+          { x: maxRouteReach, y: 0 },
+          { x: maxRouteReach, y: -maxRouteReach },
+        ]),
+      ])
+    );
+    assert.isFalse(
+      decodes([
+        reroute("r1", [
+          { x: maxRouteReach + 0.5, y: 0 },
+          { x: maxRouteReach + 0.5, y: 2 },
+        ]),
+      ])
+    );
+  });
+
   it("allows a route that starts and ends on the footprints", () => {
     assert.isFalse(refused([], [reroute("r1", via)]));
   });
@@ -247,7 +285,7 @@ describe("rerouting", () => {
 
     assert.include(
       Option.getOrElse(refusal, () => ""),
-      `hop "h-ab"'s route override starts at (1, 1), which isn't on the edge of "a"`
+      `route of hop "h-ab" starting off the edge of "a"`
     );
   });
 
@@ -482,6 +520,29 @@ const groupMoveTo = (to: readonly [number, number]): LayoutChange => ({
       position: at(to[0] + 4, to[1]),
     },
   ],
+});
+
+/** A move of a structure called x, and a reroute of a hop called x. */
+const structureX = move("m", "x", [0, 6]);
+
+const hopX: LayoutChange = {
+  id: "r",
+  kind: "reroute",
+  target: { kind: "hop", id: "x" },
+  points: via,
+};
+
+describe("targets by kind", () => {
+  it("tells a structure and a hop with the same id apart", () => {
+    assert.deepStrictEqual(targetKeysOf(structureX), ["structure:x"]);
+    assert.deepStrictEqual(targetKeysOf(hopX), ["hop:x"]);
+    assert.isTrue(Option.isNone(sharedTarget([structureX], [hopX])));
+  });
+
+  it("finds a target two lists share, by kind and id", () => {
+    assert.deepStrictEqual(sharedTarget([hopX], [hopX]), Option.some("hop:x"));
+    assert.strictEqual(idOfTargetKey("hop:x"), "x");
+  });
 });
 
 describe("moving a group", () => {
@@ -779,5 +840,15 @@ describe("checking proposals", () => {
 
     assert.strictEqual(problems.length, 1);
     assert.include(problems[0]?.message, 'overlap "b"');
+  });
+});
+
+describe("a hop's name", () => {
+  const named = [{ id: "h1", from: "a", to: "b", label: "pins a note" }];
+
+  it("is its label, whichever way round it's called, and its id when unknown", () => {
+    assert.strictEqual(hopLabelOf(named, "h1"), "pins a note");
+    assert.strictEqual(hopLabelOf(named)("h1"), "pins a note");
+    assert.strictEqual(hopLabelOf(named)("gone"), "gone");
   });
 });

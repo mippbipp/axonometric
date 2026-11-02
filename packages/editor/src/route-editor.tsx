@@ -197,18 +197,23 @@ export function RouteEditor({
   }, []);
 
   useEffect(() => {
-    preview?.show(
-      drag === undefined || drag.refusal !== undefined
-        ? undefined
-        : [
-            {
-              id: "preview",
-              kind: "reroute",
-              target: { kind: "hop", id: drag.hop },
-              points: drag.points,
-            },
-          ]
-    );
+    if (drag === undefined) {
+      preview?.clear();
+
+      return;
+    }
+
+    preview?.show({
+      changes: [
+        {
+          id: "preview",
+          kind: "reroute",
+          target: { kind: "hop", id: drag.hop },
+          points: drag.points,
+        },
+      ],
+      refusal: drag.refusal,
+    });
   }, [drag, preview]);
 
   const onPointerDown = (event: ReactPointerEvent<SVGGElement>) => {

@@ -1,11 +1,11 @@
 import {
   applyLayoutChanges,
-  problemsAdded,
+  draggedProblems,
   shiftedRoutes,
 } from "@axonometric/contracts";
 import type {
+  DraggedProblem,
   LayoutChange,
-  MapProblem,
   MapState,
 } from "@axonometric/contracts";
 import { Array as Arr, Duration, Effect, Fiber } from "effect";
@@ -13,23 +13,28 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
+  nothingReported,
   PreviewContext,
-  WarningsContext,
-  useDragWarnings,
+  ReportContext,
+  useDragReport,
 } from "./drag-preview-context.ts";
-import type { DragPreview } from "./drag-preview-context.ts";
+import type {
+  DragPreview,
+  DragPreviewInput,
+  DragReport,
+} from "./drag-preview-context.ts";
+import { DropOutlinesContext } from "./outlines-context.ts";
+import type { DropOutlines } from "./outlines-context.ts";
 
 /** How long a drag rests before its warnings are worked out. */
 const settle = Duration.millis(120);
 
 const none: readonly LayoutChange[] = [];
 
-const noProblems: readonly MapProblem[] = [];
-
-const warningsOf = (
+const problemsOf = (
   { data, layout }: MapState,
   changes: readonly LayoutChange[]
-): readonly MapProblem[] => {
+): readonly DraggedProblem[] => {
   // A move carries a route override along when both its ends move
   // together, as saving the move does.
   const carried = Arr.flatMap(changes, (change) =>
@@ -43,7 +48,7 @@ const warningsOf = (
       : []
   );
 
-  return problemsAdded(
+  return draggedProblems(
     data,
     layout,
     applyLayoutChanges(layout, [...changes, ...carried])
@@ -51,11 +56,12 @@ const warningsOf = (
 };
 
 /**
- * Holds the warnings of the drag in progress. The check is the one `check`
- * runs (`problemsAdded`), on the layout the page shows with the drag's
- * changes applied. It runs once the pointer has rested for a moment, so a
- * big map isn't checked on every step. Only warnings the drag adds show;
- * the ones the layout already had are left to `check`.
+ * Holds what the drag in progress would leave. A refused drop is reported at
+ * once, with its reason. Otherwise the check is the one `check` runs
+ * (`draggedProblems`), on the layout the page shows with the drag's changes
+ * applied. It runs once the pointer has rested for a moment, so a big map
+ * isn't checked on every step. It lists every problem `check` would report,
+ * and marks the ones the drag adds.
  */
 export function DragPreviewProvider({
   state,
@@ -64,8 +70,10 @@ export function DragPreviewProvider({
   readonly state: MapState;
   readonly children: ReactNode;
 }) {
-  const [changes, setChanges] = useState(none);
+  const [drag, setDrag] = useState<DragPreviewInput | undefined>();
   const [settled, setSettled] = useState(none);
+
+  const changes = drag?.changes ?? none;
 
   // The check runs once the pointer has rested, so a drag over a big map
   // isn't checked on every step. The last answer stays up meanwhile.
@@ -83,76 +91,120 @@ export function DragPreviewProvider({
     };
   }, [changes]);
 
-  const problems = useMemo(
-    () =>
-      changes.length === 0 || settled.length === 0
-        ? noProblems
-        : warningsOf(state, settled),
-    [changes, settled, state]
-  );
+  const report = useMemo((): DragReport => {
+    if (drag === undefined) {
+      return nothingReported;
+    }
+
+    if (drag.refusal !== undefined) {
+      return { refusal: drag.refusal, problems: [] };
+    }
+
+    return {
+      refusal: undefined,
+      problems: settled.length === 0 ? [] : problemsOf(state, settled),
+    };
+  }, [drag, settled, state]);
 
   const preview = useMemo(
     (): DragPreview => ({
-      show: (next) => {
-        setChanges(next ?? none);
-
-        if (next === undefined) {
-          setSettled(none);
-        }
+      show: setDrag,
+      clear: () => {
+        setDrag(undefined);
+        setSettled(none);
       },
     }),
     []
   );
 
+  const [outlines, setOutlines] = useState<DropOutlines | undefined>();
+
+  const outlineState = useMemo(
+    () => ({ outlines, set: setOutlines }),
+    [outlines]
+  );
+
   return (
     <PreviewContext value={preview}>
-      <WarningsContext value={problems}>{children}</WarningsContext>
+      <DropOutlinesContext value={outlineState}>
+        <ReportContext value={report}>{children}</ReportContext>
+      </DropOutlinesContext>
     </PreviewContext>
   );
 }
 
 /**
- * The warnings the drag in progress would add. They are the problems
- * `check` finds, so each reads as `check` words it: the message is the main
- * text, and the file and field it's about sit small beneath it. Nothing
- * shows when there are none.
+ * What the drag in progress would leave, beside the map and never over it.
+ *
+ * - A drop that would be refused shows its reason, in words, with the fix.
+ * - Otherwise it lists every warning `check` would report for the layout
+ *   the drop makes, each as `check` words it: the message is the main text,
+ *   and the file and field it's about sit small beneath it. The ones the
+ *   drag adds are marked new.
+ *
+ * Nothing shows when there is nothing to say.
  */
 export function DragWarnings({ className }: { readonly className?: string }) {
-  const problems = useDragWarnings();
+  const { refusal, problems } = useDragReport();
 
-  if (problems.length === 0) {
+  if (refusal === undefined && problems.length === 0) {
     return null;
   }
+
+  const added = Arr.filter(problems, (item) => item.added).length;
 
   return (
     <section
       data-drag-warnings
       aria-label="Warnings for this drag"
       aria-live="polite"
-      className={`border-refused bg-paper text-ink max-h-40 max-w-xl overflow-auto border-2 px-3 py-2 text-xs ${className ?? ""}`}
+      className={`border-refused bg-paper text-ink max-h-60 overflow-auto border-2 px-3 py-2 text-xs ${className ?? ""}`}
     >
-      <h2 className="mb-1 tracking-widest uppercase opacity-70">
-        This would leave {problems.length === 1 ? "a warning" : "warnings"}
-      </h2>
-      <ul className="flex flex-col gap-1.5">
-        {Arr.map(problems, (problem) => (
-          <li
-            key={`${problem.file} ${problem.path} ${problem.message}`}
-            data-drag-warning=""
-            className="flex flex-col"
-          >
-            <span data-warning-message="">{problem.message}</span>
-            <span
-              data-warning-where=""
-              className="text-2xs font-mono opacity-60"
-            >
-              {problem.path === ""
-                ? problem.file
-                : `${problem.file} ${problem.path}`}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {refusal === undefined ? (
+        <>
+          <h2 className="mb-1 tracking-widest uppercase opacity-70">
+            {problems.length === 1
+              ? "check would report 1 warning"
+              : `check would report ${problems.length} warnings`}
+            {added === 0 ? "" : `, ${added} new`}
+          </h2>
+          <ul className="flex flex-col gap-1.5">
+            {Arr.map(problems, ({ problem, added: isNew }) => (
+              <li
+                key={`${problem.file} ${problem.path} ${problem.message}`}
+                data-drag-warning=""
+                data-warning-new={isNew}
+                className="flex flex-col"
+              >
+                {isNew ? (
+                  <b
+                    data-warning-badge=""
+                    className="text-2xs font-medium tracking-widest uppercase"
+                  >
+                    New from this drag
+                  </b>
+                ) : null}
+                <span data-warning-message="">{problem.message}</span>
+                <span
+                  data-warning-where=""
+                  className="text-2xs font-mono opacity-60"
+                >
+                  {problem.path === ""
+                    ? problem.file
+                    : `${problem.file} ${problem.path}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <>
+          <h2 className="mb-1 tracking-widest uppercase opacity-70">
+            This drop would be refused
+          </h2>
+          <p data-drag-refusal="">{refusal}</p>
+        </>
+      )}
     </section>
   );
 }
