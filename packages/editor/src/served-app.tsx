@@ -1,4 +1,9 @@
-import { applyLayoutChanges } from "@axonometric/contracts";
+import {
+  applyLayoutChanges,
+  emptyProposals,
+  frozenLayoutChanges,
+  reviewEntries,
+} from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useMemo, useSyncExternalStore } from "react";
@@ -12,6 +17,8 @@ import type { Editing } from "./editing-context.ts";
 import { HistoryContext } from "./history-context.ts";
 import { useHistoryView } from "./history-view.tsx";
 import { RestoreDialog } from "./restore-dialog.tsx";
+import { ReviewContext } from "./review-context.ts";
+import type { Review } from "./review-context.ts";
 import type {
   EditNotice,
   Rejection,
@@ -110,9 +117,17 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
   const accepted = view.state.layout;
   const { pending } = view;
 
+  const proposals = view.state.proposals ?? emptyProposals;
+  const frozen = useMemo(() => frozenLayoutChanges(proposals), [proposals]);
+
+  // Frozen layout changes wait for the agent. They stay drawn as pending,
+  // under the open ones.
   const shown = useMemo(
-    () => ({ ...view.state, layout: applyLayoutChanges(accepted, pending) }),
-    [view.state, accepted, pending]
+    () => ({
+      ...view.state,
+      layout: applyLayoutChanges(accepted, [...frozen, ...pending]),
+    }),
+    [view.state, accepted, frozen, pending]
   );
 
   const history = useHistoryView({ store, view, shown });
@@ -124,6 +139,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
         : {
             accepted,
             pending,
+            frozen,
             canEdit: !view.stopped,
             refusalOf: store.refusalOf,
             place: store.place,
@@ -139,6 +155,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       history.past,
       accepted,
       pending,
+      frozen,
       view.stopped,
       view.canUndo,
       view.canRedo,
@@ -155,33 +172,48 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [view.stopped, view.accepting, store]
   );
 
+  const review = useMemo((): Review => {
+    const entries = reviewEntries(proposals);
+
+    return {
+      canWrite: !view.stopped,
+      entries,
+      notes: Arr.filter(entries, ({ item }) => item.kind === "note"),
+      openNotes: proposals.notes?.length ?? 0,
+      replaces: proposals.replaces ?? {},
+      ops: store.review,
+    };
+  }, [proposals, view.stopped, store]);
+
   return (
     <EditingContext value={editing}>
       <AcceptingContext value={accepting}>
-        <HistoryContext value={history.panel}>
-          <CompareContext value={history.marks}>
-            <App
-              state={history.drawn}
-              notices={
-                <>
-                  {history.banner}
-                  <ServedNotices
-                    rejection={view.rejection}
-                    stopped={view.stopped}
-                    notice={view.notice}
-                    saved={view.saved}
-                  />
-                </>
-              }
-            />
-            {history.report === null ? null : (
-              <RestoreDialog
-                report={history.report}
-                onClose={history.handleCloseReport}
+        <ReviewContext value={review}>
+          <HistoryContext value={history.panel}>
+            <CompareContext value={history.marks}>
+              <App
+                state={history.drawn}
+                notices={
+                  <>
+                    {history.banner}
+                    <ServedNotices
+                      rejection={view.rejection}
+                      stopped={view.stopped}
+                      notice={view.notice}
+                      saved={view.saved}
+                    />
+                  </>
+                }
               />
-            )}
-          </CompareContext>
-        </HistoryContext>
+              {history.report === null ? null : (
+                <RestoreDialog
+                  report={history.report}
+                  onClose={history.handleCloseReport}
+                />
+              )}
+            </CompareContext>
+          </HistoryContext>
+        </ReviewContext>
       </AcceptingContext>
     </EditingContext>
   );

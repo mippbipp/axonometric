@@ -3,47 +3,16 @@ import {
   maxMessageLength,
   structuresOf,
 } from "@axonometric/contracts";
-import type { ChangeId, Layout, LayoutChange } from "@axonometric/contracts";
-import { Array as Arr, Option, Record as Rec } from "effect";
+import type { ChangeId, LayoutChange } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
 import { useId, useState } from "react";
 
 import { useAccepting } from "./accepting-context.ts";
 import { controlClass } from "./control-class.ts";
+import { describeChange } from "./describe-change.ts";
 import { useEditing } from "./editing-context.ts";
+import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
-
-const spot = ({ x, y }: { readonly x: number; readonly y: number }) =>
-  `${x}, ${y}`;
-
-/** Each structure a change acts on, named, and what happens to it. */
-const describe = (
-  change: LayoutChange,
-  accepted: Layout,
-  nameOf: (id: string) => string
-) => {
-  if (change.kind === "move") {
-    return Arr.map(change.moves, ({ target, position }) => {
-      const before = Rec.get(accepted.structures, target.id);
-
-      const from = Option.match(before, {
-        onNone: () => "",
-        onSome: (placement) => ` from ${spot(placement)}`,
-      });
-
-      return `${nameOf(target.id)} moved${from} to ${spot(position)}`;
-    });
-  }
-
-  const { w, d } = change.footprint;
-  const before = Rec.get(accepted.structures, change.target.id);
-
-  const from = Option.match(before, {
-    onNone: () => "",
-    onSome: (placement) => ` from ${placement.w} × ${placement.d}`,
-  });
-
-  return [`${nameOf(change.target.id)} resized${from} to ${w} × ${d}`];
-};
 
 /**
  * The Pending tab: every pending layout change, with buttons that accept it
@@ -148,7 +117,7 @@ export function PendingTab() {
                   className="border-pending flex items-start gap-2 border-l-2 pl-2 text-sm"
                 >
                   <span className="min-w-0 flex-1">
-                    {Arr.join(describe(change, accepted, nameOf), "; ")}
+                    {Arr.join(describeChange(change, accepted, nameOf), "; ")}
                   </span>
                   {acceptable ? (
                     <button
@@ -182,6 +151,7 @@ export function PendingTab() {
           </ul>
         </>
       )}
+      <ReviewList />
     </section>
   );
 }

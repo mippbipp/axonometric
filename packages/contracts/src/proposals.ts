@@ -147,12 +147,182 @@ export const LayoutChanges = Schema.Array(LayoutChange)
     })
   );
 
+/** The most characters a note holds. */
+export const maxNoteLength = 2000;
+
+const noteFix = `expected a note of 1 to ${maxNoteLength} characters.`;
+
+/** A note's text: non-empty, and not longer than `maxNoteLength`. */
+export const NoteText = Schema.String.annotate({ message: noteFix }).check(
+  Schema.isNonEmpty({ message: noteFix }),
+  Schema.isMaxLength(maxNoteLength, { message: noteFix })
+);
+
+/** A note pinned to a target, for the agent to read. */
+export const Note = Schema.Struct({
+  id: ChangeId,
+  target: Target,
+  text: NoteText,
+}).annotate(objectMessages("A note has only id, target and text."));
+
+export type Note = typeof Note.Type;
+
+/** The most characters a verdict's reason holds. */
+export const maxReasonLength = 1000;
+
+const reasonMessage = `expected a reason of 1 to ${maxReasonLength} characters.`;
+
+/** Why the agent decided as it did. */
+export const Reason = Schema.String.annotate({
+  message: reasonMessage,
+}).check(
+  Schema.isNonEmpty({ message: reasonMessage }),
+  Schema.isMaxLength(maxReasonLength, { message: reasonMessage })
+);
+
+export type Reason = typeof Reason.Type;
+
+/** A reason that must be there: for a verdict that changes or turns down an item, and for a revision's rejected items. */
+export const RequiredReason = Reason.pipe(
+  Schema.annotateKey({
+    messageMissingKey:
+      "missing. Say why: what you changed and why, or why you rejected the item.",
+  })
+);
+
 /**
- * `proposals.json`: everything pending that hasn't been accepted. Today it
- * holds the pending layout changes, in `layout`. Proposals, batches and
- * verdicts join as further optional fields beside it, so a file written now
- * still reads after they arrive. `revision` is the file revision: it goes up
- * by one on every write, and a write names the one it was based on.
+ * The agent's decision on one item. A reason is optional for `accepted` and
+ * required for `changed` and `rejected`.
+ */
+export const Verdict = Schema.Union([
+  Schema.Struct({
+    verdict: Schema.Literal("accepted"),
+    reason: Schema.optionalKey(Reason),
+  }).annotate(
+    objectMessages("An accepted verdict has only verdict and reason.")
+  ),
+  Schema.Struct({
+    verdict: Schema.Literal("changed"),
+    reason: RequiredReason,
+  }).annotate(objectMessages("A changed verdict has only verdict and reason.")),
+  Schema.Struct({
+    verdict: Schema.Literal("rejected"),
+    reason: RequiredReason,
+  }).annotate(
+    objectMessages("A rejected verdict has only verdict and reason.")
+  ),
+]).annotate({
+  message:
+    'expected a verdict: { verdict: "accepted", reason? }, or { verdict: "changed" | "rejected", reason }.',
+});
+
+export type Verdict = typeof Verdict.Type;
+
+/** The three things a verdict can say. */
+export const verdictKinds = ["accepted", "changed", "rejected"] as const;
+
+/**
+ * One item frozen into a batch. It keeps the id it had when open, and `kind`
+ * says what it is, so a later kind of proposal joins this union and a file
+ * written before it still reads.
+ */
+export const BatchItem = Schema.Union([
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("layout"),
+    change: LayoutChange,
+  }).annotate(objectMessages("A layout item has only id, kind and change.")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("note"),
+    target: Target,
+    text: NoteText,
+  }).annotate(
+    objectMessages("A note item has only id, kind, target and text.")
+  ),
+]).annotate({
+  message:
+    'expected a batch item: { id, kind: "layout", change } or { id, kind: "note", target, text }.',
+});
+
+export type BatchItem = typeof BatchItem.Type;
+
+const isoMessage =
+  "expected the date and time as ISO 8601 in UTC, such as 2026-11-01T09:00:00.000Z.";
+
+const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u;
+
+const Iso = Schema.String.annotate({ message: isoMessage }).check(
+  Schema.isPattern(isoPattern, { message: isoMessage })
+);
+
+/** When a batch was committed, and the revision that holds its outcome. */
+export const Committed = Schema.Struct({
+  revision: Schema.Int,
+  at: Iso,
+}).annotate(objectMessages("A commit has only revision and at."));
+
+export type Committed = typeof Committed.Type;
+
+/**
+ * The proposals frozen by one press of "Ready for review". Its items can't
+ * be edited or discarded while it waits for the agent. `verdicts` is keyed by
+ * item id. `committed` is set when the agent commits the batch. `dismissed`
+ * lists the items the engineer has taken off the page since.
+ */
+export const Batch = Schema.Struct({
+  number: Schema.Int.annotate({
+    message: "expected a whole number. Batches start at 1.",
+  }).check(
+    Schema.isGreaterThanOrEqualTo(1, {
+      message: "expected 1 or more. Batches start at 1.",
+    })
+  ),
+  frozenAt: Iso,
+  items: Schema.Array(BatchItem),
+  verdicts: Schema.Record(ChangeId, Verdict),
+  committed: Schema.optionalKey(Committed),
+  dismissed: Schema.optionalKey(Schema.Array(ChangeId)),
+}).annotate(
+  objectMessages(
+    "A batch has only number, frozenAt, items, verdicts, committed and dismissed."
+  )
+);
+
+export type Batch = typeof Batch.Type;
+
+const allIds = (proposals: {
+  readonly layout: readonly LayoutChange[];
+  readonly notes?: readonly Note[] | undefined;
+  readonly batches?: readonly Batch[] | undefined;
+}) => [
+  ...Arr.map(proposals.layout, layoutChangeKey),
+  ...Arr.map(proposals.notes ?? [], ({ id }) => id),
+  ...Arr.flatMap(proposals.batches ?? [], ({ items }) =>
+    Arr.map(items, ({ id }) => id)
+  ),
+];
+
+const hasUniqueIds = (proposals: Parameters<typeof allIds>[0]) => {
+  const ids = allIds(proposals);
+
+  return new Set(ids).size === ids.length;
+};
+
+/**
+ * `proposals.json`: everything pending that hasn't been accepted.
+ *
+ * - `layout`: the open layout changes, not yet in a batch.
+ * - `notes`: the open notes.
+ * - `batches`: the numbered batches, each with its verdicts once given.
+ * - `replaces`: for an item the engineer reopened after a rejection, the id
+ *   of the rejected item it takes up again, keyed by the new item's id. It
+ *   works for every kind of item, so a new kind needs nothing here.
+ *
+ * Each kind of proposal adds its own optional list, and `BatchItem` gains
+ * a member, so a file written before a kind existed still reads. `revision`
+ * is the file revision: it goes up by one on every write, and a write names
+ * the one it was based on.
  */
 export const Proposals = Schema.Struct({
   ...fileVersionFields,
@@ -162,9 +332,20 @@ export const Proposals = Schema.Struct({
         "missing. Add layout: [] to hold the pending layout changes.",
     })
   ),
-}).annotate(
-  objectMessages("A proposals file has only format, revision and layout.")
-);
+  notes: Schema.optionalKey(Schema.Array(Note)),
+  batches: Schema.optionalKey(Schema.Array(Batch)),
+  replaces: Schema.optionalKey(Schema.Record(ChangeId, ChangeId)),
+})
+  .annotate(
+    objectMessages(
+      "A proposals file has only format, revision, layout, notes, batches and replaces."
+    )
+  )
+  .check(
+    Schema.makeFilter(hasUniqueIds, {
+      message: "expected every change, note and batch item to have its own id.",
+    })
+  );
 
 export type Proposals = typeof Proposals.Type;
 
@@ -462,9 +643,10 @@ const targetPaths = (change: LayoutChange) =>
     : [{ id: change.target.id, path: ["target", "id"] }];
 
 /**
- * Warnings about the pending changes in `proposals.json`: changes for a
- * structure data.mjs doesn't have, and pending footprints that overlap,
- * which happens when the accepted layout changes under a pending move.
+ * Warnings about the pending changes in `proposals.json`: changes and notes
+ * for a structure data.mjs doesn't have, and pending footprints that
+ * overlap, which happens when the accepted layout changes under a pending
+ * move.
  */
 export const checkProposals: {
   (
@@ -514,6 +696,18 @@ export const checkProposals: {
       })
     );
 
-    return [...stale, ...overlaps];
+    const orphaned = Arr.flatMap(proposals.notes ?? [], (note, index) =>
+      ids.has(note.target.id)
+        ? []
+        : [
+            mapWarning({
+              file: "proposals.json",
+              path: ["notes", index, "target", "id"],
+              message: `no structure in data.mjs has the id "${note.target.id}", so this note points at nothing. Discard it from the page's Pending list.`,
+            }),
+          ]
+    );
+
+    return [...stale, ...overlaps, ...orphaned];
   }
 );

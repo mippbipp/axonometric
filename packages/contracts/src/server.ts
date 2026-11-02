@@ -27,6 +27,12 @@ export const serverPaths = {
   events: "/api/events",
   pendingLayout: "/api/proposals/layout",
   accept: "/api/proposals/accept",
+  notes: "/api/notes",
+  editNote: "/api/notes/edit",
+  discardNote: "/api/notes/discard",
+  freeze: "/api/review/freeze",
+  dismiss: "/api/review/dismiss",
+  reopen: "/api/review/reopen",
   history: "/api/history",
   revision: "/api/history/:n",
 } as const;
@@ -221,6 +227,16 @@ export const ServedPage = Schema.Struct({
   pendingLayout: Schema.String,
   /** Where to accept pending layout changes, relative to the page's URL. */
   accept: Schema.String,
+  /** Where to add a note, relative to the page's URL. */
+  notes: Schema.String,
+  editNote: Schema.String,
+  discardNote: Schema.String,
+  /** Where "Ready for review" freezes a batch, relative to the page's URL. */
+  freeze: Schema.String,
+  /** Where a reviewed item is dismissed, relative to the page's URL. */
+  dismiss: Schema.String,
+  /** Where a rejected item is reopened, relative to the page's URL. */
+  reopen: Schema.String,
   /**
    * Where the history is, relative to the page's URL: revision `n` is at
    * this path and `/n`. Its presence turns the History tab on.

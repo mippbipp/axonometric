@@ -57,6 +57,14 @@ import type { MapInvalid } from "./map-files.ts";
 import { openBrowser } from "./open-browser.ts";
 import { renderPage } from "./page.ts";
 import { writeGuardLayer, writePendingLayout } from "./pending-writes.ts";
+import {
+  addNoteWrite,
+  discardNoteWrite,
+  dismissWrite,
+  editNoteWrite,
+  freezeWrite,
+  reopenWrite,
+} from "./review-writes.ts";
 import { recordServer, runningServer } from "./server-state.ts";
 
 /** The port `serve` tries first. */
@@ -459,8 +467,17 @@ const routes = ({
     events: Str.slice(1)(serverPaths.events),
     pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
     accept: Str.slice(1)(serverPaths.accept),
+    notes: Str.slice(1)(serverPaths.notes),
+    editNote: Str.slice(1)(serverPaths.editNote),
+    discardNote: Str.slice(1)(serverPaths.discardNote),
+    freeze: Str.slice(1)(serverPaths.freeze),
+    dismiss: Str.slice(1)(serverPaths.dismiss),
+    reopen: Str.slice(1)(serverPaths.reopen),
     history: Str.slice(1)(serverPaths.history),
   };
+
+  const tell = (proposals: Proposals) =>
+    SubscriptionRef.update(held, (current) => ({ ...current, proposals }));
 
   const mapHandlers = HttpApiBuilder.group(ServerApi, "map", (group) =>
     group
@@ -534,8 +551,35 @@ const routes = ({
         )
   );
 
+  /** A handler for one of the review writes. */
+  const reviewing =
+    <P, A, E, R>(
+      write: (
+        home: string,
+        payload: P,
+        written: (proposals: Proposals) => Effect.Effect<void>
+      ) => Effect.Effect<A, E, R>
+    ) =>
+    ({ payload }: { readonly payload: P }) =>
+      write(home, payload, tell);
+
+  const reviewHandlers = HttpApiBuilder.group(ServerApi, "review", (group) =>
+    group
+      .handle("addNote", reviewing(addNoteWrite))
+      .handle("editNote", reviewing(editNoteWrite))
+      .handle("discardNote", reviewing(discardNoteWrite))
+      .handle("freeze", reviewing(freezeWrite))
+      .handle("dismiss", reviewing(dismissWrite))
+      .handle("reopen", reviewing(reopenWrite))
+  );
+
   const api = HttpApiBuilder.layer(ServerApi).pipe(
-    Layer.provide([mapHandlers, historyHandlers, proposalHandlers]),
+    Layer.provide([
+      mapHandlers,
+      historyHandlers,
+      proposalHandlers,
+      reviewHandlers,
+    ]),
     Layer.provide(writeGuardLayer)
   );
 
@@ -642,7 +686,12 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   const stopping = yield* Latch.make();
 
   const app = yield* HttpRouter.toHttpEffect(
-    routes({ home, held, stopping, answeredHosts })
+    routes({
+      home,
+      held,
+      stopping,
+      answeredHosts,
+    })
   );
 
   const urlHostName = wildcardHosts.has(host) ? defaultHost : urlHost(host);

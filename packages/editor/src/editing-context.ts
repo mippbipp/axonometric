@@ -20,6 +20,11 @@ export interface Editing {
   readonly accepted: Layout;
   /** The pending layout changes the page shows. */
   readonly pending: readonly LayoutChange[];
+  /**
+   * The layout changes frozen in batches that wait for the agent. They stay
+   * drawn as pending, and can't be edited or discarded.
+   */
+  readonly frozen: readonly LayoutChange[];
   /** Whether edits can be saved now. False while the server is down. */
   readonly canEdit: boolean;
   /**
@@ -61,8 +66,13 @@ export const EditingContext = createContext<Editing | null>(null);
 /** The editing state, or `null` on a page that can't edit. */
 export const useEditing = (): Editing | null => use(EditingContext);
 
-/** The ids of the structures the pending changes act on. */
+/** The ids of the structures the pending and frozen changes act on. */
 export const pendingStructures = (
   editing: Editing | null
 ): ReadonlySet<string> =>
-  new Set(Arr.flatMap(editing?.pending ?? [], structuresOf));
+  new Set(
+    Arr.flatMap(
+      [...(editing?.frozen ?? []), ...(editing?.pending ?? [])],
+      structuresOf
+    )
+  );
