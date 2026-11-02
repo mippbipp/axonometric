@@ -66,13 +66,13 @@ export const shiftDrawing = ({
     (hop) => changing.includes(hop.from) || changing.includes(hop.to)
   );
 
-  // The hop's line and head, its dashed stretches over boxes, its label and
-  // the packet walking it, which would hang in the air.
+  // The hop's line and head, its dashed stretches over boxes, and its label.
+  // The packet walking it hides itself as it draws (see `Packet`).
   for (const { id } of hidden) {
     const hop = CSS.escape(id);
 
     for (const element of root.querySelectorAll<SVGElement>(
-      `[data-hop="${hop}"], [data-hidden-hop="${hop}"], [data-hop-label="${hop}"], [data-hop-pending="${hop}"], [data-packet="${hop}"]`
+      `[data-hop="${hop}"], [data-hidden-hop="${hop}"], [data-hop-label="${hop}"], [data-hop-pending="${hop}"]`
     )) {
       element.dataset.dragHidden = "";
     }

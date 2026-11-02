@@ -158,17 +158,23 @@ export function DragWarnings({ className }: { readonly className?: string }) {
       data-drag-warnings
       aria-label="Warnings for this drag"
       aria-live="polite"
-      className={`border-refused bg-paper text-ink max-h-60 overflow-auto border-2 px-3 py-2 text-xs ${className ?? ""}`}
+      className={`border-refused bg-paper text-ink flex max-h-[45svh] shrink-0 flex-col border-2 text-xs ${className ?? ""}`}
     >
       {refusal === undefined ? (
         <>
-          <h2 className="mb-1 tracking-widest uppercase opacity-70">
+          <h2
+            data-drag-warnings-heading=""
+            className="shrink-0 px-3 pt-2 pb-1 tracking-widest uppercase opacity-70"
+          >
             {problems.length === 1
               ? "check would report 1 warning"
               : `check would report ${problems.length} warnings`}
             {added === 0 ? "" : `, ${added} new`}
           </h2>
-          <ul className="flex flex-col gap-1.5">
+          <ul
+            data-drag-warnings-list=""
+            className="flex min-h-0 flex-col gap-1.5 overflow-y-auto px-3 pb-2"
+          >
             {Arr.map(problems, ({ problem, added: isNew }) => (
               <li
                 key={`${problem.file} ${problem.path} ${problem.message}`}
@@ -199,10 +205,15 @@ export function DragWarnings({ className }: { readonly className?: string }) {
         </>
       ) : (
         <>
-          <h2 className="mb-1 tracking-widest uppercase opacity-70">
+          <h2
+            data-drag-warnings-heading=""
+            className="shrink-0 px-3 pt-2 pb-1 tracking-widest uppercase opacity-70"
+          >
             This drop would be refused
           </h2>
-          <p data-drag-refusal="">{refusal}</p>
+          <p data-drag-refusal="" className="min-h-0 overflow-y-auto px-3 pb-2">
+            {refusal}
+          </p>
         </>
       )}
     </section>

@@ -138,10 +138,11 @@
   opacity: calc(0.55 * var(--faded-structure));
 }
 
-/* The label of a hop with an end on a structure being dragged. The hop stays
-   where it was until the drop, so its label would lie on whatever the
-   structure passes over. */
-[data-drag-hidden] {
+/* A hop with an end on a structure being dragged, its label, and its packet.
+   The hop stays where it was until the drop, so its label would lie on
+   whatever the structure passes over. */
+[data-drag-hidden],
+[data-packet-hidden] {
   visibility: hidden;
 }
 

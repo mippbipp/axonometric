@@ -997,6 +997,158 @@ const panelBox = (page: Page) =>
     page.locator("[data-drag-warnings]").first().boundingBox()
   );
 
+describe("the warnings panel", () => {
+  it.live(
+    "caps its height, keeps the heading in view while the list scrolls, and reaches its last line",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
+
+        yield* toView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+        yield* pressAndMove(
+          page,
+          from,
+          screenDelta("plan", unit, { x: 4, y: 0 })
+        );
+        yield* waitFor(page, "[data-drag-warning]");
+
+        const measure = () =>
+          Effect.promise(() =>
+            page.evaluate<{
+              panel: { top: number; bottom: number };
+              aside: { top: number; bottom: number };
+              heading: { top: number; bottom: number };
+              list: { top: number; bottom: number; scrolls: boolean };
+              last: { top: number; bottom: number };
+            }>(`(() => {
+              const box = (element) => { const b = element.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; };
+              const panel = document.querySelector("[data-drag-warnings]");
+              const list = panel.querySelector("[data-drag-warnings-list]");
+              const items = panel.querySelectorAll("[data-drag-warning]");
+
+              return {
+                panel: box(panel),
+                aside: box(document.querySelector("[data-side-panel]")),
+                heading: box(panel.querySelector("[data-drag-warnings-heading]")),
+                list: { ...box(list), scrolls: list.scrollHeight > list.clientHeight },
+                last: box(items[items.length - 1]),
+              };
+            })()`)
+          );
+
+        const before = yield* measure();
+
+        // The panel stays inside the side panel, and under its cap of 45% of
+        // the window's height.
+        assert.isAtLeast(before.panel.top, before.aside.top);
+        assert.isAtMost(before.panel.bottom, before.aside.bottom + 0.5);
+        assert.isAtMost(
+          before.panel.bottom - before.panel.top,
+          0.45 * 800 + 0.5
+        );
+
+        // Two warnings fit under the cap, so the last line is in view
+        // without scrolling at all.
+        assert.isFalse(before.list.scrolls);
+        assert.isAtMost(before.last.bottom, before.list.bottom + 0.5);
+
+        // The last line is reachable: scroll the list to its end and it lies
+        // inside the list, with the heading still in view above it.
+        yield* Effect.promise(() =>
+          page.evaluate(
+            `(() => { const list = document.querySelector("[data-drag-warnings-list]"); list.scrollTop = list.scrollHeight; })()`
+          )
+        );
+
+        const after = yield* measure();
+
+        assert.isAtLeast(after.last.top, after.list.top - 0.5);
+        assert.isAtMost(after.last.bottom, after.list.bottom + 0.5);
+        assert.isAtMost(after.last.bottom, after.aside.bottom + 0.5);
+        assert.deepStrictEqual(after.heading, before.heading);
+        assert.isAtLeast(after.heading.top, after.panel.top);
+
+        yield* Effect.promise(() => page.mouse.up());
+      }),
+    90_000
+  );
+
+  it.live(
+    "still reaches its last line when many warnings are listed",
+    () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const files = yield* fullMap;
+        const layoutFile = "review/map/layout.json";
+        const saved = yield* decodeLayout(files[layoutFile] ?? "");
+
+        // Four structures stacked on one spot's tags give check many
+        // warnings before the drag begins.
+        const root = yield* makeHome({
+          ...files,
+          [layoutFile]: yield* Schema.encodeEffect(LayoutFile)({
+            ...saved,
+            structures: {
+              ...saved.structures,
+              "pull-request": { x: 12, y: 3, w: 2, d: 1.5 },
+              proposals: { x: 8, y: 3, w: 2, d: 2 },
+            },
+          }),
+        });
+
+        const home = path.join(root, "review", "map");
+        const serve = yield* startServe(home, ["--port", "0"]);
+        const { page } = yield* openUrl(serve.url);
+
+        yield* Effect.promise(() =>
+          page.setViewportSize({ width: 1280, height: 800 })
+        );
+        yield* Effect.promise(() =>
+          page
+            .locator('[data-chapter-rail] button[data-chapter="c-all"]')
+            .click()
+        );
+        yield* toView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+        yield* pressAndMove(
+          page,
+          from,
+          screenDelta("plan", unit, { x: 0.5, y: 0 })
+        );
+        yield* waitFor(page, "[data-drag-warning]");
+
+        const reach = yield* Effect.promise(() =>
+          page.evaluate<{ fits: boolean; scrolls: boolean }>(`(() => {
+            const list = document.querySelector("[data-drag-warnings-list]");
+            const items = list.querySelectorAll("[data-drag-warning]");
+
+            list.scrollTop = list.scrollHeight;
+
+            const last = items[items.length - 1].getBoundingClientRect();
+            const box = list.getBoundingClientRect();
+            const aside = document.querySelector("[data-side-panel]").getBoundingClientRect();
+
+            return {
+              scrolls: list.scrollHeight > list.clientHeight,
+              fits: last.top >= box.top - 0.5 && last.bottom <= box.bottom + 0.5 && last.bottom <= aside.bottom + 0.5,
+            };
+          })()`)
+        );
+
+        assert.isTrue(reach.fits);
+        yield* Effect.promise(() => page.mouse.up());
+      }).pipe(Effect.provide(NodeServices.layer)),
+    120_000
+  );
+});
+
 describe("a rerouted hop's label", () => {
   {
     const view = "plan";
@@ -1231,14 +1383,35 @@ describe("a group drag's hops", () => {
 
         assert.deepStrictEqual(visible, []);
 
-        // A packet walks the old route, so it goes with its hop.
-        const packets = yield* Effect.promise(() =>
-          page.evaluate<readonly string[]>(
-            `[...document.querySelectorAll("[data-packet]")].filter((packet) => getComputedStyle(packet).visibility !== "hidden").map((packet) => packet.getAttribute("data-packet"))`
+        // A packet walks the old route, so it goes with its hop. It moves
+        // from hop to hop as its run goes on, so look at several moments of
+        // the drag, not one.
+        for (let look = 0; look < 6; look++) {
+          const stray = yield* Effect.promise(() =>
+            page.evaluate<readonly string[]>(`(() => {
+              const state = JSON.parse(document.getElementById("axonometric-map-state").textContent);
+              const moving = new Set(["page", "server", "proposals", "pull-request"]);
+              const ends = new Map(state.data.hops.map((hop) => [hop.id, [hop.from, hop.to]]));
+
+              return [...document.querySelectorAll("[data-packet]")]
+                .filter((packet) => getComputedStyle(packet).visibility !== "hidden" && packet.getAttribute("data-packet-hidden") === null)
+                .filter((packet) => (ends.get(packet.getAttribute("data-packet")) ?? []).some((id) => moving.has(id)))
+                .map((packet) => packet.getAttribute("data-packet"));
+            })()`)
+          );
+
+          assert.deepStrictEqual(stray, [], `look ${look}`);
+          yield* Effect.sleep("350 millis");
+        }
+
+        // None of them paints while hidden either.
+        const painted = yield* Effect.promise(() =>
+          page.evaluate<number>(
+            `[...document.querySelectorAll("[data-packet][data-packet-hidden]")].filter((packet) => getComputedStyle(packet).visibility !== "hidden").length`
           )
         );
 
-        assert.deepStrictEqual(packets, []);
+        assert.strictEqual(painted, 0);
 
         // The origin outlines lie under the zone titles and name tags.
         const order = yield* Effect.promise(() =>
