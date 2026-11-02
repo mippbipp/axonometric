@@ -2,7 +2,14 @@ import { groundProjections, maxRouteReach } from "@axonometric/contracts";
 import type { GridPoint, Placement, View } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
 import { isTyping } from "./chapter-keys.ts";
@@ -86,7 +93,7 @@ export function NoteToolProvider({
 }: {
   readonly children: ReactNode;
 }) {
-  const { selected, selectedHop } = useSelection();
+  const { selected, selectedHop, select } = useSelection();
   const { state, revealed } = useWalkthrough();
   const [cursor, setCursor] = useState<GridPoint | null>(null);
   const [spot, setSpot] = useState<GridPoint | null>(null);
@@ -96,6 +103,18 @@ export function NoteToolProvider({
   if ((selected !== null || selectedHop !== null) && spot !== null) {
     setSpot(null);
   }
+
+  /** Opens the panel of `next`, which takes the selection's place. */
+  const pick = useCallback(
+    (next: GridPoint | null) => {
+      if (next !== null) {
+        select(null);
+      }
+
+      setSpot(next);
+    },
+    [select]
+  );
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (event.defaultPrevented || isTyping(event.target)) {
@@ -133,7 +152,7 @@ export function NoteToolProvider({
       );
     } else if (event.key === "Enter") {
       event.preventDefault();
-      setSpot(cursor);
+      pick(cursor);
       setCursor(null);
     }
   });
@@ -159,9 +178,9 @@ export function NoteToolProvider({
       arm: (on) => {
         setCursor(on ? start : null);
       },
-      pick: setSpot,
+      pick,
     }),
-    [armed, cursor, spot, start]
+    [armed, cursor, spot, start, pick]
   );
 
   return <NoteToolContext value={value}>{children}</NoteToolContext>;
