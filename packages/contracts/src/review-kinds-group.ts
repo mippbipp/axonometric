@@ -1,17 +1,19 @@
 import { Array as Arr, Option } from "effect";
 
 import {
+  GroupTitle,
   groupOf,
   maxGroupTitleLength,
   titleOf,
-  titleRefusal,
 } from "./group-change.ts";
 import { groupFit } from "./group-fit.ts";
 import type { MapData } from "./map-data.ts";
 import type { BatchItem, LayoutChange, Verdict } from "./proposals.ts";
+import { provisionalOf } from "./provisional-ids.ts";
 import { plain, touchesNothing } from "./review-kind-defaults.ts";
-import type { KindSpec, Pointer, Rename } from "./review-kinds.ts";
+import type { KindSpec, Pointer } from "./review-kinds.ts";
 import { decorate, quoteText } from "./review-quote.ts";
+import { refusalOf } from "./text-schemas.ts";
 
 // The kind for a proposed change to the groups: a new group, or a new title
 // for one. It is a diagram proposal. The structures that move into a new
@@ -27,16 +29,22 @@ export const groupMark = "group";
 const groupNotice =
   "A group item changes data.mjs, which only you edit. A new group comes with a provisional id: add it to the groups in data.mjs under that id, or under another and give the verdict changed with --as <id>. The structures the engineer put in it are separate items that change their group to it.";
 
+/** What the group kind adds under a provisional id, and how it says so. */
+const provisional = provisionalOf<GroupItem>({
+  entity: "group",
+  noun: "group",
+  adds: ({ change }) =>
+    change.action === "add" ? Option.some(change.group.id) : Option.none(),
+});
+
 /**
  * The id a taken group item ends up with: the provisional id, or the one the
  * agent gave with `--as`.
  */
 const finalIdOf = (item: GroupItem, verdict: Verdict): string =>
-  item.change.action === "add" &&
-  verdict.verdict === "changed" &&
-  verdict.as !== undefined
-    ? verdict.as
-    : groupOf(item.change);
+  Option.getOrElse(provisional.finalIdOf(item, verdict), () =>
+    groupOf(item.change)
+  );
 
 const titleIn = (data: Pick<MapData, "groups">, id: string) =>
   Option.map(
@@ -50,7 +58,7 @@ export const groupKind: KindSpec<GroupItem> = {
   listKey: "groups",
   // The title has its own rules, so an edit goes through the panel's rename.
   text: ({ change }) => Option.some(titleOf(change)),
-  textRefusal: titleRefusal,
+  textRefusal: (_item, text) => refusalOf(GroupTitle, text),
   describe: ({ change }, called) =>
     Option.some(
       change.action === "add"
@@ -130,52 +138,8 @@ export const groupKind: KindSpec<GroupItem> = {
         : Option.some(
             `No group in data.mjs has the id "${change.group}", so this rename has nothing to act on.`
           ),
-  verdictRefusal: (item, verdict, { acceptedGroups, taken }) => {
-    if (verdict.verdict !== "changed" || verdict.as === undefined) {
-      return Option.none();
-    }
-
-    if (item.change.action !== "add") {
-      return Option.some(
-        "--as gives a new group the id you used for it in data.mjs. This item does not add a group."
-      );
-    }
-
-    if (acceptedGroups?.has(verdict.as) === true) {
-      return Option.some(
-        `--as ${verdict.as} names a group the accepted map already has. Pick the id of the new group you added to data.mjs.`
-      );
-    }
-
-    return Option.map(
-      Arr.findFirst(
-        [...taken.entries()],
-        ([other, id]) => other !== item.id && id === verdict.as
-      ),
-      ([other]) =>
-        `--as ${verdict.as} is already the final id of item ${other} in this batch. Give each new group its own id.`
-    );
-  },
-  renames: (item, verdict): readonly Rename[] => {
-    if (verdict.verdict === "rejected" || item.change.action !== "add") {
-      return [];
-    }
-
-    const to = finalIdOf(item, verdict);
-
-    return to === item.change.group.id
-      ? []
-      : [{ kind: "group", from: item.change.group.id, to }];
-  },
-  dependents: ({ change }, proposals) =>
-    change.action === "add"
-      ? Arr.flatMap(proposals.structures ?? [], (proposal) =>
-          proposal.change.action === "group" &&
-          proposal.change.group === change.group.id
-            ? [proposal.id]
-            : []
-        )
-      : [],
+  verdictRefusal: provisional.verdictRefusal,
+  renames: provisional.renames,
   applies: (): readonly LayoutChange[] => [],
   commitRefusal: (item, verdict, { data }) => {
     const { change } = item;

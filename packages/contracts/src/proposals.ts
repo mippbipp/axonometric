@@ -10,7 +10,9 @@ import { dual } from "effect/Function";
 
 import { ChapterChange } from "./chapter-change.ts";
 import { fileVersionFields, isCalendarDay, objectMessages } from "./fields.ts";
+import { FlowChange } from "./flow-change.ts";
 import { GroupChange } from "./group-change.ts";
+import { HopChange } from "./hop-change.ts";
 import { footprintsOverlap, offEndFindings } from "./layout-checks.ts";
 import type { HopEnds } from "./layout-checks.ts";
 import {
@@ -341,6 +343,22 @@ export const ChapterProposal = Schema.Struct({
 
 export type ChapterProposal = typeof ChapterProposal.Type;
 
+/** An open proposal to draw, delete or relabel a hop. */
+export const HopProposal = Schema.Struct({
+  id: ChangeId,
+  change: HopChange,
+}).annotate(objectMessages("A hop proposal has only id and change."));
+
+export type HopProposal = typeof HopProposal.Type;
+
+/** An open proposal to create or rename a flow, or to change its hops or the order of flows. */
+export const FlowProposal = Schema.Struct({
+  id: ChangeId,
+  change: FlowChange,
+}).annotate(objectMessages("A flow proposal has only id and change."));
+
+export type FlowProposal = typeof FlowProposal.Type;
+
 /** The most characters a text suggestion's new text holds. */
 export const maxSuggestionLength = 8000;
 
@@ -482,7 +500,7 @@ export const Verdict = Schema.Union([
   Schema.Struct({
     verdict: Schema.Literal("changed"),
     reason: RequiredReason,
-    /** For a new structure or group the agent took under another id: the final id. */
+    /** For a new structure the agent took under another id: the final id. */
     as: Schema.optionalKey(FinalId),
   }).annotate(
     objectMessages("A changed verdict has only verdict, reason and as.")
@@ -517,6 +535,8 @@ export const itemFields = {
   answer: answerFields,
   question: raisedFields,
   structure: { change: StructureChange },
+  hop: { change: HopChange },
+  flow: { change: FlowChange },
   group: { change: GroupChange },
   chapter: { change: ChapterChange },
 };
@@ -613,6 +633,16 @@ export const BatchItem = Schema.Union([
   }).annotate(itemMessages("structure")),
   Schema.Struct({
     id: ChangeId,
+    kind: Schema.Literal("hop"),
+    ...itemFields.hop,
+  }).annotate(itemMessages("hop")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("flow"),
+    ...itemFields.flow,
+  }).annotate(itemMessages("flow")),
+  Schema.Struct({
+    id: ChangeId,
     kind: Schema.Literal("group"),
     ...itemFields.group,
   }).annotate(itemMessages("group")),
@@ -669,15 +699,15 @@ export const Batch = Schema.Struct({
    * before this field has none.
    */
   structures: Schema.optionalKey(Schema.Array(Schema.String)),
-  /**
-   * The ids of the groups the accepted map had when the batch was frozen, for
-   * the same check on a new group's `--as`. A batch frozen before this field
-   * has none.
-   */
+  /** The ids of the hops the accepted map had when the batch was frozen; `--as` may not name one. */
+  hops: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** The ids of the flows the accepted map had when the batch was frozen; `--as` may not name one. */
+  flows: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** The ids of the groups the accepted map had when the batch was frozen; `--as` may not name one. */
   groups: Schema.optionalKey(Schema.Array(Schema.String)),
 }).annotate(
   objectMessages(
-    "A batch has only number, frozenAt, items, verdicts, committed, dismissed, structures and groups."
+    "A batch has only number, frozenAt, items, verdicts, committed, dismissed, structures, hops, flows and groups."
   )
 );
 
@@ -687,6 +717,8 @@ const allIds = (proposals: {
   readonly layout: readonly LayoutChange[];
   readonly notes?: readonly Note[] | undefined;
   readonly structures?: readonly StructureProposal[] | undefined;
+  readonly hops?: readonly HopProposal[] | undefined;
+  readonly flows?: readonly FlowProposal[] | undefined;
   readonly groups?: readonly GroupProposal[] | undefined;
   readonly chapters?: readonly ChapterProposal[] | undefined;
   readonly suggestions?: readonly Suggestion[] | undefined;
@@ -697,6 +729,8 @@ const allIds = (proposals: {
   ...Arr.map(proposals.layout, layoutChangeKey),
   ...Arr.map(proposals.notes ?? [], ({ id }) => id),
   ...Arr.map(proposals.structures ?? [], ({ id }) => id),
+  ...Arr.map(proposals.hops ?? [], ({ id }) => id),
+  ...Arr.map(proposals.flows ?? [], ({ id }) => id),
   ...Arr.map(proposals.groups ?? [], ({ id }) => id),
   ...Arr.map(proposals.chapters ?? [], ({ id }) => id),
   ...Arr.map(proposals.suggestions ?? [], ({ id }) => id),
@@ -719,6 +753,9 @@ const hasUniqueIds = (proposals: Parameters<typeof allIds>[0]) => {
  * - `layout`: the open layout changes, not yet in a batch.
  * - `notes`: the open notes.
  * - `structures`: the open proposals to add, delete or change a structure.
+ * - `hops`: the open proposals to draw, delete or relabel a hop.
+ * - `flows`: the open proposals to create or rename a flow, or to change the
+ *   hops of a flow or the order of the flows.
  * - `groups`: the open proposals to add or rename a group.
  * - `chapters`: the open proposals to change what a chapter reveals or plays.
  * - `suggestions`: the open text suggestions.
@@ -744,6 +781,8 @@ export const Proposals = Schema.Struct({
   ),
   notes: Schema.optionalKey(Schema.Array(Note)),
   structures: Schema.optionalKey(Schema.Array(StructureProposal)),
+  hops: Schema.optionalKey(Schema.Array(HopProposal)),
+  flows: Schema.optionalKey(Schema.Array(FlowProposal)),
   groups: Schema.optionalKey(Schema.Array(GroupProposal)),
   chapters: Schema.optionalKey(Schema.Array(ChapterProposal)),
   suggestions: Schema.optionalKey(Schema.Array(Suggestion)),
@@ -754,7 +793,7 @@ export const Proposals = Schema.Struct({
 })
   .annotate(
     objectMessages(
-      "A proposals file has only format, revision, layout, notes, structures, groups, chapters, suggestions, answers, raised, batches and replaces."
+      "A proposals file has only format, revision, layout, notes, structures, hops, flows, groups, chapters, suggestions, answers, raised, batches and replaces."
     )
   )
   .check(
@@ -775,31 +814,6 @@ export const emptyProposals: Proposals = {
   revision: 0,
   layout: [],
 };
-
-/**
- * The provisional ids that committed batches gave final ids, keyed by
- * provisional id. The page follows them: a selection of `new-1` becomes a
- * selection of the id the agent accepted it under.
- */
-export const structureRenames = (
-  proposals: Pick<Proposals, "batches">
-): ReadonlyMap<string, string> =>
-  new Map(
-    Arr.flatMap(proposals.batches ?? [], (batch) =>
-      batch.committed === undefined
-        ? []
-        : Arr.flatMap(batch.items, (item) => {
-            const verdict = batch.verdicts[item.id];
-
-            return item.kind === "structure" &&
-              item.change.action === "add" &&
-              verdict?.verdict === "changed" &&
-              verdict.as !== undefined
-              ? [[item.change.structure.id, verdict.as] as const]
-              : [];
-          })
-    )
-  );
 
 /** A fresh change id: twelve random hex digits. */
 export const newChangeId = (): ChangeId => {

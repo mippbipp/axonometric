@@ -5,27 +5,13 @@ import { objectMessages } from "./fields.ts";
 import type { Chapter, Hop, Structure } from "./map-data.ts";
 import { quoteText } from "./review-quote.ts";
 import { StructureId } from "./structure-change.ts";
-import { lineBreak } from "./text-schema.ts";
-
-const chapterFix = "expected the id of one of the map's chapters, on one line.";
+import { idText } from "./text-schemas.ts";
 
 /** The id of a chapter data.mjs has. */
-export const ChapterId = Schema.String.annotate({ message: chapterFix }).check(
-  Schema.isNonEmpty({ message: chapterFix }),
-  Schema.isMaxLength(200, { message: chapterFix }),
-  Schema.makeFilter((id: string) => !lineBreak.test(id), {
-    message: chapterFix,
-  })
-);
-
-const hopFix = "expected the id of one of the map's hops, on one line.";
+export const ChapterId = idText("chapter");
 
 /** The id of a hop data.mjs has. */
-export const HopId = Schema.String.annotate({ message: hopFix }).check(
-  Schema.isNonEmpty({ message: hopFix }),
-  Schema.isMaxLength(200, { message: hopFix }),
-  Schema.makeFilter((id: string) => !lineBreak.test(id), { message: hopFix })
-);
+export const HopId = idText("hop");
 
 const action = <const A extends string>(name: A) => Schema.Literal(name);
 

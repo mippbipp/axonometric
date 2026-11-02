@@ -1,3 +1,4 @@
+import { followed as followedId } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -55,7 +56,12 @@ export function SelectionProvider({
   // The agent may accept a structure the engineer proposed under another id.
   // The selection follows it, so the panel stays open on the same structure.
   const followed = (id: string | null) =>
-    id === null || byId.has(id) ? id : (renames.get(id) ?? id);
+    id === null || byId.has(id) ? id : followedId(renames, "structure", id);
+
+  const followedHop = (id: string) =>
+    Arr.some(state.data.hops, (hop) => hop.id === id)
+      ? id
+      : followedId(renames, "hop", id);
 
   const [stored, setStored] = useState<Stored>(() => nothingIn(chapter));
 
@@ -71,8 +77,13 @@ export function SelectionProvider({
   const selected = current === null ? null : storedSelected;
   const inside = followed(current?.inside ?? null);
 
-  // A hop stays selected only while both its ends are revealed.
-  const storedHop = stored.chapter === chapter ? stored.hop : null;
+  // A hop stays selected only while both its ends are revealed. The agent may
+  // accept a hop the engineer drew under another id, and the selection
+  // follows it.
+  const storedHop =
+    stored.chapter === chapter && stored.hop !== null
+      ? followedHop(stored.hop)
+      : null;
 
   const selectedHop =
     storedHop !== null &&

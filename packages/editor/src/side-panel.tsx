@@ -5,12 +5,16 @@ import type { KeyboardEvent, ReactNode } from "react";
 
 import { AddStructureForm } from "./add-structure.tsx";
 import { ChapterEditor } from "./chapter-editor.tsx";
+import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { DragWarnings } from "./drag-preview.tsx";
+import { DrawHopForm } from "./draw-hop-form.tsx";
 import { useEditing } from "./editing-context.ts";
+import { FlowsTab } from "./flows-tab.tsx";
 import { GroupPanel } from "./group-panel.tsx";
 import { useHistory } from "./history-context.ts";
 import { HistoryTab } from "./history-tab.tsx";
+import { useHopDraft } from "./hop-draft-context.ts";
 import { HopPanel } from "./hop-panel.tsx";
 import { useNewGroupForm } from "./new-group-context.ts";
 import { NewGroupForm } from "./new-group.tsx";
@@ -215,10 +219,10 @@ const renderContent = Match.type<PanelContent>().pipe(
   })
 );
 
-type Tab = "details" | "questions" | "pending" | "history";
+type Tab = "details" | "questions" | "flows" | "pending" | "history";
 
 const tabClass =
-  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent disabled:cursor-default disabled:opacity-40 px-1.5 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent disabled:cursor-default disabled:opacity-40 px-1 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
 
 /** The tabs to show: Pending only while the page can edit, History only when served. */
 const tabsOf = ({
@@ -226,7 +230,13 @@ const tabsOf = ({
   pendingCount,
   hasHistory,
   pendingOff,
+  hasFlows,
+  flowsOff,
 }: {
+  /** Whether the page can propose changes to flows, which gives it a Flows tab. */
+  readonly hasFlows: boolean;
+  /** Whether the Flows tab is shown but can't be used, as while a past revision is open. */
+  readonly flowsOff: boolean;
   readonly openCount: number;
   /** How many changes are pending, or `undefined` on a page that can't edit. */
   readonly pendingCount: number | undefined;
@@ -240,6 +250,9 @@ const tabsOf = ({
 }[] => [
   { id: "details", label: "Details", disabled: false },
   { id: "questions", label: `Questions · ${openCount}`, disabled: false },
+  ...(hasFlows
+    ? [{ id: "flows" as const, label: "Flows", disabled: flowsOff }]
+    : []),
   ...(pendingCount === undefined
     ? []
     : [
@@ -299,10 +312,62 @@ const useWaitingCount = () =>
   ).length;
 
 /**
- * Names what the side panel is pinned to, so a tab other than Details stays
- * open until it changes: the structure, else the group, the hop or the spot.
+ * The forms docked under the tabs, so the add form and the draw-hop form,
+ * and what a drag or a proposal would leave, never cover the drawing.
  */
-const pickedOf = ({
+function DockedForms() {
+  const placing = usePlacing();
+  const drafting = useHopDraft();
+  const newGroup = useNewGroupForm();
+
+  return (
+    <>
+      {newGroup?.open === true ? (
+        <section
+          data-new-group-panel
+          aria-label="Create a group"
+          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+        >
+          <h2 className="text-xs tracking-widest uppercase opacity-70">
+            Create a group
+          </h2>
+          <NewGroupForm
+            onDone={() => {
+              newGroup.setOpen(false);
+            }}
+          />
+        </section>
+      ) : null}
+      {placing?.open === true ? (
+        <section
+          data-add-structure-panel
+          aria-label="Add a structure"
+          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+        >
+          <h2 className="text-xs tracking-widest uppercase opacity-70">
+            Add a structure
+          </h2>
+          <AddStructureForm />
+        </section>
+      ) : null}
+      {drafting?.draft === null ? null : (
+        <section
+          data-draw-hop-panel
+          aria-label="Draw a hop"
+          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+        >
+          <h2 className="text-xs tracking-widest uppercase opacity-70">
+            Draw a hop
+          </h2>
+          <DrawHopForm />
+        </section>
+      )}
+    </>
+  );
+}
+
+/** What the selection is called, so a tab other than Details knows when it changed. */
+const pickedKey = ({
   selected,
   selectedGroup,
   selectedHop,
@@ -328,6 +393,27 @@ const pickedOf = ({
   return spot === null ? null : `spot:${spot.x},${spot.y}`;
 };
 
+/** How many questions are open across the groups. */
+const openQuestionCount = (
+  groups: readonly { readonly questions: readonly unknown[] }[]
+): number =>
+  Arr.reduce(groups, 0, (sum, group) => sum + group.questions.length);
+
+/** The Pending tab's count, or `undefined` on a page that can't edit. */
+const pendingCountOf = ({
+  editing,
+  past,
+  waiting,
+}: {
+  readonly editing: number | undefined;
+  readonly past: number | undefined;
+  readonly waiting: number;
+}): number | undefined => {
+  const layout = editing ?? past;
+
+  return layout === undefined ? undefined : layout + waiting;
+};
+
 /**
  * The side panel next to the view. Details shows one of the `PanelContent`
  * kinds; Open questions lists every question revealed so far; on a page
@@ -338,25 +424,20 @@ export function SidePanel() {
   const { selected: packet } = usePlayback();
   const { selected, selectedHop, selectedGroup, inside } = useSelection();
   const { state } = useWalkthrough();
-  const newGroup = useNewGroupForm();
   const spot = useNoteTool()?.spot ?? null;
   const byId = useStructuresById();
   const { open } = useRevealedQuestions();
 
-  const openCount = Arr.reduce(
-    open,
-    0,
-    (sum, group) => sum + group.questions.length
-  );
+  const openCount = openQuestionCount(open);
 
   const idPrefix = useId();
   const editing = useEditing();
   const history = useHistory();
   const waiting = useWaitingCount();
-  const placing = usePlacing();
+  const connections = useConnections();
 
   // A tab other than Details stays open until the selection changes.
-  const picked = pickedOf({ selected, selectedGroup, selectedHop, spot });
+  const picked = pickedKey({ selected, selectedGroup, selectedHop, spot });
 
   const [otherTab, setOtherTab] = useState<{
     readonly tab: Tab;
@@ -365,16 +446,19 @@ export function SidePanel() {
 
   // While a past revision is open there is no editing, but the tab strip
   // keeps its Pending tab and count, so it doesn't move.
-  const layoutPending = editing?.pending.length ?? history?.pendingCount;
-
-  const pendingCount =
-    layoutPending === undefined ? undefined : layoutPending + waiting;
+  const pendingCount = pendingCountOf({
+    editing: editing?.pending.length,
+    past: history?.pendingCount,
+    waiting,
+  });
 
   const tabs = tabsOf({
     openCount,
     pendingCount,
     hasHistory: history !== null,
     pendingOff: editing === null,
+    hasFlows: connections !== null || history !== null,
+    flowsOff: connections === null,
   });
 
   const tab: Tab =
@@ -470,6 +554,11 @@ export function SidePanel() {
           }}
         />
       </TabPanel>
+      {connections === null ? null : (
+        <TabPanel id="flows" prefix={idPrefix} open={tab}>
+          <FlowsTab />
+        </TabPanel>
+      )}
       {editing === null ? null : (
         <TabPanel id="pending" prefix={idPrefix} open={tab}>
           <PendingTab />
@@ -480,36 +569,7 @@ export function SidePanel() {
           <HistoryTab />
         </TabPanel>
       )}
-      {/* Docked under the tabs, so the add form and what a drag or a proposal
-          would leave never cover the drawing. */}
-      {placing?.open === true ? (
-        <section
-          data-add-structure-panel
-          aria-label="Add a structure"
-          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
-        >
-          <h2 className="text-xs tracking-widest uppercase opacity-70">
-            Add a structure
-          </h2>
-          <AddStructureForm />
-        </section>
-      ) : null}
-      {newGroup?.open === true ? (
-        <section
-          data-new-group-panel
-          aria-label="Create a group"
-          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
-        >
-          <h2 className="text-xs tracking-widest uppercase opacity-70">
-            Create a group
-          </h2>
-          <NewGroupForm
-            onDone={() => {
-              newGroup.setOpen(false);
-            }}
-          />
-        </section>
-      ) : null}
+      <DockedForms />
       <DragWarnings className="border-x-0 border-b-0" />
     </aside>
   );

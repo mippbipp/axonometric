@@ -16,6 +16,7 @@ import { Array as Arr, Option } from "effect";
 import { useEffect, useState } from "react";
 
 import { useRevealToggle } from "./chapter-reveal.ts";
+import { useHopDraft } from "./hop-draft-context.ts";
 import { useNewGroupForm } from "./new-group-context.ts";
 import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
@@ -50,6 +51,7 @@ export function StructureMenu() {
   const chapter = useChapterPropose();
   const newGroup = useNewGroupForm();
   const { multiSelection, setMultiSelection } = useSelection();
+  const drafting = useHopDraft();
   const [opened, setOpened] = useState<Opened | null>(null);
   const reveal = useRevealToggle(opened?.id ?? "");
 
@@ -202,6 +204,17 @@ export function StructureMenu() {
           </MenuSubContent>
         </MenuSub>
         <MenuSeparator />
+        {drafting === null ? null : (
+          <MenuItem
+            data-menu="draw-hop"
+            disabled={deleted}
+            onClick={() => {
+              drafting.begin(structure.id);
+            }}
+          >
+            Draw hop from here…
+          </MenuItem>
+        )}
         {reveal === undefined ? null : (
           <MenuItem
             data-menu="chapter-toggle"

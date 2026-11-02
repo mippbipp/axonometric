@@ -9,7 +9,9 @@ import {
   proposedMap,
   ProposalRefused,
   proposeChapter,
+  proposeFlow,
   proposeGroupWithMembers,
+  proposeHop,
   proposeStructure,
   reopenItem,
   reviewPrompt,
@@ -19,7 +21,9 @@ import type {
   BatchItem,
   FreezeWrite,
   FreezeAnswer,
+  FlowWrite,
   Hop,
+  HopWrite,
   Layout,
   ItemWrite,
   Known,
@@ -43,6 +47,13 @@ import { loadForWrite } from "./pending-writes.ts";
 import { loadReviewMap, structureNames } from "./review-shared.ts";
 import { writeAll } from "./write-files.ts";
 
+/**
+ * What every review write does, under the lock: reads the map and
+ * `proposals.json`, refuses a write based on an older revision, asks `change`
+ * for the next `proposals.json`, writes it atomically, and runs `written`,
+ * still under the lock, to tell the open pages. A `change` that fails
+ * refuses the write with its reason and writes nothing.
+ */
 /** What a write's change is given: the files as read under the lock. */
 interface Held {
   readonly proposals: Proposals;
@@ -63,13 +74,6 @@ interface Held {
   readonly now: string;
 }
 
-/**
- * What every review write does, under the lock: reads the map and
- * `proposals.json`, refuses a write based on an older revision, asks `change`
- * for the next `proposals.json`, writes it atomically, and runs `written`,
- * still under the lock, to tell the open pages. A `change` that fails
- * refuses the write with its reason and writes nothing.
- */
 const writeProposals = Effect.fnUntraced(
   function* <A>({
     home,
@@ -173,9 +177,10 @@ const editing =
 // oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(home, write, written)`, never piped.
 
 /** What an item is checked against when it is added. */
-const knownIn = ({ structures, hops, data }: Held): Known => ({
+const knownIn = ({ structures, proposed, data }: Held): Known => ({
   structureIds: new Set(structures.keys()),
-  hops,
+  // A hop the engineer drew can carry a note before the agent adds it.
+  hops: proposed.state.data.hops,
   data,
 });
 
@@ -245,29 +250,69 @@ export const setStructureWrite = editing<StructureWrite>(
 );
 
 /**
+ * What a hop or flow proposal is checked against: the map as proposed, so a
+ * structure, hop or flow an earlier proposal adds is known to later ones, and
+ * the map the frozen items alone make, which an open change lands on.
+ */
+const connectionWorld = ({ proposed, data, proposals }: Held) => ({
+  data: proposed.state.data,
+  base: proposedMap({
+    state: { data, layout: proposed.state.layout },
+    proposals,
+    open: false,
+  }).state.data,
+});
+
+/**
+ * Sets an open hop proposal: draws a hop, deletes one or relabels one.
+ * Refused when it names a structure or hop the map lacks, or joins a
+ * structure to itself.
+ */
+export const setHopWrite = editing<HopWrite>(
+  "setHopWrite",
+  (held, { id, change }) =>
+    proposeHop({
+      proposals: held.proposals,
+      id,
+      change,
+      world: connectionWorld(held),
+    })
+);
+
+/**
+ * Sets an open flow proposal: creates a flow, renames one, sets its ordered
+ * hops or reorders the flows. Refused when it names a flow or hop the map
+ * lacks.
+ */
+export const setFlowWrite = editing<FlowWrite>(
+  "setFlowWrite",
+  (held, { id, change }) =>
+    proposeFlow({
+      proposals: held.proposals,
+      id,
+      change,
+      world: connectionWorld(held),
+    })
+);
+
+/**
  * Sets an open group proposal: creates a group, with the structures that go
  * into it as their own group changes in the same write, or renames one. All of
  * it goes in or none of it.
  */
 export const setGroupWrite = editing<GroupWrite>(
   "setGroupWrite",
-  ({ proposals, proposed, layout, data }, { id, change, members }) =>
+  (held, { id, change, members }) =>
     proposeGroupWithMembers({
-      proposals,
+      proposals: held.proposals,
       id,
       change,
       members: members ?? [],
-      // A title is judged against the groups the map shows, and a rename
-      // against the groups only frozen items have changed.
-      world: {
-        data: proposed.state.data,
-        base: proposedMap({
-          state: { data, layout },
-          proposals,
-          open: false,
-        }).state.data,
+      world: connectionWorld(held),
+      structures: {
+        data: held.proposed.state.data,
+        layout: held.proposed.state.layout,
       },
-      structures: { data: proposed.state.data, layout: proposed.state.layout },
     })
 );
 
@@ -325,13 +370,17 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, data, proposed, now }) =>
+    change: ({ proposals, proposed, data, now }) =>
       Result.map(
         freezeOpen({
           proposals,
           at: now,
-          structures: Arr.map(data.structures, ({ id }) => id),
-          groups: Arr.map(data.groups, ({ id }) => id),
+          known: {
+            structure: Arr.map(data.structures, ({ id }) => id),
+            hop: Arr.map(data.hops, ({ id }) => id),
+            flow: Arr.map(data.flows, ({ id }) => id),
+            group: Arr.map(data.groups, ({ id }) => id),
+          },
         }),
         (frozen) => ({
           proposals: frozen.proposals,
@@ -342,6 +391,8 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
             prompt: reviewPrompt({
               home: absolute,
               batch: frozen.batch,
+              // A hop the engineer drew has a label on the page and none in
+              // data.mjs yet, and so has a group.
               names: namesOf({ shown: proposed.state.data, accepted: data }),
             }),
           },

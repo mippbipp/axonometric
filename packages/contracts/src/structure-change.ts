@@ -1,27 +1,16 @@
-import { Option, pipe, Result, Schema, String as Str } from "effect";
+import { pipe, Schema, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import { objectMessages } from "./fields.ts";
 import { maxRouteReach, Placement } from "./layout.ts";
 import { Shape, Status } from "./map-data.ts";
-import { lineBreak, oneLineText } from "./text-schema.ts";
-
-const structureIdFix =
-  "expected the id of a structure: 1 to 200 characters, with no line breaks.";
+import { idText, oneLineText } from "./text-schemas.ts";
 
 /**
  * The id of a structure that data.mjs has, or of one the verdict names with
  * `--as`. data.mjs sets no pattern for ids, so only line breaks are refused.
  */
-export const StructureId = Schema.String.annotate({
-  message: structureIdFix,
-}).check(
-  Schema.isNonEmpty({ message: structureIdFix }),
-  Schema.isMaxLength(200, { message: structureIdFix }),
-  Schema.makeFilter((id: string) => !lineBreak.test(id), {
-    message: structureIdFix,
-  })
-);
+export const StructureId = idText("structure");
 
 export type StructureId = typeof StructureId.Type;
 
@@ -54,19 +43,13 @@ export const maxStructureNameLength = 80;
 
 /** A structure's name: one line, trimmed, not longer than the limit. */
 export const StructureName = oneLineText({
-  noun: "name",
+  what: "name",
   max: maxStructureNameLength,
 });
 
-const groupFix = "expected the id of one of the map's groups, on one line.";
+export type StructureName = typeof StructureName.Type;
 
-const GroupRef = Schema.String.annotate({ message: groupFix }).check(
-  Schema.isNonEmpty({ message: groupFix }),
-  Schema.isMaxLength(200, { message: groupFix }),
-  Schema.makeFilter((group: string) => !lineBreak.test(group), {
-    message: groupFix,
-  })
-);
+const GroupRef = idText("group");
 
 /** How far from the origin a proposed structure may sit, as route points do. */
 export const maxProposedReach = maxRouteReach;
@@ -197,12 +180,3 @@ export const provisionalIdOf: {
 
   return `${slug === "" ? "structure" : slug}-${suffix}`;
 });
-
-const decodeName = Schema.decodeUnknownResult(StructureName);
-
-/** Why `text` is no structure name, in the schema's words, or nothing. */
-export const nameRefusal = (text: string): Option.Option<string> =>
-  Result.match(decodeName(text), {
-    onSuccess: () => Option.none(),
-    onFailure: (failure) => Option.some(failure.message),
-  });

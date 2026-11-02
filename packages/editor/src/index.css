@@ -96,6 +96,28 @@
   fill: color-mix(in oklab, var(--face), var(--pending) 14%);
 }
 
+/* A hop a proposal draws or relabels: the pending blue, line and head. One
+   proposed for deletion is dashed in the refused red; the strike across it
+   is drawn by the page's editing layer (see RemovedHopMarks). */
+[data-hop][data-hop-state="proposed"],
+[data-hidden-hop][data-hop-state="proposed"] {
+  stroke: var(--pending);
+}
+
+[data-hop][data-hop-state="proposed"] [data-arrowhead] {
+  fill: var(--pending);
+}
+
+[data-hop][data-hop-state="removed"],
+[data-hidden-hop][data-hop-state="removed"] {
+  stroke: var(--refused);
+  stroke-dasharray: 5 4;
+}
+
+[data-hop][data-hop-state="removed"] [data-arrowhead] {
+  fill: var(--refused);
+}
+
 /* A structure in the multi-selection: outlined in the multi-selection
    colour, and ringed on the ground under it. This comes after the pending
    rule, so a structure that is both keeps the pending face tint

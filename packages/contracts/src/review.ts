@@ -10,6 +10,11 @@ import {
 import { dual } from "effect/Function";
 
 import { acceptLayoutChanges } from "./accept.ts";
+import {
+  addedHopIds,
+  frozenHopChanges,
+  openHopChanges,
+} from "./connection-held.ts";
 import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
@@ -31,8 +36,16 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
+import {
+  batchKeyOf,
+  entities,
+  hasRenames,
+  noKnownIds,
+  renamesOf,
+} from "./provisional-ids.ts";
+import type { Entity, KnownIds, Renames } from "./provisional-ids.ts";
 import { allKinds, sections, sectionTitles, specOf } from "./review-kinds.ts";
-import type { Names, Renames, Section, Waiting } from "./review-kinds.ts";
+import type { Names, Section, Waiting } from "./review-kinds.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
 type Listed = Proposals;
@@ -227,9 +240,15 @@ export const checkOpenItems: {
   (proposals: Proposals): (data: MapData) => readonly MapProblem[];
   (data: MapData, proposals: Proposals): readonly MapProblem[];
 } = dual(2, (data: MapData, proposals: Proposals): readonly MapProblem[] => {
+  // A hop the engineer drew is known to the notes that follow.
+  const drawn = addedHopIds([
+    ...openHopChanges(proposals),
+    ...frozenHopChanges(proposals),
+  ]);
+
   const existing = {
     structures: new Set(Arr.map(data.structures, ({ id }) => id)),
-    hops: new Set(Arr.map(data.hops, ({ id }) => id)),
+    hops: new Set([...Arr.map(data.hops, ({ id }) => id), ...drawn]),
     groups: new Set(Arr.map(data.groups, ({ id }) => id)),
     chapters: new Set(Arr.map(data.chapters, ({ id }) => id)),
   };
@@ -264,16 +283,13 @@ export interface FreezeResult {
 export const freezeOpen = ({
   proposals,
   at,
-  structures,
-  groups,
+  known,
 }: {
   readonly proposals: Proposals;
   /** When the batch is frozen, as an ISO date and time in UTC. */
   readonly at: string;
-  /** The ids of the structures the accepted map has now; see `Batch.structures`. */
-  readonly structures?: readonly string[] | undefined;
-  /** The ids of the groups the accepted map has now; see `Batch.groups`. */
-  readonly groups?: readonly string[] | undefined;
+  /** The ids the accepted map has now, by entity; see `Batch.structures`. */
+  readonly known?: Partial<Record<Entity, readonly string[]>> | undefined;
 }): Result.Result<FreezeResult, string> => {
   const items = openItems(proposals);
 
@@ -290,13 +306,12 @@ export const freezeOpen = ({
     verdicts: {},
   };
 
-  // The ids the accepted map has are left out when unknown, as in a batch
-  // frozen before they were recorded.
-  const withStructures: Batch =
-    structures === undefined ? frozen : { ...frozen, structures };
+  // A list left out stays out: a batch without one has the caller's set.
+  const batch: Batch = Arr.reduce(entities, frozen, (so, entity) => {
+    const ids = known?.[entity];
 
-  const batch: Batch =
-    groups === undefined ? withStructures : { ...withStructures, groups };
+    return ids === undefined ? so : { ...so, [batchKeyOf[entity]]: ids };
+  });
 
   const emptied = Arr.reduce(allKinds, proposals, (held, kind) =>
     kind.clear(held)
@@ -517,8 +532,9 @@ export const reopenItem = ({
     );
   }
 
-  const refusedText = Option.flatMap(Option.fromNullishOr(text), (given) =>
-    spec.textRefusal === undefined ? Option.none() : spec.textRefusal(given)
+  const refusedText = Option.flatMap(
+    Option.fromNullishOr(text),
+    (given) => spec.textRefusal?.(item, given) ?? Option.none()
   );
 
   if (Option.isSome(refusedText)) {
@@ -532,13 +548,12 @@ export const reopenItem = ({
 
   const reopened = spec.reopened(item, newId, text);
 
-  // The same checks a fresh proposal runs: against the other items waiting,
-  // as a batch is judged, and against the map as proposed.
   const broken = spec.breakage(reopened, {
     layout: applyLayoutChanges(layout, proposals.layout),
     structureIds: known,
     hops,
     data,
+    // The items waiting are judged together, as a batch is.
     siblings: [...openItems(dismissed.success), reopened],
   });
 
@@ -547,7 +562,7 @@ export const reopenItem = ({
   }
 
   // The map the item lands on: as proposed, without the rejected item it
-  // replaces, which has left the page.
+  // replaces, which has left the page. The same checks a fresh proposal runs.
   const unfit = Option.flatMap(Option.fromNullishOr(data), (map) =>
     spec.fits === undefined
       ? Option.none()
@@ -659,6 +674,12 @@ export const editProposal = ({
     );
   }
 
+  const refusedText = spec.textRefusal?.(found.value, text);
+
+  if (refusedText !== undefined && Option.isSome(refusedText)) {
+    return Result.fail(refusedText.value);
+  }
+
   const edited = spec.reopened(found.value, id, text);
 
   return Result.succeed(
@@ -680,12 +701,15 @@ export const discardProposal = ({
     return Result.fail(noOpenItem(proposals, id));
   }
 
-  const dependents =
-    specOf(found.value).dependents?.(found.value, proposals) ?? [];
+  const dropped = rewriteOpen(proposals, found.value, Option.none());
+  const spec = specOf(found.value);
+  const settled = spec.discarded?.(dropped, found.value) ?? dropped;
 
-  const without = rewriteOpen(proposals, found.value, Option.none());
+  // What only makes sense with the item goes with it: the structures a new
+  // group took in go back where they were.
+  const dependents = spec.dependents?.(found.value, proposals) ?? [];
 
-  const dropped = (held: Proposals, dependent: string): Proposals => {
+  const withoutDependent = (held: Proposals, dependent: string): Proposals => {
     const other = openItemNamed(held, dependent);
 
     return Option.isNone(other)
@@ -693,9 +717,7 @@ export const discardProposal = ({
       : rewriteOpen(held, other.value, Option.none());
   };
 
-  // What only makes sense with the item goes with it: the structures a
-  // new group took in go back where they were.
-  return Result.succeed(Arr.reduce(dependents, without, dropped));
+  return Result.succeed(Arr.reduce(dependents, settled, withoutDependent));
 };
 
 /** What the agent can say about the items still without a verdict. */
@@ -712,21 +734,19 @@ export const recordVerdict = ({
   proposals,
   id,
   verdict,
-  accepted = new Set(),
-  acceptedGroups,
+  accepted = noKnownIds,
 }: {
   readonly proposals: Proposals;
   readonly id: string;
   readonly verdict: Verdict;
   /**
-   * The ids of the structures the accepted map has, for a batch frozen
-   * without `Batch.structures`. `--as` may not name one, since it gives a new
-   * structure its own id. The batch's own list wins when it has one. With
-   * neither, none is known and the check is skipped.
+   * The ids of each entity the accepted map has, for a batch frozen without
+   * its own lists (`Batch.structures`, `hops` and `flows`). `--as` may not
+   * name one, since it gives a new thing its own id. The batch's own list
+   * wins when it has one. With neither, none is known and the check is
+   * skipped.
    */
-  readonly accepted?: ReadonlySet<string>;
-  /** The same for the groups, for a batch frozen without `Batch.groups`. */
-  readonly acceptedGroups?: ReadonlySet<string> | undefined;
+  readonly accepted?: KnownIds;
 }): Result.Result<Proposals, string> => {
   const oldest = oldestOpenBatch(proposals);
 
@@ -756,35 +776,38 @@ export const recordVerdict = ({
     );
   }
 
-  const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
-    Option.flatMap((item) => {
-      // A final id is only taken by an item of the same kind: a structure
-      // and a group may share one.
-      const taken = new Map(
-        Arr.flatMap(items, (other) => {
-          const held = Rec.get(oldest.value.verdicts, other.id);
+  const taken = new Map(
+    Arr.flatMap(items, (item) => {
+      const held = Rec.get(oldest.value.verdicts, item.id);
 
-          return other.kind === item.kind &&
-            Option.isSome(held) &&
-            held.value.verdict === "changed" &&
-            held.value.as !== undefined
-            ? [[other.id, held.value.as] as const]
-            : [];
-        })
-      );
-
-      return specOf(item).verdictRefusal(item, verdict, {
-        accepted:
-          oldest.value.structures === undefined
-            ? accepted
-            : new Set(oldest.value.structures),
-        acceptedGroups:
-          oldest.value.groups === undefined
-            ? acceptedGroups
-            : new Set(oldest.value.groups),
-        taken,
+      return Option.match(held, {
+        onNone: () => [],
+        onSome: (given) =>
+          Arr.map(
+            specOf(item).renames(item, given),
+            (rename) => [item.id, rename] as const
+          ),
       });
     })
+  );
+
+  const frozenIds = (entity: Entity): ReadonlySet<string> => {
+    const frozen = oldest.value[batchKeyOf[entity]];
+
+    return frozen === undefined ? accepted[entity] : new Set(frozen);
+  };
+
+  const known: KnownIds = {
+    structure: frozenIds("structure"),
+    hop: frozenIds("hop"),
+    flow: frozenIds("flow"),
+    group: frozenIds("group"),
+  };
+
+  const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
+    Option.flatMap((item) =>
+      specOf(item).verdictRefusal(item, verdict, { accepted: known, taken })
+    )
   );
 
   if (Option.isSome(refused)) {
@@ -902,24 +925,11 @@ export const commitBatch = ({
 
   // A structure the agent accepted under another id: items that point at the
   // provisional one now point at the final one.
-  const renamed = Arr.flatMap(verdicts, ({ item, verdict }) =>
-    specOf(item).renames(item, verdict)
+  const renames = renamesOf(
+    Arr.flatMap(verdicts, ({ item, verdict }) =>
+      specOf(item).renames(item, verdict)
+    )
   );
-
-  const renames: Renames = {
-    structure: new Map(
-      Arr.flatMap(renamed, ({ kind, from, to }) =>
-        kind === "structure" ? [[from, to] as const] : []
-      )
-    ),
-    group: new Map(
-      Arr.flatMap(renamed, ({ kind, from, to }) =>
-        kind === "group" ? [[from, to] as const] : []
-      )
-    ),
-  };
-
-  const anyRenamed = renamed.length > 0;
 
   const decided = Arr.map(verdicts, ({ item, verdict }) => ({
     item: specOf(item).retargeted(item, renames),
@@ -961,7 +971,7 @@ export const commitBatch = ({
 
   return Result.map(applied, (nextLayout): Committing => {
     const retargetItems = (items: readonly BatchItem[]) =>
-      anyRenamed
+      hasRenames(renames)
         ? Arr.map(items, (one) => specOf(one).retargeted(one, renames))
         : items;
 
@@ -993,7 +1003,7 @@ export const commitBatch = ({
       batch,
       layout: nextLayout,
       proposals: {
-        ...(anyRenamed ? retargetedOpen : proposals),
+        ...(hasRenames(renames) ? retargetedOpen : proposals),
         revision: proposals.revision + 1,
         batches,
       },
@@ -1008,6 +1018,26 @@ export const commitBatch = ({
     };
   });
 };
+
+/**
+ * The provisional ids that committed batches gave final ids, by entity. The
+ * page follows them: a selection of `new-1` becomes a selection of the id the
+ * agent accepted it under. Each kind says what it renamed, so a new kind
+ * needs nothing here.
+ */
+export const committedRenames = (proposals: Listed): Renames =>
+  renamesOf(
+    Arr.flatMap(batchesOf(proposals), (batch) =>
+      batch.committed === undefined
+        ? []
+        : Arr.flatMap(batch.items, (item) =>
+            Option.match(Rec.get(batch.verdicts, item.id), {
+              onNone: () => [],
+              onSome: (verdict) => specOf(item).renames(item, verdict),
+            })
+          )
+    )
+  );
 
 /** The message a commit gets when the agent gives none. */
 export const commitMessage = (batch: Batch): string => {
@@ -1106,14 +1136,6 @@ export const dismissItem = ({
   });
 };
 
-/** One line that says what an item is. */
-export const summaryLine: {
-  (names: PartialNames): (item: BatchItem) => string;
-  (item: BatchItem, names: PartialNames): string;
-} = dual(2, (item: BatchItem, names: PartialNames): string =>
-  specOf(item).summary(item, fullNames(names))
-);
-
 /**
  * `Names` with the group and chapter titles left out where a caller has none:
  * the id stands in for the title.
@@ -1130,13 +1152,21 @@ export const fullNames = (names: PartialNames): Names => ({
   chapter: names.chapter ?? ((id) => id),
 });
 
+/** One line that says what an item is. */
+export const summaryLine: {
+  (names: PartialNames): (item: BatchItem) => string;
+  (item: BatchItem, names: PartialNames): string;
+} = dual(2, (item: BatchItem, names: PartialNames): string =>
+  specOf(item).summary(item, fullNames(names))
+);
+
 /** The section an item is listed in. */
 export const sectionOf = (item: BatchItem): Section => specOf(item).section;
 
 /**
  * `items` split by section, in the order sections are listed, leaving out a
- * section with no item. Items keep their order within a section. `sectionOfItem`
- * says which section an item is in.
+ * section with no item. Items keep their order within a section.
+ * `sectionOfItem` says which section an item is in.
  */
 export const inSections: {
   <A>(

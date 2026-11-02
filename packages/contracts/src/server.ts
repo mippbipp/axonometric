@@ -29,6 +29,8 @@ export const serverPaths = {
   accept: "/api/proposals/accept",
   notes: "/api/notes",
   structure: "/api/structures",
+  hop: "/api/hops",
+  flow: "/api/flows",
   group: "/api/groups",
   chapter: "/api/chapters",
   editItem: "/api/items/edit",
@@ -247,6 +249,10 @@ export const ServedPage = Schema.Struct({
   questions: Schema.String,
   /** Where a structure proposal is set, relative to the page's URL. */
   structure: Schema.String,
+  /** Where a hop proposal is set, relative to the page's URL. */
+  hop: Schema.String,
+  /** Where a flow proposal is set, relative to the page's URL. */
+  flow: Schema.String,
   /** Where a group proposal is set, relative to the page's URL. */
   group: Schema.String,
   /** Where a chapter proposal is set, relative to the page's URL. */

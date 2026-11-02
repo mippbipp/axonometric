@@ -7,7 +7,7 @@ import type { Verdict } from "@axonometric/contracts";
 import { Console, Effect, Option, Path, Result, String as Str } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
-import { acceptedGroupIds, acceptedStructureIds } from "./history.ts";
+import { acceptedIds } from "./history.ts";
 import { withLock } from "./lock.ts";
 import { MapInvalid, encodeProposals, loadProposals } from "./map-files.ts";
 import { ReviewRefused } from "./review-shared.ts";
@@ -42,12 +42,12 @@ const verdictOf = (
 
   if (Option.isSome(as) && kind !== "changed") {
     return Result.fail(
-      '--as names the id a new structure or group was accepted under, so it goes with a changed verdict. Use: verdict <home> <item> changed --reason "..." --as <id>.'
+      '--as names the id a new structure, hop, flow or group was accepted under, so it goes with a changed verdict. Use: verdict <home> <item> changed --reason "..." --as <id>.'
     );
   }
 
   if (Option.isSome(as) && Option.isNone(finalId)) {
-    return Result.fail("--as needs the structure's id in data.mjs.");
+    return Result.fail("--as needs the id it has in data.mjs.");
   }
 
   if (kind === "accepted") {
@@ -114,8 +114,7 @@ const verdict = Effect.fn("verdict")(function* ({
     proposals: loaded.success,
     id: item,
     verdict: decided.success,
-    accepted: yield* acceptedStructureIds(home),
-    acceptedGroups: yield* acceptedGroupIds(home),
+    accepted: yield* acceptedIds(home),
   });
 
   if (Result.isFailure(recorded)) {
@@ -172,7 +171,7 @@ export const verdictCommand = Command.make(
     as: Flag.String("as").pipe(
       Flag.optional,
       Flag.withDescription(
-        "For a new structure or group you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes the position under it."
+        "For a new structure, hop, flow or group you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes a structure's position under it."
       )
     ),
   },

@@ -72,6 +72,27 @@ function MenuRadioItem({
   );
 }
 
+function MenuCheckboxItem({
+  className,
+  children,
+  ...props
+}: MenuPrimitive.CheckboxItem.Props) {
+  return (
+    <MenuPrimitive.CheckboxItem
+      data-slot="menu-checkbox-item"
+      className={cn(itemClass, className)}
+      {...props}
+    >
+      <span aria-hidden="true" className="w-3 shrink-0">
+        <MenuPrimitive.CheckboxItemIndicator>
+          ✓
+        </MenuPrimitive.CheckboxItemIndicator>
+      </span>
+      {children}
+    </MenuPrimitive.CheckboxItem>
+  );
+}
+
 function MenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
   return <MenuPrimitive.SubmenuRoot {...props} />;
 }
@@ -151,6 +172,7 @@ const MenuRadioGroup = MenuPrimitive.RadioGroup;
 
 export {
   Menu,
+  MenuCheckboxItem,
   MenuContent,
   MenuItem,
   MenuLabel,

@@ -136,6 +136,7 @@ export {
   growRect,
   rectPolygon,
   segmentCrosses,
+  segmentsOf,
 } from "./geometry.ts";
 
 export type { Segment } from "./geometry.ts";
@@ -299,7 +300,6 @@ export {
   shiftedRoutes,
   sharedTarget,
   StructureMove,
-  structureRenames,
   StructureTarget,
   structuresOf,
   Target,
@@ -352,7 +352,7 @@ export {
   splitProblems,
 } from "./problems.ts";
 
-export { strikeSegments } from "./strike.ts";
+export { outsideHoles, strikeSegments } from "./strike.ts";
 
 export { clearOfText, outlineClearance, textBoxesOf } from "./clear-of-text.ts";
 
@@ -381,6 +381,8 @@ export {
   Reason,
   RequiredReason,
   StructureProposal,
+  HopProposal,
+  FlowProposal,
   GroupProposal,
   ChapterProposal,
   Verdict,
@@ -394,6 +396,7 @@ export {
   breakageOf,
   checkOpenItems,
   commitBatch,
+  committedRenames,
   commitMessage,
   discardProposal,
   dismissItem,
@@ -441,6 +444,8 @@ export {
   ProposalRefused,
   QuestionAdd,
   ReopenWrite,
+  FlowWrite,
+  HopWrite,
   ChapterWrite,
   GroupWrite,
   maxGroupMembers,
@@ -489,11 +494,8 @@ export type {
   Mark,
   Names,
   Pointer,
-  Rename,
-  Renames,
   Section,
   Touches,
-  VerdictContext,
   Waiting,
 } from "./review-kinds.ts";
 
@@ -633,3 +635,101 @@ export {
   ReviewReport,
   VerdictFacts,
 } from "./review-report.ts";
+
+export {
+  HopChange,
+  HopLabel,
+  HopRef,
+  hopOf,
+  maxHopLabelLength,
+  NewHop,
+  FlowRef,
+  sameHopChange,
+  sameHopSubject,
+} from "./hop-change.ts";
+
+export {
+  FlowChange,
+  FlowName,
+  flowOf,
+  maxFlowNameLength,
+  NewFlow,
+  sameFlowChange,
+  sameFlowSubject,
+} from "./flow-change.ts";
+
+export {
+  describeHop,
+  flowsOfHop,
+  hopBreakage,
+  hopCandidateProblems,
+  hopChangeToData,
+  hopIsCurrent,
+  hopLabel,
+  referencesToHop,
+  summarizeHop,
+} from "./hop-effects.ts";
+
+export type { HopLanding, HopNames } from "./hop-effects.ts";
+
+export {
+  describeFlow,
+  flowBreakage,
+  flowChangeToData,
+  flowIsCurrent,
+  flowLabel,
+  inFlowOrder,
+  summarizeFlow,
+} from "./flow-effects.ts";
+
+export type { FlowLanding, FlowNames } from "./flow-effects.ts";
+
+export {
+  addedFlowIds,
+  addedHopIds,
+  frozenFlowChanges,
+  frozenHopChanges,
+  openFlowChanges,
+  openHopChanges,
+  withoutOpenHop,
+} from "./connection-held.ts";
+
+export {
+  checkConnectionProposals,
+  newFlowId,
+  newHopId,
+  proposeFlow,
+  proposeHop,
+} from "./connection-proposals.ts";
+
+export type { ConnectionWorld } from "./connection-proposals.ts";
+
+export { changedFlowMark } from "./review-kinds-flow.ts";
+
+export { proposedHopMark, removedHopMark } from "./review-kinds-hop.ts";
+
+export {
+  entities,
+  followed,
+  hasRenames,
+  noKnownIds,
+  noRenames,
+  provisionalOf,
+  renamesOf,
+} from "./provisional-ids.ts";
+
+export type {
+  Entity,
+  KnownIds,
+  Rename,
+  Renames,
+  VerdictContext,
+} from "./provisional-ids.ts";
+
+export { lineBreak, oneLineText } from "./text-schemas.ts";
+
+export { hopActionOf, hopActions } from "./hop-actions.ts";
+
+export { flowActionOf, flowActions, hopsWith } from "./flow-actions.ts";
+
+export { moveItem } from "./reorder.ts";

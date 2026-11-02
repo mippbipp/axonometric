@@ -75,6 +75,24 @@ export const AcceptedItem = Schema.Union([
     itemMessages("structure", "accepted item", ["as", ...acceptedMore])
   ),
   Schema.Struct({
+    kind: Schema.Literal("hop"),
+    id: ChangeId,
+    ...itemFields.hop,
+    /** For a drawn hop: the id it has on the map now. */
+    as: Schema.optionalKey(FinalId),
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(itemMessages("hop", "accepted item", ["as", ...acceptedMore])),
+  Schema.Struct({
+    kind: Schema.Literal("flow"),
+    id: ChangeId,
+    ...itemFields.flow,
+    /** For a created flow: the id it has on the map now. */
+    as: Schema.optionalKey(FinalId),
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(itemMessages("flow", "accepted item", ["as", ...acceptedMore])),
+  Schema.Struct({
     kind: Schema.Literal("group"),
     id: ChangeId,
     ...itemFields.group,
@@ -132,6 +150,18 @@ export const RejectedItem = Schema.Union([
     ...itemFields.structure,
     reason: RequiredReason,
   }).annotate(itemMessages("structure", "rejected item", ["reason"])),
+  Schema.Struct({
+    kind: Schema.Literal("hop"),
+    id: ChangeId,
+    ...itemFields.hop,
+    reason: RequiredReason,
+  }).annotate(itemMessages("hop", "rejected item", ["reason"])),
+  Schema.Struct({
+    kind: Schema.Literal("flow"),
+    id: ChangeId,
+    ...itemFields.flow,
+    reason: RequiredReason,
+  }).annotate(itemMessages("flow", "rejected item", ["reason"])),
   Schema.Struct({
     kind: Schema.Literal("group"),
     id: ChangeId,

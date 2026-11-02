@@ -264,7 +264,8 @@ const frozenWith = (...items: readonly (readonly [string, BatchItem])[]) => {
     ),
   };
 
-  return unwrap(freezeOpen({ proposals, at, groups: ["g1", "g2"] })).proposals;
+  return unwrap(freezeOpen({ proposals, at, known: { group: ["g1", "g2"] } }))
+    .proposals;
 };
 
 const verdicted = (proposals: Proposals, id: string, verdict: Verdict) =>
@@ -845,7 +846,7 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
     };
 
     const frozen = unwrap(
-      freezeOpen({ proposals, at, groups: ["g1", "g2"] })
+      freezeOpen({ proposals, at, known: { group: ["g1", "g2"] } })
     ).proposals;
 
     const decided = verdicted(

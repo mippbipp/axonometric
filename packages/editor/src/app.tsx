@@ -13,6 +13,8 @@ import { EditToolbar } from "./edit-toolbar.tsx";
 import { useEditing } from "./editing-context.ts";
 import { ExportMenu } from "./export-menu.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
+import { HopDraftProvider } from "./hop-draft-provider.tsx";
+import { HopMenu } from "./hop-menu.tsx";
 import { useInsideFocus } from "./inside-focus.ts";
 import { InsideView } from "./inside-view.tsx";
 import { MapSurface } from "./map-surface.tsx";
@@ -248,6 +250,7 @@ function WalkthroughPage({ notices }: Notices) {
           )}
           <StructureTooltip />
           <StructureMenu />
+          <HopMenu />
         </MapSurface>
         <SidePanel />
         <OverviewPage />
@@ -296,17 +299,19 @@ export function App({
         <SelectionProvider>
           <TooltipProvider>
             <DragPreviewProvider state={state}>
-              <SpotlightProvider>
-                <OverviewPageProvider>
-                  <NoteToolProvider>
-                    <PlacingProvider>
-                      <NewGroupProvider>
-                        <WalkthroughPage notices={notices} />
-                      </NewGroupProvider>
-                    </PlacingProvider>
-                  </NoteToolProvider>
-                </OverviewPageProvider>
-              </SpotlightProvider>
+              <HopDraftProvider>
+                <SpotlightProvider>
+                  <OverviewPageProvider>
+                    <NoteToolProvider>
+                      <PlacingProvider>
+                        <NewGroupProvider>
+                          <WalkthroughPage notices={notices} />
+                        </NewGroupProvider>
+                      </PlacingProvider>
+                    </NoteToolProvider>
+                  </OverviewPageProvider>
+                </SpotlightProvider>
+              </HopDraftProvider>
             </DragPreviewProvider>
           </TooltipProvider>
         </SelectionProvider>

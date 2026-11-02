@@ -1,27 +1,21 @@
-import { Option, pipe, Result, Schema, String as Str } from "effect";
+import { pipe, Schema, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import { objectMessages } from "./fields.ts";
 import { ProvisionalId } from "./structure-change.ts";
-import { oneLineText } from "./text-schema.ts";
+import { idText, oneLineText } from "./text-schemas.ts";
 
 /** The most characters a group title holds. */
 export const maxGroupTitleLength = 80;
 
 /** A group's title: one line, trimmed, not longer than the limit. */
 export const GroupTitle = oneLineText({
-  noun: "title",
+  what: "title",
   max: maxGroupTitleLength,
 });
 
-const groupFix = "expected the id of one of the map's groups, on one line.";
-
 /** The id of a group data.mjs has. data.mjs sets no pattern, so only line breaks are refused. */
-export const GroupId = Schema.String.annotate({ message: groupFix }).check(
-  Schema.isNonEmpty({ message: groupFix }),
-  Schema.isMaxLength(200, { message: groupFix }),
-  Schema.isPattern(/^[^\r\n\u0085\u2028\u2029]+$/u, { message: groupFix })
-);
+export const GroupId = idText("group");
 
 /** What the engineer sets when proposing a group. */
 export const NewGroup = Schema.Struct({
@@ -90,12 +84,3 @@ export const provisionalGroupIdOf: {
 
   return `${slug === "" ? "group" : slug}-${suffix}`;
 });
-
-const decodeTitle = Schema.decodeUnknownResult(GroupTitle);
-
-/** Why `text` is no group title, in the schema's words, or nothing. */
-export const titleRefusal = (text: string): Option.Option<string> =>
-  Result.match(decodeTitle(text), {
-    onSuccess: () => Option.none(),
-    onFailure: (failure) => Option.some(failure.message),
-  });

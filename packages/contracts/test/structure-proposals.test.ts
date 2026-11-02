@@ -21,6 +21,8 @@ import {
   footprintsOverlap,
   freezeOpen,
   marked,
+  noKnownIds,
+  renamesOf,
   proposedMap,
   proposeStructure,
   removedMark,
@@ -1028,7 +1030,7 @@ describe("--as", () => {
       proposals: frozenAddsOf(["n1"]),
       id: "p-n1",
       verdict: changedAs("b"),
-      accepted: new Set(["a", "b", "c"]),
+      accepted: { ...noKnownIds, structure: new Set(["a", "b", "c"]) },
     });
 
     assert.include(Result.merge(refused), "already has");
@@ -1037,7 +1039,7 @@ describe("--as", () => {
       proposals: frozenAddsOf(["n1"]),
       id: "p-n1",
       verdict: changedAs("fresh"),
-      accepted: new Set(["a", "b", "c"]),
+      accepted: { ...noKnownIds, structure: new Set(["a", "b", "c"]) },
     });
 
     assert.isTrue(Result.isSuccess(allowed));
@@ -1084,7 +1086,7 @@ describe("the structures a batch is frozen against", () => {
       freezeOpen({
         proposals: withStructures(["p1", add]),
         at,
-        structures: ["a", "b"],
+        known: { structure: ["a", "b"] },
       })
     ).proposals;
 
@@ -1095,7 +1097,7 @@ describe("the structures a batch is frozen against", () => {
       proposals: frozen,
       id: "p1",
       verdict: changedAs("a"),
-      accepted: new Set(),
+      accepted: noKnownIds,
     });
 
     assert.include(Result.merge(refused), "already has");
@@ -1105,7 +1107,7 @@ describe("the structures a batch is frozen against", () => {
       proposals: frozen,
       id: "p1",
       verdict: changedAs("fresh"),
-      accepted: new Set(["fresh"]),
+      accepted: { ...noKnownIds, structure: new Set(["fresh"]) },
     });
 
     assert.isTrue(Result.isSuccess(allowed));
@@ -1122,10 +1124,10 @@ describe("the structures a batch is frozen against", () => {
 
 describe("a note on a hop or a spot after --as", () => {
   it("renames the target of a note on a structure", () => {
-    const renamed = specOf(structureNote).retargeted(structureNote, {
-      structure: new Map([["new-1", "cache"]]),
-      group: new Map(),
-    });
+    const renamed = specOf(structureNote).retargeted(
+      structureNote,
+      renamesOf([{ entity: "structure", from: "new-1", to: "cache" }])
+    );
 
     assert.deepStrictEqual(noteTargetOf(renamed), {
       kind: "structure",

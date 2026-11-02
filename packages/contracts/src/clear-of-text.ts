@@ -4,7 +4,7 @@ import { rectPolygon } from "./geometry.ts";
 import type { Segment } from "./geometry.ts";
 import type { ScreenPoint, ScreenRect } from "./iso.ts";
 import type { Scene } from "./scene.ts";
-import { grown, without } from "./strike.ts";
+import { grown, outsideHoles } from "./strike.ts";
 
 /** How much room an editing outline keeps from text, in screen units. */
 export const outlineClearance = 3;
@@ -65,6 +65,6 @@ export const clearOfText = ({
   );
 
   return Arr.flatMap(legs, ([start, end]) =>
-    without({ start, end }, holes, minOutlinePiece)
+    outsideHoles({ start, end }, holes, minOutlinePiece)
   );
 };

@@ -2,6 +2,8 @@ import {
   addedIds,
   applyLayoutChanges,
   emptyProposals,
+  hopCandidateProblems,
+  committedRenames,
   frozenStructureChanges,
   openStructureChanges,
   frozenLayoutChanges,
@@ -9,7 +11,6 @@ import {
   proposedMap,
   openItems,
   reviewEntries,
-  structureRenames,
 } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
@@ -19,6 +20,8 @@ import { AcceptingContext } from "./accepting-context.ts";
 import type { Accepting } from "./accepting-context.ts";
 import { App } from "./app.tsx";
 import { CompareContext } from "./compare-context.ts";
+import { ConnectionsContext } from "./connections-context.ts";
+import type { Connections } from "./connections-context.ts";
 import { EditingContext } from "./editing-context.ts";
 import type { Editing } from "./editing-context.ts";
 import { ExportStateContext } from "./export-state-context.ts";
@@ -165,7 +168,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [proposed.state, frozen]
   );
 
-  const renames = useMemo(() => structureRenames(proposals), [proposals]);
+  const renames = useMemo(() => committedRenames(proposals), [proposals]);
 
   // What an export saves: the map as it was before proposals, with the
   // pending layout changes it always showed.
@@ -273,6 +276,24 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     ]
   );
 
+  const connecting = useMemo(
+    (): Connections => ({
+      proposed,
+      canPropose: !view.stopped,
+      proposeHop: store.hops.propose,
+      refusalOfHop: store.hops.refusalOf,
+      proposeFlow: store.flows.propose,
+      refusalOfFlow: store.flows.refusalOf,
+      problemsOfHop: (change) =>
+        hopCandidateProblems({
+          before: { data: shown.data, layout: shown.layout },
+          change,
+        }),
+      discard: store.review.discardProposal,
+    }),
+    [proposed, shown, view.stopped, store]
+  );
+
   const review = useMemo((): Review => {
     const entries = reviewEntries(proposals);
 
@@ -293,38 +314,40 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       <AcceptingContext value={accepting}>
         <ReviewContext value={review}>
           <ProposedContext value={history.past ? null : proposing}>
-            <ProposalOpsContext value={history.past ? null : proposalOps}>
-              <RenamesContext value={renames}>
-                <ExportStateContext value={history.past ? null : exported}>
-                  <ProposedAddsContext value={history.past ? none : adds}>
-                    <HistoryContext value={history.panel}>
-                      <CompareContext value={history.marks}>
-                        <App
-                          state={history.drawn}
-                          notices={
-                            <>
-                              {history.banner}
-                              <ServedNotices
-                                rejection={view.rejection}
-                                stopped={view.stopped}
-                                notice={view.notice}
-                                saved={view.saved}
-                              />
-                            </>
-                          }
-                        />
-                        {history.report === null ? null : (
-                          <RestoreDialog
-                            report={history.report}
-                            onClose={history.handleCloseReport}
+            <ConnectionsContext value={history.past ? null : connecting}>
+              <ProposalOpsContext value={history.past ? null : proposalOps}>
+                <RenamesContext value={renames}>
+                  <ExportStateContext value={history.past ? null : exported}>
+                    <ProposedAddsContext value={history.past ? none : adds}>
+                      <HistoryContext value={history.panel}>
+                        <CompareContext value={history.marks}>
+                          <App
+                            state={history.drawn}
+                            notices={
+                              <>
+                                {history.banner}
+                                <ServedNotices
+                                  rejection={view.rejection}
+                                  stopped={view.stopped}
+                                  notice={view.notice}
+                                  saved={view.saved}
+                                />
+                              </>
+                            }
                           />
-                        )}
-                      </CompareContext>
-                    </HistoryContext>
-                  </ProposedAddsContext>
-                </ExportStateContext>
-              </RenamesContext>
-            </ProposalOpsContext>
+                          {history.report === null ? null : (
+                            <RestoreDialog
+                              report={history.report}
+                              onClose={history.handleCloseReport}
+                            />
+                          )}
+                        </CompareContext>
+                      </HistoryContext>
+                    </ProposedAddsContext>
+                  </ExportStateContext>
+                </RenamesContext>
+              </ProposalOpsContext>
+            </ConnectionsContext>
           </ProposedContext>
         </ReviewContext>
       </AcceptingContext>

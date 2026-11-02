@@ -1,7 +1,9 @@
 import { Schema } from "effect";
 
 import { ChapterChange } from "./chapter-change.ts";
+import { FlowChange } from "./flow-change.ts";
 import { GroupChange } from "./group-change.ts";
+import { HopChange } from "./hop-change.ts";
 import {
   answerFields,
   Batch,
@@ -91,11 +93,27 @@ export const StructureWrite = Schema.Struct({
 export type StructureWrite = typeof StructureWrite.Type;
 
 /**
- * Sets the open group proposal `id` to `change`: a new group, or a new title
- * for one. `members` are the structures that go into a new group, each with
- * the id of its own group change, which the server adds in the same write, so
- * a group made from a selection is all there or not at all.
+ * Sets the open hop proposal `id` to `change`. The page makes the id, so a
+ * retry can't add it twice. The same id with another change of the same hop
+ * and action replaces the change.
  */
+export const HopWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: HopChange,
+});
+
+export type HopWrite = typeof HopWrite.Type;
+
+/** Sets the open flow proposal `id` to `change`, as `HopWrite` does for a hop. */
+export const FlowWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: FlowChange,
+});
+
+export type FlowWrite = typeof FlowWrite.Type;
+
 /** The most structures a new group takes in when it is made from a selection. */
 export const maxGroupMembers = 200;
 
@@ -108,6 +126,12 @@ const GroupMembers = Schema.Array(GroupMember)
   .annotate({ message: membersFix })
   .check(Schema.isMaxLength(maxGroupMembers, { message: membersFix }));
 
+/**
+ * Sets the open group proposal `id` to `change`: a new group, or a new title
+ * for one. `members` are the structures that go into a new group, each with
+ * the id of its own group change, which the server adds in the same write, so
+ * a group made from a selection is all there or not at all.
+ */
 export const GroupWrite = Schema.Struct({
   baseFileRevision: Schema.Int,
   id: ChangeId,
