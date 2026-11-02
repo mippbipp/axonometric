@@ -328,12 +328,15 @@ export function EditToolbar({
               </button>
             ))}
           </div>
-          <p
-            data-toolbar-hint
-            className="min-h-4 max-w-80 text-right text-xs opacity-80"
-          >
-            {hint ?? (canDistribute ? "" : distributeNeedsThree)}
-          </p>
+          {(hint ?? (canDistribute ? "" : distributeNeedsThree)) ===
+          "" ? null : (
+            <p
+              data-toolbar-hint
+              className="max-w-80 text-right text-xs opacity-80"
+            >
+              {hint ?? distributeNeedsThree}
+            </p>
+          )}
         </div>
       ) : null}
       {refusal === undefined ? null : (

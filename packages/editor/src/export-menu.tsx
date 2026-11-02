@@ -266,7 +266,7 @@ export function ExportMenu({ view }: { readonly view: View }) {
   };
 
   return (
-    <div className="relative">
+    <div className="relative flex">
       <button
         ref={buttonRef}
         type="button"

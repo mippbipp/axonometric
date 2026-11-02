@@ -168,7 +168,7 @@ function WalkthroughPage({ notices }: Notices) {
         <h1 className="text-sm font-medium tracking-widest uppercase">
           {state.data.overview.title}
         </h1>
-        <div className="ml-auto flex gap-1.5">
+        <div className="ml-auto flex items-stretch gap-1.5">
           <ViewToggle
             view={view}
             choose={setView}
