@@ -115,7 +115,10 @@ function ServedNotices({
 const restoring = (current: MapState, revision: Revision) => {
   const ids: ChangeId[] = [];
 
-  return (changes: Parameters<typeof applyLayoutChanges>[1], accepted: MapState["layout"]) => {
+  return (
+    changes: Parameters<typeof applyLayoutChanges>[1],
+    accepted: MapState["layout"]
+  ) => {
     let used = 0;
 
     return restoreChanges({
@@ -212,15 +215,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
             redo: store.redo,
           }
         : null,
-    [
-      past,
-      accepted,
-      pending,
-      view.stopped,
-      view.canUndo,
-      view.canRedo,
-      store,
-    ]
+    [past, accepted, pending, view.stopped, view.canUndo, view.canRedo, store]
   );
 
   const accepting = useMemo(

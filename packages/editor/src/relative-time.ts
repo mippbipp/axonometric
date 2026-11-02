@@ -1,52 +1,48 @@
-const units: readonly {
-  readonly unit: Intl.RelativeTimeFormatUnit;
-  readonly seconds: number;
-}[] = [
+import { DateTime, Option } from "effect";
+
+const format = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+const units = [
   { unit: "day", seconds: 86_400 },
   { unit: "hour", seconds: 3600 },
   { unit: "minute", seconds: 60 },
-];
+] as const satisfies readonly {
+  readonly unit: Intl.RelativeTimeFormatUnit;
+  readonly seconds: number;
+}[];
 
 /** How long ago a saved date was, such as "5 minutes ago" or "yesterday". */
-export const relativeTime = (iso: string, now: Date = new Date()): string => {
-  const then = new Date(iso);
-  const seconds = Math.round((now.getTime() - then.getTime()) / 1000);
+export const relativeTime = (iso: string): string => {
+  const then = DateTime.make(iso);
 
-  if (Number.isNaN(seconds)) {
+  if (Option.isNone(then)) {
     return iso;
   }
+
+  const seconds = Math.round(
+    (DateTime.nowUnsafe().epochMilliseconds - then.value.epochMilliseconds) /
+      1000
+  );
 
   if (seconds < 45) {
     return "just now";
   }
 
-  const days = seconds / 86_400;
-
-  if (days >= 30) {
-    return then.toLocaleDateString(undefined, {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
+  if (seconds / 86_400 >= 30) {
+    return DateTime.formatLocal(then.value, { dateStyle: "medium" });
   }
 
-  const format = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const [day, , minute] = units;
 
-  const unit =
-    units.find(({ seconds: size }) => seconds >= size) ??
-    ({ unit: "minute", seconds: 60 } as const);
+  const unit = units.find((each) => seconds >= each.seconds) ?? minute ?? day;
 
   return format.format(-Math.round(seconds / unit.seconds), unit.unit);
 };
 
 /** The full date and time, for a tooltip and the revision banner. */
-export const fullDate = (iso: string): string => {
-  const date = new Date(iso);
-
-  return Number.isNaN(date.getTime())
-    ? iso
-    : date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
-};
+export const fullDate = (iso: string): string =>
+  Option.match(DateTime.make(iso), {
+    onNone: () => iso,
+    onSome: (date) =>
+      DateTime.formatLocal(date, { dateStyle: "medium", timeStyle: "short" }),
+  });

@@ -1,8 +1,9 @@
+import { cn } from "@axonometric/ui/lib/utils";
+import { Array as Arr } from "effect";
+
 import { looks, legendOrder } from "./compare-looks.ts";
 import { controlClass } from "./control-class.ts";
 import { fullDate } from "./relative-time.ts";
-import { cn } from "@axonometric/ui/lib/utils";
-import { Array as Arr } from "effect";
 
 /** What differs, as the banner counts it. */
 export interface DifferenceCount {
@@ -82,8 +83,8 @@ export function RevisionBanner({
         {` · ${message}`}
       </p>
       <p className="opacity-80">
-        You're looking at the map as it was. It's read-only, and editing is
-        off.
+        You&apos;re looking at the map as it was. It&apos;s read-only, and
+        editing is off.
       </p>
       <div className="flex flex-wrap gap-1.5">
         <button

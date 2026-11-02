@@ -16,10 +16,13 @@ export type LoadedRevision =
  * Reads revision `n` from the server. The number comes from the history the
  * server listed, and goes into the path as digits.
  */
-export const loadRevision = (
-  served: ServedPage,
-  n: number
-): Effect.Effect<LoadedRevision> =>
+export const loadRevision = ({
+  served,
+  n,
+}: {
+  readonly served: ServedPage;
+  readonly n: number;
+}): Effect.Effect<LoadedRevision> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
 

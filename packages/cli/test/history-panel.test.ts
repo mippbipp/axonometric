@@ -1,10 +1,18 @@
 import { LayoutFile, Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Path, Schema } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  FileSystem,
+  Path,
+  pipe,
+  Schema,
+  String as Str,
+} from "effect";
 import type { Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
+import { attributesOf, openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, startServe } from "./harness.ts";
 import { acceptChanges, moveOf, resizeOf } from "./revisions.ts";
@@ -57,7 +65,10 @@ const centreOf = Effect.fnUntraced(function* (page: Page, id: string) {
 
   assert.isNotNull(box);
 
-  return { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2 };
+  return {
+    x: (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    y: (box?.y ?? 0) + (box?.height ?? 0) / 2,
+  };
 });
 
 /**
@@ -76,22 +87,20 @@ const servedWithTwo = Effect.gen(function* () {
   const home = path.join(root, "review", "map");
   const serve = yield* startServe(home, ["--port", "0"]);
 
-  yield* acceptChanges(
-    serve.url,
-    0,
-    [moveOf("drop-page", "page", 4, 4)],
-    "Drop the page"
-  );
-  yield* acceptChanges(
-    serve.url,
-    2,
-    [
-      moveOf("engineer-down", "engineer", 0, 4),
-      resizeOf("page-wide", "page", 3, 2),
-      moveOf("server-down", "server", 8, 4),
+  yield* acceptChanges(serve.url, {
+    base: 0,
+    changes: [moveOf("drop-page", "page", { x: 4, y: 4 })],
+    message: "Drop the page",
+  });
+  yield* acceptChanges(serve.url, {
+    base: 2,
+    changes: [
+      moveOf("engineer-down", "engineer", { x: 0, y: 4 }),
+      resizeOf("page-wide", "page", { w: 3, d: 2 }),
+      moveOf("server-down", "server", { x: 8, y: 4 }),
     ],
-    "Spread out"
-  );
+    message: "Spread out",
+  });
 
   const opened = yield* openUrl(serve.url);
 
@@ -104,6 +113,15 @@ const servedWithTwo = Effect.gen(function* () {
 
   return { root, home, serve, ...opened };
 }).pipe(Effect.provide(NodeServices.layer));
+
+const hopAccepted =
+  '{ id: "h-pr", from: "proposals", to: "pull-request", label: "accepted" },';
+
+const hopReads =
+  '{ id: "h-read", from: "page", to: "proposals", label: "reads" },';
+
+const ringOf = (kind: string, id: string) =>
+  `[data-compare-ring="${kind}"][data-compare-structure="${id}"]`;
 
 const openHistory = Effect.fnUntraced(function* (page: Page) {
   yield* click(page, '[role="tab"][data-tab="history"]');
@@ -131,10 +149,10 @@ describe("the History panel", () => {
 
         yield* openHistory(page);
 
-        const numbers = yield* Effect.promise(() =>
-          page.locator("[data-history-list] [data-revision]").evaluateAll(
-            (rows) => rows.map((row) => row.getAttribute("data-revision"))
-          )
+        const numbers = yield* attributesOf(
+          page,
+          "[data-history-list] [data-revision]",
+          "data-revision"
         );
 
         assert.deepStrictEqual(numbers, ["2", "1"]);
@@ -143,7 +161,7 @@ describe("the History panel", () => {
           .locator('[data-history-list] [data-revision="2"]')
           .first();
 
-        const text = yield* Effect.promise(() => first.innerText());
+        const text = yield* Effect.promise(() => first.textContent());
 
         assert.include(text, "#2");
         assert.include(text, "Spread out");
@@ -162,33 +180,34 @@ describe("the History panel", () => {
     60_000
   );
 
-  it.live("adds a line when a revision is saved, without a reload", () =>
-    Effect.gen(function* () {
-      const { page, serve } = yield* servedWithTwo;
+  it.live(
+    "adds a line when a revision is saved, without a reload",
+    () =>
+      Effect.gen(function* () {
+        const { page, serve } = yield* servedWithTwo;
 
-      yield* openHistory(page);
-      assert.strictEqual(
-        yield* count(page, "[data-history-list] [data-revision]"),
-        2
-      );
+        yield* openHistory(page);
+        assert.strictEqual(
+          yield* count(page, "[data-history-list] [data-revision]"),
+          2
+        );
 
-      yield* acceptChanges(
-        serve.url,
-        4,
-        [moveOf("engineer-back", "engineer", 0, 0)],
-        "Engineer home"
-      );
+        yield* acceptChanges(serve.url, {
+          base: 4,
+          changes: [moveOf("engineer-back", "engineer", { x: 0, y: 0 })],
+          message: "Engineer home",
+        });
 
-      yield* waitFor(page, '[data-history-list] [data-revision="3"]');
+        yield* waitFor(page, '[data-history-list] [data-revision="3"]');
 
-      const first = yield* attributeOf(
-        page,
-        "[data-history-list] [data-revision]",
-        "data-revision"
-      );
+        const first = yield* attributeOf(
+          page,
+          "[data-history-list] [data-revision]",
+          "data-revision"
+        );
 
-      assert.strictEqual(first, "3");
-    }).pipe(Effect.scoped),
+        assert.strictEqual(first, "3");
+      }).pipe(Effect.scoped),
     60_000
   );
 
@@ -209,7 +228,10 @@ describe("the History panel", () => {
         assert.include(banner, "Drop the page");
         assert.include(banner, "read-only");
         assert.strictEqual(
-          yield* count(page, '[data-past-revision] [data-control="back-to-current"]'),
+          yield* count(
+            page,
+            '[data-past-revision] [data-control="back-to-current"]'
+          ),
           1
         );
 
@@ -282,9 +304,6 @@ describe("the History panel", () => {
 
         // Revision 1 against the current map: the engineer and the server
         // moved, and the page is 2 × 2 where the current map has it 3 × 2.
-        const ringOf = (kind: string, id: string) =>
-          `[data-compare-ring="${kind}"][data-compare-structure="${id}"]`;
-
         assert.strictEqual(yield* count(page, ringOf("moved", "engineer")), 1);
         assert.strictEqual(yield* count(page, ringOf("moved", "server")), 1);
         assert.strictEqual(yield* count(page, ringOf("resized", "page")), 1);
@@ -313,8 +332,11 @@ describe("the History panel", () => {
 
         // A screen reader hears the kind after the name.
         assert.include(
-          (yield* attributeOf(page, '[data-structure="engineer"]', "aria-label")) ??
-            "",
+          (yield* attributeOf(
+            page,
+            '[data-structure="engineer"]',
+            "aria-label"
+          )) ?? "",
           "moved"
         );
         assert.include(
@@ -323,8 +345,11 @@ describe("the History panel", () => {
           "resized"
         );
         assert.strictEqual(
-          (yield* attributeOf(page, '[data-structure="proposals"]', "aria-label")) ??
-            "",
+          (yield* attributeOf(
+            page,
+            '[data-structure="proposals"]',
+            "aria-label"
+          )) ?? "",
           "Proposals"
         );
 
@@ -361,12 +386,11 @@ describe("the History panel", () => {
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 
-        yield* acceptChanges(
-          serve.url,
-          0,
-          [moveOf("drop-page", "page", 4, 4)],
-          "Before the rewrite"
-        );
+        yield* acceptChanges(serve.url, {
+          base: 0,
+          changes: [moveOf("drop-page", "page", { x: 4, y: 4 })],
+          message: "Before the rewrite",
+        });
 
         // The agent edits data.mjs: renames the server, rewords a hop, drops
         // the upstream structure and its chapter reveal, drops a hop and adds one.
@@ -375,23 +399,27 @@ describe("the History panel", () => {
 
         yield* fs.writeFileString(
           dataFile,
-          data
-            .replace('name: "Save server"', 'name: "Save service"')
-            .replace('label: "write batch"', 'label: "writes a batch"')
-            .replace(
-              '{ id: "h-pr", from: "proposals", to: "pull-request", label: "accepted" },',
-              '{ id: "h-read", from: "page", to: "proposals", label: "reads" },'
-            )
+          pipe(
+            data,
+            Str.replace('name: "Save server"', 'name: "Save service"'),
+            Str.replace('label: "write batch"', 'label: "writes a batch"'),
+            Str.replace(hopAccepted, hopReads)
+          )
         );
 
         const opened = yield* openUrl(serve.url);
         const { page, errors } = opened;
 
-        yield* Effect.promise(() => page.setViewportSize({ width: 1280, height: 800 }));
+        yield* Effect.promise(() =>
+          page.setViewportSize({ width: 1280, height: 800 })
+        );
         yield* click(page, '[data-chapter-rail] button[data-chapter="c-all"]');
         yield* waitFor(page, '[data-walkthrough][data-chapter="c-all"]');
         // The page has the renamed server.
-        yield* waitFor(page, '[data-structure="server"][aria-label="Save service"]');
+        yield* waitFor(
+          page,
+          '[data-structure="server"][aria-label="Save service"]'
+        );
 
         yield* openHistory(page);
         yield* openRevision(page, 1);
@@ -404,8 +432,11 @@ describe("the History panel", () => {
 
           // The revision names the server "Save server"; the current map "Save service".
           assert.include(
-            (yield* attributeOf(page, '[data-structure="server"]', "aria-label")) ??
-              "",
+            (yield* attributeOf(
+              page,
+              '[data-structure="server"]',
+              "aria-label"
+            )) ?? "",
             "text changed"
           );
 
@@ -530,31 +561,34 @@ describe("the History panel", () => {
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 
-        yield* acceptChanges(
-          serve.url,
-          0,
-          [moveOf("drop-page", "page", 4, 4)],
-          "Before the rewrite"
-        );
+        yield* acceptChanges(serve.url, {
+          base: 0,
+          changes: [moveOf("drop-page", "page", { x: 4, y: 4 })],
+          message: "Before the rewrite",
+        });
 
         const dataFile = path.join(home, "data.mjs");
         const data = yield* fs.readFileString(dataFile);
 
         yield* fs.writeFileString(
           dataFile,
-          data
-            .replace('name: "Save server"', 'name: "Save service"')
-            .replace(
-              '{ id: "h-pr", from: "proposals", to: "pull-request", label: "accepted" },',
-              ""
-            )
+          pipe(
+            data,
+            Str.replace('name: "Save server"', 'name: "Save service"'),
+            Str.replace(hopAccepted, "")
+          )
         );
 
         const { page, errors } = yield* openUrl(serve.url);
 
-        yield* Effect.promise(() => page.setViewportSize({ width: 1280, height: 800 }));
+        yield* Effect.promise(() =>
+          page.setViewportSize({ width: 1280, height: 800 })
+        );
         yield* click(page, '[data-chapter-rail] button[data-chapter="c-all"]');
-        yield* waitFor(page, '[data-structure="server"][aria-label="Save service"]');
+        yield* waitFor(
+          page,
+          '[data-structure="server"][aria-label="Save service"]'
+        );
         yield* openHistory(page);
         yield* openRevision(page, 1);
         yield* click(page, '[data-control="restore"]');
@@ -568,9 +602,7 @@ describe("the History panel", () => {
         );
 
         const lines = yield* Effect.promise(() =>
-          page
-            .locator('[data-restore-list="meaning"] li')
-            .evaluateAll((items) => items.map((item) => item.textContent))
+          page.locator('[data-restore-list="meaning"] li').allTextContents()
         );
 
         assert.deepStrictEqual(lines, [

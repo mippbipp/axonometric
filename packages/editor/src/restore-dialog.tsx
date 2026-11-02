@@ -12,23 +12,17 @@ export interface RestoreReport {
   readonly refusal: string | undefined;
   /** Differences in what the map says, which a restore can't turn into layout changes. */
   readonly meaning: readonly string[];
-  /** Route differences, which aren't pending changes yet. */
+  /** Route differences, which aren&apos;t pending changes yet. */
   readonly routes: readonly string[];
 }
 
-/** Whether the report has anything to tell the engineer beyond a notice. */
-export const needsDialog = ({
-  restored,
-  refusal,
-  meaning,
-  routes,
-}: RestoreReport) =>
-  refusal !== undefined ||
-  meaning.length > 0 ||
-  routes.length > 0 ||
-  restored.length === 0;
-
-function Lines({ lines, name }: { readonly lines: readonly string[]; readonly name: string }) {
+function Lines({
+  lines,
+  name,
+}: {
+  readonly lines: readonly string[];
+  readonly name: string;
+}) {
   return (
     <ul className="flex list-disc flex-col gap-1 pl-5" data-restore-list={name}>
       {Arr.map(lines, (line) => (
@@ -100,14 +94,14 @@ export function RestoreDialog({
           )
         ) : (
           <p data-restore-refused role="alert">
-            The layout wasn't restored: {refusal}
+            The layout wasn&apos;t restored: {refusal}
           </p>
         )}
         {meaning.length === 0 ? null : (
           <>
             <p data-restore-meaning>
-              These differences change the map's meaning and can't be restored
-              as layout changes:
+              These differences change the map&apos;s meaning and can&apos;t be
+              restored as layout changes:
             </p>
             <Lines lines={meaning} name="meaning" />
           </>
@@ -115,8 +109,8 @@ export function RestoreDialog({
         {routes.length === 0 ? null : (
           <>
             <p data-restore-routes>
-              These route overrides differ, and routes aren't pending changes
-              yet:
+              These route overrides differ, and routes aren&apos;t pending
+              changes yet:
             </p>
             <Lines lines={routes} name="routes" />
           </>

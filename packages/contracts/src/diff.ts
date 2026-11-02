@@ -1,7 +1,14 @@
-import { Array as Arr, Equal, Option, Record as Rec } from "effect";
+import {
+  Array as Arr,
+  Equal,
+  Option,
+  Record as Rec,
+  String as Str,
+} from "effect";
+import { dual } from "effect/Function";
 
 import type { Layout, Placement } from "./layout.ts";
-import type { MapData } from "./map-data.ts";
+import type { Hop, MapData, Structure } from "./map-data.ts";
 import { applyLayoutChanges, placeStructure } from "./proposals.ts";
 import type { ChangeId, LayoutChange } from "./proposals.ts";
 
@@ -63,23 +70,38 @@ export interface MapDiff {
   readonly rerouted: readonly string[];
 }
 
-const fieldsDiffering = (
-  before: Readonly<Record<string, unknown>>,
-  after: Readonly<Record<string, unknown>>
-): readonly string[] =>
-  Arr.filter(
-    Arr.dedupe([...Rec.keys(before), ...Rec.keys(after)]),
-    (key) =>
-      key !== "id" && !Equal.equals(before[key], after[key])
-  );
+/** The fields of a structure whose values `diffMaps` compares. */
+const structureFields = [
+  "code",
+  "name",
+  "tag",
+  "shape",
+  "group",
+  "status",
+  "oneLiner",
+  "whatItDoes",
+  "howItsBuilt",
+  "steps",
+  "questions",
+  "sources",
+] as const satisfies readonly (keyof Structure)[];
+
+/** The fields of a hop whose values `diffMaps` compares. */
+const hopFields = [
+  "from",
+  "to",
+  "label",
+  "payload",
+] as const satisfies readonly (keyof Hop)[];
 
 const byId = <A extends { readonly id: string }>(items: readonly A[]) =>
   new Map(Arr.map(items, (item) => [item.id, item] as const));
 
-/** Compares two lists of items with ids. */
+/** Compares two lists of items with ids, field by field over `fields`. */
 const diffById = <A extends { readonly id: string }>(
   before: readonly A[],
-  after: readonly A[]
+  after: readonly A[],
+  fields: readonly (keyof A & string)[]
 ) => {
   const earlier = byId(before);
   const later = byId(after);
@@ -89,9 +111,16 @@ const diffById = <A extends { readonly id: string }>(
     removed: Arr.flatMap(before, ({ id }) => (later.has(id) ? [] : [id])),
     changed: Arr.flatMap(after, (item): readonly FieldChange[] => {
       const was = earlier.get(item.id);
-      const fields = was === undefined ? [] : fieldsDiffering(was, item);
 
-      return fields.length === 0 ? [] : [{ id: item.id, fields }];
+      const differing =
+        was === undefined
+          ? []
+          : Arr.filter(
+              fields,
+              (field) => !Equal.equals(was[field], item[field])
+            );
+
+      return differing.length === 0 ? [] : [{ id: item.id, fields: differing }];
     }),
   };
 };
@@ -106,9 +135,17 @@ const diffById = <A extends { readonly id: string }>(
  * has them, and a structure that is `removed` is in the current map but not
  * in the revision.
  */
-export const diffMaps = (before: MapSnapshot, after: MapSnapshot): MapDiff => {
-  const structures = diffById(before.data.structures, after.data.structures);
-  const hops = diffById(before.data.hops, after.data.hops);
+export const diffMaps: {
+  (after: MapSnapshot): (before: MapSnapshot) => MapDiff;
+  (before: MapSnapshot, after: MapSnapshot): MapDiff;
+} = dual(2, (before: MapSnapshot, after: MapSnapshot): MapDiff => {
+  const structures = diffById(
+    before.data.structures,
+    after.data.structures,
+    structureFields
+  );
+
+  const hops = diffById(before.data.hops, after.data.hops, hopFields);
   const earlier = byId(before.data.structures);
 
   const repositioned = Arr.flatMap(
@@ -159,7 +196,7 @@ export const diffMaps = (before: MapSnapshot, after: MapSnapshot): MapDiff => {
         !Equal.equals(Rec.get(routesBefore, id), Rec.get(routesAfter, id))
     ),
   };
-};
+});
 
 /**
  * The pending layout changes after a restore: `changes` with every structure
@@ -378,11 +415,11 @@ export const ghostedMap = ({
   };
 };
 
-const fieldNames: Readonly<Record<string, string>> = {
+const fieldNames = {
   oneLiner: "one-liner",
   whatItDoes: "what it does",
   howItsBuilt: "how it's built",
-};
+} as const satisfies Readonly<Record<string, string>>;
 
 const sectionPhrases: Readonly<Record<DataSection, string>> = {
   overview: "The overview differs",
@@ -402,6 +439,16 @@ const joinWords = (words: readonly string[]) => {
 const spot = ({ x, y }: Placement) => `${x}, ${y}`;
 
 const size = ({ w, d }: Placement) => `${w} × ${d}`;
+
+const differs = (
+  subject: string,
+  { fields }: FieldChange,
+  names: Readonly<Record<string, string>>
+) => {
+  const words = Arr.map(fields, (field) => names[field] ?? field);
+
+  return `${subject}: ${joinWords(words)} ${words.length === 1 ? "differs" : "differ"}`;
+};
 
 /** The differences of a compare, as sentences for a restore dialog. */
 export interface DifferenceLines {
@@ -450,16 +497,6 @@ export const describeDifferences = ({
       })
     );
 
-  const differs = (
-    subject: string,
-    { fields }: FieldChange,
-    names: Readonly<Record<string, string>>
-  ) => {
-    const words = Arr.map(fields, (field) => names[field] ?? field);
-
-    return `${subject}: ${joinWords(words)} ${words.length === 1 ? "differs" : "differ"}`;
-  };
-
   const inRevisionOnly = `is in ${revisionName}, not in the current map`;
   const inCurrentOnly = `is in the current map, not in ${revisionName}`;
   const { structures, hops } = diff;
@@ -492,13 +529,13 @@ export const describeDifferences = ({
       ...Arr.map(hops.added, (id) => hopLine(id, inRevisionOnly)),
       ...Arr.map(hops.removed, (id) => hopLine(id, inCurrentOnly)),
       ...Arr.map(hops.changed, (change) =>
-        differs(hopLine(change.id, "").trimEnd(), change, {})
+        differs(Str.trimEnd(hopLine(change.id, "")), change, {})
       ),
       ...Arr.map(diff.sections, (section) => sectionPhrases[section]),
     ],
     routes: Arr.map(
       diff.rerouted,
-      (id) => `${hopLine(id, "").trimEnd()}: route differs`
+      (id) => `${Str.trimEnd(hopLine(id, ""))}: route differs`
     ),
   };
 };

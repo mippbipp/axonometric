@@ -19,9 +19,9 @@ import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { BoxSelect } from "./box-select.tsx";
+import { useCompare } from "./compare-context.ts";
 import { CompareBadges, CompareRings } from "./compare-look.tsx";
 import { looks } from "./compare-looks.ts";
-import { useCompare } from "./compare-context.ts";
 import { fitOf } from "./fit.ts";
 import { LayoutEditor } from "./layout-editor.tsx";
 import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";

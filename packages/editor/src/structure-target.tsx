@@ -37,8 +37,9 @@ export function StructureTarget({
   const isMultiSelected = multiSelection.has(id);
 
   const isPending = pendingStructures(editing).has(id);
-  const kinds = useCompare()?.structures.get(id);
-  const marked = spokenMarks(useCompare(), id);
+  const marks = useCompare();
+  const kinds = marks?.structures.get(id);
+  const marked = spokenMarks({ marks, id });
 
   const showAtPointer = (event: PointerEvent) => {
     show({ id, x: event.clientX, y: event.clientY });

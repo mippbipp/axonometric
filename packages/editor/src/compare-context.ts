@@ -16,10 +16,13 @@ export const useCompare = (): CompareMarks | null => use(CompareContext);
  * Words for a screen reader for the marks on one structure, such as
  * "moved, text changed", or `undefined` when it has none.
  */
-export const spokenMarks = (
-  marks: CompareMarks | null,
-  id: string
-): string | undefined => {
+export const spokenMarks = ({
+  marks,
+  id,
+}: {
+  readonly marks: CompareMarks | null;
+  readonly id: string;
+}): string | undefined => {
   const found = marks?.structures.get(id);
 
   return found === undefined

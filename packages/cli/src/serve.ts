@@ -475,24 +475,21 @@ const routes = ({
       .handle("events", () => Effect.succeed(events))
   );
 
-  const historyHandlers = HttpApiBuilder.group(
-    ServerApi,
-    "history",
-    (group) =>
-      group
-        .handle("list", () =>
-          Effect.map(SubscriptionRef.get(held), ({ history }) => history)
-        )
-        .handle("revision", ({ params }) =>
-          readRevision(home, params.n).pipe(
-            Effect.flatMap(
-              Option.match({
-                onNone: () => RevisionNotFound.make({ revision: params.n }),
-                onSome: Effect.succeed,
-              })
-            )
+  const historyHandlers = HttpApiBuilder.group(ServerApi, "history", (group) =>
+    group
+      .handle("list", () =>
+        Effect.map(SubscriptionRef.get(held), ({ history }) => history)
+      )
+      .handle("revision", ({ params }) =>
+        readRevision(home, params.n).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () => RevisionNotFound.make({ revision: params.n }),
+              onSome: Effect.succeed,
+            })
           )
         )
+      )
   );
 
   const proposalHandlers = HttpApiBuilder.group(

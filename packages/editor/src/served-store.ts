@@ -982,7 +982,7 @@ export const connectServed = ({
       sameLayoutChanges(view.pending, tryEdit(edit).after)
         ? undefined
         : run(edit),
-    loadRevision: (n) => loadRevision(served, n),
+    loadRevision: (n) => loadRevision({ served, n }),
     accept: (ids, message) => {
       if (view.accepting || view.pending.length === 0) {
         return;

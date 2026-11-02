@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect } from "effect";
+import { Array as Arr, Effect, Record as Rec } from "effect";
 
 import {
   applyLayoutChanges,
@@ -23,14 +23,14 @@ const withLayout = (
   { data, layout }: MapSnapshot,
   structures: Layout["structures"],
   routes?: Layout["routes"]
-): MapSnapshot => ({
-  data,
-  layout: {
+): MapSnapshot => {
+  const next: Layout = {
     ...layout,
     structures: { ...layout.structures, ...structures },
-    ...(routes === undefined ? {} : { routes }),
-  },
-});
+  };
+
+  return { data, layout: routes === undefined ? next : { ...next, routes } };
+};
 
 const withData = (
   { data, layout }: MapSnapshot,
@@ -46,7 +46,7 @@ const review = Effect.gen(function* () {
 const ids = (changes: readonly { readonly id: string }[]) =>
   Arr.map(changes, ({ id }) => id);
 
-describe(diffMaps, () => {
+describe("diffMaps()", () => {
   it.effect("finds nothing between a map and itself", () =>
     Effect.gen(function* () {
       const map = yield* review;
@@ -90,50 +90,55 @@ describe(diffMaps, () => {
     })
   );
 
-  it.effect("reports a resize apart from a move, and both for one structure", () =>
-    Effect.gen(function* () {
-      const before = yield* review;
+  it.effect(
+    "reports a resize apart from a move, and both for one structure",
+    () =>
+      Effect.gen(function* () {
+        const before = yield* review;
 
-      const resized = diffMaps(
-        before,
-        withLayout(before, { server: { x: 8, y: 0, w: 3, d: 2 } })
-      ).structures;
+        const resized = diffMaps(
+          before,
+          withLayout(before, { server: { x: 8, y: 0, w: 3, d: 2 } })
+        ).structures;
 
-      assert.deepStrictEqual(ids(resized.resized), ["server"]);
-      assert.deepStrictEqual(resized.moved, []);
+        assert.deepStrictEqual(ids(resized.resized), ["server"]);
+        assert.deepStrictEqual(resized.moved, []);
 
-      const both = diffMaps(
-        before,
-        withLayout(before, { server: { x: 9, y: 0, w: 3, d: 2 } })
-      ).structures;
+        const both = diffMaps(
+          before,
+          withLayout(before, { server: { x: 9, y: 0, w: 3, d: 2 } })
+        ).structures;
 
-      assert.deepStrictEqual(ids(both.moved), ["server"]);
-      assert.deepStrictEqual(ids(both.resized), ["server"]);
-    })
+        assert.deepStrictEqual(ids(both.moved), ["server"]);
+        assert.deepStrictEqual(ids(both.resized), ["server"]);
+      })
   );
 
-  it.effect("lists structures only in one map as added or removed, not as moved", () =>
-    Effect.gen(function* () {
-      const before = yield* review;
+  it.effect(
+    "lists structures only in one map as added or removed, not as moved",
+    () =>
+      Effect.gen(function* () {
+        const before = yield* review;
 
-      const [first, ...rest] = before.data.structures;
+        const [first, ...rest] = before.data.structures;
 
-      assert.isDefined(first);
+        assert.isDefined(first);
+        const gone = first ?? before.data.structures[0];
 
-      const after = withData(before, (data) => ({
-        ...data,
-        structures: [
-          ...rest,
-          { ...(first ?? rest[0]!), id: "cache", code: "C", name: "Cache" },
-        ],
-      }));
+        const after = withData(before, (data) => ({
+          ...data,
+          structures: [
+            ...rest,
+            { ...gone, id: "cache", code: "C", name: "Cache" },
+          ],
+        }));
 
-      const { structures } = diffMaps(before, after);
+        const { structures } = diffMaps(before, after);
 
-      assert.deepStrictEqual(structures.added, ["cache"]);
-      assert.deepStrictEqual(structures.removed, [first?.id]);
-      assert.deepStrictEqual(structures.moved, []);
-    })
+        assert.deepStrictEqual(structures.added, ["cache"]);
+        assert.deepStrictEqual(structures.removed, [first?.id]);
+        assert.deepStrictEqual(structures.moved, []);
+      })
   );
 
   it.effect("names the text fields that changed, and ignores the rest", () =>
@@ -159,34 +164,36 @@ describe(diffMaps, () => {
     })
   );
 
-  it.effect("sees a field that is dropped, such as steps, but not one set to undefined", () =>
-    Effect.gen(function* () {
-      const before = yield* review;
+  it.effect(
+    "sees a field that is dropped, such as steps, but not one set to undefined",
+    () =>
+      Effect.gen(function* () {
+        const before = yield* review;
 
-      const dropped = withData(before, (data) => ({
-        ...data,
-        structures: Arr.map(data.structures, (structure) => {
-          const { steps: _steps, ...rest } = structure;
+        const dropped = withData(before, (data) => ({
+          ...data,
+          structures: Arr.map(data.structures, (structure) => {
+            const { steps: _steps, ...rest } = structure;
 
-          return structure.id === "page" ? rest : structure;
-        }),
-      }));
+            return structure.id === "page" ? rest : structure;
+          }),
+        }));
 
-      assert.deepStrictEqual(diffMaps(before, dropped).structures.changed, [
-        { id: "page", fields: ["steps"] },
-      ]);
+        assert.deepStrictEqual(diffMaps(before, dropped).structures.changed, [
+          { id: "page", fields: ["steps"] },
+        ]);
 
-      const unset = withData(before, (data) => ({
-        ...data,
-        structures: Arr.map(data.structures, (structure) =>
-          structure.id === "server"
-            ? { ...structure, sources: undefined }
-            : structure
-        ),
-      }));
+        const unset = withData(before, (data) => ({
+          ...data,
+          structures: Arr.map(data.structures, (structure) =>
+            structure.id === "server"
+              ? { ...structure, sources: undefined }
+              : structure
+          ),
+        }));
 
-      assert.deepStrictEqual(diffMaps(before, unset).structures.changed, []);
-    })
+        assert.deepStrictEqual(diffMaps(before, unset).structures.changed, []);
+      })
   );
 
   it.effect("compares hops: added, removed and changed text", () =>
@@ -253,148 +260,158 @@ describe(diffMaps, () => {
     Effect.gen(function* () {
       const before = yield* review;
 
-      const after = withLayout(before, {}, {
-        "h-save": [
-          { x: 6, y: 1 },
-          { x: 8, y: 1 },
-        ],
-      });
+      const after = withLayout(
+        before,
+        {},
+        {
+          "h-save": [
+            { x: 6, y: 1 },
+            { x: 8, y: 1 },
+          ],
+        }
+      );
 
       assert.deepStrictEqual(diffMaps(before, after).rerouted, ["h-save"]);
     })
   );
 });
 
-describe(restoreChanges, () => {
-  const idsFrom = (prefix: string) => {
-    let counter = 0;
+const idsFrom = (prefix: string) => {
+  let counter = 0;
 
-    return () => `${prefix}-${(counter += 1)}`;
-  };
+  return () => `${prefix}-${(counter += 1)}`;
+};
 
-  it.effect("puts every moved and resized structure where the revision has it", () =>
-    Effect.gen(function* () {
-      const current = yield* review;
+describe("restoreChanges()", () => {
+  it.effect(
+    "puts every moved and resized structure where the revision has it",
+    () =>
+      Effect.gen(function* () {
+        const current = yield* review;
 
-      const revision = withLayout(current, {
-        engineer: { x: 0, y: 4, w: 2, d: 2 },
-        page: { x: 4, y: 4, w: 2, d: 2 },
-        server: { x: 8, y: 0, w: 3, d: 2 },
-      });
+        const revision = withLayout(current, {
+          engineer: { x: 0, y: 4, w: 2, d: 2 },
+          page: { x: 4, y: 4, w: 2, d: 2 },
+          server: { x: 8, y: 0, w: 3, d: 2 },
+        });
 
-      const changes = restoreChanges({
-        current: current.data,
-        revision,
-        changes: [],
-        accepted: current.layout,
-        newId: idsFrom("r"),
-      });
+        const changes = restoreChanges({
+          current: current.data,
+          revision,
+          changes: [],
+          accepted: current.layout,
+          newId: idsFrom("r"),
+        });
 
-      assert.deepStrictEqual(changes, [
-        {
-          id: "r-1",
-          kind: "move",
-          moves: [
-            {
-              target: { kind: "structure", id: "engineer" },
-              position: { x: 0, y: 4 },
-            },
-          ],
-        },
-        {
-          id: "r-2",
+        assert.deepStrictEqual(changes, [
+          {
+            id: "r-1",
+            kind: "move",
+            moves: [
+              {
+                target: { kind: "structure", id: "engineer" },
+                position: { x: 0, y: 4 },
+              },
+            ],
+          },
+          {
+            id: "r-2",
+            kind: "move",
+            moves: [
+              {
+                target: { kind: "structure", id: "page" },
+                position: { x: 4, y: 4 },
+              },
+            ],
+          },
+          {
+            id: "r-3",
+            kind: "resize",
+            target: { kind: "structure", id: "server" },
+            footprint: { w: 3, d: 2 },
+          },
+        ]);
+        assert.deepStrictEqual(
+          applyLayoutChanges(current.layout, changes).structures,
+          revision.layout.structures
+        );
+      })
+  );
+
+  it.effect(
+    "takes over a structure's pending move instead of piling on another",
+    () =>
+      Effect.gen(function* () {
+        const accepted = yield* review;
+
+        const pending: LayoutChange = {
+          id: "mine",
           kind: "move",
           moves: [
             {
               target: { kind: "structure", id: "page" },
-              position: { x: 4, y: 4 },
+              position: { x: 4, y: 8 },
             },
           ],
-        },
-        {
-          id: "r-3",
-          kind: "resize",
-          target: { kind: "structure", id: "server" },
-          footprint: { w: 3, d: 2 },
-        },
-      ]);
-      assert.deepStrictEqual(
-        applyLayoutChanges(current.layout, changes).structures,
-        revision.layout.structures
-      );
-    })
+        };
+
+        const shown: MapSnapshot = {
+          data: accepted.data,
+          layout: applyLayoutChanges(accepted.layout, [pending]),
+        };
+
+        const revision = withLayout(accepted, {
+          page: { x: 4, y: 4, w: 2, d: 2 },
+        });
+
+        const changes = restoreChanges({
+          current: shown.data,
+          revision,
+          changes: [pending],
+          accepted: accepted.layout,
+          newId: idsFrom("r"),
+        });
+
+        assert.deepStrictEqual(ids(changes), ["mine"]);
+        assert.deepStrictEqual(
+          applyLayoutChanges(accepted.layout, changes).structures.page,
+          { x: 4, y: 4, w: 2, d: 2 }
+        );
+      })
   );
 
-  it.effect("takes over a structure's pending move instead of piling on another", () =>
-    Effect.gen(function* () {
-      const accepted = yield* review;
+  it.effect(
+    "drops a pending move when the revision has the structure at its accepted place",
+    () =>
+      Effect.gen(function* () {
+        const accepted = yield* review;
 
-      const pending: LayoutChange = {
-        id: "mine",
-        kind: "move",
-        moves: [
-          {
-            target: { kind: "structure", id: "page" },
-            position: { x: 4, y: 8 },
-          },
-        ],
-      };
+        const pending: LayoutChange = {
+          id: "mine",
+          kind: "move",
+          moves: [
+            {
+              target: { kind: "structure", id: "page" },
+              position: { x: 4, y: 8 },
+            },
+          ],
+        };
 
-      const shown: MapSnapshot = {
-        data: accepted.data,
-        layout: applyLayoutChanges(accepted.layout, [pending]),
-      };
+        const shown: MapSnapshot = {
+          data: accepted.data,
+          layout: applyLayoutChanges(accepted.layout, [pending]),
+        };
 
-      const revision = withLayout(accepted, {
-        page: { x: 4, y: 4, w: 2, d: 2 },
-      });
+        const changes = restoreChanges({
+          current: shown.data,
+          revision: accepted,
+          changes: [pending],
+          accepted: accepted.layout,
+          newId: idsFrom("r"),
+        });
 
-      const changes = restoreChanges({
-        current: shown.data,
-        revision,
-        changes: [pending],
-        accepted: accepted.layout,
-        newId: idsFrom("r"),
-      });
-
-      assert.deepStrictEqual(ids(changes), ["mine"]);
-      assert.deepStrictEqual(
-        applyLayoutChanges(accepted.layout, changes).structures.page,
-        { x: 4, y: 4, w: 2, d: 2 }
-      );
-    })
-  );
-
-  it.effect("drops a pending move when the revision has the structure at its accepted place", () =>
-    Effect.gen(function* () {
-      const accepted = yield* review;
-
-      const pending: LayoutChange = {
-        id: "mine",
-        kind: "move",
-        moves: [
-          {
-            target: { kind: "structure", id: "page" },
-            position: { x: 4, y: 8 },
-          },
-        ],
-      };
-
-      const shown: MapSnapshot = {
-        data: accepted.data,
-        layout: applyLayoutChanges(accepted.layout, [pending]),
-      };
-
-      const changes = restoreChanges({
-        current: shown.data,
-        revision: accepted,
-        changes: [pending],
-        accepted: accepted.layout,
-        newId: idsFrom("r"),
-      });
-
-      assert.deepStrictEqual(changes, []);
-    })
+        assert.deepStrictEqual(changes, []);
+      })
   );
 
   it.effect("makes nothing when no layout differs", () =>
@@ -415,7 +432,7 @@ describe(restoreChanges, () => {
   );
 });
 
-describe(compareMarks, () => {
+describe("compareMarks()", () => {
   it.effect("marks each structure and hop by what differs", () =>
     Effect.gen(function* () {
       const current = yield* review;
@@ -455,7 +472,7 @@ describe(compareMarks, () => {
   );
 });
 
-describe(ghostedMap, () => {
+describe("ghostedMap()", () => {
   it.effect("adds what only the current map has, at its current place", () =>
     Effect.gen(function* () {
       const current = yield* review;
@@ -471,8 +488,9 @@ describe(ghostedMap, () => {
         },
         layout: {
           ...current.layout,
-          structures: Object.fromEntries(
-            Object.entries(current.layout.structures).filter(
+          structures: Rec.fromEntries(
+            Arr.filter(
+              Rec.toEntries(current.layout.structures),
               ([id]) => id !== "upstream"
             )
           ),
@@ -516,7 +534,7 @@ describe(ghostedMap, () => {
   );
 });
 
-describe(describeDifferences, () => {
+describe("describeDifferences()", () => {
   it.effect("says what a restore would move, and what it can't restore", () =>
     Effect.gen(function* () {
       const current = yield* review;

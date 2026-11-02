@@ -184,6 +184,24 @@ type Tab = "details" | "questions" | "pending" | "history";
 const tabClass =
   "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-1.5 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
 
+/** The tabs to show: Pending only while the page can edit, History only when served. */
+const tabsOf = ({
+  openCount,
+  pendingCount,
+  hasHistory,
+}: {
+  readonly openCount: number;
+  readonly pendingCount: number | undefined;
+  readonly hasHistory: boolean;
+}): readonly { readonly id: Tab; readonly label: string }[] => [
+  { id: "details", label: "Details" },
+  { id: "questions", label: `Questions · ${openCount}` },
+  ...(pendingCount === undefined
+    ? []
+    : [{ id: "pending" as const, label: `Pending · ${pendingCount}` }]),
+  ...(hasHistory ? [{ id: "history" as const, label: "History" }] : []),
+];
+
 /**
  * The side panel next to the view. Details shows one of the `PanelContent`
  * kinds; Open questions lists every question revealed so far; on a page
@@ -212,21 +230,11 @@ export function SidePanel() {
     readonly selected: string | null;
   } | null>(null);
 
-  const tabs: readonly { readonly id: Tab; readonly label: string }[] = [
-    { id: "details", label: "Details" },
-    { id: "questions", label: `Questions · ${openCount}` },
-    ...(editing === null
-      ? []
-      : [
-          {
-            id: "pending" as const,
-            label: `Pending · ${editing.pending.length}`,
-          },
-        ]),
-    ...(history === null
-      ? []
-      : [{ id: "history" as const, label: "History" }]),
-  ];
+  const tabs = tabsOf({
+    openCount,
+    pendingCount: editing?.pending.length,
+    hasHistory: history !== null,
+  });
 
   const tab: Tab =
     otherTab !== null &&

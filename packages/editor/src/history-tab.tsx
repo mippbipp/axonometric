@@ -4,7 +4,8 @@ import { Array as Arr } from "effect";
 import { useHistory } from "./history-context.ts";
 import { fullDate, relativeTime } from "./relative-time.ts";
 
-const itemsText = (count: number) => `${count} ${count === 1 ? "item" : "items"}`;
+const itemsText = (count: number) =>
+  `${count} ${count === 1 ? "item" : "items"}`;
 
 /**
  * The History tab: every revision, newest first, with its number, message,
@@ -42,6 +43,7 @@ export function HistoryTab() {
                   type="button"
                   data-revision={revision}
                   aria-pressed={isOpen}
+                  aria-label={`Revision ${revision}: ${message}, ${itemsText(items)}`}
                   className={cn(
                     "border-ink focus-visible:outline-ink flex w-full cursor-pointer flex-col gap-0.5 border px-2 py-1.5 text-left text-xs focus-visible:outline-2 focus-visible:outline-offset-1",
                     isOpen ? "bg-ink text-paper" : "bg-paper text-ink"

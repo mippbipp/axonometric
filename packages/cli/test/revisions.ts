@@ -1,3 +1,10 @@
+import type {
+  AcceptWrite,
+  Footprint,
+  GridPoint,
+  LayoutChange,
+  PendingLayoutWrite,
+} from "@axonometric/contracts";
 import { NodeHttpClient } from "@effect/platform-node";
 import { assert } from "@effect/vitest";
 import { Effect } from "effect";
@@ -27,57 +34,85 @@ export const send = (request: HttpClientRequest.HttpClientRequest) =>
 export const get = (url: string, target: string) =>
   send(HttpClientRequest.get(new URL(target, url)));
 
-/** A write from the server's own origin, as the page sends it. */
-export const write = (
-  method: "put" | "post",
-  url: string,
-  target: string,
-  body: unknown
-) =>
-  send(
-    HttpClientRequest[method](new URL(target, url)).pipe(
-      HttpClientRequest.setHeaders({
-        origin: url,
-        "content-type": "application/json",
-      }),
-      HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
-    )
-  );
+const jsonType = "application/json";
 
-export const moveOf = (id: string, structure: string, x: number, y: number) => ({
-  id,
-  kind: "move",
-  moves: [{ target: { kind: "structure", id: structure }, position: { x, y } }],
+const ownOrigin = (url: string) => ({
+  origin: url,
+  "content-type": "application/json",
 });
 
-export const resizeOf = (id: string, structure: string, w: number, d: number) => ({
+const bodyText = ({
+  body,
+}: {
+  readonly body: PendingLayoutWrite | AcceptWrite;
+}) => JSON.stringify(body);
+
+/** A write from the server's own origin, as the page sends it. */
+export const write = (
+  url: string,
+  request: {
+    readonly method: "put" | "post";
+    readonly target: string;
+    readonly body: PendingLayoutWrite | AcceptWrite;
+  }
+) => {
+  const make = HttpClientRequest[request.method];
+
+  const withHeaders = HttpClientRequest.setHeaders(ownOrigin(url));
+  const withBody = HttpClientRequest.bodyText(bodyText(request), jsonType);
+
+  return send(make(new URL(request.target, url)).pipe(withHeaders, withBody));
+};
+
+export const moveOf = (
+  id: string,
+  structure: string,
+  to: GridPoint
+): LayoutChange => ({
+  id,
+  kind: "move",
+  moves: [{ target: { kind: "structure", id: structure }, position: to }],
+});
+
+export const resizeOf = (
+  id: string,
+  structure: string,
+  footprint: Footprint
+): LayoutChange => ({
   id,
   kind: "resize",
   target: { kind: "structure", id: structure },
-  footprint: { w, d },
+  footprint,
 });
+
+/** What `acceptChanges` saves and accepts. */
+export interface Acceptance {
+  /** The file revision of proposals.json before the write. */
+  readonly base: number;
+  readonly changes: readonly LayoutChange[];
+  readonly message: string;
+}
 
 /**
  * Saves `changes` as pending layout changes and accepts them as the next
- * revision. `base` is the file revision of proposals.json before the write.
+ * revision.
  */
 export const acceptChanges = Effect.fnUntraced(function* (
   url: string,
-  base: number,
-  changes: readonly unknown[],
-  message: string
+  { base, changes, message }: Acceptance
 ) {
-  const put = yield* write("put", url, "/api/proposals/layout", {
-    baseFileRevision: base,
-    layout: changes,
+  const put = yield* write(url, {
+    method: "put",
+    target: "/api/proposals/layout",
+    body: { baseFileRevision: base, layout: changes },
   });
 
   assert.strictEqual(put.status, 200, put.body);
 
-  const accepted = yield* write("post", url, "/api/proposals/accept", {
-    baseFileRevision: base + 1,
-    changeIds: "all",
-    message,
+  const accepted = yield* write(url, {
+    method: "post",
+    target: "/api/proposals/accept",
+    body: { baseFileRevision: base + 1, changeIds: "all", message },
   });
 
   assert.strictEqual(accepted.status, 200, accepted.body);

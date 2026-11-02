@@ -140,18 +140,17 @@ export class MapFilesUnreadable extends Schema.TaggedError<
 const revisionNumberMessage =
   "expected a revision number: a whole number from 1, such as 3.";
 
+const wholeFromOne = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(1, { message: revisionNumberMessage })
+);
+
 export const RevisionNumber = Schema.String.annotate({
   message: revisionNumberMessage,
 })
-  .check(Schema.isPattern(/^[1-9]\d{0,8}$/u, { message: revisionNumberMessage }))
-  .pipe(
-    Schema.decodeTo(
-      Schema.Int.check(
-        Schema.isGreaterThanOrEqualTo(1, { message: revisionNumberMessage })
-      ),
-      SchemaTransformation.numberFromString
-    )
-  );
+  .check(
+    Schema.isPattern(/^[1-9]\d{0,8}$/u, { message: revisionNumberMessage })
+  )
+  .pipe(Schema.decodeTo(wholeFromOne, SchemaTransformation.numberFromString));
 
 /** One line of the History panel: a revision, without its snapshot. */
 export const HistoryEntry = Schema.Struct({

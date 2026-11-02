@@ -7,7 +7,11 @@ import type { LoadedRevision } from "./history-client.ts";
 /** The revision the engineer chose in the History tab, and how far reading it got. */
 export type Opened =
   | { readonly revision: number; readonly status: "loading" }
-  | { readonly revision: number; readonly status: "failed"; readonly message: string }
+  | {
+      readonly revision: number;
+      readonly status: "failed";
+      readonly message: string;
+    }
   | {
       readonly revision: number;
       readonly status: "ready";
