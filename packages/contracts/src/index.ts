@@ -267,3 +267,38 @@ export {
   Severity,
   splitProblems,
 } from "./problems.ts";
+
+export {
+  Batch,
+  BatchItem,
+  Committed,
+  maxNoteLength,
+  Note,
+  NoteText,
+  Reason,
+  Verdict,
+  verdictKinds,
+} from "./proposals.ts";
+
+export {
+  batchesOf,
+  breakageOf,
+  commitBatch,
+  commitMessage,
+  dismissItem,
+  findBatchItem,
+  freezeOpen,
+  frozenLayoutChanges,
+  frozenRefusal,
+  nextBatchNumber,
+  noteEntries,
+  oldestOpenBatch,
+  openItemCount,
+  recordVerdict,
+  reviewEntries,
+  reviewPrompt,
+  summaryLine,
+  withoutVerdict,
+} from "./review.ts";
+
+export type { Committing, Frozen, ItemStatus, ReviewEntry } from "./review.ts";
