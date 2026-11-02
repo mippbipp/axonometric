@@ -15,7 +15,8 @@ import { writeAll } from "./write-files.ts";
 /** The verdict for `kind`, or why its reason is missing or too long. */
 const verdictOf = (
   kind: Verdict["verdict"],
-  reason: Option.Option<string>
+  reason: Option.Option<string>,
+  as: Option.Option<string>
 ): Result.Result<Verdict, string> => {
   const text = Option.filter(
     Option.map(reason, Str.trim),
@@ -31,6 +32,21 @@ const verdictOf = (
     return Result.fail(
       `The reason is ${tooLong.value.length} characters, over the limit of ${maxReasonLength}. Say it shorter; the details can go in data.mjs.`
     );
+  }
+
+  const finalId = Option.filter(
+    Option.map(as, Str.trim),
+    (trimmed) => trimmed !== ""
+  );
+
+  if (Option.isSome(as) && kind !== "changed") {
+    return Result.fail(
+      "--as names the id a new structure was accepted under, so it goes with a changed verdict. Use: verdict <home> <item> changed --reason \"...\" --as <id>."
+    );
+  }
+
+  if (Option.isSome(as) && Option.isNone(finalId)) {
+    return Result.fail("--as needs the structure's id in data.mjs.");
   }
 
   if (kind === "accepted") {
@@ -49,7 +65,12 @@ const verdictOf = (
           ? 'A changed verdict needs --reason, saying what you changed and why. Add --reason "...".'
           : 'A rejected verdict needs --reason, saying why. Add --reason "...".'
       ),
-    onSome: (given) => Result.succeed({ verdict: kind, reason: given }),
+    onSome: (given) =>
+      Result.succeed(
+        kind === "changed" && Option.isSome(finalId)
+          ? { verdict: kind, reason: given, as: finalId.value }
+          : { verdict: kind, reason: given }
+      ),
   });
 };
 
@@ -58,14 +79,16 @@ const verdict = Effect.fn("verdict")(function* ({
   item,
   kind,
   reason,
+  as,
 }: {
   readonly home: string;
   readonly item: string;
   readonly kind: Verdict["verdict"];
   readonly reason: Option.Option<string>;
+  readonly as: Option.Option<string>;
 }) {
   const path = yield* Path.Path;
-  const decided = verdictOf(kind, reason);
+  const decided = verdictOf(kind, reason, as);
 
   if (Result.isFailure(decided)) {
     return yield* ReviewRefused.make({
@@ -111,8 +134,13 @@ const verdict = Effect.fn("verdict")(function* ({
     onSome: (given) => ` (${given})`,
   });
 
+  const under = Option.match(as, {
+    onNone: () => "",
+    onSome: (id) => ` as ${id}`,
+  });
+
   return yield* Console.log(
-    `Recorded ${kind} on ${item}${why}. Run axonometric commit ${path.resolve(home)} once every item has a verdict.`
+    `Recorded ${kind} on ${item}${under}${why}. Run axonometric commit ${path.resolve(home)} once every item has a verdict.`
   );
 }, Effect.scoped);
 
@@ -138,6 +166,12 @@ export const verdictCommand = Command.make(
         "Why. Required for changed and rejected; the engineer reads it on the page."
       )
     ),
+    as: Flag.String("as").pipe(
+      Flag.optional,
+      Flag.withDescription(
+        "For a new structure you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes the position under it."
+      )
+    ),
   },
   verdict
 ).pipe(
@@ -145,6 +179,11 @@ export const verdictCommand = Command.make(
     "Record accepted, changed or rejected on one item of the oldest batch that has no commit, under the map's lock. A reason is required for changed and rejected."
   ),
   Command.withExamples([
+    {
+      command:
+        'axonometric verdict docs/pipeline/map p-4f2a changed --reason "Called it the build cache." --as build-cache',
+      description: "Accept a proposed structure under the id you gave it",
+    },
     {
       command:
         'axonometric verdict docs/pipeline/map n-4f2a rejected --reason "The gate already does this."',

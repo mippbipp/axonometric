@@ -96,3 +96,23 @@ export const proposedMap = ({
     removes: new Set(Arr.flatMap(all, ({ removes }) => removes)),
   };
 };
+
+/**
+ * `layout` with the ground that proposed structures take, and the frozen
+ * items applied. Layout writes and accepts are checked against this, so a
+ * move can't land on a structure the engineer has proposed.
+ */
+export const layoutUnderProposals = ({
+  data,
+  layout,
+  proposals,
+}: {
+  readonly data: MapState["data"];
+  readonly layout: MapState["layout"];
+  readonly proposals: Proposals;
+}) =>
+  proposedMap({
+    state: { system: "", data, layout },
+    // The open layout changes are what the caller checks, so they stay out.
+    proposals: { ...proposals, layout: [] },
+  }).state.layout;

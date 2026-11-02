@@ -803,6 +803,13 @@ export const engineerTextNotice =
 export const changedLayoutNotice =
   "To change a layout item, set the layout yourself with axonometric layout, then give it the verdict changed. A reroute has no command: edit the hop's entry under routes in layout.json, then give it the verdict changed.";
 
+/**
+ * Said in the prompt and in `review`'s output, for the structure items. A new
+ * structure has a provisional id; data.mjs is the agent's to edit.
+ */
+export const structureNotice =
+  "A structure item changes data.mjs, which only you edit. A new structure comes with a provisional id: add it to data.mjs under that id, or under another and give the verdict changed with --as <id>. commit writes its position to layout.json under the final id.";
+
 const needsQuotes = /[\s"'$`\\]/u;
 
 const quoted = (path: string) =>
@@ -835,6 +842,9 @@ export const reviewPrompt = ({
       "",
       `Run axonometric review ${quoted(home)}, give every item a verdict with axonometric verdict, then run axonometric commit ${quoted(home)}.`,
       changedLayoutNotice,
+      ...(Arr.some(batch.items, (item) => item.kind === "structure")
+        ? [structureNotice]
+        : []),
       engineerTextNotice,
       "",
       ...Arr.map(batch.items, (item) => `- ${summaryLine(item, names)}`),

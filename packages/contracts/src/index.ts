@@ -287,6 +287,7 @@ export {
   newChangeId,
   placeRoute,
   placeStructure,
+  proposedNames,
   Proposals,
   ProposalsFile,
   RerouteChange,
@@ -295,6 +296,7 @@ export {
   shiftedRoutes,
   sharedTarget,
   StructureMove,
+  structureRenames,
   StructureTarget,
   structuresOf,
   Target,
@@ -390,6 +392,7 @@ export {
   reviewPrompt,
   changedLayoutNotice,
   engineerTextNotice,
+  structureNotice,
   summaryLine,
   withoutVerdict,
 } from "./review.ts";
@@ -434,7 +437,11 @@ export type {
   Touches,
 } from "./review-kinds.ts";
 
-export { frozenItems, proposedMap } from "./proposed-map.ts";
+export {
+  frozenItems,
+  layoutUnderProposals,
+  proposedMap,
+} from "./proposed-map.ts";
 
 export type { ProposedMap } from "./proposed-map.ts";
 
@@ -451,6 +458,7 @@ export {
 export {
   codeOfName,
   describePlacement,
+  layoutWithAdds,
   marksOfStructureChange,
   proposedDetails,
   proposedOneLiner,

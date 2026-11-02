@@ -4,14 +4,17 @@ import {
   engineerTextNotice,
   hopLabelOf,
   oldestOpenBatch,
+  proposedNames,
   ReviewReport,
   specOf,
+  structureNotice,
 } from "@axonometric/contracts";
 import type {
   Batch,
   BatchItem,
   Hop,
   Layout,
+  MapData,
   ReportedItem,
 } from "@axonometric/contracts";
 import {
@@ -40,7 +43,9 @@ const reportItem = ({
   replaces,
   layout,
   names,
+  proposedNames,
   hops,
+  data,
 }: {
   readonly item: BatchItem;
   readonly batch: Batch;
@@ -48,17 +53,21 @@ const reportItem = ({
   readonly replaces: Readonly<Record<string, string>> | undefined;
   readonly layout: Layout;
   readonly names: ReadonlyMap<string, string>;
+  /** The names of the structures the batch proposes, by provisional id. */
+  readonly proposedNames: ReadonlyMap<string, string>;
   readonly hops: readonly Hop[];
+  readonly data: MapData;
 }): ReportedItem => {
   const spec = specOf(item);
-  const { before, after } = spec.facts(item, layout);
+  const { before, after } = spec.facts(item, layout, data);
   const structureIds = new Set(names.keys());
 
-  // A reroute acts on a hop, which the engineer knows by its label.
+  // A reroute acts on a hop, which the engineer knows by its label. A
+  // structure the engineer proposes has no name in data.mjs yet.
   const nameOf = (id: string) =>
     item.kind === "layout" && item.change.kind === "reroute"
       ? hopLabelOf(hops, id)
-      : (names.get(id) ?? id);
+      : (proposedNames.get(id) ?? names.get(id) ?? id);
 
   return {
     id: item.id,
@@ -69,7 +78,9 @@ const reportItem = ({
     })),
     before,
     after,
-    breaks: Option.getOrNull(breakageOf({ item, layout, structureIds, hops })),
+    breaks: Option.getOrNull(
+      breakageOf({ item, layout, structureIds, hops, data })
+    ),
     replaces: Option.getOrNull(Rec.get(replaces ?? {}, item.id)),
     verdict: Option.getOrNull(Rec.get(batch.verdicts, item.id)),
   };
@@ -124,7 +135,9 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
           replaces: map.proposals.replaces,
           layout: map.layout,
           names,
+          proposedNames: proposedNames(map.proposals),
           hops: map.data.hops,
+          data: map.data,
         })
       ),
   });
@@ -156,6 +169,12 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
         `Full details are in ${path.join(absolute, "proposals.json")}.`,
         engineerTextNotice,
         changedLayoutNotice,
+        ...(Arr.some(
+          oldest.value.items,
+          ({ kind }) => kind === "structure"
+        )
+          ? [structureNotice]
+          : []),
         "",
         Arr.join(described, "\n\n"),
         "",

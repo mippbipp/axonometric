@@ -285,3 +285,15 @@ export const structureBreakage = (
 
   return Option.none();
 };
+
+/**
+ * `layout` with the footprint of every structure in `changes` that adds one,
+ * so a layout change is checked against the ground proposals will take.
+ */
+export const layoutWithAdds = (
+  layout: Layout,
+  changes: readonly StructureChange[]
+): Layout =>
+  Arr.reduce(changes, layout, (so, change) =>
+    structureChangeToLayout(so, change)
+  );

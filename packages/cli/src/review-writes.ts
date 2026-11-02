@@ -1,14 +1,15 @@
 import {
   addNote,
-  applyLayoutChanges,
-  frozenLayoutChanges,
   discardNote,
+  discardStructureProposal,
   dismissItem,
   editNote,
   freezeOpen,
   hopLabelOf,
   MapFilesUnreadable,
+  proposedMap,
   ProposalRefused,
+  proposeStructure,
   reopenItem,
   reviewPrompt,
 } from "@axonometric/contracts";
@@ -16,12 +17,14 @@ import type {
   FreezeWrite,
   FreezeAnswer,
   Hop,
-  Layout,
   ItemWrite,
+  Layout,
+  MapData,
   NoteAdd,
   NoteEdit,
   Proposals,
   ReopenWrite,
+  StructureWrite,
 } from "@axonometric/contracts";
 import { DateTime, Effect, Path, Result } from "effect";
 
@@ -45,6 +48,13 @@ interface Held {
   readonly structures: ReadonlyMap<string, string>;
   /** The map's hops, with their labels. */
   readonly hops: readonly Hop[];
+  /** The map's data, as the last build left it. */
+  readonly data: MapData;
+  /**
+   * The layout structure proposals land on: the accepted layout with the
+   * frozen items applied and every proposed structure placed.
+   */
+  readonly shownLayout: Layout;
   readonly now: string;
 }
 
@@ -77,13 +87,19 @@ const writeProposals = Effect.fnUntraced(
     const changed = change({
       proposals: map.proposals,
       // The layout an open change lands on: the accepted one with the
-      // changes frozen in batches applied.
-      layout: applyLayoutChanges(
-        map.layout,
-        frozenLayoutChanges(map.proposals)
-      ),
+      // items frozen in batches applied.
+      layout: proposedMap({
+        state: { system: "", data: map.data, layout: map.layout },
+        proposals: map.proposals,
+        open: false,
+      }).state.layout,
       structures: structureNames(map.data),
       hops: map.data.hops,
+      data: map.data,
+      shownLayout: proposedMap({
+        state: { system: "", data: map.data, layout: map.layout },
+        proposals: map.proposals,
+      }).state.layout,
       now,
     });
 
@@ -175,7 +191,7 @@ export const dismissWrite = editing<ItemWrite>(
 /** Reopens a rejected item as a new open item linked to it. */
 export const reopenWrite = editing<ReopenWrite>(
   "reopenWrite",
-  ({ proposals, layout, structures, hops }, { id, newId, text }) =>
+  ({ proposals, layout, structures, hops, data }, { id, newId, text }) =>
     reopenItem({
       proposals,
       id,
@@ -183,8 +199,31 @@ export const reopenWrite = editing<ReopenWrite>(
       layout,
       known: new Set(structures.keys()),
       hops,
+      data,
       text,
     })
+);
+
+/**
+ * Sets an open structure proposal: adds a structure, deletes or changes one,
+ * or moves a structure the engineer proposed. Refused when it names a group
+ * the map lacks or lands on another footprint.
+ */
+export const setStructureWrite = editing<StructureWrite>(
+  "setStructureWrite",
+  ({ proposals, data, shownLayout }, { id, change }) =>
+    proposeStructure({
+      proposals,
+      id,
+      change,
+      world: { data, layout: shownLayout },
+    })
+);
+
+/** Removes an open structure proposal. */
+export const discardStructureWrite = editing<ItemWrite>(
+  "discardStructureWrite",
+  ({ proposals }, { id }) => discardStructureProposal({ proposals, id })
 );
 
 /**

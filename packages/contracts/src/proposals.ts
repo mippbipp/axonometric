@@ -481,6 +481,60 @@ export const emptyProposals: Proposals = {
   layout: [],
 };
 
+/** Every structure item in a batch that no commit has closed, and every open one. */
+const waitingStructureChanges = (
+  proposals: Pick<Proposals, "structures" | "batches">
+) => [
+  ...Arr.map(proposals.structures ?? [], ({ change }) => change),
+  ...Arr.flatMap(proposals.batches ?? [], (batch) =>
+    batch.committed === undefined
+      ? Arr.flatMap(batch.items, (item) =>
+          item.kind === "structure" ? [item.change] : []
+        )
+      : []
+  ),
+];
+
+/**
+ * The structures that open and frozen proposals add, by their provisional id,
+ * with the name each was proposed under. data.mjs has none of them yet.
+ */
+export const proposedNames = (
+  proposals: Pick<Proposals, "structures" | "batches">
+): ReadonlyMap<string, string> =>
+  new Map(
+    Arr.flatMap(waitingStructureChanges(proposals), (change) =>
+      change.action === "add"
+        ? [[change.structure.id, change.structure.name] as const]
+        : []
+    )
+  );
+
+/**
+ * The provisional ids that committed batches gave final ids, keyed by
+ * provisional id. The page follows them: a selection of `new-1` becomes a
+ * selection of the id the agent accepted it under.
+ */
+export const structureRenames = (
+  proposals: Pick<Proposals, "batches">
+): ReadonlyMap<string, string> =>
+  new Map(
+    Arr.flatMap(proposals.batches ?? [], (batch) =>
+      batch.committed === undefined
+        ? []
+        : Arr.flatMap(batch.items, (item) => {
+            const verdict = batch.verdicts[item.id];
+
+            return item.kind === "structure" &&
+              item.change.action === "add" &&
+              verdict?.verdict === "changed" &&
+              verdict.as !== undefined
+              ? [[item.change.structure.id, verdict.as] as const]
+              : [];
+          })
+    )
+  );
+
 /** A fresh change id: twelve random hex digits. */
 export const newChangeId = (): ChangeId => {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(6));
@@ -1038,8 +1092,13 @@ export const checkProposals: {
     layout: Layout,
     proposals: Proposals
   ): readonly MapProblem[] => {
+    const proposed = proposedNames(proposals);
+
     const known = {
-      structure: new Set(Arr.map(data.structures, ({ id }) => id)),
+      structure: new Set([
+        ...Arr.map(data.structures, ({ id }) => id),
+        ...proposed.keys(),
+      ]),
       hop: new Set(Arr.map(data.hops, ({ id }) => id)),
     };
 
@@ -1109,6 +1168,43 @@ export const checkProposals: {
           ]
     );
 
-    return [...stale, ...overlaps, ...offEnds, ...orphaned];
+    const mapIds = new Set(Arr.map(data.structures, ({ id }) => id));
+
+    const staleStructures = Arr.flatMap(
+      proposals.structures ?? [],
+      ({ change }, index) => {
+        const id = change.action === "add" ? change.structure.id : change.structure;
+
+        if (change.action === "add") {
+          return mapIds.has(id)
+            ? [
+                mapWarning({
+                  file: "proposals.json",
+                  path: ["structures", index, "change", "structure", "id"],
+                  message: `data.mjs already has a structure with the id "${id}", which this proposal adds. Discard it from the page's Pending list.`,
+                }),
+              ]
+            : [];
+        }
+
+        return mapIds.has(id)
+          ? []
+          : [
+              mapWarning({
+                file: "proposals.json",
+                path: ["structures", index, "change", "structure"],
+                message: `no structure in data.mjs has the id "${id}", so this ${change.action} does nothing. Discard it from the page's Pending list.`,
+              }),
+            ];
+      }
+    );
+
+    return [
+      ...stale,
+      ...overlaps,
+      ...offEnds,
+      ...orphaned,
+      ...staleStructures,
+    ];
   }
 );

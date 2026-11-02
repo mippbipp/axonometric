@@ -62,8 +62,10 @@ import {
   discardNoteWrite,
   dismissWrite,
   editNoteWrite,
+  discardStructureWrite,
   freezeWrite,
   reopenWrite,
+  setStructureWrite,
 } from "./review-writes.ts";
 import { recordServer, runningServer } from "./server-state.ts";
 
@@ -470,6 +472,8 @@ const routes = ({
     notes: Str.slice(1)(serverPaths.notes),
     editNote: Str.slice(1)(serverPaths.editNote),
     discardNote: Str.slice(1)(serverPaths.discardNote),
+    structure: Str.slice(1)(serverPaths.structure),
+    discardStructure: Str.slice(1)(serverPaths.discardStructure),
     freeze: Str.slice(1)(serverPaths.freeze),
     dismiss: Str.slice(1)(serverPaths.dismiss),
     reopen: Str.slice(1)(serverPaths.reopen),
@@ -518,7 +522,7 @@ const routes = ({
             Effect.flatMap(({ good }) =>
               writePendingLayout(
                 home,
-                { write: payload, hops: good.data.hops },
+                { write: payload, hops: good.data.hops, data: good.data },
                 (proposals) =>
                   SubscriptionRef.update(held, (current) => ({
                     ...current,
@@ -574,6 +578,8 @@ const routes = ({
       .handle("addNote", reviewing(addNoteWrite))
       .handle("editNote", reviewing(editNoteWrite))
       .handle("discardNote", reviewing(discardNoteWrite))
+      .handle("setStructure", reviewing(setStructureWrite))
+      .handle("discardStructure", reviewing(discardStructureWrite))
       .handle("freeze", reviewing(freezeWrite))
       .handle("dismiss", reviewing(dismissWrite))
       .handle("reopen", reviewing(reopenWrite))
