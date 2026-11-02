@@ -622,14 +622,18 @@ describe("a reroute in the review loop", () => {
         yield* Effect.promise(() =>
           page.locator('[role="tab"][data-tab="pending"]').click()
         );
+
+        // The page hears of the commit over its event stream. Until it has,
+        // the reroute is still frozen and a reset would be refused.
+        yield* waitGone(page, '[data-review-state="frozen"]');
         yield* waitFor(page, '[data-route-override="h-store"]');
         yield* Effect.promise(() =>
           page.locator('[data-reset-route="h-store"]').first().click()
         );
 
-        // The reroute's write made revision 1, the freeze 2, the commit 3,
-        // and the reset 4.
-        const after = yield* waitForRevision(home, 4);
+        // The reroute's write made revision 1, the freeze 2, the verdict 3,
+        // the commit 4, and the reset 5.
+        const after = yield* waitForRevision(home, 5);
 
         assert.deepStrictEqual(
           Arr.map(reroutesIn(after), ({ points }) => points),
