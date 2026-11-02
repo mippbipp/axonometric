@@ -11,7 +11,7 @@ import type {
   SegmentGuide,
   View,
 } from "@axonometric/contracts";
-import { Array as Arr, Option } from "effect";
+import { Array as Arr, Duration, Effect, Option } from "effect";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
@@ -23,6 +23,9 @@ import { useSelection } from "./selection-context.ts";
 
 /** How far a press must move before it drags a segment, in pixels. */
 const dragThreshold = 4;
+
+/** How long after a press the click that follows it is still swallowed. */
+const clickWindow = Duration.millis(60);
 
 /** How wide a segment's invisible hit line is, in drawing units. */
 const hitWidth = 10;
@@ -89,7 +92,6 @@ function Segments({
   readonly view: View;
   readonly onHover: (hop: string | null) => void;
 }) {
-  const { selectHop } = useSelection();
   const ground = groundProjections[view];
 
   const guides = segmentGuides({
@@ -124,11 +126,6 @@ function Segments({
             }}
             onPointerLeave={() => {
               onHover(null);
-            }}
-            onClick={() => {
-              // The map surface clears the selection on the way up, and
-              // React's handler runs after it.
-              selectHop(routed.hop.id);
             }}
           >
             <title>{routed.hop.label}</title>
@@ -168,11 +165,13 @@ export function RouteEditor({
   readonly children: ReactNode;
 }) {
   const editing = useEditing();
-  const { selectedHop } = useSelection();
+  const { selectedHop, selectHop } = useSelection();
   const preview = useDragPreview();
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
   const dragged = useRef(false);
+  // Set after a press ends, so the click that follows it is swallowed.
+  const swallow = useRef(false);
   const [drag, setDrag] = useState<Drag | undefined>();
   const live = editing?.canEdit === true;
 
@@ -183,8 +182,9 @@ export function RouteEditor({
     const element = root.current;
 
     const onClick = (event: MouseEvent) => {
-      if (dragged.current) {
+      if (dragged.current || swallow.current) {
         dragged.current = false;
+        swallow.current = false;
         event.stopPropagation();
         event.preventDefault();
       }
@@ -247,6 +247,11 @@ export function RouteEditor({
     }
 
     dragged.current = false;
+    swallow.current = false;
+
+    // A segment is thin, so the pointer leaves it within a step or two of
+    // a drag. Capturing at once keeps the moves coming.
+    element.setPointerCapture(event.pointerId);
     press.current = {
       hop,
       segment: Number(target.dataset.segment),
@@ -332,6 +337,20 @@ export function RouteEditor({
     }
 
     press.current = undefined;
+
+    // The click that follows a press on a segment would clear the
+    // selection. A press that never moved picks the hop instead.
+    swallow.current = true;
+
+    const release = Effect.sync(() => {
+      swallow.current = false;
+    });
+
+    Effect.runFork(Effect.sleep(clickWindow).pipe(Effect.andThen(release)));
+
+    if (drop && !dragged.current) {
+      selectHop(current.hop);
+    }
 
     if (
       drop &&

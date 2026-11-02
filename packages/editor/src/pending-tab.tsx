@@ -33,8 +33,8 @@ const describe = (
 
     return [
       change.points === null
-        ? `${hop} reset to automatic routing`
-        : `${hop} rerouted by hand`,
+        ? `Route ${hop} reset to automatic routing`
+        : `Route ${hop} set by hand`,
     ];
   }
 
@@ -89,9 +89,7 @@ export function PendingTab() {
   const hopName = (id: string) => {
     const hop = hopNames.get(id);
 
-    return hop === undefined
-      ? id
-      : `the route ${nameOf(hop.from)} to ${nameOf(hop.to)}`;
+    return hop === undefined ? id : `${nameOf(hop.from)} to ${nameOf(hop.to)}`;
   };
 
   const namesOf = (change: LayoutChange) =>
@@ -245,7 +243,7 @@ export function PendingTab() {
                   type="button"
                   data-reset-route={id}
                   className={controlClass}
-                  aria-label={`Reset ${hopName(id)}`}
+                  aria-label={`Reset the route ${hopName(id)}`}
                   onClick={() => {
                     setRefusal(editing.reroute(id, null));
                   }}

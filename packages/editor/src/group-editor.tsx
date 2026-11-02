@@ -168,6 +168,10 @@ export function GroupEditor({
     );
 
     dragged.current = false;
+
+    // A title is small, so the pointer leaves it within a step or two of
+    // a drag. Capturing at once keeps the moves coming.
+    element.setPointerCapture(event.pointerId);
     press.current = {
       group,
       pointer: event.pointerId,
