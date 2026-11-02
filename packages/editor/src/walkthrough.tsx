@@ -1,10 +1,9 @@
-import { chapterStopsOf } from "@axonometric/contracts";
-import type { MapState } from "@axonometric/contracts";
+import { chapterStopsOf, defaultFlowChoice } from "@axonometric/contracts";
+import type { FlowChoice, MapState } from "@axonometric/contracts";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { chapterPlayOf, defaultFlowChoice } from "./chapters.ts";
-import type { FlowChoice } from "./chapters.ts";
+import { chapterPlayOf } from "./chapters.ts";
 import { WalkthroughContext } from "./walkthrough-context.ts";
 import type { Walkthrough } from "./walkthrough-context.ts";
 
@@ -35,7 +34,7 @@ export function WalkthroughProvider({
   const isLast = index === last;
 
   const flowChoice =
-    position.choice ?? defaultFlowChoice({ state, stop, isLast });
+    position.choice ?? defaultFlowChoice({ data: state.data, stop, isLast });
 
   const value = useMemo((): Walkthrough => {
     const goTo = (target: number) => {

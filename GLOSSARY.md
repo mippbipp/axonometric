@@ -120,6 +120,10 @@ _Avoid_: focus, active structure
 The set of structures that move, nudge, align and distribute together. It is separate from the selection, which pins one structure's panel, and it opens no panel.
 _Avoid_: group selection, marquee
 
+**Spotlight**:
+The hops, and the structures at their ends, that the map draws at full strength while it fades the rest. It follows what the pointer is on or the keyboard has focused, else what's pinned, else what the chapter or the picked flow plays.
+_Avoid_: focus, highlight
+
 **Side index**:
 The list of every structure by group, next to the view.
 _Avoid_: sidebar, legend

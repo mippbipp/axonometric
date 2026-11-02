@@ -32,6 +32,7 @@ import { useSelectionKeys } from "./selection-keys.ts";
 import { SelectionProvider } from "./selection.tsx";
 import { SideIndex } from "./side-index.tsx";
 import { SidePanel } from "./side-panel.tsx";
+import { SpotlightProvider } from "./spotlight.tsx";
 import { hasSteps, useStructuresById } from "./structures.ts";
 import { ThemeToggle } from "./theme.tsx";
 import { StructureTooltip, TooltipProvider } from "./tooltip.tsx";
@@ -288,9 +289,11 @@ export function App({
       <PlaybackProvider>
         <SelectionProvider>
           <TooltipProvider>
-            <OverviewPageProvider>
-              <WalkthroughPage notices={notices} />
-            </OverviewPageProvider>
+            <SpotlightProvider>
+              <OverviewPageProvider>
+                <WalkthroughPage notices={notices} />
+              </OverviewPageProvider>
+            </SpotlightProvider>
           </TooltipProvider>
         </SelectionProvider>
       </PlaybackProvider>

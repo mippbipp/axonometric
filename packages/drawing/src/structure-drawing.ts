@@ -16,6 +16,11 @@ export interface StructureFrameProps {
   readonly status: Status;
   /** Whether the chapter reveals the structure, so it's drawn as new. */
   readonly isNew: boolean;
+  /**
+   * Whether the spotlight fades the structure, or `undefined` when there is
+   * no spotlight.
+   */
+  readonly faded: boolean | undefined;
   /** The paint the frame gives every part by inheritance. */
   readonly look: Look;
   readonly children: ReactNode;
@@ -29,4 +34,6 @@ export interface StructureDrawingProps {
   readonly hatch: string;
   /** Whether the chapter reveals the structure, so it's drawn as new. */
   readonly isNew: boolean;
+  /** As `StructureFrameProps.faded`. */
+  readonly faded: boolean | undefined;
 }

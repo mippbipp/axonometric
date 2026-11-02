@@ -594,6 +594,7 @@ export function IsoStructure({
   placed: { structure, placement, chip },
   hatch,
   isNew,
+  faded,
 }: StructureDrawingProps) {
   const { paint, Frame } = useDrawing();
   const Drawing = drawings[structure.shape];
@@ -606,6 +607,7 @@ export function IsoStructure({
       shape={structure.shape}
       status={structure.status}
       isNew={isNew}
+      faded={faded}
       look={look}
     >
       <LookContext value={look}>

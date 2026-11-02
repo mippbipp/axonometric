@@ -33,6 +33,7 @@ export { groundOutline, toPoints } from "./ground-outline.ts";
 export {
   dashes,
   exportFontFamily,
+  fadedOpacity,
   exportFontStack,
   palette,
   whiteBackground,
@@ -130,6 +131,20 @@ export { arrowHalfWidth } from "./ends.ts";
 export { drawnRoutes } from "./fans.ts";
 
 export { laneGap, laneRoutes, laneWidths } from "./lanes.ts";
+
+export {
+  chapterSpotlightOf,
+  defaultFlowChoice,
+  playedHopsOf,
+  spotlightOf,
+} from "./spotlight.ts";
+
+export type {
+  FlowChoice,
+  Spotlight,
+  SpotlightChoice,
+  SpotlightTarget,
+} from "./spotlight.ts";
 
 export { routeCap, routeHops, routeLength, routeRevealed } from "./routing.ts";
 

@@ -19,6 +19,7 @@ export function PageFrame({
   shape,
   status,
   isNew,
+  faded,
   look,
   children,
 }: StructureFrameProps) {
@@ -28,7 +29,7 @@ export function PageFrame({
       data-shape={shape}
       data-status={status}
       data-new={isNew}
-      {...frameAttributes(look)}
+      {...frameAttributes({ look, faded })}
     >
       {children}
     </StructureTarget>

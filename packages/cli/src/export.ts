@@ -1,5 +1,7 @@
 import {
+  chapterSpotlightOf,
   chapterStopsOf,
+  defaultFlowChoice,
   excalidrawOf,
   excalidrawText,
   exportName,
@@ -8,7 +10,12 @@ import {
   views,
   whiteBackground,
 } from "@axonometric/contracts";
-import type { ChapterStop, MapState, View } from "@axonometric/contracts";
+import type {
+  ChapterStop,
+  FlowChoice,
+  MapState,
+  View,
+} from "@axonometric/contracts";
 import { svgFileOf } from "@axonometric/drawing";
 import {
   Array as Arr,
@@ -78,6 +85,68 @@ const unknownChapter = (stops: readonly ChapterStop[], input: string) => {
   return `Unknown chapter "${input}". Use a number from 1 to ${stops.length}, or an id. The chapters are: ${listed}.`;
 };
 
+/**
+ * The flow choice `--flow` names. Without it, what the page starts the
+ * chapter on. A flow is chosen in the last chapter only, as on the page's
+ * flow picker, and only among the map's flows.
+ */
+const flowChoiceOf = ({
+  state,
+  stop,
+  chapters,
+  index,
+  input,
+}: {
+  readonly state: MapState;
+  readonly chapters: number;
+  /** The chapter's index, from 0. */
+  readonly index: number;
+  readonly stop: ChapterStop | undefined;
+  readonly input: Option.Option<string>;
+}): Effect.Effect<FlowChoice, ExportRejected> => {
+  if (stop === undefined) {
+    return Effect.succeed({ kind: "chapter" });
+  }
+
+  const isLast = index === chapters - 1;
+
+  if (Option.isNone(input)) {
+    return Effect.succeed(
+      defaultFlowChoice({ data: state.data, stop, isLast })
+    );
+  }
+
+  const { flows } = state.data;
+  const named = input.value;
+
+  if (!isLast) {
+    return Effect.fail(
+      ExportRejected.make({
+        reason: `--flow picks a flow to play in the last chapter, and chapter "${stop.id}" isn't the last. Leave --flow out, or use --chapter ${chapters}.`,
+      })
+    );
+  }
+
+  if (named === "all") {
+    return Effect.succeed({ kind: "all" });
+  }
+
+  if (Arr.some(flows, (flow) => flow.id === named)) {
+    return Effect.succeed({ kind: "flow", id: named });
+  }
+
+  const ids = Arr.join(
+    Arr.map(flows, (flow) => flow.id),
+    ", "
+  );
+
+  return Effect.fail(
+    ExportRejected.make({
+      reason: `Unknown flow "${named}". Use all${ids === "" ? "" : ` or one of the map's flows: ${ids}`}.`,
+    })
+  );
+};
+
 /** What `export` draws, from the options. */
 export interface ExportRequest {
   readonly home: string;
@@ -85,6 +154,11 @@ export interface ExportRequest {
   readonly view: View;
   /** A chapter's id or number. The last chapter when left out. */
   readonly chapter: Option.Option<string>;
+  /**
+   * The flow to play in the last chapter: a flow's id, or `all`. The
+   * chapter's own hops when left out.
+   */
+  readonly flow: Option.Option<string>;
   readonly background: Background;
   readonly output: Option.Option<string>;
 }
@@ -129,6 +203,8 @@ interface Drawing {
   readonly background: Background;
   /** The chapter's index, from 0. */
   readonly chapter: number;
+  /** What the chapter or flow plays, as the page's flow picker would. */
+  readonly choice: FlowChoice;
 }
 
 /**
@@ -155,7 +231,30 @@ const contentOf = Effect.fnUntraced(function* (
     );
   }
 
-  const { text } = svgFileOf({ ...drawing, theme: "light" });
+  const { state, chapter, choice } = drawing;
+  const stop = chapterStopsOf(state)[chapter];
+
+  // Nothing is hovered or pinned in a file, so the spotlight is what the
+  // chapter or the picked flow plays: the page's, with no hover and no pin.
+  const spotlight =
+    stop === undefined
+      ? null
+      : chapterSpotlightOf({
+          data: state.data,
+          stop,
+          choice,
+          hovered: null,
+          pinned: null,
+        });
+
+  const { text } = svgFileOf({
+    state,
+    view: drawing.view,
+    chapter,
+    background: drawing.background,
+    theme: "light",
+    spotlight,
+  });
 
   return format === "svg" ? text : yield* rasterise(text, pngScale);
 });
@@ -192,6 +291,16 @@ const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
       ),
   });
 
+  const stop = stops[index];
+
+  const choice = yield* flowChoiceOf({
+    state,
+    stop,
+    chapters: stops.length,
+    index,
+    input: request.flow,
+  });
+
   yield* printNotes({ warnings, sourcesSkipped });
 
   const target = Option.isSome(request.output)
@@ -209,6 +318,7 @@ const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
     view,
     background,
     chapter: index,
+    choice,
   });
 
   yield* fs.makeDirectory(path.dirname(target), { recursive: true });
@@ -247,6 +357,12 @@ export const exportCommand = Command.make(
         "The chapter to draw, by its number from 1 or its id. Without it, the last chapter, which shows the whole map. Excalidraw files ignore it."
       )
     ),
+    flow: Flag.String("flow").pipe(
+      Flag.optional,
+      Flag.withDescription(
+        "In the last chapter, the flow to play: a flow's id, or all. The spotlight holds that flow's hops and fades the rest; all fades nothing. Without it, the chapter's own hops."
+      )
+    ),
     background: choice("background", backgrounds).pipe(
       Flag.withDefault("paper"),
       Flag.withDescription("The background colour")
@@ -268,6 +384,11 @@ export const exportCommand = Command.make(
     {
       command: "axonometric export docs/pipeline/map --format excalidraw",
       description: "Write pipeline.excalidraw next to SYSTEM.md",
+    },
+    {
+      command: "axonometric export docs/pipeline/map --flow f-repair",
+      description:
+        "Draw the last chapter with one flow's hops in the spotlight",
     },
     {
       command:

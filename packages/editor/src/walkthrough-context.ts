@@ -1,7 +1,7 @@
-import type { ChapterStop, MapState } from "@axonometric/contracts";
+import type { ChapterStop, FlowChoice, MapState } from "@axonometric/contracts";
 import { createContext, use } from "react";
 
-import type { FlowChoice, PacketRun } from "./chapters.ts";
+import type { PacketRun } from "./chapters.ts";
 
 /**
  * The walkthrough's state, shared by every view of the map. Views read
