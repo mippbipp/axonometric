@@ -1,0 +1,463 @@
+import { ProposalsFile } from "@axonometric/contracts";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, it } from "@effect/vitest";
+import { Array as Arr, Effect, FileSystem, Path, Schema } from "effect";
+import type { Page } from "playwright";
+
+import { literal, openUrl } from "./browser.ts";
+import { fullMap } from "./fixtures.ts";
+import { makeHome, runCli, startServe } from "./harness.ts";
+
+// Notes on a hop and on an empty spot, against a real serve: pinned from the
+// hop's panel and the Note tool, drawn as rings clear of text and boxes in
+// both views, and left out of an export.
+
+const wait = { timeout: 15_000 };
+
+const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
+
+const served = Effect.gen(function* () {
+  const path = yield* Path.Path;
+  const root = yield* makeHome(yield* fullMap);
+  const home = path.join(root, "review", "map");
+  const serve = yield* startServe(home, ["--port", "0"]);
+  const opened = yield* openUrl(serve.url);
+
+  yield* Effect.promise(() =>
+    opened.page.setViewportSize({ width: 1280, height: 800 })
+  );
+
+  return { root, home, serve, ...opened };
+}).pipe(Effect.provide(NodeServices.layer));
+
+const waitFor = (page: Page, selector: string) =>
+  Effect.promise(() => page.locator(selector).first().waitFor(wait));
+
+const click = (page: Page, selector: string) =>
+  Effect.promise(() => page.locator(selector).first().click());
+
+const fill = (page: Page, selector: string, text: string) =>
+  Effect.promise(() => page.locator(selector).first().fill(text));
+
+const count = (page: Page, selector: string) =>
+  Effect.promise(() => page.locator(selector).count());
+
+const readProposals = Effect.fnUntraced(function* (home: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+
+  return yield* decodeProposals(
+    yield* fs.readFileString(path.join(home, "proposals.json"))
+  );
+}, Effect.provide(NodeServices.layer));
+
+const views = ["iso", "plan"] as const;
+
+const showView = Effect.fnUntraced(function* (
+  page: Page,
+  view: (typeof views)[number]
+) {
+  yield* click(page, `[data-view-toggle] [data-view="${view}"]`);
+  yield* waitFor(page, `[data-walkthrough][data-view="${view}"]`);
+});
+
+/** Opens the last chapter, which shows every hop, and stops the packets. */
+const openAll = Effect.fnUntraced(function* (page: Page) {
+  yield* click(page, '[data-chapter-rail] button[data-chapter="c-all"]');
+  yield* waitFor(page, '[data-walkthrough][data-chapter="c-all"]');
+  yield* click(page, '[data-playback-controls] [data-control="pause"]');
+});
+
+/**
+ * A point on screen where a segment of hop `id` is the topmost element, so a
+ * press there selects the hop. In the Iso view a segment can run under a box,
+ * so the points along every segment are tried until one is not covered.
+ */
+const pointOnHop = (page: Page, id: string) =>
+  Effect.promise(() =>
+    page.evaluate<{ x: number; y: number } | null>(`((id) => {
+      const segments = document.querySelectorAll(
+        '[data-route-segment][data-hop-id="' + id + '"]'
+      );
+
+      for (const segment of segments) {
+        const length = segment.getTotalLength();
+
+        for (let share = 0.5, step = 0; step < 40; step += 1) {
+          const along = 0.5 + (step % 2 === 0 ? 1 : -1) * Math.ceil(step / 2) * 0.0125;
+          const at = segment.getPointAtLength(length * Math.min(Math.max(along, 0.02), 0.98));
+          const m = segment.getScreenCTM();
+          const x = m.a * at.x + m.c * at.y + m.e;
+          const y = m.b * at.x + m.d * at.y + m.f;
+          const top = document.elementFromPoint(x, y);
+
+          if (top === segment) {
+            return { x, y };
+          }
+        }
+      }
+
+      return null;
+    })(${literal(id)})`)
+  );
+
+/**
+ * Presses a point on hop `id`, which selects the hop. The segment is a thin
+ * hit line, so it is pressed by position.
+ */
+const selectHop = Effect.fnUntraced(function* (page: Page, id: string) {
+  const at = yield* pointOnHop(page, id);
+
+  assert.isNotNull(at, `no uncovered point on hop ${id}`);
+  yield* Effect.promise(() => page.mouse.click(at?.x ?? 0, at?.y ?? 0));
+  yield* waitFor(page, `[data-hop-panel="${id}"]`);
+});
+
+/** Pins `text` from the open hop panel. */
+const noteOnHop = Effect.fnUntraced(function* (page: Page, text: string) {
+  yield* fill(page, "[data-hop-panel] [data-note-text]", text);
+  yield* click(page, "[data-hop-panel] [data-note-send]");
+});
+
+/** Arms the Note tool and clicks on empty ground at `at`, a share of the map area. */
+const pinSpot = Effect.fnUntraced(function* (
+  page: Page,
+  at: { readonly x: number; readonly y: number },
+  text: string
+) {
+  yield* click(page, '[data-control="note-tool"]');
+  yield* waitFor(page, "[data-spot-picker]");
+
+  const box = yield* Effect.promise(() =>
+    page.locator("[data-map-surface]").boundingBox()
+  );
+
+  assert.isNotNull(box);
+
+  yield* Effect.promise(() =>
+    page.mouse.click(
+      (box?.x ?? 0) + (box?.width ?? 0) * at.x,
+      (box?.y ?? 0) + (box?.height ?? 0) * at.y
+    )
+  );
+  yield* waitFor(page, "[data-spot-panel]");
+  yield* fill(page, "[data-spot-panel] [data-note-text]", text);
+  yield* click(page, "[data-spot-panel] [data-note-send]");
+});
+
+interface Box {
+  readonly name: string;
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+interface Markers {
+  /** Every ring's screen box. */
+  readonly rings: Box[];
+  /** Boxes of text a ring must stay clear of: name tags, hop labels and chips. */
+  readonly texts: Box[];
+  /** Rings that sit on a drawn shape of a structure, by name. */
+  readonly onShapes: string[];
+}
+
+/**
+ * Where the rings are, what text is near them, and which rings touch a
+ * structure's drawn shapes. A structure in the Iso view is a slanted shape
+ * inside a larger bounding rectangle, so touching is tested on the shape: a
+ * ring touches when its centre or a point on its edge is inside a fill of
+ * the structure.
+ */
+const markersOnPage = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<Markers>(`(() => {
+      const box = (name, element) => {
+        const r = element.getBoundingClientRect();
+
+        return { name, left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+      };
+
+      const all = (selector, name) =>
+        [...document.querySelectorAll(selector)].map((element) =>
+          box(name(element), element)
+        );
+
+      const shapes = [
+        ...document.querySelectorAll(
+          "[data-structure] polygon, [data-structure] path, [data-structure] rect"
+        ),
+      ];
+
+      const inside = (shape, x, y) => {
+        const matrix = shape.getScreenCTM();
+
+        if (matrix === null || typeof shape.isPointInFill !== "function") {
+          return false;
+        }
+
+        const local = new DOMPoint(x, y).matrixTransform(matrix.inverse());
+
+        return shape.isPointInFill(local);
+      };
+
+      const rings = [
+        ...document.querySelectorAll("[data-note-marker][data-note-placed='ring']"),
+      ];
+
+      const onShapes = [];
+
+      for (const ring of rings) {
+        const circle = ring.tagName === "circle" ? ring : ring.querySelector("circle");
+        const r = circle.getBoundingClientRect();
+        const cx = (r.left + r.right) / 2;
+        const cy = (r.top + r.bottom) / 2;
+        const radius = r.width / 2;
+        const points = [[cx, cy]];
+
+        for (let turn = 0; turn < 16; turn += 1) {
+          const angle = (turn * Math.PI) / 8;
+
+          points.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius]);
+        }
+
+        const name = "marker:" + ring.getAttribute("data-note-marker");
+
+        if (points.some(([x, y]) => shapes.some((shape) => inside(shape, x, y)))) {
+          onShapes.push(name);
+        }
+      }
+
+      return {
+        rings: rings.map((ring) =>
+          box("marker:" + ring.getAttribute("data-note-marker"), ring)
+        ),
+        texts: [
+          ...all("[data-name-tag]", (e) => "tag:" + e.getAttribute("data-name-tag")),
+          ...all("[data-hop-label]", (e) => "label:" + e.getAttribute("data-hop-label")),
+          ...all("[data-code-chip]", () => "chip"),
+        ],
+        onShapes,
+      };
+    })()`)
+  );
+
+const overlap = (a: Box, b: Box) =>
+  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+describe("a note on a hop", () => {
+  it.live(
+    "is pinned from the hop's panel, shown on the panel and marked on the map",
+    () =>
+      Effect.gen(function* () {
+        const { home, page, errors } = yield* served;
+
+        yield* openAll(page);
+        yield* selectHop(page, "h-save");
+        yield* noteOnHop(page, "Why not a socket?");
+        yield* waitFor(page, "[data-hop-panel] [data-panel-note]");
+        yield* waitFor(page, '[data-note-marker="hop:h-save"]');
+
+        const proposals = yield* readProposals(home);
+
+        assert.deepStrictEqual(
+          Arr.map(proposals.notes ?? [], ({ target, text }) => [target, text]),
+          [[{ kind: "hop", id: "h-save" }, "Why not a socket?"]]
+        );
+
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+        yield* waitFor(page, '[data-review-kind="note"]');
+
+        const listed = yield* Effect.promise(() =>
+          page.locator('[data-review-kind="note"]').first().textContent()
+        );
+
+        assert.include(
+          listed,
+          "Note on hop POST /proposals: Why not a socket?"
+        );
+        assert.deepStrictEqual(errors, []);
+      }),
+    60_000
+  );
+
+  it.live("pressing its ring opens the hop's panel", () =>
+    Effect.gen(function* () {
+      const { page } = yield* served;
+
+      yield* openAll(page);
+      yield* selectHop(page, "h-save");
+      yield* noteOnHop(page, "A thought");
+      yield* waitFor(page, '[data-note-marker="hop:h-save"]');
+      yield* Effect.promise(() => page.keyboard.press("Escape"));
+      yield* Effect.promise(() =>
+        page.locator("[data-hop-panel]").waitFor({ state: "detached" })
+      );
+      yield* click(page, '[data-note-marker="hop:h-save"]');
+      yield* waitFor(page, '[data-hop-panel="h-save"]');
+    })
+  );
+});
+
+describe("a note on an empty spot", () => {
+  it.live(
+    "is pinned with the Note tool, saved on the half-unit grid and listed in the panel",
+    () =>
+      Effect.gen(function* () {
+        const { home, page, errors } = yield* served;
+
+        yield* openAll(page);
+        yield* pinSpot(page, { x: 0.5, y: 0.82 }, "A cache could sit here.");
+        yield* waitFor(page, "[data-spot-panel] [data-panel-note]");
+        yield* waitFor(page, '[data-note-marker^="spot:"]');
+
+        const [saved] = (yield* readProposals(home)).notes ?? [];
+
+        assert.strictEqual(saved?.target.kind, "spot");
+        assert.strictEqual(saved?.text, "A cache could sit here.");
+
+        if (saved?.target.kind === "spot") {
+          assert.isTrue(Number.isInteger(saved.target.x * 2));
+          assert.isTrue(Number.isInteger(saved.target.y * 2));
+        }
+
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+        yield* waitFor(page, '[data-review-kind="note"]');
+        assert.deepStrictEqual(errors, []);
+      }),
+    60_000
+  );
+
+  it.live("Escape stops the tool, and a click then picks nothing", () =>
+    Effect.gen(function* () {
+      const { page } = yield* served;
+
+      yield* openAll(page);
+      yield* click(page, '[data-control="note-tool"]');
+      yield* waitFor(page, "[data-spot-picker]");
+      yield* Effect.promise(() => page.keyboard.press("Escape"));
+      yield* Effect.promise(() =>
+        page.locator("[data-spot-picker]").waitFor({ state: "detached" })
+      );
+
+      assert.strictEqual(yield* count(page, "[data-spot-panel]"), 0);
+    })
+  );
+});
+
+describe("markers for hops and spots", () => {
+  for (const view of views) {
+    it.live(
+      `sit clear of boxes, name tags, chips and labels in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* served;
+
+          yield* openAll(page);
+          yield* showView(page, view);
+          yield* selectHop(page, "h-save");
+          yield* noteOnHop(page, "On the hop");
+          yield* waitFor(page, '[data-note-marker="hop:h-save"]');
+
+          yield* pinSpot(page, { x: 0.5, y: 0.82 }, "On a spot");
+          yield* waitFor(page, '[data-note-marker^="spot:"]');
+
+          // Pin one on a structure as well, so all three kinds are drawn.
+          yield* click(page, '[data-structure="server"]');
+          yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
+          yield* fill(
+            page,
+            "[data-structure-panel] [data-notes-section] [data-note-text]",
+            "On a box"
+          );
+          yield* click(
+            page,
+            "[data-structure-panel] [data-notes-section] [data-note-send]"
+          );
+          yield* waitFor(page, '[data-note-marker="server"]');
+
+          const { rings, texts, onShapes } = yield* markersOnPage(page);
+
+          assert.isAtLeast(rings.length, 3);
+          assert.deepStrictEqual(onShapes, [], `rings on a box in ${view}`);
+
+          for (const ring of rings) {
+            for (const text of texts) {
+              assert.isFalse(
+                overlap(ring, text),
+                `${ring.name} covers ${text.name} in ${view}`
+              );
+            }
+
+            for (const other of rings) {
+              assert.isFalse(
+                ring !== other && overlap(ring, other),
+                `${ring.name} touches ${other.name} in ${view}`
+              );
+            }
+          }
+        }),
+      90_000
+    );
+  }
+});
+
+describe("exports", () => {
+  it.live(
+    "carry no marker for a hop or spot, and equal the CLI's SVG",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { home, root, page } = yield* served;
+
+        yield* openAll(page);
+        yield* selectHop(page, "h-save");
+        yield* noteOnHop(page, "On the hop");
+        yield* waitFor(page, '[data-note-marker="hop:h-save"]');
+        yield* pinSpot(page, { x: 0.5, y: 0.82 }, "On a spot");
+        yield* waitFor(page, '[data-note-marker^="spot:"]');
+
+        // Clear the selection, so the spotlight is the chapter's own play.
+        yield* Effect.promise(() =>
+          page.evaluate("document.activeElement?.blur()")
+        );
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() =>
+          page.locator("[data-spot-panel]").waitFor({ state: "detached" })
+        );
+
+        yield* click(page, '[data-control="export"]');
+
+        const [download] = yield* Effect.promise(() =>
+          Promise.all([
+            page.waitForEvent("download"),
+            page.locator('[data-export-item="svg"]').click(),
+          ])
+        );
+
+        const saved = yield* Effect.promise(() => download.path());
+        const fromPage = yield* fs.readFileString(saved);
+        const target = path.join(root, "out.svg");
+
+        const exported = yield* runCli(home, [
+          "export",
+          home,
+          "--format",
+          "svg",
+          "--view",
+          "iso",
+          "--chapter",
+          "3",
+          "--output",
+          target,
+        ]);
+
+        assert.strictEqual(exported.exitCode, 0, exported.stderr);
+        assert.notInclude(fromPage, "data-note-marker");
+        assert.notInclude(fromPage, "data-spot");
+        assert.isTrue(fromPage === (yield* fs.readFileString(target)));
+      }).pipe(Effect.provide(NodeServices.layer)),
+    90_000
+  );
+});
