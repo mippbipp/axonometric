@@ -455,26 +455,28 @@ describe("resizing structures", () => {
 });
 
 describe("the side panel tabs", () => {
-  it.live("fit on one line each at 1280 wide, with Pending and History listed", () =>
-    Effect.gen(function* () {
-      const { page } = yield* servedReview;
+  it.live(
+    "fit on one line each at 1280 wide, with Pending and History listed",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
 
-      yield* Effect.promise(() =>
-        page.locator('[role="tab"][data-tab="pending"]').waitFor()
-      );
+        yield* Effect.promise(() =>
+          page.locator('[role="tab"][data-tab="pending"]').waitFor()
+        );
 
-      const boxes = yield* boxesOf(page, '[role="tab"]');
-      const [first] = boxes;
+        const boxes = yield* boxesOf(page, '[role="tab"]');
+        const [first] = boxes;
 
-      assert.strictEqual(boxes.length, 4);
-      assert.isDefined(first);
+        assert.strictEqual(boxes.length, 4);
+        assert.isDefined(first);
 
-      for (const box of boxes) {
-        // One line of 12px text, with padding, is well under two lines.
-        assert.isBelow(box.height, 30);
-        assert.strictEqual(box.y, first?.y);
-      }
-    })
+        for (const box of boxes) {
+          // One line of 12px text, with padding, is well under two lines.
+          assert.isBelow(box.height, 30);
+          assert.strictEqual(box.y, first?.y);
+        }
+      })
   );
 });
 
