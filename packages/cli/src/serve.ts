@@ -58,10 +58,13 @@ import { openBrowser } from "./open-browser.ts";
 import { renderPage } from "./page.ts";
 import { writeGuardLayer, writePendingLayout } from "./pending-writes.ts";
 import {
+  addAnswerWrite,
   addNoteWrite,
-  discardNoteWrite,
+  addQuestionWrite,
+  addSuggestionWrite,
+  discardItemWrite,
   dismissWrite,
-  editNoteWrite,
+  editItemWrite,
   freezeWrite,
   reopenWrite,
 } from "./review-writes.ts";
@@ -468,8 +471,11 @@ const routes = ({
     pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
     accept: Str.slice(1)(serverPaths.accept),
     notes: Str.slice(1)(serverPaths.notes),
-    editNote: Str.slice(1)(serverPaths.editNote),
-    discardNote: Str.slice(1)(serverPaths.discardNote),
+    editItem: Str.slice(1)(serverPaths.editItem),
+    discardItem: Str.slice(1)(serverPaths.discardItem),
+    suggestions: Str.slice(1)(serverPaths.suggestions),
+    answers: Str.slice(1)(serverPaths.answers),
+    questions: Str.slice(1)(serverPaths.questions),
     freeze: Str.slice(1)(serverPaths.freeze),
     dismiss: Str.slice(1)(serverPaths.dismiss),
     reopen: Str.slice(1)(serverPaths.reopen),
@@ -572,8 +578,11 @@ const routes = ({
   const reviewHandlers = HttpApiBuilder.group(ServerApi, "review", (group) =>
     group
       .handle("addNote", reviewing(addNoteWrite))
-      .handle("editNote", reviewing(editNoteWrite))
-      .handle("discardNote", reviewing(discardNoteWrite))
+      .handle("editItem", reviewing(editItemWrite))
+      .handle("discardItem", reviewing(discardItemWrite))
+      .handle("addSuggestion", reviewing(addSuggestionWrite))
+      .handle("addAnswer", reviewing(addAnswerWrite))
+      .handle("addQuestion", reviewing(addQuestionWrite))
       .handle("freeze", reviewing(freezeWrite))
       .handle("dismiss", reviewing(dismissWrite))
       .handle("reopen", reviewing(reopenWrite))

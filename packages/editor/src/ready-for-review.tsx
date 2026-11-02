@@ -122,7 +122,7 @@ export function ReadyForReview() {
     return null;
   }
 
-  const open = (editing?.pending.length ?? 0) + review.openNotes;
+  const open = (editing?.pending.length ?? 0) + review.openText;
 
   const press = () => {
     setBusy(true);
@@ -164,7 +164,7 @@ export function ReadyForReview() {
         disabled={!review.canWrite || busy || open === 0}
         title={
           open === 0
-            ? "Add a note or move a structure first"
+            ? "Add a note, a suggestion or an answer, or move a structure first"
             : "Freeze these into a batch and copy a prompt for your agent"
         }
         onClick={press}

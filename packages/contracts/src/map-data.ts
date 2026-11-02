@@ -2,6 +2,7 @@ import { Array as Arr, Option, Schema, String as Str } from "effect";
 
 import {
   fileVersionFields,
+  isCalendarDay,
   objectMessages,
   requiredList,
   requiredText,
@@ -137,8 +138,8 @@ export const ResolvedQuestion = Schema.Struct({
   answeredOn: requiredText(
     "A resolved question records the date it was answered, as YYYY-MM-DD."
   ).check(
-    Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/u, {
-      message: "expected a date as YYYY-MM-DD, such as 2026-10-31.",
+    Schema.makeFilter(isCalendarDay, {
+      message: "expected a real date as YYYY-MM-DD, such as 2026-10-31.",
     })
   ),
 }).annotate(

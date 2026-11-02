@@ -1,6 +1,7 @@
 import type { Question, ResolvedQuestion } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
+import { QuestionAnswer } from "./question-actions.tsx";
 import type { QuestionGroup } from "./revealed-questions.ts";
 import { useRevealedQuestions } from "./revealed-questions.ts";
 import { useSelection } from "./selection-context.ts";
@@ -35,13 +36,15 @@ const headingButtonClass =
 
 /**
  * One question: its ID and text as a button that selects its structure, then
- * its answer when it's resolved. The item is a container, so an answer form
- * (#25) can sit beside the button.
+ * its answer when it's resolved, or the form that answers it when it's open.
  */
 function QuestionItem({
+  structure,
   question,
   onPick,
 }: {
+  /** The id of the structure the question is on. */
+  readonly structure: string;
   readonly question: Question;
   readonly onPick: () => void;
 }) {
@@ -56,7 +59,11 @@ function QuestionItem({
           <b className="font-medium">{question.id}</b> {question.text}
         </button>
       </h5>
-      {question.state === "resolved" ? <Answer question={question} /> : null}
+      {question.state === "resolved" ? (
+        <Answer question={question} />
+      ) : (
+        <QuestionAnswer structure={structure} question={question.id} />
+      )}
     </article>
   );
 }
@@ -91,6 +98,7 @@ function QuestionList<Q extends Question>({
               {Arr.map(questions, (question) => (
                 <li key={question.id}>
                   <QuestionItem
+                    structure={structure.id}
                     question={question}
                     onPick={() => {
                       onPick(structure.id);

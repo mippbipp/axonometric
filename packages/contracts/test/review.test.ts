@@ -15,9 +15,9 @@ import {
   Proposals,
   recordVerdict,
   reopenItem,
-  addNote,
-  discardNote,
-  editNote,
+  addItem,
+  discardProposal,
+  editProposal,
   reviewEntries,
   reviewPrompt,
   changedLayoutNotice,
@@ -63,6 +63,21 @@ const note = (id: string, text: string) => ({
 const at = "2026-11-01T09:00:00.000Z";
 
 const known: ReadonlySet<string> = new Set(["a", "b"]);
+
+/** Adds a note the way the server does, on a map with structures a and b. */
+const addNote = ({
+  proposals,
+  note: held,
+}: {
+  readonly proposals: P;
+  readonly note: ReturnType<typeof note>;
+  readonly known: ReadonlySet<string>;
+}) =>
+  addItem({
+    proposals,
+    item: { kind: "note", ...held },
+    known: { structureIds: known },
+  });
 
 const hops = [{ id: "h-ab", from: "a", to: "b" }];
 
@@ -529,19 +544,19 @@ describe("notes", () => {
 
   it("edits and discards an open note", () => {
     const edited = unwrap(
-      editNote({ proposals: open, id: "n1", text: "New words" })
+      editProposal({ proposals: open, id: "n1", text: "New words" })
     );
 
     assert.strictEqual(edited.notes?.[0]?.text, "New words");
 
-    const gone = unwrap(discardNote({ proposals: open, id: "n1" }));
+    const gone = unwrap(discardProposal({ proposals: open, id: "n1" }));
 
     assert.deepStrictEqual(gone.notes, []);
   });
 
   it("refuses to edit or discard a note in a batch, and says it waits for the agent", () => {
-    const edit = editNote({ proposals: frozen(), id: "n1", text: "x" });
-    const discard = discardNote({ proposals: frozen(), id: "n1" });
+    const edit = editProposal({ proposals: frozen(), id: "n1", text: "x" });
+    const discard = discardProposal({ proposals: frozen(), id: "n1" });
 
     assert.include(
       Result.match(edit, { onSuccess: () => "", onFailure: String }),

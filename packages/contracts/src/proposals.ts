@@ -8,14 +8,22 @@ import {
 } from "effect";
 import { dual } from "effect/Function";
 
-import { fileVersionFields, objectMessages } from "./fields.ts";
+import { fileVersionFields, isCalendarDay, objectMessages } from "./fields.ts";
 import { footprintsOverlap, offEndFindings } from "./layout-checks.ts";
 import type { HopEnds } from "./layout-checks.ts";
-import { GridPoint, JsonText, Placement, RouteOverride } from "./layout.ts";
+import {
+  GridPoint,
+  JsonText,
+  maxRouteReach,
+  Placement,
+  RouteOverride,
+} from "./layout.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
+import { isTextField } from "./text-fields.ts";
+import type { TextField as TextFieldType } from "./text-fields.ts";
 
 /** How much ground a footprint covers, in grid units, on half units. */
 export const Footprint = Placement.mapFields(({ w, d }) => ({ w, d })).annotate(
@@ -256,14 +264,154 @@ export const NoteText = Schema.String.annotate({ message: noteFix }).check(
   Schema.isMaxLength(maxNoteLength, { message: noteFix })
 );
 
+const spotMessage =
+  'expected a spot: { kind: "spot", x, y }, on the half-unit grid and within 1000 units of the origin.';
+
+/**
+ * An empty spot on the ground grid, named by its position. Like a route
+ * point it lies on a half unit and within `maxRouteReach` of the origin on
+ * each axis.
+ */
+export const SpotTarget = Schema.Struct({
+  kind: Schema.Literal("spot"),
+  x: GridPoint.fields.x,
+  y: GridPoint.fields.y,
+})
+  .annotate(objectMessages("A spot target has only kind, x and y."))
+  .check(
+    Schema.makeFilter(
+      ({ x, y }) =>
+        Math.abs(x) <= maxRouteReach && Math.abs(y) <= maxRouteReach,
+      { message: spotMessage }
+    )
+  );
+
+export type SpotTarget = typeof SpotTarget.Type;
+
+/** What a note can be pinned to: a structure, a hop or an empty spot. */
+export const NoteTarget = Schema.Union([
+  StructureTarget,
+  HopTarget,
+  SpotTarget,
+]).annotate({
+  message:
+    'expected a note target: { kind: "structure", id }, { kind: "hop", id } or { kind: "spot", x, y }.',
+});
+
+export type NoteTarget = typeof NoteTarget.Type;
+
 /** A note pinned to a target, for the agent to read. */
 export const Note = Schema.Struct({
   id: ChangeId,
-  target: StructureTarget,
+  target: NoteTarget,
   text: NoteText,
 }).annotate(objectMessages("A note has only id, target and text."));
 
 export type Note = typeof Note.Type;
+
+/** The most characters a text suggestion's new text holds. */
+export const maxSuggestionLength = 8000;
+
+const suggestionFix = `expected text of 1 to ${maxSuggestionLength} characters.`;
+
+/** The new text of a text suggestion, and the original it replaces. */
+export const SuggestionText = Schema.String.annotate({
+  message: suggestionFix,
+}).check(
+  Schema.isNonEmpty({ message: suggestionFix }),
+  Schema.isMaxLength(maxSuggestionLength, { message: suggestionFix })
+);
+
+const fieldFix =
+  'expected a text field of the structure: "oneLiner", "whatItDoes", "howItsBuilt", or a part of a step such as "steps.0.name" or "steps.2.detail".';
+
+/**
+ * Which text of a structure a suggestion changes: its one-liner, what it
+ * does, how it's built, or the name or detail of the step at an index, written
+ * as the path into the structure, such as `steps.1.detail`.
+ */
+export const TextField = Schema.String.annotate({ message: fieldFix }).pipe(
+  Schema.refine(isTextField, { message: fieldFix })
+);
+
+export type TextField = TextFieldType;
+
+/** What a text suggestion holds besides its id. */
+export const suggestionFields = {
+  target: StructureTarget,
+  field: TextField,
+  /** The text as the engineer saw it. `review` says when data.mjs differs now. */
+  before: SuggestionText,
+  after: SuggestionText,
+};
+
+/** A suggested change to one text of a structure, with the original beside it. */
+export const Suggestion = Schema.Struct({
+  id: ChangeId,
+  ...suggestionFields,
+}).annotate(
+  objectMessages("A suggestion has only id, target, field, before and after.")
+);
+
+export type Suggestion = typeof Suggestion.Type;
+
+const questionIdMessage =
+  "expected a question id of the form Q-<code><n>, such as Q-G1.";
+
+/** The id of a question in data.mjs. */
+export const QuestionRef = Schema.String.annotate({
+  message: questionIdMessage,
+}).check(
+  Schema.isPattern(/^Q-[A-Z]+[1-9]\d*$/u, { message: questionIdMessage })
+);
+
+const dateMessage = "expected a date as YYYY-MM-DD, such as 2026-11-02.";
+
+/** The day an answer was given, as a real date written YYYY-MM-DD. */
+export const AnswerDate = Schema.String.annotate({
+  message: dateMessage,
+}).check(Schema.makeFilter(isCalendarDay, { message: dateMessage }));
+
+/** What an answer holds besides its id. */
+export const answerFields = {
+  /** The structure the question is on. */
+  target: StructureTarget,
+  question: QuestionRef,
+  text: NoteText,
+  answeredOn: AnswerDate,
+};
+
+/**
+ * An answer to an open question, with the day it was given. The agent
+ * records who answered when it folds the answer into data.mjs.
+ */
+export const Answer = Schema.Struct({
+  id: ChangeId,
+  ...answerFields,
+}).annotate(
+  objectMessages(
+    "An answer has only id, target, question, text and answeredOn."
+  )
+);
+
+export type Answer = typeof Answer.Type;
+
+/** What a raised question holds besides its id. */
+export const raisedFields = {
+  target: StructureTarget,
+  text: NoteText,
+};
+
+/**
+ * A new question the engineer raises on a structure. It has no question id:
+ * the agent assigns one when it accepts the question.
+ */
+export const RaisedQuestion = Schema.Struct({
+  id: ChangeId,
+  ...raisedFields,
+}).annotate(objectMessages("A raised question has only id, target and text."));
+
+export type RaisedQuestion = typeof RaisedQuestion.Type;
 
 /** The most characters a verdict's reason holds. */
 export const maxReasonLength = 1000;
@@ -320,6 +468,75 @@ export type Verdict = typeof Verdict.Type;
 export const verdictKinds = ["accepted", "changed", "rejected"] as const;
 
 /**
+ * What each kind of item holds besides its `id` and `kind`. This is the one
+ * table the batch's items, a revision's accepted items and its rejected items
+ * are built from, and their error messages are written from, so a new kind
+ * adds one entry here and one `batchItem`, `acceptedItem` and `rejectedItem`
+ * member below.
+ */
+export const itemFields = {
+  layout: { change: LayoutChange },
+  note: { target: NoteTarget, text: NoteText },
+  suggestion: suggestionFields,
+  answer: answerFields,
+  question: raisedFields,
+};
+
+/** The kind of every item the review loop carries. */
+export type ItemKind = keyof typeof itemFields;
+
+/** The kinds, in the order the messages list them. */
+export const itemKinds = Rec.keys(itemFields);
+
+/** The names of the fields an item of `kind` holds besides its id and kind. */
+const fieldNamesOf = (kind: ItemKind): readonly string[] => {
+  const fields: Readonly<Record<string, Schema.Constraint>> = itemFields[kind];
+
+  return Rec.keys(fields);
+};
+
+/** "A note item" or "An answer item", for a message about an item of `kind`. */
+const itemName = (kind: ItemKind, what = "item"): string =>
+  `${/^[aeiou]/u.test(kind) ? "An" : "A"} ${kind} ${what}`;
+
+/** `a, b and c`, or with `or`, for a message that lists parts. */
+const listOf = (parts: readonly string[], word: "and" | "or"): string =>
+  parts.length < 2
+    ? Arr.join(parts, "")
+    : `${Arr.join(Arr.dropRight(parts, 1), ", ")} ${word} ${Arr.join(Arr.takeRight(parts, 1), "")}`;
+
+// oxlint-disable effecttsgo/missing-pipeable-signature -- these build messages for schema annotations, and are never piped.
+
+/**
+ * The object messages of an item of `kind`, written from the kind's fields.
+ * `what` is "item", "accepted item" or "rejected item", and `more` names the
+ * fields a revision adds.
+ */
+export const itemMessages = (
+  kind: ItemKind,
+  what = "item",
+  more: readonly string[] = []
+) =>
+  objectMessages(
+    `${itemName(kind, what)} has only ${listOf(["id", "kind", ...fieldNamesOf(kind), ...more], "and")}.`
+  );
+
+/**
+ * The message for a union of items: `expected a batch item: { ... }, { ... }
+ * or { ... }.`, one form per kind from the table. `more` names the fields a
+ * revision's item adds.
+ */
+export const itemUnionMessage = (noun: string, more: readonly string[] = []) =>
+  `expected ${/^[aeiou]/u.test(noun) ? "an" : "a"} ${noun}: ${listOf(
+    Arr.map(
+      itemKinds,
+      (kind) =>
+        `{ ${Arr.join(["id", `kind: "${kind}"`, ...fieldNamesOf(kind), ...more], ", ")} }`
+    ),
+    "or"
+  )}.`;
+
+/**
  * One item frozen into a batch. It keeps the id it had when open, and `kind`
  * says what it is, so a later kind of proposal joins this union and a file
  * written before it still reads.
@@ -328,20 +545,29 @@ export const BatchItem = Schema.Union([
   Schema.Struct({
     id: ChangeId,
     kind: Schema.Literal("layout"),
-    change: LayoutChange,
-  }).annotate(objectMessages("A layout item has only id, kind and change.")),
+    ...itemFields.layout,
+  }).annotate(itemMessages("layout")),
   Schema.Struct({
     id: ChangeId,
     kind: Schema.Literal("note"),
-    target: StructureTarget,
-    text: NoteText,
-  }).annotate(
-    objectMessages("A note item has only id, kind, target and text.")
-  ),
-]).annotate({
-  message:
-    'expected a batch item: { id, kind: "layout", change } or { id, kind: "note", target, text }.',
-});
+    ...itemFields.note,
+  }).annotate(itemMessages("note")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("suggestion"),
+    ...itemFields.suggestion,
+  }).annotate(itemMessages("suggestion")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("answer"),
+    ...itemFields.answer,
+  }).annotate(itemMessages("answer")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("question"),
+    ...itemFields.question,
+  }).annotate(itemMessages("question")),
+]).annotate({ message: itemUnionMessage("batch item") });
 
 export type BatchItem = typeof BatchItem.Type;
 
@@ -392,10 +618,16 @@ export type Batch = typeof Batch.Type;
 const allIds = (proposals: {
   readonly layout: readonly LayoutChange[];
   readonly notes?: readonly Note[] | undefined;
+  readonly suggestions?: readonly Suggestion[] | undefined;
+  readonly answers?: readonly Answer[] | undefined;
+  readonly raised?: readonly RaisedQuestion[] | undefined;
   readonly batches?: readonly Batch[] | undefined;
 }) => [
   ...Arr.map(proposals.layout, layoutChangeKey),
   ...Arr.map(proposals.notes ?? [], ({ id }) => id),
+  ...Arr.map(proposals.suggestions ?? [], ({ id }) => id),
+  ...Arr.map(proposals.answers ?? [], ({ id }) => id),
+  ...Arr.map(proposals.raised ?? [], ({ id }) => id),
   ...Arr.flatMap(proposals.batches ?? [], ({ items }) =>
     Arr.map(items, ({ id }) => id)
   ),
@@ -412,6 +644,9 @@ const hasUniqueIds = (proposals: Parameters<typeof allIds>[0]) => {
  *
  * - `layout`: the open layout changes, not yet in a batch.
  * - `notes`: the open notes.
+ * - `suggestions`: the open text suggestions.
+ * - `answers`: the open answers to questions.
+ * - `raised`: the open questions the engineer raised.
  * - `batches`: the numbered batches, each with its verdicts once given.
  * - `replaces`: for an item the engineer reopened after a rejection, the id
  *   of the rejected item it takes up again, keyed by the new item's id. It
@@ -431,17 +666,21 @@ export const Proposals = Schema.Struct({
     })
   ),
   notes: Schema.optionalKey(Schema.Array(Note)),
+  suggestions: Schema.optionalKey(Schema.Array(Suggestion)),
+  answers: Schema.optionalKey(Schema.Array(Answer)),
+  raised: Schema.optionalKey(Schema.Array(RaisedQuestion)),
   batches: Schema.optionalKey(Schema.Array(Batch)),
   replaces: Schema.optionalKey(Schema.Record(ChangeId, ChangeId)),
 })
   .annotate(
     objectMessages(
-      "A proposals file has only format, revision, layout, notes, batches and replaces."
+      "A proposals file has only format, revision, layout, notes, suggestions, answers, raised, batches and replaces."
     )
   )
   .check(
     Schema.makeFilter(hasUniqueIds, {
-      message: "expected every change, note and batch item to have its own id.",
+      message:
+        "expected every change, note, suggestion, answer, raised question and batch item to have its own id.",
     })
   );
 
@@ -995,8 +1234,9 @@ const targetPaths = (change: LayoutChange): readonly NamedTarget[] =>
   );
 
 /**
- * Warnings about the pending changes in `proposals.json`: changes and notes
- * for a structure or hop data.mjs doesn't have, pending footprints that
+ * Warnings about the pending changes in `proposals.json`: changes for a
+ * structure or hop data.mjs doesn't have (`checkOpenItems` does the same for
+ * the other kinds of item), pending footprints that
  * overlap, and pending route overrides that don't start and end on their
  * hops' footprints. The last two happen when the accepted layout changes
  * under a pending change.
@@ -1073,18 +1313,6 @@ export const checkProposals: {
           : []
     );
 
-    const orphaned = Arr.flatMap(proposals.notes ?? [], (note, index) =>
-      known.structure.has(note.target.id)
-        ? []
-        : [
-            mapWarning({
-              file: "proposals.json",
-              path: ["notes", index, "target", "id"],
-              message: `no structure in data.mjs has the id "${note.target.id}", so this note points at nothing. Discard it from the page's Pending list.`,
-            }),
-          ]
-    );
-
-    return [...stale, ...overlaps, ...offEnds, ...orphaned];
+    return [...stale, ...overlaps, ...offEnds];
   }
 );

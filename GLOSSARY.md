@@ -145,8 +145,28 @@ An edit that hasn't been accepted.
 _Avoid_: draft, unsaved change
 
 **Proposal**:
-A pending meaning change, note, answer or text suggestion, recorded for the agent.
+A pending meaning change, note, text suggestion, answer or raised question, recorded for the agent.
 _Avoid_: change request
+
+**Note**:
+Words the engineer pins to a structure, a hop or an empty spot, for the agent to read. It asks for something that isn't a direct edit.
+_Avoid_: comment, annotation
+
+**Text suggestion**:
+A proposed new wording for one text of a structure: its one-liner, what it does, how it's built, or a step's name or detail. It records the original text beside the new text, and waits for the agent once it is in a batch.
+_Avoid_: text edit, rewrite
+
+**Answer**:
+The engineer's reply to an open question, recorded with the day it was given. The agent records who answered when it folds the answer into the map.
+_Avoid_: resolution, reply
+
+**Raised question**:
+A new question the engineer puts to a structure. It has no question ID until the agent accepts it and assigns one.
+_Avoid_: new question, draft question
+
+**Spot**:
+An empty point on the half-unit grid, where a note can be pinned.
+_Avoid_: position, pin
 
 **Batch**:
 The proposals frozen by one press of "Ready for review".

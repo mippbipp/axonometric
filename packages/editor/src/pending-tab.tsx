@@ -13,6 +13,7 @@ import { useAccepting } from "./accepting-context.ts";
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditing } from "./editing-context.ts";
+import { listedEntries, useReview } from "./review-context.ts";
 import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -26,6 +27,7 @@ import { useWalkthrough } from "./walkthrough-context.ts";
  */
 export function PendingTab() {
   const editing = useEditing();
+  const review = useReview();
   const accepting = useAccepting();
   const byId = useStructuresById();
   const { state } = useWalkthrough();
@@ -62,6 +64,11 @@ export function PendingTab() {
 
   const acceptable = canEdit && accepting?.canAccept === true;
 
+  // Nothing is pending only when no layout change is, and no proposal is
+  // either: the review list below shows the proposals.
+  const nothingAtAll =
+    pending.length === 0 && listedEntries(review?.entries ?? []).length === 0;
+
   // Hops whose shown route is a hand-drawn override, which Reset route clears.
   const overridden = Arr.filter(state.data.hops, ({ id }) =>
     Rec.has(state.layout.routes ?? {}, id)
@@ -69,10 +76,12 @@ export function PendingTab() {
 
   return (
     <section data-pending-list className="flex flex-col gap-3">
-      <p className="text-xs opacity-70">
-        Layout changes saved to proposals.json and not yet accepted. Accepting
-        writes them to layout.json and saves a revision. Discarding one puts the
-        structure or route back as layout.json has it.
+      <p data-pending-intro className="text-xs opacity-70">
+        Layout changes are yours to accept. Accepting one writes it to
+        layout.json and saves a revision, and discarding one puts the structure
+        or route back as layout.json has it. Proposals are for the agent: notes,
+        text suggestions, answers and questions wait here until you press Ready
+        for review, then until the agent gives a verdict.
       </p>
       {refusal === undefined ? null : (
         <p
@@ -82,13 +91,15 @@ export function PendingTab() {
           {refusal}
         </p>
       )}
-      {pending.length === 0 ? (
-        <p className="text-sm">
+      {nothingAtAll ? (
+        <p data-pending-empty className="text-sm">
           Nothing is pending. Drag a structure to move it, drag a corner of the
           selected one to resize it, drag a segment of an arrow to reroute it,
-          or drag a zone title to move its group.
+          or drag a zone title to move its group. Pin a note, suggest new text
+          or answer a question from a structure&rsquo;s panel.
         </p>
-      ) : (
+      ) : null}
+      {pending.length === 0 ? null : (
         <>
           {acceptable ? (
             <div className="flex flex-col gap-1.5">

@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { pendingHops, useEditing } from "./editing-context.ts";
+import { NotesSection } from "./notes-section.tsx";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -52,6 +53,7 @@ export function HopPanel({ id }: { readonly id: string }) {
           Drag a segment of the arrow to move it. It snaps to half units.
         </p>
       ) : null}
+      <NotesSection target={{ kind: "hop", id }} />
       {refusal === undefined ? null : (
         <p
           data-reset-refused

@@ -1,4 +1,4 @@
-import type { Structure } from "@axonometric/contracts";
+import type { GridPoint, Structure } from "@axonometric/contracts";
 import { Array as Arr, Match } from "effect";
 import { useId, useMemo, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
@@ -9,6 +9,7 @@ import { useEditing } from "./editing-context.ts";
 import { useHistory } from "./history-context.ts";
 import { HistoryTab } from "./history-tab.tsx";
 import { HopPanel } from "./hop-panel.tsx";
+import { useNoteTool } from "./note-tool-context.ts";
 import { PendingTab } from "./pending-tab.tsx";
 import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
@@ -16,6 +17,7 @@ import { QuestionsTab } from "./questions.tsx";
 import { useRevealedQuestions } from "./revealed-questions.ts";
 import { useReview } from "./review-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { SpotPanel } from "./spot-panel.tsx";
 import { InsidePanel, StructurePanel } from "./structure-panel.tsx";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -146,6 +148,7 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
 export type PanelContent =
   | { readonly kind: "chapter" }
   | { readonly kind: "hop"; readonly hop: string }
+  | { readonly kind: "spot"; readonly spot: GridPoint }
   | { readonly kind: "packet"; readonly packet: SelectedPacket }
   | { readonly kind: "structure"; readonly structure: Structure }
   | { readonly kind: "inside"; readonly structure: Structure };
@@ -155,11 +158,13 @@ const panelContentOf = ({
   pinned,
   inside,
   hop,
+  spot,
 }: {
   readonly packet: SelectedPacket | null;
   readonly pinned: Structure | undefined;
   readonly inside: Structure | undefined;
   readonly hop: string | null;
+  readonly spot: GridPoint | null;
 }): PanelContent => {
   if (inside !== undefined) {
     return { kind: "inside", structure: inside };
@@ -173,6 +178,10 @@ const panelContentOf = ({
     return { kind: "hop", hop };
   }
 
+  if (spot !== null) {
+    return { kind: "spot", spot };
+  }
+
   return pinned === undefined
     ? { kind: "chapter" }
     : { kind: "structure", structure: pinned };
@@ -182,6 +191,7 @@ const renderContent = Match.type<PanelContent>().pipe(
   Match.discriminatorsExhaustive("kind")({
     chapter: () => <ChapterStory />,
     hop: ({ hop }) => <HopPanel key={hop} id={hop} />,
+    spot: ({ spot }) => <SpotPanel key={`${spot.x},${spot.y}`} spot={spot} />,
     packet: ({ packet }) => <PacketDetails packet={packet} />,
     structure: ({ structure }) => (
       <StructurePanel key={structure.id} structure={structure} />
@@ -259,14 +269,15 @@ function TabPanel({
 
 /**
  * How many review items the Pending tab counts beside the pending layout
- * changes: open notes, and everything waiting on the agent or turned down.
+ * changes: open notes, suggestions, answers and questions, and everything waiting on the agent or turned
+ * down.
  */
 const useWaitingCount = () =>
   Arr.filter(
     useReview()?.entries ?? [],
     ({ item, status }) =>
       status.state === "frozen" ||
-      (status.state === "open" && item.kind === "note") ||
+      (status.state === "open" && item.kind !== "layout") ||
       (status.state === "reviewed" &&
         !status.dismissed &&
         status.verdict.verdict === "rejected")
@@ -281,6 +292,7 @@ const useWaitingCount = () =>
 export function SidePanel() {
   const { selected: packet } = usePlayback();
   const { selected, selectedHop, inside } = useSelection();
+  const spot = useNoteTool()?.spot ?? null;
   const byId = useStructuresById();
   const { open } = useRevealedQuestions();
 
@@ -297,7 +309,12 @@ export function SidePanel() {
 
   // A tab other than Details stays open until the selection changes.
   const picked =
-    selected ?? (selectedHop === null ? null : `hop:${selectedHop}`);
+    selected ??
+    (selectedHop === null
+      ? spot === null
+        ? null
+        : `spot:${spot.x},${spot.y}`
+      : `hop:${selectedHop}`);
 
   const [otherTab, setOtherTab] = useState<{
     readonly tab: Tab;
@@ -396,6 +413,7 @@ export function SidePanel() {
             pinned: selected === null ? undefined : byId.get(selected),
             inside: inside === null ? undefined : byId.get(inside),
             hop: selectedHop,
+            spot,
           })
         )}
       </TabPanel>

@@ -3,6 +3,7 @@ import {
   changedLayoutNotice,
   engineerTextNotice,
   hopLabelOf,
+  kindNotices,
   oldestOpenBatch,
   ReviewReport,
   specOf,
@@ -10,8 +11,8 @@ import {
 import type {
   Batch,
   BatchItem,
-  Hop,
   Layout,
+  MapData,
   ReportedItem,
 } from "@axonometric/contracts";
 import {
@@ -40,7 +41,7 @@ const reportItem = ({
   replaces,
   layout,
   names,
-  hops,
+  data,
 }: {
   readonly item: BatchItem;
   readonly batch: Batch;
@@ -48,28 +49,30 @@ const reportItem = ({
   readonly replaces: Readonly<Record<string, string>> | undefined;
   readonly layout: Layout;
   readonly names: ReadonlyMap<string, string>;
-  readonly hops: readonly Hop[];
+  readonly data: MapData;
 }): ReportedItem => {
+  const { hops } = data;
   const spec = specOf(item);
-  const { before, after } = spec.facts(item, layout);
+  const { before, after } = spec.facts(item, layout, data);
   const structureIds = new Set(names.keys());
 
-  // A reroute acts on a hop, which the engineer knows by its label.
-  const nameOf = (id: string) =>
-    item.kind === "layout" && item.change.kind === "reroute"
-      ? hopLabelOf(hops, id)
-      : (names.get(id) ?? id);
+  // Each kind says whether it points at a structure or a hop. A hop is known
+  // by its label.
+  const pointers = spec.targets(item);
 
   return {
     id: item.id,
     kind: spec.name(item),
-    targets: Arr.map(spec.targets(item), (id) => ({
+    targets: Arr.map(pointers, ({ kind, id }) => ({
       id,
-      name: nameOf(id),
+      name: kind === "hop" ? hopLabelOf(hops, id) : (names.get(id) ?? id),
     })),
     before,
     after,
-    breaks: Option.getOrNull(breakageOf({ item, layout, structureIds, hops })),
+    breaks: Option.getOrNull(
+      breakageOf({ item, layout, structureIds, hops, data })
+    ),
+    outOfDate: Option.getOrNull(spec.outOfDate?.(item, data) ?? Option.none()),
     replaces: Option.getOrNull(Rec.get(replaces ?? {}, item.id)),
     verdict: Option.getOrNull(Rec.get(batch.verdicts, item.id)),
   };
@@ -98,6 +101,7 @@ const textOf = Effect.fnUntraced(function* (item: ReportedItem) {
     ...(item.breaks === null
       ? []
       : [`    BREAKS THE MAP if accepted: ${item.breaks}`]),
+    ...(item.outOfDate === null ? [] : [`    OUT OF DATE: ${item.outOfDate}`]),
     `    verdict: ${verdict}`,
   ];
 
@@ -124,7 +128,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
           replaces: map.proposals.replaces,
           layout: map.layout,
           names,
-          hops: map.data.hops,
+          data: map.data,
         })
       ),
   });
@@ -156,6 +160,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
         `Full details are in ${path.join(absolute, "proposals.json")}.`,
         engineerTextNotice,
         changedLayoutNotice,
+        ...kindNotices(oldest.value.items),
         "",
         Arr.join(described, "\n\n"),
         "",
