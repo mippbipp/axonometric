@@ -131,17 +131,20 @@ describe("the page's font", () => {
           );
 
           // Basic Latin, Latin-1 Supplement without the soft hyphen (which is
-          // zero width), Latin Extended-A and box drawing, then each other
-          // character the editor's strings use that Liberation Mono has.
-          // Characters it lacks (‖ ↶ ↷ ▸ ◂ ☐ ☑) use the system's fonts.
+          // zero width), Latin Extended-A, the 40 box-drawing characters
+          // Liberation Mono has (the single and double lines and their
+          // corners and joins, the ones file layouts use), then each other
+          // character the editor's strings use that it has. Characters it
+          // lacks (the other box-drawing characters, ‖ ↶ ↷ ▸ ◂ ☐ ☑) use the
+          // system's fonts, at whatever width those have.
           const odd = yield* inPage<readonly string[]>(
             page,
             `(async () => {
               await document.fonts.load("20px 'Liberation Mono'", "a");
               const canvas = document.createElement("canvas").getContext("2d");
               canvas.font = "20px 'Liberation Mono'";
-              const ranges = [[0x20, 0x7e], [0xa0, 0xac], [0xae, 0xff], [0x100, 0x17f], [0x2500, 0x257f]];
-              const singles = [..."·×–…›←↑→↓−²"].map((c) => c.codePointAt(0));
+              const ranges = [[0x20, 0x7e], [0xa0, 0xac], [0xae, 0xff], [0x100, 0x17f], [0x2550, 0x256c]];
+              const singles = [..."·×–…›←↑→↓−²─│┌┐└┘├┤┬┴┼"].map((c) => c.codePointAt(0));
               const codes = [...ranges.flatMap(([from, to]) => Array.from({ length: to - from + 1 }, (_, i) => from + i)), ...singles];
               return codes.flatMap((code) => {
                 const width = canvas.measureText(String.fromCodePoint(code)).width;

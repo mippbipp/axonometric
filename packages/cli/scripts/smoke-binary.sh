@@ -51,7 +51,10 @@ run_binary export "$map" --format png --view plan --output "$out/plan.png"
 # The SVG says how big it is, and the PNG is drawn at twice that. od reads the
 # PNG's IHDR (width at byte 16, height at byte 20) the same on every OS.
 svg_size=$(sed -n '1,3s/.*<svg[^>]* width="\([0-9]*\)" height="\([0-9]*\)".*/\1 \2/p' "$out/plan.svg")
-png_size=$(od -An -tu1 -j16 -N8 "$out/plan.png" | awk '{ print $1*16777216 + $2*65536 + $3*256 + $4, $5*16777216 + $6*65536 + $7*256 + $8 }')
+# The PNG's width and height are the 8 bytes after its signature and IHDR
+# header. od wraps its output differently on macOS, so read every byte into
+# one list before adding them up.
+png_size=$(od -An -tu1 -j16 -N8 "$out/plan.png" | tr -s ' \n' ' ' | awk '{ print $1*16777216 + $2*65536 + $3*256 + $4, $5*16777216 + $6*65536 + $7*256 + $8 }')
 expected=$(printf '%s\n' "$svg_size" | awk '{ print $1*2, $2*2 }')
 if [ -z "$svg_size" ] || [ "$png_size" != "$expected" ]; then
   echo "export wrote a PNG of $png_size, not $expected (twice the SVG's $svg_size)." >&2
