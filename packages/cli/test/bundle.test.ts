@@ -48,7 +48,7 @@ describe("the built bundle", () => {
       const result = yield* runBundle(home, ["--version"]);
 
       assert.strictEqual(result.exitCode, 0);
-      assert.strictEqual(Str.trim(result.stdout), "axonometric v0.0.0");
+      assert.strictEqual(Str.trim(result.stdout), "axonometric v0.1.0");
     })
   );
 
