@@ -64,9 +64,10 @@ export function QuestionAnswer({
                 type="button"
                 data-answer-discard={item.id}
                 className={controlClass}
+                aria-label={`Discard answer: ${question}`}
                 disabled={!review.canWrite}
                 onClick={() => {
-                  review.ops.discardNote(item.id, noop);
+                  review.ops.discardProposal(item.id, noop);
                 }}
               >
                 Discard
@@ -81,8 +82,9 @@ export function QuestionAnswer({
           submit="Save answer"
           placeholder="Write the answer…"
           onSubmit={(text, done) => {
-            review.ops.addAnswer(
+            review.ops.add(
               {
+                kind: "answer",
                 structureId: structure,
                 question,
                 text,
@@ -108,6 +110,7 @@ export function QuestionAnswer({
             type="button"
             data-answer-open={question}
             className={controlClass}
+            aria-label={`${answers.length === 0 ? "Answer" : "Answer again"}: ${question}`}
             onClick={() => {
               setAnswering(true);
             }}
@@ -170,9 +173,12 @@ export function RaisedQuestions({
           limit={maxNoteLength}
           rows={2}
           onSubmit={(text, done) => {
-            review.ops.raiseQuestion(structure, text, (outcome) => {
-              done(Option.getOrUndefined(Result.getFailure(outcome)));
-            });
+            review.ops.add(
+              { kind: "question", structureId: structure, text },
+              (outcome) => {
+                done(Option.getOrUndefined(Result.getFailure(outcome)));
+              }
+            );
           }}
         />
       ) : null}

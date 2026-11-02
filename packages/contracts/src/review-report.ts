@@ -7,10 +7,10 @@ const Spot = Schema.Struct({ x: Schema.Finite, y: Schema.Finite });
 const Size = Schema.Struct({ w: Schema.Finite, d: Schema.Finite });
 
 /**
- * Words an item holds: a note's text and the spot it is pinned to, a text
+ * Text an item holds: a note's text and the spot it is pinned to, a text
  * suggestion's field and text, or an answer's question, text and date.
  */
-const Words = Schema.Struct({
+const TextFacts = Schema.Struct({
   text: Schema.String,
   field: Schema.optionalKey(Schema.String),
   question: Schema.optionalKey(Schema.String),
@@ -19,7 +19,7 @@ const Words = Schema.Struct({
 });
 
 /**
- * What an item changes or leaves: positions, a size, words, or a hop's
+ * What an item changes or leaves: positions, a size, text, or a hop's
  * route, which is "automatic" or a route override's points.
  */
 const Route = Schema.Struct({
@@ -27,7 +27,7 @@ const Route = Schema.Struct({
 });
 
 export const Facts = Schema.NullOr(
-  Schema.Union([Schema.Record(Schema.String, Spot), Size, Words, Route])
+  Schema.Union([Schema.Record(Schema.String, Spot), Size, TextFacts, Route])
 );
 
 export type Facts = typeof Facts.Type;

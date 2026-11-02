@@ -13,7 +13,7 @@ import type { Page } from "playwright";
 
 import { openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { makeHome, runCli, startServe } from "./harness.ts";
 
 // Words on the page, against a real serve: a text suggestion shown beside the
 // original, an answer, a raised question, and notes on a hop and an empty spot.
@@ -138,37 +138,112 @@ describe("a text suggestion", () => {
     60_000
   );
 
-  it.live("can be made on a step's name and detail", () =>
+  it.live(
+    "can be made on both parts of a step with a single Edit, which names the step",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
+
+        yield* click(page, '[data-chapter-rail] button[data-chapter="c-page"]');
+        yield* click(page, '[data-structure="page"]');
+        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
+
+        // One Edit for each step, not two.
+        assert.strictEqual(
+          yield* count(
+            page,
+            `${panel} [data-suggestable-step="1"] [data-suggest]`
+          ),
+          1
+        );
+        assert.strictEqual(
+          yield* count(page, `${panel} [data-suggest^="steps."]`),
+          2
+        );
+
+        const edit = page.getByRole("button", { name: "Edit: step 2" });
+
+        assert.strictEqual(yield* Effect.promise(() => edit.count()), 1);
+        yield* Effect.promise(() => edit.click());
+        yield* fill(
+          page,
+          `${panel} [data-step-text="steps.1.name"]`,
+          "Save it"
+        );
+        yield* fill(
+          page,
+          `${panel} [data-step-text="steps.1.detail"]`,
+          "The page posts the note to the save server."
+        );
+        yield* click(page, `${panel} [data-step-send]`);
+        yield* waitFor(
+          page,
+          `${panel} [data-suggestable="steps.1.detail"] [data-suggested]`
+        );
+        yield* waitFor(
+          page,
+          `${panel} [data-suggestable="steps.1.name"] [data-suggested]`
+        );
+
+        const proposals = yield* readProposals(home);
+
+        assert.deepStrictEqual(
+          Arr.map(proposals.suggestions ?? [], ({ field, before, after }) => [
+            field,
+            before,
+            after,
+          ]),
+          [
+            ["steps.1.name", "Save", "Save it"],
+            [
+              "steps.1.detail",
+              "The page posts the note to the server.",
+              "The page posts the note to the save server.",
+            ],
+          ]
+        );
+
+        // Each open suggestion has a Discard that names its field.
+        assert.isAtLeast(
+          yield* Effect.promise(() =>
+            page
+              .getByRole("button", {
+                name: "Discard suggestion: step 2 detail",
+              })
+              .count()
+          ),
+          1
+        );
+      })
+  );
+
+  it.live("changing only one part of a step suggests only that part", () =>
     Effect.gen(function* () {
       const { home, page } = yield* served;
 
-      yield* pin(page, "server");
       yield* click(page, '[data-chapter-rail] button[data-chapter="c-page"]');
       yield* click(page, '[data-structure="page"]');
       yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
-      yield* click(page, `${panel} [data-suggest="steps.1.detail"]`);
+      yield* Effect.promise(() =>
+        page.getByRole("button", { name: "Edit: step 1" }).click()
+      );
       yield* fill(
         page,
-        `${panel} [data-suggestable="steps.1.detail"] [data-note-text]`,
-        "The page posts the note to the save server."
+        `${panel} [data-step-text="steps.0.detail"]`,
+        "The engineer pins a note to a structure, hop or spot."
       );
-      yield* click(
-        page,
-        `${panel} [data-suggestable="steps.1.detail"] [data-note-send]`
-      );
+      yield* click(page, `${panel} [data-step-send]`);
       yield* waitFor(
         page,
-        `${panel} [data-suggestable="steps.1.detail"] [data-suggested]`
+        `${panel} [data-suggestable="steps.0.detail"] [data-suggested]`
       );
 
-      const proposals = yield* readProposals(home);
-
       assert.deepStrictEqual(
-        Arr.map(proposals.suggestions ?? [], ({ field, before }) => [
-          field,
-          before,
-        ]),
-        [["steps.1.detail", "The page posts the note to the server."]]
+        Arr.map(
+          (yield* readProposals(home)).suggestions ?? [],
+          ({ field }) => field
+        ),
+        ["steps.0.detail"]
       );
     })
   );
@@ -370,5 +445,242 @@ describe("the Pending tab", () => {
         assert.strictEqual(proposals.batches?.[0]?.items[0]?.kind, "question");
         assert.deepStrictEqual(proposals.raised, []);
       })
+  );
+});
+
+describe("the Pending tab with proposals", () => {
+  it.live(
+    "has no empty-state text while only notes are pending, and its intro covers both kinds",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* pin(page, "server");
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+
+        // Nothing at all pending: the empty state shows.
+        yield* waitFor(page, "[data-pending-empty]");
+
+        yield* click(page, '[role="tab"][data-tab="details"]');
+        yield* fill(
+          page,
+          `${panel} [data-notes-section] [data-note-text]`,
+          "A note and nothing else"
+        );
+        yield* click(page, `${panel} [data-notes-section] [data-note-send]`);
+        yield* waitFor(page, "[data-panel-note]");
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+        yield* waitFor(page, '[data-review-item][data-review-kind="note"]');
+
+        assert.strictEqual(yield* count(page, "[data-pending-empty]"), 0);
+        assert.include(
+          yield* textOf(page, '[role="tab"][data-tab="pending"]'),
+          "Pending · 1"
+        );
+
+        const intro = yield* textOf(page, "[data-pending-intro]");
+
+        assert.include(intro, "Layout changes");
+        assert.include(intro, "Proposals");
+        assert.include(intro, "agent");
+        assert.include(
+          yield* textOf(page, "[data-review-list] h3"),
+          "Proposals for the agent"
+        );
+      }),
+    60_000
+  );
+
+  it.live(
+    "lists a suggestion, an answer and a question under the same heading",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* pin(page, "server");
+        yield* click(page, `${panel} [data-suggest="oneLiner"]`);
+        yield* fill(
+          page,
+          `${panel} [data-suggestable="oneLiner"] [data-note-text]`,
+          "Saves edits and tells every open page."
+        );
+        yield* click(
+          page,
+          `${panel} [data-suggestable="oneLiner"] [data-note-send]`
+        );
+        yield* waitFor(page, `${panel} [data-suggested]`);
+        yield* click(
+          page,
+          `${panel} [data-panel-question="Q-S1"] [data-answer-open]`
+        );
+        yield* fill(
+          page,
+          `${panel} [data-panel-question="Q-S1"] [data-note-text]`,
+          "Port 5178."
+        );
+        yield* click(
+          page,
+          `${panel} [data-panel-question="Q-S1"] [data-note-send]`
+        );
+        yield* waitFor(
+          page,
+          `${panel} [data-panel-question="Q-S1"] [data-answer]`
+        );
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+        yield* waitFor(page, '[data-review-kind="answer"]');
+
+        assert.strictEqual(yield* count(page, "[data-pending-empty]"), 0);
+        assert.deepStrictEqual(
+          yield* Effect.promise(() =>
+            page
+              .locator("[data-review-item]")
+              .evaluateAll<string[]>(
+                "(items) => items.map((item) => item.dataset.reviewKind)"
+              )
+          ),
+          ["suggestion", "answer"]
+        );
+      })
+  );
+});
+
+describe("a frozen suggestion", () => {
+  /** Suggests a new one-liner, freezes it, and leaves the panel open. */
+  const frozenOneLiner = Effect.fnUntraced(function* () {
+    const world = yield* served;
+    const { page } = world;
+
+    yield* pin(page, "server");
+    yield* click(page, `${panel} [data-suggest="oneLiner"]`);
+    yield* fill(
+      page,
+      `${panel} [data-suggestable="oneLiner"] [data-note-text]`,
+      "Saves edits and tells every open page."
+    );
+    yield* click(
+      page,
+      `${panel} [data-suggestable="oneLiner"] [data-note-send]`
+    );
+    yield* waitFor(page, `${panel} [data-suggested]`);
+    yield* click(page, "[data-ready-for-review]");
+    yield* waitFor(page, "[data-review-dialog][open]");
+    yield* click(page, "[data-review-close]");
+
+    return world;
+  });
+
+  it.live(
+    "shows as waiting on the agent, with no way to edit it",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* frozenOneLiner();
+        const field = `${panel} [data-suggestable="oneLiner"]`;
+
+        yield* waitFor(page, `${field}[data-suggestion-state="frozen"]`);
+
+        assert.include(
+          yield* textOf(page, `${field} [data-suggested]`),
+          "In batch 1, waiting for the agent"
+        );
+        assert.strictEqual(yield* count(page, `${field} button`), 0);
+        assert.strictEqual(yield* count(page, `${field} [data-suggest]`), 0);
+
+        // The server still refuses a write the page can't make.
+        const proposals = yield* readProposals(home);
+
+        assert.strictEqual(
+          proposals.batches?.[0]?.items[0]?.kind,
+          "suggestion"
+        );
+      }),
+    60_000
+  );
+
+  it.live(
+    "is a suggestion again once the agent rejects it",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* frozenOneLiner();
+        const field = `${panel} [data-suggestable="oneLiner"]`;
+
+        yield* waitFor(page, `${field}[data-suggestion-state="frozen"]`);
+
+        const item =
+          (yield* readProposals(home)).batches?.[0]?.items[0]?.id ?? "";
+
+        yield* runCli(home, [
+          "verdict",
+          home,
+          item,
+          "rejected",
+          "--reason",
+          "No.",
+        ]);
+        yield* runCli(home, ["commit", home]);
+        yield* waitFor(page, `${field}[data-suggestion-state="reviewed"]`);
+        yield* waitFor(page, `${field} [data-suggest]`);
+
+        assert.include(
+          yield* textOf(page, `${field} [data-suggest]`),
+          "Suggest again"
+        );
+      }),
+    90_000
+  );
+});
+
+describe("buttons", () => {
+  it.live("name the field or question they act on", () =>
+    Effect.gen(function* () {
+      const { page } = yield* served;
+
+      yield* pin(page, "server");
+      yield* click(page, `${panel} [data-suggest="oneLiner"]`);
+      yield* fill(
+        page,
+        `${panel} [data-suggestable="oneLiner"] [data-note-text]`,
+        "Saves edits and tells every open page."
+      );
+      yield* click(
+        page,
+        `${panel} [data-suggestable="oneLiner"] [data-note-send]`
+      );
+      yield* waitFor(page, `${panel} [data-suggested]`);
+      yield* click(
+        page,
+        `${panel} [data-panel-question="Q-S1"] [data-answer-open]`
+      );
+      yield* fill(
+        page,
+        `${panel} [data-panel-question="Q-S1"] [data-note-text]`,
+        "Port 5178."
+      );
+      yield* click(
+        page,
+        `${panel} [data-panel-question="Q-S1"] [data-note-send]`
+      );
+      yield* waitFor(
+        page,
+        `${panel} [data-panel-question="Q-S1"] [data-answer]`
+      );
+
+      const names = yield* Effect.promise(() =>
+        page
+          .locator(`${panel} button[aria-label]`)
+          .evaluateAll<string[]>(
+            "(buttons) => buttons.map((button) => button.ariaLabel)"
+          )
+      );
+
+      for (const name of [
+        "Edit suggestion: one-liner",
+        "Discard suggestion: one-liner",
+        "Discard answer: Q-S1",
+        "Edit: what it does",
+        "Edit: how it's built",
+      ]) {
+        assert.include(names, name);
+      }
+    })
   );
 });

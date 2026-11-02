@@ -15,7 +15,7 @@ import {
   FreezeAnswer,
   ItemWrite,
   NoteAdd,
-  NoteEdit,
+  ItemEdit,
   ProposalRefused,
   QuestionAdd,
   ReopenWrite,
@@ -114,12 +114,12 @@ export class ReviewApiGroup extends HttpApiGroup.make("review")
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
-    HttpApiEndpoint.post("editNote", serverPaths.editNote, {
-      payload: NoteEdit,
+    HttpApiEndpoint.post("editItem", serverPaths.editItem, {
+      payload: ItemEdit,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
-    HttpApiEndpoint.post("discardNote", serverPaths.discardNote, {
+    HttpApiEndpoint.post("discardItem", serverPaths.discardItem, {
       payload: ItemWrite,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],

@@ -3,11 +3,11 @@ import { Array as Arr, Option } from "effect";
 import type { MapData } from "./map-data.ts";
 import { maxNoteLength, maxSuggestionLength } from "./proposals.ts";
 import type { BatchItem } from "./proposals.ts";
-import type { KindSpec } from "./review-kinds.ts";
+import type { Existing, KindSpec, Pointer } from "./review-kinds.ts";
 import { decorate, oneLine, quoteText } from "./review-quote.ts";
 import { fieldLabel, textOfField } from "./text-fields.ts";
 
-// The kinds that carry the engineer's words: a text suggestion, an answer to
+// The kinds that carry the engineer's text: a text suggestion, an answer to
 // a question and a question raised on a structure. Each is one entry of the
 // kind table; `review-kinds.ts` lists them.
 
@@ -29,6 +29,28 @@ const noStructure = (
     ? Option.none<string>()
     : Option.some(missingStructure(id, what));
 
+/**
+ * Why an item can't join one that is waiting. An open one can be edited or
+ * discarded first. One in a batch can't be: it waits for the agent's commit.
+ */
+const waitingMessage = ({
+  what,
+  id,
+  batch,
+}: {
+  readonly what: string;
+  readonly id: string;
+  readonly batch: number | undefined;
+}) =>
+  batch === undefined
+    ? `${what} waiting (${id}). Edit or discard that one first.`
+    : `${what} waiting (${id}) in batch ${batch}, which is waiting for the agent. Add yours once the agent commits.`;
+
+const danglingStructure = (id: string, known: Existing) =>
+  known.structures.has(id)
+    ? Option.none<string>()
+    : Option.some(`no structure in data.mjs has the id "${id}"`);
+
 /** The question `id` on structure `on`, as data.mjs has it. */
 const questionOn = (data: MapData, on: string, id: string) =>
   Option.flatMap(
@@ -39,6 +61,12 @@ const questionOn = (data: MapData, on: string, id: string) =>
 
 export const suggestionKind: KindSpec<SuggestionItem> = {
   textLimit: maxSuggestionLength,
+  listKey: "suggestions",
+  text: ({ after }) => Option.some(after),
+  describe: ({ target, field, after }, nameOf) =>
+    Option.some(
+      `Suggestion for the ${fieldLabel(field)} of ${nameOf(target.id)}: ${after}`
+    ),
   open: (proposals) =>
     Arr.map(proposals.suggestions ?? [], (suggestion): SuggestionItem => ({
       kind: "suggestion",
@@ -50,7 +78,10 @@ export const suggestionKind: KindSpec<SuggestionItem> = {
     suggestions: [...(proposals.suggestions ?? []), suggestion],
   }),
   name: () => "suggestion",
-  targets: (item) => [item.target.id],
+  targets: (item): readonly Pointer[] => [
+    { kind: "structure", id: item.target.id },
+  ],
+  dangling: (item, known) => danglingStructure(item.target.id, known),
   summary: (item, nameOf) =>
     `suggestion ${item.id} on ${quoteText(nameOf(item.target.id))}, ${fieldLabel(item.field)}: from ${quoteText(oneLine(item.before, 60))} to ${quoteText(oneLine(item.after, 60))}`,
   facts: (item) => ({
@@ -92,13 +123,17 @@ export const suggestionKind: KindSpec<SuggestionItem> = {
     Option.map(
       Arr.findFirst(
         waiting,
-        (other) =>
+        ({ item: other }) =>
           other.kind === "suggestion" &&
           other.target.id === item.target.id &&
           other.field === item.field
       ),
-      ({ id }) =>
-        `The ${fieldLabel(item.field)} of "${item.target.id}" already has a suggestion waiting (${id}). Edit or discard that one first.`
+      ({ item: { id }, batch }) =>
+        waitingMessage({
+          what: `The ${fieldLabel(item.field)} of "${item.target.id}" already has a suggestion`,
+          id,
+          batch,
+        })
     ),
   notice:
     "To take a text suggestion, set the field it names in data.mjs to the suggested text, or to your own wording with the verdict changed. Compare it with the original shown as before.",
@@ -133,6 +168,10 @@ export const suggestionKind: KindSpec<SuggestionItem> = {
 
 export const answerKind: KindSpec<AnswerItem> = {
   textLimit: maxNoteLength,
+  listKey: "answers",
+  text: ({ text }) => Option.some(text),
+  describe: ({ target, question, text }, nameOf) =>
+    Option.some(`Answer to ${question} on ${nameOf(target.id)}: ${text}`),
   open: (proposals) =>
     Arr.map(proposals.answers ?? [], (answer): AnswerItem => ({
       kind: "answer",
@@ -144,7 +183,10 @@ export const answerKind: KindSpec<AnswerItem> = {
     answers: [...(proposals.answers ?? []), answer],
   }),
   name: () => "answer",
-  targets: (item) => [item.target.id],
+  targets: (item): readonly Pointer[] => [
+    { kind: "structure", id: item.target.id },
+  ],
+  dangling: (item, known) => danglingStructure(item.target.id, known),
   summary: (item, nameOf) =>
     `answer ${item.id} to ${item.question} on ${quoteText(nameOf(item.target.id))}, given ${item.answeredOn}: ${quoteText(oneLine(item.text, 80))}`,
   facts: (item, _layout, data) => ({
@@ -188,13 +230,17 @@ export const answerKind: KindSpec<AnswerItem> = {
     Option.map(
       Arr.findFirst(
         waiting,
-        (other) =>
+        ({ item: other }) =>
           other.kind === "answer" &&
           other.question === item.question &&
           other.target.id === item.target.id
       ),
-      ({ id }) =>
-        `${item.question} already has an answer waiting (${id}). Discard it first, or wait for the agent's verdict.`
+      ({ item: { id }, batch }) =>
+        waitingMessage({
+          what: `${item.question} already has an answer`,
+          id,
+          batch,
+        })
     ),
   notice:
     'To take an answer, change its question in data.mjs to state: "resolved" and add answer, answeredOn (the date shown) and answeredBy. Set answeredBy yourself, to the name of the engineer who answered, such as the git user.name: the page does not know who is typing, and the answer must not name you. Ask the engineer if you cannot tell.',
@@ -229,6 +275,10 @@ export const answerKind: KindSpec<AnswerItem> = {
 
 export const questionKind: KindSpec<QuestionItem> = {
   textLimit: maxNoteLength,
+  listKey: "raised",
+  text: ({ text }) => Option.some(text),
+  describe: ({ target, text }, nameOf) =>
+    Option.some(`New question on ${nameOf(target.id)}: ${text}`),
   open: (proposals) =>
     Arr.map(proposals.raised ?? [], (raised): QuestionItem => ({
       kind: "question",
@@ -240,7 +290,10 @@ export const questionKind: KindSpec<QuestionItem> = {
     raised: [...(proposals.raised ?? []), raised],
   }),
   name: () => "question",
-  targets: (item) => [item.target.id],
+  targets: (item): readonly Pointer[] => [
+    { kind: "structure", id: item.target.id },
+  ],
+  dangling: (item, known) => danglingStructure(item.target.id, known),
   summary: (item, nameOf) =>
     `question ${item.id} on ${quoteText(nameOf(item.target.id))}: ${quoteText(oneLine(item.text, 80))}`,
   facts: (item) => ({ before: null, after: { text: item.text } }),

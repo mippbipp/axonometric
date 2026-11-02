@@ -7,8 +7,8 @@ import {
   applyLayoutChanges,
   layoutRefusal,
   maxNoteLength,
+  hopsOf,
   structuresOf,
-  targetIdsOf,
 } from "./proposals.ts";
 import type {
   BatchItem,
@@ -21,12 +21,31 @@ import {
   answerKind,
   questionKind,
   suggestionKind,
-} from "./review-kinds-words.ts";
+} from "./review-kinds-text.ts";
 import { decorate, oneLine, quoteText } from "./review-quote.ts";
 import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
 export { oneLine, quoteText } from "./review-quote.ts";
+
+/** A structure or a hop, named by its id. */
+export interface Pointer {
+  readonly kind: "structure" | "hop";
+  readonly id: string;
+}
+
+/** The ids of what data.mjs has, for an item to check its pointers against. */
+export interface Existing {
+  readonly structures: ReadonlySet<string>;
+  readonly hops: ReadonlySet<string>;
+}
+
+/** An item still waiting on the agent, and the batch it is in, if any. */
+export interface Waiting {
+  readonly item: BatchItem;
+  /** The number of the batch holding the item, or nothing while it is open. */
+  readonly batch: number | undefined;
+}
 
 /** What a kind of item needs to know about the map. */
 export interface Landing {
@@ -63,11 +82,26 @@ export interface KindSpec<I extends BatchItem> {
   add(proposals: Proposals, item: I): Proposals;
   /** A word for what the item is, such as "move". */
   name(item: I): string;
+  /** What the item acts on or points at: structures and hops, each told apart by kind. */
+  targets(item: I): readonly Pointer[];
+  /** The key of the kind's open list in `proposals.json`, for a warning's path. */
+  readonly listKey: string;
+  /** The text the engineer wrote in the item, or nothing for a kind with none. */
+  text(item: I): Option.Option<string>;
   /**
-   * The ids of what the item acts on or points at: structures, and for a
-   * reroute the hop.
+   * The item in a few words for the Pending tab, or nothing for a kind the
+   * page describes itself, such as a layout change.
    */
-  targets(item: I): readonly string[];
+  describe(
+    item: I,
+    nameOf: (id: string) => string,
+    hopLabelOf: (id: string) => string
+  ): Option.Option<string>;
+  /**
+   * Why the item points at a structure or hop that data.mjs lacks, or
+   * nothing. `check` warns with it for the item.
+   */
+  dangling(item: I, known: Existing): Option.Option<string>;
   /**
    * One line for the prompt. Text the engineer wrote goes through
    * `quoteText`. `hopLabelOf` gives a hop's label, for a reroute.
@@ -96,7 +130,7 @@ export interface KindSpec<I extends BatchItem> {
   rejected(item: I, reason: string): RejectedItem;
   /** The item again under a new id, for an engineer who edits it after a rejection. */
   reopened(item: I, newId: ChangeId, text: string | undefined): I;
-  /** The most characters the kind's words hold. */
+  /** The most characters the kind's text holds. */
   readonly textLimit: number;
   /**
    * Why the item was written against something data.mjs no longer says, or
@@ -109,7 +143,7 @@ export interface KindSpec<I extends BatchItem> {
    * open, or in a batch with no commit), or nothing. One answer per question,
    * say.
    */
-  clash?(item: I, waiting: readonly BatchItem[]): Option.Option<string>;
+  clash?(item: I, waiting: readonly Waiting[]): Option.Option<string>;
   /**
    * A line for the prompt and for `review` that tells the agent how to
    * fold this kind in, said once when the batch holds an item of the kind.
@@ -165,7 +199,18 @@ const layoutKind: KindSpec<LayoutItem> = {
     layout: [...proposals.layout, item.change],
   }),
   name: (item) => item.change.kind,
-  targets: (item) => targetIdsOf(item.change),
+  listKey: "layout",
+  text: () => Option.none(),
+  describe: () => Option.none(),
+  // `check` already warns about layout changes, with the change's own wording.
+  dangling: () => Option.none(),
+  targets: ({ change }) => [
+    ...Arr.map(structuresOf(change), (id): Pointer => ({
+      kind: "structure",
+      id,
+    })),
+    ...Arr.map(hopsOf(change), (id): Pointer => ({ kind: "hop", id })),
+  ],
   summary: (item, nameOf, hopLabelOf) => {
     const { change } = item;
 
@@ -234,7 +279,40 @@ const noteKind: KindSpec<NoteItem> = {
     notes: [...(proposals.notes ?? []), { id, target, text }],
   }),
   name: () => "note",
-  targets: ({ target }) => (target.kind === "spot" ? [] : [target.id]),
+  listKey: "notes",
+  text: ({ text }) => Option.some(text),
+  describe: ({ target, text }, nameOf, hopLabelOf) =>
+    Option.some(
+      Match.value(target).pipe(
+        Match.discriminatorsExhaustive("kind")({
+          structure: ({ id }) => `Note on ${nameOf(id)}: ${text}`,
+          hop: ({ id }) => `Note on hop ${hopLabelOf(id)}: ${text}`,
+          spot: ({ x, y }) => `Note at the spot ${x}, ${y}: ${text}`,
+        })
+      )
+    ),
+  dangling: ({ target }, known) =>
+    Match.value(target).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        structure: ({ id }) =>
+          known.structures.has(id)
+            ? Option.none()
+            : Option.some(`no structure in data.mjs has the id "${id}"`),
+        hop: ({ id }) =>
+          known.hops.has(id)
+            ? Option.none()
+            : Option.some(`no hop in data.mjs has the id "${id}"`),
+        spot: () => Option.none(),
+      })
+    ),
+  targets: ({ target }): readonly Pointer[] =>
+    Match.value(target).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        structure: ({ id }): readonly Pointer[] => [{ kind: "structure", id }],
+        hop: ({ id }): readonly Pointer[] => [{ kind: "hop", id }],
+        spot: (): readonly Pointer[] => [],
+      })
+    ),
   summary: ({ id, target, text }, nameOf, hopLabelOf) => {
     const said = quoteText(oneLine(text, 80));
 

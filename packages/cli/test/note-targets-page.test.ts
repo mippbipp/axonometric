@@ -1,12 +1,14 @@
-import { ProposalsFile } from "@axonometric/contracts";
+import { NoteAdd, ProposalsFile } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, FileSystem, Path, Schema } from "effect";
+import { HttpClientRequest } from "effect/http";
 import type { Page } from "playwright";
 
 import { literal, openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
+import { send } from "./revisions.ts";
 
 // Notes on a hop and on an empty spot, against a real serve: pinned from the
 // hop's panel and the Note tool, drawn as rings clear of text and boxes in
@@ -39,6 +41,15 @@ const click = (page: Page, selector: string) =>
 const fill = (page: Page, selector: string, text: string) =>
   Effect.promise(() => page.locator(selector).first().fill(text));
 
+const textOf = (page: Page, selector: string) =>
+  Effect.promise(() =>
+    page
+      .locator(selector)
+      .first()
+      .textContent()
+      .then((text) => text ?? "")
+  );
+
 const count = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).count());
 
@@ -52,6 +63,15 @@ const readProposals = Effect.fnUntraced(function* (home: string) {
 }, Effect.provide(NodeServices.layer));
 
 const views = ["iso", "plan"] as const;
+
+const spotReadout = /Spot (?<x>-?[\d.]+), (?<y>-?[\d.]+)/u;
+
+/** The grid position the Note tool's readout shows. */
+const spotOf = (readout: string) => {
+  const found = spotReadout.exec(readout)?.groups;
+
+  return { x: Number(found?.x), y: Number(found?.y) };
+};
 
 const showView = Effect.fnUntraced(function* (
   page: Page,
@@ -459,5 +479,258 @@ describe("exports", () => {
         assert.isTrue(fromPage === (yield* fs.readFileString(target)));
       }).pipe(Effect.provide(NodeServices.layer)),
     90_000
+  );
+});
+
+const post = (url: string, route: string, body: string) =>
+  send(
+    HttpClientRequest.post(new URL(route, url)).pipe(
+      HttpClientRequest.setHeaders({
+        origin: url,
+        "content-type": "application/json",
+      }),
+      HttpClientRequest.bodyText(body, "application/json")
+    )
+  );
+
+/** The body that pins a far-off spot note, on the file revision `base`. */
+const farSpot = (base: number) =>
+  Schema.encodeEffect(Schema.fromJsonString(NoteAdd))({
+    baseFileRevision: base,
+    id: "n-far",
+    target: { kind: "spot", x: 60, y: 40 },
+    text: "Far away",
+  }).pipe(Effect.orDie);
+
+/** Whether every ring is wholly inside the map surface. */
+const ringsOnScreen = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<boolean>(`(() => {
+        const surface = document.querySelector("[data-map-surface]").getBoundingClientRect();
+        const rings = [...document.querySelectorAll("[data-note-marker][data-note-placed='ring']")];
+
+        return rings.length > 0 && rings.every((ring) => {
+          const r = ring.getBoundingClientRect();
+
+          return r.left >= surface.left && r.right <= surface.right && r.top >= surface.top && r.bottom <= surface.bottom;
+        });
+      })()`)
+  );
+
+describe("zoom to fit", () => {
+  for (const view of views) {
+    it.live(
+      `includes a spot note far from the map in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { serve, page, errors } = yield* served;
+
+          const sent = yield* post(serve.url, "/api/notes", yield* farSpot(0));
+
+          assert.strictEqual(sent.status, 200, sent.body);
+
+          yield* openAll(page);
+          yield* showView(page, view);
+          yield* waitFor(page, '[data-note-marker^="spot:"]');
+          yield* click(page, 'button[title="Zoom to fit (0)"]');
+          yield* Effect.promise(() => page.waitForTimeout(500));
+
+          assert.isTrue(yield* ringsOnScreen(page));
+          assert.deepStrictEqual(errors, []);
+        }),
+      60_000
+    );
+  }
+
+  it.live("leaves an export's extent as the CLI draws it", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const { serve, home, root, page } = yield* served;
+
+      const sent = yield* post(serve.url, "/api/notes", yield* farSpot(0));
+
+      assert.strictEqual(sent.status, 200, sent.body);
+      yield* openAll(page);
+      yield* waitFor(page, '[data-note-marker^="spot:"]');
+      yield* Effect.promise(() => page.keyboard.press("Escape"));
+      yield* click(page, '[data-control="export"]');
+
+      const [download] = yield* Effect.promise(() =>
+        Promise.all([
+          page.waitForEvent("download"),
+          page.locator('[data-export-item="svg"]').click(),
+        ])
+      );
+
+      const fromPage = yield* fs.readFileString(
+        yield* Effect.promise(() => download.path())
+      );
+
+      const target = path.join(root, "far.svg");
+
+      const exported = yield* runCli(home, [
+        "export",
+        home,
+        "--format",
+        "svg",
+        "--view",
+        "iso",
+        "--chapter",
+        "3",
+        "--output",
+        target,
+      ]);
+
+      assert.strictEqual(exported.exitCode, 0, exported.stderr);
+      assert.isTrue(fromPage === (yield* fs.readFileString(target)));
+    }).pipe(Effect.provide(NodeServices.layer))
+  );
+});
+
+describe("the keyboard", () => {
+  it.live(
+    "opens a ring by its name with Enter or Space, and shows a focus ring",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* openAll(page);
+        yield* selectHop(page, "h-save");
+        yield* noteOnHop(page, "A thought");
+        yield* waitFor(page, '[data-note-marker="hop:h-save"]');
+        yield* click(page, '[data-structure="server"]');
+        yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
+        yield* fill(
+          page,
+          "[data-structure-panel] [data-notes-section] [data-note-text]",
+          "On a box"
+        );
+        yield* click(
+          page,
+          "[data-structure-panel] [data-notes-section] [data-note-send]"
+        );
+        yield* waitFor(page, '[data-note-marker="server"]');
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+
+        const hopRing = page.getByRole("button", {
+          name: 'Note on hop "POST /proposals"',
+        });
+
+        const boxRing = page.getByRole("button", {
+          name: 'Note on "Save server"',
+        });
+
+        assert.strictEqual(yield* Effect.promise(() => hopRing.count()), 1);
+        assert.strictEqual(yield* Effect.promise(() => boxRing.count()), 1);
+
+        yield* Effect.promise(() => hopRing.focus());
+
+        // Focus shows: the ring has an outline.
+        const outline = yield* Effect.promise(() =>
+          hopRing.evaluate<string>(
+            "(ring) => getComputedStyle(ring).outlineStyle"
+          )
+        );
+
+        assert.notStrictEqual(outline, "none");
+
+        yield* Effect.promise(() => page.keyboard.press("Enter"));
+        yield* waitFor(page, '[data-hop-panel="h-save"]');
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() =>
+          page.locator("[data-hop-panel]").waitFor({ state: "detached" })
+        );
+        yield* Effect.promise(() => boxRing.focus());
+        yield* Effect.promise(() => page.keyboard.press("Space"));
+        yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
+      }),
+    60_000
+  );
+
+  for (const view of views) {
+    it.live(
+      `pins a note on a spot with the arrow keys and Enter in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { home, page } = yield* served;
+
+          yield* openAll(page);
+          yield* showView(page, view);
+
+          // The button is reachable and armed from the keyboard.
+          yield* Effect.promise(() =>
+            page.locator('[data-control="note-tool"]').focus()
+          );
+          yield* Effect.promise(() => page.keyboard.press("Enter"));
+          yield* waitFor(page, "[data-spot-cursor]");
+          yield* Effect.promise(() => page.locator("body").focus());
+
+          const readout = () => textOf(page, "[data-spot-readout]");
+          const start = yield* readout();
+
+          yield* Effect.promise(() => page.keyboard.press("ArrowRight"));
+          yield* Effect.promise(() => page.keyboard.press("ArrowDown"));
+          yield* Effect.promise(() => page.keyboard.press("Shift+ArrowRight"));
+
+          const moved = yield* readout();
+
+          assert.notStrictEqual(moved, start);
+
+          const after = spotOf(moved);
+          const before = spotOf(start);
+
+          assert.closeTo(after.x - before.x, 5.5, 1e-9);
+          assert.closeTo(after.y - before.y, 0.5, 1e-9);
+
+          yield* Effect.promise(() => page.keyboard.press("Enter"));
+          yield* waitFor(page, "[data-spot-panel]");
+          yield* fill(
+            page,
+            "[data-spot-panel] [data-note-text]",
+            "By keyboard"
+          );
+          yield* click(page, "[data-spot-panel] [data-note-send]");
+          yield* waitFor(page, "[data-spot-panel] [data-panel-note]");
+
+          const [saved] = (yield* readProposals(home)).notes ?? [];
+
+          assert.deepStrictEqual(saved?.target, {
+            kind: "spot",
+            x: after.x,
+            y: after.y,
+          });
+          assert.strictEqual(saved?.text, "By keyboard");
+        }),
+      60_000
+    );
+  }
+
+  it.live(
+    "keeps the arrow keys for the cursor while the tool is armed, and Escape stops it",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* openAll(page);
+
+        const chapter = () =>
+          page
+            .locator("[data-walkthrough]")
+            .evaluate<string>("(main) => main.dataset.chapter");
+
+        yield* click(page, '[data-control="note-tool"]');
+        yield* waitFor(page, "[data-spot-cursor]");
+        yield* Effect.promise(() => page.keyboard.press("ArrowLeft"));
+
+        // The arrow moved the cursor, not the chapter.
+        assert.strictEqual(yield* Effect.promise(chapter), "c-all");
+
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() =>
+          page.locator("[data-spot-cursor]").waitFor({ state: "detached" })
+        );
+        assert.strictEqual(yield* count(page, "[data-spot-panel]"), 0);
+      })
   );
 });

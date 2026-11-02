@@ -122,7 +122,7 @@ export function ReadyForReview() {
     return null;
   }
 
-  const open = (editing?.pending.length ?? 0) + review.openWords;
+  const open = (editing?.pending.length ?? 0) + review.openText;
 
   const press = () => {
     setBusy(true);

@@ -28,8 +28,8 @@ export const serverPaths = {
   pendingLayout: "/api/proposals/layout",
   accept: "/api/proposals/accept",
   notes: "/api/notes",
-  editNote: "/api/notes/edit",
-  discardNote: "/api/notes/discard",
+  editItem: "/api/items/edit",
+  discardItem: "/api/items/discard",
   suggestions: "/api/suggestions",
   answers: "/api/answers",
   questions: "/api/questions",
@@ -232,10 +232,10 @@ export const ServedPage = Schema.Struct({
   accept: Schema.String,
   /** Where to add a note, relative to the page's URL. */
   notes: Schema.String,
-  /** Where to change the words of an open note, suggestion, answer or question. */
-  editNote: Schema.String,
+  /** Where to change the text of an open note, suggestion, answer or question. */
+  editItem: Schema.String,
   /** Where to discard an open note, suggestion, answer or question. */
-  discardNote: Schema.String,
+  discardItem: Schema.String,
   /** Where to add a text suggestion, relative to the page's URL. */
   suggestions: Schema.String,
   /** Where to add an answer to a question. */

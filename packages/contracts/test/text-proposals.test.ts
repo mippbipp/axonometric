@@ -12,10 +12,13 @@ import { vi } from "vitest";
 import {
   AcceptedItem,
   addItem,
+  BatchItem as BatchItemSchema,
+  checkOpenItems,
+  Question,
   breakageOf,
   commitBatch,
-  discardOpen,
-  editOpen,
+  discardProposal,
+  editProposal,
   engineerTextNotice,
   freezeOpen,
   kindNotices,
@@ -80,6 +83,24 @@ const isWhole = (item: BatchItem, data: MapData): boolean =>
 /** The proposals after `items` are added and then frozen into batch 1. */
 const frozenWith = (items: readonly BatchItem[]): P =>
   unwrap(freezeOpen({ proposals: addAll(known, items), at })).proposals;
+
+/** An answer's fields, for a file that holds one on its own. */
+const answerFields = () => ({
+  id: "a1",
+  target: { kind: "structure" as const, id: "page" },
+  question: "Q-P1",
+  text: "Yes.",
+  answeredOn: "2026-11-02",
+});
+
+/** A suggestion's fields, for a file that holds one on its own. */
+const suggestionFields = () => ({
+  id: "s1",
+  target: { kind: "structure" as const, id: "page" },
+  field: "oneLiner",
+  before: "Shows the map and records notes.",
+  after: "Shows the map and saves each note.",
+});
 
 const names = {
   structure: (id: string) => (id === "page" ? "Map page" : "Save server"),
@@ -221,7 +242,7 @@ describe("proposals.json with the new kinds", () => {
   });
 
   it("takes a step's name or detail as a field", () => {
-    for (const field of ["steps.0.name", "steps.12.detail"]) {
+    for (const field of ["steps.0.name", "steps.12.detail"] as const) {
       const proposals = addAll(known, [{ ...suggestion, field }]);
 
       assert.strictEqual(proposals.suggestions?.[0]?.field, field);
@@ -333,15 +354,15 @@ describe("adding and editing", () => {
     const open = addAll(known, everything);
 
     const edited = unwrap(
-      editOpen({ proposals: open, id: "s1", text: "Better." })
+      editProposal({ proposals: open, id: "s1", text: "Better." })
     );
 
     const answered = unwrap(
-      editOpen({ proposals: edited, id: "a1", text: "No." })
+      editProposal({ proposals: edited, id: "a1", text: "No." })
     );
 
     const asked = unwrap(
-      editOpen({ proposals: answered, id: "r1", text: "Why?" })
+      editProposal({ proposals: answered, id: "r1", text: "Why?" })
     );
 
     assert.strictEqual(asked.suggestions?.[0]?.after, "Better.");
@@ -355,7 +376,7 @@ describe("adding and editing", () => {
 
   it("discards an open item of any word kind, and says a frozen one waits", () => {
     const open = addAll(known, everything);
-    const gone = unwrap(discardOpen({ proposals: open, id: "a1" }));
+    const gone = unwrap(discardProposal({ proposals: open, id: "a1" }));
 
     assert.deepStrictEqual(gone.answers, []);
     assert.strictEqual(gone.suggestions?.length, 1);
@@ -364,11 +385,11 @@ describe("adding and editing", () => {
 
     for (const id of ["s1", "a1", "r1", "n-spot"]) {
       assert.include(
-        failure(editOpen({ proposals: frozen, id, text: "x" })),
+        failure(editProposal({ proposals: frozen, id, text: "x" })),
         "waiting for the agent"
       );
       assert.include(
-        failure(discardOpen({ proposals: frozen, id })),
+        failure(discardProposal({ proposals: frozen, id })),
         "waiting for the agent"
       );
     }
@@ -379,7 +400,7 @@ describe("adding and editing", () => {
     const tooLong = Str.repeat(8001)("x");
 
     assert.include(
-      failure(editOpen({ proposals: open, id: "s1", text: tooLong })),
+      failure(editProposal({ proposals: open, id: "s1", text: tooLong })),
       "over the limit"
     );
   });
@@ -794,5 +815,222 @@ describe("a rejected item", () => {
       ["a2", "open"],
       ["a1", "reviewed"],
     ]);
+  });
+});
+
+describe("a suggestion that is frozen", () => {
+  it("says it waits for the agent's commit, not that it can be edited first", () => {
+    const again: BatchItem = { ...suggestion, id: "s-again", after: "Other." };
+
+    const why = failure(
+      addItem({ proposals: frozenWith([suggestion]), item: again, known })
+    );
+
+    assert.include(why, "in batch 1, which is waiting for the agent");
+    assert.include(why, "once the agent commits");
+    assert.notInclude(why, "Edit or discard");
+  });
+
+  it("says the same of a frozen answer", () => {
+    const again: BatchItem = { ...answer, id: "a-again", text: "Other." };
+
+    const why = failure(
+      addItem({ proposals: frozenWith([answer]), item: again, known })
+    );
+
+    assert.include(why, "in batch 1, which is waiting for the agent");
+  });
+
+  it("still says an open one can be edited or discarded first", () => {
+    const again: BatchItem = { ...suggestion, id: "s-again", after: "Other." };
+
+    const why = failure(
+      addItem({
+        proposals: addAll(known, [suggestion]),
+        item: again,
+        known,
+      })
+    );
+
+    assert.include(why, "Edit or discard that one first");
+  });
+});
+
+describe("answeredOn", () => {
+  it.each([
+    "2026-02-30",
+    "2026-13-01",
+    "2026-04-31",
+    "2026-02-29",
+    "2026-00-10",
+    "2026-11-00",
+    "2026-1-02",
+    "not a date",
+  ])("refuses %s", (answeredOn) => {
+    const proposals = {
+      ...empty,
+      answers: [{ ...answerFields(), answeredOn }],
+    };
+
+    assert.isTrue(Result.isFailure(decode(proposals)));
+  });
+
+  it.each(["2026-11-02", "2028-02-29", "2026-12-31", "2026-01-01"])(
+    "takes %s",
+    (answeredOn) => {
+      const proposals = {
+        ...empty,
+        answers: [{ ...answerFields(), answeredOn }],
+      };
+
+      assert.isTrue(Result.isSuccess(decode(proposals)));
+    }
+  );
+
+  it("is checked in data.mjs too", () => {
+    const resolved = {
+      id: "Q-P2",
+      state: "resolved",
+      text: "Does it work?",
+      answer: "Yes.",
+      answeredBy: "mippbipp",
+      answeredOn: "2026-02-30",
+    };
+
+    assert.isTrue(
+      Result.isFailure(Schema.decodeUnknownResult(Question)(resolved))
+    );
+    assert.isTrue(
+      Result.isSuccess(
+        Schema.decodeUnknownResult(Question)({
+          ...resolved,
+          answeredOn: "2026-02-27",
+        })
+      )
+    );
+  });
+});
+
+describe("the caps", () => {
+  it("cap a suggestion's original as they cap its new text", () => {
+    const long = Str.repeat(8001)("x");
+
+    for (const field of ["before", "after"] as const) {
+      const proposals = {
+        ...empty,
+        suggestions: [{ ...suggestionFields(), [field]: long }],
+      };
+
+      assert.isTrue(Result.isFailure(decode(proposals)), field);
+    }
+  });
+});
+
+describe("the notice for the engineer's words", () => {
+  it("names every kind of text the engineer writes", () => {
+    for (const word of ["notes", "suggestions", "answers", "questions"]) {
+      assert.include(engineerTextNotice, word);
+    }
+  });
+});
+
+describe("warnings for items that point at nothing", () => {
+  it.effect("cover every kind, through the kind table", () =>
+    Effect.gen(function* () {
+      const { data } = yield* fixture("review");
+
+      const pointing = addAll(
+        {
+          structureIds: new Set(["page", "server", "ghost"]),
+          hops: [
+            { id: "h-ghost", from: "page", to: "server" },
+            { id: "h-save", from: "page", to: "server" },
+          ],
+        },
+        [
+          { ...suggestion, target: { kind: "structure", id: "ghost" } },
+          { ...answer, target: { kind: "structure", id: "ghost" } },
+          { ...raised, target: { kind: "structure", id: "ghost" } },
+          { ...spotNote },
+          { ...hopNote, target: { kind: "hop", id: "h-ghost" } },
+          { ...hopNote, id: "n-ok", target: { kind: "hop", id: "h-save" } },
+        ]
+      );
+
+      const problems = checkOpenItems(data, pointing);
+
+      assert.deepStrictEqual(
+        Arr.map(problems, ({ path }) => path),
+        [
+          "notes[1].target",
+          "suggestions[0].target",
+          "answers[0].target",
+          "raised[0].target",
+        ]
+      );
+      assert.isTrue(
+        Arr.every(problems, ({ severity }) => severity === "warning")
+      );
+      assert.include(
+        problems[0]?.message ?? "",
+        'no hop in data.mjs has the id "h-ghost"'
+      );
+    })
+  );
+});
+
+describe("the messages for items", () => {
+  it("list every kind in each union, built from one table", () => {
+    const decodeItem = Schema.decodeUnknownResult(BatchItemSchema);
+
+    const refused = failure(
+      Result.mapError(decodeItem({ id: "x", kind: "nope" }), String)
+    );
+
+    for (const kind of ["layout", "note", "suggestion", "answer", "question"]) {
+      assert.include(refused, `kind: "${kind}"`);
+    }
+
+    const accepted = failure(
+      Result.mapError(
+        Schema.decodeUnknownResult(AcceptedItem)({ kind: "nope" }),
+        String
+      )
+    );
+
+    const rejected = failure(
+      Result.mapError(
+        Schema.decodeUnknownResult(RejectedItem)({ kind: "nope" }),
+        String
+      )
+    );
+
+    for (const message of [accepted, rejected]) {
+      for (const kind of [
+        "layout",
+        "note",
+        "suggestion",
+        "answer",
+        "question",
+      ]) {
+        assert.include(message, `kind: "${kind}"`);
+      }
+    }
+
+    assert.include(rejected, "reason }");
+  });
+
+  it("name each kind's own fields when one carries a field it shouldn't", () => {
+    const result = Schema.decodeUnknownResult(BatchItemSchema, {
+      onExcessProperty: "error",
+    })({ ...raised, extra: true });
+
+    assert.include(
+      Result.match(result, {
+        onSuccess: () => "",
+        onFailure: (error) => error.message,
+      }),
+      "A question item has only id, kind, target and text."
+    );
   });
 });

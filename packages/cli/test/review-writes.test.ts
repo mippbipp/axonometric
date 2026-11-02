@@ -150,8 +150,8 @@ const decodeProposals = Schema.decodeUnknownEffect(
 
 const routes = [
   "/api/notes",
-  "/api/notes/edit",
-  "/api/notes/discard",
+  "/api/items/edit",
+  "/api/items/discard",
   "/api/suggestions",
   "/api/answers",
   "/api/questions",
@@ -309,14 +309,14 @@ describe("the review routes", () => {
 
       const edit = yield* post(
         url,
-        "/api/notes/edit",
+        "/api/items/edit",
         own(url),
         json({ baseFileRevision: 3, id: "frozen-note", text: "Rewritten" })
       );
 
       const discard = yield* post(
         url,
-        "/api/notes/discard",
+        "/api/items/discard",
         own(url),
         json({ baseFileRevision: 3, id: "frozen-note" })
       );
@@ -782,14 +782,14 @@ describe("text suggestions, answers and questions", () => {
       for (const id of ["s-one", "a-one", "q-one", "n-spot"]) {
         const edit = yield* post(
           url,
-          "/api/notes/edit",
+          "/api/items/edit",
           own(url),
           json({ baseFileRevision: revision + 1, id, text: "Rewritten" })
         );
 
         const discard = yield* post(
           url,
-          "/api/notes/discard",
+          "/api/items/discard",
           own(url),
           json({ baseFileRevision: revision + 1, id })
         );
@@ -820,6 +820,67 @@ describe("text suggestions, answers and questions", () => {
     })
   );
 
+  it.live(
+    "refuse a second suggestion for a text that is frozen, saying the agent has it",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* served;
+        const revision = yield* sendAll(url);
+
+        const frozen = yield* post(
+          url,
+          "/api/review/freeze",
+          own(url),
+          json({ baseFileRevision: revision })
+        );
+
+        assert.strictEqual(frozen.status, 200, frozen.body);
+
+        const settled = yield* proposalsText(home);
+
+        const again = yield* post(
+          url,
+          "/api/suggestions",
+          own(url),
+          json({
+            baseFileRevision: revision + 1,
+            ...suggestion,
+            id: "s-two",
+            after: "Another take.",
+          })
+        );
+
+        assert.strictEqual(again.status, 422);
+        assert.include(
+          again.body,
+          "in batch 2, which is waiting for the agent"
+        );
+        assert.include(again.body, "once the agent commits");
+        assert.notInclude(again.body, "Edit or discard");
+        assert.strictEqual(yield* proposalsText(home), settled);
+      })
+  );
+
+  it.live("refuse an answer dated a day that doesn't exist", () =>
+    Effect.gen(function* () {
+      const { home, url } = yield* served;
+      const before = yield* proposalsText(home);
+
+      for (const answeredOn of ["2026-02-30", "2026-13-01", "2026-04-31"]) {
+        const sent = yield* post(
+          url,
+          "/api/answers",
+          own(url),
+          json({ baseFileRevision: 3, ...answer, answeredOn })
+        );
+
+        assert.strictEqual(sent.status, 400, answeredOn);
+      }
+
+      assert.strictEqual(yield* proposalsText(home), before);
+    })
+  );
+
   it.live("edit and discard while open", () =>
     Effect.gen(function* () {
       const { home, url } = yield* served;
@@ -827,7 +888,7 @@ describe("text suggestions, answers and questions", () => {
 
       const edited = yield* post(
         url,
-        "/api/notes/edit",
+        "/api/items/edit",
         own(url),
         json({ baseFileRevision: revision, id: "s-one", text: "Better." })
       );
@@ -836,7 +897,7 @@ describe("text suggestions, answers and questions", () => {
 
       const gone = yield* post(
         url,
-        "/api/notes/discard",
+        "/api/items/discard",
         own(url),
         json({ baseFileRevision: revision + 1, id: "a-one" })
       );

@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { DateTime, Option, Schema } from "effect";
 
 /**
  * A text field that must be present and non-empty. Every way it can fail
@@ -76,3 +76,16 @@ export const fileVersionFields = {
       })
     ),
 };
+
+/**
+ * Whether `text` is a real calendar day written YYYY-MM-DD. The shape alone
+ * lets 2026-02-30 through, and parsing alone rolls it over to 2026-03-02, so
+ * the day is parsed and written back: a date that comes back different is not
+ * the one that was written.
+ */
+export const isCalendarDay = (text: string): boolean =>
+  /^\d{4}-\d{2}-\d{2}$/u.test(text) &&
+  Option.exists(
+    DateTime.make(text),
+    (parsed) => DateTime.formatIsoDateUtc(parsed) === text
+  );

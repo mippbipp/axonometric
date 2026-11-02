@@ -1,208 +1,252 @@
 import {
   groundOutline,
   groundProjections,
+  hopLabelOf,
   noteMarkerRadius,
-  placeNoteMarkers,
-  spotKey,
+  noteMarkerStroke,
   toPoints,
 } from "@axonometric/contracts";
-import type { GridPoint, NoteMarkerSpot, Scene } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import type { NoteMarkerSpot, NoteTarget, Scene } from "@axonometric/contracts";
+import { Array as Arr, Match, Option } from "effect";
+import type { KeyboardEvent } from "react";
 
-import { noteTargetKey } from "./note-target.ts";
+import { placedMarkers, useNoteBearers } from "./note-bearers.ts";
 import { useNoteTool } from "./note-tool-context.ts";
 import { entriesOfKind, useReview } from "./review-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { useStructuresById } from "./structures.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
-/** Whether a marker is drawn in the refused colour, and the key it is found by. */
-interface Bearer {
-  readonly key: string;
+/** What the notes on one target add up to, for its ring. */
+interface Tally {
+  readonly target: NoteTarget;
+  readonly count: number;
+  /** Whether the agent rejected one of them. */
   readonly rejected: boolean;
 }
 
-/**
- * Marks each structure, hop and empty spot that has a note, without text. A
- * small ring sits in the first spot clear of boxes, name tags, chips, zone
- * titles, hop labels and hop lines (`placeNoteMarkers` says where). A
- * structure with no clear spot has its own footprint outlined instead; a hop
- * or spot with none has no marker, and its panel and the Pending tab still
- * list the notes. Rejected notes draw in the refused colour, the rest in the
- * pending colour. The numbers and verdict wording live in the side panel and
- * the Pending tab.
- *
- * A ring is a button: pressing a hop's ring opens the hop's panel and
- * pressing a spot's opens the spot's.
- *
- * This is an editing layer: a file's drawing never includes it.
- */
-export function NoteMarkers({ scene }: { readonly scene: Scene }) {
-  const review = useReview();
-  const { selectHop } = useSelection();
-  const tool = useNoteTool();
-
-  if (review === null) {
-    return null;
-  }
-
-  const live = entriesOfKind(review.entries, "note");
-
-  const bearers = Arr.reduce(
-    live,
-    new Map<string, Bearer>(),
-    (found, entry) => {
-      const key = noteTargetKey(entry.item.target);
-
-      const rejected =
-        entry.status.state === "reviewed" &&
-        entry.status.verdict.verdict === "rejected";
-
-      found.set(key, {
-        key,
-        rejected: (found.get(key)?.rejected ?? false) || rejected,
-      });
-
-      return found;
-    }
+const sameTarget = (a: NoteTarget, b: NoteTarget): boolean =>
+  Match.value(a).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      structure: ({ id }) => b.kind === "structure" && b.id === id,
+      hop: ({ id }) => b.kind === "hop" && b.id === id,
+      spot: ({ x, y }) => b.kind === "spot" && b.x === x && b.y === y,
+    })
   );
 
-  const targets = Arr.map(live, ({ item }) => item.target);
+const colourOf = (rejected: boolean) =>
+  rejected ? "stroke-refused" : "stroke-pending";
 
-  const spotTargets: readonly GridPoint[] = Arr.map(
-    Arr.dedupe(
-      Arr.flatMap(targets, (target) =>
-        target.kind === "spot" ? [spotKey(target)] : []
-      )
-    ),
-    (key) => {
-      const [x = "0", y = "0"] = key.split(",");
+/** How a ring is named: `Note on "Save server"`, or `2 notes on hop "POST /proposals"`. */
+const nameOfRing = ({
+  count,
+  what,
+}: {
+  readonly count: number;
+  readonly what: string;
+}): string => `${count === 1 ? "Note" : `${count} notes`} ${what}`;
 
-      return { x: Number(x), y: Number(y) };
+/** A ring the engineer can reach with the keyboard and press to open its target. */
+function Ring({
+  id,
+  at,
+  tally,
+  name,
+  onOpen,
+}: {
+  readonly id: string;
+  readonly at: NoteMarkerSpot;
+  readonly tally: Tally;
+  readonly name: string;
+  readonly onOpen: () => void;
+}) {
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onOpen();
     }
-  );
+  };
 
-  const placed = placeNoteMarkers(scene, {
-    structures: new Set(
-      Arr.flatMap(targets, (target) =>
-        target.kind === "structure" ? [target.id] : []
-      )
-    ),
-    hops: new Set(
-      Arr.flatMap(targets, (target) =>
-        target.kind === "hop" ? [target.id] : []
-      )
-    ),
-    spots: spotTargets,
-    ground: groundProjections[scene.view],
-  });
-
-  const colourOf = (key: string) =>
-    bearers.get(key)?.rejected === true ? "stroke-refused" : "stroke-pending";
-
-  const ring = ({
-    id,
-    key,
-    at,
-    onPress,
-  }: {
-    readonly id: string;
-    readonly key: string;
-    readonly at: NoteMarkerSpot;
-    readonly onPress: () => void;
-  }) => (
+  return (
     <g
-      key={key}
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the ring's group takes the button role.
+      role="button"
+      tabIndex={0}
+      aria-label={name}
       data-note-marker={id}
       data-note-placed="ring"
-      data-note-rejected={bearers.get(key)?.rejected === true}
+      data-note-rejected={tally.rejected}
       pointerEvents="all"
-      className="cursor-pointer"
+      className="focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-dashed"
       onClick={(event) => {
         event.stopPropagation();
-        onPress();
+        onOpen();
       }}
+      onKeyDown={onKeyDown}
     >
+      <title>{name}</title>
       <circle
         cx={at.sx}
         cy={at.sy}
         r={noteMarkerRadius}
-        className={`${colourOf(key)} fill-none`}
-        strokeWidth={2}
+        className={`${colourOf(tally.rejected)} fill-none`}
+        strokeWidth={noteMarkerStroke}
       />
       <circle
         cx={at.sx}
         cy={at.sy}
         r={noteMarkerRadius + 2}
         fill="transparent"
+        stroke="none"
       />
     </g>
   );
+}
+
+/**
+ * Marks each structure, hop and empty spot that has a note, without text. A
+ * small ring sits in the first place clear of boxes, name tags, chips, zone
+ * titles, hop labels and hop lines, with the same visible gap from each
+ * (`placeNoteMarkers` says where). A structure with no clear place has its
+ * own footprint outlined instead; a hop or spot with none has no marker, and
+ * its panel and the Pending tab still list the notes. Rejected notes draw in
+ * the refused colour, the rest in the pending colour. The numbers and verdict
+ * wording live in the side panel and the Pending tab.
+ *
+ * Each ring is a button, reachable with Tab and named for what it marks:
+ * Enter, Space or a press opens the structure's, hop's or spot's panel.
+ *
+ * This is an editing layer: a file's drawing never includes it.
+ */
+export function NoteMarkers({ scene }: { readonly scene: Scene }) {
+  const review = useReview();
+  const bearers = useNoteBearers();
+  const { select, selectHop } = useSelection();
+  const tool = useNoteTool();
+  const byId = useStructuresById();
+  const { state } = useWalkthrough();
+
+  if (review === null || bearers === null) {
+    return null;
+  }
+
+  const hopName = hopLabelOf(state.data.hops);
+  const placed = placedMarkers(scene, bearers);
+
+  const tallies = Arr.reduce(
+    entriesOfKind(review.entries, "note"),
+    Arr.empty<Tally>(),
+    (found, { item, status }) => {
+      const rejected =
+        status.state === "reviewed" && status.verdict.verdict === "rejected";
+
+      const known = Arr.some(found, ({ target }) =>
+        sameTarget(target, item.target)
+      );
+
+      return known
+        ? Arr.map(found, (before) =>
+            sameTarget(before.target, item.target)
+              ? {
+                  ...before,
+                  count: before.count + 1,
+                  rejected: before.rejected || rejected,
+                }
+              : before
+          )
+        : [...found, { target: item.target, count: 1, rejected }];
+    }
+  );
+
+  const tallyOf = (target: NoteTarget) =>
+    Arr.findFirst(tallies, (found) => sameTarget(found.target, target));
 
   return (
     <g>
-      <g pointerEvents="none">
-        {Arr.flatMap(scene.structures, ({ structure, placement }) => {
-          const key = `structure:${structure.id}`;
+      {Arr.flatMap(scene.structures, ({ structure, placement }) => {
+        const target: NoteTarget = { kind: "structure", id: structure.id };
+        const tally = Option.getOrUndefined(tallyOf(target));
 
-          if (!bearers.has(key)) {
-            return [];
-          }
+        if (tally === undefined) {
+          return [];
+        }
 
-          const spot = placed.structures.get(structure.id);
+        const at = placed.structures.get(structure.id);
 
+        if (at !== undefined) {
           return [
-            spot === undefined ? (
-              <polygon
-                key={key}
-                data-note-marker={structure.id}
-                data-note-placed="outline"
-                data-note-rejected={bearers.get(key)?.rejected === true}
-                points={toPoints(
-                  groundOutline(placement, groundProjections[scene.view])
-                )}
-                className={`${colourOf(key)} fill-none`}
-                strokeWidth={1.6}
-                strokeDasharray="1 3"
-              />
-            ) : (
-              <circle
-                key={key}
-                data-note-marker={structure.id}
-                data-note-placed="ring"
-                data-note-rejected={bearers.get(key)?.rejected === true}
-                cx={spot.sx}
-                cy={spot.sy}
-                r={noteMarkerRadius}
-                className={`${colourOf(key)} fill-none`}
-                strokeWidth={2}
-              />
-            ),
+            <Ring
+              key={`structure:${structure.id}`}
+              id={structure.id}
+              at={at}
+              tally={tally}
+              name={nameOfRing({
+                count: tally.count,
+                what: `on "${byId.get(structure.id)?.name ?? structure.id}"`,
+              })}
+              onOpen={() => {
+                select(structure.id);
+              }}
+            />,
           ];
-        })}
-      </g>
-      {Arr.flatMap([...placed.hops.entries()], ([hop, at]) => [
-        ring({
-          id: `hop:${hop}`,
-          key: `hop:${hop}`,
-          at,
-          onPress: () => {
-            selectHop(hop);
-          },
-        }),
-      ])}
-      {Arr.flatMap(spotTargets, (spot) => {
-        const at = placed.spots.get(spotKey(spot));
+        }
 
-        return at === undefined
+        return [
+          <polygon
+            key={`structure:${structure.id}`}
+            data-note-marker={structure.id}
+            data-note-placed="outline"
+            data-note-rejected={tally.rejected}
+            pointerEvents="none"
+            points={toPoints(
+              groundOutline(placement, groundProjections[scene.view])
+            )}
+            className={`${colourOf(tally.rejected)} fill-none`}
+            strokeWidth={1.6}
+            strokeDasharray="1 3"
+          />,
+        ];
+      })}
+      {Arr.flatMap([...placed.hops.entries()], ([hop, at]) => {
+        const tally = Option.getOrUndefined(tallyOf({ kind: "hop", id: hop }));
+
+        return tally === undefined
           ? []
           : [
-              ring({
-                id: `spot:${spot.x},${spot.y}`,
-                key: `spot:${spot.x},${spot.y}`,
-                at,
-                onPress: () => {
+              <Ring
+                key={`hop:${hop}`}
+                id={`hop:${hop}`}
+                at={at}
+                tally={tally}
+                name={nameOfRing({
+                  count: tally.count,
+                  what: `on hop "${hopName(hop)}"`,
+                })}
+                onOpen={() => {
+                  selectHop(hop);
+                }}
+              />,
+            ];
+      })}
+      {Arr.flatMap(placed.spots, ({ spot, marker }) => {
+        const tally = Option.getOrUndefined(tallyOf({ kind: "spot", ...spot }));
+
+        return tally === undefined
+          ? []
+          : [
+              <Ring
+                key={`spot:${spot.x},${spot.y}`}
+                id={`spot:${spot.x},${spot.y}`}
+                at={marker}
+                tally={tally}
+                name={nameOfRing({
+                  count: tally.count,
+                  what: `at the spot ${spot.x}, ${spot.y}`,
+                })}
+                onOpen={() => {
                   tool?.pick(spot);
-                },
-              }),
+                }}
+              />,
             ];
       })}
     </g>

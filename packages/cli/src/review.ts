@@ -56,21 +56,16 @@ const reportItem = ({
   const { before, after } = spec.facts(item, layout, data);
   const structureIds = new Set(names.keys());
 
-  // A reroute, or a note on a hop, acts on a hop, which the engineer knows
+  // Each kind says whether it points at a structure or a hop. A hop is known
   // by its label.
-  const onHop =
-    (item.kind === "layout" && item.change.kind === "reroute") ||
-    (item.kind === "note" && item.target.kind === "hop");
-
-  const nameOf = (id: string) =>
-    onHop ? hopLabelOf(hops, id) : (names.get(id) ?? id);
+  const pointers = spec.targets(item);
 
   return {
     id: item.id,
     kind: spec.name(item),
-    targets: Arr.map(spec.targets(item), (id) => ({
+    targets: Arr.map(pointers, ({ kind, id }) => ({
       id,
-      name: nameOf(id),
+      name: kind === "hop" ? hopLabelOf(hops, id) : (names.get(id) ?? id),
     })),
     before,
     after,

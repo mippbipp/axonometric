@@ -269,7 +269,7 @@ function TabPanel({
 
 /**
  * How many review items the Pending tab counts beside the pending layout
- * changes: open items of words, and everything waiting on the agent or turned
+ * changes: open notes, suggestions, answers and questions, and everything waiting on the agent or turned
  * down.
  */
 const useWaitingCount = () =>

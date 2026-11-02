@@ -153,7 +153,7 @@ Words the engineer pins to a structure, a hop or an empty spot, for the agent to
 _Avoid_: comment, annotation
 
 **Text suggestion**:
-A proposed new wording for one text of a structure: its one-liner, what it does, how it's built, or a step's name or detail. It records the original text beside the new text.
+A proposed new wording for one text of a structure: its one-liner, what it does, how it's built, or a step's name or detail. It records the original text beside the new text, and waits for the agent once it is in a batch.
 _Avoid_: text edit, rewrite
 
 **Answer**:

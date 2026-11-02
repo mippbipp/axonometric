@@ -2,9 +2,9 @@ import {
   addItem,
   applyLayoutChanges,
   frozenLayoutChanges,
-  discardOpen,
+  discardProposal,
   dismissItem,
-  editOpen,
+  editProposal,
   freezeOpen,
   hopLabelOf,
   MapFilesUnreadable,
@@ -23,7 +23,7 @@ import type {
   Known,
   MapData,
   NoteAdd,
-  NoteEdit,
+  ItemEdit,
   Proposals,
   QuestionAdd,
   ReopenWrite,
@@ -200,16 +200,16 @@ export const addQuestionWrite = adding<QuestionAdd>(
   (raised) => ({ kind: "question", ...raised })
 );
 
-/** Changes the words of an open note, suggestion, answer or raised question. */
-export const editNoteWrite = editing<NoteEdit>(
-  "editNoteWrite",
-  ({ proposals }, { id, text }) => editOpen({ proposals, id, text })
+/** Changes the text of an open note, suggestion, answer or raised question. */
+export const editItemWrite = editing<ItemEdit>(
+  "editItemWrite",
+  ({ proposals }, { id, text }) => editProposal({ proposals, id, text })
 );
 
 /** Removes an open note, suggestion, answer or raised question. */
-export const discardNoteWrite = editing<ItemWrite>(
-  "discardNoteWrite",
-  ({ proposals }, { id }) => discardOpen({ proposals, id })
+export const discardItemWrite = editing<ItemWrite>(
+  "discardItemWrite",
+  ({ proposals }, { id }) => discardProposal({ proposals, id })
 );
 
 /** Takes a reviewed item off the page. */

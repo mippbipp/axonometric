@@ -48,7 +48,7 @@ export function NotesSection({ target }: { readonly target: NoteTarget }) {
           label="Pin a note"
           submit="Pin note"
           onSubmit={(text, done) => {
-            review.ops.addNote(target, text, (outcome) => {
+            review.ops.add({ kind: "note", target, text }, (outcome) => {
               done(Option.getOrUndefined(Result.getFailure(outcome)));
             });
           }}

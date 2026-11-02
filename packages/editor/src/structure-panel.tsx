@@ -2,8 +2,6 @@ import {
   normalSourcePath,
   sourceKey,
   statusLabels,
-  stepDetailField,
-  stepNameField,
   uniqueSources,
 } from "@axonometric/contracts";
 import type { Source, Structure } from "@axonometric/contracts";
@@ -18,6 +16,7 @@ import { QuestionBody } from "./questions.tsx";
 import { useReview } from "./review-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { hasSteps } from "./structures.ts";
+import { SuggestableStep } from "./suggestable-step.tsx";
 import { SuggestableText } from "./suggestable-text.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -41,7 +40,7 @@ function StepList({
   suggestable = false,
 }: {
   readonly structure: Structure;
-  /** Whether each step's name and detail can be edited in place. */
+  /** Whether each step can be edited in place, both its name and its detail. */
   readonly suggestable?: boolean;
 }) {
   return (
@@ -50,19 +49,11 @@ function StepList({
         <li key={step.name} className="grid grid-cols-[1.5rem_1fr] gap-1">
           <span className="opacity-70">{index + 1}</span>
           {suggestable ? (
-            <span className="flex min-w-0 flex-col gap-1.5">
-              <SuggestableText
-                structure={structure.id}
-                field={stepNameField(index)}
-                text={step.name}
-                className="font-medium"
-              />
-              <SuggestableText
-                structure={structure.id}
-                field={stepDetailField(index)}
-                text={step.detail}
-              />
-            </span>
+            <SuggestableStep
+              structure={structure.id}
+              index={index}
+              step={step}
+            />
           ) : (
             <span>
               <b className="font-medium">{step.name}.</b> {step.detail}

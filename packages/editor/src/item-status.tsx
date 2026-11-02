@@ -3,7 +3,7 @@ import type { ItemStatus } from "@axonometric/contracts";
 import { VerdictBadge } from "./review-list.tsx";
 
 /**
- * Where an item of the engineer's words is in its life: open and going in
+ * Where an item the engineer wrote is in its life: open and going in
  * the next batch, waiting in a batch, or reviewed with the agent's verdict.
  */
 export function ItemStatusLine({ status }: { readonly status: ItemStatus }) {

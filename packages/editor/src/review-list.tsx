@@ -1,8 +1,4 @@
-import {
-  hopLabelOf,
-  maxNoteLength,
-  maxSuggestionLength,
-} from "@axonometric/contracts";
+import { hopLabelOf, specOf } from "@axonometric/contracts";
 import type { BatchItem, ReviewEntry, Verdict } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr, Match, Option, Record as Rec, Result } from "effect";
@@ -10,10 +6,9 @@ import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
-import { describeWords, wordsOf } from "./describe-words.ts";
 import { useEditing } from "./editing-context.ts";
 import { NoteForm } from "./note-form.tsx";
-import { useReview } from "./review-context.ts";
+import { listedEntries, useReview } from "./review-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -64,14 +59,13 @@ const useItemDescription = () => {
   const hopName = hopLabelOf(state.data.hops);
 
   return (item: BatchItem): string => {
-    if (item.kind !== "layout") {
-      return Option.getOrElse(
-        describeWords(item, { structure: nameOf, hop: hopName }),
-        () => item.id
-      );
+    const described = specOf(item).describe(item, nameOf, hopName);
+
+    if (Option.isSome(described)) {
+      return described.value;
     }
 
-    return editing === null
+    return editing === null || item.kind !== "layout"
       ? item.id
       : Arr.join(
           describeChange(item.change, editing.accepted, {
@@ -104,10 +98,10 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
   const isRejected =
     status.state === "reviewed" && status.verdict.verdict === "rejected";
 
-  const words = Option.getOrUndefined(wordsOf(item));
+  const text = Option.getOrUndefined(specOf(item).text(item));
 
   const reopen = () => {
-    if (words !== undefined) {
+    if (text !== undefined) {
       setEditing(true);
 
       return;
@@ -156,16 +150,14 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
           {failure}
         </span>
       )}
-      {editing && words !== undefined ? (
+      {editing && text !== undefined ? (
         <NoteForm
-          label="Your words, edited again"
-          initial={words}
-          limit={
-            item.kind === "suggestion" ? maxSuggestionLength : maxNoteLength
-          }
+          label="Your text, edited again"
+          initial={text}
+          limit={specOf(item).textLimit}
           submit="Send in next batch"
-          onSubmit={(text, done) => {
-            review.ops.reopen(item.id, text, (outcome) => {
+          onSubmit={(next, done) => {
+            review.ops.reopen(item.id, next, (outcome) => {
               if (Result.isSuccess(outcome)) {
                 setEditing(false);
               }
@@ -185,7 +177,7 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
               className={controlClass}
               disabled={!review.canWrite}
               onClick={() => {
-                review.ops.discardNote(item.id, (outcome) => {
+                review.ops.discardProposal(item.id, (outcome) => {
                   setFailure(failureOf(outcome));
                 });
               }}
@@ -226,10 +218,9 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
 }
 
 /**
- * Notes and the items sent to the agent, in the Pending tab: the open notes,
- * the items waiting in a batch, and the reviewed ones with the agent's
- * verdict and reason. Open layout changes show in the list above this one,
- * so only their batches and verdicts show here.
+ * The proposals for the agent, in the Pending tab: the open notes,
+ * suggestions, answers and questions, the items waiting in a batch, and the
+ * reviewed ones with the agent's verdict and reason.
  */
 export function ReviewList() {
   const review = useReview();
@@ -238,12 +229,7 @@ export function ReviewList() {
     return null;
   }
 
-  const entries = Arr.filter(
-    review.entries,
-    ({ item, status }) =>
-      (item.kind !== "layout" || status.state !== "open") &&
-      !(status.state === "reviewed" && status.dismissed)
-  );
+  const entries = listedEntries(review.entries);
 
   if (entries.length === 0) {
     return null;
@@ -252,7 +238,7 @@ export function ReviewList() {
   return (
     <section data-review-list className="flex flex-col gap-2">
       <h3 className="text-xs tracking-widest uppercase opacity-70">
-        Notes and reviews
+        Proposals for the agent
       </h3>
       <ul className="flex flex-col gap-2">
         {Arr.map(entries, (entry) => (

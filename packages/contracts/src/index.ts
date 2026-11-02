@@ -378,14 +378,14 @@ export {
 export {
   acceptRefusal,
   addItem,
-  addNote,
   batchesOf,
   breakageOf,
+  checkOpenItems,
   commitBatch,
   commitMessage,
-  discardOpen,
+  discardProposal,
   dismissItem,
-  editOpen,
+  editProposal,
   findBatchItem,
   freezeOpen,
   frozenLayoutChanges,
@@ -421,7 +421,7 @@ export {
   FreezeAnswer,
   ItemWrite,
   NoteAdd,
-  NoteEdit,
+  ItemEdit,
   ProposalRefused,
   QuestionAdd,
   ReopenWrite,
@@ -429,16 +429,21 @@ export {
 } from "./review-server.ts";
 
 export {
+  boxStroke,
+  centreClearance,
+  edgeStroke,
+  hopStroke,
   noteMarkerRadius,
-  noteMarkerSpots,
+  noteMarkerStroke,
   placeNoteMarkers,
-  spotKey,
+  visibleGap,
 } from "./note-markers.ts";
 
 export type {
   NoteBearers,
   NoteMarkerSpot,
   PlacedMarkers,
+  PlacedSpot,
 } from "./note-markers.ts";
 
 export {
@@ -449,14 +454,25 @@ export {
   specOf,
 } from "./review-kinds.ts";
 
-export type { KindSpec, Landing } from "./review-kinds.ts";
+export type {
+  Existing,
+  KindSpec,
+  Landing,
+  Pointer,
+  Waiting,
+} from "./review-kinds.ts";
 
 export {
   fieldLabel,
+  isTextField,
+  parseTextField,
+  plainFields,
   stepDetailField,
   stepNameField,
   textOfField,
 } from "./text-fields.ts";
+
+export type { FieldPath, StepPart } from "./text-fields.ts";
 
 export {
   Facts,

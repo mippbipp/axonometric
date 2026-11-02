@@ -54,16 +54,16 @@ export const QuestionAdd = Schema.Struct({
 export type QuestionAdd = typeof QuestionAdd.Type;
 
 /**
- * Changes the words of an open note, suggestion, answer or raised question:
+ * Changes the text of an open note, suggestion, answer or raised question:
  * the note's text, or the suggestion's new text.
  */
-export const NoteEdit = Schema.Struct({
+export const ItemEdit = Schema.Struct({
   baseFileRevision: Schema.Int,
   id: ChangeId,
   text: SuggestionText,
 });
 
-export type NoteEdit = typeof NoteEdit.Type;
+export type ItemEdit = typeof ItemEdit.Type;
 
 /** Names one note, change or item by id: to discard an open note, or dismiss a reviewed item. */
 export const ItemWrite = Schema.Struct({
@@ -78,7 +78,7 @@ export const ReopenWrite = Schema.Struct({
   baseFileRevision: Schema.Int,
   id: ChangeId,
   newId: ChangeId,
-  /** For an item of words, the new words. Left out, the new item copies the old one. */
+  /** For an item of text, the new text. Left out, the new item copies the old one. */
   text: Schema.optionalKey(SuggestionText),
 });
 

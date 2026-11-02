@@ -16,18 +16,13 @@ import type { ReviewOps } from "./served-store.ts";
 export interface Review {
   /** Whether writes can be sent now. False while the server is down. */
   readonly canWrite: boolean;
-  /**
-   * Every note, open or in a batch, with its status. A reviewed note that
-   * the engineer dismissed is left out.
-   */
-  readonly notes: readonly ReviewEntry[];
   /** Every item with a status: open, frozen in a batch, or reviewed. */
   readonly entries: readonly ReviewEntry[];
   /**
    * How many notes, text suggestions, answers and raised questions are open:
    * not in a batch yet.
    */
-  readonly openWords: number;
+  readonly openText: number;
   /** For an item reopened after a rejection, the rejected item's id. */
   readonly replaces: Readonly<Record<string, string>>;
   readonly ops: ReviewOps;
@@ -75,3 +70,19 @@ export const entriesOfKind: {
         : []
     )
 );
+
+/**
+ * The entries the review list shows: every open item that isn't a layout
+ * change, whatever is waiting in a batch, and the reviewed ones the engineer
+ * hasn't dismissed. Open layout changes show in the list above, with the
+ * buttons that accept them, so only their batches and verdicts show here.
+ */
+export const listedEntries = (
+  entries: readonly ReviewEntry[]
+): readonly ReviewEntry[] =>
+  Arr.filter(
+    entries,
+    ({ item, status }) =>
+      (item.kind !== "layout" || status.state !== "open") &&
+      !(status.state === "reviewed" && status.dismissed)
+  );
