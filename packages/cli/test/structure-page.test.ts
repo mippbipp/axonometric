@@ -1,10 +1,17 @@
 import { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Path, Schema, String as Str } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  FileSystem,
+  Path,
+  Schema,
+  String as Str,
+} from "effect";
 import type { Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
+import { literal, openUrl } from "./browser.ts";
 import { drawingReport, overlap } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
@@ -80,10 +87,22 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="status"]').selectOption("planned")
   );
-  yield* Effect.promise(() => page.locator('[data-add="x"]').fill(String(fields.x)));
-  yield* Effect.promise(() => page.locator('[data-add="y"]').fill(String(fields.y)));
+  yield* Effect.promise(() =>
+    page.locator('[data-add="x"]').fill(String(fields.x))
+  );
+  yield* Effect.promise(() =>
+    page.locator('[data-add="y"]').fill(String(fields.y))
+  );
   yield* click(page, '[data-add="submit"]');
 });
+
+/** The computed stroke of the element matching `selector`, read in the page. */
+const strokeOf = (page: Page, selector: string) =>
+  Effect.promise(() =>
+    page.evaluate<string>(
+      `getComputedStyle(document.querySelector(${literal(selector)})).stroke`
+    )
+  );
 
 const clashes = Effect.fnUntraced(function* (page: Page) {
   const report = yield* Effect.promise(() =>
@@ -95,7 +114,7 @@ const clashes = Effect.fnUntraced(function* (page: Page) {
   const withText = Arr.flatMap(tags, (tag) =>
     Arr.flatMap(
       Arr.filter(report.text, ({ id }) => id !== tag.id),
-      (other) =>
+      (other: DrawingReport["text"][number]) =>
         overlap(tag.polygon, other.polygon) ? [`${tag.id} × ${other.id}`] : []
     )
   );
@@ -106,7 +125,7 @@ const clashes = Effect.fnUntraced(function* (page: Page) {
         report.structures,
         ({ id }) => id !== `box:${Str.slice(4)(tag.id)}`
       ),
-      (box) =>
+      (box: DrawingReport["structures"][number]) =>
         overlap(tag.polygon, box.polygon) ? [`${tag.id} × ${box.id}`] : []
     )
   );
@@ -201,12 +220,20 @@ describe("adding a structure from the toolbar", () => {
 
       // Empty ground at the right edge of the fitted map.
       yield* Effect.promise(() =>
-        page.mouse.click((box?.x ?? 0) + (box?.width ?? 0) * 0.9, (box?.y ?? 0) + (box?.height ?? 0) * 0.85)
+        page.mouse.click(
+          (box?.x ?? 0) + (box?.width ?? 0) * 0.9,
+          (box?.y ?? 0) + (box?.height ?? 0) * 0.85
+        )
       );
       yield* waitFor(page, "[data-spot-outline]");
 
-      const x = yield* Effect.promise(() => page.locator('[data-add="x"]').inputValue());
-      const y = yield* Effect.promise(() => page.locator('[data-add="y"]').inputValue());
+      const x = yield* Effect.promise(() =>
+        page.locator('[data-add="x"]').inputValue()
+      );
+
+      const y = yield* Effect.promise(() =>
+        page.locator('[data-add="y"]').inputValue()
+      );
 
       assert.notStrictEqual(x, "");
       assert.notStrictEqual(y, "");
@@ -234,8 +261,9 @@ describe("adding a structure from the toolbar", () => {
   );
 });
 
-for (const which of ["iso", "plan"] as const) {
-  describe(`a proposed structure in the ${which} view`, () => {
+describe.each(["iso", "plan"] as const)(
+  "a proposed structure in the %s view",
+  (which) => {
     it.live(
       "is drawn in the pending look, in every chapter, and its name tag clears every box and text",
       () =>
@@ -251,7 +279,9 @@ for (const which of ["iso", "plan"] as const) {
             yield* chapter(page, id);
             yield* view(page, which);
 
-            const proposed = page.locator('[data-structure][data-pending="true"]');
+            const proposed = page.locator(
+              '[data-structure][data-pending="true"]'
+            );
 
             assert.strictEqual(
               yield* Effect.promise(() => proposed.count()),
@@ -259,14 +289,14 @@ for (const which of ["iso", "plan"] as const) {
               `chapter ${id}`
             );
 
-            const stroke = yield* Effect.promise(() =>
-              proposed.evaluate((element) => getComputedStyle(element).stroke)
+            const stroke = yield* strokeOf(
+              page,
+              '[data-structure][data-pending="true"]'
             );
-            const ink = yield* Effect.promise(() =>
-              page
-                .locator('[data-structure]:not([data-pending="true"])')
-                .first()
-                .evaluate((element) => getComputedStyle(element).stroke)
+
+            const ink = yield* strokeOf(
+              page,
+              '[data-structure]:not([data-pending="true"])'
             );
 
             assert.notStrictEqual(stroke, ink);
@@ -274,20 +304,14 @@ for (const which of ["iso", "plan"] as const) {
             // No text badge on the map: the look is outlines and tints.
             assert.strictEqual(yield* count(page, "[data-pending-badge]"), 0);
 
-            const tag = yield* Effect.promise(() =>
-              page.locator("[data-name-tag]", { hasText: "BUILD CACHE" }).count()
-            );
-            const tagAny = yield* count(page, "[data-name-tag]");
-
-            assert.isAbove(tagAny, 0);
-            assert.isAtLeast(tag + 1, 1);
+            assert.isAbove(yield* count(page, "[data-name-tag]"), 0);
             assert.deepStrictEqual(yield* clashes(page), [], `chapter ${id}`);
           }
         }),
       90_000
     );
-  });
-}
+  }
+);
 
 describe("deleting a structure", () => {
   it.live(
@@ -326,76 +350,82 @@ describe("deleting a structure", () => {
           structure: "upstream",
         });
         assert.include(
-          yield* Effect.promise(() => page.locator("[data-deleting]").textContent()),
+          yield* Effect.promise(() =>
+            page.locator("[data-deleting]").textContent()
+          ),
           "crossed out"
         );
       }),
     90_000
   );
 
-  it.live("is not in the exported SVG, which equals the CLI's", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* served;
+  it.live(
+    "is not in the exported SVG, which equals the CLI's",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
 
-      yield* chapter(page, "c-all");
-      yield* addStructure(page, { name: "Build cache", x: 12, y: 12 });
-      yield* waitFor(page, '[data-structure][data-pending="true"]');
-      yield* click(page, '[data-structure="upstream"]');
-      yield* click(page, '[data-change="delete"]');
-      yield* waitFor(page, '[data-removed-mark="upstream"]');
-      // A pinned structure puts the spotlight on it, which the CLI has no
-      // way to match. Unpin it so both draw the chapter's spotlight.
-      yield* Effect.promise(() => page.keyboard.press("Escape"));
-      yield* Effect.promise(() =>
-        page.waitForFunction(
-          `document.querySelector('[data-structure][data-selected="true"]') === null`,
-          undefined,
-          waitTimeout
-        )
-      );
-
-      for (const which of ["iso", "plan"] as const) {
-        yield* view(page, which);
-        yield* click(page, '[data-control="export"]');
-
-        const [download] = yield* Effect.promise(() =>
-          Promise.all([
-            page.waitForEvent("download"),
-            page.locator('[data-export-item="svg"]').click(),
-          ])
+        yield* chapter(page, "c-all");
+        yield* addStructure(page, { name: "Build cache", x: 12, y: 12 });
+        yield* waitFor(page, '[data-structure][data-pending="true"]');
+        yield* click(page, '[data-structure="upstream"]');
+        yield* click(page, '[data-change="delete"]');
+        yield* waitFor(page, '[data-removed-mark="upstream"]');
+        // A pinned structure puts the spotlight on it, which the CLI has no
+        // way to match. Unpin it so both draw the chapter's spotlight.
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `document.querySelector('[data-structure][data-selected="true"]') === null`,
+            undefined,
+            waitTimeout
+          )
         );
 
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const fromPage = new TextDecoder().decode(
-          yield* fs.readFile(yield* Effect.promise(() => download.path()))
-        );
+        for (const which of ["iso", "plan"] as const) {
+          yield* view(page, which);
+          yield* click(page, '[data-control="export"]');
 
-        assert.notInclude(fromPage, "BUILD CACHE");
-        assert.notInclude(fromPage, "Build cache");
-        assert.notInclude(fromPage, "removed");
-        assert.notInclude(fromPage, "strike");
+          const [download] = yield* Effect.promise(() =>
+            Promise.all([
+              page.waitForEvent("download"),
+              page.locator('[data-export-item="svg"]').click(),
+            ])
+          );
 
-        const target = path.join(home, "..", "out", `${which}.svg`);
-        const exported = yield* runCli(home, [
-          "export",
-          home,
-          "--format",
-          "svg",
-          "--view",
-          which,
-          "--output",
-          target,
-        ]);
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
 
-        assert.strictEqual(exported.exitCode, 0, exported.stderr);
-        assert.strictEqual(
-          fromPage,
-          yield* fs.readFileString(target),
-          `${which}: the page's SVG differs from the CLI's`
-        );
-      }
-    }).pipe(Effect.provide(NodeServices.layer)),
+          const fromPage = new TextDecoder().decode(
+            yield* fs.readFile(yield* Effect.promise(() => download.path()))
+          );
+
+          assert.notInclude(fromPage, "BUILD CACHE");
+          assert.notInclude(fromPage, "Build cache");
+          assert.notInclude(fromPage, "removed");
+          assert.notInclude(fromPage, "strike");
+
+          const target = path.join(home, "..", "out", `${which}.svg`);
+
+          const exported = yield* runCli(home, [
+            "export",
+            home,
+            "--format",
+            "svg",
+            "--view",
+            which,
+            "--output",
+            target,
+          ]);
+
+          assert.strictEqual(exported.exitCode, 0, exported.stderr);
+          assert.strictEqual(
+            fromPage,
+            yield* fs.readFileString(target),
+            `${which}: the page's SVG differs from the CLI's`
+          );
+        }
+      }).pipe(Effect.provide(NodeServices.layer)),
     90_000
   );
 });

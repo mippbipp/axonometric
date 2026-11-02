@@ -13,8 +13,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, Ref } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { useSpotlightActions } from "./spotlight-context.ts";
 import { useExportState } from "./export-state-context.ts";
+import { useSpotlightActions } from "./spotlight-context.ts";
 import { download, ExportFailed, pngOf } from "./svg-export.ts";
 import { shownTheme } from "./theme-state.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";

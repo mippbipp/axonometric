@@ -1,4 +1,8 @@
-import { groundOutline, groundProjections, toPoints } from "@axonometric/contracts";
+import {
+  groundOutline,
+  groundProjections,
+  toPoints,
+} from "@axonometric/contracts";
 import type { SceneStructure, View } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
@@ -37,7 +41,12 @@ export function RemovedMarks({
         const outline = groundOutline(placement, ground);
         const [a, b, c, e] = outline;
 
-        if (a === undefined || b === undefined || c === undefined || e === undefined) {
+        if (
+          a === undefined ||
+          b === undefined ||
+          c === undefined ||
+          e === undefined
+        ) {
           return [];
         }
 

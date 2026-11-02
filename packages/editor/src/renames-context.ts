@@ -9,4 +9,5 @@ export const RenamesContext = createContext<ReadonlyMap<string, string>>(
   new Map()
 );
 
-export const useRenames = (): ReadonlyMap<string, string> => use(RenamesContext);
+export const useRenames = (): ReadonlyMap<string, string> =>
+  use(RenamesContext);

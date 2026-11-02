@@ -1,13 +1,13 @@
 import { maxStructureNameLength } from "@axonometric/contracts";
 import type { Structure } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import { Array as Arr, Option } from "effect";
 import { useId, useState } from "react";
 
-import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
 import { controlClass } from "./control-class.ts";
 import { useProposed } from "./proposed-context.ts";
-import { useWalkthrough } from "./walkthrough-context.ts";
+import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
 import { usePropose } from "./use-propose.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 const fieldClass =
   "border-ink bg-paper text-ink focus-visible:outline-ink border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1";
@@ -39,7 +39,17 @@ export function ChangeStructure({
   const deleted = proposing.proposed.removes.has(structure.id);
   const typed = name ?? structure.name;
 
-  const choose = (label: string, value: string, options: readonly { value: string; label: string }[], onChange: (next: string) => void) => (
+  const choose = ({
+    label,
+    value,
+    options,
+    onChange,
+  }: {
+    readonly label: string;
+    readonly value: string;
+    readonly options: readonly { value: string; label: string }[];
+    readonly onChange: (next: string) => void;
+  }) => (
     <label className="flex items-center justify-between gap-2 text-xs">
       <span className="opacity-70">{label}</span>
       <select
@@ -112,27 +122,42 @@ export function ChangeStructure({
           Rename
         </button>
       </form>
-      {choose("Shape", structure.shape, shapeChoices, (next) => {
-        const choice = Arr.findFirst(shapeChoices, ({ value }) => value === next);
-
-        if (choice._tag === "Some") {
-          send(changeFor.shape(structure, choice.value.value));
-        }
+      {choose({
+        label: "Shape",
+        value: structure.shape,
+        options: shapeChoices,
+        onChange: (next) => {
+          Option.map(
+            Arr.findFirst(shapeChoices, ({ value }) => value === next),
+            ({ value }) => {
+              send(changeFor.shape(structure, value));
+            }
+          );
+        },
       })}
-      {choose(
-        "Group",
-        structure.group,
-        Arr.map(state.data.groups, ({ id, title }) => ({ value: id, label: title })),
-        (next) => {
+      {choose({
+        label: "Group",
+        value: structure.group,
+        options: Arr.map(state.data.groups, ({ id, title }) => ({
+          value: id,
+          label: title,
+        })),
+        onChange: (next) => {
           send(changeFor.group(structure, next));
-        }
-      )}
-      {choose("Status", structure.status, statusChoices, (next) => {
-        const choice = Arr.findFirst(statusChoices, ({ value }) => value === next);
-
-        if (choice._tag === "Some") {
-          send(changeFor.status(structure, choice.value.value));
-        }
+        },
+      })}
+      {choose({
+        label: "Status",
+        value: structure.status,
+        options: statusChoices,
+        onChange: (next) => {
+          Option.map(
+            Arr.findFirst(statusChoices, ({ value }) => value === next),
+            ({ value }) => {
+              send(changeFor.status(structure, value));
+            }
+          );
+        },
       })}
       {failure === undefined ? null : (
         <p

@@ -43,6 +43,7 @@ export function StructureTarget({
 
   const isPending =
     pendingStructures(editing).has(id) || proposed?.structures.has(id) === true;
+
   const marks = useCompare();
   const kinds = marks?.structures.get(id);
   const marked = spokenMarks({ marks, id });

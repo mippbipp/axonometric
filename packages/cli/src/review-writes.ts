@@ -172,7 +172,10 @@ export const addNoteWrite = editing<NoteAdd>(
       proposals,
       note,
       // A note can be pinned to a structure that is only proposed so far.
-      known: new Set([...structures.keys(), ...proposedNames(proposals).keys()]),
+      known: new Set([
+        ...structures.keys(),
+        ...proposedNames(proposals).keys(),
+      ]),
     })
 );
 

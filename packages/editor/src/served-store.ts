@@ -1432,16 +1432,19 @@ export const connectServed = ({
     }).state.layout,
   });
 
-  const structureRefusal = (id: string, change: StructureChange) =>
-    Result.match(
-      proposeStructure({
-        proposals: proposalsOf(view.state),
-        id,
-        change,
-        world: structureWorld(),
-      }),
-      { onSuccess: () => undefined, onFailure: (reason) => reason }
-    );
+  const proposed = (id: string, change: StructureChange) =>
+    proposeStructure({
+      proposals: proposalsOf(view.state),
+      id,
+      change,
+      world: structureWorld(),
+    });
+
+  const structureRefusal = (
+    id: string,
+    change: StructureChange
+  ): string | undefined =>
+    Option.getOrUndefined(Result.getFailure(proposed(id, change)));
 
   const sendStructure = (
     id: ChangeId,

@@ -1,6 +1,9 @@
-import { maxStructureNameLength, provisionalIdOf } from "@axonometric/contracts";
+import {
+  maxStructureNameLength,
+  provisionalIdOf,
+} from "@axonometric/contracts";
 import type { Shape, Status } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import { Array as Arr, Option, String as Str } from "effect";
 import { useId, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
@@ -17,13 +20,15 @@ const fieldClass =
 const snap = (value: number) => Math.round(value * 2) / 2;
 
 /** Four hex digits that make a provisional id hard to repeat. */
-const suffix = () =>
-  Arr.join(
-    Arr.map([...globalThis.crypto.getRandomValues(new Uint8Array(2))], (byte) =>
-      byte.toString(16).padStart(2, "0")
-    ),
+const suffix = () => {
+  const bytes = [...globalThis.crypto.getRandomValues(new Uint8Array(2))];
+  const digits = Arr.map(bytes, (byte) => byte.toString(16));
+
+  return Arr.join(
+    Arr.map(digits, (hex) => Str.padStart(2, "0")(hex)),
     ""
   );
+};
 
 /**
  * The form that adds a structure: its name, shape, group, status and
@@ -31,7 +36,11 @@ const suffix = () =>
  * form says while it waits; the two number fields show it and can correct
  * it. The new structure is a proposal and shows in the pending look at once.
  */
-export function AddStructureForm({ onClose }: { readonly onClose: () => void }) {
+export function AddStructureForm({
+  onClose,
+}: {
+  readonly onClose: () => void;
+}) {
   const placing = usePlacing();
   const proposing = useProposed();
   const { state } = useWalkthrough();
@@ -69,7 +78,11 @@ export function AddStructureForm({ onClose }: { readonly onClose: () => void }) 
     const value = Number(text);
 
     if (text.trim() !== "" && Number.isFinite(value)) {
-      placing.setSpot({ x: spot?.x ?? 0, y: spot?.y ?? 0, [axis]: snap(value) });
+      placing.setSpot({
+        x: spot?.x ?? 0,
+        y: spot?.y ?? 0,
+        [axis]: snap(value),
+      });
     }
   };
 
@@ -121,14 +134,15 @@ export function AddStructureForm({ onClose }: { readonly onClose: () => void }) 
             className={fieldClass}
             value={shape}
             onChange={(event) => {
-              const choice = Arr.findFirst(
-                shapeChoices,
-                ({ value }) => value === event.target.value
+              Option.map(
+                Arr.findFirst(
+                  shapeChoices,
+                  ({ value }) => value === event.target.value
+                ),
+                ({ value }) => {
+                  setShape(value);
+                }
               );
-
-              if (choice._tag === "Some") {
-                setShape(choice.value.value);
-              }
             }}
           >
             {Arr.map(shapeChoices, ({ value, label }) => (
@@ -145,14 +159,15 @@ export function AddStructureForm({ onClose }: { readonly onClose: () => void }) 
             className={fieldClass}
             value={status}
             onChange={(event) => {
-              const choice = Arr.findFirst(
-                statusChoices,
-                ({ value }) => value === event.target.value
+              Option.map(
+                Arr.findFirst(
+                  statusChoices,
+                  ({ value }) => value === event.target.value
+                ),
+                ({ value }) => {
+                  setStatus(value);
+                }
               );
-
-              if (choice._tag === "Some") {
-                setStatus(choice.value.value);
-              }
             }}
           >
             {Arr.map(statusChoices, ({ value, label }) => (
@@ -228,7 +243,11 @@ export function AddStructureForm({ onClose }: { readonly onClose: () => void }) 
         </p>
       </fieldset>
       {failure === undefined ? null : (
-        <p role="alert" data-add-failure className="border-refused border-l-2 pl-2">
+        <p
+          role="alert"
+          data-add-failure
+          className="border-refused border-l-2 pl-2"
+        >
           {failure}
         </p>
       )}

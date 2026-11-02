@@ -43,7 +43,7 @@ const reportItem = ({
   replaces,
   layout,
   names,
-  proposedNames,
+  proposed,
   hops,
   data,
 }: {
@@ -54,20 +54,20 @@ const reportItem = ({
   readonly layout: Layout;
   readonly names: ReadonlyMap<string, string>;
   /** The names of the structures the batch proposes, by provisional id. */
-  readonly proposedNames: ReadonlyMap<string, string>;
+  readonly proposed: ReadonlyMap<string, string>;
   readonly hops: readonly Hop[];
   readonly data: MapData;
 }): ReportedItem => {
   const spec = specOf(item);
   const { before, after } = spec.facts(item, layout, data);
-  const structureIds = new Set([...names.keys(), ...proposedNames.keys()]);
+  const structureIds = new Set([...names.keys(), ...proposed.keys()]);
 
   // A reroute acts on a hop, which the engineer knows by its label. A
   // structure the engineer proposes has no name in data.mjs yet.
   const nameOf = (id: string) =>
     item.kind === "layout" && item.change.kind === "reroute"
       ? hopLabelOf(hops, id)
-      : (proposedNames.get(id) ?? names.get(id) ?? id);
+      : (proposed.get(id) ?? names.get(id) ?? id);
 
   return {
     id: item.id,
@@ -135,7 +135,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
           replaces: map.proposals.replaces,
           layout: map.layout,
           names,
-          proposedNames: proposedNames(map.proposals),
+          proposed: proposedNames(map.proposals),
           hops: map.data.hops,
           data: map.data,
         })
@@ -169,10 +169,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
         `Full details are in ${path.join(absolute, "proposals.json")}.`,
         engineerTextNotice,
         changedLayoutNotice,
-        ...(Arr.some(
-          oldest.value.items,
-          ({ kind }) => kind === "structure"
-        )
+        ...(Arr.some(oldest.value.items, ({ kind }) => kind === "structure")
           ? [structureNotice]
           : []),
         "",

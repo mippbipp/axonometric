@@ -16,13 +16,13 @@ import { App } from "./app.tsx";
 import { CompareContext } from "./compare-context.ts";
 import { EditingContext } from "./editing-context.ts";
 import type { Editing } from "./editing-context.ts";
+import { ExportStateContext } from "./export-state-context.ts";
 import { HistoryContext } from "./history-context.ts";
 import { useHistoryView } from "./history-view.tsx";
-import { RestoreDialog } from "./restore-dialog.tsx";
-import { ExportStateContext } from "./export-state-context.ts";
 import { ProposedContext } from "./proposed-context.ts";
 import type { ProposedStructures } from "./proposed-context.ts";
 import { RenamesContext } from "./renames-context.ts";
+import { RestoreDialog } from "./restore-dialog.tsx";
 import { ReviewContext } from "./review-context.ts";
 import type { Review } from "./review-context.ts";
 import type {
@@ -242,30 +242,30 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
           <ProposedContext value={history.past ? null : proposing}>
             <RenamesContext value={renames}>
               <ExportStateContext value={history.past ? null : exported}>
-          <HistoryContext value={history.panel}>
-            <CompareContext value={history.marks}>
-              <App
-                state={history.drawn}
-                notices={
-                  <>
-                    {history.banner}
-                    <ServedNotices
-                      rejection={view.rejection}
-                      stopped={view.stopped}
-                      notice={view.notice}
-                      saved={view.saved}
+                <HistoryContext value={history.panel}>
+                  <CompareContext value={history.marks}>
+                    <App
+                      state={history.drawn}
+                      notices={
+                        <>
+                          {history.banner}
+                          <ServedNotices
+                            rejection={view.rejection}
+                            stopped={view.stopped}
+                            notice={view.notice}
+                            saved={view.saved}
+                          />
+                        </>
+                      }
                     />
-                  </>
-                }
-              />
-              {history.report === null ? null : (
-                <RestoreDialog
-                  report={history.report}
-                  onClose={history.handleCloseReport}
-                />
-              )}
-            </CompareContext>
-          </HistoryContext>
+                    {history.report === null ? null : (
+                      <RestoreDialog
+                        report={history.report}
+                        onClose={history.handleCloseReport}
+                      />
+                    )}
+                  </CompareContext>
+                </HistoryContext>
               </ExportStateContext>
             </RenamesContext>
           </ProposedContext>

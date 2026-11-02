@@ -1,13 +1,13 @@
-import { Array as Arr, Option, Record as Rec, Result } from "effect";
+import { Array as Arr, Match, Option, Record as Rec, Result } from "effect";
 
 import { footprintsOverlap } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import type { ChangeId, Proposals, StructureProposal } from "./proposals.ts";
 import { frozenRefusal } from "./review.ts";
-import { describePlacement } from "./structure-effects.ts";
 import { sameSubject, structureOf } from "./structure-change.ts";
 import type { StructureChange } from "./structure-change.ts";
+import { describePlacement } from "./structure-effects.ts";
 
 /** What a structure proposal is checked against. */
 export interface StructureWorld {
@@ -99,44 +99,31 @@ const worldRefusal = (
   return Option.none();
 };
 
-/** The structure the data has now, for comparing a proposed value with it. */
+/** Whether the map already has the value `change` proposes. */
 const currentValue = (
   world: StructureWorld,
   change: StructureChange
-): boolean => {
-  const found = Arr.findFirst(
-    world.data.structures,
-    ({ id }) => id === structureOf(change)
+): boolean =>
+  Option.match(
+    Arr.findFirst(
+      world.data.structures,
+      ({ id }) => id === structureOf(change)
+    ),
+    {
+      onNone: () => false,
+      onSome: (structure) =>
+        Match.value(change).pipe(
+          Match.discriminatorsExhaustive("action")({
+            add: () => false,
+            delete: () => false,
+            rename: ({ name }) => structure.name === name,
+            shape: ({ shape }) => structure.shape === shape,
+            group: ({ group }) => structure.group === group,
+            status: ({ status }) => structure.status === status,
+          })
+        ),
+    }
   );
-
-  if (Option.isNone(found)) {
-    return false;
-  }
-
-  const structure = found.value;
-
-  switch (change.action) {
-    case "rename": {
-      return structure.name === change.name;
-    }
-
-    case "shape": {
-      return structure.shape === change.shape;
-    }
-
-    case "group": {
-      return structure.group === change.group;
-    }
-
-    case "status": {
-      return structure.status === change.status;
-    }
-
-    default: {
-      return false;
-    }
-  }
-};
 
 /** An open add changed in the one field `change` names, or taken off with a delete. */
 const editedAdd = (
@@ -160,41 +147,33 @@ const editedAdd = (
     return Option.none();
   }
 
-  const { structure: made } = held.change;
+  const { structure: made, at: footprint } = held.change;
 
-  const next: StructureChange | undefined = (() => {
-    switch (change.action) {
-      case "rename": {
-        return { ...held.change, structure: { ...made, name: change.name } };
-      }
+  const withMade = (fields: Partial<typeof made>): StructureChange => ({
+    action: "add",
+    structure: { ...made, ...fields },
+    at: footprint,
+  });
 
-      case "shape": {
-        return { ...held.change, structure: { ...made, shape: change.shape } };
-      }
-
-      case "group": {
-        return { ...held.change, structure: { ...made, group: change.group } };
-      }
-
-      case "status": {
-        return {
-          ...held.change,
-          structure: { ...made, status: change.status },
-        };
-      }
-
-      default: {
-        return;
-      }
-    }
-  })();
+  const next: Option.Option<StructureChange> = Match.value(change).pipe(
+    Match.discriminatorsExhaustive("action")({
+      add: () => Option.none(),
+      delete: () => Option.none(),
+      rename: ({ name }) => Option.some(withMade({ name })),
+      shape: ({ shape }) => Option.some(withMade({ shape })),
+      group: ({ group }) => Option.some(withMade({ group })),
+      status: ({ status }) => Option.some(withMade({ status })),
+    })
+  );
 
   return Option.some(
-    next === undefined
-      ? Arr.filter(open, (_, index) => index !== at.value)
-      : Arr.map(open, (proposal, index) =>
-          index === at.value ? { ...proposal, change: next } : proposal
-        )
+    Option.match(next, {
+      onNone: () => Arr.filter(open, (_, index) => index !== at.value),
+      onSome: (changed) =>
+        Arr.map(open, (proposal, index) =>
+          index === at.value ? { ...proposal, change: changed } : proposal
+        ),
+    })
   );
 };
 
@@ -227,70 +206,117 @@ export const proposeStructure = ({
   readonly world: StructureWorld;
 }): Result.Result<Proposals, string> => {
   const open = openOf(proposals);
-  const own = Arr.findFirst(open, (proposal) => proposal.id === id);
 
-  if (Option.isNone(own)) {
-    const waiting = Option.getOrUndefined(frozenRefusal(proposals, id));
-
-    if (waiting !== undefined) {
-      return Result.fail(waiting);
-    }
-
-    if (idTaken(proposals, id)) {
-      return Result.fail(`The id "${id}" is already in use.`);
-    }
-  } else if (!sameSubject(own.value.change, change)) {
-    return Result.fail(`The id "${id}" is already in use.`);
-  }
-
-  const target = structureOf(change);
-
-  if (
-    change.action === "add" &&
-    Arr.some(
-      open,
-      (other) =>
-        other.id !== id &&
-        other.change.action === "add" &&
-        other.change.structure.id === target
-    )
-  ) {
-    return Result.fail(
-      `Another proposal already adds a structure with the id "${target}".`
-    );
-  }
-
-  if (Arr.some(frozenAdds(proposals), (waiting) => waiting === target)) {
-    return Result.fail(
-      `"${target}" is a new structure in a batch that is waiting for the agent. Edits go in the next batch, once the agent commits.`
-    );
-  }
-
-  if (
-    Option.isSome(own) &&
-    own.value.change.action === "add" &&
-    change.action === "add"
-  ) {
-    // Moving or resizing a structure that is still only a proposal.
-  } else if (change.action !== "add") {
-    const proposed = editedAdd(open, change);
-
-    if (Option.isSome(proposed)) {
-      return Result.succeed(bump(proposals, proposed.value));
-    }
-
-    if (!Arr.some(world.data.structures, (s) => s.id === target)) {
-      return Result.fail(
-        `No structure in the map has the id "${target}", so there is nothing to ${change.action}.`
-      );
-    }
-  }
-
-  const refusal = worldRefusal(world, change);
+  const refusal = Option.orElse(idRefusal(proposals, id, change), () =>
+    targetRefusal(proposals, id, change)
+  );
 
   if (Option.isSome(refusal)) {
     return Result.fail(refusal.value);
   }
+
+  // A change to a structure that is only proposed edits that proposal.
+  const proposed =
+    change.action === "add" ? Option.none() : editedAdd(open, change);
+
+  if (Option.isSome(proposed)) {
+    return Result.succeed(bump(proposals, proposed.value));
+  }
+
+  const missing =
+    change.action !== "add" &&
+    !Arr.some(
+      world.data.structures,
+      ({ id: other }) => other === structureOf(change)
+    );
+
+  if (missing) {
+    return Result.fail(
+      `No structure in the map has the id "${structureOf(change)}", so there is nothing to ${change.action}.`
+    );
+  }
+
+  const unfit = worldRefusal(world, change);
+
+  if (Option.isSome(unfit)) {
+    return Result.fail(unfit.value);
+  }
+
+  return Result.succeed(setProposal({ proposals, id, change, world }));
+};
+
+/** Why `id` can't be used for `change`: it is a frozen item, or another proposal's. */
+const idRefusal = (
+  proposals: Proposals,
+  id: ChangeId,
+  change: StructureChange
+): Option.Option<string> => {
+  const own = Arr.findFirst(
+    openOf(proposals),
+    (proposal) => proposal.id === id
+  );
+
+  const taken = `The id "${id}" is already in use.`;
+
+  if (Option.isSome(own)) {
+    return sameSubject(own.value.change, change)
+      ? Option.none()
+      : Option.some(taken);
+  }
+
+  return Option.orElse(frozenRefusal(proposals, id), () =>
+    idTaken(proposals, id) ? Option.some(taken) : Option.none()
+  );
+};
+
+/** Why `change` can't name the structure it does: it is added twice, or waits in a batch. */
+const targetRefusal = (
+  proposals: Proposals,
+  id: ChangeId,
+  change: StructureChange
+): Option.Option<string> => {
+  const target = structureOf(change);
+
+  const addedTwice =
+    change.action === "add" &&
+    Arr.some(
+      openOf(proposals),
+      (other) =>
+        other.id !== id &&
+        other.change.action === "add" &&
+        other.change.structure.id === target
+    );
+
+  if (addedTwice) {
+    return Option.some(
+      `Another proposal already adds a structure with the id "${target}".`
+    );
+  }
+
+  return Arr.some(frozenAdds(proposals), (waiting) => waiting === target)
+    ? Option.some(
+        `"${target}" is a new structure in a batch that is waiting for the agent. Edits go in the next batch, once the agent commits.`
+      )
+    : Option.none();
+};
+
+/**
+ * `proposals` with `change` set as the open proposal for its structure and
+ * action, under the id that proposal already has if there is one. A change
+ * that leaves a field as the map has it takes the proposal away.
+ */
+const setProposal = ({
+  proposals,
+  id,
+  change,
+  world,
+}: {
+  readonly proposals: Proposals;
+  readonly id: ChangeId;
+  readonly change: StructureChange;
+  readonly world: StructureWorld;
+}): Proposals => {
+  const open = openOf(proposals);
 
   const twin = Arr.findFirst(
     open,
@@ -304,17 +330,13 @@ export const proposeStructure = ({
   });
 
   if (change.action !== "add" && currentValue(world, change)) {
-    return Result.succeed(
-      Option.isNone(twin)
-        ? proposals
-        : bump(
-            proposals,
-            Arr.filter(open, (proposal) => proposal.id !== keptId)
-          )
-    );
+    return Option.isNone(twin)
+      ? proposals
+      : bump(
+          proposals,
+          Arr.filter(open, (proposal) => proposal.id !== keptId)
+        );
   }
-
-  const next: StructureProposal = { id: keptId, change };
 
   const existing = Arr.findFirst(open, (proposal) => proposal.id === keptId);
 
@@ -322,18 +344,16 @@ export const proposeStructure = ({
     Option.isSome(existing) &&
     JSON.stringify(existing.value.change) === JSON.stringify(change)
   ) {
-    return Result.succeed(proposals);
+    return proposals;
   }
 
-  return Result.succeed(
-    bump(
-      proposals,
-      Option.isSome(existing)
-        ? Arr.map(open, (proposal) =>
-            proposal.id === keptId ? next : proposal
-          )
-        : [...open, next]
-    )
+  return bump(
+    proposals,
+    Option.isSome(existing)
+      ? Arr.map(open, (proposal) =>
+          proposal.id === keptId ? { id: keptId, change } : proposal
+        )
+      : [...open, { id: keptId, change }]
   );
 };
 

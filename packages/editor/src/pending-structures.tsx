@@ -21,7 +21,9 @@ export function PendingStructures() {
     return null;
   }
 
-  const groups = new Map(Arr.map(state.data.groups, ({ id, title }) => [id, title]));
+  const groups = new Map(
+    Arr.map(state.data.groups, ({ id, title }) => [id, title])
+  );
 
   return (
     <section data-pending-structures className="flex flex-col gap-2">
@@ -29,7 +31,10 @@ export function PendingStructures() {
         Structure proposals
       </h3>
       {failure === undefined ? null : (
-        <p data-discard-refused className="border-refused border-l-2 pl-2 text-xs">
+        <p
+          data-discard-refused
+          className="border-refused border-l-2 pl-2 text-xs"
+        >
           {failure}
         </p>
       )}
@@ -54,7 +59,9 @@ export function PendingStructures() {
                 className={controlClass}
                 onClick={() => {
                   proposing.discard(id, (outcome) => {
-                    setFailure(Option.getOrUndefined(Result.getFailure(outcome)));
+                    setFailure(
+                      Option.getOrUndefined(Result.getFailure(outcome))
+                    );
                   });
                 }}
               >

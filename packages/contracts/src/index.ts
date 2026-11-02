@@ -461,7 +461,6 @@ export {
   codeOfName,
   describePlacement,
   droppedIntoGroup,
-  layoutWithAdds,
   marksOfStructureChange,
   proposedDetails,
   proposedOneLiner,

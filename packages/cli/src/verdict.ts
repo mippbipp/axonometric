@@ -41,7 +41,7 @@ const verdictOf = (
 
   if (Option.isSome(as) && kind !== "changed") {
     return Result.fail(
-      "--as names the id a new structure was accepted under, so it goes with a changed verdict. Use: verdict <home> <item> changed --reason \"...\" --as <id>."
+      '--as names the id a new structure was accepted under, so it goes with a changed verdict. Use: verdict <home> <item> changed --reason "..." --as <id>.'
     );
   }
 

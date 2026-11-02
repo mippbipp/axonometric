@@ -18,21 +18,18 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
-import {oneLine, quoteText} from "./quote.ts";
-
-export { oneLine, quoteText } from "./quote.ts";
-
+import { oneLine, quoteText } from "./quote.ts";
 import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
+import { structureOf } from "./structure-change.ts";
 import {
   marksOfStructureChange,
   structureBreakage,
   structureChangeToData,
   structureChangeToLayout,
 } from "./structure-effects.ts";
-import { structureOf } from "./structure-change.ts";
 
-
+export { oneLine, quoteText } from "./quote.ts";
 
 /** What a kind of item needs to know about the map. */
 export interface Landing {
@@ -387,7 +384,9 @@ const noteKind: KindSpec<NoteItem> = {
   retargeted: (item, renames) => {
     const id = renames.get(item.target.id);
 
-    return id === undefined ? item : { ...item, target: { ...item.target, id } };
+    return id === undefined
+      ? item
+      : { ...item, target: { ...item.target, id } };
   },
   appliesToData: (_item, map) => map,
   touches: () => touchesNothing,
@@ -414,7 +413,6 @@ const noteKind: KindSpec<NoteItem> = {
     text: text ?? item.text,
   }),
 };
-
 
 type StructureItem = Extract<BatchItem, { kind: "structure" }>;
 
@@ -562,7 +560,9 @@ const structureKind: KindSpec<StructureItem> = {
 
     const to = finalIdOf(item, verdict);
 
-    return to === item.change.structure.id ? [] : [[item.change.structure.id, to]];
+    return to === item.change.structure.id
+      ? []
+      : [[item.change.structure.id, to]];
   },
   retargeted: (item, renames) => {
     const { change } = item;
@@ -644,19 +644,22 @@ const structureKind: KindSpec<StructureItem> = {
         )
       : Option.none();
   },
-  accepted: (item, verdict) =>
-    decorate(
-      {
-        kind: "structure",
-        id: item.id,
-        change: item.change,
-        ...(item.change.action === "add" &&
-        finalIdOf(item, verdict) !== item.change.structure.id
-          ? { as: finalIdOf(item, verdict) }
-          : {}),
-      } as const,
+  accepted: (item, verdict) => {
+    const base = {
+      kind: "structure",
+      id: item.id,
+      change: item.change,
+    } as const;
+
+    const final = finalIdOf(item, verdict);
+
+    return decorate(
+      item.change.action === "add" && final !== item.change.structure.id
+        ? { ...base, as: final }
+        : base,
       verdict
-    ),
+    );
+  },
   rejected: (item, reason) => ({
     kind: "structure",
     id: item.id,

@@ -24,8 +24,8 @@ import {
   OverviewPageProvider,
 } from "./overview-page.tsx";
 import { PacketLayer } from "./packets.tsx";
-import { PlaybackControls } from "./playback-controls.tsx";
 import { PlacingProvider } from "./placing-provider.tsx";
+import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
 import { screenRouteOf } from "./projection.ts";
 import { ReadyForReview } from "./ready-for-review.tsx";
@@ -33,9 +33,9 @@ import { useSelection } from "./selection-context.ts";
 import { useSelectionKeys } from "./selection-keys.ts";
 import { SelectionProvider } from "./selection.tsx";
 import { SideIndex } from "./side-index.tsx";
-import { StructureMenu } from "./structure-menu.tsx";
 import { SidePanel } from "./side-panel.tsx";
 import { SpotlightProvider } from "./spotlight.tsx";
+import { StructureMenu } from "./structure-menu.tsx";
 import { hasSteps, useStructuresById } from "./structures.ts";
 import { ThemeToggle } from "./theme.tsx";
 import { StructureTooltip, TooltipProvider } from "./tooltip.tsx";

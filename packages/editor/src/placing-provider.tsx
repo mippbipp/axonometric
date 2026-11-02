@@ -6,7 +6,11 @@ import { PlaceContext } from "./place-context.ts";
 import type { Placing } from "./place-context.ts";
 
 /** Holds where a new structure goes while its form is open. */
-export function PlacingProvider({ children }: { readonly children: ReactNode }) {
+export function PlacingProvider({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
   const [picking, setPicking] = useState(false);
   const [spot, setSpot] = useState<GridPoint | null>(null);
 

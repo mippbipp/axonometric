@@ -355,9 +355,7 @@ export const BatchItem = Schema.Union([
     id: ChangeId,
     kind: Schema.Literal("structure"),
     change: StructureChange,
-  }).annotate(
-    objectMessages("A structure item has only id, kind and change.")
-  ),
+  }).annotate(objectMessages("A structure item has only id, kind and change.")),
 ]).annotate({
   message:
     'expected a batch item: { id, kind: "layout", change }, { id, kind: "note", target, text } or { id, kind: "structure", change }.',
@@ -1173,7 +1171,8 @@ export const checkProposals: {
     const staleStructures = Arr.flatMap(
       proposals.structures ?? [],
       ({ change }, index) => {
-        const id = change.action === "add" ? change.structure.id : change.structure;
+        const id =
+          change.action === "add" ? change.structure.id : change.structure;
 
         if (change.action === "add") {
           return mapIds.has(id)
@@ -1199,12 +1198,6 @@ export const checkProposals: {
       }
     );
 
-    return [
-      ...stale,
-      ...overlaps,
-      ...offEnds,
-      ...orphaned,
-      ...staleStructures,
-    ];
+    return [...stale, ...overlaps, ...offEnds, ...orphaned, ...staleStructures];
   }
 );

@@ -48,8 +48,10 @@ export const changeFor = {
 } as const;
 
 /** The shapes to pick from, with the words the form shows. */
-export const shapeChoices: readonly { value: Shape; label: string }[] =
-  Arr.map(shapes, (value) => ({ value, label: value }));
+export const shapeChoices: readonly { value: Shape; label: string }[] = Arr.map(
+  shapes,
+  (value) => ({ value, label: value })
+);
 
 /** The statuses to pick from, with the fixed label of each. */
 export const statusChoices: readonly { value: Status; label: string }[] =

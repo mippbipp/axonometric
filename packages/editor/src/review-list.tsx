@@ -57,6 +57,7 @@ const useItemDescription = () => {
   const editing = useEditing();
   const proposed = useProposed();
   const { state } = useWalkthrough();
+
   const nameOf = (id: string) =>
     byId.get(id)?.name ?? proposed?.nameOf(id) ?? id;
 

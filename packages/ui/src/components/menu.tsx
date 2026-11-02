@@ -30,7 +30,7 @@ function MenuContent({
         <MenuPrimitive.Popup
           data-slot="menu-content"
           className={cn(
-            "border-ink bg-paper text-ink flex min-w-44 flex-col border p-1 font-mono text-xs shadow-none outline-none",
+            "flex min-w-44 flex-col border border-border bg-popover p-1 font-mono text-xs text-popover-foreground shadow-none outline-none",
             className
           )}
           {...props}
@@ -43,7 +43,7 @@ function MenuContent({
 }
 
 const itemClass =
-  "flex cursor-pointer items-center gap-2 px-2 py-1 text-left outline-none select-none data-[highlighted]:bg-ink data-[highlighted]:text-paper data-[disabled]:cursor-default data-[disabled]:opacity-40";
+  "flex cursor-pointer items-center gap-2 px-2 py-1 text-left outline-none select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:cursor-default data-[disabled]:opacity-40";
 
 function MenuItem({ className, ...props }: MenuPrimitive.Item.Props) {
   return (
@@ -86,7 +86,7 @@ function MenuSubTrigger({
   return (
     <MenuPrimitive.SubmenuTrigger
       data-slot="menu-sub-trigger"
-      className={cn(itemClass, "data-[popup-open]:bg-face", className)}
+      className={cn(itemClass, "data-[popup-open]:bg-muted", className)}
       {...props}
     >
       {children}
@@ -113,7 +113,7 @@ function MenuSubContent({
         <MenuPrimitive.Popup
           data-slot="menu-sub-content"
           className={cn(
-            "border-ink bg-paper text-ink flex min-w-36 flex-col border p-1 font-mono text-xs outline-none",
+            "flex min-w-36 flex-col border border-border bg-popover p-1 font-mono text-xs text-popover-foreground outline-none",
             className
           )}
           {...props}
@@ -129,7 +129,7 @@ function MenuSeparator({ className, ...props }: MenuPrimitive.Separator.Props) {
   return (
     <MenuPrimitive.Separator
       data-slot="menu-separator"
-      className={cn("bg-ink/30 my-1 h-px", className)}
+      className={cn("my-1 h-px bg-border", className)}
       {...props}
     />
   );
@@ -145,7 +145,7 @@ function MenuLabel({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="menu-label"
       className={cn(
-        "px-2 py-1 text-2xs tracking-widest uppercase opacity-70",
+        "px-2 py-1 text-xs tracking-widest uppercase opacity-70",
         className
       )}
       {...props}

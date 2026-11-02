@@ -1,19 +1,25 @@
-import { Array as Arr, Option, Record as Rec, String as Str } from "effect";
+import {
+  Array as Arr,
+  Match,
+  Option,
+  Record as Rec,
+  String as Str,
+} from "effect";
+import { dual } from "effect/Function";
 
 import { footprintsOverlap } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { quoteText } from "./quote.ts";
 import { structureOf } from "./structure-change.ts";
-import { zonesOf } from "./zones.ts";
 import type { NewStructure, StructureChange } from "./structure-change.ts";
+import { zonesOf } from "./zones.ts";
 
 /** What a structure the engineer proposes says until the agent writes it. */
 export const proposedOneLiner =
   "Proposed on the page. The agent writes this if it accepts the structure.";
 
-export const proposedDetails =
-  "Proposed on the page, with no description yet.";
+export const proposedDetails = "Proposed on the page, with no description yet.";
 
 /**
  * A short code for a new structure: the capitals of its first words, or its
@@ -65,74 +71,56 @@ const changeStructure = (
  * `data` with `change` applied, as the page shows it before the agent has
  * decided. A deletion leaves the structure in: the page draws it crossed out.
  */
-export const structureChangeToData = (
-  data: MapData,
-  change: StructureChange
-): MapData => {
-  switch (change.action) {
-    case "add": {
-      if (Arr.some(data.structures, ({ id }) => id === change.structure.id)) {
-        return data;
-      }
+export const structureChangeToData: {
+  (change: StructureChange): (data: MapData) => MapData;
+  (data: MapData, change: StructureChange): MapData;
+} = dual(2, (data: MapData, change: StructureChange): MapData => {
+  const edit = (apply: (structure: Structure) => Structure) =>
+    changeStructure(data, structureOf(change), apply);
 
-      // Reveals add up from the first chapter, so the structure shows in
-      // every chapter, not only the one the engineer happens to be in.
-      return {
-        ...data,
-        structures: [...data.structures, structureOfNew(change.structure)],
-        chapters: Arr.map(data.chapters, (chapter, index) =>
-          index === 0
-            ? { ...chapter, reveals: [...chapter.reveals, change.structure.id] }
-            : chapter
-        ),
-      };
-    }
+  return Match.value(change).pipe(
+    Match.discriminatorsExhaustive("action")({
+      add: ({ structure: made }): MapData => {
+        if (Arr.some(data.structures, ({ id }) => id === made.id)) {
+          return data;
+        }
 
-    case "delete": {
-      return data;
-    }
-
-    case "rename": {
-      return changeStructure(data, change.structure, (structure) => ({
-        ...structure,
-        name: change.name,
-      }));
-    }
-
-    case "shape": {
-      return changeStructure(data, change.structure, (structure) => ({
-        ...structure,
-        shape: change.shape,
-      }));
-    }
-
-    case "group": {
-      return changeStructure(data, change.structure, (structure) => ({
-        ...structure,
-        group: change.group,
-      }));
-    }
-
-    case "status": {
-      return changeStructure(data, change.structure, (structure) => ({
-        ...structure,
-        status: change.status,
-      }));
-    }
-  }
-};
+        // Reveals add up from the first chapter, so the structure shows in
+        // every chapter, not only the one the engineer happens to be in.
+        return {
+          ...data,
+          structures: [...data.structures, structureOfNew(made)],
+          chapters: Arr.map(data.chapters, (chapter, index) =>
+            index === 0
+              ? { ...chapter, reveals: [...chapter.reveals, made.id] }
+              : chapter
+          ),
+        };
+      },
+      delete: (): MapData => data,
+      rename: ({ name }) => edit((structure) => ({ ...structure, name })),
+      shape: ({ shape }) => edit((structure) => ({ ...structure, shape })),
+      group: ({ group }) => edit((structure) => ({ ...structure, group })),
+      status: ({ status }) => edit((structure) => ({ ...structure, status })),
+    })
+  );
+});
 
 /** `layout` with a proposed structure placed where it was dropped. */
-export const structureChangeToLayout = (
-  layout: Layout,
-  change: StructureChange
-): Layout =>
+export const structureChangeToLayout: {
+  (change: StructureChange): (layout: Layout) => Layout;
+  (layout: Layout, change: StructureChange): Layout;
+} = dual(2, (layout: Layout, change: StructureChange): Layout =>
   change.action === "add" && !Rec.has(layout.structures, change.structure.id)
     ? {
         ...layout,
-        structures: { ...layout.structures, [change.structure.id]: change.at },
+        structures: {
+          ...layout.structures,
+          [change.structure.id]: change.at,
+        },
       }
-    : layout;
+    : layout
+);
 
 /** The structures a change adds, removes or alters. */
 export interface StructureMarks {
@@ -163,55 +151,76 @@ export const describePlacement = ({ x, y, w, d }: Placement) =>
  * reveal it or play those hops, and its questions. Labels and titles go
  * through `quoteText`, since they are text the agent reads.
  */
-export const referencesTo = (
-  data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">,
-  id: string
-): readonly string[] => {
-  const hops = Arr.filter(
-    data.hops,
-    ({ from, to }) => from === id || to === id
-  );
+export const referencesTo: {
+  (
+    id: string
+  ): (
+    data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">
+  ) => readonly string[];
+  (
+    data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">,
+    id: string
+  ): readonly string[];
+} = dual(
+  2,
+  (
+    data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">,
+    id: string
+  ): readonly string[] => {
+    const hops = Arr.filter(
+      data.hops,
+      ({ from, to }) => from === id || to === id
+    );
 
-  const hopIds = new Set(Arr.map(hops, (hop) => hop.id));
+    const hopIds = new Set(Arr.map(hops, (hop) => hop.id));
 
-  const hopRefs = Arr.map(
-    hops,
-    (hop) =>
-      `hop ${hop.id} (${quoteText(hop.label)}) ${hop.from === id ? "starts" : "ends"} at it`
-  );
+    const hopRefs = Arr.map(
+      hops,
+      (hop) =>
+        `hop ${hop.id} (${quoteText(hop.label)}) ${hop.from === id ? "starts" : "ends"} at it`
+    );
 
-  const flowRefs = Arr.flatMap(data.flows, (flow) => {
-    const used = Arr.filter(flow.hops, (hop) => hopIds.has(hop));
+    const flowRefs = Arr.flatMap(data.flows, (flow) => {
+      const used = Arr.filter(flow.hops, (hop) => hopIds.has(hop));
 
-    return used.length === 0
-      ? []
-      : [
-          `flow ${flow.id} (${quoteText(flow.name)}) plays ${Arr.join(used, ", ")}`,
-        ];
-  });
-
-  const chapterRefs = Arr.flatMap(data.chapters, (chapter) => {
-    const played = Arr.filter(chapter.plays, (hop) => hopIds.has(hop));
-
-    return [
-      ...(chapter.reveals.includes(id)
-        ? [`chapter ${chapter.id} (${quoteText(chapter.title)}) reveals it`]
-        : []),
-      ...(played.length === 0
+      return used.length === 0
         ? []
         : [
-            `chapter ${chapter.id} (${quoteText(chapter.title)}) plays ${Arr.join(played, ", ")}`,
-          ]),
-    ];
-  });
+            `flow ${flow.id} (${quoteText(flow.name)}) plays ${Arr.join(used, ", ")}`,
+          ];
+    });
 
-  const questionRefs = Arr.map(
-    data.structures.find((structure) => structure.id === id)?.questions ?? [],
-    (question) => `question ${question.id} (${question.state}) is about it`
-  );
+    const chapterRefs = Arr.flatMap(data.chapters, (chapter) => {
+      const played = Arr.filter(chapter.plays, (hop) => hopIds.has(hop));
 
-  return [...hopRefs, ...flowRefs, ...chapterRefs, ...questionRefs];
-};
+      return [
+        ...(chapter.reveals.includes(id)
+          ? [`chapter ${chapter.id} (${quoteText(chapter.title)}) reveals it`]
+          : []),
+        ...(played.length === 0
+          ? []
+          : [
+              `chapter ${chapter.id} (${quoteText(chapter.title)}) plays ${Arr.join(played, ", ")}`,
+            ]),
+      ];
+    });
+
+    const questions = Option.getOrElse(
+      Option.flatMapNullishOr(
+        Arr.findFirst(data.structures, (structure) => structure.id === id),
+        ({ questions: held }) => held
+      ),
+      () => []
+    );
+
+    const questionRefs = Arr.map(
+      questions,
+      (question) => `question ${question.id} (${question.state}) is about it`
+    );
+
+    return [...hopRefs, ...flowRefs, ...chapterRefs, ...questionRefs];
+  }
+);
 
 /** What `structureBreakage` needs to know about the map. */
 export interface StructureLanding {
@@ -242,62 +251,58 @@ const unknownGroup = (
  * - A deletion breaks the map when hops, flows, chapters or questions still
  *   refer to the structure; each reference is named.
  */
-export const structureBreakage = (
-  change: StructureChange,
-  { layout, structureIds, data }: StructureLanding
-): Option.Option<string> => {
-  if (change.action === "add") {
-    const { structure: made, at } = change;
+export const structureBreakage: {
+  (
+    landing: StructureLanding
+  ): (change: StructureChange) => Option.Option<string>;
+  (change: StructureChange, landing: StructureLanding): Option.Option<string>;
+} = dual(
+  2,
+  (
+    change: StructureChange,
+    { layout, structureIds, data }: StructureLanding
+  ): Option.Option<string> => {
+    if (change.action === "add") {
+      const { structure: made, at } = change;
 
-    return Option.orElse(unknownGroup(data, made.group), () =>
-      Option.map(
-        Arr.findFirst(
-          Rec.toEntries(layout.structures),
+      return Option.orElse(unknownGroup(data, made.group), () =>
+        Option.map(
+          Arr.findFirst(
+            Rec.toEntries(layout.structures),
+            ([id, placement]) =>
+              id !== made.id && footprintsOverlap(at, placement)
+          ),
           ([id, placement]) =>
-            id !== made.id && footprintsOverlap(at, placement)
-        ),
-        ([id, placement]) =>
-          `${made.id} at ${describePlacement(at)} would overlap "${id}" at ${describePlacement(placement)}. Place it with axonometric layout, then give the verdict changed.`
-      )
-    );
+            `${made.id} at ${describePlacement(at)} would overlap "${id}" at ${describePlacement(placement)}. Place it with axonometric layout, then give the verdict changed.`
+        )
+      );
+    }
+
+    const id = change.structure;
+
+    if (!structureIds.has(id)) {
+      return Option.some(
+        `No structure in data.mjs has the id "${id}", so this ${change.action} has nothing to act on.`
+      );
+    }
+
+    if (change.action === "group") {
+      return unknownGroup(data, change.group);
+    }
+
+    if (change.action === "delete") {
+      const references = referencesTo(data, id);
+
+      return references.length === 0
+        ? Option.none()
+        : Option.some(
+            `Deleting "${id}" would leave ${references.length} ${references.length === 1 ? "reference" : "references"} to a structure that is gone: ${Arr.join(references, "; ")}.`
+          );
+    }
+
+    return Option.none();
   }
-
-  const id = change.structure;
-
-  if (!structureIds.has(id)) {
-    return Option.some(
-      `No structure in data.mjs has the id "${id}", so this ${change.action} has nothing to act on.`
-    );
-  }
-
-  if (change.action === "group") {
-    return unknownGroup(data, change.group);
-  }
-
-  if (change.action === "delete") {
-    const references = referencesTo(data, id);
-
-    return references.length === 0
-      ? Option.none()
-      : Option.some(
-          `Deleting "${id}" would leave ${references.length} ${references.length === 1 ? "reference" : "references"} to a structure that is gone: ${Arr.join(references, "; ")}.`
-        );
-  }
-
-  return Option.none();
-};
-
-/**
- * `layout` with the footprint of every structure in `changes` that adds one,
- * so a layout change is checked against the ground proposals will take.
- */
-export const layoutWithAdds = (
-  layout: Layout,
-  changes: readonly StructureChange[]
-): Layout =>
-  Arr.reduce(changes, layout, (so, change) =>
-    structureChangeToLayout(so, change)
-  );
+);
 
 /**
  * The group whose zone a structure dropped at `at` lands in, when that is
@@ -320,7 +325,10 @@ export const droppedIntoGroup = ({
   readonly at: Placement;
   readonly revealed?: ReadonlySet<string> | undefined;
 }): Option.Option<string> => {
-  const own = Arr.findFirst(data.structures, (structure) => structure.id === id);
+  const own = Arr.findFirst(
+    data.structures,
+    (structure) => structure.id === id
+  );
 
   if (Option.isNone(own)) {
     return Option.none();

@@ -1,9 +1,13 @@
-import { groundOutline, groundProjections, toPoints } from "@axonometric/contracts";
+import {
+  groundOutline,
+  groundProjections,
+  toPoints,
+} from "@axonometric/contracts";
 import type { GridPoint, View } from "@axonometric/contracts";
-import { newStructureFootprint } from "./new-structure.ts";
 import { useEffect, useRef, useState } from "react";
 
 import { groundAt } from "./ground-at.ts";
+import { newStructureFootprint } from "./new-structure.ts";
 import { usePlacing } from "./place-context.ts";
 
 const snap = (value: number) => Math.round(value * 2) / 2;
@@ -19,22 +23,19 @@ const snap = (value: number) => Math.round(value * 2) / 2;
 export function SpotPicker({ view }: { readonly view: View }) {
   const placing = usePlacing();
   const root = useRef<SVGGElement>(null);
-  const [over, setOver] = useState<GridPoint | undefined>();
+  const [over, setOver] = useState<GridPoint | null>(null);
   const picking = placing?.picking === true;
 
   useEffect(() => {
     const canvas = root.current?.ownerSVGElement;
     const element = root.current;
 
-    if (!picking || canvas === null || canvas === undefined || element === null) {
-      return;
-    }
-
-    const at = (event: MouseEvent): GridPoint | undefined => {
-      const ground = groundAt({ element, event, view });
+    const at = (event: MouseEvent): GridPoint | null => {
+      const ground =
+        element === null ? undefined : groundAt({ element, event, view });
 
       return ground === undefined
-        ? undefined
+        ? null
         : {
             x: snap(ground.x - newStructureFootprint.w / 2),
             y: snap(ground.y - newStructureFootprint.d / 2),
@@ -49,31 +50,31 @@ export function SpotPicker({ view }: { readonly view: View }) {
     const onClick = (event: MouseEvent) => {
       const spot = at(event);
 
-      if (spot === undefined) {
-        return;
+      if (spot !== null) {
+        event.stopPropagation();
+        event.preventDefault();
+        placing?.setSpot(spot);
+        placing?.pick(false);
       }
-
-      event.stopPropagation();
-      event.preventDefault();
-      placing?.setSpot(spot);
-      placing?.pick(false);
     };
 
-    canvas.addEventListener("pointermove", onMove);
-    canvas.addEventListener("click", onClick, { capture: true });
+    if (picking) {
+      canvas?.addEventListener("pointermove", onMove);
+      canvas?.addEventListener("click", onClick, { capture: true });
+    }
 
     return () => {
-      canvas.removeEventListener("pointermove", onMove);
-      canvas.removeEventListener("click", onClick, { capture: true });
-      setOver(undefined);
+      canvas?.removeEventListener("pointermove", onMove);
+      canvas?.removeEventListener("click", onClick, { capture: true });
+      setOver(null);
     };
   }, [picking, view, placing]);
 
-  const shown = picking ? over : (placing?.spot ?? undefined);
+  const shown = picking ? over : (placing?.spot ?? null);
 
   return (
     <g ref={root} aria-hidden="true" className="pointer-events-none">
-      {shown === undefined ? null : (
+      {shown === null ? null : (
         <polygon
           data-spot-outline=""
           points={toPoints(

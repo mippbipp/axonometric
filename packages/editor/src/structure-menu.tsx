@@ -17,9 +17,9 @@ import { useEffect, useState } from "react";
 import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
+import { useStructuresById } from "./structures.ts";
 import { usePropose } from "./use-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
-import { useStructuresById } from "./structures.ts";
 
 /** Where the menu opened: a point on the page, and the structure under it. */
 interface Opened {
@@ -48,11 +48,11 @@ export function StructureMenu() {
   const canPropose = proposing?.canPropose === true;
 
   useEffect(() => {
-    if (!canPropose) {
-      return;
-    }
-
     const onContextMenu = (event: MouseEvent) => {
+      if (!canPropose) {
+        return;
+      }
+
       const id =
         event.target instanceof Element
           ? event.target.closest<SVGElement>("[data-structure]")?.dataset
@@ -134,7 +134,11 @@ export function StructureMenu() {
               }}
             >
               {Arr.map(shapeChoices, ({ value, label }) => (
-                <MenuRadioItem key={value} value={value} data-menu-shape={value}>
+                <MenuRadioItem
+                  key={value}
+                  value={value}
+                  data-menu-shape={value}
+                >
                   {label}
                 </MenuRadioItem>
               ))}
@@ -148,7 +152,7 @@ export function StructureMenu() {
           <MenuSubContent>
             <MenuRadioGroup
               value={structure.group}
-              onValueChange={(next) => {
+              onValueChange={(next: string) => {
                 send(changeFor.group(structure, next));
               }}
             >
@@ -178,7 +182,11 @@ export function StructureMenu() {
               }}
             >
               {Arr.map(statusChoices, ({ value, label }) => (
-                <MenuRadioItem key={value} value={value} data-menu-status={value}>
+                <MenuRadioItem
+                  key={value}
+                  value={value}
+                  data-menu-status={value}
+                >
                   {label}
                 </MenuRadioItem>
               ))}
@@ -196,7 +204,11 @@ export function StructureMenu() {
           Propose deleting
         </MenuItem>
         {failure === undefined ? null : (
-          <p role="alert" data-menu-failure className="border-refused max-w-56 border-l-2 px-2 py-1">
+          <p
+            role="alert"
+            data-menu-failure
+            className="border-refused max-w-56 border-l-2 px-2 py-1"
+          >
             {failure}
           </p>
         )}

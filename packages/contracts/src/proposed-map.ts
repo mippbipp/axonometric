@@ -3,9 +3,9 @@ import { Array as Arr, Order, Record as Rec } from "effect";
 import type { MapState } from "./map-state.ts";
 import { emptyProposals } from "./proposals.ts";
 import type { Batch, BatchItem, Proposals } from "./proposals.ts";
-import { batchesOf, openItems } from "./review.ts";
 import { kindTable, specOf } from "./review-kinds.ts";
 import type { Touches } from "./review-kinds.ts";
+import { batchesOf, openItems } from "./review.ts";
 
 /** The map as proposed: the accepted map with the proposals applied. */
 export interface ProposedMap {

@@ -1,4 +1,5 @@
-import { Schema } from "effect";
+import { pipe, Schema, String as Str } from "effect";
+import { dual } from "effect/Function";
 
 import { objectMessages } from "./fields.ts";
 import { Placement } from "./layout.ts";
@@ -13,9 +14,7 @@ const structureIdFix =
  */
 export const StructureId = Schema.String.annotate({
   message: structureIdFix,
-}).check(
-  Schema.isPattern(/^[^\r\n]{1,200}$/u, { message: structureIdFix })
-);
+}).check(Schema.isPattern(/^[^\r\n]{1,200}$/u, { message: structureIdFix }));
 
 export type StructureId = typeof StructureId.Type;
 
@@ -118,21 +117,31 @@ export const structureOf = (change: StructureChange): string =>
   change.action === "add" ? change.structure.id : change.structure;
 
 /** Whether two changes act on the same structure in the same way. */
-export const sameSubject = (a: StructureChange, b: StructureChange): boolean =>
-  a.action === b.action && structureOf(a) === structureOf(b);
+export const sameSubject: {
+  (b: StructureChange): (a: StructureChange) => boolean;
+  (a: StructureChange, b: StructureChange): boolean;
+} = dual(
+  2,
+  (a: StructureChange, b: StructureChange): boolean =>
+    a.action === b.action && structureOf(a) === structureOf(b)
+);
 
 /**
  * A provisional id for a structure called `name`: its words as a slug, then
  * `suffix`, such as `build-cache-4f2a`. The agent can use it as the
  * structure's id as it stands.
  */
-export const provisionalIdOf = (name: string, suffix: string): string => {
-  const slug = name
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/gu, "-")
-    .replaceAll(/^-+|-+$/gu, "")
-    .slice(0, 40)
-    .replaceAll(/-+$/gu, "");
+export const provisionalIdOf: {
+  (suffix: string): (name: string) => string;
+  (name: string, suffix: string): string;
+} = dual(2, (name: string, suffix: string): string => {
+  const slug = pipe(
+    Str.toLowerCase(name),
+    Str.replaceAll(/[^a-z0-9]+/gu, "-"),
+    Str.replaceAll(/^-+|-+$/gu, ""),
+    Str.slice(0, 40),
+    Str.replaceAll(/-+$/gu, "")
+  );
 
   return `${slug === "" ? "structure" : slug}-${suffix}`;
-};
+});

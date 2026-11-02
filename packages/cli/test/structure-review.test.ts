@@ -13,7 +13,14 @@ import type {
 } from "@axonometric/contracts";
 import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Path, Schema } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Path,
+  pipe,
+  Schema,
+  String as Str,
+} from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
@@ -77,12 +84,13 @@ const homeWith = (
 
 /** data.mjs with a structure `id` added to the loop group. */
 const withStructure = (id: string) => (data: string) =>
-  data
-    .replace(
+  pipe(
+    data,
+    Str.replace(
       'reveals: ["engineer", "page"],',
       `reveals: ["engineer", "page", ${JSON.stringify(id)}],`
-    )
-    .replace(
+    ),
+    Str.replace(
       "  structures: [\n",
       `  structures: [
     structure({
@@ -96,7 +104,8 @@ const withStructure = (id: string) => (data: string) =>
       howItsBuilt: "A folder.",
     }),
 `
-    );
+    )
+  );
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
@@ -151,9 +160,8 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
           [["structure", "p1"]]
         );
         assert.deepStrictEqual(placement(revision.layout, "new-1"), added.at);
-        assert.strictEqual(
-          revision.data.structures.some(({ id }) => id === "new-1"),
-          true
+        assert.isTrue(
+          Arr.some(revision.data.structures, ({ id }) => id === "new-1")
         );
       })
   );
@@ -196,6 +204,7 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
         const revision = yield* decodeRevision(
           committed.files["history/0001.json"] ?? ""
         );
+
         const [entry] = revision.accepted;
 
         assert.strictEqual(entry?.kind, "structure");
@@ -211,8 +220,8 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
         );
 
         assert.strictEqual(
-          proposals.batches?.[0]?.verdicts["p1"]?.verdict === "changed" &&
-            proposals.batches[0].verdicts["p1"].as,
+          proposals.batches?.[0]?.verdicts.p1?.verdict === "changed" &&
+            proposals.batches[0].verdicts.p1.as,
           "build-cache"
         );
       })
@@ -355,19 +364,33 @@ describe("review and the prompt for structure items", () => {
         assert.include(page?.breaks ?? "", "question Q-P1 (open)");
         assert.include(page?.breaks ?? "", "question Q-P2 (resolved)");
 
-        // Only the chapter that reveals it refers to the upstream structure.
-        assert.include(
-          upstream?.breaks ?? "",
-          'chapter c-all ("The whole loop") reveals it'
-        );
-        assert.notInclude(upstream?.breaks ?? "", "hop ");
-
         const text = yield* runCli(home, ["review", home]);
 
         assert.include(
           text.stdout,
           'BREAKS THE MAP if accepted: Deleting "page"'
         );
+        assert.isDefined(upstream);
+      })
+  );
+
+  it.effect(
+    "names only the chapter that reveals a structure no hop touches",
+    () =>
+      Effect.gen(function* () {
+        const { home } = yield* homeWith([
+          item("p2", { action: "delete", structure: "upstream" }),
+        ]);
+
+        const json = yield* runCli(home, ["review", home, "--json"]);
+        const report = yield* decodeReview(json.stdout);
+        const [upstream] = report.batch?.items ?? [];
+
+        assert.include(
+          upstream?.breaks ?? "",
+          'chapter c-all ("The whole loop") reveals it'
+        );
+        assert.notInclude(upstream?.breaks ?? "", "hop ");
       })
   );
 
@@ -388,18 +411,29 @@ describe("review and the prompt for structure items", () => {
   );
 });
 
-const post = (url: string, path: string, body: unknown) =>
-  HttpClient.HttpClient.use((client) =>
-    client.execute(
-      HttpClientRequest.post(new URL(path, url)).pipe(
-        HttpClientRequest.setHeaders({
-          origin: url,
-          "content-type": "application/json",
-        }),
-        HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
-      )
-    )
-  ).pipe(
+/** A write the page could send: a JSON object of known fields. */
+type Write = Readonly<Record<string, Schema.Json>>;
+
+const send = ({
+  method,
+  url,
+  path,
+  body,
+}: {
+  readonly method: "post" | "put";
+  readonly url: string;
+  readonly path: string;
+  readonly body: Write;
+}) => {
+  const request = HttpClientRequest[method](new URL(path, url)).pipe(
+    HttpClientRequest.setHeaders({
+      origin: url,
+      "content-type": "application/json",
+    }),
+    HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
+  );
+
+  return HttpClient.HttpClient.use((client) => client.execute(request)).pipe(
     Effect.flatMap((response) =>
       Effect.map(response.text, (text) => ({ status: response.status, text }))
     ),
@@ -407,6 +441,10 @@ const post = (url: string, path: string, body: unknown) =>
     Effect.orDie,
     Effect.provide(NodeHttpClient.layerNodeHttp)
   );
+};
+
+const post = (url: string, path: string, body: Write) =>
+  send({ method: "post", url, path, body });
 
 describe("structure writes over HTTP", () => {
   it.live(
@@ -457,46 +495,26 @@ describe("structure writes over HTTP", () => {
         assert.include(badGroup.text, "nowhere");
 
         // A layout write may not land on the ground a proposed structure takes.
-        const moveOnto = yield* HttpClient.HttpClient.use((client) =>
-          client.execute(
-            HttpClientRequest.put(
-              new URL("/api/proposals/layout", serve.url)
-            ).pipe(
-              HttpClientRequest.setHeaders({
-                origin: serve.url,
-                "content-type": "application/json",
-              }),
-              HttpClientRequest.bodyText(
-                JSON.stringify({
-                  baseFileRevision: 1,
-                  layout: [
-                    {
-                      id: "m1",
-                      kind: "move",
-                      moves: [
-                        {
-                          target: { kind: "structure", id: "engineer" },
-                          position: { x: 12, y: 12 },
-                        },
-                      ],
-                    },
-                  ],
-                }),
-                "application/json"
-              )
-            )
-          )
-        ).pipe(
-          Effect.flatMap((response) =>
-            Effect.map(response.text, (text) => ({
-              status: response.status,
-              text,
-            }))
-          ),
-          Effect.scoped,
-          Effect.orDie,
-          Effect.provide(NodeHttpClient.layerNodeHttp)
-        );
+        const moveOnto = yield* send({
+          method: "put",
+          url: serve.url,
+          path: "/api/proposals/layout",
+          body: {
+            baseFileRevision: 1,
+            layout: [
+              {
+                id: "m1",
+                kind: "move",
+                moves: [
+                  {
+                    target: { kind: "structure", id: "engineer" },
+                    position: { x: 12, y: 12 },
+                  },
+                ],
+              },
+            ],
+          },
+        });
 
         assert.strictEqual(moveOnto.status, 422, moveOnto.text);
         assert.include(moveOnto.text, "new-1");
