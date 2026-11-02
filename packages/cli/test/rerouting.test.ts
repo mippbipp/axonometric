@@ -1231,6 +1231,15 @@ describe("a group drag's hops", () => {
 
         assert.deepStrictEqual(visible, []);
 
+        // A packet walks the old route, so it goes with its hop.
+        const packets = yield* Effect.promise(() =>
+          page.evaluate<readonly string[]>(
+            `[...document.querySelectorAll("[data-packet]")].filter((packet) => getComputedStyle(packet).visibility !== "hidden").map((packet) => packet.getAttribute("data-packet"))`
+          )
+        );
+
+        assert.deepStrictEqual(packets, []);
+
         // The origin outlines lie under the zone titles and name tags.
         const order = yield* Effect.promise(() =>
           page.evaluate<boolean>(
