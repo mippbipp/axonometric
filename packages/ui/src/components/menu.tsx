@@ -86,7 +86,7 @@ function MenuSubTrigger({
   return (
     <MenuPrimitive.SubmenuTrigger
       data-slot="menu-sub-trigger"
-      className={cn(itemClass, "data-[popup-open]:bg-muted", className)}
+      className={cn(itemClass, "", className)}
       {...props}
     >
       {children}

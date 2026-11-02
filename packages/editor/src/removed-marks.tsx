@@ -12,7 +12,7 @@ import { useProposed } from "./proposed-context.ts";
  * A structure proposed for deletion, crossed out until the agent has reviewed
  * it: the footprint's outline in the refused colour, and a line along each of
  * its diagonals. It draws no text, so it can't clash with a name tag or a
- * label, and sits under the structures so the box stays readable through it.
+ * label, and sits over the structures, in the overlay, so the box's own faces don't hide it.
  *
  * This is an editing layer: a file's drawing never includes it.
  */

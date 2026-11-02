@@ -224,7 +224,6 @@ export function MapView({
                     view={view}
                   />
                   <AcceptedOutlines structures={scene.structures} view={view} />
-                  <RemovedMarks structures={scene.structures} view={view} />
                   <SpotPicker view={view} />
                   <CompareRings
                     structures={scene.structures}
@@ -243,7 +242,12 @@ export function MapView({
                 onHover={hoverHop}
               />
             }
-            overlay={<NoteMarkers scene={scene} />}
+            overlay={
+              <>
+                <NoteMarkers scene={scene} />
+                <RemovedMarks structures={scene.structures} view={view} />
+              </>
+            }
             onHopHover={hoverHop}
             labelShown={(hop) => hop === selectedHop || hop === hoveredHop}
           />
