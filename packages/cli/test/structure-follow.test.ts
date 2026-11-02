@@ -534,7 +534,16 @@ describe("the open page after verdict changed --as and commit", () => {
         assert.strictEqual(committed.exitCode, 0, committed.stderr);
 
         // The page now draws build-cache, selected, where it was dropped.
+        // The server rebuilds as soon as data.mjs changes, so build-cache can
+        // show before the commit reaches the page, beside the still-open
+        // proposal. Wait for the commit to retire the provisional id.
         yield* waitFor(page, '[data-structure="build-cache"]');
+        yield* Effect.promise(() =>
+          page
+            .locator(`[data-structure="${provisional}"]`)
+            .first()
+            .waitFor({ ...waitTimeout, state: "detached" })
+        );
         assert.strictEqual(
           yield* count(page, `[data-structure="${provisional}"]`),
           0
