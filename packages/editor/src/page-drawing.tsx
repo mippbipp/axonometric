@@ -4,6 +4,7 @@ import { use } from "react";
 import type { ReactNode } from "react";
 
 import { BoxSelect } from "./box-select.tsx";
+import { EdgeHandles } from "./edge-handles.tsx";
 import { EditorViewContext } from "./editor-view.ts";
 import { LayoutEditor } from "./layout-editor.tsx";
 import { StructureTarget } from "./structure-target.tsx";
@@ -58,6 +59,7 @@ export function PageLayers({ children }: { readonly children: ReactNode }) {
       <LayoutEditor view={editor.view} placements={editor.placements}>
         {children}
       </LayoutEditor>
+      <EdgeHandles view={editor.view} />
     </>
   );
 }

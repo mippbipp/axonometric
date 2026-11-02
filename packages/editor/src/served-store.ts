@@ -6,9 +6,11 @@ import {
   discardChange,
   emptyHistory,
   emptyProposals,
+  FlowWrite,
   FreezeWrite,
   FreezeAnswer,
   frozenRefusal,
+  HopWrite,
   frozenWriteRefusal,
   ItemWrite,
   LayoutChangeRefused,
@@ -28,6 +30,8 @@ import {
   ProposalRefused,
   Proposals,
   proposedMap,
+  proposeFlow,
+  proposeHop,
   proposeStructure,
   pushStep,
   redoStep,
@@ -44,6 +48,8 @@ import {
 } from "@axonometric/contracts";
 import type {
   ChangeId,
+  FlowChange,
+  HopChange,
   NoteTarget,
   TextField,
   GridPoint,
@@ -137,6 +143,10 @@ const encodeItem = Schema.encodeEffect(Schema.fromJsonString(ItemWrite));
 const encodeStructure = Schema.encodeEffect(
   Schema.fromJsonString(StructureWrite)
 );
+
+const encodeHop = Schema.encodeEffect(Schema.fromJsonString(HopWrite));
+
+const encodeFlow = Schema.encodeEffect(Schema.fromJsonString(FlowWrite));
 
 const encodeFreeze = Schema.encodeEffect(Schema.fromJsonString(FreezeWrite));
 
@@ -291,6 +301,34 @@ export interface ServedStore {
   readonly review: ReviewOps;
   /** Proposals to add, delete or change structures. */
   readonly structures: StructureOps;
+  /** Proposals to draw, delete or relabel hops. */
+  readonly hops: HopOps;
+  /** Proposals to create and rename flows, and to order their hops and the flows. */
+  readonly flows: FlowOps;
+}
+
+/**
+ * Proposing changes to hops. Like the structure writes, each goes after the
+ * layout writes already on their way, is based on the latest file revision,
+ * and is sent again on a fresher file when another writer got in first.
+ */
+export interface HopOps {
+  /**
+   * Proposes `change`: a new hop, a deletion or a relabel. The server keeps
+   * one proposal per hop and kind of change, and edits the proposal of a new
+   * hop instead of adding another. `done` gets the id of the proposal.
+   */
+  readonly propose: (change: HopChange, done: ReviewDone<ChangeId>) => void;
+  /** Why `change` would be refused, without sending it. */
+  readonly refusalOf: (change: HopChange) => string | undefined;
+}
+
+/** Proposing changes to flows; see `HopOps`. */
+export interface FlowOps {
+  /** Proposes `change`; `done` gets the id of the proposal. */
+  readonly propose: (change: FlowChange, done: ReviewDone<ChangeId>) => void;
+  /** Why `change` would be refused, without sending it. */
+  readonly refusalOf: (change: FlowChange) => string | undefined;
 }
 
 /**
@@ -335,6 +373,10 @@ export interface StructureOps {
   /** Removes an open proposal. */
   readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
 }
+
+/** Why a check failed, or `undefined` when it passed. */
+const reasonOf = <A>(checked: Result.Result<A, string>): string | undefined =>
+  Option.getOrUndefined(Result.getFailure(checked));
 
 /** What a review write answers: the id of what it made or changed, or why it was refused. */
 export type ReviewOutcome<A> = Result.Result<A, string>;
@@ -1578,11 +1620,95 @@ export const connectServed = ({
     },
   };
 
+  const sendHop = (
+    id: ChangeId,
+    change: HopChange,
+    done: ReviewDone<ChangeId>
+  ) => {
+    callReview<ChangeId>(
+      {
+        url: served.hop,
+        encode: (base) =>
+          encodeHop({ baseFileRevision: base, id, change }).pipe(Effect.orDie),
+        read: readProposalsWith(id),
+        endsUndo: false,
+      },
+      done
+    );
+  };
+
+  const sendFlow = (
+    id: ChangeId,
+    change: FlowChange,
+    done: ReviewDone<ChangeId>
+  ) => {
+    callReview<ChangeId>(
+      {
+        url: served.flow,
+        encode: (base) =>
+          encodeFlow({ baseFileRevision: base, id, change }).pipe(Effect.orDie),
+        read: readProposalsWith(id),
+        endsUndo: false,
+      },
+      done
+    );
+  };
+
+  /**
+   * What a hop or flow proposal is checked against on the page: the map as
+   * proposed with every pending change shown, and the map the frozen items
+   * alone make, as the server checks them.
+   */
+  const connectionWorld = () => {
+    const proposals = proposalsOf(view.state);
+
+    return {
+      data: proposedMap({
+        state: view.state,
+        proposals: { ...proposals, layout: view.pending },
+      }).state.data,
+      base: proposedMap({ state: view.state, proposals, open: false }).state
+        .data,
+    };
+  };
+
+  const hops: HopOps = {
+    propose: (change, done) => {
+      sendHop(newChangeId(), change, done);
+    },
+    refusalOf: (change) =>
+      reasonOf(
+        proposeHop({
+          proposals: proposalsOf(view.state),
+          id: newChangeId(),
+          change,
+          world: connectionWorld(),
+        })
+      ),
+  };
+
+  const flows: FlowOps = {
+    propose: (change, done) => {
+      sendFlow(newChangeId(), change, done);
+    },
+    refusalOf: (change) =>
+      reasonOf(
+        proposeFlow({
+          proposals: proposalsOf(view.state),
+          id: newChangeId(),
+          change,
+          world: connectionWorld(),
+        })
+      ),
+  };
+
   connect();
 
   return {
     review,
     structures,
+    hops,
+    flows,
     subscribe: (listener) => {
       listeners.add(listener);
 

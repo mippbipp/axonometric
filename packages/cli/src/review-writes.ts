@@ -8,6 +8,8 @@ import {
   MapFilesUnreadable,
   proposedMap,
   ProposalRefused,
+  proposeFlow,
+  proposeHop,
   proposeStructure,
   reopenItem,
   reviewPrompt,
@@ -17,7 +19,9 @@ import type {
   BatchItem,
   FreezeWrite,
   FreezeAnswer,
+  FlowWrite,
   Hop,
+  HopWrite,
   Layout,
   ItemWrite,
   Known,
@@ -169,9 +173,10 @@ const editing =
 // oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(home, write, written)`, never piped.
 
 /** What an item is checked against when it is added. */
-const knownIn = ({ structures, hops, data }: Held): Known => ({
+const knownIn = ({ structures, proposed, data }: Held): Known => ({
   structureIds: new Set(structures.keys()),
-  hops,
+  // A hop the engineer drew can carry a note before the agent adds it.
+  hops: proposed.state.data.hops,
   data,
 });
 
@@ -240,6 +245,52 @@ export const setStructureWrite = editing<StructureWrite>(
     })
 );
 
+/**
+ * What a hop or flow proposal is checked against: the map as proposed, so a
+ * structure, hop or flow an earlier proposal adds is known to later ones, and
+ * the map the frozen items alone make, which an open change lands on.
+ */
+const connectionWorld = ({ proposed, data, proposals }: Held) => ({
+  data: proposed.state.data,
+  base: proposedMap({
+    state: { data, layout: proposed.state.layout },
+    proposals,
+    open: false,
+  }).state.data,
+});
+
+/**
+ * Sets an open hop proposal: draws a hop, deletes one or relabels one.
+ * Refused when it names a structure or hop the map lacks, or joins a
+ * structure to itself.
+ */
+export const setHopWrite = editing<HopWrite>(
+  "setHopWrite",
+  (held, { id, change }) =>
+    proposeHop({
+      proposals: held.proposals,
+      id,
+      change,
+      world: connectionWorld(held),
+    })
+);
+
+/**
+ * Sets an open flow proposal: creates a flow, renames one, sets its ordered
+ * hops or reorders the flows. Refused when it names a flow or hop the map
+ * lacks.
+ */
+export const setFlowWrite = editing<FlowWrite>(
+  "setFlowWrite",
+  (held, { id, change }) =>
+    proposeFlow({
+      proposals: held.proposals,
+      id,
+      change,
+      world: connectionWorld(held),
+    })
+);
+
 /** Takes a reviewed item off the page. */
 export const dismissWrite = editing<ItemWrite>(
   "dismissWrite",
@@ -279,12 +330,16 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, structures, hops, data, now }) =>
+    change: ({ proposals, structures, proposed, data, now }) =>
       Result.map(
         freezeOpen({
           proposals,
           at: now,
-          structures: Arr.map(data.structures, ({ id }) => id),
+          known: {
+            structure: Arr.map(data.structures, ({ id }) => id),
+            hop: Arr.map(data.hops, ({ id }) => id),
+            flow: Arr.map(data.flows, ({ id }) => id),
+          },
         }),
         (frozen) => ({
           proposals: frozen.proposals,
@@ -297,7 +352,9 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
               batch: frozen.batch,
               names: {
                 structure: (id) => structures.get(id) ?? id,
-                hop: hopLabelOf(hops),
+                // A hop the engineer drew has a label on the page and none
+                // in data.mjs yet.
+                hop: hopLabelOf(proposed.state.data.hops),
               },
             }),
           },

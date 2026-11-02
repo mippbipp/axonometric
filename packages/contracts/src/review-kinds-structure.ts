@@ -4,6 +4,7 @@ import type { Layout, Placement } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { placeStructures } from "./placement.ts";
 import type { BatchItem, LayoutChange, Verdict } from "./proposals.ts";
+import { followed, provisionalOf } from "./provisional-ids.ts";
 import { plain, removedMark } from "./review-kind-defaults.ts";
 import type { KindSpec, Pointer } from "./review-kinds.ts";
 import { decorate } from "./review-quote.ts";
@@ -25,16 +26,22 @@ type StructureItem = Extract<BatchItem, { kind: "structure" }>;
 const structureNotice =
   "A structure item changes data.mjs, which only you edit. A new structure comes with a provisional id: add it to data.mjs under that id, or under another and give the verdict changed with --as <id>. Add an accepted new structure to the reveals of the chapter that should show it first, or the last chapter fails to check; until you do, the page shows it in every chapter. commit writes its position to layout.json under the final id.";
 
+/** What the structure kind adds under a provisional id, and how it says so. */
+const provisional = provisionalOf<StructureItem>({
+  entity: "structure",
+  noun: "structure",
+  adds: ({ change }) =>
+    change.action === "add" ? Option.some(change.structure.id) : Option.none(),
+});
+
 /**
  * The id a taken structure item ends up with: the provisional id, or the one
  * the agent gave with `--as`.
  */
 const finalIdOf = (item: StructureItem, verdict: Verdict): string =>
-  item.change.action === "add" &&
-  verdict.verdict === "changed" &&
-  verdict.as !== undefined
-    ? verdict.as
-    : structureOf(item.change);
+  Option.getOrElse(provisional.finalIdOf(item, verdict), () =>
+    structureOf(item.change)
+  );
 
 /** Whether `kept`, the spot layout.json holds for `id`, is where `build` puts it. */
 const isAutoPlaced = ({
@@ -124,45 +131,8 @@ export const structureKind: KindSpec<StructureItem> = {
     landing.data === undefined
       ? Option.none()
       : structureBreakage(change, { ...landing, data: landing.data }),
-  verdictRefusal: (item, verdict, { accepted, taken }) => {
-    if (verdict.verdict !== "changed" || verdict.as === undefined) {
-      return Option.none();
-    }
-
-    const { change } = item;
-
-    if (change.action !== "add") {
-      return Option.some(
-        "--as gives a new structure the id you used for it in data.mjs. This item does not add a structure."
-      );
-    }
-
-    if (accepted.has(verdict.as)) {
-      return Option.some(
-        `--as ${verdict.as} names a structure the accepted map already has. Pick the id of the new structure you added to data.mjs.`
-      );
-    }
-
-    return Option.map(
-      Arr.findFirst(
-        [...taken.entries()],
-        ([other, id]) => other !== item.id && id === verdict.as
-      ),
-      ([other]) =>
-        `--as ${verdict.as} is already the final id of item ${other} in this batch. Give each new structure its own id.`
-    );
-  },
-  renames: (item, verdict) => {
-    if (verdict.verdict === "rejected" || item.change.action !== "add") {
-      return [];
-    }
-
-    const to = finalIdOf(item, verdict);
-
-    return to === item.change.structure.id
-      ? []
-      : [[item.change.structure.id, to]];
-  },
+  verdictRefusal: provisional.verdictRefusal,
+  renames: provisional.renames,
   retargeted: (item, renames) => {
     const { change } = item;
 
@@ -170,9 +140,9 @@ export const structureKind: KindSpec<StructureItem> = {
       return item;
     }
 
-    const to = renames.get(change.structure);
+    const to = followed(renames, "structure", change.structure);
 
-    return to === undefined
+    return to === change.structure
       ? item
       : { ...item, change: { ...change, structure: to } };
   },

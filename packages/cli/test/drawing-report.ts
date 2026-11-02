@@ -92,6 +92,30 @@ export const drawingReport = `(() => {
     ]),
   }));
 
+  // The strike across a hop proposed for deletion, as segments on screen.
+  const hopStrikes = [...document.querySelectorAll("[data-hop-strike]")].map((line) => ({
+    id: "hop-strike:" + line.closest("[data-removed-hop-mark]").dataset.removedHopMark,
+    segment: toScreen(line, [
+      { x: line.x1.baseVal.value, y: line.y1.baseVal.value },
+      { x: line.x2.baseVal.value, y: line.y2.baseVal.value },
+    ]),
+  }));
+
+  // The edge handles of the structure that has them, as boxes on screen.
+  const handles = [...document.querySelectorAll("[data-edge-handle]")].map((handle) => ({
+    id: "handle:" + handle.dataset.edgeOwner + ":" + handle.dataset.edgeHandle,
+    polygon: rectPolygon(handle.getBoundingClientRect()),
+  }));
+
+  // The line of a hop being drawn, as segments on screen, one per piece.
+  const previews = [...document.querySelectorAll("[data-hop-preview]")].map((line) => ({
+    id: "preview:" + line.dataset.hopPreview,
+    segment: toScreen(line, [
+      { x: line.x1.baseVal.value, y: line.y1.baseVal.value },
+      { x: line.x2.baseVal.value, y: line.y2.baseVal.value },
+    ]),
+  }));
+
   const chips = [...document.querySelectorAll("[data-code-chip]")].map((chip) => ({
     id: "chip:" + chip.closest("[data-structure]").dataset.structure,
     // The chip's rendered box, with its stroke.
@@ -130,7 +154,7 @@ export const drawingReport = `(() => {
     };
   });
 
-  return { text, chips, strikes, structures, firstLegs };
+  return { text, chips, strikes, hopStrikes, previews, handles, structures, firstLegs };
 })()`;
 
 interface Point {
@@ -152,6 +176,18 @@ export interface DrawingReport {
     readonly id: string;
     readonly segment: readonly { readonly x: number; readonly y: number }[];
   }[];
+  /** The pieces of the cross through a hop proposed for deletion. */
+  readonly hopStrikes: readonly {
+    readonly id: string;
+    readonly segment: readonly { readonly x: number; readonly y: number }[];
+  }[];
+  /** The legs of the line of a hop being drawn. */
+  readonly previews: readonly {
+    readonly id: string;
+    readonly segment: readonly { readonly x: number; readonly y: number }[];
+  }[];
+  /** The edge handles on show, as boxes. */
+  readonly handles: readonly Drawn[];
   readonly structures: readonly Drawn[];
   readonly firstLegs: readonly {
     readonly hop: string;

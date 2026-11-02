@@ -56,6 +56,10 @@ _Avoid_: manual route, waypoints
 A named, ordered list of hops.
 _Avoid_: path, sequence
 
+**Edge handle**:
+A small circle on the edge of the selected or hovered structure. Dragging from one to another structure draws a new hop.
+_Avoid_: port, anchor, connector
+
 **Group**:
 A named set of structures that belong together.
 _Avoid_: cluster, layer
@@ -121,7 +125,7 @@ The set of structures that move, nudge, align and distribute together. It is sep
 _Avoid_: group selection, marquee
 
 **Spotlight**:
-The hops, and the structures at their ends, that the map draws at full strength while it fades the rest. It follows what the pointer is on or the keyboard has focused, else what's pinned, else what the chapter or the picked flow plays.
+The hops, and the structures at their ends, that the map draws at full strength while it fades the rest. It follows the ends of a hop being drawn, else what the pointer is on or the keyboard has focused, else what's pinned, else what the chapter or the picked flow plays.
 _Avoid_: focus, highlight
 
 **Side index**:

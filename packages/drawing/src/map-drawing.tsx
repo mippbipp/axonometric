@@ -132,8 +132,11 @@ function HopArrow({
   markBends,
   faded,
   onHover,
+  state,
 }: {
   readonly routed: SceneHop;
+  /** The page's mark on the hop: a proposal that draws it, or one that deletes it. */
+  readonly state: HopState | undefined;
   /** Whether the spotlight fades the hop, or `undefined` without one. */
   readonly faded: boolean | undefined;
   /** Whether to mark the route's bends with diamonds. */
@@ -148,6 +151,7 @@ function HopArrow({
   return (
     <g
       data-hop={hop.id}
+      data-hop-state={state}
       id={idOf("hop", hop.id) ?? undefined}
       data-route={toPoints(points)}
       stroke={paint.ink}
@@ -183,6 +187,12 @@ function HopArrow({
 }
 
 /**
+ * What the page marks a hop as: `proposed` for a hop a proposal draws or
+ * changes, `removed` for one proposed for deletion. A file marks none.
+ */
+export type HopState = "proposed" | "removed";
+
+/**
  * The stretches of a hop's route that boxes are drawn over, drawn again
  * faintly on top of those boxes, so the hop never disappears. The stretch
  * that reaches an end hidden behind a box carries a faint arrowhead, since
@@ -192,15 +202,18 @@ function HopArrow({
 function HiddenHop({
   routed,
   faded,
+  state,
 }: {
   readonly routed: SceneHop;
   readonly faded: boolean | undefined;
+  readonly state: HopState | undefined;
 }) {
   const { paint } = useDrawing();
 
   return (
     <g
       data-hidden-hop={routed.hop.id}
+      data-hop-state={state}
       stroke={paint.ink}
       {...fadeAttributes({ faded, strength: fadedOpacity.line })}
     >
@@ -297,6 +310,7 @@ export function MapDrawing({
   overlay,
   onHopHover,
   labelShown,
+  hopStates,
 }: {
   readonly scene: Scene;
   /** The id of the hatch pattern this draws and its faces use. */
@@ -316,6 +330,8 @@ export function MapDrawing({
   readonly onHopHover?: ((hop: string | null) => void) | undefined;
   /** Whether a hop's label shows even where the scene found no room. */
   readonly labelShown?: ((hop: string) => boolean) | undefined;
+  /** How the page marks hops its proposals touch; a file passes none. */
+  readonly hopStates?: ReadonlyMap<string, HopState> | undefined;
 }) {
   const drawing = viewDrawings[scene.view];
   const { Structure } = drawing;
@@ -338,6 +354,7 @@ export function MapDrawing({
             markBends={drawing.markBends}
             faded={fading.hop(item.hop.id)}
             onHover={onHopHover}
+            state={hopStates?.get(item.hop.id)}
           />
         ))}
       </g>
@@ -360,6 +377,7 @@ export function MapDrawing({
               key={item.hop.id}
               routed={item}
               faded={fading.hop(item.hop.id)}
+              state={hopStates?.get(item.hop.id)}
             />
           ))}
         </g>

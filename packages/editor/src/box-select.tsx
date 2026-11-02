@@ -94,7 +94,7 @@ export function BoxSelect({
       !event.shiftKey ||
       (event.target instanceof Element &&
         event.target.closest(
-          "[data-structure], [data-packet], [data-resize-handle]"
+          "[data-structure], [data-packet], [data-resize-handle], [data-edge-handle]"
         ) !== null)
     ) {
       return;

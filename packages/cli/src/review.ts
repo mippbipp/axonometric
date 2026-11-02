@@ -13,6 +13,7 @@ import {
 import type {
   Batch,
   BatchItem,
+  Hop,
   Layout,
   MapData,
   ReportedItem,
@@ -67,6 +68,7 @@ const reportItem = ({
   layout,
   names,
   data,
+  hops,
 }: {
   readonly item: BatchItem;
   readonly batch: Batch;
@@ -75,8 +77,13 @@ const reportItem = ({
   readonly layout: Layout;
   readonly names: ReadonlyMap<string, string>;
   readonly data: MapData;
+  /**
+   * The hops the page shows, the engineer's drawn ones included: data.mjs
+   * doesn't have them until the agent adds them, and an item that lists one
+   * isn't broken for that.
+   */
+  readonly hops: readonly Hop[];
 }): ReportedItem => {
-  const { hops } = data;
   const spec = specOf(item);
   const { before, after } = spec.facts(item, layout, data);
   const structureIds = new Set(names.keys());
@@ -144,12 +151,12 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
 
   // A structure the engineer proposed has a name on the page and none in
   // data.mjs yet, so review names it from the proposed map.
-  const names = structureNames(
-    proposedMap({
-      state: { data: map.data, layout: map.layout },
-      proposals: map.proposals,
-    }).state.data
-  );
+  const proposed = proposedMap({
+    state: { data: map.data, layout: map.layout },
+    proposals: map.proposals,
+  }).state.data;
+
+  const names = structureNames(proposed);
 
   const oldest = oldestOpenBatch(map.proposals);
   const absolute = path.resolve(home);
@@ -165,6 +172,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
           layout: map.layout,
           names,
           data: map.data,
+          hops: proposed.hops,
         })
       ),
   });

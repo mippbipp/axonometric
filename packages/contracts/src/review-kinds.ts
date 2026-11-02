@@ -17,7 +17,11 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
+import { followed } from "./provisional-ids.ts";
+import type { Rename, Renames, VerdictContext } from "./provisional-ids.ts";
 import { plain } from "./review-kind-defaults.ts";
+import { flowKind } from "./review-kinds-flow.ts";
+import { hopKind } from "./review-kinds-hop.ts";
 import { structureKind } from "./review-kinds-structure.ts";
 import {
   answerKind,
@@ -49,18 +53,6 @@ export interface Waiting {
   readonly item: BatchItem;
   /** The number of the batch holding the item, or nothing while it is open. */
   readonly batch: number | undefined;
-}
-
-/** What `verdict` knows when it checks a verdict. */
-export interface VerdictContext {
-  /**
-   * The ids of the structures the accepted map had before the agent edited
-   * data.mjs: those in the last revision, or the layout when there is none.
-   * `--as` may not name one of them.
-   */
-  readonly accepted: ReadonlySet<string>;
-  /** The `--as` ids the batch's other items already have, by item id. */
-  readonly taken: ReadonlyMap<string, string>;
 }
 
 /** What a commit knows when it takes an item. */
@@ -202,15 +194,12 @@ export interface KindSpec<I extends BatchItem> {
    * The structure ids the item makes new when it is taken with `verdict`, as
    * `[provisional, final]` pairs, when the agent used another id.
    */
-  renames(
-    item: I,
-    verdict: Verdict
-  ): readonly (readonly [from: string, to: string])[];
+  renames(item: I, verdict: Verdict): readonly Rename[];
   /**
    * The item with each structure id in `renames` replaced by the id it
    * became, for an item that points at a structure accepted under another id.
    */
-  retargeted(item: I, renames: ReadonlyMap<string, string>): I;
+  retargeted(item: I, renames: Renames): I;
   /** The item as a revision records it when taken: accepted or changed. */
   accepted(item: I, verdict: Verdict): AcceptedItem;
   /** The item as a revision records it when rejected. */
@@ -219,6 +208,17 @@ export interface KindSpec<I extends BatchItem> {
   reopened(item: I, newId: ChangeId, text: string | undefined): I;
   /** The most characters the kind's text holds. */
   readonly textLimit: number;
+  /**
+   * Why `text` can't be the item's text, or nothing: the kind's own schema
+   * for it, as a hop's label or a flow's name allows one line only. An edit
+   * and a reopened item are checked with it before anything is written.
+   */
+  textRefusal?(item: I, text: string): Option.Option<string>;
+  /**
+   * `proposals` once the open `item` is discarded, for what else has to go
+   * with it: a hop drawn on the page leaves the open flows that list it.
+   */
+  discarded?(proposals: Proposals, item: I): Proposals;
   /**
    * Why the item was written against something data.mjs no longer says, or
    * nothing. Unlike `breakage`, accepting it would not break the map; the
@@ -274,9 +274,9 @@ const routeOf = (layout: Layout, hop: string): Facts => {
 
 const retargetLayoutChange = (
   change: LayoutChange,
-  renames: ReadonlyMap<string, string>
+  renames: Renames
 ): LayoutChange => {
-  const id = (from: string) => renames.get(from) ?? from;
+  const id = (from: string) => followed(renames, "structure", from);
 
   return Match.value(change).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -394,14 +394,23 @@ const noteKind: KindSpec<NoteItem> = {
   ...plain<NoteItem>(),
   textLimit: maxNoteLength,
   retargeted: (item, renames) => {
-    const id = renames.get(
-      item.target.kind === "structure" ? item.target.id : ""
-    );
+    const { target } = item;
 
-    // Only a structure can be renamed; a hop or a spot keeps its target.
-    return item.target.kind === "structure" && id !== undefined
-      ? { ...item, target: { ...item.target, id } }
-      : item;
+    // A spot has no id to follow. A structure or a hop accepted under
+    // another id is followed.
+    if (target.kind === "structure") {
+      const id = followed(renames, "structure", target.id);
+
+      return id === target.id ? item : { ...item, target: { ...target, id } };
+    }
+
+    if (target.kind === "hop") {
+      const id = followed(renames, "hop", target.id);
+
+      return id === target.id ? item : { ...item, target: { ...target, id } };
+    }
+
+    return item;
   },
   open: (proposals) =>
     Arr.map(proposals.notes ?? [], (note): NoteItem => ({
@@ -531,6 +540,8 @@ export const kindTable = {
   answer: answerKind,
   question: questionKind,
   structure: structureKind,
+  hop: hopKind,
+  flow: flowKind,
 } satisfies {
   readonly [K in BatchItem["kind"]]: KindSpec<Extract<BatchItem, { kind: K }>>;
 };
@@ -551,6 +562,8 @@ function satisfiesEvery<const K extends readonly BatchItem["kind"][]>(
  */
 export const applyOrder: readonly BatchItem["kind"][] = satisfiesEvery([
   "structure",
+  "hop",
+  "flow",
   "layout",
   "note",
   "suggestion",

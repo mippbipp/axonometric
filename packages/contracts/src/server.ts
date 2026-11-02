@@ -29,6 +29,8 @@ export const serverPaths = {
   accept: "/api/proposals/accept",
   notes: "/api/notes",
   structure: "/api/structures",
+  hop: "/api/hops",
+  flow: "/api/flows",
   editItem: "/api/items/edit",
   discardItem: "/api/items/discard",
   suggestions: "/api/suggestions",
@@ -245,6 +247,10 @@ export const ServedPage = Schema.Struct({
   questions: Schema.String,
   /** Where a structure proposal is set, relative to the page's URL. */
   structure: Schema.String,
+  /** Where a hop proposal is set, relative to the page's URL. */
+  hop: Schema.String,
+  /** Where a flow proposal is set, relative to the page's URL. */
+  flow: Schema.String,
   /** Where "Ready for review" freezes a batch, relative to the page's URL. */
   freeze: Schema.String,
   /** Where a reviewed item is dismissed, relative to the page's URL. */
