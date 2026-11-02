@@ -33,6 +33,8 @@ import { writeAll } from "./write-files.ts";
 export interface AcceptedState {
   readonly state: MapState;
   readonly proposals: Proposals;
+  /** The revision just saved. */
+  readonly revision: Revision;
 }
 
 /**
@@ -154,7 +156,7 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
   ]);
 
   // Still under the lock, so quick writes tell the pages in order.
-  yield* written({ state, proposals });
+  yield* written({ state, proposals, revision });
 
   return {
     revision: number,

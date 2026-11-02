@@ -26,6 +26,7 @@ import {
 } from "@axonometric/contracts";
 import type {
   ChangeId,
+  HistoryList,
   Layout,
   LayoutChange,
   MapProblem,
@@ -47,6 +48,9 @@ import {
   Semaphore,
 } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
+
+import { loadRevision } from "./history-client.ts";
+import type { LoadedRevision } from "./history-client.ts";
 
 const decodeServed = Schema.decodeUnknownOption(
   Schema.fromJsonString(ServedPage)
@@ -129,6 +133,8 @@ export interface ServedView {
   readonly canRedo: boolean;
   /** The revision the last accept saved, for a few seconds. */
   readonly saved: SavedRevision | null;
+  /** The revisions, newest first, or null until the server has said. */
+  readonly history: HistoryList | null;
   /**
    * Whether an accept is waiting for the saves before it, or on its way to
    * the server. Edits are refused meanwhile, because they'd be saved over
@@ -187,6 +193,15 @@ export interface ServedStore {
   readonly undo: () => void;
   /** Redoes the edit that `undo` took back. */
   readonly redo: () => void;
+  /**
+   * Runs `edit` on the pending changes as any other edit: shown at once,
+   * saved, and one undo step. An edit that changes nothing is not a step.
+   * Returns why it was refused, or `undefined`. A refusal is not a notice:
+   * the caller says it.
+   */
+  readonly restore: (edit: Edit) => string | undefined;
+  /** Reads revision `n` from the server. */
+  readonly loadRevision: (n: number) => Effect.Effect<LoadedRevision>;
   /**
    * Accepts the pending layout changes with these ids, or all of them, as one
    * revision, once the saves already on their way are done. An empty
@@ -366,6 +381,7 @@ export const connectServed = ({
     canUndo: false,
     canRedo: false,
     saved: null,
+    history: null,
     accepting: false,
   };
 
@@ -483,6 +499,9 @@ export const connectServed = ({
           });
 
           update({ state, pending: pendingAfter(state) });
+        },
+        HistoryUpdated: ({ history: revisions }) => {
+          update({ history: revisions });
         },
         Heartbeat: () => {},
       });
@@ -959,6 +978,11 @@ export const connectServed = ({
     redo: () => {
       stepThrough("redo");
     },
+    restore: (edit) =>
+      sameLayoutChanges(view.pending, tryEdit(edit).after)
+        ? undefined
+        : run(edit),
+    loadRevision: (n) => loadRevision(served, n),
     accept: (ids, message) => {
       if (view.accepting || view.pending.length === 0) {
         return;

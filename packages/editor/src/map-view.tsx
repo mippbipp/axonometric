@@ -19,6 +19,9 @@ import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { BoxSelect } from "./box-select.tsx";
+import { CompareBadges, CompareRings } from "./compare-look.tsx";
+import { looks } from "./compare-looks.ts";
+import { useCompare } from "./compare-context.ts";
 import { fitOf } from "./fit.ts";
 import { LayoutEditor } from "./layout-editor.tsx";
 import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
@@ -134,10 +137,12 @@ function HopArrow({
 }) {
   const { hop, points } = routed;
   const bends = markBends ? routed.bends : [];
+  const mark = useCompare()?.hops.get(hop.id);
 
   return (
     <g
       data-hop={hop.id}
+      data-compare={mark}
       data-route={toPoints(points)}
       className="stroke-ink"
       onPointerEnter={() => {
@@ -147,7 +152,11 @@ function HopArrow({
         onHover(null);
       }}
     >
-      <title>{hop.label}</title>
+      <title>
+        {mark === undefined
+          ? hop.label
+          : `${hop.label} (${looks[mark].spoken})`}
+      </title>
       {/* A wide, invisible line, so the hop is easy to point at. */}
       <polyline
         points={toPoints(points)}
@@ -426,6 +435,7 @@ export function MapView({
         ))}
         <SelectionMarker placements={state.layout.structures} view={view} />
         <AcceptedOutlines structures={scene.structures} view={view} />
+        <CompareRings structures={scene.structures} view={view} />
       </g>
       <g>
         {Arr.map(scene.hops, (item) => (
@@ -468,6 +478,7 @@ export function MapView({
           ))}
         </g>
         <PendingBadges structures={scene.structures} />
+        <CompareBadges structures={scene.structures} />
       </LayoutEditor>
       <g className="pointer-events-none">
         {Arr.map(scene.hops, (item) => (

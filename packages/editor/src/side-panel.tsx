@@ -5,6 +5,8 @@ import type { KeyboardEvent } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
+import { useHistory } from "./history-context.ts";
+import { HistoryTab } from "./history-tab.tsx";
 import { PendingTab } from "./pending-tab.tsx";
 import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
@@ -177,7 +179,7 @@ const renderContent = Match.type<PanelContent>().pipe(
   })
 );
 
-type Tab = "details" | "questions" | "pending";
+type Tab = "details" | "questions" | "pending" | "history";
 
 const tabClass =
   "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-2 py-1 text-xs tracking-wider whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
@@ -185,8 +187,8 @@ const tabClass =
 /**
  * The side panel next to the view. Details shows one of the `PanelContent`
  * kinds; Open questions lists every question revealed so far; on a page
- * `serve` serves, Pending lists the pending layout changes. Selecting a
- * structure anywhere switches back to Details.
+ * `serve` serves, Pending lists the pending layout changes and History lists
+ * the revisions. Selecting a structure anywhere switches back to Details.
  */
 export function SidePanel() {
   const { selected: packet } = usePlayback();
@@ -202,6 +204,7 @@ export function SidePanel() {
 
   const idPrefix = useId();
   const editing = useEditing();
+  const history = useHistory();
 
   // A tab other than Details stays open until the selection changes.
   const [otherTab, setOtherTab] = useState<{
@@ -220,6 +223,9 @@ export function SidePanel() {
             label: `Pending · ${editing.pending.length}`,
           },
         ]),
+    ...(history === null
+      ? []
+      : [{ id: "history" as const, label: "History" }]),
   ];
 
   const tab: Tab =
@@ -324,6 +330,17 @@ export function SidePanel() {
           className="min-h-0 flex-1 overflow-y-auto p-4"
         >
           {tab === "pending" ? <PendingTab /> : null}
+        </div>
+      )}
+      {history === null ? null : (
+        <div
+          role="tabpanel"
+          id={`${idPrefix}-history`}
+          aria-labelledby={`${idPrefix}-history-tab`}
+          hidden={tab !== "history"}
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+        >
+          {tab === "history" ? <HistoryTab /> : null}
         </div>
       )}
     </aside>

@@ -4,11 +4,20 @@ import { createServer } from "node:http";
 import {
   formatCount,
   formatProblem,
+  historyEntryOf,
+  historyFolder,
+  parseRevisionFileName,
+  RevisionNotFound,
   ServerEvent,
   serverPaths,
   splitProblems,
 } from "@axonometric/contracts";
-import type { MapState, Proposals, ServerState } from "@axonometric/contracts";
+import type {
+  HistoryList,
+  MapState,
+  Proposals,
+  ServerState,
+} from "@axonometric/contracts";
 import { ServerApi } from "@axonometric/contracts/api";
 import { NodeHttpServer } from "@effect/platform-node";
 import {
@@ -42,6 +51,7 @@ import { HttpApiBuilder } from "effect/http-api";
 
 import { acceptPendingLayout } from "./accept-writes.ts";
 import { printNotes, rebuild } from "./build.ts";
+import { loadHistory, readRevision } from "./history.ts";
 import { withLock } from "./lock.ts";
 import { loadProposals } from "./map-files.ts";
 import type { MapInvalid } from "./map-files.ts";
@@ -138,6 +148,8 @@ interface Held {
   readonly good: MapState;
   /** What `proposals.json` held when it last decoded. */
   readonly proposals: Proposals;
+  /** The revisions that read, newest first. */
+  readonly history: HistoryList;
   /** The `MapRejected` saying why the map files don't make a map, while they don't. */
   readonly rejected: Option.Option<ServerEvent>;
 }
@@ -297,7 +309,8 @@ const printedRejection = (error: MapInvalid) =>
 const rebuildHeld = (home: string) =>
   rebuild(home, "serve").pipe(
     Effect.tap(printNotes),
-    Effect.map(({ state, proposals }) => (_held: Held): Held => ({
+    Effect.map(({ state, proposals }) => (held: Held): Held => ({
+      ...held,
       good: state,
       proposals,
       rejected: Option.none(),
@@ -346,17 +359,31 @@ const reloadProposals = (home: string) =>
     )
   );
 
+/**
+ * Rereads `history/` and returns how what the server holds changes. The
+ * revisions already held aren't read again, because a revision is never
+ * rewritten.
+ */
+const reloadHistory = (home: string, known: HistoryList) =>
+  loadHistory(home, known).pipe(
+    Effect.map((history) => (held: Held): Held => ({ ...held, history }))
+  );
+
 /** Changes to these rebuild the map. */
 const mapFiles = new Set(["data.mjs", "layout.json"]);
 
 const proposalsFileName = "proposals.json";
 
+/** What the watcher calls a change in `history/`. */
+const historyChange = historyFolder;
+
 /**
  * Watches the home folder, not the files in it: editors often save by
  * writing a new file and renaming it over the old one, which a watch on the
- * old file would miss. Sends the names of the files that changed in each
- * burst of saves, once the burst settles. Resolves `ready` once the watch
- * is in place.
+ * old file would miss. The watch reaches into `history/` too, which may not
+ * exist yet. Sends the names of the files that changed in each burst of
+ * saves, once the burst settles, with a change to a revision file or to the
+ * folder itself named `history`. Resolves `ready` once the watch is in place.
  */
 const watchMap = (home: string, ready: Latch.Latch) =>
   Effect.gen(function* () {
@@ -365,15 +392,29 @@ const watchMap = (home: string, ready: Latch.Latch) =>
 
     return fs
       .watch(home, {
+        recursive: true,
         onReady: () => {
           ready.openUnsafe();
         },
       })
       .pipe(
-        Stream.map((event) => path.basename(event.path)),
-        Stream.filter(
-          (name) => mapFiles.has(name) || name === proposalsFileName
-        ),
+        Stream.flatMap((event) => {
+          const name = path.basename(event.path);
+          const folder = path.dirname(event.path);
+
+          if (folder === ".") {
+            return mapFiles.has(name) ||
+              name === proposalsFileName ||
+              name === historyChange
+              ? Stream.make(name)
+              : Stream.empty;
+          }
+
+          return folder === historyFolder &&
+            Option.isSome(parseRevisionFileName(name))
+            ? Stream.make(historyChange)
+            : Stream.empty;
+        }),
         Stream.groupedWithin(Number.MAX_SAFE_INTEGER, settleTime),
         Stream.map((names) => new Set(names))
       );
@@ -398,8 +439,17 @@ const routes = ({
   /** The host names the server answers; any other Host gets a 403. */
   readonly answeredHosts: ReadonlySet<string>;
 }) => {
+  // The history is sent when the stream opens and when the list changes, not
+  // with every edit to the pending changes.
+  const historyEvents = SubscriptionRef.changes(held).pipe(
+    Stream.map(({ history }) => history),
+    Stream.changes,
+    Stream.map((history) => ServerEvent.cases.HistoryUpdated.make({ history }))
+  );
+
   const events = SubscriptionRef.changes(held).pipe(
     Stream.flatMap((current) => Stream.fromIterable(eventsOf(current))),
+    Stream.merge(historyEvents),
     Stream.merge(heartbeats),
     // Open streams never end on their own, so they end when the server
     // starts to stop, and it doesn't wait for them.
@@ -410,6 +460,7 @@ const routes = ({
     events: Str.slice(1)(serverPaths.events),
     pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
     accept: Str.slice(1)(serverPaths.accept),
+    history: Str.slice(1)(serverPaths.history),
   };
 
   const mapHandlers = HttpApiBuilder.group(ServerApi, "map", (group) =>
@@ -422,6 +473,26 @@ const routes = ({
       )
       .handle("state", () => Effect.map(SubscriptionRef.get(held), shownState))
       .handle("events", () => Effect.succeed(events))
+  );
+
+  const historyHandlers = HttpApiBuilder.group(
+    ServerApi,
+    "history",
+    (group) =>
+      group
+        .handle("list", () =>
+          Effect.map(SubscriptionRef.get(held), ({ history }) => history)
+        )
+        .handle("revision", ({ params }) =>
+          readRevision(home, params.n).pipe(
+            Effect.flatMap(
+              Option.match({
+                onNone: () => RevisionNotFound.make({ revision: params.n }),
+                onSome: Effect.succeed,
+              })
+            )
+          )
+        )
   );
 
   const proposalHandlers = HttpApiBuilder.group(
@@ -443,11 +514,18 @@ const routes = ({
           )
         )
         .handle("accept", ({ payload }) =>
-          acceptPendingLayout(home, payload, ({ state, proposals }) =>
+          acceptPendingLayout(home, payload, ({ state, proposals, revision }) =>
             SubscriptionRef.update(held, (current) => ({
               ...current,
               good: state,
               proposals,
+              history: [
+                historyEntryOf(revision),
+                ...Arr.filter(
+                  current.history,
+                  (entry) => entry.revision !== revision.revision
+                ),
+              ],
               rejected: Option.none(),
             }))
           ).pipe(
@@ -467,7 +545,7 @@ const routes = ({
   );
 
   const api = HttpApiBuilder.layer(ServerApi).pipe(
-    Layer.provide([mapHandlers, proposalHandlers]),
+    Layer.provide([mapHandlers, historyHandlers, proposalHandlers]),
     Layer.provide(writeGuardLayer)
   );
 
@@ -498,6 +576,7 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   const held = yield* SubscriptionRef.make<Held>({
     good: first.state,
     proposals: first.proposals,
+    history: yield* loadHistory(home, []),
     rejected: Option.none(),
   });
 
@@ -521,11 +600,31 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
     )
   );
 
+  // Revisions come from accepting, here or by the CLI, and never change once
+  // written, so a change to history/ alone adds lines and rebuilds nothing.
+  const onHistoryChange = SubscriptionRef.get(held).pipe(
+    Effect.flatMap(({ history }) => reloadHistory(home, history)),
+    Effect.flatMap((next) => SubscriptionRef.update(held, next)),
+    Effect.catchCause((cause) =>
+      Console.error(`serve could not read history/: ${Cause.pretty(cause)}`)
+    )
+  );
+
   yield* watchMap(home, watching).pipe(
     Stream.runForEach((names) =>
-      Arr.some([...names], (name) => mapFiles.has(name))
-        ? onMapChange
-        : onProposalsChange
+      Effect.gen(function* () {
+        const changed = [...names];
+
+        if (Arr.some(changed, (name) => mapFiles.has(name))) {
+          yield* onMapChange;
+        } else if (Arr.some(changed, (name) => name === proposalsFileName)) {
+          yield* onProposalsChange;
+        }
+
+        if (Arr.some(changed, (name) => name === historyChange)) {
+          yield* onHistoryChange;
+        }
+      })
     ),
     Effect.catchCause((cause) =>
       Console.error(

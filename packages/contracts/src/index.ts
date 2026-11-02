@@ -180,6 +180,27 @@ export {
   Structure,
 } from "./map-data.ts";
 
+export {
+  compareMarks,
+  describeDifferences,
+  diffMaps,
+  ghostedMap,
+  restoreChanges,
+} from "./diff.ts";
+
+export type {
+  CompareMarks,
+  DataSection,
+  DifferenceLines,
+  FieldChange,
+  GhostedMap,
+  HopMark,
+  MapDiff,
+  MapSnapshot,
+  Repositioned,
+  StructureMark,
+} from "./diff.ts";
+
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
@@ -233,11 +254,16 @@ export type { Clash, Placing } from "./proposals.ts";
 export {
   Accepted,
   AcceptWrite,
+  HistoryEntry,
+  historyEntryOf,
+  HistoryList,
   LayoutChangeRefused,
   maxMessageLength,
   maxWriteBytes,
   PendingLayoutWrite,
   MapFilesUnreadable,
+  RevisionNotFound,
+  RevisionNumber,
   StaleProposals,
   ServedPage,
   servedPageElementId,
