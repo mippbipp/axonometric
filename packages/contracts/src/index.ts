@@ -1,5 +1,9 @@
 export { describeCause } from "./cause.ts";
 
+export { acceptanceMessage, acceptLayoutChanges } from "./accept.ts";
+
+export type { Acceptance, DroppedChange } from "./accept.ts";
+
 export { chapterStopsOf, wholeMapChapterId } from "./chapters.ts";
 
 export type { ChapterStop } from "./chapters.ts";
@@ -35,6 +39,16 @@ export {
 } from "./palette.ts";
 
 export { fileVersionFields, formatVersion } from "./fields.ts";
+
+export {
+  AcceptedItem,
+  historyFolder,
+  parseRevisionFileName,
+  RejectedItem,
+  Revision,
+  RevisionFile,
+  revisionFileName,
+} from "./revisions.ts";
 
 export {
   boxOutline,
@@ -182,6 +196,27 @@ export {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  emptyHistory,
+  observeFile,
+  pushStep,
+  redoStep,
+  undoStep,
+  wroteFile,
+} from "./undo-history.ts";
+
+export type { Observed, Stepped, UndoHistory } from "./undo-history.ts";
+
+export {
+  alignMoves,
+  appendMove,
+  distributeMoves,
+  nudgeMoves,
+  structuresInBox,
+} from "./arrange.ts";
+
+export type { Alignment, Axis, GroundBox, Placements } from "./arrange.ts";
+
+export {
   applyLayoutChanges,
   ChangeId,
   checkProposals,
@@ -209,7 +244,10 @@ export {
 export type { Clash, Placing } from "./proposals.ts";
 
 export {
+  Accepted,
+  AcceptWrite,
   LayoutChangeRefused,
+  maxMessageLength,
   maxWriteBytes,
   PendingLayoutWrite,
   MapFilesUnreadable,

@@ -17,6 +17,7 @@ import { Array as Arr, String as Str } from "effect";
 import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { BoxSelect } from "./box-select.tsx";
 import { fitOf } from "./fit.ts";
 import { LayoutEditor } from "./layout-editor.tsx";
 import { pageDrawing } from "./page-drawing.tsx";
@@ -196,9 +197,16 @@ export function MapView({
             </g>
           }
           wrap={(inner) => (
-            <LayoutEditor view={view} placements={state.layout.structures}>
-              {inner}
-            </LayoutEditor>
+            <>
+              <BoxSelect
+                view={view}
+                placements={state.layout.structures}
+                revealed={revealed}
+              />
+              <LayoutEditor view={view} placements={state.layout.structures}>
+                {inner}
+              </LayoutEditor>
+            </>
           )}
           overlay={<PendingBadges structures={scene.structures} />}
           onHopHover={setHoveredHop}

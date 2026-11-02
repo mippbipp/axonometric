@@ -46,6 +46,35 @@ export const printNotes = Effect.fnUntraced(function* ({
   });
 });
 
+/** The system's name: the name of the folder that holds the home folder. */
+export const systemOf = (home: string) =>
+  Path.Path.use((path) => Effect.succeed(path.basename(path.dirname(home))));
+
+/**
+ * The two files `build` writes from an accepted `state`: SYSTEM.md and the
+ * read-only page, both in the home folder's parent. Pending changes never
+ * reach them.
+ */
+export const siteOutputs = Effect.fnUntraced(function* (
+  state: MapState,
+  home: string
+) {
+  const path = yield* Path.Path;
+  const output = path.dirname(home);
+  const systemMdFile = path.join(output, "SYSTEM.md");
+  const pageFile = path.join(output, `${state.system}.html`);
+
+  const outputs: readonly Output[] = [
+    {
+      file: systemMdFile,
+      content: renderSystemMd(state, path.relative(output, home)),
+    },
+    { file: pageFile, content: yield* renderPage(state) },
+  ];
+
+  return { outputs, systemMdFile, pageFile };
+});
+
 /**
  * Does what `build` does, without printing: validates the map in `home`,
  * places structures that have no position and saves them, then writes
@@ -59,7 +88,7 @@ export const rebuild = Effect.fnUntraced(function* (
 ) {
   const path = yield* Path.Path;
   const output = path.dirname(home);
-  const system = path.basename(output);
+  const system = yield* systemOf(home);
 
   yield* withLock(home, command);
 
@@ -100,13 +129,11 @@ export const rebuild = Effect.fnUntraced(function* (
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
   const state: MapState = { system, data, layout: next, sourceLinks };
 
-  const systemMdFile = path.join(output, "SYSTEM.md");
-  const pageFile = path.join(output, `${system}.html`);
   const layoutFile = path.join(home, "layout.json");
-  const page = yield* renderPage(state);
 
   // The state holds the accepted layout only. Pending changes reach served
   // pages through serve, never SYSTEM.md or the read-only page.
+  const { outputs, systemMdFile, pageFile } = yield* siteOutputs(state, home);
 
   // layout.json is only written when placing added or pruned structures or
   // pruned route overrides.
@@ -116,14 +143,7 @@ export const rebuild = Effect.fnUntraced(function* (
     ? [{ file: layoutFile, content: yield* encodeLayout(next) }]
     : [];
 
-  yield* writeAll([
-    ...layoutOutput,
-    {
-      file: systemMdFile,
-      content: renderSystemMd(state, path.relative(output, home)),
-    },
-    { file: pageFile, content: page },
-  ]);
+  yield* writeAll([...layoutOutput, ...outputs]);
 
   return {
     state,
