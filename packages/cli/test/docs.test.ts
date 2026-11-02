@@ -35,14 +35,12 @@ import {
 } from "effect";
 
 import {
-  allDocs,
   codeWordsIn,
   fieldListsIn,
   flagsIn,
   flagTokensIn,
   groupOf,
   listedTopics,
-  printed,
   subcommandsIn,
 } from "./docs-text.ts";
 import { fullMap } from "./fixtures.ts";
@@ -146,6 +144,33 @@ const reviewHome = Effect.gen(function* () {
   return { root, home: path.join(root, "review", "map") };
 }).pipe(Effect.provide(NodeServices.layer));
 
+/** What `axonometric docs [topic]` prints, asserting that it succeeds. */
+export const printed = Effect.fnUntraced(function* (topic?: string) {
+  const home = yield* makeHome({});
+  const result = yield* runCli(home, ["docs", ...Arr.fromNullishOr(topic)]);
+
+  assert.strictEqual(result.exitCode, 0, result.stderr);
+  assert.strictEqual(result.stderr, "");
+
+  return result.stdout;
+});
+
+/** The overview and every topic it lists, keyed by name. */
+export const allDocs = Effect.gen(function* () {
+  const overview = yield* printed();
+  const topics = listedTopics(overview);
+  const texts = yield* Effect.forEach(topics, printed);
+
+  return {
+    overview,
+    topics,
+    texts: Rec.fromEntries([
+      ["overview", overview] as const,
+      ...Arr.zip(topics, texts),
+    ]),
+  };
+});
+
 /**
  * The commands in a topic's fenced `sh` blocks. Every line in such a block is
  * a command, so a stray non-axonometric line fails the test instead of going
@@ -179,6 +204,15 @@ const wordsOf = (line: string) =>
     Arr.fromIterable(Str.matchAll(/"(?<quoted>[^"]*)"|(?<bare>\S+)/gu)(line)),
     (found) => groupOf(found, "quoted") || groupOf(found, "bare")
   );
+
+/** The terms an `_Avoid_:` line of the glossary lists. */
+const termsOf = (line: string) => {
+  const list = Str.replaceAll(/\(.*?\)/gu, "")(Str.slice(9)(line));
+
+  return Arr.map(Str.split(", ")(list), (term) =>
+    Str.toLowerCase(Str.trim(term))
+  );
+};
 
 describe("axonometric docs", () => {
   it.effect("lists the topics, and each one prints", () =>
@@ -384,10 +418,10 @@ describe("axonometric docs", () => {
   it.effect("data covers every field of every type the schema has", () =>
     Effect.gen(function* () {
       const { texts } = yield* allDocs;
-      const data = texts["data"] ?? "";
+      const data = texts.data ?? "";
       const mentioned = codeWordsIn(data);
 
-      const types: Readonly<Record<string, readonly string[]>> = {
+      const types = {
         MapData: Rec.keys(MapData.fields),
         Overview: Rec.keys(Overview.fields),
         Structure: Rec.keys(Structure.fields),
@@ -402,7 +436,7 @@ describe("axonometric docs", () => {
         DeepDive: Rec.keys(DeepDive.fields),
         OpenQuestion: Rec.keys(OpenQuestion.fields),
         ResolvedQuestion: Rec.keys(ResolvedQuestion.fields),
-      };
+      } satisfies Record<string, readonly string[]>;
 
       for (const [name, fields] of Rec.toEntries(types)) {
         for (const field of fields) {
@@ -497,7 +531,7 @@ describe("axonometric docs", () => {
   it.effect("review says what to do for every kind of item", () =>
     Effect.gen(function* () {
       const { texts } = yield* allDocs;
-      const review = texts["review"] ?? "";
+      const review = texts.review ?? "";
 
       // The names `review` prints for each kind, from the contracts' tables.
       const names = {
@@ -541,14 +575,7 @@ describe("axonometric docs", () => {
 
       const avoided = Arr.filter(
         Arr.flatMap(Str.split("\n")(glossary), (line) =>
-          Str.startsWith("_Avoid_: ")(line)
-            ? Arr.map(
-                Str.split(", ")(
-                  Str.replace(/\(.*?\)/gu, "")(Str.slice(9)(line))
-                ),
-                (term) => Str.toLowerCase(Str.trim(term))
-              )
-            : []
+          Str.startsWith("_Avoid_: ")(line) ? termsOf(line) : []
         ),
         (term) => Str.isNonEmpty(term) && !Arr.contains(ordinaryWords, term)
       );

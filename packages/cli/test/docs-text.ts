@@ -1,13 +1,4 @@
-import { assert } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  Option,
-  Record as Rec,
-  String as Str,
-} from "effect";
-
-import { makeHome, runCli } from "./harness.ts";
+import { Array as Arr, Option, Record as Rec, String as Str } from "effect";
 
 /** The text a named group matched, or "" when the match or group is missing. */
 export const groupOf = (
@@ -20,17 +11,6 @@ export const groupOf = (
     Option.getOrElse(() => "")
   );
 
-/** What `axonometric docs [topic]` prints, asserting that it succeeds. */
-export const printed = Effect.fnUntraced(function* (topic?: string) {
-  const home = yield* makeHome({});
-  const result = yield* runCli(home, ["docs", ...Arr.fromNullishOr(topic)]);
-
-  assert.strictEqual(result.exitCode, 0, result.stderr);
-  assert.strictEqual(result.stderr, "");
-
-  return result.stdout;
-});
-
 /** The topics the overview lists, as `axonometric docs <topic>`. */
 export const listedTopics = (overview: string) =>
   Arr.map(
@@ -39,22 +19,6 @@ export const listedTopics = (overview: string) =>
     ),
     (found) => groupOf(found, "topic")
   );
-
-/** The overview and every topic it lists, keyed by name. */
-export const allDocs = Effect.gen(function* () {
-  const overview = yield* printed();
-  const topics = listedTopics(overview);
-  const texts = yield* Effect.forEach(topics, printed);
-
-  return {
-    overview,
-    topics,
-    texts: Rec.fromEntries([
-      ["overview", overview] as const,
-      ...Arr.zip(topics, texts),
-    ]),
-  };
-});
 
 /** The subcommand names in `--help`'s SUBCOMMANDS list. */
 export const subcommandsIn = (help: string): readonly string[] =>
@@ -76,30 +40,27 @@ export const flagsIn = (help: string): readonly string[] =>
   });
 
 /** Every `--flag` token in `text`, leaving out the flags of git commands. */
-export const flagTokensIn = (text: string): readonly string[] =>
-  Arr.map(
-    Arr.fromIterable(
-      Str.matchAll(/(?<![\w-])(?<flag>--[a-z][a-z-]*)/gu)(
-        Str.replaceAll(/`git [^`]*`/gu, "")(text)
-      )
-    ),
-    (found) => groupOf(found, "flag")
-  );
+export const flagTokensIn = (text: string): readonly string[] => {
+  const withoutGit = Str.replaceAll(/`git [^`]*`/gu, "")(text);
+  const found = Str.matchAll(/(?<![\w-])(?<flag>--[a-z][a-z-]*)/gu)(withoutGit);
+
+  return Arr.map(Arr.fromIterable(found), (match) => groupOf(match, "flag"));
+};
 
 /** The identifiers written inside backticks in `text`. */
-export const codeWordsIn = (text: string): ReadonlySet<string> =>
-  new Set(
-    Arr.flatMap(
-      Arr.fromIterable(Str.matchAll(/`(?<code>[^`\n]+)`/gu)(text)),
-      (found) =>
-        Arr.map(
-          Arr.fromIterable(
-            Str.matchAll(/[A-Za-z][\w-]*/gu)(groupOf(found, "code"))
-          ),
-          ([word = ""]) => word
-        )
-    )
+const wordsIn = (code: string) =>
+  Arr.map(
+    Arr.fromIterable(Str.matchAll(/[A-Za-z][\w-]*/gu)(code)),
+    ([word = ""]) => word
   );
+
+export const codeWordsIn = (text: string): ReadonlySet<string> => {
+  const spans = Arr.fromIterable(Str.matchAll(/`(?<code>[^`\n]+)`/gu)(text));
+
+  return new Set(
+    Arr.flatMap(spans, (found) => wordsIn(groupOf(found, "code")))
+  );
+};
 
 /** The `{ a, b: "c" }` field lists in backticks, each as its field names. */
 export const fieldListsIn = (text: string): readonly (readonly string[])[] =>

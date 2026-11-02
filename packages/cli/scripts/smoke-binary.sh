@@ -60,10 +60,13 @@ if run_binary docs no-such-topic >/dev/null 2>"$work/docs-error.txt"; then
   echo "docs accepted a topic that doesn't exist." >&2
   exit 1
 fi
-if ! grep -q '"visual-check"' "$work/docs-error.txt"; then
-  echo "docs didn't list the valid topics for an unknown one." >&2
-  exit 1
-fi
+# The error for an unknown topic names every valid one.
+for topic in $topics; do
+  if ! grep -q "\"$topic\"" "$work/docs-error.txt"; then
+    echo "docs didn't list $topic among the valid topics for an unknown one." >&2
+    exit 1
+  fi
+done
 
 echo "build"
 (cd "$work" && run_binary build pipeline/map)

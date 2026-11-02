@@ -18,7 +18,7 @@ Done when the engineer has seen the structures and groups, and the defaults you 
 
 The home folder is `.scratch/<system>/map/`, or `docs/<system>/map/` in repos that commit design docs. `build` writes `SYSTEM.md` and `<system>.html` into the home folder's parent, so `.scratch/<system>/` or `docs/<system>/` holds the finished map.
 
-If the repo's docs policy is unclear, ask the engineer which one applies before you create or commit anything. A `docs/` folder full of design docs points to `docs/`. A `.scratch/` line in `.gitignore` points to scratch. A repo that commits only ADRs and a glossary is one example: use `.scratch/`, and keep the map out of git.
+If the repo's docs policy is unclear, ask the engineer which one applies before you create or commit anything. A `docs/` folder full of design docs points to `docs/`. A `.scratch/` line in `.gitignore` points to scratch. For example, a repo that commits only ADRs and a glossary wants `.scratch/`, so the map stays out of git.
 
 `.scratch/` has to be ignored by git. `init` warns when it isn't. Tell the engineer, or add `.scratch/` to the repo's `.gitignore` if they agree.
 

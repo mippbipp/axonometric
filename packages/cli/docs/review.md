@@ -51,7 +51,7 @@ You are the only one who edits `data.mjs`. Fold in what you accept. The line for
 
 **Hops and flows** (diagram changes)
 
-- `add hop`: add it to the `plays` of the chapter that should show it, and to the `hops` of the flows the engineer put it in. Those come as `change flow hops` items. A hop that is in neither shows in no chapter.
+- `add hop`: add it to the `plays` of the chapter that should show it, and to the `hops` of the flows the engineer put it in. Those come as `change flow hops` items. A hop that no chapter plays never moves a packet.
 - `delete hop`: remove it from `data.mjs` and from every flow and chapter that lists it.
 - `relabel hop`: set its `label`.
 - `add flow`: add it with the hops the item lists, in order.
