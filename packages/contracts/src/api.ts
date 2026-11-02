@@ -17,6 +17,8 @@ import {
   NoteEdit,
   ProposalRefused,
   ReopenWrite,
+  StructureDiscard,
+  StructureWrite,
 } from "./review-server.ts";
 import { Revision } from "./revisions.ts";
 import {
@@ -118,6 +120,16 @@ export class ReviewApiGroup extends HttpApiGroup.make("review")
     }),
     HttpApiEndpoint.post("discardNote", serverPaths.discardNote, {
       payload: ItemWrite,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("setStructure", serverPaths.structure, {
+      payload: StructureWrite,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("discardStructure", serverPaths.discardStructure, {
+      payload: StructureDiscard,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),

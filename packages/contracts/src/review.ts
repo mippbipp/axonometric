@@ -11,6 +11,7 @@ import { dual } from "effect/Function";
 import { acceptLayoutChanges } from "./accept.ts";
 import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
+import type { MapData } from "./map-data.ts";
 import {
   applyLayoutChanges,
   idOfTargetKey,
@@ -27,6 +28,7 @@ import type {
   Verdict,
 } from "./proposals.ts";
 import { allKinds, specOf } from "./review-kinds.ts";
+import type { Landing } from "./review-kinds.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
 type Listed = Proposals;
@@ -316,6 +318,7 @@ export const reopenItem = ({
   layout,
   known,
   hops,
+  data,
   text,
 }: {
   readonly proposals: Proposals;
@@ -325,6 +328,8 @@ export const reopenItem = ({
   readonly known: ReadonlySet<string>;
   /** The map's hops, which say where a reroute's ends belong. */
   readonly hops: readonly HopEnds[];
+  /** The map's data, which a deletion is checked against. */
+  readonly data: Landing["data"];
   /** For a note, the words the new note starts with instead of the old ones. */
   readonly text?: string | undefined;
 }): Result.Result<Proposals, string> => {
@@ -367,6 +372,7 @@ export const reopenItem = ({
     layout: applyLayoutChanges(layout, proposals.layout),
     structureIds: known,
     hops,
+    data,
   });
 
   if (Option.isSome(broken)) {
@@ -487,6 +493,14 @@ export const recordVerdict = ({
     );
   }
 
+  const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
+    Option.flatMap((item) => specOf(item).verdictRefusal(item, verdict))
+  );
+
+  if (Option.isSome(refused)) {
+    return Result.fail(refused.value);
+  }
+
   const batches = Arr.map(proposals.batches ?? [], (batch) =>
     batch.number === number
       ? { ...batch, verdicts: { ...batch.verdicts, [id]: verdict } }
@@ -509,13 +523,15 @@ export const breakageOf = ({
   layout,
   structureIds,
   hops,
+  data,
 }: {
   readonly item: BatchItem;
   readonly layout: Layout;
   readonly structureIds: ReadonlySet<string>;
   readonly hops: readonly HopEnds[];
+  readonly data: Landing["data"];
 }): Option.Option<string> =>
-  specOf(item).breakage(item, { layout, structureIds, hops });
+  specOf(item).breakage(item, { layout, structureIds, hops, data });
 
 /** What committing a batch makes. */
 export interface Committing {
@@ -545,12 +561,19 @@ export interface Committing {
 export const commitBatch = ({
   proposals,
   layout,
+  saved,
+  data,
   hops,
   revision,
   at,
 }: {
   readonly proposals: Proposals;
+  /** The layout the commit starts from: `layout.json` with new structures placed. */
   readonly layout: Layout;
+  /** `layout.json` as the file holds it. */
+  readonly saved: Layout;
+  /** The map as the agent left data.mjs. */
+  readonly data: MapData;
   /** The map's hops, which say where a reroute's ends belong. */
   readonly hops: readonly HopEnds[];
   /** The number of the revision this commit saves. */
@@ -576,12 +599,40 @@ export const commitBatch = ({
     );
   }
 
-  const decided = Arr.flatMap(batch.items, (item) =>
+  const verdicts = Arr.flatMap(batch.items, (item) =>
     Option.match(Rec.get(batch.verdicts, item.id), {
       onNone: () => [],
       onSome: (verdict) => [{ item, verdict }],
     })
   );
+
+  // A structure the agent accepted under another id: items that point at the
+  // provisional one now point at the final one.
+  const renames = new Map(
+    Arr.flatMap(verdicts, ({ item, verdict }) =>
+      specOf(item).renames(item, verdict)
+    )
+  );
+
+  const decided = Arr.map(verdicts, ({ item, verdict }) => ({
+    item: specOf(item).retargeted(item, renames),
+    verdict,
+  }));
+
+  const context = { layout, saved, data };
+
+  const refused = Arr.findFirst(
+    Arr.flatMap(decided, ({ item, verdict }) =>
+      verdict.verdict === "rejected"
+        ? []
+        : Option.toArray(specOf(item).commitRefusal(item, verdict, context))
+    ),
+    () => true
+  );
+
+  if (Option.isSome(refused)) {
+    return Result.fail(refused.value);
+  }
 
   const taken = Arr.filter(
     decided,
@@ -590,7 +641,7 @@ export const commitBatch = ({
 
   const toApply: readonly LayoutChange[] = Arr.flatMap(
     decided,
-    ({ item, verdict }) => specOf(item).applies(item, verdict)
+    ({ item, verdict }) => specOf(item).applies(item, verdict, context)
   );
 
   const applied =

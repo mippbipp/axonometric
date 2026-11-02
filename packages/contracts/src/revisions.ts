@@ -11,6 +11,7 @@ import {
   RequiredReason,
   StructureTarget,
 } from "./proposals.ts";
+import { StructureChange, StructureId } from "./structure-change.ts";
 
 /** The folder in the home folder that holds one file per revision. */
 export const historyFolder = "history";
@@ -48,9 +49,22 @@ export const AcceptedItem = Schema.Union([
       "An accepted note has only kind, id, target, text, reason and changed."
     )
   ),
+  Schema.Struct({
+    kind: Schema.Literal("structure"),
+    id: ChangeId,
+    change: StructureChange,
+    /** For an added structure: the id it has on the map now. */
+    as: Schema.optionalKey(StructureId),
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(
+    objectMessages(
+      "An accepted structure item has only kind, id, change, as, reason and changed."
+    )
+  ),
 ]).annotate({
   message:
-    'expected an accepted item: { kind: "layout", id, change, reason? } or { kind: "note", id, target, text, reason? }.',
+    'expected an accepted item: { kind: "layout", id, change, reason? }, { kind: "note", id, target, text, reason? } or { kind: "structure", id, change, as?, reason? }.',
 });
 
 export type AcceptedItem = typeof AcceptedItem.Type;
@@ -78,9 +92,19 @@ export const RejectedItem = Schema.Union([
       "A rejected note has only kind, id, target, text and reason."
     )
   ),
+  Schema.Struct({
+    kind: Schema.Literal("structure"),
+    id: ChangeId,
+    change: StructureChange,
+    reason: RequiredReason,
+  }).annotate(
+    objectMessages(
+      "A rejected structure item has only kind, id, change and reason."
+    )
+  ),
 ]).annotate({
   message:
-    'expected a rejected item: { kind: "layout", id, change, reason } or { kind: "note", id, target, text, reason }.',
+    'expected a rejected item: { kind: "layout", id, change, reason }, { kind: "note", id, target, text, reason } or { kind: "structure", id, change, reason }.',
 });
 
 export type RejectedItem = typeof RejectedItem.Type;

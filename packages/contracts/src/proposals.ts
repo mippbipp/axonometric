@@ -16,6 +16,7 @@ import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
+import { StructureChange, StructureId } from "./structure-change.ts";
 
 /** How much ground a footprint covers, in grid units, on half units. */
 export const Footprint = Placement.mapFields(({ w, d }) => ({ w, d })).annotate(
@@ -265,6 +266,14 @@ export const Note = Schema.Struct({
 
 export type Note = typeof Note.Type;
 
+/** An open proposal to add, delete or change a structure. */
+export const StructureProposal = Schema.Struct({
+  id: ChangeId,
+  change: StructureChange,
+}).annotate(objectMessages("A structure proposal has only id and change."));
+
+export type StructureProposal = typeof StructureProposal.Type;
+
 /** The most characters a verdict's reason holds. */
 export const maxReasonLength = 1000;
 
@@ -302,7 +311,11 @@ export const Verdict = Schema.Union([
   Schema.Struct({
     verdict: Schema.Literal("changed"),
     reason: RequiredReason,
-  }).annotate(objectMessages("A changed verdict has only verdict and reason.")),
+    /** For a new structure the agent took under another id: the final id. */
+    as: Schema.optionalKey(StructureId),
+  }).annotate(
+    objectMessages("A changed verdict has only verdict, reason and as.")
+  ),
   Schema.Struct({
     verdict: Schema.Literal("rejected"),
     reason: RequiredReason,
@@ -311,7 +324,7 @@ export const Verdict = Schema.Union([
   ),
 ]).annotate({
   message:
-    'expected a verdict: { verdict: "accepted", reason? }, or { verdict: "changed" | "rejected", reason }.',
+    'expected a verdict: { verdict: "accepted", reason? }, { verdict: "changed", reason, as? } or { verdict: "rejected", reason }.',
 });
 
 export type Verdict = typeof Verdict.Type;
@@ -338,9 +351,16 @@ export const BatchItem = Schema.Union([
   }).annotate(
     objectMessages("A note item has only id, kind, target and text.")
   ),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("structure"),
+    change: StructureChange,
+  }).annotate(
+    objectMessages("A structure item has only id, kind and change.")
+  ),
 ]).annotate({
   message:
-    'expected a batch item: { id, kind: "layout", change } or { id, kind: "note", target, text }.',
+    'expected a batch item: { id, kind: "layout", change }, { id, kind: "note", target, text } or { id, kind: "structure", change }.',
 });
 
 export type BatchItem = typeof BatchItem.Type;
@@ -392,10 +412,12 @@ export type Batch = typeof Batch.Type;
 const allIds = (proposals: {
   readonly layout: readonly LayoutChange[];
   readonly notes?: readonly Note[] | undefined;
+  readonly structures?: readonly StructureProposal[] | undefined;
   readonly batches?: readonly Batch[] | undefined;
 }) => [
   ...Arr.map(proposals.layout, layoutChangeKey),
   ...Arr.map(proposals.notes ?? [], ({ id }) => id),
+  ...Arr.map(proposals.structures ?? [], ({ id }) => id),
   ...Arr.flatMap(proposals.batches ?? [], ({ items }) =>
     Arr.map(items, ({ id }) => id)
   ),
@@ -412,6 +434,7 @@ const hasUniqueIds = (proposals: Parameters<typeof allIds>[0]) => {
  *
  * - `layout`: the open layout changes, not yet in a batch.
  * - `notes`: the open notes.
+ * - `structures`: the open proposals to add, delete or change a structure.
  * - `batches`: the numbered batches, each with its verdicts once given.
  * - `replaces`: for an item the engineer reopened after a rejection, the id
  *   of the rejected item it takes up again, keyed by the new item's id. It
@@ -431,12 +454,13 @@ export const Proposals = Schema.Struct({
     })
   ),
   notes: Schema.optionalKey(Schema.Array(Note)),
+  structures: Schema.optionalKey(Schema.Array(StructureProposal)),
   batches: Schema.optionalKey(Schema.Array(Batch)),
   replaces: Schema.optionalKey(Schema.Record(ChangeId, ChangeId)),
 })
   .annotate(
     objectMessages(
-      "A proposals file has only format, revision, layout, notes, batches and replaces."
+      "A proposals file has only format, revision, layout, notes, structures, batches and replaces."
     )
   )
   .check(

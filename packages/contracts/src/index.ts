@@ -410,6 +410,8 @@ export {
   NoteEdit,
   ProposalRefused,
   ReopenWrite,
+  StructureDiscard,
+  StructureWrite,
 } from "./review-server.ts";
 
 export { noteMarkerRadius, noteMarkerSpots } from "./note-markers.ts";
@@ -424,7 +426,49 @@ export {
   specOf,
 } from "./review-kinds.ts";
 
-export type { KindSpec, Landing } from "./review-kinds.ts";
+export type {
+  CommitContext,
+  KindSpec,
+  Landing,
+  MapShape,
+  Touches,
+} from "./review-kinds.ts";
+
+export { frozenItems, proposedMap } from "./proposed-map.ts";
+
+export type { ProposedMap } from "./proposed-map.ts";
+
+export {
+  maxStructureNameLength,
+  NewStructure,
+  ProvisionalId,
+  StructureChange,
+  StructureId,
+  StructureName,
+  structureOf,
+} from "./structure-change.ts";
+
+export {
+  codeOfName,
+  describePlacement,
+  marksOfStructureChange,
+  proposedDetails,
+  proposedOneLiner,
+  referencesTo,
+  structureBreakage,
+  structureChangeToData,
+  structureChangeToLayout,
+  structureOfNew,
+} from "./structure-effects.ts";
+
+export type { StructureLanding, StructureMarks } from "./structure-effects.ts";
+
+export {
+  discardStructureProposal,
+  proposeStructure,
+} from "./structure-proposals.ts";
+
+export type { StructureWorld } from "./structure-proposals.ts";
 
 export {
   Facts,

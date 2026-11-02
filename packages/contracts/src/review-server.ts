@@ -7,6 +7,7 @@ import {
   Proposals,
   StructureTarget,
 } from "./proposals.ts";
+import { StructureChange } from "./structure-change.ts";
 
 /** Adds a note to the open notes. The page makes the id, so a retry can't add it twice. */
 export const NoteAdd = Schema.Struct({
@@ -35,6 +36,25 @@ export const ItemWrite = Schema.Struct({
 });
 
 export type ItemWrite = typeof ItemWrite.Type;
+
+/**
+ * Sets the open structure proposal `id` to `change`. The page makes the id, so
+ * a retry can't add it twice. The same id with another change of the same
+ * structure and action replaces the change, which is how a proposed
+ * structure is moved or resized.
+ */
+export const StructureWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: StructureChange,
+});
+
+export type StructureWrite = typeof StructureWrite.Type;
+
+/** Removes the open structure proposal `id`. */
+export const StructureDiscard = ItemWrite;
+
+export type StructureDiscard = typeof StructureDiscard.Type;
 
 /** Reopens a rejected item as a new open item with the id `newId`. */
 export const ReopenWrite = Schema.Struct({

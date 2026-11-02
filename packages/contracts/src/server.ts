@@ -30,6 +30,8 @@ export const serverPaths = {
   notes: "/api/notes",
   editNote: "/api/notes/edit",
   discardNote: "/api/notes/discard",
+  structure: "/api/structures",
+  discardStructure: "/api/structures/discard",
   freeze: "/api/review/freeze",
   dismiss: "/api/review/dismiss",
   reopen: "/api/review/reopen",
@@ -231,6 +233,10 @@ export const ServedPage = Schema.Struct({
   notes: Schema.String,
   editNote: Schema.String,
   discardNote: Schema.String,
+  /** Where a structure proposal is set, relative to the page's URL. */
+  structure: Schema.String,
+  /** Where an open structure proposal is discarded. */
+  discardStructure: Schema.String,
   /** Where "Ready for review" freezes a batch, relative to the page's URL. */
   freeze: Schema.String,
   /** Where a reviewed item is dismissed, relative to the page's URL. */
