@@ -182,7 +182,7 @@ const renderContent = Match.type<PanelContent>().pipe(
 type Tab = "details" | "questions" | "pending" | "history";
 
 const tabClass =
-  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-2 py-1 text-xs tracking-wider whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent px-1.5 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
 
 /**
  * The side panel next to the view. Details shows one of the `PanelContent`
@@ -261,13 +261,13 @@ export function SidePanel() {
   return (
     <aside
       data-side-panel
-      className="border-ink flex w-80 shrink-0 flex-col border-l"
+      className="border-ink flex w-80 min-w-0 shrink-0 flex-col border-l"
     >
       <div
         tabIndex={0}
         role="tablist"
         aria-label="Side panel"
-        className="border-ink flex gap-0.5 border-b px-2 pt-2"
+        className="border-ink flex min-w-0 gap-0 overflow-x-auto border-b px-1 pt-2"
         onKeyDown={onTabKeyDown}
       >
         {Arr.map(tabs, ({ id, label }) => (
