@@ -34,9 +34,27 @@ const StructureFacts = Schema.Struct({
   structure: Schema.Record(Schema.String, Schema.Json),
 });
 
+/**
+ * A hop as a proposal draws, deletes or relabels it: the fields that differ,
+ * or all of them for a new hop, and `deleted: true` when it is removed.
+ */
+const HopFacts = Schema.Struct({
+  hop: Schema.Record(Schema.String, Schema.Json),
+});
+
+/**
+ * A flow as a proposal creates or changes it: its name, or its ordered hops,
+ * or for a reorder the ids of the flows in their new order.
+ */
+const FlowFacts = Schema.Struct({
+  flow: Schema.Record(Schema.String, Schema.Json),
+});
+
 export const Facts = Schema.NullOr(
   Schema.Union([
     StructureFacts,
+    HopFacts,
+    FlowFacts,
     Schema.Record(Schema.String, Spot),
     Size,
     TextFacts,

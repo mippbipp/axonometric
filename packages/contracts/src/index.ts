@@ -377,6 +377,10 @@ export {
   Reason,
   RequiredReason,
   StructureProposal,
+  HopProposal,
+  FlowProposal,
+  hopRenames,
+  flowRenames,
   Verdict,
   verdictKinds,
 } from "./proposals.ts";
@@ -431,6 +435,8 @@ export {
   ProposalRefused,
   QuestionAdd,
   ReopenWrite,
+  FlowWrite,
+  HopWrite,
   StructureWrite,
   SuggestionAdd,
 } from "./review-server.ts";
@@ -559,3 +565,77 @@ export {
   ReviewReport,
   VerdictFacts,
 } from "./review-report.ts";
+
+export {
+  flowRenameKey,
+  HopChange,
+  HopLabel,
+  HopRef,
+  hopOf,
+  hopRenameKey,
+  maxHopLabelLength,
+  NewHop,
+  FlowRef,
+  sameHopChange,
+  sameHopSubject,
+} from "./hop-change.ts";
+
+export {
+  FlowChange,
+  FlowName,
+  flowOf,
+  maxFlowNameLength,
+  NewFlow,
+  sameFlowChange,
+  sameFlowSubject,
+} from "./flow-change.ts";
+
+export {
+  describeHop,
+  flowsOfHop,
+  hopBreakage,
+  hopCandidateProblems,
+  hopChangeToData,
+  hopIsCurrent,
+  hopLabel,
+  referencesToHop,
+  summarizeHop,
+} from "./hop-effects.ts";
+
+export type { HopLanding, HopNames } from "./hop-effects.ts";
+
+export {
+  describeFlow,
+  flowBreakage,
+  flowChangeToData,
+  flowIsCurrent,
+  flowLabel,
+  inFlowOrder,
+  summarizeFlow,
+} from "./flow-effects.ts";
+
+export type { FlowLanding, FlowNames } from "./flow-effects.ts";
+
+export {
+  addedFlowIds,
+  addedHopIds,
+  frozenFlowChanges,
+  frozenHopChanges,
+  openFlowChanges,
+  openHopChanges,
+} from "./connection-held.ts";
+
+export {
+  checkConnectionProposals,
+  newFlowId,
+  newHopId,
+  proposeFlow,
+  proposeHop,
+  withoutOpenHop,
+} from "./connection-proposals.ts";
+
+export type { ConnectionWorld } from "./connection-proposals.ts";
+
+export { changedFlowMark } from "./review-kinds-flow.ts";
+
+export { removedHopMark } from "./review-kinds-hop.ts";

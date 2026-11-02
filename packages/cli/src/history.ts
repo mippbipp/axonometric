@@ -185,6 +185,30 @@ export const loadHistory = Effect.fnUntraced(function* (
 });
 
 /**
+ * The ids of the structures, hops and flows in the newest revision that
+ * reads: data.mjs as the last commit accepted it. `verdict --as` may not name
+ * one of them. With no revision, nothing is known, and those checks are
+ * skipped for a batch frozen without its own lists.
+ */
+export const acceptedIds = Effect.fnUntraced(function* (home: string) {
+  const saved = yield* revisionsIn(home);
+
+  const newest = saved.at(-1);
+
+  const found =
+    newest === undefined ? undefined : yield* readRevision(home, newest);
+
+  const data =
+    found === undefined || Option.isNone(found) ? undefined : found.value.data;
+
+  return {
+    structures: new Set(Arr.map(data?.structures ?? [], ({ id }) => id)),
+    hops: new Set(Arr.map(data?.hops ?? [], ({ id }) => id)),
+    flows: new Set(Arr.map(data?.flows ?? [], ({ id }) => id)),
+  };
+});
+
+/**
  * The ids of the structures in the newest revision that reads, for a batch
  * frozen before it recorded `structures`. It is `data.mjs` as the last commit
  * accepted it, which an edit or a rebuild can't change. `layout.json` is not

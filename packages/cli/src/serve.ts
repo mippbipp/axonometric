@@ -67,6 +67,8 @@ import {
   editItemWrite,
   freezeWrite,
   reopenWrite,
+  setFlowWrite,
+  setHopWrite,
   setStructureWrite,
 } from "./review-writes.ts";
 import { recordServer, runningServer } from "./server-state.ts";
@@ -478,6 +480,8 @@ const routes = ({
     answers: Str.slice(1)(serverPaths.answers),
     questions: Str.slice(1)(serverPaths.questions),
     structure: Str.slice(1)(serverPaths.structure),
+    hop: Str.slice(1)(serverPaths.hop),
+    flow: Str.slice(1)(serverPaths.flow),
     freeze: Str.slice(1)(serverPaths.freeze),
     dismiss: Str.slice(1)(serverPaths.dismiss),
     reopen: Str.slice(1)(serverPaths.reopen),
@@ -586,6 +590,8 @@ const routes = ({
       .handle("addAnswer", reviewing(addAnswerWrite))
       .handle("addQuestion", reviewing(addQuestionWrite))
       .handle("setStructure", reviewing(setStructureWrite))
+      .handle("setHop", reviewing(setHopWrite))
+      .handle("setFlow", reviewing(setFlowWrite))
       .handle("freeze", reviewing(freezeWrite))
       .handle("dismiss", reviewing(dismissWrite))
       .handle("reopen", reviewing(reopenWrite))

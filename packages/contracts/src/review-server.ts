@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { FlowChange } from "./flow-change.ts";
+import { HopChange } from "./hop-change.ts";
 import {
   answerFields,
   Batch,
@@ -87,6 +89,28 @@ export const StructureWrite = Schema.Struct({
 });
 
 export type StructureWrite = typeof StructureWrite.Type;
+
+/**
+ * Sets the open hop proposal `id` to `change`. The page makes the id, so a
+ * retry can't add it twice. The same id with another change of the same hop
+ * and action replaces the change.
+ */
+export const HopWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: HopChange,
+});
+
+export type HopWrite = typeof HopWrite.Type;
+
+/** Sets the open flow proposal `id` to `change`, as `HopWrite` does for a hop. */
+export const FlowWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: FlowChange,
+});
+
+export type FlowWrite = typeof FlowWrite.Type;
 
 /** Reopens a rejected item as a new open item with the id `newId`. */
 export const ReopenWrite = Schema.Struct({

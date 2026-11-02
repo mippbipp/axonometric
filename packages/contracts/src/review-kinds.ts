@@ -18,6 +18,8 @@ import type {
   Verdict,
 } from "./proposals.ts";
 import { plain } from "./review-kind-defaults.ts";
+import { flowKind } from "./review-kinds-flow.ts";
+import { hopKind } from "./review-kinds-hop.ts";
 import { structureKind } from "./review-kinds-structure.ts";
 import {
   answerKind,
@@ -59,6 +61,10 @@ export interface VerdictContext {
    * `--as` may not name one of them.
    */
   readonly accepted: ReadonlySet<string>;
+  /** As `accepted`, for the hops the accepted map had. */
+  readonly acceptedHops: ReadonlySet<string>;
+  /** As `accepted`, for the flows the accepted map had. */
+  readonly acceptedFlows: ReadonlySet<string>;
   /** The `--as` ids the batch's other items already have, by item id. */
   readonly taken: ReadonlyMap<string, string>;
 }
@@ -531,6 +537,8 @@ export const kindTable = {
   answer: answerKind,
   question: questionKind,
   structure: structureKind,
+  hop: hopKind,
+  flow: flowKind,
 } satisfies {
   readonly [K in BatchItem["kind"]]: KindSpec<Extract<BatchItem, { kind: K }>>;
 };
@@ -551,6 +559,8 @@ function satisfiesEvery<const K extends readonly BatchItem["kind"][]>(
  */
 export const applyOrder: readonly BatchItem["kind"][] = satisfiesEvery([
   "structure",
+  "hop",
+  "flow",
   "layout",
   "note",
   "suggestion",

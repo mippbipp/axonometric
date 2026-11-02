@@ -11,8 +11,10 @@ import { MapState } from "./map-state.ts";
 import { Proposals } from "./proposals.ts";
 import {
   AnswerAdd,
+  FlowWrite,
   FreezeWrite,
   FreezeAnswer,
+  HopWrite,
   ItemWrite,
   NoteAdd,
   ItemEdit,
@@ -142,6 +144,16 @@ export class ReviewApiGroup extends HttpApiGroup.make("review")
     }),
     HttpApiEndpoint.post("setStructure", serverPaths.structure, {
       payload: StructureWrite,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("setHop", serverPaths.hop, {
+      payload: HopWrite,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("setFlow", serverPaths.flow, {
+      payload: FlowWrite,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),

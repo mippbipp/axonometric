@@ -263,12 +263,18 @@ export const freezeOpen = ({
   proposals,
   at,
   structures,
+  hops,
+  flows,
 }: {
   readonly proposals: Proposals;
   /** When the batch is frozen, as an ISO date and time in UTC. */
   readonly at: string;
   /** The ids of the structures the accepted map has now; see `Batch.structures`. */
   readonly structures?: readonly string[] | undefined;
+  /** The ids of the hops the accepted map has now; see `Batch.hops`. */
+  readonly hops?: readonly string[] | undefined;
+  /** The ids of the flows the accepted map has now; see `Batch.flows`. */
+  readonly flows?: readonly string[] | undefined;
 }): Result.Result<FreezeResult, string> => {
   const items = openItems(proposals);
 
@@ -285,8 +291,16 @@ export const freezeOpen = ({
     verdicts: {},
   };
 
-  const batch: Batch =
-    structures === undefined ? frozen : { ...frozen, structures };
+  // A list left out stays out: a batch without one has the caller's set.
+  const batch: Batch = Arr.reduce(
+    [
+      ["structures", structures],
+      ["hops", hops],
+      ["flows", flows],
+    ] as const,
+    frozen,
+    (so, [key, ids]) => (ids === undefined ? so : { ...so, [key]: ids })
+  );
 
   const emptied = Arr.reduce(allKinds, proposals, (held, kind) =>
     kind.clear(held)
@@ -641,6 +655,8 @@ export const recordVerdict = ({
   id,
   verdict,
   accepted = new Set(),
+  acceptedHops = new Set(),
+  acceptedFlows = new Set(),
 }: {
   readonly proposals: Proposals;
   readonly id: string;
@@ -652,6 +668,10 @@ export const recordVerdict = ({
    * neither, none is known and the check is skipped.
    */
   readonly accepted?: ReadonlySet<string>;
+  /** As `accepted`, for hops and `Batch.hops`. */
+  readonly acceptedHops?: ReadonlySet<string>;
+  /** As `accepted`, for flows and `Batch.flows`. */
+  readonly acceptedFlows?: ReadonlySet<string>;
 }): Result.Result<Proposals, string> => {
   const oldest = oldestOpenBatch(proposals);
 
@@ -696,6 +716,14 @@ export const recordVerdict = ({
           oldest.value.structures === undefined
             ? accepted
             : new Set(oldest.value.structures),
+        acceptedHops:
+          oldest.value.hops === undefined
+            ? acceptedHops
+            : new Set(oldest.value.hops),
+        acceptedFlows:
+          oldest.value.flows === undefined
+            ? acceptedFlows
+            : new Set(oldest.value.flows),
         taken,
       })
     )
