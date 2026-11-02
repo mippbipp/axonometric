@@ -32,7 +32,7 @@ import type {
   StructureWrite,
   SuggestionAdd,
 } from "@axonometric/contracts";
-import { DateTime, Effect, Path, Result } from "effect";
+import { Array as Arr, DateTime, Effect, Path, Result } from "effect";
 
 import { encodeProposals } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
@@ -279,22 +279,29 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, structures, hops, now }) =>
-      Result.map(freezeOpen({ proposals, at: now }), (frozen) => ({
-        proposals: frozen.proposals,
-        answer: {
-          batch: frozen.batch,
-          home: absolute,
+    change: ({ proposals, structures, hops, data, now }) =>
+      Result.map(
+        freezeOpen({
+          proposals,
+          at: now,
+          structures: Arr.map(data.structures, ({ id }) => id),
+        }),
+        (frozen) => ({
           proposals: frozen.proposals,
-          prompt: reviewPrompt({
-            home: absolute,
+          answer: {
             batch: frozen.batch,
-            names: {
-              structure: (id) => structures.get(id) ?? id,
-              hop: hopLabelOf(hops),
-            },
-          }),
-        },
-      })),
+            home: absolute,
+            proposals: frozen.proposals,
+            prompt: reviewPrompt({
+              home: absolute,
+              batch: frozen.batch,
+              names: {
+                structure: (id) => structures.get(id) ?? id,
+                hop: hopLabelOf(hops),
+              },
+            }),
+          },
+        })
+      ),
   });
 });

@@ -1078,6 +1078,48 @@ const structureNote: BatchItem = {
   text: "x",
 };
 
+describe("the structures a batch is frozen against", () => {
+  it("are recorded at freeze and win over the ids the caller passes", () => {
+    const frozen = unwrap(
+      freezeOpen({
+        proposals: withStructures(["p1", add]),
+        at,
+        structures: ["a", "b"],
+      })
+    ).proposals;
+
+    assert.deepStrictEqual(frozen.batches?.[0]?.structures, ["a", "b"]);
+
+    // "a" is on the frozen list, so --as a is refused whatever else is passed.
+    const refused = recordVerdict({
+      proposals: frozen,
+      id: "p1",
+      verdict: changedAs("a"),
+      accepted: new Set(),
+    });
+
+    assert.include(Result.merge(refused), "already has");
+
+    // An id that is not on it is allowed, even if the caller's set has it.
+    const allowed = recordVerdict({
+      proposals: frozen,
+      id: "p1",
+      verdict: changedAs("fresh"),
+      accepted: new Set(["fresh"]),
+    });
+
+    assert.isTrue(Result.isSuccess(allowed));
+  }, 5000);
+
+  it("are left out of a batch frozen without them, and the check falls back to the caller's set", () => {
+    const frozen = unwrap(
+      freezeOpen({ proposals: withStructures(["p1", add]), at })
+    ).proposals;
+
+    assert.isUndefined(frozen.batches?.[0]?.structures);
+  }, 5000);
+});
+
 describe("a note on a hop or a spot after --as", () => {
   it("renames the target of a note on a structure", () => {
     const renamed = specOf(structureNote).retargeted(

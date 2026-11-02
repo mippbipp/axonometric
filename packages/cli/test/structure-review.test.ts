@@ -16,6 +16,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
   Effect,
+  FileSystem,
   Path,
   pipe,
   Schema,
@@ -225,6 +226,96 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
           "build-cache"
         );
       })
+  );
+
+  it.effect(
+    "accepts --as after build placed the new structure in layout.json, as a running serve does",
+    () =>
+      Effect.gen(function* () {
+        const { home } = yield* homeWith(
+          [item("p1", added)],
+          {},
+          withStructure("build-cache")
+        );
+
+        // The rebuild a serve watcher runs when the agent saves data.mjs.
+        const built = yield* runCli(home, ["build", home]);
+
+        assert.strictEqual(built.exitCode, 0, built.stderr);
+
+        const placed = yield* decodeLayout(built.files["layout.json"] ?? "");
+
+        assert.isDefined(placement(placed, "build-cache"));
+        assert.notDeepEqual(placement(placed, "build-cache"), added.at);
+
+        const reviewed = yield* runCli(home, ["review", home, "--json"]);
+        const report = yield* decodeReview(reviewed.stdout);
+
+        const verdict = yield* runCli(home, [
+          "verdict",
+          home,
+          "p1",
+          "changed",
+          "--reason",
+          "Named it build-cache.",
+          "--as",
+          "build-cache",
+        ]);
+
+        assert.strictEqual(verdict.exitCode, 0, verdict.stderr);
+        assert.isNull(report.batch?.items[0]?.breaks);
+
+        const committed = yield* runCli(home, ["commit", home]);
+
+        assert.strictEqual(committed.exitCode, 0, committed.stderr);
+
+        // The engineer's drop wins over the spot the rebuild chose.
+        const layout = yield* decodeLayout(
+          committed.files["layout.json"] ?? ""
+        );
+
+        assert.deepStrictEqual(placement(layout, "build-cache"), added.at);
+      })
+  );
+
+  it.effect(
+    "still refuses --as when the batch was frozen with that structure already on the map",
+    () =>
+      Effect.gen(function* () {
+        const { home } = yield* homeWith(
+          [item("p1", added)],
+          {},
+          withStructure("build-cache")
+        );
+
+        const fs = yield* FileSystem.FileSystem;
+        const file = `${home}/proposals.json`;
+        const held = yield* decodeProposals(yield* fs.readFileString(file));
+
+        const frozen = {
+          ...held,
+          batches: Arr.map(held.batches ?? [], (batch) => ({
+            ...batch,
+            structures: ["engineer", "page", "build-cache"],
+          })),
+        };
+
+        yield* fs.writeFileString(file, fileOf(frozen));
+
+        const verdict = yield* runCli(home, [
+          "verdict",
+          home,
+          "p1",
+          "changed",
+          "--reason",
+          "Named it build-cache.",
+          "--as",
+          "build-cache",
+        ]);
+
+        assert.strictEqual(verdict.exitCode, 1);
+        assert.include(verdict.stderr, "already has");
+      }).pipe(Effect.provide(NodeServices.layer))
   );
 
   it.effect("refuses --as on any verdict but changed, and on other kinds", () =>

@@ -262,10 +262,13 @@ export interface FreezeResult {
 export const freezeOpen = ({
   proposals,
   at,
+  structures,
 }: {
   readonly proposals: Proposals;
   /** When the batch is frozen, as an ISO date and time in UTC. */
   readonly at: string;
+  /** The ids of the structures the accepted map has now; see `Batch.structures`. */
+  readonly structures?: readonly string[] | undefined;
 }): Result.Result<FreezeResult, string> => {
   const items = openItems(proposals);
 
@@ -275,12 +278,15 @@ export const freezeOpen = ({
     );
   }
 
-  const batch: Batch = {
+  const frozen: Batch = {
     number: nextBatchNumber(proposals),
     frozenAt: at,
     items,
     verdicts: {},
   };
+
+  const batch: Batch =
+    structures === undefined ? frozen : { ...frozen, structures };
 
   const emptied = Arr.reduce(allKinds, proposals, (held, kind) =>
     kind.clear(held)
@@ -640,8 +646,10 @@ export const recordVerdict = ({
   readonly id: string;
   readonly verdict: Verdict;
   /**
-   * The ids of the structures the accepted map has. `--as` may not name one,
-   * since it gives a new structure its own id. Left out, none is known.
+   * The ids of the structures the accepted map has, for a batch frozen
+   * without `Batch.structures`. `--as` may not name one, since it gives a new
+   * structure its own id. The batch's own list wins when it has one. With
+   * neither, none is known and the check is skipped.
    */
   readonly accepted?: ReadonlySet<string>;
 }): Result.Result<Proposals, string> => {
@@ -683,7 +691,13 @@ export const recordVerdict = ({
 
   const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
     Option.flatMap((item) =>
-      specOf(item).verdictRefusal(item, verdict, { accepted, taken })
+      specOf(item).verdictRefusal(item, verdict, {
+        accepted:
+          oldest.value.structures === undefined
+            ? accepted
+            : new Set(oldest.value.structures),
+        taken,
+      })
     )
   );
 

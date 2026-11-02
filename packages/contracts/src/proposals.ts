@@ -631,9 +631,17 @@ export const Batch = Schema.Struct({
   verdicts: Schema.Record(ChangeId, Verdict),
   committed: Schema.optionalKey(Committed),
   dismissed: Schema.optionalKey(Schema.Array(ChangeId)),
+  /**
+   * The ids of the structures the accepted map had when the batch was frozen,
+   * before the agent edited data.mjs for it. `verdict --as` may not name
+   * one. Neither a data.mjs edit nor a rebuild changes it, which layout.json
+   * can't promise: `build` places a new structure there. A batch frozen
+   * before this field has none.
+   */
+  structures: Schema.optionalKey(Schema.Array(Schema.String)),
 }).annotate(
   objectMessages(
-    "A batch has only number, frozenAt, items, verdicts, committed and dismissed."
+    "A batch has only number, frozenAt, items, verdicts, committed, dismissed and structures."
   )
 );
 

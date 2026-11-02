@@ -11,7 +11,6 @@ import {
 } from "@axonometric/contracts";
 import type {
   HistoryEntry,
-  Layout,
   MapFile,
   MapProblem,
   Revision,
@@ -23,7 +22,6 @@ import {
   Option,
   Order,
   Path,
-  Record as Rec,
   Result,
   Schema,
 } from "effect";
@@ -187,15 +185,13 @@ export const loadHistory = Effect.fnUntraced(function* (
 });
 
 /**
- * The ids of the structures the accepted map had before the agent last edited
- * data.mjs: those in the newest revision that reads, else the ones
- * `layout.json` places. `verdict --as` may not name one of these, since it
- * gives a new structure an id of its own.
+ * The ids of the structures in the newest revision that reads, for a batch
+ * frozen before it recorded `structures`. It is `data.mjs` as the last commit
+ * accepted it, which an edit or a rebuild can't change. `layout.json` is not
+ * a source: `build` writes a new structure there. With no revision, nothing
+ * is known, and the `--as` check against the accepted map is skipped.
  */
-export const acceptedStructureIds = Effect.fnUntraced(function* (
-  home: string,
-  layout: Layout
-) {
+export const acceptedStructureIds = Effect.fnUntraced(function* (home: string) {
   const saved = yield* revisionsIn(home);
 
   const newest = saved.at(-1);
@@ -205,7 +201,7 @@ export const acceptedStructureIds = Effect.fnUntraced(function* (
 
   return new Set(
     found === undefined || Option.isNone(found)
-      ? Rec.keys(layout.structures)
+      ? []
       : Arr.map(found.value.data.structures, ({ id }) => id)
   );
 });

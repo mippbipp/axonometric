@@ -1,5 +1,8 @@
 import { Array as Arr, Option, Record as Rec } from "effect";
 
+import type { Layout, Placement } from "./layout.ts";
+import type { MapData } from "./map-data.ts";
+import { placeStructures } from "./placement.ts";
 import type { BatchItem, LayoutChange, Verdict } from "./proposals.ts";
 import { plain, removedMark } from "./review-kind-defaults.ts";
 import type { KindSpec, Pointer } from "./review-kinds.ts";
@@ -32,6 +35,34 @@ const finalIdOf = (item: StructureItem, verdict: Verdict): string =>
   verdict.as !== undefined
     ? verdict.as
     : structureOf(item.change);
+
+/** Whether `kept`, the spot layout.json holds for `id`, is where `build` puts it. */
+const isAutoPlaced = ({
+  data,
+  saved,
+  id,
+  kept,
+}: {
+  readonly data: MapData;
+  readonly saved: Layout;
+  readonly id: string;
+  readonly kept: Placement;
+}): boolean => {
+  const unplaced: Layout = {
+    ...saved,
+    structures: Rec.remove(saved.structures, id),
+  };
+
+  const auto = placeStructures(data, unplaced).layout.structures[id];
+
+  return (
+    auto !== undefined &&
+    auto.x === kept.x &&
+    auto.y === kept.y &&
+    auto.w === kept.w &&
+    auto.d === kept.d
+  );
+};
 
 export const structureKind: KindSpec<StructureItem> = {
   ...plain<StructureItem>(),
@@ -145,7 +176,11 @@ export const structureKind: KindSpec<StructureItem> = {
       ? item
       : { ...item, change: { ...change, structure: to } };
   },
-  applies: (item, verdict, { layout, saved }): readonly LayoutChange[] => {
+  applies: (
+    item,
+    verdict,
+    { layout, saved, data }
+  ): readonly LayoutChange[] => {
     const { change } = item;
 
     if (verdict.verdict === "rejected" || change.action !== "add") {
@@ -155,9 +190,22 @@ export const structureKind: KindSpec<StructureItem> = {
     const id = finalIdOf(item, verdict);
     const placed = Rec.get(layout.structures, id);
 
-    // A structure the agent already placed with `axonometric layout` stays
-    // where it put it.
-    if (Option.isNone(placed) || Rec.has(saved.structures, id)) {
+    if (Option.isNone(placed)) {
+      return [];
+    }
+
+    // A structure the agent placed with `axonometric layout` stays where it
+    // put it. A spot in layout.json is not proof of that: `build` and the
+    // server place a new structure there too. So the saved spot counts as
+    // the agent's only when it differs from where `placeStructures` puts the
+    // structure unaided, which a rebuild before or after `verdict` can't
+    // change.
+    const kept = Rec.get(saved.structures, id);
+
+    if (
+      Option.isSome(kept) &&
+      !isAutoPlaced({ data, saved, id, kept: kept.value })
+    ) {
       return [];
     }
 
