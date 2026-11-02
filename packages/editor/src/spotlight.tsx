@@ -3,6 +3,7 @@ import type { SpotlightTarget } from "@axonometric/contracts";
 import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { useHopDraft } from "./hop-draft-context.ts";
 import { PlaybackContext } from "./playback.ts";
 import { SelectionContext } from "./selection-context.ts";
 import {
@@ -38,6 +39,22 @@ export function SpotlightProvider({
   const pinnedStructure = use(SelectionContext)?.selected ?? null;
   const pinnedHop = use(PlaybackContext)?.selected?.hop.id;
   const [hoveredHop, setHoveredHop] = useState<string | null>(null);
+  const drafting = useHopDraft();
+
+  // A hop being drawn lights its two ends. Pointer capture stops the hover
+  // reaching the structure under a drag, so the drag says which it is over.
+  const stretch = drafting?.stretch;
+  const draft = drafting?.draft;
+
+  const drawing = useMemo(() => {
+    if (stretch !== null && stretch !== undefined) {
+      return { from: stretch.from, over: stretch.over };
+    }
+
+    return draft === null || draft === undefined
+      ? null
+      : { from: draft.from, over: draft.to };
+  }, [stretch, draft]);
 
   const spotlight = useMemo(
     () =>
@@ -47,6 +64,7 @@ export function SpotlightProvider({
         choice: flowChoice,
         hovered: hopTarget(hoveredHop) ?? structureTarget(hoveredStructure),
         pinned: hopTarget(pinnedHop) ?? structureTarget(pinnedStructure),
+        drawing,
       }),
     [
       state.data,
@@ -56,6 +74,7 @@ export function SpotlightProvider({
       hoveredStructure,
       pinnedHop,
       pinnedStructure,
+      drawing,
     ]
   );
 

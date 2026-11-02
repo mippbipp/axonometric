@@ -4,14 +4,13 @@ import {
   candidateProblems,
   emptyProposals,
   hopCandidateProblems,
-  hopRenames,
+  committedRenames,
   frozenStructureChanges,
   openStructureChanges,
   frozenLayoutChanges,
   proposedMap,
   openItems,
   reviewEntries,
-  structureRenames,
 } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
@@ -167,7 +166,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [proposed.state, frozen]
   );
 
-  const renames = useMemo(() => structureRenames(proposals), [proposals]);
+  const renames = useMemo(() => committedRenames(proposals), [proposals]);
 
   // What an export saves: the map as it was before proposals, with the
   // pending layout changes it always showed.
@@ -262,9 +261,8 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
           change,
         }),
       discard: store.review.discardProposal,
-      hopRenames: hopRenames(proposals),
     }),
-    [proposed, shown, view.stopped, store, proposals]
+    [proposed, shown, view.stopped, store]
   );
 
   const review = useMemo((): Review => {

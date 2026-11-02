@@ -31,8 +31,6 @@ export interface Connections {
   readonly refusalOfFlow: (change: FlowChange) => string | undefined;
   /** What `check` would report for the proposed map with the hop change added. */
   readonly problemsOfHop: (change: HopChange) => readonly DraggedProblem[];
-  /** The ids the agent gave hops the engineer drew, by provisional id. */
-  readonly hopRenames: ReadonlyMap<string, string>;
   /** Removes the open proposal with this id. */
   readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
 }

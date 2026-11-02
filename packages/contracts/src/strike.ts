@@ -1,4 +1,5 @@
 import { Array as Arr, Option, Order } from "effect";
+import { dual } from "effect/Function";
 
 import { clipToConvex, rectPolygon } from "./geometry.ts";
 import type { Segment } from "./geometry.ts";
@@ -50,32 +51,49 @@ const gapsOutside = (cuts: readonly Share[]): readonly Share[] => {
  */
 export const minStrikePiece = 5;
 
-/** The parts of `segment` that lie outside the convex `holes`. */
-const without = (
-  segment: Segment,
-  holes: readonly (readonly ScreenPoint[])[]
-): readonly Segment[] => {
-  const cuts = Arr.flatMap(holes, (hole) =>
-    Option.toArray(Option.fromNullishOr(clipToConvex(segment, hole)))
-  );
+/**
+ * The parts of `segment` that lie outside the convex `holes`, leaving out
+ * pieces shorter than `minPiece` screen units.
+ */
+export const outsideHoles: {
+  (
+    holes: readonly (readonly ScreenPoint[])[],
+    minPiece: number
+  ): (segment: Segment) => readonly Segment[];
+  (
+    segment: Segment,
+    holes: readonly (readonly ScreenPoint[])[],
+    minPiece: number
+  ): readonly Segment[];
+} = dual(
+  3,
+  (
+    segment: Segment,
+    holes: readonly (readonly ScreenPoint[])[],
+    minPiece: number
+  ): readonly Segment[] => {
+    const cuts = Arr.flatMap(holes, (hole) =>
+      Option.toArray(Option.fromNullishOr(clipToConvex(segment, hole)))
+    );
 
-  const at = (share: number): ScreenPoint => ({
-    sx: segment.start.sx + (segment.end.sx - segment.start.sx) * share,
-    sy: segment.start.sy + (segment.end.sy - segment.start.sy) * share,
-  });
+    const at = (share: number): ScreenPoint => ({
+      sx: segment.start.sx + (segment.end.sx - segment.start.sx) * share,
+      sy: segment.start.sy + (segment.end.sy - segment.start.sy) * share,
+    });
 
-  const length = Math.hypot(
-    segment.end.sx - segment.start.sx,
-    segment.end.sy - segment.start.sy
-  );
+    const length = Math.hypot(
+      segment.end.sx - segment.start.sx,
+      segment.end.sy - segment.start.sy
+    );
 
-  const long = Arr.filter(
-    gapsOutside(cuts),
-    ({ from, to }) => (to - from) * length >= minStrikePiece
-  );
+    const long = Arr.filter(
+      gapsOutside(cuts),
+      ({ from, to }) => (to - from) * length >= minPiece
+    );
 
-  return Arr.map(long, ({ from, to }) => ({ start: at(from), end: at(to) }));
-};
+    return Arr.map(long, ({ from, to }) => ({ start: at(from), end: at(to) }));
+  }
+);
 
 /**
  * The cross struck through a footprint: its two diagonals on the ground,
@@ -109,7 +127,7 @@ export const strikeSegments = ({
   );
 
   return [
-    ...without({ start: a, end: c }, holes),
-    ...without({ start: b, end: d }, holes),
+    ...outsideHoles({ start: a, end: c }, holes, minStrikePiece),
+    ...outsideHoles({ start: b, end: d }, holes, minStrikePiece),
   ];
 };

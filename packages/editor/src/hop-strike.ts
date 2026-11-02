@@ -1,3 +1,4 @@
+import { gapBetween } from "@axonometric/contracts";
 import type { ScreenPoint, ScreenRect } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 
@@ -68,39 +69,57 @@ const clear = ({
   at,
   reach,
   texts,
+  outlines,
 }: {
   readonly at: ScreenPoint;
   readonly reach: number;
   readonly texts: readonly ScreenRect[];
-}) =>
-  !Arr.some(
-    texts,
-    (rect) =>
-      at.sx + reach + air > rect.left &&
-      at.sx - reach - air < rect.right &&
-      at.sy + reach + air > rect.top &&
-      at.sy - reach - air < rect.bottom
+  readonly outlines: readonly (readonly ScreenPoint[])[];
+}) => {
+  const box: ScreenRect = {
+    left: at.sx - reach - air,
+    right: at.sx + reach + air,
+    top: at.sy - reach - air,
+    bottom: at.sy + reach + air,
+  };
+
+  return (
+    !Arr.some(
+      texts,
+      (rect) =>
+        box.right > rect.left &&
+        box.left < rect.right &&
+        box.bottom > rect.top &&
+        box.top < rect.bottom
+    ) &&
+    // A route ends on a structure's edge, so the cross must stand off every
+    // outline, its own ends' included, or it reads as part of the box.
+    !Arr.some(outlines, (outline) => gapBetween(box, outline) === 0)
   );
+};
 
 /**
  * The cross that strikes a hop proposed for deletion: two short lines across
  * its route, at the first spot along it that keeps clear of every box of text
- * in `texts`. Nothing when no spot is clear, since a strike never runs over
+ * in `texts` and every structure's outline. Nothing when no spot is clear, since a strike never runs over
  * text. The hop is also drawn dashed, so it reads as deleted either way.
  */
 export const strikeOnRoute = ({
   route,
   texts,
+  outlines,
 }: {
   readonly route: readonly ScreenPoint[];
   readonly texts: readonly ScreenRect[];
+  /** The outline of every structure drawn. */
+  readonly outlines: readonly (readonly ScreenPoint[])[];
 }): Option.Option<Strike> =>
   Option.map(
     Arr.findFirst(
       Arr.flatMap(reaches, (reach) =>
         Arr.map(shares, (share) => ({ ...alongRoute(route, share), reach }))
       ),
-      ({ at, reach }) => clear({ at, reach, texts })
+      ({ at, reach }) => clear({ at, reach, texts, outlines })
     ),
     ({ at, dx, dy, reach: strikeReach }) => {
       // The diagonals are the route's direction turned a quarter either way

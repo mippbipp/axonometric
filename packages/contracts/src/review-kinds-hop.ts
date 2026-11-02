@@ -1,19 +1,22 @@
-import { Array as Arr, Match, Option } from "effect";
+import { Array as Arr, Option } from "effect";
 
 import { withoutOpenHop } from "./connection-held.ts";
-import { hopOf, maxHopLabelLength, hopRenameKey } from "./hop-change.ts";
+import { hopActionOf } from "./hop-actions.ts";
+import { HopLabel, maxHopLabelLength, hopOf } from "./hop-change.ts";
 import {
-  hopBreakage,
-  factsOfHop,
-  hopChangeToData,
   describeHop,
+  factsOfHop,
+  hopBreakage,
+  hopChangeToData,
   hopLabel,
   summarizeHop,
 } from "./hop-effects.ts";
 import type { BatchItem, Verdict } from "./proposals.ts";
+import { followed, provisionalOf } from "./provisional-ids.ts";
 import { plain } from "./review-kind-defaults.ts";
 import type { KindSpec, Pointer } from "./review-kinds.ts";
 import { decorate } from "./review-quote.ts";
+import { refusalOf } from "./text-schemas.ts";
 
 // The kind for a proposed change to the hops: draw one, delete one, relabel
 // one. It is one entry of the kind table; `review-kinds.ts` lists it. Which
@@ -35,29 +38,32 @@ export const proposedHopMark = "proposed-hop";
 const hopNotice =
   "A hop item changes data.mjs, which only you edit. A new hop comes with a provisional id: add it to data.mjs under that id, or under another and give the verdict changed with --as <id>. Add it to the plays of the chapter that should show it, and to the flows the engineer put it in (see the flow items), or the page shows it in none. Deleting a hop also means taking it out of every flow and chapter that lists it; review names them.";
 
+/** What the hop kind adds under a provisional id, and how it says so. */
+const provisional = provisionalOf<HopItem>({
+  entity: "hop",
+  noun: "hop",
+  adds: ({ change }) =>
+    change.action === "add" ? Option.some(change.hop.id) : Option.none(),
+});
+
 /**
  * The id a taken hop item ends up with: the provisional id, or the one the
  * agent gave with `--as`.
  */
 const finalIdOf = (item: HopItem, verdict: Verdict): string =>
-  item.change.action === "add" &&
-  verdict.verdict === "changed" &&
-  verdict.as !== undefined
-    ? verdict.as
-    : hopOf(item.change);
+  Option.getOrElse(provisional.finalIdOf(item, verdict), () =>
+    hopOf(item.change)
+  );
 
 export const hopKind: KindSpec<HopItem> = {
   ...plain<HopItem>(),
   textLimit: maxHopLabelLength,
   listKey: "hops",
-  text: ({ change }) =>
-    Match.value(change).pipe(
-      Match.discriminatorsExhaustive("action")({
-        add: ({ hop }) => Option.some(hop.label),
-        relabel: ({ label }) => Option.some(label),
-        delete: () => Option.none(),
-      })
-    ),
+  text: ({ change }) => hopActionOf(change).text(),
+  textRefusal: ({ change }, text) =>
+    Option.isNone(hopActionOf(change).text())
+      ? Option.none()
+      : refusalOf(HopLabel, text),
   describe: ({ change }, nameOf, hopLabelOf) =>
     Option.some(describeHop(change, { structure: nameOf, hop: hopLabelOf })),
   // Whether the hop or the structures it joins exist depends on what other
@@ -71,22 +77,16 @@ export const hopKind: KindSpec<HopItem> = {
       change: proposal.change,
     })),
   clear: (proposals) => ({ ...proposals, hops: [] }),
-  discarded: (proposals, { change }) =>
-    change.action === "add"
-      ? withoutOpenHop(proposals, change.hop.id)
-      : proposals,
   add: (proposals, { id, change }) => ({
     ...proposals,
     hops: [...(proposals.hops ?? []), { id, change }],
   }),
-  name: ({ change }) => hopLabel(change),
-  targets: ({ change }): readonly Pointer[] =>
+  discarded: (proposals, { change }) =>
     change.action === "add"
-      ? [
-          { kind: "structure", id: change.hop.from },
-          { kind: "structure", id: change.hop.to },
-        ]
-      : [{ kind: "hop", id: change.hop }],
+      ? withoutOpenHop(proposals, change.hop.id)
+      : proposals,
+  name: ({ change }) => hopLabel(change),
+  targets: ({ change }): readonly Pointer[] => hopActionOf(change).targets(),
   summary: ({ id, change }, nameOf, hopLabelOf) =>
     summarizeHop(change, id, { structure: nameOf, hop: hopLabelOf }),
   facts: ({ change }, _layout, data) => factsOfHop(change, data),
@@ -94,80 +94,42 @@ export const hopKind: KindSpec<HopItem> = {
     ...map,
     data: hopChangeToData(map.data, change),
   }),
-  touches: ({ change }) => ({
-    structures: [],
-    hops: [hopOf(change)],
-    marks: {
-      [removedHopMark]: change.action === "delete" ? [hopOf(change)] : [],
-      [proposedHopMark]: change.action === "delete" ? [] : [hopOf(change)],
-    },
-  }),
+  touches: ({ change }) => {
+    const { proposed, removed } = hopActionOf(change).marks();
+
+    return {
+      structures: [],
+      hops: [hopOf(change)],
+      marks: { [removedHopMark]: removed, [proposedHopMark]: proposed },
+    };
+  },
   breakage: ({ change }, { structureIds, hops, data }) =>
     hopBreakage(change, {
       structureIds,
       hopIds: new Set(Arr.map(hops, ({ id }) => id)),
       data,
     }),
-  verdictRefusal: (item, verdict, { acceptedHops, taken }) => {
-    if (verdict.verdict !== "changed" || verdict.as === undefined) {
-      return Option.none();
-    }
-
-    if (item.change.action !== "add") {
-      return Option.some(
-        "--as gives a new hop the id you used for it in data.mjs. This item does not add a hop."
-      );
-    }
-
-    if (acceptedHops.has(verdict.as)) {
-      return Option.some(
-        `--as ${verdict.as} names a hop the accepted map already has. Pick the id of the new hop you added to data.mjs.`
-      );
-    }
-
-    return Option.map(
-      Arr.findFirst(
-        [...taken.entries()],
-        ([other, id]) => other !== item.id && id === verdict.as
-      ),
-      ([other]) =>
-        `--as ${verdict.as} is already the final id of item ${other} in this batch. Give each new hop its own id.`
-    );
-  },
-  renames: (item, verdict) => {
-    if (verdict.verdict === "rejected" || item.change.action !== "add") {
-      return [];
-    }
-
-    const to = finalIdOf(item, verdict);
-
-    return to === item.change.hop.id
-      ? []
-      : [[hopRenameKey(item.change.hop.id), to]];
-  },
+  verdictRefusal: provisional.verdictRefusal,
+  renames: provisional.renames,
   retargeted: (item, renames) => {
     const { change } = item;
-    const moved = (id: string) => renames.get(id) ?? id;
 
     if (change.action === "add") {
       const { from, to } = change.hop;
 
-      return moved(from) === from && moved(to) === to
+      const next = {
+        from: followed(renames, "structure", from),
+        to: followed(renames, "structure", to),
+      };
+
+      return next.from === from && next.to === to
         ? item
-        : {
-            ...item,
-            change: {
-              ...change,
-              hop: { ...change.hop, from: moved(from), to: moved(to) },
-            },
-          };
+        : { ...item, change: { ...change, hop: { ...change.hop, ...next } } };
     }
 
-    const hop = moved(hopRenameKey(change.hop));
+    const hop = followed(renames, "hop", change.hop);
 
-    return hop === hopRenameKey(change.hop)
-      ? item
-      : { ...item, change: { ...change, hop } };
+    return hop === change.hop ? item : { ...item, change: { ...change, hop } };
   },
   applies: () => [],
   commitRefusal: (item, verdict, { data }) => {
@@ -212,23 +174,12 @@ export const hopKind: KindSpec<HopItem> = {
     change: item.change,
     reason,
   }),
-  reopened: (item, newId, text) => {
-    const { change } = item;
-
-    if (text === undefined) {
-      return { ...item, id: newId };
-    }
-
-    if (change.action === "add") {
-      return {
-        ...item,
-        id: newId,
-        change: { ...change, hop: { ...change.hop, label: text } },
-      };
-    }
-
-    return change.action === "relabel"
-      ? { ...item, id: newId, change: { ...change, label: text } }
-      : { ...item, id: newId };
-  },
+  reopened: (item, newId, text) => ({
+    ...item,
+    id: newId,
+    change:
+      text === undefined
+        ? item.change
+        : hopActionOf(item.change).withText(text),
+  }),
 };

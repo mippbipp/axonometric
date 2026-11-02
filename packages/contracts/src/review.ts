@@ -36,6 +36,14 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
+import {
+  batchKeyOf,
+  entities,
+  hasRenames,
+  noKnownIds,
+  renamesOf,
+} from "./provisional-ids.ts";
+import type { Entity, KnownIds, Renames } from "./provisional-ids.ts";
 import { allKinds, specOf } from "./review-kinds.ts";
 import type { Waiting } from "./review-kinds.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
@@ -273,19 +281,13 @@ export interface FreezeResult {
 export const freezeOpen = ({
   proposals,
   at,
-  structures,
-  hops,
-  flows,
+  known,
 }: {
   readonly proposals: Proposals;
   /** When the batch is frozen, as an ISO date and time in UTC. */
   readonly at: string;
-  /** The ids of the structures the accepted map has now; see `Batch.structures`. */
-  readonly structures?: readonly string[] | undefined;
-  /** The ids of the hops the accepted map has now; see `Batch.hops`. */
-  readonly hops?: readonly string[] | undefined;
-  /** The ids of the flows the accepted map has now; see `Batch.flows`. */
-  readonly flows?: readonly string[] | undefined;
+  /** The ids the accepted map has now, by entity; see `Batch.structures`. */
+  readonly known?: Partial<Record<Entity, readonly string[]>> | undefined;
 }): Result.Result<FreezeResult, string> => {
   const items = openItems(proposals);
 
@@ -303,15 +305,11 @@ export const freezeOpen = ({
   };
 
   // A list left out stays out: a batch without one has the caller's set.
-  const batch: Batch = Arr.reduce(
-    [
-      ["structures", structures],
-      ["hops", hops],
-      ["flows", flows],
-    ] as const,
-    frozen,
-    (so, [key, ids]) => (ids === undefined ? so : { ...so, [key]: ids })
-  );
+  const batch: Batch = Arr.reduce(entities, frozen, (so, entity) => {
+    const ids = known?.[entity];
+
+    return ids === undefined ? so : { ...so, [batchKeyOf[entity]]: ids };
+  });
 
   const emptied = Arr.reduce(allKinds, proposals, (held, kind) =>
     kind.clear(held)
@@ -532,6 +530,15 @@ export const reopenItem = ({
     );
   }
 
+  const refusedText = Option.flatMap(
+    Option.fromNullishOr(text),
+    (given) => spec.textRefusal?.(item, given) ?? Option.none()
+  );
+
+  if (Option.isSome(refusedText)) {
+    return Result.fail(refusedText.value);
+  }
+
   const reopened = spec.reopened(item, newId, text);
 
   const broken = spec.breakage(reopened, {
@@ -629,6 +636,12 @@ export const editProposal = ({
     );
   }
 
+  const refusedText = spec.textRefusal?.(found.value, text);
+
+  if (refusedText !== undefined && Option.isSome(refusedText)) {
+    return Result.fail(refusedText.value);
+  }
+
   const edited = spec.reopened(found.value, id, text);
 
   return Result.succeed(
@@ -670,24 +683,19 @@ export const recordVerdict = ({
   proposals,
   id,
   verdict,
-  accepted = new Set(),
-  acceptedHops = new Set(),
-  acceptedFlows = new Set(),
+  accepted = noKnownIds,
 }: {
   readonly proposals: Proposals;
   readonly id: string;
   readonly verdict: Verdict;
   /**
-   * The ids of the structures the accepted map has, for a batch frozen
-   * without `Batch.structures`. `--as` may not name one, since it gives a new
-   * structure its own id. The batch's own list wins when it has one. With
-   * neither, none is known and the check is skipped.
+   * The ids of each entity the accepted map has, for a batch frozen without
+   * its own lists (`Batch.structures`, `hops` and `flows`). `--as` may not
+   * name one, since it gives a new thing its own id. The batch's own list
+   * wins when it has one. With neither, none is known and the check is
+   * skipped.
    */
-  readonly accepted?: ReadonlySet<string>;
-  /** As `accepted`, for hops and `Batch.hops`. */
-  readonly acceptedHops?: ReadonlySet<string>;
-  /** As `accepted`, for flows and `Batch.flows`. */
-  readonly acceptedFlows?: ReadonlySet<string>;
+  readonly accepted?: KnownIds;
 }): Result.Result<Proposals, string> => {
   const oldest = oldestOpenBatch(proposals);
 
@@ -718,30 +726,35 @@ export const recordVerdict = ({
   }
 
   const taken = new Map(
-    Arr.flatMap(Rec.toEntries(oldest.value.verdicts), ([other, held]) =>
-      held.verdict === "changed" && held.as !== undefined
-        ? [[other, held.as] as const]
-        : []
-    )
+    Arr.flatMap(items, (item) => {
+      const held = Rec.get(oldest.value.verdicts, item.id);
+
+      return Option.match(held, {
+        onNone: () => [],
+        onSome: (given) =>
+          Arr.map(
+            specOf(item).renames(item, given),
+            (rename) => [item.id, rename] as const
+          ),
+      });
+    })
   );
+
+  const frozenIds = (entity: Entity): ReadonlySet<string> => {
+    const frozen = oldest.value[batchKeyOf[entity]];
+
+    return frozen === undefined ? accepted[entity] : new Set(frozen);
+  };
+
+  const known: KnownIds = {
+    structure: frozenIds("structure"),
+    hop: frozenIds("hop"),
+    flow: frozenIds("flow"),
+  };
 
   const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
     Option.flatMap((item) =>
-      specOf(item).verdictRefusal(item, verdict, {
-        accepted:
-          oldest.value.structures === undefined
-            ? accepted
-            : new Set(oldest.value.structures),
-        acceptedHops:
-          oldest.value.hops === undefined
-            ? acceptedHops
-            : new Set(oldest.value.hops),
-        acceptedFlows:
-          oldest.value.flows === undefined
-            ? acceptedFlows
-            : new Set(oldest.value.flows),
-        taken,
-      })
+      specOf(item).verdictRefusal(item, verdict, { accepted: known, taken })
     )
   );
 
@@ -857,7 +870,7 @@ export const commitBatch = ({
 
   // A structure the agent accepted under another id: items that point at the
   // provisional one now point at the final one.
-  const renames = new Map(
+  const renames = renamesOf(
     Arr.flatMap(verdicts, ({ item, verdict }) =>
       specOf(item).renames(item, verdict)
     )
@@ -903,9 +916,9 @@ export const commitBatch = ({
 
   return Result.map(applied, (nextLayout): Committing => {
     const retargetItems = (items: readonly BatchItem[]) =>
-      renames.size === 0
-        ? items
-        : Arr.map(items, (one) => specOf(one).retargeted(one, renames));
+      hasRenames(renames)
+        ? Arr.map(items, (one) => specOf(one).retargeted(one, renames))
+        : items;
 
     // Batches that still wait, and the open items, point at the id the
     // agent gave the structure, so the page follows it.
@@ -935,7 +948,7 @@ export const commitBatch = ({
       batch,
       layout: nextLayout,
       proposals: {
-        ...(renames.size === 0 ? proposals : retargetedOpen),
+        ...(hasRenames(renames) ? retargetedOpen : proposals),
         revision: proposals.revision + 1,
         batches,
       },
@@ -950,6 +963,26 @@ export const commitBatch = ({
     };
   });
 };
+
+/**
+ * The provisional ids that committed batches gave final ids, by entity. The
+ * page follows them: a selection of `new-1` becomes a selection of the id the
+ * agent accepted it under. Each kind says what it renamed, so a new kind
+ * needs nothing here.
+ */
+export const committedRenames = (proposals: Listed): Renames =>
+  renamesOf(
+    Arr.flatMap(batchesOf(proposals), (batch) =>
+      batch.committed === undefined
+        ? []
+        : Arr.flatMap(batch.items, (item) =>
+            Option.match(Rec.get(batch.verdicts, item.id), {
+              onNone: () => [],
+              onSome: (verdict) => specOf(item).renames(item, verdict),
+            })
+          )
+    )
+  );
 
 /** The message a commit gets when the agent gives none. */
 export const commitMessage = (batch: Batch): string => {

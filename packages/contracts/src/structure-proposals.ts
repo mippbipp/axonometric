@@ -1,10 +1,5 @@
-import {
-  Array as Arr,
-  Option,
-  Record as Rec,
-  Result,
-  String as Str,
-} from "effect";
+import type { Result } from "effect";
+import { Array as Arr, Option, Record as Rec, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import { footprintsOverlap } from "./layout-checks.ts";
@@ -14,7 +9,8 @@ import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
 import { newChangeId } from "./proposals.ts";
 import type { ChangeId, Proposals, StructureProposal } from "./proposals.ts";
-import { frozenRefusal } from "./review.ts";
+import { proposeInto } from "./propose-engine.ts";
+import type { ProposalKind } from "./propose-engine.ts";
 import { actionOf } from "./structure-actions.ts";
 import {
   provisionalIdOf,
@@ -39,30 +35,8 @@ export interface StructureWorld {
 const openOf = (proposals: Proposals): readonly StructureProposal[] =>
   proposals.structures ?? [];
 
-/** Whether `id` is already used by an item of any kind, open or in a batch. */
-const idTaken = (proposals: Proposals, id: string) =>
-  Arr.some(openItemIds(proposals), (other) => other === id) ||
-  Arr.some(proposals.batches ?? [], ({ items }) =>
-    Arr.some(items, (item) => item.id === id)
-  );
-
-const openItemIds = (proposals: Proposals): readonly string[] => [
-  ...Arr.map(proposals.layout, ({ id }) => id),
-  ...Arr.map(proposals.notes ?? [], ({ id }) => id),
-  ...Arr.map(openOf(proposals), ({ id }) => id),
-];
-
 const noGroup = (group: string) =>
   `No group in the map has the id "${group}". Pick one of the map's groups.`;
-
-const bump = (
-  proposals: Proposals,
-  structures: readonly StructureProposal[]
-): Proposals => ({
-  ...proposals,
-  revision: proposals.revision + 1,
-  structures,
-});
 
 const hasGroup = (world: StructureWorld, group: string) =>
   Arr.some(world.data.groups, ({ id }) => id === group);
@@ -157,136 +131,44 @@ const editedAdd = (
   });
 };
 
-/** Why `id` can't be used for `change`: it is a frozen item, or another proposal's. */
-const idRefusal = (
-  proposals: Proposals,
-  id: ChangeId,
-  change: StructureChange
-): Option.Option<string> => {
-  const own = Arr.findFirst(
-    openOf(proposals),
-    (proposal) => proposal.id === id
-  );
+/** What the propose engine needs to know about structure proposals on `world`. */
+const structureKind = (
+  world: StructureWorld
+): ProposalKind<StructureChange> => ({
+  noun: "structure",
+  open: openOf,
+  withOpen: (held, structures) => ({
+    ...held,
+    revision: held.revision + 1,
+    structures,
+  }),
+  targetOf: structureOf,
+  isAdd: (change) => change.action === "add",
+  sameChange: sameStructureChange,
+  sameSubject,
+  waitingAdds: (held) => addedIds(frozenStructureChanges(held)),
+  edited: editedAdd,
+  refusal: (change) => {
+    const missing =
+      change.action !== "add" &&
+      !Arr.some(world.data.structures, ({ id }) => id === structureOf(change));
 
-  const taken = `The id "${id}" is already in use.`;
-
-  if (Option.isSome(own)) {
-    return sameSubject(own.value.change, change)
-      ? Option.none()
-      : Option.some(taken);
-  }
-
-  return Option.orElse(frozenRefusal(proposals, id), () =>
-    idTaken(proposals, id) ? Option.some(taken) : Option.none()
-  );
-};
-
-/** Why `change` can't name the structure it does: it is added twice, or waits in a batch. */
-const targetRefusal = (
-  proposals: Proposals,
-  id: ChangeId,
-  change: StructureChange
-): Option.Option<string> => {
-  const target = structureOf(change);
-
-  const addedTwice =
-    change.action === "add" &&
-    Arr.some(
-      openOf(proposals),
-      (other) =>
-        other.id !== id &&
-        other.change.action === "add" &&
-        other.change.structure.id === target
-    );
-
-  if (addedTwice) {
-    return Option.some(
-      `Another proposal already adds a structure with the id "${target}".`
-    );
-  }
-
-  const waiting = addedIds(frozenStructureChanges(proposals));
-
-  return Arr.some(waiting, (other) => other === target)
-    ? Option.some(
-        `"${target}" is a new structure in a batch that is waiting for the agent. Edits go in the next batch, once the agent commits.`
-      )
-    : Option.none();
-};
-
-/**
- * `proposals` with `change` set as the open proposal for its structure and
- * action, under the id that proposal already has if there is one. A change
- * that leaves a field as the map has it takes the proposal away.
- */
-const setProposal = ({
-  proposals,
-  id,
-  change,
-  world,
-}: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
-  readonly change: StructureChange;
-  readonly world: StructureWorld;
-}): Proposals => {
-  const open = openOf(proposals);
-
-  const twin = Arr.findFirst(
-    open,
-    (proposal) =>
-      proposal.change.action !== "add" && sameSubject(proposal.change, change)
-  );
-
-  const keptId = Option.match(twin, {
-    onNone: () => id,
-    onSome: (found) => found.id,
-  });
-
-  if (change.action !== "add" && currentValue(world, change)) {
-    return Option.isNone(twin)
-      ? proposals
-      : bump(
-          proposals,
-          Arr.filter(open, (proposal) => proposal.id !== keptId)
-        );
-  }
-
-  const existing = Arr.findFirst(open, (proposal) => proposal.id === keptId);
-
-  if (
-    Option.isSome(existing) &&
-    sameStructureChange(existing.value.change, change)
-  ) {
-    return proposals;
-  }
-
-  return bump(
-    proposals,
-    Option.isSome(existing)
-      ? Arr.map(open, (proposal) =>
-          proposal.id === keptId ? { id: keptId, change } : proposal
+    return missing
+      ? Option.some(
+          `No structure in the map has the id "${structureOf(change)}", so there is nothing to ${change.action}.`
         )
-      : [...open, { id: keptId, change }]
-  );
-};
+      : worldRefusal(world, change);
+  },
+  isCurrent: (change) => currentValue(world, change),
+});
 
 /**
  * Sets the open structure proposal `id` to `change`, which is how the page
  * adds a structure, deletes, renames or reshapes one, and moves or resizes a
- * structure it proposed.
- *
- * - The same `id` and `change` sent again succeeds and changes nothing, so a
- *   retry never makes a duplicate.
- * - `id` held by an open proposal of the same structure and action replaces
- *   its change. A change to a structure that is already proposed, such as a
- *   rename of a new structure, edits that proposal instead of making another.
- * - A change that leaves a field as the map has it takes the open proposal
- *   for that field away.
- * - Fails, and changes nothing, when `id` is in a batch, the change names a
- *   structure the map lacks or a new structure waiting in a batch, or the
- *   change would not fit: an unknown group, a provisional id the map already
- *   has, or a footprint on top of another.
+ * structure it proposed. The rules are those of `proposeInto`, and a
+ * structure change fails, and changes nothing, when it names a group the map
+ * lacks, a provisional id the map already has, or a footprint on top of
+ * another.
  */
 export const proposeStructure = ({
   proposals,
@@ -298,46 +180,8 @@ export const proposeStructure = ({
   readonly id: ChangeId;
   readonly change: StructureChange;
   readonly world: StructureWorld;
-}): Result.Result<Proposals, string> => {
-  const open = openOf(proposals);
-
-  const refusal = Option.orElse(idRefusal(proposals, id, change), () =>
-    targetRefusal(proposals, id, change)
-  );
-
-  if (Option.isSome(refusal)) {
-    return Result.fail(refusal.value);
-  }
-
-  // A change to a structure that is only proposed edits that proposal.
-  const proposed =
-    change.action === "add" ? Option.none() : editedAdd(open, change);
-
-  if (Option.isSome(proposed)) {
-    return Result.succeed(bump(proposals, proposed.value));
-  }
-
-  const missing =
-    change.action !== "add" &&
-    !Arr.some(
-      world.data.structures,
-      ({ id: other }) => other === structureOf(change)
-    );
-
-  if (missing) {
-    return Result.fail(
-      `No structure in the map has the id "${structureOf(change)}", so there is nothing to ${change.action}.`
-    );
-  }
-
-  const unfit = worldRefusal(world, change);
-
-  if (Option.isSome(unfit)) {
-    return Result.fail(unfit.value);
-  }
-
-  return Result.succeed(setProposal({ proposals, id, change, world }));
-};
+}): Result.Result<Proposals, string> =>
+  proposeInto({ kind: structureKind(world), proposals, id, change });
 
 /** A fresh provisional id for a structure called `name`, such as `build-cache-4f2a`. */
 export const newProvisionalId = (name: string): string =>

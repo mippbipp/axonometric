@@ -19,6 +19,18 @@ export interface SpotlightChoice {
   readonly hovered: SpotlightTarget | null;
   /** The selected packet's hop, or the selected structure. */
   readonly pinned: SpotlightTarget | null;
+  /**
+   * The ends of a hop being drawn: the structure it starts at and, once the
+   * pointer is on one, the structure it would end at. Left out when no hop is
+   * being drawn.
+   */
+  readonly drawing?: DrawingHop | null | undefined;
+}
+
+/** The ends of a hop being drawn on the page. */
+export interface DrawingHop {
+  readonly from: string;
+  readonly over: string | null;
 }
 
 /**
@@ -45,9 +57,10 @@ const spotlightOfHops = (
  * What to draw at full strength, or `null` when nothing fades. It comes from
  * the first of these that applies:
  *
- * 1. The hovered hop or structure.
- * 2. The pinned hop or structure.
- * 3. The hops in `play`.
+ * 1. The ends of a hop being drawn.
+ * 2. The hovered hop or structure.
+ * 3. The pinned hop or structure.
+ * 4. The hops in `play`.
  *
  * A hop's spotlight is the hop and its two structures. A structure's is its
  * hops, in and out, and the structures at their other ends. A play's is its
@@ -61,6 +74,7 @@ export const spotlightOf = ({
   play,
   hovered,
   pinned,
+  drawing = null,
 }: SpotlightChoice & {
   readonly data: Pick<MapData, "hops">;
   /** The structures drawn. */
@@ -104,7 +118,22 @@ export const spotlightOf = ({
     return hops.length === 0 ? null : spotlightOfHops(hops);
   };
 
-  return ofTarget(hovered) ?? ofTarget(pinned) ?? ofPlay();
+  // A hop being drawn has no line yet, so only its two ends are lit. The
+  // pointer is captured by the drag, so hover can't say which one it is over.
+  const ofDrawing = (): Spotlight | null =>
+    drawing === null
+      ? null
+      : {
+          hops: new Set(),
+          structures: new Set(
+            Arr.filter(
+              [drawing.from, drawing.over ?? ""],
+              (id) => id !== "" && revealed.has(id)
+            )
+          ),
+        };
+
+  return ofDrawing() ?? ofTarget(hovered) ?? ofTarget(pinned) ?? ofPlay();
 };
 
 /** What the last chapter's flow picker has chosen to play. */
@@ -169,12 +198,14 @@ export const chapterSpotlightOf = ({
   choice,
   hovered,
   pinned,
+  drawing = null,
 }: {
   readonly data: Pick<MapData, "hops" | "flows">;
   readonly stop: Pick<ChapterStop, "revealed" | "plays">;
   readonly choice: FlowChoice;
   readonly hovered: SpotlightTarget | null;
   readonly pinned: SpotlightTarget | null;
+  readonly drawing?: DrawingHop | null | undefined;
 }): Spotlight | null =>
   spotlightOf({
     data,
@@ -182,4 +213,5 @@ export const chapterSpotlightOf = ({
     play: playedHopsOf({ data, stop, choice }),
     hovered,
     pinned,
+    drawing,
   });

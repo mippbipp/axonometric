@@ -4,29 +4,13 @@ import { dual } from "effect/Function";
 import { objectMessages } from "./fields.ts";
 import { maxRouteReach, Placement } from "./layout.ts";
 import { Shape, Status } from "./map-data.ts";
-
-/**
- * Line breaks JSON leaves bare or a reader might take for one: LF, CR, NEL,
- * LS and PS. Text that reaches the agent's prompt may hold none of them.
- */
-const lineBreak = /[\n\r\u0085\u2028\u2029]/u;
-
-const structureIdFix =
-  "expected the id of a structure: 1 to 200 characters, with no line breaks.";
+import { idText, oneLineText } from "./text-schemas.ts";
 
 /**
  * The id of a structure that data.mjs has, or of one the verdict names with
  * `--as`. data.mjs sets no pattern for ids, so only line breaks are refused.
  */
-export const StructureId = Schema.String.annotate({
-  message: structureIdFix,
-}).check(
-  Schema.isNonEmpty({ message: structureIdFix }),
-  Schema.isMaxLength(200, { message: structureIdFix }),
-  Schema.makeFilter((id: string) => !lineBreak.test(id), {
-    message: structureIdFix,
-  })
-);
+export const StructureId = idText("structure");
 
 export type StructureId = typeof StructureId.Type;
 
@@ -57,30 +41,15 @@ export type ProvisionalId = typeof ProvisionalId.Type;
 /** The most characters a structure's name holds. */
 export const maxStructureNameLength = 80;
 
-const nameFix = `expected a name of 1 to ${maxStructureNameLength} characters on one line, with no space at either end.`;
-
 /** A structure's name: one line, trimmed, not longer than the limit. */
-export const StructureName = Schema.String.annotate({
-  message: nameFix,
-}).check(
-  Schema.isPattern(/^\S(?:[^\r\n\u0085\u2028\u2029]*\S)?$/u, {
-    message: nameFix,
-  }),
-  Schema.makeFilter((name: string) => !lineBreak.test(name), {
-    message: nameFix,
-  }),
-  Schema.isMaxLength(maxStructureNameLength, { message: nameFix })
-);
+export const StructureName = oneLineText({
+  what: "name",
+  max: maxStructureNameLength,
+});
 
-const groupFix = "expected the id of one of the map's groups, on one line.";
+export type StructureName = typeof StructureName.Type;
 
-const GroupRef = Schema.String.annotate({ message: groupFix }).check(
-  Schema.isNonEmpty({ message: groupFix }),
-  Schema.isMaxLength(200, { message: groupFix }),
-  Schema.makeFilter((group: string) => !lineBreak.test(group), {
-    message: groupFix,
-  })
-);
+const GroupRef = idText("group");
 
 /** How far from the origin a proposed structure may sit, as route points do. */
 export const maxProposedReach = maxRouteReach;

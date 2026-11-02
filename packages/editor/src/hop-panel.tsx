@@ -49,12 +49,6 @@ export function HopPanel({ id }: { readonly id: string }) {
       <p className="text-sm">
         {nameOf(from)} → {nameOf(to)}
       </p>
-      {removed ? (
-        <p data-hop-deleting className="border-refused border-l-2 pl-2 text-sm">
-          Proposed for deletion: it stays on the map, crossed out, until the
-          agent has reviewed it.
-        </p>
-      ) : null}
       <p data-hop-route-kind className="text-sm opacity-80">
         {overridden
           ? `This route is set by hand${pending ? " and not yet accepted" : ""}.`
@@ -62,7 +56,7 @@ export function HopPanel({ id }: { readonly id: string }) {
             ? "This hop is set to route itself, and that is not yet accepted."
             : "This route is worked out from the layout."}
       </p>
-      {editing?.canEdit === true ? (
+      {editing?.canEdit === true && !removed ? (
         <p className="text-xs opacity-70">
           Drag a segment of the arrow to move it. It snaps to half units.
         </p>
@@ -78,7 +72,7 @@ export function HopPanel({ id }: { readonly id: string }) {
         </p>
       )}
       <div className="flex flex-wrap gap-1.5">
-        {editing?.canEdit === true && overridden ? (
+        {editing?.canEdit === true && overridden && !removed ? (
           <button
             type="button"
             data-reset-route={id}

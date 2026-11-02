@@ -1,5 +1,7 @@
 import {
   hopLabelOf,
+  marked,
+  removedHopMark,
   maxFlowNameLength,
   newFlowId,
 } from "@axonometric/contracts";
@@ -133,7 +135,16 @@ function NewFlowForm() {
     return null;
   }
 
-  const { hops } = connections.proposed.state.data;
+  // A hop proposed for deletion can't start a flow; the server refuses it too.
+  const removed = marked(connections.proposed, removedHopMark);
+
+  const hops = Arr.filter(
+    connections.proposed.state.data.hops,
+    ({ id: hop }) => !removed.has(hop)
+  );
+
+  // What was ticked, less a hop proposed for deletion since.
+  const listed = Arr.filter(picked, (hop) => !removed.has(hop));
 
   return (
     <form
@@ -145,14 +156,14 @@ function NewFlowForm() {
 
         const made = name.trim();
 
-        if (made === "" || !Arr.isReadonlyArrayNonEmpty(picked)) {
+        if (made === "" || !Arr.isReadonlyArrayNonEmpty(listed)) {
           return;
         }
 
         const change = {
           action: "add" as const,
           flow: { id: newFlowId(made), name: made },
-          hops: picked,
+          hops: listed,
         };
 
         const refusal = connections.refusalOfFlow(change);
@@ -227,7 +238,7 @@ function NewFlowForm() {
         data-new-flow-submit
         className={`${controlClass} self-start`}
         disabled={
-          !connections.canPropose || name.trim() === "" || picked.length === 0
+          !connections.canPropose || name.trim() === "" || listed.length === 0
         }
       >
         Create flow

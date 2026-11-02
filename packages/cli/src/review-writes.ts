@@ -335,9 +335,11 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
         freezeOpen({
           proposals,
           at: now,
-          structures: Arr.map(data.structures, ({ id }) => id),
-          hops: Arr.map(data.hops, ({ id }) => id),
-          flows: Arr.map(data.flows, ({ id }) => id),
+          known: {
+            structure: Arr.map(data.structures, ({ id }) => id),
+            hop: Arr.map(data.hops, ({ id }) => id),
+            flow: Arr.map(data.flows, ({ id }) => id),
+          },
         }),
         (frozen) => ({
           proposals: frozen.proposals,

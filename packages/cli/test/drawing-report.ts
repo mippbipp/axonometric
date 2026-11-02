@@ -107,6 +107,15 @@ export const drawingReport = `(() => {
     polygon: rectPolygon(handle.getBoundingClientRect()),
   }));
 
+  // The line of a hop being drawn, as segments on screen, one per piece.
+  const previews = [...document.querySelectorAll("[data-hop-preview]")].map((line) => ({
+    id: "preview:" + line.dataset.hopPreview,
+    segment: toScreen(line, [
+      { x: line.x1.baseVal.value, y: line.y1.baseVal.value },
+      { x: line.x2.baseVal.value, y: line.y2.baseVal.value },
+    ]),
+  }));
+
   const chips = [...document.querySelectorAll("[data-code-chip]")].map((chip) => ({
     id: "chip:" + chip.closest("[data-structure]").dataset.structure,
     // The chip's rendered box, with its stroke.
@@ -145,7 +154,7 @@ export const drawingReport = `(() => {
     };
   });
 
-  return { text, chips, strikes, hopStrikes, handles, structures, firstLegs };
+  return { text, chips, strikes, hopStrikes, previews, handles, structures, firstLegs };
 })()`;
 
 interface Point {
@@ -169,6 +178,11 @@ export interface DrawingReport {
   }[];
   /** The pieces of the cross through a hop proposed for deletion. */
   readonly hopStrikes: readonly {
+    readonly id: string;
+    readonly segment: readonly { readonly x: number; readonly y: number }[];
+  }[];
+  /** The legs of the line of a hop being drawn. */
+  readonly previews: readonly {
     readonly id: string;
     readonly segment: readonly { readonly x: number; readonly y: number }[];
   }[];

@@ -3,27 +3,13 @@ import { dual } from "effect/Function";
 
 import { objectMessages } from "./fields.ts";
 import { ProvisionalId, StructureId } from "./structure-change.ts";
-
-const lineBreak = /[\n\r\u0085\u2028\u2029]/u;
-
-const refFix = (what: string) =>
-  `expected the id of a ${what}: 1 to 200 characters, with no line breaks.`;
-
-/** An id data.mjs gives a `what`: free text on one line. */
-const refId = (what: string) =>
-  Schema.String.annotate({ message: refFix(what) }).check(
-    Schema.isNonEmpty({ message: refFix(what) }),
-    Schema.isMaxLength(200, { message: refFix(what) }),
-    Schema.makeFilter((id: string) => !lineBreak.test(id), {
-      message: refFix(what),
-    })
-  );
+import { idText, oneLineText } from "./text-schemas.ts";
 
 /** The id of a hop that data.mjs has, or of one the engineer proposed. */
-export const HopRef = refId("hop");
+export const HopRef = idText("hop");
 
 /** The id of a flow that data.mjs has, or of one the engineer proposed. */
-export const FlowRef = refId("flow");
+export const FlowRef = idText("flow");
 
 const eachOnce = (what: string) =>
   Schema.makeFilter(
@@ -44,15 +30,8 @@ export const SomeFlowRefs = Schema.NonEmptyArray(FlowRef)
 /** The most characters a hop's label holds. */
 export const maxHopLabelLength = 80;
 
-const labelFix = `expected a label of 1 to ${maxHopLabelLength} characters on one line, with no space at either end.`;
-
 /** A hop's label: one line, trimmed, not longer than the limit. */
-export const HopLabel = Schema.String.annotate({ message: labelFix }).check(
-  Schema.isPattern(/^\S(?:[^\r\n\u0085\u2028\u2029]*\S)?$/u, {
-    message: labelFix,
-  }),
-  Schema.isMaxLength(maxHopLabelLength, { message: labelFix })
-);
+export const HopLabel = oneLineText({ what: "label", max: maxHopLabelLength });
 
 /** What the engineer sets when drawing a hop. */
 export const NewHop = Schema.Struct({
@@ -113,12 +92,3 @@ export const sameHopSubject: {
   (a: HopChange, b: HopChange): boolean =>
     a.action === b.action && hopOf(a) === hopOf(b)
 );
-
-/**
- * The key a hop's provisional id goes by among the renames of a commit,
- * which also hold structure ids, so a hop and a structure never share one.
- */
-export const hopRenameKey = (id: string): string => `hop:${id}`;
-
-/** The key a flow's provisional id goes by among the renames of a commit. */
-export const flowRenameKey = (id: string): string => `flow:${id}`;

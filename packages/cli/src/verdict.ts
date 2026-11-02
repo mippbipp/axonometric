@@ -110,15 +110,11 @@ const verdict = Effect.fn("verdict")(function* ({
     });
   }
 
-  const known = yield* acceptedIds(home);
-
   const recorded = recordVerdict({
     proposals: loaded.success,
     id: item,
     verdict: decided.success,
-    accepted: known.structures,
-    acceptedHops: known.hops,
-    acceptedFlows: known.flows,
+    accepted: yield* acceptedIds(home),
   });
 
   if (Result.isFailure(recorded)) {

@@ -11,6 +11,7 @@ import {
 } from "@axonometric/contracts";
 import type {
   HistoryEntry,
+  KnownIds,
   MapFile,
   MapProblem,
   Revision,
@@ -201,31 +202,11 @@ export const acceptedIds = Effect.fnUntraced(function* (home: string) {
   const data =
     found === undefined || Option.isNone(found) ? undefined : found.value.data;
 
-  return {
-    structures: new Set(Arr.map(data?.structures ?? [], ({ id }) => id)),
-    hops: new Set(Arr.map(data?.hops ?? [], ({ id }) => id)),
-    flows: new Set(Arr.map(data?.flows ?? [], ({ id }) => id)),
+  const known: KnownIds = {
+    structure: new Set(Arr.map(data?.structures ?? [], ({ id }) => id)),
+    hop: new Set(Arr.map(data?.hops ?? [], ({ id }) => id)),
+    flow: new Set(Arr.map(data?.flows ?? [], ({ id }) => id)),
   };
-});
 
-/**
- * The ids of the structures in the newest revision that reads, for a batch
- * frozen before it recorded `structures`. It is `data.mjs` as the last commit
- * accepted it, which an edit or a rebuild can't change. `layout.json` is not
- * a source: `build` writes a new structure there. With no revision, nothing
- * is known, and the `--as` check against the accepted map is skipped.
- */
-export const acceptedStructureIds = Effect.fnUntraced(function* (home: string) {
-  const saved = yield* revisionsIn(home);
-
-  const newest = saved.at(-1);
-
-  const found =
-    newest === undefined ? undefined : yield* readRevision(home, newest);
-
-  return new Set(
-    found === undefined || Option.isNone(found)
-      ? []
-      : Arr.map(found.value.data.structures, ({ id }) => id)
-  );
+  return known;
 });

@@ -9,6 +9,7 @@ import { useId, useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
+import { DeletionNotice } from "./deletion-notice.tsx";
 import { fieldClass } from "./field-class.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
 import { useProposed } from "./proposed-context.ts";
@@ -43,6 +44,20 @@ export function ChangeStructure({
   }
 
   const deleted = marked(proposing.proposed, removedMark).has(structure.id);
+
+  // The open proposal that deletes it. Once it is in a batch there is none,
+  // and the panel only says the structure waits on the agent.
+  const openDeletion = Option.getOrUndefined(
+    Option.map(
+      Arr.findFirst(
+        proposing.open,
+        ({ change }) =>
+          change.action === "delete" && change.structure === structure.id
+      ),
+      ({ id }) => id
+    )
+  );
+
   const typed = name ?? structure.name;
 
   const choose = ({
@@ -82,10 +97,11 @@ export function ChangeStructure({
         Propose a change
       </h3>
       {deleted ? (
-        <p data-deleting className="border-refused border-l-2 pl-2 text-xs">
-          Proposed for deletion. It stays on the map, crossed out, until the
-          agent has reviewed it.
-        </p>
+        <DeletionNotice
+          open={openDeletion}
+          discard={proposing.discard}
+          canWrite={canPropose}
+        />
       ) : null}
       <form
         className="flex gap-1.5"

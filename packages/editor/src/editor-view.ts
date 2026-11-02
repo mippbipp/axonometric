@@ -1,4 +1,9 @@
-import type { Placement, ScreenRect, View } from "@axonometric/contracts";
+import type {
+  Placement,
+  ScreenPoint,
+  ScreenRect,
+  View,
+} from "@axonometric/contracts";
 import { createContext } from "react";
 
 /** What the page's editing layers need to know about the view they sit in. */
@@ -13,8 +18,21 @@ export interface EditorView {
 export const EditorViewContext = createContext<EditorView | null>(null);
 
 /**
- * The box of every name tag, code chip and hop label drawn, on screen. It
- * changes with the scene, which an edit redraws, so it has a context of its
- * own: the layers that need only the view's placements don't redraw with it.
+ * What the scene drew, for the layers that must keep clear of it: the box of
+ * every name tag, code chip and hop label, the outline of every structure,
+ * and the zoom the text is sized for, which turns a gap of screen pixels
+ * into drawing units. It changes with the scene, which an edit redraws, so it
+ * has a context of its own: the layers that need only the view's placements
+ * don't redraw with it.
  */
-export const EditorTextsContext = createContext<readonly ScreenRect[]>([]);
+export interface SceneFacts {
+  readonly texts: readonly ScreenRect[];
+  readonly outlines: readonly (readonly ScreenPoint[])[];
+  readonly zoom: number;
+}
+
+export const EditorSceneContext = createContext<SceneFacts>({
+  texts: [],
+  outlines: [],
+  zoom: 1,
+});

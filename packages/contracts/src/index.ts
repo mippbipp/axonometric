@@ -134,6 +134,7 @@ export {
   growRect,
   rectPolygon,
   segmentCrosses,
+  segmentsOf,
 } from "./geometry.ts";
 
 export type { Segment } from "./geometry.ts";
@@ -297,7 +298,6 @@ export {
   shiftedRoutes,
   sharedTarget,
   StructureMove,
-  structureRenames,
   StructureTarget,
   structuresOf,
   Target,
@@ -350,7 +350,7 @@ export {
   splitProblems,
 } from "./problems.ts";
 
-export { strikeSegments } from "./strike.ts";
+export { outsideHoles, strikeSegments } from "./strike.ts";
 
 export { dragSegment, routeVertices, segmentGuides } from "./route-drag.ts";
 
@@ -379,8 +379,6 @@ export {
   StructureProposal,
   HopProposal,
   FlowProposal,
-  hopRenames,
-  flowRenames,
   Verdict,
   verdictKinds,
 } from "./proposals.ts";
@@ -392,6 +390,7 @@ export {
   breakageOf,
   checkOpenItems,
   commitBatch,
+  committedRenames,
   commitMessage,
   discardProposal,
   dismissItem,
@@ -479,7 +478,6 @@ export type {
   MapShape,
   Pointer,
   Touches,
-  VerdictContext,
   Waiting,
 } from "./review-kinds.ts";
 
@@ -567,12 +565,10 @@ export {
 } from "./review-report.ts";
 
 export {
-  flowRenameKey,
   HopChange,
   HopLabel,
   HopRef,
   hopOf,
-  hopRenameKey,
   maxHopLabelLength,
   NewHop,
   FlowRef,
@@ -639,3 +635,29 @@ export type { ConnectionWorld } from "./connection-proposals.ts";
 export { changedFlowMark } from "./review-kinds-flow.ts";
 
 export { proposedHopMark, removedHopMark } from "./review-kinds-hop.ts";
+
+export {
+  entities,
+  followed,
+  hasRenames,
+  noKnownIds,
+  noRenames,
+  provisionalOf,
+  renamesOf,
+} from "./provisional-ids.ts";
+
+export type {
+  Entity,
+  KnownIds,
+  Rename,
+  Renames,
+  VerdictContext,
+} from "./provisional-ids.ts";
+
+export { lineBreak, oneLineText } from "./text-schemas.ts";
+
+export { hopActionOf, hopActions } from "./hop-actions.ts";
+
+export { flowActionOf, flowActions, hopsWith } from "./flow-actions.ts";
+
+export { moveItem } from "./reorder.ts";

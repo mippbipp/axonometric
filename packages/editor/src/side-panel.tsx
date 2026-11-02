@@ -336,6 +336,48 @@ function DockedForms() {
   );
 }
 
+/** What the selection is called, so a tab other than Details knows when it changed. */
+const pickedKey = ({
+  selected,
+  selectedHop,
+  spot,
+}: {
+  readonly selected: string | null;
+  readonly selectedHop: string | null;
+  readonly spot: GridPoint | null;
+}): string | null => {
+  if (selected !== null) {
+    return selected;
+  }
+
+  if (selectedHop !== null) {
+    return `hop:${selectedHop}`;
+  }
+
+  return spot === null ? null : `spot:${spot.x},${spot.y}`;
+};
+
+/** How many questions are open across the groups. */
+const openQuestionCount = (
+  groups: readonly { readonly questions: readonly unknown[] }[]
+): number =>
+  Arr.reduce(groups, 0, (sum, group) => sum + group.questions.length);
+
+/** The Pending tab's count, or `undefined` on a page that can't edit. */
+const pendingCountOf = ({
+  editing,
+  past,
+  waiting,
+}: {
+  readonly editing: number | undefined;
+  readonly past: number | undefined;
+  readonly waiting: number;
+}): number | undefined => {
+  const layout = editing ?? past;
+
+  return layout === undefined ? undefined : layout + waiting;
+};
+
 /**
  * The side panel next to the view. Details shows one of the `PanelContent`
  * kinds; Open questions lists every question revealed so far; on a page
@@ -349,11 +391,7 @@ export function SidePanel() {
   const byId = useStructuresById();
   const { open } = useRevealedQuestions();
 
-  const openCount = Arr.reduce(
-    open,
-    0,
-    (sum, group) => sum + group.questions.length
-  );
+  const openCount = openQuestionCount(open);
 
   const idPrefix = useId();
   const editing = useEditing();
@@ -362,13 +400,7 @@ export function SidePanel() {
   const connections = useConnections();
 
   // A tab other than Details stays open until the selection changes.
-  const picked =
-    selected ??
-    (selectedHop === null
-      ? spot === null
-        ? null
-        : `spot:${spot.x},${spot.y}`
-      : `hop:${selectedHop}`);
+  const picked = pickedKey({ selected, selectedHop, spot });
 
   const [otherTab, setOtherTab] = useState<{
     readonly tab: Tab;
@@ -377,10 +409,11 @@ export function SidePanel() {
 
   // While a past revision is open there is no editing, but the tab strip
   // keeps its Pending tab and count, so it doesn't move.
-  const layoutPending = editing?.pending.length ?? history?.pendingCount;
-
-  const pendingCount =
-    layoutPending === undefined ? undefined : layoutPending + waiting;
+  const pendingCount = pendingCountOf({
+    editing: editing?.pending.length,
+    past: history?.pendingCount,
+    waiting,
+  });
 
   const tabs = tabsOf({
     openCount,

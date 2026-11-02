@@ -26,11 +26,11 @@ import { CompareHops, CompareRings } from "./compare-look.tsx";
 import { useConnections } from "./connections-context.ts";
 import { useDraftSpot } from "./draft-spot.ts";
 import { DragOutlines } from "./drop-outline.tsx";
-import { textBoxesOf } from "./edge-handle-spots.ts";
-import { EditorTextsContext, EditorViewContext } from "./editor-view.ts";
+import { stableFactsOf } from "./edge-handle-spots.ts";
+import { EditorSceneContext, EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
 import { GroupEditor } from "./group-editor.tsx";
-import { HopDraftPreview } from "./hop-draft-preview.tsx";
+import { HopDraftLine } from "./hop-draft-line.tsx";
 import { NewStructureSpot } from "./new-structure-spot.tsx";
 import { spotDrawn, useNoteBearers } from "./note-bearers.ts";
 import { NoteMarkers } from "./note-markers.tsx";
@@ -262,7 +262,7 @@ export function MapView({
 
   const key = `${fitKey ?? fitOf({ drawn: [], fitTo: fitIds }).key}${candidateKey}`;
 
-  const texts = textBoxesOf(scene);
+  const facts = stableFactsOf(scene);
 
   const editorView = useMemo(
     () => ({ view, placements: state.layout.structures, revealed }),
@@ -272,7 +272,7 @@ export function MapView({
   return (
     <DrawingContext value={pageDrawing}>
       <EditorViewContext value={editorView}>
-        <EditorTextsContext value={texts}>
+        <EditorSceneContext value={facts}>
           <Viewport
             title={`${drawing.title} of ${state.data.overview.title}`}
             fitAt={fitAt}
@@ -327,22 +327,21 @@ export function MapView({
                 </>
               }
               hopsOverlay={
-                <RouteEditor
-                  view={view}
-                  hops={scene.hops}
-                  placements={state.layout.structures}
-                  onHover={hoverHop}
-                />
+                <>
+                  <HopDraftLine view={view} state={state} revealed={revealed} />
+                  <RouteEditor
+                    view={view}
+                    hops={scene.hops}
+                    placements={state.layout.structures}
+                    onHover={hoverHop}
+                  />
+                </>
               }
               overlay={
                 <>
                   <NoteMarkers scene={scene} />
                   <RemovedMarks structures={scene.structures} view={view} />
-                  <RemovedHopMarks hops={scene.hops} texts={texts} />
-                  <HopDraftPreview
-                    view={view}
-                    placements={state.layout.structures}
-                  />
+                  <RemovedHopMarks hops={scene.hops} />
                   <SpotCursor view={view} />
                 </>
               }
@@ -352,7 +351,7 @@ export function MapView({
             />
             {children}
           </Viewport>
-        </EditorTextsContext>
+        </EditorSceneContext>
       </EditorViewContext>
     </DrawingContext>
   );

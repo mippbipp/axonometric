@@ -1,9 +1,9 @@
+import { moveItem } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { moveItem } from "./reorder.ts";
 
 /** How far a press must move before it drags a row, in pixels. */
 const dragThreshold = 4;

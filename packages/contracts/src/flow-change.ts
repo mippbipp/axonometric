@@ -4,19 +4,13 @@ import { dual } from "effect/Function";
 import { objectMessages } from "./fields.ts";
 import { SomeFlowRefs, SomeHopRefs, FlowRef } from "./hop-change.ts";
 import { ProvisionalId } from "./structure-change.ts";
+import { oneLineText } from "./text-schemas.ts";
 
 /** The most characters a flow's name holds. */
 export const maxFlowNameLength = 80;
 
-const nameFix = `expected a name of 1 to ${maxFlowNameLength} characters on one line, with no space at either end.`;
-
 /** A flow's name: one line, trimmed, not longer than the limit. */
-export const FlowName = Schema.String.annotate({ message: nameFix }).check(
-  Schema.isPattern(/^\S(?:[^\r\n\u0085\u2028\u2029]*\S)?$/u, {
-    message: nameFix,
-  }),
-  Schema.isMaxLength(maxFlowNameLength, { message: nameFix })
-);
+export const FlowName = oneLineText({ what: "name", max: maxFlowNameLength });
 
 /** What the engineer sets when creating a flow. */
 export const NewFlow = Schema.Struct({

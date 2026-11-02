@@ -298,17 +298,17 @@ export function App({
         <SelectionProvider>
           <TooltipProvider>
             <DragPreviewProvider state={state}>
-              <SpotlightProvider>
-                <OverviewPageProvider>
-                  <NoteToolProvider>
-                    <PlacingProvider>
-                      <HopDraftProvider>
+              <HopDraftProvider>
+                <SpotlightProvider>
+                  <OverviewPageProvider>
+                    <NoteToolProvider>
+                      <PlacingProvider>
                         <WalkthroughPage notices={notices} />
-                      </HopDraftProvider>
-                    </PlacingProvider>
-                  </NoteToolProvider>
-                </OverviewPageProvider>
-              </SpotlightProvider>
+                      </PlacingProvider>
+                    </NoteToolProvider>
+                  </OverviewPageProvider>
+                </SpotlightProvider>
+              </HopDraftProvider>
             </DragPreviewProvider>
           </TooltipProvider>
         </SelectionProvider>

@@ -1,6 +1,5 @@
 import { Array as Arr, Match, Option, Record as Rec } from "effect";
 
-import { hopRenameKey } from "./hop-change.ts";
 import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
@@ -18,6 +17,8 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
+import { followed } from "./provisional-ids.ts";
+import type { Rename, Renames, VerdictContext } from "./provisional-ids.ts";
 import { plain } from "./review-kind-defaults.ts";
 import { flowKind } from "./review-kinds-flow.ts";
 import { hopKind } from "./review-kinds-hop.ts";
@@ -52,22 +53,6 @@ export interface Waiting {
   readonly item: BatchItem;
   /** The number of the batch holding the item, or nothing while it is open. */
   readonly batch: number | undefined;
-}
-
-/** What `verdict` knows when it checks a verdict. */
-export interface VerdictContext {
-  /**
-   * The ids of the structures the accepted map had before the agent edited
-   * data.mjs: those in the last revision, or the layout when there is none.
-   * `--as` may not name one of them.
-   */
-  readonly accepted: ReadonlySet<string>;
-  /** As `accepted`, for the hops the accepted map had. */
-  readonly acceptedHops: ReadonlySet<string>;
-  /** As `accepted`, for the flows the accepted map had. */
-  readonly acceptedFlows: ReadonlySet<string>;
-  /** The `--as` ids the batch's other items already have, by item id. */
-  readonly taken: ReadonlyMap<string, string>;
 }
 
 /** What a commit knows when it takes an item. */
@@ -209,15 +194,12 @@ export interface KindSpec<I extends BatchItem> {
    * The structure ids the item makes new when it is taken with `verdict`, as
    * `[provisional, final]` pairs, when the agent used another id.
    */
-  renames(
-    item: I,
-    verdict: Verdict
-  ): readonly (readonly [from: string, to: string])[];
+  renames(item: I, verdict: Verdict): readonly Rename[];
   /**
    * The item with each structure id in `renames` replaced by the id it
    * became, for an item that points at a structure accepted under another id.
    */
-  retargeted(item: I, renames: ReadonlyMap<string, string>): I;
+  retargeted(item: I, renames: Renames): I;
   /** The item as a revision records it when taken: accepted or changed. */
   accepted(item: I, verdict: Verdict): AcceptedItem;
   /** The item as a revision records it when rejected. */
@@ -226,6 +208,12 @@ export interface KindSpec<I extends BatchItem> {
   reopened(item: I, newId: ChangeId, text: string | undefined): I;
   /** The most characters the kind's text holds. */
   readonly textLimit: number;
+  /**
+   * Why `text` can't be the item's text, or nothing: the kind's own schema
+   * for it, as a hop's label or a flow's name allows one line only. An edit
+   * and a reopened item are checked with it before anything is written.
+   */
+  textRefusal?(item: I, text: string): Option.Option<string>;
   /**
    * `proposals` once the open `item` is discarded, for what else has to go
    * with it: a hop drawn on the page leaves the open flows that list it.
@@ -286,9 +274,9 @@ const routeOf = (layout: Layout, hop: string): Facts => {
 
 const retargetLayoutChange = (
   change: LayoutChange,
-  renames: ReadonlyMap<string, string>
+  renames: Renames
 ): LayoutChange => {
-  const id = (from: string) => renames.get(from) ?? from;
+  const id = (from: string) => followed(renames, "structure", from);
 
   return Match.value(change).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -408,18 +396,18 @@ const noteKind: KindSpec<NoteItem> = {
   retargeted: (item, renames) => {
     const { target } = item;
 
-    // A spot has no id to follow. A structure or a hop accepted under another
-    // id is followed; hops are told apart from structures by their key.
+    // A spot has no id to follow. A structure or a hop accepted under
+    // another id is followed.
     if (target.kind === "structure") {
-      const id = renames.get(target.id);
+      const id = followed(renames, "structure", target.id);
 
-      return id === undefined ? item : { ...item, target: { ...target, id } };
+      return id === target.id ? item : { ...item, target: { ...target, id } };
     }
 
     if (target.kind === "hop") {
-      const id = renames.get(hopRenameKey(target.id));
+      const id = followed(renames, "hop", target.id);
 
-      return id === undefined ? item : { ...item, target: { ...target, id } };
+      return id === target.id ? item : { ...item, target: { ...target, id } };
     }
 
     return item;

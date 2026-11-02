@@ -1,8 +1,10 @@
 import { marked, removedHopMark } from "@axonometric/contracts";
-import type { SceneHop, ScreenPoint, ScreenRect } from "@axonometric/contracts";
+import type { SceneHop, ScreenPoint } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
+import { use } from "react";
 
 import { useConnections } from "./connections-context.ts";
+import { EditorSceneContext } from "./editor-view.ts";
 import { strikeOnRoute } from "./hop-strike.ts";
 
 /**
@@ -14,12 +16,10 @@ import { strikeOnRoute } from "./hop-strike.ts";
  */
 export function RemovedHopMarks({
   hops,
-  texts,
 }: {
   readonly hops: readonly SceneHop[];
-  /** The box of every name tag, code chip and hop label drawn. */
-  readonly texts: readonly ScreenRect[];
 }) {
+  const { texts, outlines } = use(EditorSceneContext);
   const proposed = useConnections()?.proposed;
 
   const removes =
@@ -31,7 +31,7 @@ export function RemovedHopMarks({
 
   const struck = Arr.flatMap(hops, ({ hop, points }) =>
     removes.has(hop.id)
-      ? Option.match(strikeOnRoute({ route: points, texts }), {
+      ? Option.match(strikeOnRoute({ route: points, texts, outlines }), {
           onNone: () => [],
           onSome: (strike) => [{ id: hop.id, strike }],
         })

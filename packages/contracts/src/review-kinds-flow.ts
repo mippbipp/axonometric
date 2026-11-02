@@ -1,6 +1,7 @@
-import { Array as Arr, Match, Option } from "effect";
+import { Array as Arr, Option } from "effect";
 
-import { flowOf, maxFlowNameLength } from "./flow-change.ts";
+import { flowActionOf } from "./flow-actions.ts";
+import { FlowName, flowOf, maxFlowNameLength } from "./flow-change.ts";
 import {
   describeFlow,
   factsOfFlow,
@@ -9,11 +10,12 @@ import {
   flowLabel,
   summarizeFlow,
 } from "./flow-effects.ts";
-import { flowRenameKey, hopRenameKey } from "./hop-change.ts";
 import type { BatchItem, Verdict } from "./proposals.ts";
+import { followed, provisionalOf } from "./provisional-ids.ts";
 import { plain } from "./review-kind-defaults.ts";
 import type { KindSpec, Pointer } from "./review-kinds.ts";
 import { decorate } from "./review-quote.ts";
+import { refusalOf } from "./text-schemas.ts";
 
 // The kind for a proposed change to the flows: create one, rename one, set
 // the ordered hops of one, and reorder the flows. It is one entry of the
@@ -28,30 +30,28 @@ export const changedFlowMark = "changed-flows";
 const flowNotice =
   "A flow item changes data.mjs, which only you edit. A new flow comes with a provisional id: add it to data.mjs under that id, or under another and give the verdict changed with --as <id>. A hops item gives the flow's whole list of hops in order; a reorder item lists the flows in their new order in the flows array. The last chapter's flow picker plays a flow's hops in the order the flow lists them.";
 
-const finalIdOf = (item: FlowItem, verdict: Verdict): string =>
-  item.change.action === "add" &&
-  verdict.verdict === "changed" &&
-  verdict.as !== undefined
-    ? verdict.as
-    : flowOf(item.change);
+/** What the flow kind adds under a provisional id, and how it says so. */
+const provisional = provisionalOf<FlowItem>({
+  entity: "flow",
+  noun: "flow",
+  adds: ({ change }) =>
+    change.action === "add" ? Option.some(change.flow.id) : Option.none(),
+});
 
-/** The ids of the hops a change lists, in order. */
-const hopsListed = (change: FlowItem["change"]): readonly string[] =>
-  change.action === "add" || change.action === "hops" ? change.hops : [];
+const finalIdOf = (item: FlowItem, verdict: Verdict): string =>
+  Option.getOrElse(provisional.finalIdOf(item, verdict), () =>
+    flowOf(item.change)
+  );
 
 export const flowKind: KindSpec<FlowItem> = {
   ...plain<FlowItem>(),
   textLimit: maxFlowNameLength,
   listKey: "flows",
-  text: ({ change }) =>
-    Match.value(change).pipe(
-      Match.discriminatorsExhaustive("action")({
-        add: ({ flow }) => Option.some(flow.name),
-        rename: ({ name }) => Option.some(name),
-        hops: () => Option.none(),
-        reorder: () => Option.none(),
-      })
-    ),
+  text: ({ change }) => flowActionOf(change).text(),
+  textRefusal: ({ change }, text) =>
+    Option.isNone(flowActionOf(change).text())
+      ? Option.none()
+      : refusalOf(FlowName, text),
   describe: ({ change }, _nameOf, hopLabelOf) =>
     Option.some(describeFlow(change, { hop: hopLabelOf, flow: (id) => id })),
   // Whether a flow or its hops exist depends on what other proposals add, so
@@ -71,7 +71,10 @@ export const flowKind: KindSpec<FlowItem> = {
   }),
   name: ({ change }) => flowLabel(change),
   targets: ({ change }): readonly Pointer[] =>
-    Arr.map(hopsListed(change), (id): Pointer => ({ kind: "hop", id })),
+    Arr.map(flowActionOf(change).hops(), (id): Pointer => ({
+      kind: "hop",
+      id,
+    })),
   summary: ({ id, change }, _nameOf, hopLabelOf) =>
     summarizeFlow(change, id, { hop: hopLabelOf, flow: (flow) => flow }),
   facts: ({ change }, _layout, data) => factsOfFlow(change, data),
@@ -82,10 +85,7 @@ export const flowKind: KindSpec<FlowItem> = {
   touches: ({ change }) => ({
     structures: [],
     hops: [],
-    marks: {
-      [changedFlowMark]:
-        change.action === "reorder" ? change.flows : [flowOf(change)],
-    },
+    marks: { [changedFlowMark]: flowActionOf(change).flows() },
   }),
   breakage: ({ change }, { hops, data }) =>
     flowBreakage(change, {
@@ -95,47 +95,12 @@ export const flowKind: KindSpec<FlowItem> = {
           ? undefined
           : new Set(Arr.map(data.flows, ({ id }) => id)),
     }),
-  verdictRefusal: (item, verdict, { acceptedFlows, taken }) => {
-    if (verdict.verdict !== "changed" || verdict.as === undefined) {
-      return Option.none();
-    }
-
-    if (item.change.action !== "add") {
-      return Option.some(
-        "--as gives a new flow the id you used for it in data.mjs. This item does not add a flow."
-      );
-    }
-
-    if (acceptedFlows.has(verdict.as)) {
-      return Option.some(
-        `--as ${verdict.as} names a flow the accepted map already has. Pick the id of the new flow you added to data.mjs.`
-      );
-    }
-
-    return Option.map(
-      Arr.findFirst(
-        [...taken.entries()],
-        ([other, id]) => other !== item.id && id === verdict.as
-      ),
-      ([other]) =>
-        `--as ${verdict.as} is already the final id of item ${other} in this batch. Give each new flow its own id.`
-    );
-  },
-  renames: (item, verdict) => {
-    if (verdict.verdict === "rejected" || item.change.action !== "add") {
-      return [];
-    }
-
-    const to = finalIdOf(item, verdict);
-
-    return to === item.change.flow.id
-      ? []
-      : [[flowRenameKey(item.change.flow.id), to]];
-  },
+  verdictRefusal: provisional.verdictRefusal,
+  renames: provisional.renames,
   retargeted: (item, renames) => {
     const { change } = item;
-    const hop = (id: string) => renames.get(hopRenameKey(id)) ?? id;
-    const flow = (id: string) => renames.get(flowRenameKey(id)) ?? id;
+    const hop = (id: string) => followed(renames, "hop", id);
+    const flow = (id: string) => followed(renames, "flow", id);
 
     if (change.action === "add") {
       const hops = Arr.map(change.hops, hop);
@@ -160,14 +125,7 @@ export const flowKind: KindSpec<FlowItem> = {
       return next === change.flow &&
         Arr.every(hops, (id, index) => id === change.hops[index])
         ? item
-        : {
-            ...item,
-            change: {
-              ...change,
-              flow: next,
-              hops,
-            },
-          };
+        : { ...item, change: { ...change, flow: next, hops } };
     }
 
     const flows = Arr.map(change.flows, flow);
@@ -209,23 +167,12 @@ export const flowKind: KindSpec<FlowItem> = {
     change: item.change,
     reason,
   }),
-  reopened: (item, newId, text) => {
-    const { change } = item;
-
-    if (text === undefined) {
-      return { ...item, id: newId };
-    }
-
-    if (change.action === "add") {
-      return {
-        ...item,
-        id: newId,
-        change: { ...change, flow: { ...change.flow, name: text } },
-      };
-    }
-
-    return change.action === "rename"
-      ? { ...item, id: newId, change: { ...change, name: text } }
-      : { ...item, id: newId };
-  },
+  reopened: (item, newId, text) => ({
+    ...item,
+    id: newId,
+    change:
+      text === undefined
+        ? item.change
+        : flowActionOf(item.change).withText(text),
+  }),
 };

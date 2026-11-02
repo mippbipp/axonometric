@@ -1,18 +1,11 @@
-import { groundProjections } from "@axonometric/contracts";
-import type {
-  GridPoint,
-  Placement,
-  ScreenPoint,
-  View,
-} from "@axonometric/contracts";
+import type { GridPoint, Placement, View } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { use, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useConnections } from "./connections-context.ts";
-import { edgeSpots, handleRadius } from "./edge-handle-spots.ts";
-import type { Side } from "./edge-handle-spots.ts";
-import { EditorTextsContext, EditorViewContext } from "./editor-view.ts";
+import { edgeSpots, handleRadius, handleStroke } from "./edge-handle-spots.ts";
+import { EditorSceneContext, EditorViewContext } from "./editor-view.ts";
 import { groundAt } from "./ground-at.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
 import { useSelection } from "./selection-context.ts";
@@ -24,17 +17,9 @@ const dragThreshold = 4;
 /** One press on an edge handle, until it is released. */
 interface Press {
   readonly from: string;
-  readonly side: Side;
+  readonly start: ReturnType<typeof edgeSpots>[number];
   readonly pointer: number;
-  readonly start: { readonly x: number; readonly y: number };
-}
-
-/** A press past the threshold: where the line ends, and the structure under it. */
-interface Stretch {
-  readonly from: string;
-  readonly side: Side;
-  readonly end: GridPoint;
-  readonly over: string | null;
+  readonly origin: { readonly x: number; readonly y: number };
 }
 
 /** The structure whose footprint holds `point`, other than `except`. */
@@ -69,23 +54,25 @@ const structureAt = ({
 /**
  * Small handles on the edges of the selected or hovered structure, while the
  * page can propose, in both views. Dragging one to another structure draws a
- * dashed line and, on the drop, opens the label field in the side panel.
- * Dropping on empty space, or pressing Escape, draws nothing.
+ * line (see `HopDraftLine`) and, on the drop, opens the label field in the
+ * side panel. Dropping on empty space, or pressing Escape, draws nothing.
  *
- * This is an editing layer: it sits clear of name tags, code chips and hop
- * labels, and a file's drawing never includes it.
+ * This is an editing layer: it keeps each handle at least `gapAt(zoom)` clear
+ * of every name tag, code chip and hop label, and a file's drawing never
+ * includes it. The handles are drawn over the structures, since they sit on
+ * their edges; the line the drag draws is under the text.
  */
 export function EdgeHandles({ view }: { readonly view: View }) {
   const editor = use(EditorViewContext);
-  const texts = use(EditorTextsContext);
+  const { texts, zoom } = use(EditorSceneContext);
   const connections = useConnections();
   const drafting = useHopDraft();
   const { selected } = useSelection();
   const hovered = use(HoveredIdContext);
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
-  const [stretch, setStretch] = useState<Stretch | undefined>();
   const live = connections?.canPropose === true && drafting !== null;
+  const stretch = drafting?.stretch ?? null;
 
   // A pinned structure keeps its handles; else the one under the pointer.
   // Moving from a structure onto one of its handles leaves the structure a
@@ -95,9 +82,9 @@ export function EdgeHandles({ view }: { readonly view: View }) {
   const owner = stretch?.from ?? selected ?? hovered ?? near;
 
   const cancelOnEscape = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === "Escape" && stretch !== undefined) {
+    if (event.key === "Escape" && stretch !== null) {
       press.current = undefined;
-      setStretch(undefined);
+      drafting?.stretchTo(null);
     }
   });
 
@@ -114,15 +101,14 @@ export function EdgeHandles({ view }: { readonly view: View }) {
   }
 
   const placement = editor.placements[owner];
-  const projection = groundProjections[view];
 
-  const pointer = (event: ReactPointerEvent) => {
-    const element = root.current;
+  const spots =
+    placement === undefined ? [] : edgeSpots({ placement, view, texts, zoom });
 
-    return element === null ? undefined : groundAt({ element, event, view });
-  };
-
-  const onDown = (event: ReactPointerEvent, side: Side) => {
+  const onDown = (
+    event: ReactPointerEvent,
+    start: ReturnType<typeof edgeSpots>[number]
+  ) => {
     const element = root.current;
 
     if (event.button !== 0 || event.shiftKey || element === null) {
@@ -133,34 +119,39 @@ export function EdgeHandles({ view }: { readonly view: View }) {
     element.setPointerCapture(event.pointerId);
     press.current = {
       from: owner,
-      side,
+      start,
       pointer: event.pointerId,
-      start: { x: event.clientX, y: event.clientY },
+      origin: { x: event.clientX, y: event.clientY },
     };
   };
 
   const onMove = (event: ReactPointerEvent) => {
     const held = press.current;
+    const element = root.current;
 
-    if (held === undefined || event.pointerId !== held.pointer) {
+    if (
+      held === undefined ||
+      element === null ||
+      event.pointerId !== held.pointer
+    ) {
       return;
     }
 
     const travel = Math.hypot(
-      event.clientX - held.start.x,
-      event.clientY - held.start.y
+      event.clientX - held.origin.x,
+      event.clientY - held.origin.y
     );
 
-    if (stretch === undefined && travel < dragThreshold) {
+    if (stretch === null && travel < dragThreshold) {
       return;
     }
 
-    const end = pointer(event);
+    const end = groundAt({ element, event, view });
 
     if (end !== undefined) {
-      setStretch({
+      drafting.stretchTo({
         from: held.from,
-        side: held.side,
+        start: held.start.at,
         end,
         over: structureAt({
           placements: editor.placements,
@@ -182,20 +173,12 @@ export function EdgeHandles({ view }: { readonly view: View }) {
     press.current = undefined;
 
     // The drop is on a structure or it is nothing: empty space cancels.
-    if (drop && stretch !== undefined && stretch.over !== null) {
+    if (drop && stretch !== null && stretch.over !== null) {
       drafting.begin(stretch.from, stretch.over);
     }
 
-    setStretch(undefined);
+    drafting.stretchTo(null);
   };
-
-  const spots =
-    placement === undefined ? [] : edgeSpots({ placement, view, texts });
-
-  const origin: ScreenPoint | undefined =
-    stretch === undefined
-      ? undefined
-      : spots.find(({ side }) => side === stretch.side)?.at;
 
   return (
     <g
@@ -212,19 +195,19 @@ export function EdgeHandles({ view }: { readonly view: View }) {
         finish(event, false);
       }}
     >
-      {Arr.map(spots, ({ side, at }) => (
+      {Arr.map(spots, (spot) => (
         <circle
-          key={side}
-          data-edge-handle={side}
+          key={spot.side}
+          data-edge-handle={spot.side}
           data-edge-owner={owner}
           aria-hidden="true"
-          cx={at.sx}
-          cy={at.sy}
+          cx={spot.at.sx}
+          cy={spot.at.sy}
           r={handleRadius}
           className="fill-paper stroke-pending cursor-crosshair"
-          strokeWidth={1.5}
+          strokeWidth={handleStroke}
           onPointerDown={(event) => {
-            onDown(event, side);
+            onDown(event, spot);
           }}
           onPointerEnter={() => {
             setNear(owner);
@@ -234,23 +217,6 @@ export function EdgeHandles({ view }: { readonly view: View }) {
           }}
         />
       ))}
-      {stretch === undefined || origin === undefined ? null : (
-        <line
-          data-hop-preview={stretch.from}
-          data-over={stretch.over ?? ""}
-          x1={origin.sx}
-          y1={origin.sy}
-          x2={projection.toScreen(stretch.end).sx}
-          y2={projection.toScreen(stretch.end).sy}
-          className={
-            stretch.over === null
-              ? "stroke-pending pointer-events-none opacity-60"
-              : "stroke-pending pointer-events-none"
-          }
-          strokeWidth={2.2}
-          strokeDasharray="6 3"
-        />
-      )}
     </g>
   );
 }

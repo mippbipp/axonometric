@@ -1,9 +1,10 @@
 import { flowsOfHop } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
-import { Array as Arr, Option, Result } from "effect";
-import { useState } from "react";
+import { Array as Arr } from "effect";
 
 import { useConnections } from "./connections-context.ts";
+import { useHopProposals } from "./hop-proposals.ts";
+import { useHopFlowToggle } from "./use-hop-flow-toggle.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /**
@@ -14,8 +15,9 @@ import { useWalkthrough } from "./walkthrough-context.ts";
  */
 export function HopFlows({ hop }: { readonly hop: string }) {
   const connections = useConnections();
+  const proposals = useHopProposals(hop);
   const { state } = useWalkthrough();
-  const [failure, setFailure] = useState<string | undefined>();
+  const { toggle, failure } = useHopFlowToggle(hop);
 
   if (connections === null) {
     return null;
@@ -28,42 +30,10 @@ export function HopFlows({ hop }: { readonly hop: string }) {
   }
 
   const inFlows = flowsOfHop(connections.proposed.state.data, hop);
-  const canEdit = connections.canPropose;
+
+  // A hop proposed for deletion keeps the flows it has until the agent decides.
+  const canEdit = connections.canPropose && proposals?.deleted !== true;
   const accepted = new Set(Arr.map(state.data.flows, ({ id }) => id));
-
-  const toggle = (flowId: string, wanted: boolean) => {
-    const flow = Arr.findFirst(flows, ({ id }) => id === flowId);
-
-    if (Option.isNone(flow)) {
-      return;
-    }
-
-    const without = Arr.filter(flow.value.hops, (other) => other !== hop);
-    const next = wanted ? [...without, hop] : without;
-
-    // A flow with no hop left is deleted by the agent, not by a proposal.
-    if (!Arr.isReadonlyArrayNonEmpty(next)) {
-      setFailure(
-        `"${flow.value.name}" would be left with no hops. A flow lists at least one.`
-      );
-
-      return;
-    }
-
-    const change = { action: "hops" as const, flow: flowId, hops: next };
-    const refusal = connections.refusalOfFlow(change);
-
-    if (refusal !== undefined) {
-      setFailure(refusal);
-
-      return;
-    }
-
-    setFailure(undefined);
-    connections.proposeFlow(change, (outcome) => {
-      setFailure(Option.getOrUndefined(Result.getFailure(outcome)));
-    });
-  };
 
   return (
     <fieldset data-hop-flows={hop} className="flex flex-col gap-1">

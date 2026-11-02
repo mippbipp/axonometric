@@ -9,13 +9,17 @@ import {
   commitBatch,
   freezeOpen,
   hopLabelOf,
-  hopRenameKey,
+  followed,
   marked,
+  committedRenames,
+  editProposal,
   proposedHopMark,
+  reopenItem,
   proposedMap,
   proposeFlow,
   proposeHop,
   recordVerdict,
+  renamesOf,
   removedHopMark,
   specOf,
   summaryLine,
@@ -115,6 +119,25 @@ const withFlows = (
 ): Proposals => ({
   ...empty,
   flows: Arr.map(flows, ([id, change]) => ({ id, change })),
+});
+
+/** Why a check refused, as text; fails the test when it did not refuse. */
+const refusalText = (result: Result.Result<unknown, string>): string => {
+  assert.isTrue(Result.isFailure(result), "expected a refusal");
+
+  return Result.match(result, {
+    onSuccess: () => "",
+    onFailure: (why) => why,
+  });
+};
+
+/** `proposals` with every batch committed. */
+const committedAll = (proposals: Proposals): Proposals => ({
+  ...proposals,
+  batches: Arr.map(proposals.batches ?? [], (batch) => ({
+    ...batch,
+    committed: { revision: 2, at },
+  })),
 });
 
 const unwrap = <A>(result: Result.Result<A, string>): A => {
@@ -751,7 +774,7 @@ describe("a verdict of changed with --as, for a hop and a flow", () => {
     freezeOpen({
       proposals: withHops(["p1", addHop]),
       at,
-      hops: ["h-ab", "h-bc", "h-ca"],
+      known: { hop: ["h-ab", "h-bc", "h-ca"] },
     })
   ).proposals;
 
@@ -812,7 +835,7 @@ describe("a verdict of changed with --as, for a hop and a flow", () => {
           },
         ]),
         at,
-        flows: ["f1", "f2"],
+        known: { flow: ["f1", "f2"] },
       })
     ).proposals;
 
@@ -964,8 +987,15 @@ describe("committing a drawn hop", () => {
     assert.deepStrictEqual(flowHopsOf(flowEntry), ["h-ab", "skip"]);
   });
 
-  it("keys a hop's rename apart from a structure's", () => {
-    assert.strictEqual(hopRenameKey("new-hop"), "hop:new-hop");
+  it("keeps a hop's rename apart from a structure's of the same id", () => {
+    const renames = renamesOf([
+      { entity: "hop", from: "x", to: "hop-x" },
+      { entity: "structure", from: "x", to: "structure-x" },
+    ]);
+
+    assert.strictEqual(followed(renames, "hop", "x"), "hop-x");
+    assert.strictEqual(followed(renames, "structure", "x"), "structure-x");
+    assert.strictEqual(followed(renames, "flow", "x"), "x");
   });
 });
 
@@ -1058,5 +1088,196 @@ describe("warnings about open hop and flow proposals", () => {
     });
 
     assert.deepStrictEqual(problems, []);
+  });
+});
+
+describe("a new flow that lists a hop being deleted", () => {
+  const deleting: Proposals = withHops([
+    "d1",
+    { action: "delete", hop: "h-bc" },
+  ]);
+
+  const into = (change: FlowChange, proposals: Proposals = deleting) =>
+    refusalText(
+      proposeFlow({ proposals, id: "p1", change, world: { ...world, data } })
+    );
+
+  it("is refused, naming the hop and the way out", () => {
+    const said = into({
+      action: "add",
+      flow: { id: "new-flow", name: "Trail" },
+      hops: ["h-ab", "h-bc"],
+    });
+
+    assert.include(said, '"h-bc"');
+    assert.include(said, "proposed for deletion");
+    assert.include(said, "withdraw the deletion");
+  });
+
+  it("is refused when the deletion waits in a batch", () => {
+    const frozen = unwrap(freezeOpen({ proposals: deleting, at })).proposals;
+
+    const said = into(
+      {
+        action: "add",
+        flow: { id: "new-flow", name: "Trail" },
+        hops: ["h-bc"],
+      },
+      frozen
+    );
+
+    assert.include(said, "proposed for deletion");
+  });
+
+  it("is refused for a hops change too", () => {
+    const said = into({ action: "hops", flow: "f1", hops: ["h-ab", "h-bc"] });
+
+    assert.include(said, "proposed for deletion");
+  });
+
+  it("is allowed once the deletion is withdrawn", () => {
+    const made = proposeFlow({
+      proposals: empty,
+      id: "p1",
+      change: {
+        action: "add",
+        flow: { id: "new-flow", name: "Trail" },
+        hops: ["h-bc"],
+      },
+      world,
+    });
+
+    assert.isTrue(Result.isSuccess(made));
+  });
+});
+
+describe("a hop label or flow name edited or reopened", () => {
+  const frozenRelabel = unwrap(
+    freezeOpen({
+      proposals: withHops([
+        "h1",
+        { action: "relabel", hop: "h-ab", label: "reads" },
+      ]),
+      at,
+    })
+  ).proposals;
+
+  const rejected = (proposals: Proposals): Proposals =>
+    unwrap(
+      recordVerdict({
+        proposals,
+        id: "h1",
+        verdict: { verdict: "rejected", reason: "No." },
+      })
+    );
+
+  it("refuses an edit with a line break, in every kind of break", () => {
+    const open = withHops([
+      "h1",
+      { action: "relabel", hop: "h-ab", label: "reads" },
+    ]);
+
+    const results = Arr.map(
+      ["a\nb", "a\rb", "a\u0085b", "a\u2028b", "\u0085", " a"],
+      (text) =>
+        Result.isFailure(editProposal({ proposals: open, id: "h1", text }))
+    );
+
+    assert.deepStrictEqual(results, [true, true, true, true, true, true]);
+  });
+
+  it("names the schema's words when it refuses an edit", () => {
+    const open = withFlows([
+      "f1",
+      { action: "rename", flow: "f1", name: "Primary" },
+    ]);
+
+    const said = refusalText(
+      editProposal({ proposals: open, id: "f1", text: "two\nlines" })
+    );
+
+    assert.include(said, "on one line");
+  });
+
+  it("takes an edit that fits", () => {
+    const open = withHops([
+      "h1",
+      { action: "relabel", hop: "h-ab", label: "reads" },
+    ]);
+
+    const edited = unwrap(
+      editProposal({ proposals: open, id: "h1", text: "loads" })
+    );
+
+    assert.deepStrictEqual(edited.hops?.[0]?.change, {
+      action: "relabel",
+      hop: "h-ab",
+      label: "loads",
+    });
+  });
+
+  it("refuses a reopened item whose text has a line break", () => {
+    const committed = committedAll(rejected(frozenRelabel));
+
+    const reopened = reopenItem({
+      proposals: committed,
+      id: "h1",
+      newId: "h2",
+      layout,
+      known: new Set(["a", "b", "c"]),
+      hops: data.hops,
+      text: "a\nb",
+      data,
+    });
+
+    assert.isTrue(Result.isFailure(reopened));
+    assert.include(refusalText(reopened), "on one line");
+  });
+});
+
+describe("a hop or flow accepted under another id, as the page follows it", () => {
+  it("reads the renames of committed batches, by entity", () => {
+    const both: Proposals = {
+      ...withHops(["h1", addHop]),
+      flows: [
+        {
+          id: "f1p",
+          change: {
+            action: "add",
+            flow: { id: "new-flow", name: "Round" },
+            hops: ["h-ab"],
+          },
+        },
+      ],
+    };
+
+    const frozen = unwrap(freezeOpen({ proposals: both, at })).proposals;
+
+    const judged = Arr.reduce(
+      [
+        ["h1", "skip"],
+        ["f1p", "round"],
+      ] as const,
+      frozen,
+      (so, [id, as]) =>
+        unwrap(
+          recordVerdict({
+            proposals: so,
+            id,
+            verdict: { verdict: "changed", reason: "Named it.", as },
+          })
+        )
+    );
+
+    const open = committedRenames(judged);
+
+    // Nothing is committed yet.
+    assert.strictEqual(open.hop.size, 0);
+
+    const renames = committedRenames(committedAll(judged));
+
+    assert.strictEqual(renames.hop.get("new-hop"), "skip");
+    assert.strictEqual(renames.flow.get("new-flow"), "round");
+    assert.strictEqual(renames.structure.size, 0);
   });
 });

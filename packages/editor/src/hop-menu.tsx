@@ -1,4 +1,5 @@
 import { flowsOfHop, marked, removedHopMark } from "@axonometric/contracts";
+import type { Hop } from "@axonometric/contracts";
 import {
   Menu,
   MenuCheckboxItem,
@@ -15,6 +16,7 @@ import { useEffect, useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { useHopFlowToggle } from "./use-hop-flow-toggle.ts";
 
 /** Where the menu opened: a point on the page, and the hop under it. */
 interface Opened {
@@ -36,7 +38,6 @@ export function HopMenu() {
   const connections = useConnections();
   const { selectHop } = useSelection();
   const [opened, setOpened] = useState<Opened | null>(null);
-  const [failure, setFailure] = useState<string | undefined>();
 
   const canPropose = connections?.canPropose === true;
 
@@ -58,7 +59,6 @@ export function HopMenu() {
 
       event.preventDefault();
       selectHop(id);
-      setFailure(undefined);
       setOpened({ id, x: event.clientX, y: event.clientY });
     };
 
@@ -81,6 +81,36 @@ export function HopMenu() {
     return null;
   }
 
+  return (
+    <OpenedHopMenu
+      key={opened.id}
+      hop={hop}
+      opened={opened}
+      onClose={() => {
+        setOpened(null);
+      }}
+    />
+  );
+}
+
+/** The menu for one hop, open at the point it was asked for. */
+function OpenedHopMenu({
+  hop,
+  opened,
+  onClose,
+}: {
+  readonly hop: Hop;
+  readonly opened: Opened;
+  readonly onClose: () => void;
+}) {
+  const connections = useConnections();
+  const { toggle, failure: flowFailure } = useHopFlowToggle(hop.id);
+  const [failure, setFailure] = useState<string | undefined>();
+
+  if (connections === null) {
+    return null;
+  }
+
   const { flows } = connections.proposed.state.data;
   const inFlows = flowsOfHop(connections.proposed.state.data, hop.id);
   const deleted = marked(connections.proposed, removedHopMark).has(hop.id);
@@ -89,42 +119,12 @@ export function HopMenu() {
     getBoundingClientRect: () => new DOMRect(opened.x, opened.y, 0, 0),
   };
 
-  const toggle = (flowId: string, wanted: boolean) => {
-    const flow = Arr.findFirst(flows, ({ id }) => id === flowId);
-
-    if (Option.isNone(flow)) {
-      return;
-    }
-
-    const without = Arr.filter(flow.value.hops, (other) => other !== hop.id);
-    const next = wanted ? [...without, hop.id] : without;
-
-    if (!Arr.isReadonlyArrayNonEmpty(next)) {
-      setFailure(
-        `"${flow.value.name}" would be left with no hops. A flow lists at least one.`
-      );
-
-      return;
-    }
-
-    const change = { action: "hops" as const, flow: flowId, hops: next };
-    const refusal = connections.refusalOfFlow(change);
-
-    if (refusal !== undefined) {
-      setFailure(refusal);
-
-      return;
-    }
-
-    connections.proposeFlow(change, () => {});
-  };
-
   return (
     <Menu
       open
       onOpenChange={(open) => {
         if (!open) {
-          setOpened(null);
+          onClose();
         }
       }}
     >
@@ -187,13 +187,13 @@ export function HopMenu() {
         >
           Propose deleting
         </MenuItem>
-        {failure === undefined ? null : (
+        {(failure ?? flowFailure) === undefined ? null : (
           <p
             role="alert"
             data-menu-failure
             className="border-refused max-w-56 border-l-2 px-2 py-1"
           >
-            {failure}
+            {failure ?? flowFailure}
           </p>
         )}
       </MenuContent>

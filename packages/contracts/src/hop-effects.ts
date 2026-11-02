@@ -1,6 +1,9 @@
-import { Array as Arr, Match, Option } from "effect";
+import { Array as Arr, Option } from "effect";
 import { dual } from "effect/Function";
 
+import { hopActionOf } from "./hop-actions.ts";
+import type { HopNames } from "./hop-actions.ts";
+import { hopOf } from "./hop-change.ts";
 import type { HopChange } from "./hop-change.ts";
 import { changedProblems } from "./layout-checks.ts";
 import type { Checkable, DraggedProblem } from "./layout-checks.ts";
@@ -8,22 +11,9 @@ import type { Hop, MapData } from "./map-data.ts";
 import { quoteText } from "./review-quote.ts";
 import type { Facts } from "./review-report.ts";
 
-/** The names a hop description uses. */
-export interface HopNames {
-  readonly structure: (id: string) => string;
-  readonly hop: (id: string) => string;
-}
+export { flowsOfHop } from "./hop-actions.ts";
 
-/** The ids of the flows that list hop `hop`, in the order the map lists them. */
-export const flowsOfHop: {
-  (hop: string): (data: Pick<MapData, "flows">) => readonly string[];
-  (data: Pick<MapData, "flows">, hop: string): readonly string[];
-} = dual(2, (data: Pick<MapData, "flows">, hop: string): readonly string[] =>
-  Arr.map(
-    Arr.filter(data.flows, (flow) => flow.hops.includes(hop)),
-    ({ id }) => id
-  )
-);
+export type { HopNames } from "./hop-actions.ts";
 
 /**
  * `data` with `change` applied, as the page shows it before the agent has
@@ -34,67 +24,27 @@ export const hopChangeToData: {
   (change: HopChange): (data: MapData) => MapData;
   (data: MapData, change: HopChange): MapData;
 } = dual(2, (data: MapData, change: HopChange): MapData =>
-  Match.value(change).pipe(
-    Match.discriminatorsExhaustive("action")({
-      add: ({ hop }): MapData =>
-        Arr.some(data.hops, ({ id }) => id === hop.id)
-          ? data
-          : {
-              ...data,
-              hops: [
-                ...data.hops,
-                { id: hop.id, from: hop.from, to: hop.to, label: hop.label },
-              ],
-            },
-      delete: (): MapData => data,
-      relabel: ({ hop, label }): MapData => ({
-        ...data,
-        hops: Arr.map(data.hops, (found) =>
-          found.id === hop ? { ...found, label } : found
-        ),
-      }),
-    })
-  )
+  hopActionOf(change).toData(data)
 );
 
 /** Whether the map already has the value `change` proposes for its hop. */
 export const hopIsCurrent: {
   (change: HopChange): (data: Pick<MapData, "hops">) => boolean;
   (data: Pick<MapData, "hops">, change: HopChange): boolean;
-} = dual(
-  2,
-  (data: Pick<MapData, "hops">, change: HopChange): boolean =>
-    change.action === "relabel" &&
-    Arr.some(
-      data.hops,
-      (found) => found.id === change.hop && found.label === change.label
-    )
+} = dual(2, (data: Pick<MapData, "hops">, change: HopChange): boolean =>
+  hopActionOf(change).isCurrent(data)
 );
 
 /** A word for the kind of change, as `review` lists it. */
 export const hopLabel = (change: HopChange): string =>
-  Match.value(change).pipe(
-    Match.discriminatorsExhaustive("action")({
-      add: () => "add hop",
-      delete: () => "delete hop",
-      relabel: () => "relabel hop",
-    })
-  );
+  hopActionOf(change).label;
 
 /** What the Pending list says about a hop change, in plain words. */
 export const describeHop: {
   (names: HopNames): (change: HopChange) => string;
   (change: HopChange, names: HopNames): string;
 } = dual(2, (change: HopChange, names: HopNames): string =>
-  Match.value(change).pipe(
-    Match.discriminatorsExhaustive("action")({
-      add: ({ hop }) =>
-        `Draw hop “${hop.label}” from ${names.structure(hop.from)} to ${names.structure(hop.to)}`,
-      delete: ({ hop }) => `Delete hop “${names.hop(hop)}”`,
-      relabel: ({ hop, label }) =>
-        `Relabel hop “${names.hop(hop)}” to “${label}”`,
-    })
-  )
+  hopActionOf(change).describe(names)
 );
 
 /** One line for the prompt; everything the engineer typed goes through `quoteText`. */
@@ -102,20 +52,8 @@ export const summarizeHop: {
   (item: string, names: HopNames): (change: HopChange) => string;
   (change: HopChange, item: string, names: HopNames): string;
 } = dual(3, (change: HopChange, item: string, names: HopNames): string =>
-  Match.value(change).pipe(
-    Match.discriminatorsExhaustive("action")({
-      add: ({ hop }) =>
-        `add hop ${item}: ${quoteText(hop.label)} from ${quoteText(names.structure(hop.from))} to ${quoteText(names.structure(hop.to))}, provisional id ${hop.id}`,
-      delete: ({ hop }) => `delete hop ${item}: ${quoteText(names.hop(hop))}`,
-      relabel: ({ hop, label }) =>
-        `relabel hop ${item}: ${quoteText(names.hop(hop))} to ${quoteText(label)}`,
-    })
-  )
+  hopActionOf(change).summary(item, names)
 );
-
-const hopFacts = (
-  fields: Readonly<Record<string, string | boolean | readonly string[]>>
-): Facts => ({ hop: fields });
 
 /** `review`'s before and after for a hop change, given the map as data.mjs has it. */
 export const factsOfHop: {
@@ -133,45 +71,14 @@ export const factsOfHop: {
     change: HopChange,
     data: Pick<MapData, "hops" | "flows"> | undefined
   ): { readonly before: Facts; readonly after: Facts } => {
-    const current = (id: string): Option.Option<Hop> =>
+    const id = hopOf(change);
+
+    const current: Option.Option<Hop> =
       data === undefined
         ? Option.none()
         : Arr.findFirst(data.hops, (hop) => hop.id === id);
 
-    return Match.value(change).pipe(
-      Match.discriminatorsExhaustive("action")({
-        add: ({ hop }) => ({
-          before: null,
-          after: hopFacts({
-            id: hop.id,
-            from: hop.from,
-            to: hop.to,
-            label: hop.label,
-          }),
-        }),
-        delete: ({ hop }) => ({
-          before: Option.match(current(hop), {
-            onNone: () => null,
-            onSome: (found) =>
-              hopFacts({
-                id: found.id,
-                from: found.from,
-                to: found.to,
-                label: found.label,
-                flows: data === undefined ? [] : flowsOfHop(data, found.id),
-              }),
-          }),
-          after: hopFacts({ deleted: true }),
-        }),
-        relabel: ({ hop, label }) => ({
-          before: Option.match(current(hop), {
-            onNone: () => null,
-            onSome: (found) => hopFacts({ label: found.label }),
-          }),
-          after: hopFacts({ label }),
-        }),
-      })
-    );
+    return hopActionOf(change).facts(current, data);
   }
 );
 

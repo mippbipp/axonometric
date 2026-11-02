@@ -210,3 +210,28 @@ describe("the spotlight of a chapter and flow choice", () => {
     assert.strictEqual(start([], false), "chapter");
   });
 });
+
+describe("a hop being drawn", () => {
+  it("lights its start and the structure under the pointer, over the hover and the pin", () => {
+    const lit = spotlight({
+      hovered: hopTarget("ab"),
+      pinned: structureTarget("c"),
+      drawing: { from: "a", over: "d" },
+    });
+
+    assert.deepStrictEqual(lit, { hops: [], structures: ["a", "d"] });
+  });
+
+  it("lights the start alone while the pointer is over empty space", () => {
+    const lit = spotlight({ drawing: { from: "a", over: null } });
+
+    assert.deepStrictEqual(lit, { hops: [], structures: ["a"] });
+  });
+
+  it("changes nothing when no hop is being drawn", () => {
+    assert.deepStrictEqual(
+      spotlight({ pinned: structureTarget("c"), drawing: null }),
+      spotlight({ pinned: structureTarget("c") })
+    );
+  });
+});

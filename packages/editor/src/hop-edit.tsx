@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
+import { DeletionNotice } from "./deletion-notice.tsx";
 import { fieldClass } from "./field-class.ts";
 import { HopFlows } from "./hop-flows.tsx";
 import { useHopProposals } from "./hop-proposals.ts";
@@ -53,6 +54,18 @@ export function HopEdit({
 
   return (
     <section data-hop-edit={id} className="flex flex-col gap-2">
+      {deleted ? (
+        <DeletionNotice
+          open={Option.getOrUndefined(
+            Option.map(
+              proposals?.deletion ?? Option.none(),
+              ({ id: item }) => item
+            )
+          )}
+          discard={connections.discard}
+          canWrite={connections.canPropose}
+        />
+      ) : null}
       <label
         className="flex flex-col gap-1 text-xs"
         htmlFor={`hop-label-${id}`}

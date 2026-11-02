@@ -1,4 +1,4 @@
-import { Array as Arr, Option, Result, Schema, String as Str } from "effect";
+import { Array as Arr, Option, Result, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import {
@@ -10,19 +10,13 @@ import {
   openHopChanges,
   withoutOpenHop,
 } from "./connection-held.ts";
-import {
-  flowOf,
-  FlowChange,
-  sameFlowChange,
-  sameFlowSubject,
-} from "./flow-change.ts";
+import { flowActionOf } from "./flow-actions.ts";
+import { flowOf, sameFlowChange, sameFlowSubject } from "./flow-change.ts";
+import type { FlowChange } from "./flow-change.ts";
 import { flowIsCurrent } from "./flow-effects.ts";
-import {
-  HopChange,
-  hopOf,
-  sameHopChange,
-  sameHopSubject,
-} from "./hop-change.ts";
+import { hopActionOf } from "./hop-actions.ts";
+import { hopOf, sameHopChange, sameHopSubject } from "./hop-change.ts";
+import type { HopChange } from "./hop-change.ts";
 import { hopIsCurrent } from "./hop-effects.ts";
 import type { MapData } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
@@ -34,7 +28,8 @@ import type {
   HopProposal,
   Proposals,
 } from "./proposals.ts";
-import { frozenRefusal, reviewEntries } from "./review.ts";
+import { proposeInto } from "./propose-engine.ts";
+import type { ProposalKind } from "./propose-engine.ts";
 import { provisionalIdOf } from "./structure-change.ts";
 
 /**
@@ -57,55 +52,6 @@ const hopsOpen = (proposals: Proposals): readonly HopProposal[] =>
 const flowsOpen = (proposals: Proposals): readonly FlowProposal[] =>
   proposals.flows ?? [];
 
-/** Whether `id` is already used by an item of any kind, open or in a batch. */
-const idTaken = (proposals: Proposals, id: string) =>
-  Arr.some(reviewEntries(proposals), ({ item }) => item.id === id);
-
-const taken = (id: string) => `The id "${id}" is already in use.`;
-
-/**
- * Why `id` can't be used for a proposal: a frozen item has it, or another
- * proposal does. An open proposal of the same subject may be set again under
- * its own id, which `same` tells.
- */
-const idRefusal = ({
-  proposals,
-  id,
-  same,
-}: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
-  /** Whether the open hop or flow proposal holding `id` is the one being set. */
-  readonly same: (held: HopProposal | FlowProposal) => boolean;
-}): Option.Option<string> => {
-  const held = Arr.findFirst(
-    [...hopsOpen(proposals), ...flowsOpen(proposals)],
-    (proposal) => proposal.id === id
-  );
-
-  if (Option.isSome(held)) {
-    return same(held.value) ? Option.none() : Option.some(taken(id));
-  }
-
-  return Option.orElse(frozenRefusal(proposals, id), () =>
-    idTaken(proposals, id) ? Option.some(taken(id)) : Option.none()
-  );
-};
-
-const isHopChange = Schema.is(HopChange);
-
-const isFlowChange = Schema.is(FlowChange);
-
-const bumpHops = (
-  proposals: Proposals,
-  hops: readonly HopProposal[]
-): Proposals => ({ ...proposals, revision: proposals.revision + 1, hops });
-
-const bumpFlows = (
-  proposals: Proposals,
-  flows: readonly FlowProposal[]
-): Proposals => ({ ...proposals, revision: proposals.revision + 1, flows });
-
 const noHop = (id: string) =>
   `No hop in the map has the id "${id}", so there is nothing to change.`;
 
@@ -118,6 +64,15 @@ const hopIdsIn = (world: ConnectionWorld) =>
 
 const flowIdsIn = (world: ConnectionWorld) =>
   new Set(Arr.map(world.data.flows, ({ id }) => id));
+
+/** The hops proposed for deletion, open or waiting in a batch. */
+const removedHopsIn = (proposals: Proposals): ReadonlySet<string> =>
+  new Set(
+    Arr.flatMap(
+      [...openHopChanges(proposals), ...frozenHopChanges(proposals)],
+      (change) => (change.action === "delete" ? [change.hop] : [])
+    )
+  );
 
 // ─── hops ──────────────────────────────────────────────────────────────────
 
@@ -179,13 +134,7 @@ const editedHopAdd = (
       ? Option.some(
           Arr.map(open, (other) =>
             other.id === proposal.id
-              ? {
-                  ...other,
-                  change: {
-                    ...made,
-                    hop: { ...made.hop, label: change.label },
-                  },
-                }
+              ? { ...other, change: hopActionOf(made).withText(change.label) }
               : other
           )
         )
@@ -193,18 +142,27 @@ const editedHopAdd = (
   });
 };
 
+/** What the propose engine needs to know about hop proposals on `world`. */
+const hopKind = (world: ConnectionWorld): ProposalKind<HopChange> => ({
+  noun: "hop",
+  open: hopsOpen,
+  withOpen: (held, hops) => ({ ...held, revision: held.revision + 1, hops }),
+  targetOf: hopOf,
+  isAdd: (change) => change.action === "add",
+  sameChange: sameHopChange,
+  sameSubject: sameHopSubject,
+  waitingAdds: (held) => addedHopIds(frozenHopChanges(held)),
+  edited: editedHopAdd,
+  refusal: (change) => hopWorldRefusal(world, change),
+  isCurrent: (change) => hopIsCurrent(world.base, change),
+});
+
 /**
  * Sets the open hop proposal `id` to `change`: how the page draws a hop,
- * deletes or relabels one.
- *
- * - The same `id` and `change` sent again succeeds and changes nothing.
- * - A relabel or delete of a hop that is only proposed edits that proposal,
- *   or takes it away; flows that listed the hop lose it.
- * - One open proposal is kept per hop and action. A change that leaves the
- *   label as the map has it takes the proposal away.
- * - Fails, and changes nothing, when `id` is in a batch, the hop is a new
- *   one waiting in a batch, or the change would not fit: a hop the map
- *   lacks, an end it lacks, or the same structure at both ends.
+ * deletes or relabels one. The rules are those of `proposeInto`. A delete of
+ * a hop that is only proposed takes its proposal away, and the open flows
+ * that listed it lose it. A change fails, and changes nothing, when it names
+ * a hop or structure the map lacks, or joins a structure to itself.
  */
 export const proposeHop = ({
   proposals,
@@ -217,103 +175,13 @@ export const proposeHop = ({
   readonly change: HopChange;
   readonly world: ConnectionWorld;
 }): Result.Result<Proposals, string> => {
-  const open = hopsOpen(proposals);
-
-  const refused = idRefusal({
-    proposals,
-    id,
-    same: ({ change: held }) =>
-      isHopChange(held) && sameHopSubject(held, change),
-  });
-
-  if (Option.isSome(refused)) {
-    return Result.fail(refused.value);
-  }
-
-  // The same write sent again, such as after a lost answer.
-  const sent = Arr.findFirst(open, (proposal) => proposal.id === id);
-
-  if (Option.exists(sent, (held) => sameHopChange(held.change, change))) {
-    return Result.succeed(proposals);
-  }
-
-  const target = hopOf(change);
-  const waiting = addedHopIds(frozenHopChanges(proposals));
-
-  if (Arr.some(waiting, (other) => other === target)) {
-    return Result.fail(
-      `"${target}" is a new hop in a batch that is waiting for the agent. Edits go in the next batch, once the agent commits.`
-    );
-  }
-
-  if (
-    change.action === "add" &&
-    Arr.some(
-      open,
-      (other) =>
-        other.id !== id &&
-        other.change.action === "add" &&
-        other.change.hop.id === target
-    )
-  ) {
-    return Result.fail(
-      `Another proposal already adds a hop with the id "${target}".`
-    );
-  }
-
-  const edited =
-    change.action === "add" ? Option.none() : editedHopAdd(open, change);
-
-  if (Option.isSome(edited)) {
-    const next = bumpHops(proposals, edited.value);
-
-    return Result.succeed(
-      change.action === "delete" ? withoutOpenHop(next, target) : next
-    );
-  }
-
-  const unfit = hopWorldRefusal(world, change);
-
-  if (Option.isSome(unfit)) {
-    return Result.fail(unfit.value);
-  }
-
-  const twin = Arr.findFirst(
-    open,
-    (proposal) =>
-      proposal.change.action !== "add" &&
-      sameHopSubject(proposal.change, change)
+  const added = Result.map(
+    proposeInto({ kind: hopKind(world), proposals, id, change }),
+    (next) =>
+      change.action === "delete" ? withoutOpenHop(next, hopOf(change)) : next
   );
 
-  const keptId = Option.match(twin, { onNone: () => id, onSome: (t) => t.id });
-
-  if (change.action !== "add" && hopIsCurrent(world.base, change)) {
-    return Result.succeed(
-      Option.isNone(twin)
-        ? proposals
-        : bumpHops(
-            proposals,
-            Arr.filter(open, (proposal) => proposal.id !== keptId)
-          )
-    );
-  }
-
-  const existing = Arr.findFirst(open, (proposal) => proposal.id === keptId);
-
-  if (Option.isSome(existing) && sameHopChange(existing.value.change, change)) {
-    return Result.succeed(proposals);
-  }
-
-  return Result.succeed(
-    bumpHops(
-      proposals,
-      Option.isSome(existing)
-        ? Arr.map(open, (proposal) =>
-            proposal.id === keptId ? { id: keptId, change } : proposal
-          )
-        : [...open, { id: keptId, change }]
-    )
-  );
+  return added;
 };
 
 /** A fresh provisional id for a hop called `label`, such as `reads-config-4f2a`. */
@@ -325,37 +193,46 @@ export const newHopId = (label: string): string =>
 /** Why `change` can't be proposed against `world`, or nothing. */
 const flowWorldRefusal = (
   world: ConnectionWorld,
+  proposals: Proposals,
   change: FlowChange
 ): Option.Option<string> => {
   const hops = hopIdsIn(world);
   const flows = flowIdsIn(world);
+  const action = flowActionOf(change);
 
-  const unknownHop = (ids: readonly string[]) =>
-    Option.map(
-      Arr.findFirst(ids, (hop) => !hops.has(hop)),
-      noHop
+  const unknownHop = Option.map(
+    Arr.findFirst(action.hops(), (hop) => !hops.has(hop)),
+    noHop
+  );
+
+  const removed = removedHopsIn(proposals);
+
+  // A flow can't list a hop that is being deleted. A flow the proposals
+  // already list it in is the engineer's to fix by withdrawing the deletion.
+  const deleting = Option.map(
+    Arr.findFirst(action.hops(), (hop) => removed.has(hop)),
+    (hop) =>
+      `Hop "${hop}" is proposed for deletion, so a flow can't list it. Leave it out, or withdraw the deletion.`
+  );
+
+  const unknownFlow = Option.map(
+    Arr.findFirst(
+      action.flows(),
+      (flow) => change.action !== "add" && !flows.has(flow)
+    ),
+    noFlow
+  );
+
+  if (change.action === "add" && flows.has(change.flow.id)) {
+    return Option.some(
+      `The map already has a flow with the id "${change.flow.id}".`
     );
-
-  if (change.action === "add") {
-    return flows.has(change.flow.id)
-      ? Option.some(
-          `The map already has a flow with the id "${change.flow.id}".`
-        )
-      : unknownHop(change.hops);
   }
 
-  if (change.action === "reorder") {
-    return Option.map(
-      Arr.findFirst(change.flows, (flow) => !flows.has(flow)),
-      noFlow
-    );
-  }
-
-  return flows.has(change.flow)
-    ? change.action === "hops"
-      ? unknownHop(change.hops)
-      : Option.none()
-    : Option.some(noFlow(change.flow));
+  return Option.orElse(
+    Option.orElse(unknownFlow, () => unknownHop),
+    () => deleting
+  );
 };
 
 /** An open flow add changed by a rename or a new list of hops. */
@@ -381,7 +258,7 @@ const editedFlowAdd = (
 
     const next: FlowChange =
       change.action === "rename"
-        ? { ...made, flow: { ...made.flow, name: change.name } }
+        ? flowActionOf(made).withText(change.name)
         : { ...made, hops: change.hops };
 
     return Option.some(
@@ -392,18 +269,29 @@ const editedFlowAdd = (
   });
 };
 
+/** What the propose engine needs to know about flow proposals on `world`. */
+const flowKind = (
+  world: ConnectionWorld,
+  proposals: Proposals
+): ProposalKind<FlowChange> => ({
+  noun: "flow",
+  open: flowsOpen,
+  withOpen: (held, flows) => ({ ...held, revision: held.revision + 1, flows }),
+  targetOf: flowOf,
+  isAdd: (change) => change.action === "add",
+  sameChange: sameFlowChange,
+  sameSubject: sameFlowSubject,
+  waitingAdds: (held) => addedFlowIds(frozenFlowChanges(held)),
+  edited: editedFlowAdd,
+  refusal: (change) => flowWorldRefusal(world, proposals, change),
+  isCurrent: (change) => flowIsCurrent(world.base, change),
+});
+
 /**
  * Sets the open flow proposal `id` to `change`: how the page creates a flow,
- * renames one, sets its ordered hops or reorders the flows.
- *
- * - The same `id` and `change` sent again succeeds and changes nothing.
- * - A rename or new hops of a flow that is only proposed edits that
- *   proposal.
- * - One open proposal is kept per flow and action, and one reorder. A change
- *   that leaves the map as it is takes the proposal away.
- * - Fails, and changes nothing, when `id` is in a batch, the flow is a new
- *   one waiting in a batch, or the change would not fit: a flow or hop the
- *   map lacks.
+ * renames one, sets its ordered hops or reorders the flows. The rules are
+ * those of `proposeInto`. A change fails, and changes nothing, when it names
+ * a flow or hop the map lacks, or lists a hop that is proposed for deletion.
  */
 export const proposeFlow = ({
   proposals,
@@ -415,103 +303,8 @@ export const proposeFlow = ({
   readonly id: ChangeId;
   readonly change: FlowChange;
   readonly world: ConnectionWorld;
-}): Result.Result<Proposals, string> => {
-  const open = flowsOpen(proposals);
-
-  const refused = idRefusal({
-    proposals,
-    id,
-    same: ({ change: held }) =>
-      isFlowChange(held) && sameFlowSubject(held, change),
-  });
-
-  if (Option.isSome(refused)) {
-    return Result.fail(refused.value);
-  }
-
-  // The same write sent again, such as after a lost answer.
-  const sent = Arr.findFirst(open, (proposal) => proposal.id === id);
-
-  if (Option.exists(sent, (held) => sameFlowChange(held.change, change))) {
-    return Result.succeed(proposals);
-  }
-
-  const target = flowOf(change);
-  const waiting = addedFlowIds(frozenFlowChanges(proposals));
-
-  if (target !== "" && Arr.some(waiting, (other) => other === target)) {
-    return Result.fail(
-      `"${target}" is a new flow in a batch that is waiting for the agent. Edits go in the next batch, once the agent commits.`
-    );
-  }
-
-  if (
-    change.action === "add" &&
-    Arr.some(
-      open,
-      (other) =>
-        other.id !== id &&
-        other.change.action === "add" &&
-        other.change.flow.id === target
-    )
-  ) {
-    return Result.fail(
-      `Another proposal already adds a flow with the id "${target}".`
-    );
-  }
-
-  const edited = editedFlowAdd(open, change);
-
-  if (Option.isSome(edited)) {
-    return Result.succeed(bumpFlows(proposals, edited.value));
-  }
-
-  const unfit = flowWorldRefusal(world, change);
-
-  if (Option.isSome(unfit)) {
-    return Result.fail(unfit.value);
-  }
-
-  const twin = Arr.findFirst(
-    open,
-    (proposal) =>
-      proposal.change.action !== "add" &&
-      sameFlowSubject(proposal.change, change)
-  );
-
-  const keptId = Option.match(twin, { onNone: () => id, onSome: (t) => t.id });
-
-  if (change.action !== "add" && flowIsCurrent(world.base, change)) {
-    return Result.succeed(
-      Option.isNone(twin)
-        ? proposals
-        : bumpFlows(
-            proposals,
-            Arr.filter(open, (proposal) => proposal.id !== keptId)
-          )
-    );
-  }
-
-  const existing = Arr.findFirst(open, (proposal) => proposal.id === keptId);
-
-  if (
-    Option.isSome(existing) &&
-    sameFlowChange(existing.value.change, change)
-  ) {
-    return Result.succeed(proposals);
-  }
-
-  return Result.succeed(
-    bumpFlows(
-      proposals,
-      Option.isSome(existing)
-        ? Arr.map(open, (proposal) =>
-            proposal.id === keptId ? { id: keptId, change } : proposal
-          )
-        : [...open, { id: keptId, change }]
-    )
-  );
-};
+}): Result.Result<Proposals, string> =>
+  proposeInto({ kind: flowKind(world, proposals), proposals, id, change });
 
 /** A fresh provisional id for a flow called `name`, such as `checkout-4f2a`. */
 export const newFlowId = (name: string): string =>
