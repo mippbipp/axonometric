@@ -5,7 +5,6 @@ import {
   palette,
   routeRevealed,
   sceneOf,
-  spotlightOf,
   whiteBackground,
 } from "@axonometric/contracts";
 import type { MapState, Spotlight, View } from "@axonometric/contracts";
@@ -37,10 +36,11 @@ export interface SvgRequest {
    */
   readonly theme: "light" | "dark";
   /**
-   * What to draw at full strength, or `null` to fade nothing. Leave it out
-   * for the chapter's own: the hops it plays.
+   * What to draw at full strength, or `null` to fade nothing. The page
+   * passes the spotlight it shows; the `export` command passes the chapter's
+   * or the picked flow's, from `chapterSpotlightOf`.
    */
-  readonly spotlight?: Spotlight | null;
+  readonly spotlight: Spotlight | null;
 }
 
 /** An SVG file's text and its size in pixels. */
@@ -125,18 +125,6 @@ export const svgFileOf = ({
     zoom: exportZoom,
   });
 
-  // Without hover or a pin, the spotlight is the chapter's play.
-  const shown =
-    spotlight === undefined
-      ? spotlightOf({
-          data,
-          revealed: stop.revealed,
-          play: stop.plays,
-          hovered: null,
-          pinned: null,
-        })
-      : spotlight;
-
   const extent = extentOf({ scene, view });
   const x = extent.left - margin;
   const y = extent.top - margin;
@@ -183,7 +171,7 @@ export const svgFileOf = ({
           scene={scene}
           hatch={`${prefix}pattern-1`}
           newlyRevealed={new Set(stop.newlyRevealed)}
-          spotlight={shown}
+          spotlight={spotlight}
         />
       </svg>
     </DrawingContext>

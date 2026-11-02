@@ -25,7 +25,6 @@ export function FileFrame({
       data-shape={shape}
       data-status={status}
       data-new={isNew}
-      data-faded={faded}
       {...frameAttributes({ look, faded })}
     >
       <title>{name}</title>

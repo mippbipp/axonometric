@@ -18,7 +18,7 @@ import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
 import { useDrawing } from "./drawing-context.ts";
-import { fadedOpacityOf, fadingOf } from "./fading.ts";
+import { fadeAttributes, fadingOf } from "./fading.ts";
 import { viewDrawings } from "./views.tsx";
 import { Zones } from "./zones.tsx";
 
@@ -35,13 +35,15 @@ function NameTag({
 }) {
   const { paint } = useDrawing();
   const { tag } = placed;
+  // The border and text fade like a hop's line. The fill stays opaque, so
+  // the tag still masks the lines behind it and its text stays legible.
+  const fade = fadeAttributes({ faded, strength: fadedOpacity.line });
 
   return (
     <g
       data-name-tag={placed.structure.id}
-      data-faded={faded}
+      data-faded={fade["data-faded"]}
       pointerEvents="none"
-      opacity={fadedOpacityOf({ faded, strength: fadedOpacity.structure })}
     >
       <rect
         x={tag.left}
@@ -50,6 +52,7 @@ function NameTag({
         height={tag.bottom - tag.top}
         fill={paint.paper}
         stroke={paint.ink}
+        strokeOpacity={fade.opacity}
         strokeWidth={0.9}
       />
       <text
@@ -59,6 +62,7 @@ function NameTag({
         fontSize={textSizes.tag.font * grow}
         fill={paint.ink}
         stroke="none"
+        opacity={fade.opacity}
       >
         {nameTagText(placed.structure)}
       </text>
@@ -146,9 +150,8 @@ function HopArrow({
       data-hop={hop.id}
       id={idOf("hop", hop.id) ?? undefined}
       data-route={toPoints(points)}
-      data-faded={faded}
       stroke={paint.ink}
-      opacity={fadedOpacityOf({ faded, strength: fadedOpacity.line })}
+      {...fadeAttributes({ faded, strength: fadedOpacity.line })}
       onPointerEnter={() => {
         onHover?.(hop.id);
       }}
@@ -199,7 +202,7 @@ function HiddenHop({
     <g
       data-hidden-hop={routed.hop.id}
       stroke={paint.ink}
-      opacity={fadedOpacityOf({ faded, strength: fadedOpacity.line })}
+      {...fadeAttributes({ faded, strength: fadedOpacity.line })}
     >
       {Arr.map(routed.hidden, (stretch) => (
         <Arrow
@@ -238,7 +241,6 @@ function HopLabel({
     <text
       data-hop-label={hop.id}
       data-hop-label-fits={label !== undefined}
-      data-faded={faded}
       x={(at.left + at.right) / 2}
       y={at.bottom - textSizes.label.baseline * grow}
       textAnchor="middle"
@@ -247,7 +249,7 @@ function HopLabel({
       stroke={paint.paper}
       strokeWidth={3}
       paintOrder="stroke"
-      opacity={fadedOpacityOf({ faded, strength: fadedOpacity.line })}
+      {...fadeAttributes({ faded, strength: fadedOpacity.line })}
     >
       {hop.label}
     </text>

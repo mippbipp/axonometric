@@ -76,6 +76,13 @@ const waitForNothingFaded = (page: Page) =>
     )
   );
 
+const styleOf = (page: Page, selector: string, property: string) =>
+  Effect.promise(() =>
+    page.evaluate<string>(
+      `getComputedStyle(document.querySelector(${literal(selector)})).${property}`
+    )
+  );
+
 /** The hop is inside the spotlight, at full strength. */
 const assertInside = Effect.fnUntraced(function* (page: Page, hopId: string) {
   assert.strictEqual(yield* fadedOf(page, hop(hopId)), "false", hopId);
@@ -159,7 +166,25 @@ describe("the spotlight of a chapter", () => {
             yield* assertStructureInside(page, "pr");
             yield* assertStructureOutside(page, "main");
 
-            // The name tag follows its structure, and the hop's label its hop.
+            // The name tag follows its structure. Its border and text fade to
+            // the hop strength, and its fill stays opaque so it still masks
+            // the lines behind it.
+            const tag = '[data-name-tag="main"]';
+
+            assert.strictEqual(
+              yield* opacityOf(page, `${tag} text`, faded.line),
+              faded.line
+            );
+            assert.strictEqual(
+              yield* styleOf(page, `${tag} rect`, "strokeOpacity"),
+              faded.line
+            );
+            assert.strictEqual(
+              yield* styleOf(page, `${tag} rect`, "fillOpacity"),
+              "1"
+            );
+            assert.strictEqual(yield* styleOf(page, tag, "opacity"), "1");
+
             assert.strictEqual(
               yield* fadedOf(page, '[data-name-tag="main"]'),
               "true"
@@ -310,6 +335,67 @@ describe("the spotlight of a hovered item", () => {
   );
 });
 
+describe("the spotlight of a focused structure", () => {
+  it.live("follows keyboard focus as it follows the pointer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* pipelinePage;
+
+        yield* openChapter(page, "c-all");
+        // A key press makes the next focus a keyboard one.
+        yield* Effect.promise(() => page.keyboard.press("Shift"));
+        yield* Effect.promise(() => page.locator(structure("updater")).focus());
+        yield* assertInside(page, "h-main-updater");
+        yield* assertOutside(page, "h-pr-build");
+        yield* assertStructureInside(page, "main");
+
+        yield* Effect.promise(() => page.locator(structure("updater")).blur());
+        yield* waitForNothingFaded(page);
+      })
+    )
+  );
+});
+
+describe("a faded structure", () => {
+  it.live(
+    "multiplies the fade into the see-through looks of a drag and a ghost",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* pipelinePage;
+
+          yield* openChapter(page, "c-pr");
+          yield* assertStructureOutside(page, "main");
+
+          const mark = (name: string, value: string) =>
+            Effect.promise(() =>
+              page.evaluate(
+                `document.querySelector(${literal(structure("main"))}).setAttribute(${literal(name)}, ${literal(value)})`
+              )
+            );
+
+          yield* mark("data-drag-shifted", "");
+          assert.strictEqual(
+            yield* opacityOf(page, structure("main"), "0.275"),
+            "0.275"
+          );
+
+          yield* Effect.promise(() =>
+            page.evaluate(
+              `document.querySelector(${literal(structure("main"))}).removeAttribute("data-drag-shifted")`
+            )
+          );
+          yield* mark("data-compare", "removed");
+          assert.strictEqual(
+            yield* opacityOf(page, structure("main"), "0.225"),
+            "0.225"
+          );
+        })
+      ),
+    60_000
+  );
+});
+
 describe("the spotlight of a pinned item", () => {
   it.live(
     "holds the selected structure, its hops and their other ends, until cleared",
@@ -439,7 +525,7 @@ describe("faded parts", () => {
             )
           );
 
-        assert.strictEqual(yield* duration(), "0.12s");
+        assert.strictEqual(yield* duration(), "0.12s, 0.12s");
 
         yield* Effect.promise(() =>
           page.emulateMedia({ reducedMotion: "reduce" })

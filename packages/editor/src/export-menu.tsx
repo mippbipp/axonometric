@@ -13,7 +13,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, Ref } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { useSpotlight } from "./spotlight.ts";
+import { useSpotlightActions } from "./spotlight-context.ts";
 import { download, ExportFailed, pngOf } from "./svg-export.ts";
 import { shownTheme } from "./theme-state.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -77,9 +77,7 @@ function MenuItem({
  */
 export function ExportMenu({ view }: { readonly view: View }) {
   const { state, index } = useWalkthrough();
-  // The spotlight as it is when the menu opens: the pointer is on the
-  // button, so the pinned item or the chapter's play decides it.
-  const spotlight = useSpotlight();
+  const spotlightNow = useSpotlightActions().current;
   const [open, setOpen] = useState(false);
   const [onWhite, setOnWhite] = useState(false);
   const [problem, setProblem] = useState("");
@@ -134,7 +132,7 @@ export function ExportMenu({ view }: { readonly view: View }) {
           chapter: index,
           background: onWhite ? "white" : "paper",
           theme: shownTheme(),
-          spotlight,
+          spotlight: spotlightNow(),
         }),
       catch: () => ExportFailed.make({ reason: "The map couldn't be drawn." }),
     });

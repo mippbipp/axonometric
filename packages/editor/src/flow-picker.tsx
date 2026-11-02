@@ -1,8 +1,8 @@
+import type { FlowChoice } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
 import { flowChoiceKey } from "./chapters.ts";
-import type { FlowChoice } from "./chapters.ts";
 import { controlClass } from "./control-class.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 

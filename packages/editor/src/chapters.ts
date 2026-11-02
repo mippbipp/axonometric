@@ -1,11 +1,10 @@
-import type { ChapterStop, Hop, MapState } from "@axonometric/contracts";
-import { Array as Arr, Option } from "effect";
-
-/** What the last chapter's flow picker has chosen to play. */
-export type FlowChoice =
-  | { readonly kind: "chapter" }
-  | { readonly kind: "flow"; readonly id: string }
-  | { readonly kind: "all" };
+import type {
+  ChapterStop,
+  FlowChoice,
+  Hop,
+  MapState,
+} from "@axonometric/contracts";
+import { Array as Arr } from "effect";
 
 /**
  * The hops one packet carries, in order, on a loop. A chapter's own hops make
@@ -24,19 +23,6 @@ export interface ChapterOfMap {
   readonly state: MapState;
   readonly stop: ChapterStop;
 }
-
-/**
- * What a chapter plays before anyone uses the flow picker: its own hops, or
- * every flow when it's the last chapter and plays none.
- */
-export const defaultFlowChoice = ({
-  state,
-  stop,
-  isLast,
-}: ChapterOfMap & { readonly isLast: boolean }): FlowChoice =>
-  isLast && stop.plays.length === 0 && state.data.flows.length > 0
-    ? { kind: "all" }
-    : { kind: "chapter" };
 
 /**
  * A string that names a flow choice, equal for equal choices. Playback
@@ -94,30 +80,4 @@ export const chapterPlayOf = ({
     key: `${stop.id}|${flowChoiceKey(choice)}`,
     runs: Arr.flatMap(lists, (list) => run(list.id, list.name, list.hops)),
   };
-};
-
-/**
- * The hops a flow choice highlights, for the spotlight: the chapter's hops,
- * one flow's, or `"all"` for every flow, which highlights nothing in
- * particular.
- */
-export const playedHopsOf = ({
-  state,
-  stop,
-  choice,
-}: ChapterOfMap & {
-  readonly choice: FlowChoice;
-}): readonly string[] | "all" => {
-  if (choice.kind === "all") {
-    return "all";
-  }
-
-  if (choice.kind === "chapter") {
-    return stop.plays;
-  }
-
-  return Arr.findFirst(state.data.flows, (flow) => flow.id === choice.id).pipe(
-    Option.map((flow) => flow.hops),
-    Option.getOrElse((): readonly string[] => [])
-  );
 };

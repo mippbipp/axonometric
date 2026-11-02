@@ -131,9 +131,15 @@ export { drawnRoutes } from "./fans.ts";
 
 export { laneGap, laneRoutes, laneWidths } from "./lanes.ts";
 
-export { spotlightOf } from "./spotlight.ts";
+export {
+  chapterSpotlightOf,
+  defaultFlowChoice,
+  playedHopsOf,
+  spotlightOf,
+} from "./spotlight.ts";
 
 export type {
+  FlowChoice,
   Spotlight,
   SpotlightChoice,
   SpotlightTarget,

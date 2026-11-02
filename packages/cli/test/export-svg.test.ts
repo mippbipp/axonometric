@@ -268,7 +268,12 @@ describe("export --format svg", () => {
             });
           }
 
-          assert.include(fromCli, '<g data-faded="true" opacity="0.5">');
+          // A faded name tag fades its border and text, and keeps its fill.
+          assert.match(
+            fromCli,
+            /<g data-faded="true"><rect[^>]* stroke-opacity="0.25"[^>]*\/><text[^>]* opacity="0.25"/u
+          );
+          assert.notInclude(fromCli, '<g data-faded="true" opacity=');
 
           const fromPage = decoder.decode(yield* exportFile(page, "svg"));
 

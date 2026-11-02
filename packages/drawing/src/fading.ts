@@ -19,14 +19,25 @@ export const fadingOf = (spotlight: Spotlight | null | undefined): Fading =>
         structure: (id) => !spotlight.structures.has(id),
       };
 
+/** What marks a part as faded, or as drawn at full strength. */
+export interface FadeAttributes {
+  /** Whether the spotlight fades the part, or `undefined` without one. */
+  readonly "data-faded": boolean | undefined;
+  /** `strength` when faded, else `undefined`, so no attribute is written. */
+  readonly opacity: number | undefined;
+}
+
 /**
- * The `opacity` of a faded part: `strength` when faded, else `undefined`,
- * so a part at full strength carries no attribute.
+ * The attributes of a part the spotlight may fade, at `strength` when it
+ * does. Every faded part of the drawing takes its attributes from here.
  */
-export const fadedOpacityOf = ({
+export const fadeAttributes = ({
   faded,
   strength,
 }: {
   readonly faded: boolean | undefined;
   readonly strength: number;
-}): number | undefined => (faded === true ? strength : undefined);
+}): FadeAttributes => ({
+  "data-faded": faded,
+  opacity: faded === true ? strength : undefined,
+});

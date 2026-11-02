@@ -5,7 +5,8 @@ import type { SVGProps } from "react";
 
 import { useDrawing } from "./drawing-context.ts";
 import type { Paint } from "./drawing-context.ts";
-import { fadedOpacityOf } from "./fading.ts";
+import { fadeAttributes } from "./fading.ts";
+import type { FadeAttributes } from "./fading.ts";
 
 /**
  * How one structure's parts are painted for its status. Live is the plain
@@ -82,8 +83,8 @@ export const frameAttributes = ({
 }: {
   readonly look: Look;
   readonly faded?: boolean | undefined;
-}): SVGProps<SVGGElement> => ({
-  opacity: fadedOpacityOf({ faded, strength: fadedOpacity.structure }),
+}): SVGProps<SVGGElement> & Pick<FadeAttributes, "data-faded"> => ({
+  ...fadeAttributes({ faded, strength: fadedOpacity.structure }),
   stroke: look.paint.ink,
   strokeWidth: 1.2,
   strokeLinejoin: "round",

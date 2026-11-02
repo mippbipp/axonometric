@@ -2,8 +2,16 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Order } from "effect";
 import { vi } from "vitest";
 
-import { spotlightOf } from "../src/index.ts";
-import type { SpotlightChoice, SpotlightTarget } from "../src/index.ts";
+import {
+  chapterSpotlightOf,
+  defaultFlowChoice,
+  spotlightOf,
+} from "../src/index.ts";
+import type {
+  FlowChoice,
+  SpotlightChoice,
+  SpotlightTarget,
+} from "../src/index.ts";
 
 vi.setConfig({ testTimeout: 5000 });
 
@@ -156,5 +164,49 @@ describe("which spotlight wins", () => {
       spotlight({ play: "all", hovered: hopTarget("cd") }),
       { hops: ["cd"], structures: ["c", "d"] }
     );
+  });
+});
+
+describe("the spotlight of a chapter and flow choice", () => {
+  const flows = [
+    { id: "f-one", name: "One", hops: ["ab", "bc"] },
+    { id: "f-two", name: "Two", hops: ["cd"] },
+  ];
+
+  const flowData = { ...data, flows };
+  const chapter = { revealed, plays: ["ab2"] };
+
+  const choose = (choice: FlowChoice) =>
+    chapterSpotlightOf({
+      data: flowData,
+      stop: chapter,
+      choice,
+      hovered: null,
+      pinned: null,
+    });
+
+  it("plays the chapter's hops for the chapter choice", () => {
+    assert.deepStrictEqual(choose({ kind: "chapter" })?.hops, new Set(["ab2"]));
+  });
+
+  it("plays one flow's hops, and fades nothing for all flows", () => {
+    assert.deepStrictEqual(
+      choose({ kind: "flow", id: "f-one" })?.hops,
+      new Set(["ab", "bc"])
+    );
+    assert.isNull(choose({ kind: "all" }));
+  });
+
+  it("fades nothing for a flow that doesn't exist", () => {
+    assert.isNull(choose({ kind: "flow", id: "f-nope" }));
+  });
+
+  const start = (plays: readonly string[], isLast: boolean) =>
+    defaultFlowChoice({ data: flowData, stop: { plays }, isLast }).kind;
+
+  it("starts the last chapter on all flows only when it plays nothing", () => {
+    assert.strictEqual(start([], true), "all");
+    assert.strictEqual(start(["ab"], true), "chapter");
+    assert.strictEqual(start([], false), "chapter");
   });
 });
