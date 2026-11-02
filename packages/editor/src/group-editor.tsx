@@ -1,15 +1,16 @@
-import { groupMembers } from "@axonometric/contracts";
+import { groupMembers, toPoints } from "@axonometric/contracts";
 import type {
   GridPoint,
   Layout,
   MapData,
   Placement,
+  SceneZone,
   StructureMove,
   View,
 } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
 import { shiftDrawing } from "./drag-shift.ts";
@@ -69,13 +70,14 @@ export function GroupEditor({
   view,
   data,
   layout,
-  children,
+  zones,
 }: {
   readonly view: View;
   readonly data: Pick<MapData, "structures">;
   /** The layout as the page shows it now. */
   readonly layout: Layout;
-  readonly children: ReactNode;
+  /** The zones the view draws, whose titles are the handles. */
+  readonly zones: readonly SceneZone[];
 }) {
   const editing = useEditing();
   const preview = useDragPreview();
@@ -288,7 +290,26 @@ export function GroupEditor({
         end(event, false);
       }}
     >
-      {children}
+      {live
+        ? Arr.flatMap(zones, ({ zone, title }) =>
+            title === undefined
+              ? []
+              : [
+                  <polygon
+                    key={zone.group.id}
+                    data-zone-title-hit={zone.group.id}
+                    points={toPoints(title)}
+                    fill="transparent"
+                    stroke="none"
+                    className="cursor-move"
+                  >
+                    <title>
+                      Drag to move every structure in {zone.group.title}
+                    </title>
+                  </polygon>,
+                ]
+          )
+        : null}
       {drag === undefined
         ? null
         : Arr.map(drag.members, ([id, at]) => (

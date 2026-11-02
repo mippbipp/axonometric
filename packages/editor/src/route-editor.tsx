@@ -13,10 +13,10 @@ import type {
 } from "@axonometric/contracts";
 import { Array as Arr, Duration, Effect, Option } from "effect";
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
-import { useEditing } from "./editing-context.ts";
+import { pendingHops, useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
@@ -154,7 +154,6 @@ export function RouteEditor({
   hops,
   placements,
   onHover,
-  children,
 }: {
   readonly view: View;
   readonly hops: readonly SceneHop[];
@@ -162,9 +161,9 @@ export function RouteEditor({
   readonly placements: Readonly<Partial<Record<string, Placement>>>;
   /** Called with the hop's id while the pointer is on it, else null. */
   readonly onHover: (hop: string | null) => void;
-  readonly children: ReactNode;
 }) {
   const editing = useEditing();
+  const rerouted = pendingHops(editing);
   const { selectedHop, selectHop } = useSelection();
   const preview = useDragPreview();
   const root = useRef<SVGGElement>(null);
@@ -396,7 +395,21 @@ export function RouteEditor({
           strokeWidth={7}
         />
       ) : null}
-      {children}
+      {Arr.map(
+        Arr.filter(hops, ({ hop }) => rerouted.has(hop.id)),
+        (routed) => (
+          <polyline
+            key={routed.hop.id}
+            data-hop-pending={routed.hop.id}
+            aria-hidden="true"
+            points={toPoints(routed.points)}
+            fill="none"
+            strokeLinejoin="round"
+            className="stroke-pending pointer-events-none"
+            strokeWidth={2}
+          />
+        )
+      )}
       {live
         ? Arr.map(hops, (routed) => (
             <Segments

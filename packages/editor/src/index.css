@@ -3,12 +3,15 @@
 /* The map's palette: dark ink on khaki paper, taken from inkboard/system-atlas,
    the MIT project axonometric grew out of. Each colour is
    light-dark(light, dark). The page follows the system's colour scheme
-   unless <html data-theme> picks one. */
+   unless <html data-theme> picks one. The values are those of `palette` in
+   @axonometric/contracts, which exported files are drawn from, and a test
+   keeps the two equal. */
 :root {
   color-scheme: light dark;
   --paper: light-dark(#e6dfbe, #1e1d15);
   --ink: light-dark(#17170f, #e6dfbe);
   --face: light-dark(#efe9cc, #2a2920);
+  --face-off: light-dark(#eae3c4, #232219);
   --muted: light-dark(#8e8a70, #6e6b54);
   /* Pending changes: a blue that no status uses, and that stays clear of
      the ink the "new" marker is drawn in. */
@@ -28,6 +31,27 @@
   color-scheme: dark;
 }
 
+/* Liberation Mono (SIL OFL 1.1), embedded so the page draws text at the width
+   the scene measured, 0.6 em a character, whatever fonts the OS has, and
+   works offline from disk. The Vite build inlines the files as data URLs. They
+   are subsets; see packages/drawing/src/font-data.ts for what they hold and
+   how they were made. Glyphs outside them, such as CJK, use system fonts. */
+@font-face {
+  font-family: "Liberation Mono";
+  font-weight: 400;
+  font-display: block;
+  src: url("../../drawing/assets/fonts/LiberationMono-Regular-subset.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Liberation Mono";
+  font-weight: 700;
+  font-display: block;
+  src: url("../../drawing/assets/fonts/LiberationMono-Bold-subset.woff2")
+    format("woff2");
+}
+
 @theme inline {
   --color-paper: var(--paper);
   --color-ink: var(--ink);
@@ -37,58 +61,27 @@
   --color-multi: var(--multi);
   --color-refused: var(--refused);
   --text-2xs: 10px;
-  /* System fonts only: the page must work offline from disk. */
+  /* The embedded font first, for the drawing and the controls alike. The
+     rest is for glyphs it lacks. The page must work offline from disk. */
   --font-mono:
-    ui-monospace, "SFMono-Regular", "Cascadia Mono", "Liberation Mono", Menlo,
+    "Liberation Mono", ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo,
     Consolas, monospace;
 }
 
-/* How each status is drawn. Live is the plain drawing. Planned is designed but not
-   built: a dashed outline over paper, with no hatching. Off is built but
-   switched off: a faded fill and hatching inside a full-strength outline, with
-   a power mark on top. */
-[data-status="planned"] {
-  stroke-dasharray: 4 3;
-}
-
-[data-status="planned"] [data-face] {
-  fill: var(--paper);
-}
-
-[data-status="planned"] [data-hatch] {
-  display: none;
-}
-
-[data-status="off"] [data-face] {
-  fill: color-mix(in oklab, var(--face), var(--paper) 60%);
-}
-
-[data-status="off"] [data-hatch] {
-  opacity: 0.3;
-}
-
-[data-status="off"] .fill-ink {
-  fill: var(--muted);
-}
+/* How each status is drawn is in the drawing itself, as attributes from the
+   palette (see look.ts in @axonometric/drawing), so an exported file looks
+   the same. The rules below override those attributes where CSS must win. */
 
 /* A structure with a pending change, which hasn't been accepted: outlined in
-   the pending blue, with its faces tinted towards it. The status rules above
-   still dash a planned structure and fade an off one. */
+   the pending blue, with its faces tinted towards it. These rules beat the
+   drawing's attributes. The dashes of a planned structure and the fade of an
+   off one stay, since they come from other attributes. */
 [data-structure][data-pending="true"] {
   stroke: var(--pending);
 }
 
 [data-structure][data-pending="true"] [data-face] {
   fill: color-mix(in oklab, var(--face), var(--pending) 14%);
-}
-
-/* A hop with a pending reroute: its line and arrowhead in the pending blue. */
-[data-hop][data-pending="true"] {
-  stroke: var(--pending);
-}
-
-[data-hop][data-pending="true"] [data-arrowhead] {
-  fill: var(--pending);
 }
 
 /* A structure in the multi-selection: outlined in the multi-selection

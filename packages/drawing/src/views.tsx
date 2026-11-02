@@ -1,4 +1,4 @@
-import { isoHeights, tagDrop } from "@axonometric/contracts";
+import { corners, isoHeights, tagDrop } from "@axonometric/contracts";
 import type {
   SceneStructure,
   SceneZone,
@@ -8,12 +8,11 @@ import type {
 import type { ComponentType } from "react";
 
 import { PlanStructure } from "./plan-shapes.tsx";
-import { corners } from "./projection.ts";
 import { IsoStructure } from "./shapes.tsx";
 import type { StructureDrawingProps } from "./structure-drawing.ts";
 import { IsoPlate, PlanPlate } from "./zones.tsx";
 
-/** Everything the editor draws differently in each view. */
+/** Everything the drawing does differently in each view. */
 export interface ViewDrawing {
   /** What the view is called, as `GLOSSARY.md` names it. */
   readonly title: string;
@@ -22,8 +21,9 @@ export interface ViewDrawing {
   /** Whether bends get the diamond markers system-atlas draws. */
   readonly markBends: boolean;
   /**
-   * Whether a newly revealed structure gets a pulsing ring on the ground.
-   * Plan view tints the box instead, which shows in a still image.
+   * Whether a newly revealed structure gets a pulsing ring on the ground,
+   * which only the live page draws. Plan view tints the box instead, which
+   * shows in a still image, so a file has it too.
    */
   readonly newRing: boolean;
   /** The screen points a structure's drawing reaches, tag included. */
