@@ -1,5 +1,6 @@
 import {
   describeCause,
+  historyEntryOf,
   historyFolder,
   mapError,
   mapWarning,
@@ -8,7 +9,12 @@ import {
   RevisionFile,
   revisionFileName,
 } from "@axonometric/contracts";
-import type { MapFile, MapProblem, Revision } from "@axonometric/contracts";
+import type {
+  HistoryEntry,
+  MapFile,
+  MapProblem,
+  Revision,
+} from "@axonometric/contracts";
 import {
   Array as Arr,
   Effect,
@@ -123,4 +129,57 @@ export const checkHistory = Effect.fnUntraced(function* (
   const found = yield* Effect.forEach(yield* revisionsIn(home), check);
 
   return Arr.flatten(found);
+});
+
+/**
+ * Reads revision `n`, or nothing when its file is missing, doesn't decode or
+ * holds another revision's number. The path is built from the number with
+ * `revisionFileName` alone, so no text from a request reaches the file system.
+ */
+export const readRevision = Effect.fnUntraced(function* (
+  home: string,
+  n: number
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+
+  const text = yield* fs
+    .readFileString(path.join(home, historyFolder, revisionFileName(n)))
+    .pipe(Effect.result);
+
+  if (Result.isFailure(text)) {
+    return Option.none<Revision>();
+  }
+
+  const decoded = decodeRevisionFile(text.success);
+
+  if (Result.isSuccess(decoded) && decoded.success.revision === n) {
+    return Option.some(decoded.success);
+  }
+
+  return Option.none<Revision>();
+});
+
+/**
+ * The History panel's lines, newest first: one for each revision file that
+ * reads. A revision file is never rewritten, so a line in `known` is kept as
+ * it is and its file isn't read again. A file that doesn't read is left out
+ * until it does; `serve` and `check` report it.
+ */
+export const loadHistory = Effect.fnUntraced(function* (
+  home: string,
+  known: readonly HistoryEntry[]
+) {
+  const saved = yield* revisionsIn(home);
+  const kept = new Map(Arr.map(known, (entry) => [entry.revision, entry]));
+
+  const entries = yield* Effect.forEach(saved, (n) => {
+    const entry = kept.get(n);
+
+    return entry === undefined
+      ? Effect.map(readRevision(home, n), Option.map(historyEntryOf))
+      : Effect.succeedSome(entry);
+  });
+
+  return Arr.reverse(Arr.flatMap(entries, Option.toArray));
 });

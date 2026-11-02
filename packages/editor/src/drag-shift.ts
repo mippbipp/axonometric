@@ -3,8 +3,7 @@ import type { GridPoint, HopEnds, View } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
 /**
- * Shifts the drawing of structures being dragged, their name tags and their
- * pending badges, by the ground move `by`, so the boxes follow the pointer
+ * Shifts the drawing of structures being dragged and their name tags, by the ground move `by`, so the boxes follow the pointer
  * without rerouting every hop on each step. Both views project the ground
  * linearly, so one offset moves the whole drawing. The routes follow on
  * drop.
@@ -79,7 +78,7 @@ export const shiftDrawing = ({
       ...Arr.map(ids, (moving) => {
         const id = CSS.escape(moving);
 
-        return `[data-structure="${id}"], [data-name-tag="${id}"], [data-pending-badge="${id}"]`;
+        return `[data-structure="${id}"], [data-name-tag="${id}"]`;
       }),
       ...Arr.map(groups, (group) => `[data-zone="${CSS.escape(group)}"]`),
     ],

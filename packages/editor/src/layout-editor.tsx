@@ -1,4 +1,4 @@
-import { groundProjections } from "@axonometric/contracts";
+import { groundProjections, samePlacement } from "@axonometric/contracts";
 import type {
   GridPoint,
   Placement,
@@ -107,9 +107,6 @@ interface Drag {
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
 }
-
-const samePlacement = (a: Placement, b: Placement) =>
-  a.x === b.x && a.y === b.y && a.w === b.w && a.d === b.d;
 
 /** Where each of `ids` goes when the pressed structure goes from `start` to `next`. */
 const movesOf = (
