@@ -532,11 +532,9 @@ describe("the Pending tab with proposals", () => {
         assert.strictEqual(yield* count(page, "[data-pending-empty]"), 0);
         assert.deepStrictEqual(
           yield* Effect.promise(() =>
-            page
-              .locator("[data-review-item]")
-              .evaluateAll<string[]>(
-                "(items) => items.map((item) => item.dataset.reviewKind)"
-              )
+            page.evaluate<string[]>(
+              "[...document.querySelectorAll('[data-review-item]')].map((item) => item.dataset.reviewKind)"
+            )
           ),
           ["suggestion", "answer"]
         );
@@ -665,11 +663,9 @@ describe("buttons", () => {
       );
 
       const names = yield* Effect.promise(() =>
-        page
-          .locator(`${panel} button[aria-label]`)
-          .evaluateAll<string[]>(
-            "(buttons) => buttons.map((button) => button.ariaLabel)"
-          )
+        page.evaluate<string[]>(
+          "[...document.querySelectorAll('[data-structure-panel] button[aria-label]')].map((button) => button.ariaLabel)"
+        )
       );
 
       for (const name of [

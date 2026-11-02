@@ -628,8 +628,8 @@ describe("the keyboard", () => {
 
         // Focus shows: the ring has an outline.
         const outline = yield* Effect.promise(() =>
-          hopRing.evaluate<string>(
-            "(ring) => getComputedStyle(ring).outlineStyle"
+          page.evaluate<string>(
+            `getComputedStyle(document.querySelector('[data-note-marker="hop:h-save"]')).outlineStyle`
           )
         );
 
@@ -715,9 +715,9 @@ describe("the keyboard", () => {
         yield* openAll(page);
 
         const chapter = () =>
-          page
-            .locator("[data-walkthrough]")
-            .evaluate<string>("(main) => main.dataset.chapter");
+          page.evaluate<string>(
+            "document.querySelector('[data-walkthrough]').dataset.chapter"
+          );
 
         yield* click(page, '[data-control="note-tool"]');
         yield* waitFor(page, "[data-spot-cursor]");
