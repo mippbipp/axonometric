@@ -277,7 +277,7 @@ export function EditToolbar({
           disabled={proposing === null || !proposing.canPropose}
           title="Propose a new structure"
           onClick={() => {
-            placing?.setOpen(placing.open === false);
+            placing?.setOpen(!placing.open);
           }}
         >
           + Structure

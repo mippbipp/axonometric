@@ -21,7 +21,7 @@ export const structureChangeToData: {
   (change: StructureChange): (data: MapData) => MapData;
   (data: MapData, change: StructureChange): MapData;
 } = dual(2, (data: MapData, change: StructureChange): MapData =>
-  actionOf(change).toData(change, data)
+  actionOf(change).toData(data)
 );
 
 /** `layout` with a proposed structure placed where it was dropped. */
@@ -308,11 +308,18 @@ export const defaultSpotFor = ({
  * apply, so a group change from a drop is judged at the structure's new
  * spot, in the zone it lands in. The map `before` is the one without them.
  */
-export const candidateProblems = (
-  before: Checkable,
-  changes: readonly StructureChange[],
-  moved: Readonly<Record<string, Placement>> = {}
-): readonly DraggedProblem[] => {
+export const candidateProblems = ({
+  before,
+  changes,
+  moved = {},
+}: {
+  /** The map as proposed now. */
+  readonly before: Checkable;
+  /** The changes about to be proposed. */
+  readonly changes: readonly StructureChange[];
+  /** Structures a drop has just moved, by id. */
+  readonly moved?: Readonly<Record<string, Placement>>;
+}): readonly DraggedProblem[] => {
   const from: Checkable = {
     data: before.data,
     layout: {
@@ -321,11 +328,13 @@ export const candidateProblems = (
     },
   };
 
-  return changedProblems(
-    Arr.reduce(changes, from, (map, change) => ({
-      data: structureChangeToData(map.data, change),
-      layout: structureChangeToLayout(map.layout, change),
-    })),
-    from
-  );
+  return changedProblems(Arr.reduce(changes, from, applyStructureChange), from);
 };
+
+const applyStructureChange = (
+  map: Checkable,
+  change: StructureChange
+): Checkable => ({
+  data: structureChangeToData(map.data, change),
+  layout: structureChangeToLayout(map.layout, change),
+});

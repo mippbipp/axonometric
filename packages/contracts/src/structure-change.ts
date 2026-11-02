@@ -169,7 +169,14 @@ export const StructureChange = Schema.Union([
 export type StructureChange = typeof StructureChange.Type;
 
 /** Whether two changes are the same change. */
-export const sameStructureChange = Schema.toEquivalence(StructureChange);
+const equivalent = Schema.toEquivalence(StructureChange);
+
+export const sameStructureChange: {
+  (b: StructureChange): (a: StructureChange) => boolean;
+  (a: StructureChange, b: StructureChange): boolean;
+} = dual(2, (a: StructureChange, b: StructureChange): boolean =>
+  equivalent(a, b)
+);
 
 /** The id of the structure a change acts on: the provisional id for an add. */
 export const structureOf = (change: StructureChange): string =>

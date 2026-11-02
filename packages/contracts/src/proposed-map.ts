@@ -1,4 +1,5 @@
 import { Array as Arr, Order, Record as Rec } from "effect";
+import { dual } from "effect/Function";
 
 import type { MapState } from "./map-state.ts";
 import type { Batch, BatchItem, Proposals } from "./proposals.ts";
@@ -55,26 +56,26 @@ const marksOf = (
   const named = Arr.flatMap(touched, ({ marks }) => Rec.toEntries(marks));
   const names = Arr.dedupe(Arr.map(named, ([name]) => name));
 
-  return new Map(
-    Arr.map(names, (name) => [
-      name,
-      new Set(
-        Arr.flatMap(
-          Arr.filter(named, ([other]) => other === name),
-          ([, ids]) => ids
-        )
-      ),
-    ])
-  );
+  const idsOf = (name: string): ReadonlySet<string> => {
+    const held = Arr.filter(named, ([other]) => other === name);
+
+    return new Set(Arr.flatMap(held, ([, ids]) => ids));
+  };
+
+  return new Map(Arr.map(names, (name) => [name, idsOf(name)] as const));
 };
 
 const noIds: ReadonlySet<string> = new Set();
 
 /** The ids that proposals mark under `name`; none when no proposal does. */
-export const marked = (
-  shown: Pick<ProposedMap, "marks">,
-  name: string
-): ReadonlySet<string> => shown.marks.get(name) ?? noIds;
+export const marked: {
+  (name: string): (shown: Pick<ProposedMap, "marks">) => ReadonlySet<string>;
+  (shown: Pick<ProposedMap, "marks">, name: string): ReadonlySet<string>;
+} = dual(
+  2,
+  (shown: Pick<ProposedMap, "marks">, name: string): ReadonlySet<string> =>
+    shown.marks.get(name) ?? noIds
+);
 
 /**
  * The map as proposed: `state`, the accepted map, with the open and frozen

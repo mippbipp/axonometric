@@ -71,6 +71,7 @@ export function SpotPicker({ view }: { readonly view: View }) {
   }, [picking, view, placing]);
 
   const drafted = useDraftSpot();
+
   const shown =
     picking && over !== null ? { ...over, ...newStructureFootprint } : drafted;
 

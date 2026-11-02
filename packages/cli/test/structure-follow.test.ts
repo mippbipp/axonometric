@@ -1,17 +1,19 @@
-import { LayoutFile, Proposals } from "@axonometric/contracts";
+import { LayoutFile, Proposals, ReviewReport } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
   Effect,
   FileSystem,
+  Option,
   Path,
+  pipe,
   Schema,
   String as Str,
 } from "effect";
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
+import { literal, openUrl } from "./browser.ts";
 import { drawingReport, overlap } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
@@ -30,6 +32,10 @@ const decodeProposals = Schema.decodeUnknownEffect(
 );
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
+
+const decodeReview = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(ReviewReport)
+);
 
 const served = Effect.gen(function* () {
   const path = yield* Path.Path;
@@ -119,18 +125,34 @@ const openForm = Effect.fnUntraced(function* (page: Page) {
   yield* waitFor(page, "[data-add-structure]");
 });
 
-/** Each warning in the panel: its words, and whether the change made it. */
+/** One warning in the panel: its words, and whether the change made it. */
+interface Warning {
+  readonly text: string;
+  readonly isNew: boolean;
+}
+
+/** The attribute `name` of `item`, read in the page. */
+const attributeOf = (item: Locator, name: string) =>
+  Effect.promise(() => item.getAttribute(name));
+
+const warningOf = (item: Locator) =>
+  Effect.all({
+    text: Effect.promise(() => item.textContent()),
+    isNew: attributeOf(item, "data-warning-new"),
+  }).pipe(
+    Effect.map(({ text, isNew }): Warning => ({
+      text: text ?? "",
+      isNew: isNew === "true",
+    }))
+  );
+
+/** Each warning in the panel beside the map. */
 const warnings = Effect.fnUntraced(function* (page: Page) {
   const items = yield* Effect.promise(() =>
     page.locator("[data-drag-warning]").all()
   );
 
-  return yield* Effect.forEach(items, (item) =>
-    Effect.promise(async () => ({
-      text: (await item.textContent()) ?? "",
-      isNew: (await item.getAttribute("data-warning-new")) === "true",
-    }))
-  );
+  return yield* Effect.forEach(items, warningOf);
 });
 
 describe("the add form", () => {
@@ -163,7 +185,7 @@ describe("the add form", () => {
         );
         yield* Effect.promise(() =>
           page.waitForFunction(
-            `document.querySelector('[data-add="x"]').value !== ${JSON.stringify(first)}`,
+            `document.querySelector('[data-add="x"]').value !== ${literal(first)}`,
             undefined,
             waitTimeout
           )
@@ -232,6 +254,7 @@ describe("the add form", () => {
         yield* waitFor(page, "[data-drag-warnings]");
 
         const found = yield* warnings(page);
+
         const zones = Arr.filter(found, ({ text }) =>
           Str.includes("zones of groups")(text)
         );
@@ -382,6 +405,7 @@ describe("the open page after verdict changed --as and commit", () => {
         yield* pendingWait(page);
 
         const [proposal] = (yield* readProposals(home)).structures ?? [];
+
         const provisional =
           proposal?.change.action === "add" ? proposal.change.structure.id : "";
 
@@ -413,20 +437,20 @@ describe("the open page after verdict changed --as and commit", () => {
         );
 
         const reviewed = yield* runCli(home, ["review", home, "--json"]);
-        const items = JSON.parse(reviewed.stdout).batch.items as readonly {
-          readonly id: string;
-          readonly kind: string;
-        }[];
+        const batch = yield* decodeReview(reviewed.stdout);
+        const items = batch.batch?.items ?? [];
 
         const add = Arr.findFirst(
           items,
           ({ kind }) => kind === "add structure"
         );
+
         const note = Arr.findFirst(items, ({ kind }) => kind === "note");
 
-        assert.isTrue(add._tag === "Some" && note._tag === "Some");
-
-        for (const [item, args] of [
+        const verdicts: readonly (readonly [
+          Option.Option<{ readonly id: string }>,
+          readonly string[],
+        ])[] = [
           [
             add,
             [
@@ -438,11 +462,13 @@ describe("the open page after verdict changed --as and commit", () => {
             ],
           ],
           [note, ["accepted"]],
-        ] as const) {
+        ];
+
+        for (const [item, args] of verdicts) {
           const verdict = yield* runCli(home, [
             "verdict",
             home,
-            item._tag === "Some" ? item.value.id : "",
+            Option.getOrThrow(item).id,
             ...args,
           ]);
 
@@ -487,16 +513,17 @@ describe("the open page after verdict changed --as and commit", () => {
 
 /** data.mjs with a structure `id` in the loop group, revealed in the first chapter. */
 const addStructureTo = (data: string, id: string): string =>
-  data
-    .replace(
+  pipe(
+    data,
+    Str.replace(
       'reveals: ["engineer", "page"],',
-      `reveals: ["engineer", "page", ${JSON.stringify(id)}],`
-    )
-    .replace(
+      `reveals: ["engineer", "page", "${id}"],`
+    ),
+    Str.replace(
       "  structures: [\n",
       `  structures: [
     structure({
-      id: ${JSON.stringify(id)},
+      id: "${id}",
       code: "BC",
       name: "Build cache",
       shape: "store",
@@ -506,4 +533,5 @@ const addStructureTo = (data: string, id: string): string =>
       howItsBuilt: "A folder.",
     }),
 `
-    );
+    )
+  );

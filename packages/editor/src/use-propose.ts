@@ -10,9 +10,8 @@ import { useProposed } from "./proposed-context.ts";
  * shows what a change would add to `check`'s report in the warnings panel
  * beside the map, the panel a drag uses.
  *
- * `preview` works a change out against the proposed map before it is sent, so
- * a form can show the warnings as its fields change. `send` shows them for
- * the change it sends, and a refusal in the same panel.
+ * `send` shows them for the change it sends, and a refusal in the same panel.
+ * A form that shows them as its fields change uses `useDraftPreview`.
  */
 export const usePropose = () => {
   const proposing = useProposed();
@@ -31,19 +30,6 @@ export const usePropose = () => {
   const problemsOf = (
     changes: readonly StructureChange[]
   ): readonly DraggedProblem[] => proposing?.problemsOf(changes) ?? [];
-
-  const preview = (change: StructureChange | undefined) => {
-    if (change === undefined) {
-      panel?.clear();
-
-      return;
-    }
-
-    panel?.show({
-      refusal: proposing?.refusalOf(change),
-      problems: problemsOf([change]),
-    });
-  };
 
   const send = (change: StructureChange, done?: () => void) => {
     if (proposing === null) {
@@ -82,7 +68,6 @@ export const usePropose = () => {
 
   return {
     send,
-    preview,
     sending,
     failure,
     clear: () => {

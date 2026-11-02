@@ -231,12 +231,12 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       nameOf: (id) => names.get(id) ?? id,
       propose: store.structures.propose,
       refusalOf: store.structures.refusalOf,
-      problemsOf: (changes, moved = {}) =>
-        candidateProblems(
-          { data: shown.data, layout: shown.layout },
+      problemsOf: (changes, moved) =>
+        candidateProblems({
+          before: { data: shown.data, layout: shown.layout },
           changes,
-          moved
-        ),
+          moved,
+        }),
       isOpenAdd: store.structures.isOpenAdd,
       refusalOfPlace: store.structures.refusalOfPlace,
       place: store.structures.place,

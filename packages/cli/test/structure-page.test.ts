@@ -346,6 +346,7 @@ describe("deleting a structure", () => {
           const mark = page.locator('[data-removed-mark="upstream"]');
 
           assert.strictEqual(yield* Effect.promise(() => mark.count()), 1);
+
           // The cross keeps clear of every chip and tag, wherever it is cut.
           const report = yield* Effect.promise(() =>
             page.evaluate<DrawingReport>(drawingReport)

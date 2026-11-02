@@ -196,7 +196,10 @@ export const acceptedStructureIds = Effect.fnUntraced(function* (
   home: string,
   layout: Layout
 ) {
-  const newest = (yield* revisionsIn(home)).at(-1);
+  const saved = yield* revisionsIn(home);
+
+  const newest = saved.at(-1);
+
   const found =
     newest === undefined ? undefined : yield* readRevision(home, newest);
 

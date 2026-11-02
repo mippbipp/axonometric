@@ -40,6 +40,7 @@ export function StructureTarget({
   const isMultiSelected = multiSelection.has(id);
 
   const proposed = useProposed()?.proposed;
+
   const isRemoved =
     proposed !== undefined && marksOf(proposed, removedMark).has(id);
 

@@ -1,11 +1,8 @@
-import {
-  maxStructureNameLength,
-  newProvisionalId,
-} from "@axonometric/contracts";
-import type { StructureChange } from "@axonometric/contracts";
+import { maxStructureNameLength } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
-import { useEffect, useId } from "react";
+import { useId } from "react";
 
+import { addChangeOf, previewId, sentId } from "./add-change.ts";
 import { controlClass } from "./control-class.ts";
 import { useDraftSpot } from "./draft-spot.ts";
 import { fieldClass } from "./field-class.ts";
@@ -14,6 +11,7 @@ import { usePlacing } from "./place-context.ts";
 import { useProposed } from "./proposed-context.ts";
 import { snap } from "./snap.ts";
 import { shapeChoices, statusChoices } from "./structure-actions.ts";
+import { useDraftPreview } from "./use-draft-preview.ts";
 import { usePropose } from "./use-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -32,54 +30,18 @@ export function AddStructureForm() {
   const placing = usePlacing();
   const proposing = useProposed();
   const { state } = useWalkthrough();
-  const { send, preview, sending, failure, clear, canPropose } = usePropose();
+  const { send, sending, failure, clear, canPropose } = usePropose();
   const spot = useDraftSpot();
   const id = useId();
 
-  const name = placing?.draft.name.trim() ?? "";
-
-  const change = (): StructureChange | undefined =>
-    placing === null || spot === null || name === ""
-      ? undefined
-      : {
-          action: "add",
-          structure: {
-            id: newProvisionalId(name),
-            name,
-            shape: placing.draft.shape,
-            group: placing.draft.group,
-            status: placing.draft.status,
-          },
-          at: spot,
-        };
-
-  // The panel shows the warnings for what the form would propose now. The id
-  // only has to be unique, so a fixed one stands in until the form is sent.
-  const draftChange = (): StructureChange | undefined => {
-    const made = change();
-
-    return made?.action === "add"
-      ? { ...made, structure: { ...made.structure, id: "draft-structure" } }
-      : made;
-  };
-
-  const spotKey = `${spot?.x}/${spot?.y}`;
   const draft = placing?.draft;
 
-  useEffect(() => {
-    if (placing?.open === true) {
-      preview(draftChange());
-    }
-    // `preview` and `draftChange` are rebuilt every render; what they read is listed.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    placing?.open,
-    spotKey,
-    draft?.name,
-    draft?.shape,
-    draft?.group,
-    draft?.status,
-  ]);
+  const draftChange =
+    draft === undefined
+      ? undefined
+      : addChangeOf({ draft, spot, id: previewId });
+
+  useDraftPreview(draftChange);
 
   if (placing === null || proposing === null || draft === undefined) {
     return null;
@@ -109,7 +71,10 @@ export function AddStructureForm() {
       onSubmit={(event) => {
         event.preventDefault();
 
-        const made = change();
+        const made =
+          draft === undefined
+            ? undefined
+            : addChangeOf({ draft, spot, id: sentId });
 
         if (made !== undefined && !sending) {
           send(made, close);
@@ -262,7 +227,7 @@ export function AddStructureForm() {
           type="submit"
           data-add="submit"
           className={controlClass}
-          disabled={!canPropose || sending || name === "" || spot === null}
+          disabled={!canPropose || sending || draftChange === undefined}
         >
           {sending ? "Saving…" : "Propose"}
         </button>

@@ -442,11 +442,9 @@ const structureKind: KindSpec<StructureItem> = {
   }),
   name: ({ change }) => actionOf(change).label,
   targets: ({ change }) => [structureOf(change)],
-  summary: ({ id, change }, nameOf) =>
-    actionOf(change).summary(change, id, nameOf),
+  summary: ({ id, change }, nameOf) => actionOf(change).summary(id, nameOf),
   facts: ({ change }, layout, data) =>
     actionOf(change).facts(
-      change,
       Arr.findFirst(data.structures, ({ id }) => id === structureOf(change)),
       layout
     ),
@@ -468,7 +466,6 @@ const structureKind: KindSpec<StructureItem> = {
     }
 
     const { change } = item;
-    const as = verdict.as;
 
     if (change.action !== "add") {
       return Option.some(
@@ -476,19 +473,19 @@ const structureKind: KindSpec<StructureItem> = {
       );
     }
 
-    if (accepted.has(as)) {
+    if (accepted.has(verdict.as)) {
       return Option.some(
-        `--as ${as} names a structure the accepted map already has. Pick the id of the new structure you added to data.mjs.`
+        `--as ${verdict.as} names a structure the accepted map already has. Pick the id of the new structure you added to data.mjs.`
       );
     }
 
     return Option.map(
       Arr.findFirst(
         [...taken.entries()],
-        ([other, id]) => other !== item.id && id === as
+        ([other, id]) => other !== item.id && id === verdict.as
       ),
       ([other]) =>
-        `--as ${as} is already the final id of item ${other} in this batch. Give each new structure its own id.`
+        `--as ${verdict.as} is already the final id of item ${other} in this batch. Give each new structure its own id.`
     );
   },
   renames: (item, verdict) => {

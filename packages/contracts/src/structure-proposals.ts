@@ -116,7 +116,7 @@ const currentValue = (
     ),
     {
       onNone: () => false,
-      onSome: (structure) => actionOf(change).isCurrent(change, structure),
+      onSome: (structure) => actionOf(change).isCurrent(structure),
     }
   );
 
@@ -141,7 +141,7 @@ const editedAdd = (
       return Option.none();
     }
 
-    const next = actionOf(change).onProposed(change, made.structure);
+    const next = actionOf(change).onProposed(made.structure);
 
     return Option.some(
       Option.match(next, {
