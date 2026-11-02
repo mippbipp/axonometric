@@ -17,10 +17,8 @@ export interface Review {
   readonly notes: readonly ReviewEntry[];
   /** Every item with a status: open, frozen in a batch, or reviewed. */
   readonly entries: readonly ReviewEntry[];
-  /** How many notes are open: not in a batch yet. */
-  readonly openNotes: number;
-  /** How many structure proposals are open: not in a batch yet. */
-  readonly openStructures: number;
+  /** How many items of every kind are open: not in a batch yet. */
+  readonly openCount: number;
   /** For an item reopened after a rejection, the rejected item's id. */
   readonly replaces: Readonly<Record<string, string>>;
   readonly ops: ReviewOps;

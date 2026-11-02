@@ -1113,7 +1113,9 @@ const candidate = (...changes: readonly StructureChange[]) =>
   candidateProblems({ data: rowData, layout: rowLayout }, changes);
 
 const zoneWarnings = (found: ReturnType<typeof candidate>) =>
-  Arr.filter(found, ({ problem }) => problem.message.includes("zones of groups"));
+  Arr.filter(found, ({ problem }) =>
+    problem.message.includes("zones of groups")
+  );
 
 describe("what a proposal would add to check's report", () => {
   it("is silent for a structure placed inside its own group's zone", () => {
@@ -1152,10 +1154,9 @@ describe("what a proposal would add to check's report", () => {
       structures: { ...rowLayout.structures, b: { x: 3, y: 0, w: 2, d: 2 } },
     };
 
-    const found = candidateProblems(
-      { data: rowData, layout: crowded },
-      [{ action: "rename", structure: "a", name: "Alpha" }]
-    );
+    const found = candidateProblems({ data: rowData, layout: crowded }, [
+      { action: "rename", structure: "a", name: "Alpha" },
+    ]);
 
     assert.isTrue(Arr.every(found, ({ added }) => !added));
   });
@@ -1172,28 +1173,53 @@ describe("the default spot for a new structure", () => {
 
     assert.deepStrictEqual({ w: spot.w, d: spot.d }, { w: 2, d: 2 });
     assert.isTrue(
-      Arr.every(Rec.values(rowLayout.structures), (other) => !footprintsOverlap(spot, other))
+      Arr.every(
+        Rec.values(rowLayout.structures),
+        (other) => !footprintsOverlap(spot, other)
+      )
     );
     // Beside g2's zone: nearer to b than to a or c.
-    assert.isBelow(Math.abs(spot.x - 8) + Math.abs(spot.y), Math.abs(spot.x - 0) + Math.abs(spot.y));
-    assert.isBelow(Math.abs(spot.x - 8) + Math.abs(spot.y), Math.abs(spot.x - 16) + Math.abs(spot.y));
+    assert.isBelow(
+      Math.abs(spot.x - 8) + Math.abs(spot.y),
+      Math.abs(spot.x - 0) + Math.abs(spot.y)
+    );
+    assert.isBelow(
+      Math.abs(spot.x - 8) + Math.abs(spot.y),
+      Math.abs(spot.x - 16) + Math.abs(spot.y)
+    );
   });
 
   it("changes with the group, and starts a group with no structures clear of the rest", () => {
-    const first = defaultSpotFor({ data: rowData, layout: rowLayout, group: "g1", shape: "box" });
-    const third = defaultSpotFor({ data: rowData, layout: rowLayout, group: "g3", shape: "box" });
+    const first = defaultSpotFor({
+      data: rowData,
+      layout: rowLayout,
+      group: "g1",
+      shape: "box",
+    });
+    const third = defaultSpotFor({
+      data: rowData,
+      layout: rowLayout,
+      group: "g3",
+      shape: "box",
+    });
 
     assert.notDeepEqual(first, third);
 
     const empty = defaultSpotFor({
-      data: { ...rowData, groups: [...rowData.groups, { id: "g4", title: "Four" }] },
+      data: {
+        ...rowData,
+        groups: [...rowData.groups, { id: "g4", title: "Four" }],
+      },
       layout: rowLayout,
       group: "g4",
       shape: "box",
     });
 
     assert.isTrue(
-      Arr.every(Rec.values(rowLayout.structures), (other) => !footprintsOverlap(empty, other))
+      Arr.every(
+        Rec.values(rowLayout.structures),
+        (other) => !footprintsOverlap(empty, other)
+      )
     );
   });
 });

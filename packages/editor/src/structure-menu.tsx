@@ -1,3 +1,4 @@
+import { marked, removedMark } from "@axonometric/contracts";
 import type { Structure } from "@axonometric/contracts";
 import {
   Menu,
@@ -82,7 +83,7 @@ export function StructureMenu() {
     return null;
   }
 
-  const deleted = proposing.proposed.removes.has(structure.id);
+  const deleted = marked(proposing.proposed, removedMark).has(structure.id);
 
   const anchor = {
     getBoundingClientRect: () => new DOMRect(opened.x, opened.y, 0, 0),

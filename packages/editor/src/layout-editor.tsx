@@ -20,6 +20,7 @@ import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { useDropOutlines } from "./outlines-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { snap } from "./snap.ts";
 import { useDrop } from "./use-drop.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -28,8 +29,6 @@ const dragThreshold = 4;
 
 /** The smallest footprint side, in grid units. */
 const minSide = 0.5;
-
-const snap = (value: number) => Math.round(value * 2) / 2;
 
 /** A footprint corner a resize handle sits on, by compass point on the grid. */
 type Corner = "nw" | "ne" | "se" | "sw";

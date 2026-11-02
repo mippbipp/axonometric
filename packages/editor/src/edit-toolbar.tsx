@@ -5,9 +5,9 @@ import { Array as Arr } from "effect";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { AddStructureForm } from "./add-structure.tsx";
 import { controlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
+import { usePlacing } from "./place-context.ts";
 import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 
@@ -213,7 +213,7 @@ export function EditToolbar({
   const { multiSelection } = useSelection();
   const [refusal, setRefusal] = useState<string | undefined>();
   const [hint, setHint] = useState<string | undefined>();
-  const [adding, setAdding] = useState(false);
+  const placing = usePlacing();
 
   if (editing === null || !editing.canEdit) {
     return null;
@@ -273,11 +273,11 @@ export function EditToolbar({
           type="button"
           data-control="add-structure"
           className={controlClass}
-          aria-expanded={adding}
+          aria-expanded={placing?.open === true}
           disabled={proposing === null || !proposing.canPropose}
           title="Propose a new structure"
           onClick={() => {
-            setAdding((now) => !now);
+            placing?.setOpen(placing.open === false);
           }}
         >
           + Structure
@@ -297,13 +297,6 @@ export function EditToolbar({
           <span aria-hidden="true">Redo ↷</span>
         </button>
       </div>
-      {adding ? (
-        <AddStructureForm
-          onClose={() => {
-            setAdding(false);
-          }}
-        />
-      ) : null}
       {many ? (
         <div
           role="toolbar"

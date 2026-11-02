@@ -3,7 +3,6 @@ import { Result } from "effect";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { useEditing } from "./editing-context.ts";
 import { useReview } from "./review-context.ts";
 
 /** What the dialog shows once a batch is frozen. */
@@ -95,7 +94,6 @@ function PromptBox({
  */
 export function ReadyForReview() {
   const review = useReview();
-  const editing = useEditing();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [sent, setSent] = useState<Sent | null>(null);
@@ -122,8 +120,7 @@ export function ReadyForReview() {
     return null;
   }
 
-  const open =
-    (editing?.pending.length ?? 0) + review.openNotes + review.openStructures;
+  const open = review.openCount;
 
   const press = () => {
     setBusy(true);

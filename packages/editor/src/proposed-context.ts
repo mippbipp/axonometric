@@ -1,5 +1,6 @@
 import type {
   ChangeId,
+  DraggedProblem,
   Placement,
   ProposedMap,
   StructureChange,
@@ -32,6 +33,15 @@ export interface ProposedStructures {
   ) => void;
   /** Why `change` would be refused, or `undefined`. */
   readonly refusalOf: (change: StructureChange) => string | undefined;
+  /**
+   * What `check` would report for the map as proposed with `changes` added,
+   * each marked new when the map as proposed now didn't have it.
+   */
+  readonly problemsOf: (
+    changes: readonly StructureChange[],
+    /** Structures moved first, such as the one a drop just moved, by id. */
+    moved?: Readonly<Record<string, Placement>>
+  ) => readonly DraggedProblem[];
   /** Whether `id` is a structure the engineer proposed and hasn't sent yet. */
   readonly isOpenAdd: (id: string) => boolean;
   /** Why putting the proposed structure `id` at `next` would be refused. */

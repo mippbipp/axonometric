@@ -1,16 +1,18 @@
-import { maxStructureNameLength } from "@axonometric/contracts";
+import {
+  marked,
+  maxStructureNameLength,
+  removedMark,
+} from "@axonometric/contracts";
 import type { Structure } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { useId, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { fieldClass } from "./field-class.ts";
 import { useProposed } from "./proposed-context.ts";
 import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
 import { usePropose } from "./use-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
-
-const fieldClass =
-  "border-ink bg-paper text-ink focus-visible:outline-ink border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1";
 
 /**
  * A structure's panel section for proposing changes: rename, and a choice of
@@ -36,7 +38,7 @@ export function ChangeStructure({
     return null;
   }
 
-  const deleted = proposing.proposed.removes.has(structure.id);
+  const deleted = marked(proposing.proposed, removedMark).has(structure.id);
   const typed = name ?? structure.name;
 
   const choose = ({

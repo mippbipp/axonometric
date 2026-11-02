@@ -1,6 +1,11 @@
 import {
+  addedIds,
   applyLayoutChanges,
+  candidateProblems,
   emptyProposals,
+  frozenStructureChanges,
+  openItemCount,
+  openStructureChanges,
   frozenLayoutChanges,
   proposedMap,
   reviewEntries,
@@ -19,6 +24,7 @@ import type { Editing } from "./editing-context.ts";
 import { ExportStateContext } from "./export-state-context.ts";
 import { HistoryContext } from "./history-context.ts";
 import { useHistoryView } from "./history-view.tsx";
+import { ProposedAddsContext } from "./proposed-adds-context.ts";
 import { ProposedContext } from "./proposed-context.ts";
 import type { ProposedStructures } from "./proposed-context.ts";
 import { RenamesContext } from "./renames-context.ts";
@@ -108,6 +114,8 @@ function ServedNotices({
   );
 }
 
+const none: readonly string[] = [];
+
 /**
  * The map page as `axonometric serve` serves it, kept up to date. It shows
  * the accepted layout with the pending changes applied, and edits them
@@ -136,6 +144,15 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
         proposals: { ...proposals, layout: pending },
       }),
     [view.state, proposals, pending]
+  );
+
+  const adds = useMemo(
+    () =>
+      addedIds([
+        ...openStructureChanges(proposals),
+        ...frozenStructureChanges(proposals),
+      ]),
+    [proposals]
   );
 
   const shown = useMemo(
@@ -214,12 +231,18 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       nameOf: (id) => names.get(id) ?? id,
       propose: store.structures.propose,
       refusalOf: store.structures.refusalOf,
+      problemsOf: (changes, moved = {}) =>
+        candidateProblems(
+          { data: shown.data, layout: shown.layout },
+          changes,
+          moved
+        ),
       isOpenAdd: store.structures.isOpenAdd,
       refusalOfPlace: store.structures.refusalOfPlace,
       place: store.structures.place,
       discard: store.structures.discard,
     };
-  }, [proposed, proposals.structures, view.stopped, store]);
+  }, [proposed, shown, proposals.structures, view.stopped, store]);
 
   const review = useMemo((): Review => {
     const entries = reviewEntries(proposals);
@@ -228,8 +251,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       canWrite: !view.stopped,
       entries,
       notes: Arr.filter(entries, ({ item }) => item.kind === "note"),
-      openNotes: proposals.notes?.length ?? 0,
-      openStructures: proposals.structures?.length ?? 0,
+      openCount: openItemCount(proposals),
       replaces: proposals.replaces ?? {},
       ops: store.review,
     };
@@ -242,30 +264,32 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
           <ProposedContext value={history.past ? null : proposing}>
             <RenamesContext value={renames}>
               <ExportStateContext value={history.past ? null : exported}>
-                <HistoryContext value={history.panel}>
-                  <CompareContext value={history.marks}>
-                    <App
-                      state={history.drawn}
-                      notices={
-                        <>
-                          {history.banner}
-                          <ServedNotices
-                            rejection={view.rejection}
-                            stopped={view.stopped}
-                            notice={view.notice}
-                            saved={view.saved}
-                          />
-                        </>
-                      }
-                    />
-                    {history.report === null ? null : (
-                      <RestoreDialog
-                        report={history.report}
-                        onClose={history.handleCloseReport}
+                <ProposedAddsContext value={history.past ? none : adds}>
+                  <HistoryContext value={history.panel}>
+                    <CompareContext value={history.marks}>
+                      <App
+                        state={history.drawn}
+                        notices={
+                          <>
+                            {history.banner}
+                            <ServedNotices
+                              rejection={view.rejection}
+                              stopped={view.stopped}
+                              notice={view.notice}
+                              saved={view.saved}
+                            />
+                          </>
+                        }
                       />
-                    )}
-                  </CompareContext>
-                </HistoryContext>
+                      {history.report === null ? null : (
+                        <RestoreDialog
+                          report={history.report}
+                          onClose={history.handleCloseReport}
+                        />
+                      )}
+                    </CompareContext>
+                  </HistoryContext>
+                </ProposedAddsContext>
               </ExportStateContext>
             </RenamesContext>
           </ProposedContext>

@@ -1,3 +1,4 @@
+import { marked as marksOf, removedMark } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
@@ -39,7 +40,8 @@ export function StructureTarget({
   const isMultiSelected = multiSelection.has(id);
 
   const proposed = useProposed()?.proposed;
-  const isRemoved = proposed?.removes.has(id) === true;
+  const isRemoved =
+    proposed !== undefined && marksOf(proposed, removedMark).has(id);
 
   const isPending =
     pendingStructures(editing).has(id) || proposed?.structures.has(id) === true;

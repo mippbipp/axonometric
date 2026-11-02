@@ -13,12 +13,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
+  ChangePreviewContext,
   nothingReported,
   PreviewContext,
   ReportContext,
   useDragReport,
 } from "./drag-preview-context.ts";
 import type {
+  ChangePreview,
+  ChangePreviewInput,
   DragPreview,
   DragPreviewInput,
   DragReport,
@@ -91,20 +94,40 @@ export function DragPreviewProvider({
     };
   }, [changes]);
 
+  const [change, setChange] = useState<ChangePreviewInput | undefined>();
+
+  // A drag in progress is what the panel shows; with none, the last change.
   const report = useMemo((): DragReport => {
     if (drag === undefined) {
-      return nothingReported;
+      return change === undefined
+        ? nothingReported
+        : {
+            refusal: change.refusal,
+            problems: change.problems,
+            source: "change",
+          };
     }
 
     if (drag.refusal !== undefined) {
-      return { refusal: drag.refusal, problems: [] };
+      return { refusal: drag.refusal, problems: [], source: "drag" };
     }
 
     return {
       refusal: undefined,
       problems: settled.length === 0 ? [] : problemsOf(state, settled),
+      source: "drag",
     };
-  }, [drag, settled, state]);
+  }, [drag, settled, state, change]);
+
+  const changePreview = useMemo(
+    (): ChangePreview => ({
+      show: setChange,
+      clear: () => {
+        setChange(undefined);
+      },
+    }),
+    []
+  );
 
   const preview = useMemo(
     (): DragPreview => ({
@@ -126,9 +149,11 @@ export function DragPreviewProvider({
 
   return (
     <PreviewContext value={preview}>
-      <DropOutlinesContext value={outlineState}>
-        <ReportContext value={report}>{children}</ReportContext>
-      </DropOutlinesContext>
+      <ChangePreviewContext value={changePreview}>
+        <DropOutlinesContext value={outlineState}>
+          <ReportContext value={report}>{children}</ReportContext>
+        </DropOutlinesContext>
+      </ChangePreviewContext>
     </PreviewContext>
   );
 }
@@ -145,7 +170,7 @@ export function DragPreviewProvider({
  * Nothing shows when there is nothing to say.
  */
 export function DragWarnings({ className }: { readonly className?: string }) {
-  const { refusal, problems } = useDragReport();
+  const { refusal, problems, source } = useDragReport();
 
   if (refusal === undefined && problems.length === 0) {
     return null;
@@ -156,7 +181,7 @@ export function DragWarnings({ className }: { readonly className?: string }) {
   return (
     <section
       data-drag-warnings
-      aria-label="Warnings for this drag"
+      aria-label={`Warnings for this ${source}`}
       aria-live="polite"
       className={`border-refused bg-paper text-ink flex max-h-[45svh] shrink-0 flex-col border-2 text-xs ${className ?? ""}`}
     >
@@ -187,7 +212,7 @@ export function DragWarnings({ className }: { readonly className?: string }) {
                     data-warning-badge=""
                     className="text-2xs font-medium tracking-widest uppercase"
                   >
-                    New from this drag
+                    New from this {source}
                   </b>
                 ) : null}
                 <span data-warning-message="">{problem.message}</span>
@@ -209,7 +234,9 @@ export function DragWarnings({ className }: { readonly className?: string }) {
             data-drag-warnings-heading=""
             className="shrink-0 px-3 pt-2 pb-1 tracking-widest uppercase opacity-70"
           >
-            This drop would be refused
+            {source === "drag"
+              ? "This drop would be refused"
+              : "This change would be refused"}
           </h2>
           <p data-drag-refusal="" className="min-h-0 overflow-y-auto px-3 pb-2">
             {refusal}

@@ -1,78 +1,89 @@
 import {
   maxStructureNameLength,
-  provisionalIdOf,
+  newProvisionalId,
 } from "@axonometric/contracts";
-import type { Shape, Status } from "@axonometric/contracts";
-import { Array as Arr, Option, String as Str } from "effect";
-import { useId, useState } from "react";
+import type { StructureChange } from "@axonometric/contracts";
+import { Array as Arr, Option } from "effect";
+import { useEffect, useId } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { useDraftSpot } from "./draft-spot.ts";
+import { fieldClass } from "./field-class.ts";
 import { newStructureFootprint } from "./new-structure.ts";
 import { usePlacing } from "./place-context.ts";
 import { useProposed } from "./proposed-context.ts";
+import { snap } from "./snap.ts";
 import { shapeChoices, statusChoices } from "./structure-actions.ts";
 import { usePropose } from "./use-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
-const fieldClass =
-  "border-ink bg-paper text-ink focus-visible:outline-ink border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1";
-
-const snap = (value: number) => Math.round(value * 2) / 2;
-
-/** Four hex digits that make a provisional id hard to repeat. */
-const suffix = () => {
-  const bytes = [...globalThis.crypto.getRandomValues(new Uint8Array(2))];
-  const digits = Arr.map(bytes, (byte) => byte.toString(16));
-
-  return Arr.join(
-    Arr.map(digits, (hex) => Str.padStart(2, "0")(hex)),
-    ""
-  );
-};
-
 /**
  * The form that adds a structure: its name, shape, group, status and
- * position. The position is where the engineer clicks on the map, which the
- * form says while it waits; the two number fields show it and can correct
- * it. The new structure is a proposal and shows in the pending look at once.
+ * position. It lives in the side panel, beside the warnings it can raise,
+ * and never over the drawing.
+ *
+ * The position starts at the first free slot beside the chosen group's zone
+ * and follows the group and shape until the engineer clicks the map, with
+ * "Pick on map", or types a spot. The new structure is a proposal and shows
+ * in the pending look at once. As the fields change, the panel shows what
+ * `check` would report for the map as proposed with the structure added.
  */
-export function AddStructureForm({
-  onClose,
-}: {
-  readonly onClose: () => void;
-}) {
+export function AddStructureForm() {
   const placing = usePlacing();
   const proposing = useProposed();
   const { state } = useWalkthrough();
-  const { send, failure, clear, canPropose } = usePropose();
+  const { send, preview, sending, failure, clear, canPropose } = usePropose();
+  const spot = useDraftSpot();
   const id = useId();
-  const [name, setName] = useState("");
-  const [shape, setShape] = useState<Shape>("box");
-  const [status, setStatus] = useState<Status>("planned");
-  const [group, setGroup] = useState(state.data.groups[0]?.id ?? "");
-  const [sending, setSending] = useState(false);
 
-  if (placing === null || proposing === null) {
-    return null;
-  }
+  const name = placing?.draft.name.trim() ?? "";
 
-  const { spot } = placing;
-  const trimmed = name.trim();
-
-  const change = (): Parameters<typeof send>[0] | undefined =>
-    spot === null || trimmed === ""
+  const change = (): StructureChange | undefined =>
+    placing === null || spot === null || name === ""
       ? undefined
       : {
           action: "add",
           structure: {
-            id: provisionalIdOf(trimmed, suffix()),
-            name: trimmed,
-            shape,
-            group,
-            status,
+            id: newProvisionalId(name),
+            name,
+            shape: placing.draft.shape,
+            group: placing.draft.group,
+            status: placing.draft.status,
           },
-          at: { ...spot, ...newStructureFootprint },
+          at: spot,
         };
+
+  // The panel shows the warnings for what the form would propose now. The id
+  // only has to be unique, so a fixed one stands in until the form is sent.
+  const draftChange = (): StructureChange | undefined => {
+    const made = change();
+
+    return made?.action === "add"
+      ? { ...made, structure: { ...made.structure, id: "draft-structure" } }
+      : made;
+  };
+
+  const spotKey = `${spot?.x}/${spot?.y}`;
+  const draft = placing?.draft;
+
+  useEffect(() => {
+    if (placing?.open === true) {
+      preview(draftChange());
+    }
+    // `preview` and `draftChange` are rebuilt every render; what they read is listed.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    placing?.open,
+    spotKey,
+    draft?.name,
+    draft?.shape,
+    draft?.group,
+    draft?.status,
+  ]);
+
+  if (placing === null || proposing === null || draft === undefined) {
+    return null;
+  }
 
   const setCoordinate = (axis: "x" | "y", text: string) => {
     const value = Number(text);
@@ -86,43 +97,38 @@ export function AddStructureForm({
     }
   };
 
+  const close = () => {
+    placing.setOpen(false);
+  };
+
   return (
     <form
       data-add-structure
       aria-label="Add a structure"
-      className="border-ink bg-paper text-ink pointer-events-auto flex w-72 flex-col gap-2 border p-3 text-xs"
+      className="flex flex-col gap-2 text-xs"
       onSubmit={(event) => {
         event.preventDefault();
 
         const made = change();
 
-        if (made === undefined) {
-          return;
+        if (made !== undefined && !sending) {
+          send(made, close);
         }
-
-        setSending(true);
-        send(made, () => {
-          setSending(false);
-          placing.setSpot(null);
-          onClose();
-        });
-        setSending(false);
       }}
     >
-      <h2 className="tracking-widest uppercase opacity-70">Add a structure</h2>
       <label className="flex flex-col gap-1" htmlFor={`${id}-name`}>
         <span className="opacity-70">Name</span>
         <input
           id={`${id}-name`}
           data-add="name"
           type="text"
-          value={name}
+          value={draft.name}
           maxLength={maxStructureNameLength}
           autoComplete="off"
           className={fieldClass}
           onChange={(event) => {
             clear();
-            setName(event.target.value);
+            placing.setDraft({ ...draft, name: event.target.value });
           }}
         />
       </label>
@@ -132,7 +138,7 @@ export function AddStructureForm({
           <select
             data-add="shape"
             className={fieldClass}
-            value={shape}
+            value={draft.shape}
             onChange={(event) => {
               Option.map(
                 Arr.findFirst(
@@ -140,7 +146,7 @@ export function AddStructureForm({
                   ({ value }) => value === event.target.value
                 ),
                 ({ value }) => {
-                  setShape(value);
+                  placing.setDraft({ ...draft, shape: value });
                 }
               );
             }}
@@ -157,7 +163,7 @@ export function AddStructureForm({
           <select
             data-add="status"
             className={fieldClass}
-            value={status}
+            value={draft.status}
             onChange={(event) => {
               Option.map(
                 Arr.findFirst(
@@ -165,7 +171,7 @@ export function AddStructureForm({
                   ({ value }) => value === event.target.value
                 ),
                 ({ value }) => {
-                  setStatus(value);
+                  placing.setDraft({ ...draft, status: value });
                 }
               );
             }}
@@ -183,9 +189,9 @@ export function AddStructureForm({
         <select
           data-add="group"
           className={fieldClass}
-          value={group}
+          value={draft.group}
           onChange={(event) => {
-            setGroup(event.target.value);
+            placing.setDraft({ ...draft, group: event.target.value });
           }}
         >
           {Arr.map(state.data.groups, ({ id: groupId, title }) => (
@@ -198,7 +204,7 @@ export function AddStructureForm({
       <fieldset className="flex flex-col gap-1">
         <legend className="opacity-70">Position</legend>
         <div className="flex items-end gap-1.5">
-          <label className="flex w-16 flex-col gap-1">
+          <label className="flex w-14 flex-col gap-1">
             <span className="opacity-70">x</span>
             <input
               data-add="x"
@@ -211,7 +217,7 @@ export function AddStructureForm({
               }}
             />
           </label>
-          <label className="flex w-16 flex-col gap-1">
+          <label className="flex w-14 flex-col gap-1">
             <span className="opacity-70">y</span>
             <input
               data-add="y"
@@ -237,9 +243,9 @@ export function AddStructureForm({
           </button>
         </div>
         <p data-add-hint className="opacity-70">
-          {spot === null
-            ? "Click the map to say where it goes."
-            : `Footprint ${newStructureFootprint.w} × ${newStructureFootprint.d} at ${spot.x}, ${spot.y}.`}
+          {placing.spot === null
+            ? `Footprint ${newStructureFootprint.w} × ${newStructureFootprint.d}, in the first free slot beside the group. Click the map to move it.`
+            : `Footprint ${newStructureFootprint.w} × ${newStructureFootprint.d} at ${placing.spot.x}, ${placing.spot.y}.`}
         </p>
       </fieldset>
       {failure === undefined ? null : (
@@ -256,19 +262,15 @@ export function AddStructureForm({
           type="submit"
           data-add="submit"
           className={controlClass}
-          disabled={!canPropose || sending || trimmed === "" || spot === null}
+          disabled={!canPropose || sending || name === "" || spot === null}
         >
-          Propose
+          {sending ? "Saving…" : "Propose"}
         </button>
         <button
           type="button"
           data-add="cancel"
           className={controlClass}
-          onClick={() => {
-            placing.setSpot(null);
-            placing.pick(false);
-            onClose();
-          }}
+          onClick={close}
         >
           Cancel
         </button>

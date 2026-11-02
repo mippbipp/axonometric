@@ -350,6 +350,8 @@ export {
   splitProblems,
 } from "./problems.ts";
 
+export { strikeSegments } from "./strike.ts";
+
 export { dragSegment, routeVertices, segmentGuides } from "./route-drag.ts";
 
 export type { RouteEnds, SegmentGuide } from "./route-drag.ts";

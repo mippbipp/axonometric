@@ -4,8 +4,6 @@ import type { ComponentProps } from "react";
 
 const Menu = MenuPrimitive.Root;
 
-const MenuPortal = MenuPrimitive.Portal;
-
 /**
  * The menu's popup, positioned against `anchor`. The caller picks the
  * anchor, so a menu can open at a point, such as where a right-click landed.
@@ -86,7 +84,7 @@ function MenuSubTrigger({
   return (
     <MenuPrimitive.SubmenuTrigger
       data-slot="menu-sub-trigger"
-      className={cn(itemClass, "", className)}
+      className={cn(itemClass, className)}
       {...props}
     >
       {children}
@@ -135,11 +133,7 @@ function MenuSeparator({ className, ...props }: MenuPrimitive.Separator.Props) {
   );
 }
 
-function MenuGroup(props: MenuPrimitive.Group.Props) {
-  return <MenuPrimitive.Group {...props} />;
-}
-
-/** A heading at the top of a menu. For a labelled group, use `MenuGroup` with its own label. */
+/** A heading at the top of a menu. */
 function MenuLabel({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
@@ -158,10 +152,8 @@ const MenuRadioGroup = MenuPrimitive.RadioGroup;
 export {
   Menu,
   MenuContent,
-  MenuGroup,
   MenuItem,
   MenuLabel,
-  MenuPortal,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,

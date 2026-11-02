@@ -303,18 +303,29 @@ export const defaultSpotFor = ({
  * This is the check a drag runs, on the proposed map instead of the accepted
  * one, so a new structure, or a group change, that stretches a zone over
  * another group is reported the same way a drag that does it is.
+ *
+ * `moved` puts structures where a drop has just put them before the changes
+ * apply, so a group change from a drop is judged at the structure's new
+ * spot, in the zone it lands in. The map `before` is the one without them.
  */
-export const candidateProblems: {
-  (changes: readonly StructureChange[]): (before: Checkable) => readonly DraggedProblem[];
-  (before: Checkable, changes: readonly StructureChange[]): readonly DraggedProblem[];
-} = dual(
-  2,
-  (before: Checkable, changes: readonly StructureChange[]): readonly DraggedProblem[] =>
-    changedProblems(
-      Arr.reduce(changes, before, (map, change) => ({
-        data: structureChangeToData(map.data, change),
-        layout: structureChangeToLayout(map.layout, change),
-      })),
-      before
-    )
-);
+export const candidateProblems = (
+  before: Checkable,
+  changes: readonly StructureChange[],
+  moved: Readonly<Record<string, Placement>> = {}
+): readonly DraggedProblem[] => {
+  const from: Checkable = {
+    data: before.data,
+    layout: {
+      ...before.layout,
+      structures: { ...before.layout.structures, ...moved },
+    },
+  };
+
+  return changedProblems(
+    Arr.reduce(changes, from, (map, change) => ({
+      data: structureChangeToData(map.data, change),
+      layout: structureChangeToLayout(map.layout, change),
+    })),
+    from
+  );
+};

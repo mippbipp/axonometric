@@ -1,6 +1,9 @@
 import {
   groundOutline,
   groundProjections,
+  marked,
+  removedMark,
+  strikeSegments,
   toPoints,
 } from "@axonometric/contracts";
 import type { SceneStructure, View } from "@axonometric/contracts";
@@ -11,8 +14,11 @@ import { useProposed } from "./proposed-context.ts";
 /**
  * A structure proposed for deletion, crossed out until the agent has reviewed
  * it: the footprint's outline in the refused colour, and a line along each of
- * its diagonals. It draws no text, so it can't clash with a name tag or a
- * label, and sits over the structures, in the overlay, so the box's own faces don't hide it.
+ * its diagonals. The diagonals stop short of the structure's code chip and
+ * name tag, so the cross never runs over text. It draws no text of its own.
+ * It sits over the structure, in the overlay, so the box's faces don't hide
+ * it, and under the text in painting order only by leaving the text's room
+ * free.
  *
  * This is an editing layer: a file's drawing never includes it.
  */
@@ -23,7 +29,10 @@ export function RemovedMarks({
   readonly structures: readonly SceneStructure[];
   readonly view: View;
 }) {
-  const removes = useProposed()?.proposed.removes;
+  const proposed = useProposed()?.proposed;
+
+  const removes =
+    proposed === undefined ? undefined : marked(proposed, removedMark);
 
   if (removes === undefined || removes.size === 0) {
     return null;
@@ -33,22 +42,16 @@ export function RemovedMarks({
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
-      {Arr.flatMap(structures, ({ structure, placement }) => {
+      {Arr.flatMap(structures, ({ structure, placement, chip, tag }) => {
         if (!removes.has(structure.id)) {
           return [];
         }
 
-        const outline = groundOutline(placement, ground);
-        const [a, b, c, e] = outline;
-
-        if (
-          a === undefined ||
-          b === undefined ||
-          c === undefined ||
-          e === undefined
-        ) {
-          return [];
-        }
+        const strikes = strikeSegments({
+          placement,
+          ground,
+          text: [chip, tag],
+        });
 
         return [
           <g
@@ -56,11 +59,22 @@ export function RemovedMarks({
             data-removed-mark={structure.id}
             className="stroke-refused fill-none"
             strokeWidth={2.2}
-            strokeLinecap="round"
+            strokeLinecap="butt"
           >
-            <polygon points={toPoints(outline)} fill="none" />
-            <line data-strike="" x1={a.sx} y1={a.sy} x2={c.sx} y2={c.sy} />
-            <line data-strike="" x1={b.sx} y1={b.sy} x2={e.sx} y2={e.sy} />
+            <polygon
+              points={toPoints(groundOutline(placement, ground))}
+              fill="none"
+            />
+            {Arr.map(strikes, ({ start, end }) => (
+              <line
+                key={`${start.sx},${start.sy},${end.sx},${end.sy}`}
+                data-strike=""
+                x1={start.sx}
+                y1={start.sy}
+                x2={end.sx}
+                y2={end.sy}
+              />
+            ))}
           </g>,
         ];
       })}

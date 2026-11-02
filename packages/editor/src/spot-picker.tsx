@@ -6,11 +6,11 @@ import {
 import type { GridPoint, View } from "@axonometric/contracts";
 import { useEffect, useRef, useState } from "react";
 
+import { useDraftSpot } from "./draft-spot.ts";
 import { groundAt } from "./ground-at.ts";
 import { newStructureFootprint } from "./new-structure.ts";
 import { usePlacing } from "./place-context.ts";
-
-const snap = (value: number) => Math.round(value * 2) / 2;
+import { snap } from "./snap.ts";
 
 /**
  * Picks the ground for a new structure while its form is open: a click on
@@ -70,19 +70,16 @@ export function SpotPicker({ view }: { readonly view: View }) {
     };
   }, [picking, view, placing]);
 
-  const shown = picking ? over : (placing?.spot ?? null);
+  const drafted = useDraftSpot();
+  const shown =
+    picking && over !== null ? { ...over, ...newStructureFootprint } : drafted;
 
   return (
     <g ref={root} aria-hidden="true" className="pointer-events-none">
       {shown === null ? null : (
         <polygon
           data-spot-outline=""
-          points={toPoints(
-            groundOutline(
-              { ...shown, ...newStructureFootprint },
-              groundProjections[view]
-            )
-          )}
+          points={toPoints(groundOutline(shown, groundProjections[view]))}
           className="stroke-pending fill-none"
           strokeWidth={2}
           strokeDasharray="5 3"
