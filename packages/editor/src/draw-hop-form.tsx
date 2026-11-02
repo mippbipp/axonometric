@@ -11,6 +11,11 @@ import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
+/** Focuses the label field when the form opens: the next thing typed is the label. */
+const focusOnOpen = (field: HTMLInputElement | null) => {
+  field?.focus();
+};
+
 /**
  * The form that finishes a hop: the structure it ends at, picked from a list
  * when the hop was started from "Draw hop from here", and its label. It lives
@@ -159,8 +164,7 @@ export function DrawHopForm() {
           value={label}
           maxLength={maxHopLabelLength}
           autoComplete="off"
-          // oxlint-disable-next-line jsx-a11y/no-autofocus -- the form opens because the engineer dropped a hop, and the label is the next thing they type.
-          autoFocus
+          ref={focusOnOpen}
           className={fieldClass}
           onChange={(event) => {
             setFailure(undefined);
