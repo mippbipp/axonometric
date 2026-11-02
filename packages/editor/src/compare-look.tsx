@@ -1,4 +1,9 @@
-import { arrowPolygon, groundProjections } from "@axonometric/contracts";
+import {
+  arrowPolygon,
+  groundOutline,
+  groundProjections,
+  toPoints,
+} from "@axonometric/contracts";
 import type {
   CompareMarks,
   Placement,
@@ -9,7 +14,6 @@ import type {
 import { Array as Arr } from "effect";
 
 import { looks } from "./compare-looks.ts";
-import { groundOutline, toPoints } from "./projection.ts";
 
 // The compare's layers. Each takes the scene's parts and the marks as props
 // and reads no context, so the page's drawing can place them as it places

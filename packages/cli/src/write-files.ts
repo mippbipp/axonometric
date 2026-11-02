@@ -18,7 +18,8 @@ export class OutputExists extends Schema.TaggedError<
 
 export interface Output {
   readonly file: string;
-  readonly content: string;
+  /** Text, or the bytes of a binary file such as a PNG. */
+  readonly content: string | Uint8Array;
   /**
    * The file must not exist. `writeAll` fails with `AlreadyExists`, before
    * it renames anything, when it does, so a file that is never rewritten,
@@ -103,7 +104,13 @@ export const writeAll = Effect.fnUntraced(function* (
       ({ file, temporary, content }) =>
         fs
           .makeDirectory(path.dirname(file), { recursive: true })
-          .pipe(Effect.andThen(fs.writeFileString(temporary, content))),
+          .pipe(
+            Effect.andThen(
+              Predicate.isString(content)
+                ? fs.writeFileString(temporary, content)
+                : fs.writeFile(temporary, content)
+            )
+          ),
       { discard: true }
     );
 

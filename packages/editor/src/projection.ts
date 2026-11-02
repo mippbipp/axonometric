@@ -6,7 +6,6 @@ import {
 import type {
   GridPoint,
   GridPosition,
-  GroundProjection,
   HopRoute,
   Layout,
   MapData,
@@ -15,43 +14,17 @@ import type {
   View,
 } from "@axonometric/contracts";
 import { Array as Arr, Order } from "effect";
-import { dual } from "effect/Function";
 
 export {
   corners,
+  groundOutline,
   project,
   tileHeight,
   tileWidth,
+  toPoints,
 } from "@axonometric/contracts";
 
 export type { Corners, ScreenPoint } from "@axonometric/contracts";
-
-/** Formats screen points for an SVG `points` attribute. */
-export const toPoints = (points: readonly ScreenPoint[]) =>
-  Arr.join(
-    Arr.map(points, (point) => `${point.sx},${point.sy}`),
-    " "
-  );
-
-/**
- * A footprint's ground outline on screen in one view, from its corner at
- * the smallest x and y round to the opposite corner.
- */
-export const groundOutline: {
-  (ground: GroundProjection): (placement: Placement) => readonly ScreenPoint[];
-  (placement: Placement, ground: GroundProjection): readonly ScreenPoint[];
-} = dual(
-  2,
-  (
-    { x, y, w, d }: Placement,
-    ground: GroundProjection
-  ): readonly ScreenPoint[] => [
-    ground.toScreen({ x, y }),
-    ground.toScreen({ x: x + w, y }),
-    ground.toScreen({ x: x + w, y: y + d }),
-    ground.toScreen({ x, y: y + d }),
-  ]
-);
 
 const centre = (placement: Placement): GridPoint => ({
   x: placement.x + placement.w / 2,

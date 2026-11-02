@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@axonometric/contracts": "workspace:*",
+    "@axonometric/drawing": "workspace:*",
     "@axonometric/ui": "workspace:*",
     "effect": "catalog:effect",
     "react": "catalog:",
