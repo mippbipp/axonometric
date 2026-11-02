@@ -89,8 +89,23 @@ const coveredTags = (placed: readonly PlacedStructure[]) =>
     )
   );
 
-const overlappingZones = (data: MapData, layout: Layout) => {
-  const zones = zonesOf({ data, layout });
+/** What `overlappingZones` looks at: the map, and optionally one chapter's drawing. */
+interface ZoneCheck {
+  readonly data: MapData;
+  readonly layout: Layout;
+  /** The structures the chapter has revealed; every structure when left out. */
+  readonly revealed?: ReadonlySet<string>;
+  /** Where the zones are, such as ` in chapter "c-all"`. */
+  readonly where?: string;
+}
+
+const overlappingZones = ({
+  data,
+  layout,
+  revealed,
+  where = "",
+}: ZoneCheck) => {
+  const zones = zonesOf({ data, layout, revealed });
 
   return Arr.flatMap(zones, (first, index) =>
     Arr.flatMap(zones.slice(index + 1), (second) =>
@@ -99,7 +114,7 @@ const overlappingZones = (data: MapData, layout: Layout) => {
             mapWarning({
               file: "layout.json",
               path: [],
-              message: `the zones of groups "${first.group.id}" and "${second.group.id}" overlap.`,
+              message: `the zones of groups "${first.group.id}" and "${second.group.id}" overlap${where}.`,
               hint: "Move one group's structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.",
             }),
           ]
@@ -452,7 +467,14 @@ export const clashWarnings = ({
  * rule (chips, zone titles, labels and routes). Each warning is reported
  * once per view, at the first chapter it shows in.
  */
-const chapterWarnings = (data: MapData, layout: Layout) => {
+/** Which chapters a drawing check covers: all, or the one being viewed. */
+type Scope =
+  | { readonly of: "all" }
+  | { readonly of: "chapter"; readonly chapter: string | undefined };
+
+const everyChapter: Scope = { of: "all" };
+
+const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
   const seen = new Set<string>();
 
   const once = (key: string) => {
@@ -463,7 +485,12 @@ const chapterWarnings = (data: MapData, layout: Layout) => {
     return fresh;
   };
 
-  return Arr.flatMap(chapterViews(data), ({ id, revealed, plays }) => {
+  const shown = Arr.filter(
+    chapterViews(data),
+    ({ id }) => scope.of === "all" || id === scope.chapter
+  );
+
+  return Arr.flatMap(shown, ({ id, revealed, plays }) => {
     const routes = routeRevealed({ data, layout, revealed });
     const where = id === undefined ? "" : ` in chapter "${id}"`;
 
@@ -490,7 +517,18 @@ const chapterWarnings = (data: MapData, layout: Layout) => {
       once(message)
     );
 
-    return [...routing, ...shared, ...clashes];
+    // A zone fits the structures revealed so far. `check` leaves this to the
+    // whole map's zones; a proposal to a chapter is judged by the zones that
+    // chapter draws.
+    const zones =
+      scope.of === "all"
+        ? []
+        : Arr.filter(
+            overlappingZones({ data, layout, revealed, where }),
+            ({ message }) => once(message)
+          );
+
+    return [...routing, ...shared, ...zones, ...clashes];
   });
 };
 
@@ -516,10 +554,36 @@ export const checkLayout: {
     ...offEndOverrides(data.hops, layout),
     ...overlaps(placed),
     ...coveredTags(placed),
-    ...overlappingZones(data, layout),
-    ...chapterWarnings(data, layout),
+    ...overlappingZones({ data, layout }),
+    ...chapterWarnings(data, layout, everyChapter),
   ];
 });
+
+/**
+ * `checkLayout`, for the drawing of one chapter alone: the footprint, tag and
+ * zone checks of the whole map, and the routing, zone and drawing checks of
+ * `chapter` as the walkthrough draws it. A proposal to a chapter is judged
+ * here against the chapter the engineer is viewing, not every chapter at once.
+ */
+export const checkChapter: {
+  (chapter: string | undefined): (map: Checkable) => readonly MapProblem[];
+  (map: Checkable, chapter: string | undefined): readonly MapProblem[];
+} = dual(
+  2,
+  (map: Checkable, chapter: string | undefined): readonly MapProblem[] => {
+    const { data, layout } = map;
+    const placed = placedStructures(data, layout);
+
+    return [
+      ...staleEntries(data, layout),
+      ...staleRoutes(data, layout),
+      ...offEndOverrides(data.hops, layout),
+      ...overlaps(placed),
+      ...coveredTags(placed),
+      ...chapterWarnings(data, layout, { of: "chapter", chapter }),
+    ];
+  }
+);
 
 const lineOf = (problem: MapProblem) =>
   `${problem.severity} ${problem.file} ${problem.path}: ${problem.message}`;
@@ -581,6 +645,29 @@ export const changedProblems: {
     }));
   }
 );
+
+/**
+ * `changedProblems` for the drawing of one chapter: what `checkChapter` would
+ * report for the map `after`, each marked `added` when the map `before` didn't
+ * have it. A proposal that changes how a chapter draws, such as a new group
+ * or a structure revealed in it, is judged by what that chapter shows.
+ */
+export const changedChapterProblems = ({
+  after,
+  before,
+  chapter,
+}: {
+  readonly after: Checkable;
+  readonly before: Checkable;
+  readonly chapter: string | undefined;
+}): readonly DraggedProblem[] => {
+  const known = new Set(Arr.map(checkChapter(before, chapter), lineOf));
+
+  return Arr.map(checkChapter(after, chapter), (problem) => ({
+    problem,
+    added: !known.has(lineOf(problem)),
+  }));
+};
 
 /**
  * `changedProblems` for a change to the layout alone, such as a drag: the

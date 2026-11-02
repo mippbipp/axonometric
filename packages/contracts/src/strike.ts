@@ -12,12 +12,15 @@ import type { GroundProjection } from "./plan.ts";
 const clearance = 6;
 
 /** `rect` grown by `by` on every side. */
-const grown = (rect: ScreenRect, by: number): ScreenRect => ({
+export const grown: {
+  (by: number): (rect: ScreenRect) => ScreenRect;
+  (rect: ScreenRect, by: number): ScreenRect;
+} = dual(2, (rect: ScreenRect, by: number): ScreenRect => ({
   left: rect.left - by,
   top: rect.top - by,
   right: rect.right + by,
   bottom: rect.bottom + by,
-});
+}));
 
 /** The share of the segment between `from` and `to`, 0 at its start and 1 at its end. */
 interface Share {

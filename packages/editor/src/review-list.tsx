@@ -1,5 +1,15 @@
-import { hopLabelOf, specOf } from "@axonometric/contracts";
-import type { BatchItem, ReviewEntry, Verdict } from "@axonometric/contracts";
+import {
+  bySection,
+  namesOf,
+  sectionTitles,
+  specOf,
+} from "@axonometric/contracts";
+import type {
+  BatchItem,
+  ReviewEntry,
+  Section,
+  Verdict,
+} from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr, Match, Option, Record as Rec, Result } from "effect";
 import { useState } from "react";
@@ -7,10 +17,10 @@ import { useState } from "react";
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditing } from "./editing-context.ts";
+import { useExportState } from "./export-state-context.ts";
 import { NoteForm } from "./note-form.tsx";
 import { useProposed } from "./proposed-context.ts";
 import { listedEntries, useReview } from "./review-context.ts";
-import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 const verdictLabels = {
@@ -52,18 +62,21 @@ export function VerdictBadge({
 
 /** What an item is, in a few words. */
 const useItemDescription = () => {
-  const byId = useStructuresById();
   const editing = useEditing();
   const proposed = useProposed();
   const { state } = useWalkthrough();
+  const exported = useExportState();
 
-  const nameOf = (id: string) =>
-    byId.get(id)?.name ?? proposed?.nameOf(id) ?? id;
-
-  const hopName = hopLabelOf(state.data.hops);
+  // A new group is on the proposed map under its title, and a rename names
+  // the group as the accepted map has it now, so both are told apart. A
+  // structure that is only proposed is named from the proposed map.
+  const called = namesOf({
+    shown: proposed?.proposed.state.data ?? state.data,
+    accepted: (exported ?? state).data,
+  });
 
   return (item: BatchItem): string => {
-    const described = specOf(item).describe(item, nameOf, hopName);
+    const described = specOf(item).describe(item, called);
 
     if (Option.isSome(described)) {
       return described.value;
@@ -73,13 +86,19 @@ const useItemDescription = () => {
       ? item.id
       : Arr.join(
           describeChange(item.change, editing.accepted, {
-            structure: nameOf,
-            hop: hopName,
+            structure: called.structure,
+            hop: called.hop,
           }),
           "; "
         );
   };
 };
+
+/** What an item does, such as "group" for a structure's group change, or nothing. */
+const actionOf = (item: BatchItem): string | undefined =>
+  item.kind === "structure" || item.kind === "group" || item.kind === "chapter"
+    ? item.change.action
+    : undefined;
 
 /** The failure text of an outcome, or `undefined` when it worked. */
 const failureOf = <A,>(outcome: Result.Result<A, string>) =>
@@ -120,6 +139,7 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
     <li
       data-review-item={item.id}
       data-review-kind={item.kind}
+      data-review-action={actionOf(item)}
       data-review-state={status.state}
       className="border-pending flex flex-col gap-1.5 border-l-2 pl-2 text-sm"
     >
@@ -224,7 +244,9 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
 /**
  * The proposals for the agent, in the Pending tab: the open notes,
  * suggestions, answers and questions, the items waiting in a batch, and the
- * reviewed ones with the agent's verdict and reason.
+ * reviewed ones with the agent's verdict and reason. Diagram changes and
+ * chapter changes are listed in sections of their own, as the prompt and
+ * `review` list them.
  */
 export function ReviewList() {
   const review = useReview();
@@ -239,10 +261,39 @@ export function ReviewList() {
     return null;
   }
 
+  const sections = bySection(Arr.map(entries, ({ item }) => item));
+
   return (
-    <section data-review-list className="flex flex-col gap-2">
+    <>
+      {Arr.map(sections, ({ section, items }) => (
+        <ReviewSection
+          key={section}
+          section={section}
+          entries={Arr.filter(entries, ({ item }) =>
+            items.some((held) => held.id === item.id)
+          )}
+        />
+      ))}
+    </>
+  );
+}
+
+/** One section of the review list: a heading and its rows. */
+function ReviewSection({
+  section,
+  entries,
+}: {
+  readonly section: Section;
+  readonly entries: readonly ReviewEntry[];
+}) {
+  return (
+    <section
+      data-review-list
+      data-review-section={section}
+      className="flex flex-col gap-2"
+    >
       <h3 className="text-xs tracking-widest uppercase opacity-70">
-        Proposals for the agent
+        {sectionTitles[section]}
       </h3>
       <ul className="flex flex-col gap-2">
         {Arr.map(entries, (entry) => (

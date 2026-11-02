@@ -142,14 +142,22 @@ _Avoid_: issues list
 A move, resize or reroute.
 
 **Meaning change**:
-Any edit to the map that isn't a layout change.
+Any edit to the map that isn't a layout change. It is either a diagram change or a chapter change.
+
+**Diagram change**:
+A meaning change to the map itself: its structures, hops, flows, groups, text, questions or notes. The pending list, the prompt and `review` list diagram changes apart from chapter changes.
+_Avoid_: map change
+
+**Chapter change**:
+A meaning change to one chapter of the walkthrough: which structures it reveals, which hops it plays, or in what order. It changes that chapter and not the diagram, and shows in the pending look in that chapter only.
+_Avoid_: walkthrough change, chapter edit
 
 **Pending change**:
 An edit that hasn't been accepted.
 _Avoid_: draft, unsaved change
 
 **Proposal**:
-A pending meaning change, note, text suggestion, answer or raised question, recorded for the agent.
+A pending meaning change, note, text suggestion, answer or raised question, recorded for the agent. A chapter change is a chapter proposal, and every other kind is a diagram proposal.
 _Avoid_: change request
 
 **Note**:
@@ -177,7 +185,7 @@ The proposals frozen by one press of "Ready for review".
 _Avoid_: review round
 
 **Provisional id**:
-The id the page gives a structure the engineer proposes. The agent either adds the structure to the map under it, or accepts it under another id with a changed verdict, and the page follows the final id.
+The id the page gives a structure or group the engineer proposes. The agent either adds the structure to the map under it, or accepts it under another id with a changed verdict, and the page follows the final id.
 _Avoid_: temporary id, draft id
 
 **Proposed map**:

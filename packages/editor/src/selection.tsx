@@ -15,6 +15,8 @@ interface Stored {
   readonly chapter: string;
   readonly selected: string | null;
   readonly hop: string | null;
+  /** The group whose panel is open, from a click on its zone's title. */
+  readonly group: string | null;
   readonly inside: string | null;
   readonly multiSelection: ReadonlySet<string>;
 }
@@ -30,6 +32,7 @@ const nothingIn = (chapter: string): Stored => ({
   chapter,
   selected: null,
   hop: null,
+  group: null,
   inside: null,
   multiSelection: nobody,
 });
@@ -92,6 +95,15 @@ export function SelectionProvider({
       ? storedHop
       : null;
 
+  // A group stays selected only while the map still has it.
+  const storedGroup = stored.chapter === chapter ? stored.group : null;
+
+  const selectedGroup =
+    storedGroup !== null &&
+    Arr.some(state.data.groups, ({ id }) => id === storedGroup)
+      ? storedGroup
+      : null;
+
   const storedMulti =
     stored.chapter === chapter ? stored.multiSelection : nobody;
 
@@ -107,6 +119,7 @@ export function SelectionProvider({
     (): Selection => ({
       selected,
       selectedHop,
+      selectedGroup,
       inside,
       multiSelection,
       select: (id) => {
@@ -116,6 +129,10 @@ export function SelectionProvider({
       selectHop: (id) => {
         closePacket();
         setStored({ ...nothingIn(chapter), hop: id });
+      },
+      selectGroup: (id) => {
+        closePacket();
+        setStored({ ...nothingIn(chapter), group: id });
       },
       toggleMultiSelected: (id) => {
         setStored((before) => {
@@ -152,6 +169,7 @@ export function SelectionProvider({
           chapter,
           selected: id,
           hop: null,
+          group: null,
           inside: hasSteps(byId.get(id)) ? id : null,
           multiSelection: nobody,
         });
@@ -160,7 +178,16 @@ export function SelectionProvider({
         setStored((before) => ({ ...before, inside: null }));
       },
     }),
-    [byId, chapter, selected, selectedHop, inside, multiSelection, closePacket]
+    [
+      byId,
+      chapter,
+      selected,
+      selectedHop,
+      selectedGroup,
+      inside,
+      multiSelection,
+      closePacket,
+    ]
   );
 
   return <SelectionContext value={value}>{children}</SelectionContext>;

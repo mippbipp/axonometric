@@ -52,8 +52,8 @@ export const flowKind: KindSpec<FlowItem> = {
     Option.isNone(flowActionOf(change).text())
       ? Option.none()
       : refusalOf(FlowName, text),
-  describe: ({ change }, _nameOf, hopLabelOf) =>
-    Option.some(describeFlow(change, { hop: hopLabelOf, flow: (id) => id })),
+  describe: ({ change }, called) =>
+    Option.some(describeFlow(change, { hop: called.hop, flow: (id) => id })),
   // Whether a flow or its hops exist depends on what other proposals add, so
   // `checkConnectionProposals` words these.
   dangling: () => Option.none(),
@@ -75,8 +75,8 @@ export const flowKind: KindSpec<FlowItem> = {
       kind: "hop",
       id,
     })),
-  summary: ({ id, change }, _nameOf, hopLabelOf) =>
-    summarizeFlow(change, id, { hop: hopLabelOf, flow: (flow) => flow }),
+  summary: ({ id, change }, called) =>
+    summarizeFlow(change, id, { hop: called.hop, flow: (flow) => flow }),
   facts: ({ change }, _layout, data) => factsOfFlow(change, data),
   appliesToData: ({ change }, map) => ({
     ...map,
@@ -85,7 +85,7 @@ export const flowKind: KindSpec<FlowItem> = {
   touches: ({ change }) => ({
     structures: [],
     hops: [],
-    marks: { [changedFlowMark]: flowActionOf(change).flows() },
+    marks: [{ name: changedFlowMark, ids: flowActionOf(change).flows() }],
   }),
   breakage: ({ change }, { hops, data }) =>
     flowBreakage(change, {

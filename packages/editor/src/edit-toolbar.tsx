@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
+import { useNewGroupForm } from "./new-group-context.ts";
 import { NoteToolButton, NoteToolHint } from "./note-tool.tsx";
 import { usePlacing } from "./place-context.ts";
 import { useProposed } from "./proposed-context.ts";
@@ -215,6 +216,7 @@ export function EditToolbar({
   const [refusal, setRefusal] = useState<string | undefined>();
   const [hint, setHint] = useState<string | undefined>();
   const placing = usePlacing();
+  const newGroup = useNewGroupForm();
 
   if (editing === null || !editing.canEdit) {
     return null;
@@ -282,6 +284,19 @@ export function EditToolbar({
           }}
         >
           + Structure
+        </button>
+        <button
+          type="button"
+          data-control="add-group"
+          className={controlClass}
+          aria-expanded={newGroup?.open === true}
+          disabled={proposing === null || !proposing.canPropose}
+          title="Create a group, from the selected structures or empty"
+          onClick={() => {
+            newGroup?.setOpen(!newGroup.open);
+          }}
+        >
+          + Group
         </button>
         <button
           type="button"

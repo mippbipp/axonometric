@@ -1091,16 +1091,17 @@ describe("a hop proposal in the Pending tab and in exports", () => {
         yield* chapter(page, "c-all");
         yield* drawHop(page, "asks");
         yield* click(page, '[data-tab="pending"]');
-        yield* waitFor(page, "[data-pending-connections]");
+        yield* waitFor(page, '[data-review-section="diagram"]');
 
+        // Listed once, in its section, with the Discard the review list gives.
         assert.strictEqual(
-          yield* count(page, "[data-pending-connection-proposal]"),
+          yield* count(page, '[data-review-item][data-review-kind="hop"]'),
           1
         );
 
         yield* click(
           page,
-          "[data-pending-connection-proposal] button:has-text('Discard')"
+          '[data-review-item][data-review-kind="hop"] button:has-text("Discard")'
         );
         yield* Effect.promise(() =>
           page.waitForFunction(

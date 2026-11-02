@@ -1,6 +1,8 @@
 import { Schema } from "effect";
 
+import { ChapterChange } from "./chapter-change.ts";
 import { FlowChange } from "./flow-change.ts";
+import { GroupChange } from "./group-change.ts";
 import { HopChange } from "./hop-change.ts";
 import {
   answerFields,
@@ -13,7 +15,7 @@ import {
   SuggestionText,
   suggestionFields,
 } from "./proposals.ts";
-import { StructureChange } from "./structure-change.ts";
+import { StructureChange, StructureId } from "./structure-change.ts";
 
 /**
  * Adds a note to the open notes, pinned to a structure, a hop or an empty
@@ -111,6 +113,42 @@ export const FlowWrite = Schema.Struct({
 });
 
 export type FlowWrite = typeof FlowWrite.Type;
+
+/** The most structures a new group takes in when it is made from a selection. */
+export const maxGroupMembers = 200;
+
+const membersFix = `expected up to ${maxGroupMembers} structures to move into the group.`;
+
+/** A structure that moves into a new group, with the id of its group change. */
+const GroupMember = Schema.Struct({ id: ChangeId, structure: StructureId });
+
+const GroupMembers = Schema.Array(GroupMember)
+  .annotate({ message: membersFix })
+  .check(Schema.isMaxLength(maxGroupMembers, { message: membersFix }));
+
+/**
+ * Sets the open group proposal `id` to `change`: a new group, or a new title
+ * for one. `members` are the structures that go into a new group, each with
+ * the id of its own group change, which the server adds in the same write, so
+ * a group made from a selection is all there or not at all.
+ */
+export const GroupWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: GroupChange,
+  members: Schema.optionalKey(GroupMembers),
+});
+
+export type GroupWrite = typeof GroupWrite.Type;
+
+/** Sets the open chapter proposal `id` to `change`. */
+export const ChapterWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: ChapterChange,
+});
+
+export type ChapterWrite = typeof ChapterWrite.Type;
 
 /** Reopens a rejected item as a new open item with the id `newId`. */
 export const ReopenWrite = Schema.Struct({

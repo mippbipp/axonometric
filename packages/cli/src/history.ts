@@ -206,6 +206,7 @@ export const acceptedIds = Effect.fnUntraced(function* (home: string) {
     structure: new Set(Arr.map(data?.structures ?? [], ({ id }) => id)),
     hop: new Set(Arr.map(data?.hops ?? [], ({ id }) => id)),
     flow: new Set(Arr.map(data?.flows ?? [], ({ id }) => id)),
+    group: new Set(Arr.map(data?.groups ?? [], ({ id }) => id)),
   };
 
   return known;

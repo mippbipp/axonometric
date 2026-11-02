@@ -17,6 +17,7 @@ import { shiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { useDropOutlines } from "./outlines-context.ts";
+import { useSelection } from "./selection-context.ts";
 import { snap } from "./snap.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -81,15 +82,22 @@ export function GroupEditor({
 }) {
   const editing = useEditing();
   const { state } = useWalkthrough();
+  const { selectGroup } = useSelection();
   const preview = useDragPreview();
   const setOutlines = useDropOutlines()?.set;
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
   const dragged = useRef(false);
+  // The title last pressed. Pointer capture sends the click to the group
+  // element, not the title, so the click can't say which one it was on.
+  const pressedTitle = useRef<string | undefined>(undefined);
   const [drag, setDrag] = useState<Drag | undefined>();
   const live = editing?.canEdit === true;
 
   // A drag ends with a click on the title, which would clear the selection.
+  // A click that is no drag pins the group's panel, with its rename form, and
+  // a double-click goes on to the title box. Both stop here so the surface
+  // behind doesn't clear what they picked.
   useEffect(() => {
     const element = root.current;
 
@@ -98,6 +106,27 @@ export function GroupEditor({
         dragged.current = false;
         event.stopPropagation();
         event.preventDefault();
+
+        return;
+      }
+
+      const group = pressedTitle.current;
+
+      pressedTitle.current = undefined;
+
+      if (group !== undefined && !event.shiftKey) {
+        event.stopPropagation();
+        selectGroup(group);
+
+        if (event.detail >= 2) {
+          requestAnimationFrame(() => {
+            document
+              .querySelector<HTMLInputElement>(
+                "[data-group-panel] [data-group-title]"
+              )
+              ?.select();
+          });
+        }
       }
     };
 
@@ -106,7 +135,7 @@ export function GroupEditor({
     return () => {
       element?.removeEventListener("click", onClick, { capture: true });
     };
-  }, []);
+  }, [selectGroup]);
 
   // The drawing is shifted from the whole canvas, because the members are
   // drawn in the structure layer, beside the zones.
@@ -191,6 +220,7 @@ export function GroupEditor({
     );
 
     dragged.current = false;
+    pressedTitle.current = group;
 
     // A title is small, so the pointer leaves it within a step or two of
     // a drag. Capturing at once keeps the moves coming.
@@ -325,7 +355,8 @@ export function GroupEditor({
                     className="cursor-move"
                   >
                     <title>
-                      Drag to move every structure in {zone.group.title}
+                      Click to open {zone.group.title}, double-click to rename
+                      it, drag to move every structure in it
                     </title>
                   </polygon>,
                 ]

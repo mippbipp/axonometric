@@ -42,7 +42,7 @@ const verdictOf = (
 
   if (Option.isSome(as) && kind !== "changed") {
     return Result.fail(
-      '--as names the id a new structure, hop or flow was accepted under, so it goes with a changed verdict. Use: verdict <home> <item> changed --reason "..." --as <id>.'
+      '--as names the id a new structure, hop, flow or group was accepted under, so it goes with a changed verdict. Use: verdict <home> <item> changed --reason "..." --as <id>.'
     );
   }
 
@@ -171,7 +171,7 @@ export const verdictCommand = Command.make(
     as: Flag.String("as").pipe(
       Flag.optional,
       Flag.withDescription(
-        "For a new structure, hop or flow you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes a structure's position under it."
+        "For a new structure, hop, flow or group you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes a structure's position under it."
       )
     ),
   },

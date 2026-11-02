@@ -3,6 +3,7 @@ import { sameStructureChange } from "@axonometric/contracts";
 import { useEffect, useRef } from "react";
 
 import { useChangePreview } from "./drag-preview-context.ts";
+import { structureItem } from "./proposal-items.ts";
 import { useProposed } from "./proposed-context.ts";
 
 /**
@@ -39,7 +40,7 @@ export const useDraftPreview = (change: StructureChange | undefined) => {
 
     panel?.show({
       refusal: proposing.refusalOf(change),
-      problems: proposing.problemsOf([change]),
+      problems: proposing.problemsOf([structureItem(change)]),
     });
   }, [change, panel, proposing]);
 

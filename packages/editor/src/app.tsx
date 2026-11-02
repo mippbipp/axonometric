@@ -19,6 +19,7 @@ import { useInsideFocus } from "./inside-focus.ts";
 import { InsideView } from "./inside-view.tsx";
 import { MapSurface } from "./map-surface.tsx";
 import { MapView } from "./map-view.tsx";
+import { NewGroupProvider } from "./new-group-provider.tsx";
 import { NoteToolProvider } from "./note-tool.tsx";
 import { useOverviewPage } from "./overview-context.ts";
 import {
@@ -303,7 +304,9 @@ export function App({
                   <OverviewPageProvider>
                     <NoteToolProvider>
                       <PlacingProvider>
-                        <WalkthroughPage notices={notices} />
+                        <NewGroupProvider>
+                          <WalkthroughPage notices={notices} />
+                        </NewGroupProvider>
                       </PlacingProvider>
                     </NoteToolProvider>
                   </OverviewPageProvider>

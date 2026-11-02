@@ -50,11 +50,23 @@ const FlowFacts = Schema.Struct({
   flow: Schema.Record(Schema.String, Schema.Json),
 });
 
+/** A group as a proposal adds or renames it: its id and title. */
+const GroupFacts = Schema.Struct({
+  group: Schema.Record(Schema.String, Schema.Json),
+});
+
+/** A chapter's reveals or plays, before or after a chapter proposal. */
+const ChapterFacts = Schema.Struct({
+  chapter: Schema.Record(Schema.String, Schema.Json),
+});
+
 export const Facts = Schema.NullOr(
   Schema.Union([
     StructureFacts,
     HopFacts,
     FlowFacts,
+    GroupFacts,
+    ChapterFacts,
     Schema.Record(Schema.String, Spot),
     Size,
     TextFacts,
@@ -74,6 +86,8 @@ export const VerdictFacts = Schema.Struct({
 export const ReportedItem = Schema.Struct({
   id: ChangeId,
   kind: Schema.String,
+  /** Where the item is listed: a diagram change or a chapter change. */
+  section: Schema.Literals(["diagram", "chapter"]),
   /** The structures the item acts on or is pinned to. */
   targets: Schema.Array(
     Schema.Struct({ id: Schema.String, name: Schema.String })

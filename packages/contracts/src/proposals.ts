@@ -8,8 +8,10 @@ import {
 } from "effect";
 import { dual } from "effect/Function";
 
+import { ChapterChange } from "./chapter-change.ts";
 import { fileVersionFields, isCalendarDay, objectMessages } from "./fields.ts";
 import { FlowChange } from "./flow-change.ts";
+import { GroupChange } from "./group-change.ts";
 import { HopChange } from "./hop-change.ts";
 import { footprintsOverlap, offEndFindings } from "./layout-checks.ts";
 import type { HopEnds } from "./layout-checks.ts";
@@ -325,6 +327,22 @@ export const StructureProposal = Schema.Struct({
 
 export type StructureProposal = typeof StructureProposal.Type;
 
+/** An open proposal to add or rename a group. */
+export const GroupProposal = Schema.Struct({
+  id: ChangeId,
+  change: GroupChange,
+}).annotate(objectMessages("A group proposal has only id and change."));
+
+export type GroupProposal = typeof GroupProposal.Type;
+
+/** An open proposal to change what one chapter reveals or plays. */
+export const ChapterProposal = Schema.Struct({
+  id: ChangeId,
+  change: ChapterChange,
+}).annotate(objectMessages("A chapter proposal has only id and change."));
+
+export type ChapterProposal = typeof ChapterProposal.Type;
+
 /** An open proposal to draw, delete or relabel a hop. */
 export const HopProposal = Schema.Struct({
   id: ChangeId,
@@ -519,6 +537,8 @@ export const itemFields = {
   structure: { change: StructureChange },
   hop: { change: HopChange },
   flow: { change: FlowChange },
+  group: { change: GroupChange },
+  chapter: { change: ChapterChange },
 };
 
 /** The kind of every item the review loop carries. */
@@ -621,6 +641,16 @@ export const BatchItem = Schema.Union([
     kind: Schema.Literal("flow"),
     ...itemFields.flow,
   }).annotate(itemMessages("flow")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("group"),
+    ...itemFields.group,
+  }).annotate(itemMessages("group")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("chapter"),
+    ...itemFields.chapter,
+  }).annotate(itemMessages("chapter")),
 ]).annotate({ message: itemUnionMessage("batch item") });
 
 export type BatchItem = typeof BatchItem.Type;
@@ -673,9 +703,11 @@ export const Batch = Schema.Struct({
   hops: Schema.optionalKey(Schema.Array(Schema.String)),
   /** The ids of the flows the accepted map had when the batch was frozen; `--as` may not name one. */
   flows: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** The ids of the groups the accepted map had when the batch was frozen; `--as` may not name one. */
+  groups: Schema.optionalKey(Schema.Array(Schema.String)),
 }).annotate(
   objectMessages(
-    "A batch has only number, frozenAt, items, verdicts, committed, dismissed, structures, hops and flows."
+    "A batch has only number, frozenAt, items, verdicts, committed, dismissed, structures, hops, flows and groups."
   )
 );
 
@@ -687,6 +719,8 @@ const allIds = (proposals: {
   readonly structures?: readonly StructureProposal[] | undefined;
   readonly hops?: readonly HopProposal[] | undefined;
   readonly flows?: readonly FlowProposal[] | undefined;
+  readonly groups?: readonly GroupProposal[] | undefined;
+  readonly chapters?: readonly ChapterProposal[] | undefined;
   readonly suggestions?: readonly Suggestion[] | undefined;
   readonly answers?: readonly Answer[] | undefined;
   readonly raised?: readonly RaisedQuestion[] | undefined;
@@ -697,6 +731,8 @@ const allIds = (proposals: {
   ...Arr.map(proposals.structures ?? [], ({ id }) => id),
   ...Arr.map(proposals.hops ?? [], ({ id }) => id),
   ...Arr.map(proposals.flows ?? [], ({ id }) => id),
+  ...Arr.map(proposals.groups ?? [], ({ id }) => id),
+  ...Arr.map(proposals.chapters ?? [], ({ id }) => id),
   ...Arr.map(proposals.suggestions ?? [], ({ id }) => id),
   ...Arr.map(proposals.answers ?? [], ({ id }) => id),
   ...Arr.map(proposals.raised ?? [], ({ id }) => id),
@@ -720,6 +756,8 @@ const hasUniqueIds = (proposals: Parameters<typeof allIds>[0]) => {
  * - `hops`: the open proposals to draw, delete or relabel a hop.
  * - `flows`: the open proposals to create or rename a flow, or to change the
  *   hops of a flow or the order of the flows.
+ * - `groups`: the open proposals to add or rename a group.
+ * - `chapters`: the open proposals to change what a chapter reveals or plays.
  * - `suggestions`: the open text suggestions.
  * - `answers`: the open answers to questions.
  * - `raised`: the open questions the engineer raised.
@@ -745,6 +783,8 @@ export const Proposals = Schema.Struct({
   structures: Schema.optionalKey(Schema.Array(StructureProposal)),
   hops: Schema.optionalKey(Schema.Array(HopProposal)),
   flows: Schema.optionalKey(Schema.Array(FlowProposal)),
+  groups: Schema.optionalKey(Schema.Array(GroupProposal)),
+  chapters: Schema.optionalKey(Schema.Array(ChapterProposal)),
   suggestions: Schema.optionalKey(Schema.Array(Suggestion)),
   answers: Schema.optionalKey(Schema.Array(Answer)),
   raised: Schema.optionalKey(Schema.Array(RaisedQuestion)),
@@ -753,7 +793,7 @@ export const Proposals = Schema.Struct({
 })
   .annotate(
     objectMessages(
-      "A proposals file has only format, revision, layout, notes, structures, hops, flows, suggestions, answers, raised, batches and replaces."
+      "A proposals file has only format, revision, layout, notes, structures, hops, flows, groups, chapters, suggestions, answers, raised, batches and replaces."
     )
   )
   .check(

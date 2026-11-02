@@ -1,4 +1,4 @@
-import { Array as Arr, Option, Record as Rec } from "effect";
+import { Array as Arr, Match, Option, Record as Rec } from "effect";
 
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
@@ -9,12 +9,17 @@ import { plain, removedMark } from "./review-kind-defaults.ts";
 import type { KindSpec, Pointer } from "./review-kinds.ts";
 import { decorate } from "./review-quote.ts";
 import { actionOf } from "./structure-actions.ts";
-import { maxStructureNameLength, structureOf } from "./structure-change.ts";
+import {
+  maxStructureNameLength,
+  StructureName,
+  structureOf,
+} from "./structure-change.ts";
 import {
   structureBreakage,
   structureChangeToData,
   structureChangeToLayout,
 } from "./structure-effects.ts";
+import { refusalOf } from "./text-schemas.ts";
 
 // The kind for a proposed change to the structures: add, delete, rename, and
 // a new shape, group or status. It is one entry of the kind table;
@@ -71,19 +76,33 @@ const isAutoPlaced = ({
   );
 };
 
+/**
+ * The name the engineer wrote, in the changes that hold one: an add and a
+ * rename. The other changes are choices from a list and have no text to edit.
+ */
+const textOfChange = (change: StructureItem["change"]): Option.Option<string> =>
+  Match.value(change).pipe(
+    Match.when({ action: "add" }, ({ structure }) =>
+      Option.some(structure.name)
+    ),
+    Match.when({ action: "rename" }, ({ name }) => Option.some(name)),
+    Match.orElse(() => Option.none<string>())
+  );
+
 export const structureKind: KindSpec<StructureItem> = {
   ...plain<StructureItem>(),
   textLimit: maxStructureNameLength,
+  textRefusal: ({ change }, text) =>
+    Option.isNone(textOfChange(change))
+      ? Option.none()
+      : refusalOf(StructureName, text),
   listKey: "structures",
-  text: ({ change }) =>
-    Option.some(
-      change.action === "add" ? change.structure.name : structureOf(change)
-    ),
-  describe: ({ change }, nameOf) =>
+  text: ({ change }) => textOfChange(change),
+  describe: ({ change }, called) =>
     Option.some(
       actionOf(change).describe({
-        structure: nameOf,
-        group: (id) => id,
+        structure: called.structure,
+        group: called.group,
       })
     ),
   dangling: ({ change }, known) =>
@@ -108,7 +127,8 @@ export const structureKind: KindSpec<StructureItem> = {
   targets: ({ change }): readonly Pointer[] => [
     { kind: "structure", id: structureOf(change) },
   ],
-  summary: ({ id, change }, nameOf) => actionOf(change).summary(id, nameOf),
+  summary: ({ id, change }, called) =>
+    actionOf(change).summary(id, called.structure),
   facts: ({ change }, layout, data) =>
     actionOf(change).facts(
       Option.flatMap(Option.fromNullishOr(data), (map) =>
@@ -123,9 +143,12 @@ export const structureKind: KindSpec<StructureItem> = {
   touches: ({ change }) => ({
     structures: [structureOf(change)],
     hops: [],
-    marks: {
-      [removedMark]: change.action === "delete" ? [structureOf(change)] : [],
-    },
+    marks: [
+      {
+        name: removedMark,
+        ids: change.action === "delete" ? [structureOf(change)] : [],
+      },
+    ],
   }),
   breakage: ({ change }, landing) =>
     landing.data === undefined
@@ -136,11 +159,29 @@ export const structureKind: KindSpec<StructureItem> = {
   retargeted: (item, renames) => {
     const { change } = item;
 
+    // A structure that goes into a new group follows the id the agent gave
+    // the group.
+    const groupId = (group: string) => followed(renames, "group", group);
+
     if (change.action === "add") {
-      return item;
+      const group = groupId(change.structure.group);
+
+      return group === change.structure.group
+        ? item
+        : {
+            ...item,
+            change: { ...change, structure: { ...change.structure, group } },
+          };
     }
 
     const to = followed(renames, "structure", change.structure);
+
+    if (change.action === "group") {
+      return {
+        ...item,
+        change: { ...change, structure: to, group: groupId(change.group) },
+      };
+    }
 
     return to === change.structure
       ? item
@@ -252,5 +293,22 @@ export const structureKind: KindSpec<StructureItem> = {
     change: item.change,
     reason,
   }),
-  reopened: (item, newId) => ({ ...item, id: newId }),
+  reopened: (item, newId, text) => ({
+    ...item,
+    id: newId,
+    change:
+      text === undefined
+        ? item.change
+        : Match.value(item.change).pipe(
+            Match.when({ action: "add" }, (change) => ({
+              ...change,
+              structure: { ...change.structure, name: text },
+            })),
+            Match.when({ action: "rename" }, (change) => ({
+              ...change,
+              name: text,
+            })),
+            Match.orElse((change) => change)
+          ),
+  }),
 };

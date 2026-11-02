@@ -6,10 +6,12 @@ import {
   discardChange,
   emptyHistory,
   emptyProposals,
+  ChapterWrite,
   FlowWrite,
   FreezeWrite,
   FreezeAnswer,
   frozenRefusal,
+  GroupWrite,
   HopWrite,
   frozenWriteRefusal,
   ItemWrite,
@@ -48,7 +50,9 @@ import {
 } from "@axonometric/contracts";
 import type {
   ChangeId,
+  ChapterChange,
   FlowChange,
+  GroupChange,
   HopChange,
   NoteTarget,
   TextField,
@@ -147,6 +151,10 @@ const encodeStructure = Schema.encodeEffect(
 const encodeHop = Schema.encodeEffect(Schema.fromJsonString(HopWrite));
 
 const encodeFlow = Schema.encodeEffect(Schema.fromJsonString(FlowWrite));
+
+const encodeGroup = Schema.encodeEffect(Schema.fromJsonString(GroupWrite));
+
+const encodeChapter = Schema.encodeEffect(Schema.fromJsonString(ChapterWrite));
 
 const encodeFreeze = Schema.encodeEffect(Schema.fromJsonString(FreezeWrite));
 
@@ -305,6 +313,33 @@ export interface ServedStore {
   readonly hops: HopOps;
   /** Proposals to create and rename flows, and to order their hops and the flows. */
   readonly flows: FlowOps;
+  /** Proposals to create and rename groups. */
+  readonly groups: GroupStoreOps;
+  /** Proposals to change what a chapter reveals and plays. */
+  readonly chapters: ChapterStoreOps;
+}
+
+/** Proposing groups, sent like the review writes. `done` runs when it ends. */
+export interface GroupStoreOps {
+  /**
+   * Proposes a new group or a new title. `members` are the structures that
+   * go into a new group, each with the id of its group change, which the
+   * server adds in the same write.
+   */
+  readonly propose: (
+    change: GroupChange,
+    members: readonly { readonly id: ChangeId; readonly structure: string }[],
+    done: ReviewDone<ChangeId>
+  ) => void;
+  /** Removes an open group proposal. */
+  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+}
+
+/** Proposing chapter changes, sent like the review writes. */
+export interface ChapterStoreOps {
+  readonly propose: (change: ChapterChange, done: ReviewDone<ChangeId>) => void;
+  /** Removes an open chapter proposal. */
+  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
 }
 
 /**
@@ -1702,6 +1737,53 @@ export const connectServed = ({
       ),
   };
 
+  const groups: GroupStoreOps = {
+    propose: (change, members, done) => {
+      const id = newChangeId();
+
+      callReview<ChangeId>(
+        {
+          url: served.group,
+          encode: (base) =>
+            encodeGroup({
+              baseFileRevision: base,
+              id,
+              change,
+              members,
+            }).pipe(Effect.orDie),
+          read: readProposalsWith(id),
+          endsUndo: false,
+        },
+        done
+      );
+    },
+    discard: (id, done) => {
+      review.discardProposal(id, done);
+    },
+  };
+
+  const chapters: ChapterStoreOps = {
+    propose: (change, done) => {
+      const id = newChangeId();
+
+      callReview<ChangeId>(
+        {
+          url: served.chapter,
+          encode: (base) =>
+            encodeChapter({ baseFileRevision: base, id, change }).pipe(
+              Effect.orDie
+            ),
+          read: readProposalsWith(id),
+          endsUndo: false,
+        },
+        done
+      );
+    },
+    discard: (id, done) => {
+      review.discardProposal(id, done);
+    },
+  };
+
   connect();
 
   return {
@@ -1709,6 +1791,8 @@ export const connectServed = ({
     structures,
     hops,
     flows,
+    groups,
+    chapters,
     subscribe: (listener) => {
       listeners.add(listener);
 

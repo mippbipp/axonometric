@@ -1,10 +1,10 @@
-import { Array as Arr, Order, Record as Rec } from "effect";
+import { Array as Arr, Order, Predicate } from "effect";
 import { dual } from "effect/Function";
 
 import type { MapState } from "./map-state.ts";
 import type { Batch, BatchItem, Proposals } from "./proposals.ts";
 import { applyOrder, specOf } from "./review-kinds.ts";
-import type { Touches } from "./review-kinds.ts";
+import type { Mark, Touches } from "./review-kinds.ts";
 import { batchesOf, openItems } from "./review.ts";
 
 /** The two parts of a map that proposals change. */
@@ -30,7 +30,7 @@ export interface ProposedMap<S extends Mappable = MapState> {
    * What kinds mark besides structures and hops, by the name of the mark and
    * the ids it marks; see `Touches.marks`. Read one with `marked`.
    */
-  readonly marks: ReadonlyMap<string, ReadonlySet<string>>;
+  readonly marks: readonly Mark[];
 }
 
 const byKind = Order.mapInput(Order.Number, (item: BatchItem) =>
@@ -50,31 +50,43 @@ export const frozenItems = (proposals: Proposals): readonly BatchItem[] => {
   return inKindOrder(Arr.flatMap(waiting, (batch: Batch) => batch.items));
 };
 
-const marksOf = (
-  touched: readonly Touches[]
-): ReadonlyMap<string, ReadonlySet<string>> => {
-  const named = Arr.flatMap(touched, ({ marks }) => Rec.toEntries(marks));
-  const names = Arr.dedupe(Arr.map(named, ([name]) => name));
+/** What asks for marks: a name, and optionally where and which look. */
+export interface MarkQuery {
+  readonly name: string;
+  readonly scope?: string | undefined;
+  readonly kind?: string | undefined;
+}
 
-  const idsOf = (name: string): ReadonlySet<string> => {
-    const held = Arr.filter(named, ([other]) => other === name);
-
-    return new Set(Arr.flatMap(held, ([, ids]) => ids));
-  };
-
-  return new Map(Arr.map(names, (name) => [name, idsOf(name)] as const));
-};
-
-const noIds: ReadonlySet<string> = new Set();
-
-/** The ids that proposals mark under `name`; none when no proposal does. */
+/** The ids that proposals mark under `query`; none when no proposal does. */
 export const marked: {
-  (name: string): (shown: Pick<ProposedMap, "marks">) => ReadonlySet<string>;
-  (shown: Pick<ProposedMap, "marks">, name: string): ReadonlySet<string>;
+  (
+    query: MarkQuery | string
+  ): (shown: Pick<ProposedMap, "marks">) => ReadonlySet<string>;
+  (
+    shown: Pick<ProposedMap, "marks">,
+    query: MarkQuery | string
+  ): ReadonlySet<string>;
 } = dual(
   2,
-  (shown: Pick<ProposedMap, "marks">, name: string): ReadonlySet<string> =>
-    shown.marks.get(name) ?? noIds
+  (
+    shown: Pick<ProposedMap, "marks">,
+    query: MarkQuery | string
+  ): ReadonlySet<string> => {
+    // A bare name asks for every mark of that name, wherever it shows.
+    const asked: MarkQuery = Predicate.isString(query)
+      ? { name: query }
+      : query;
+
+    return new Set(
+      Arr.flatMap(shown.marks, (mark) =>
+        mark.name === asked.name &&
+        (asked.scope === undefined || mark.scope === asked.scope) &&
+        (asked.kind === undefined || mark.kind === asked.kind)
+          ? mark.ids
+          : []
+      )
+    );
+  }
 );
 
 /**
@@ -128,7 +140,7 @@ export const proposedMap = <S extends Mappable>({
     touches,
     structures: new Set(Arr.flatMap(all, ({ structures }) => structures)),
     hops: new Set(Arr.flatMap(all, ({ hops }) => hops)),
-    marks: marksOf(all),
+    marks: Arr.flatMap(all, ({ marks }) => marks),
   };
 };
 

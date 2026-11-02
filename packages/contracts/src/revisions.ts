@@ -92,6 +92,22 @@ export const AcceptedItem = Schema.Union([
     reason: Schema.optionalKey(Reason),
     changed: changedFlag,
   }).annotate(itemMessages("flow", "accepted item", ["as", ...acceptedMore])),
+  Schema.Struct({
+    kind: Schema.Literal("group"),
+    id: ChangeId,
+    ...itemFields.group,
+    /** For an added group: the id it has on the map now. */
+    as: Schema.optionalKey(FinalId),
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(itemMessages("group", "accepted item", ["as", ...acceptedMore])),
+  Schema.Struct({
+    kind: Schema.Literal("chapter"),
+    id: ChangeId,
+    ...itemFields.chapter,
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(itemMessages("chapter", "accepted item", acceptedMore)),
 ]).annotate({ message: itemUnionMessage("accepted item", ["reason?"]) });
 
 export type AcceptedItem = typeof AcceptedItem.Type;
@@ -146,6 +162,18 @@ export const RejectedItem = Schema.Union([
     ...itemFields.flow,
     reason: RequiredReason,
   }).annotate(itemMessages("flow", "rejected item", ["reason"])),
+  Schema.Struct({
+    kind: Schema.Literal("group"),
+    id: ChangeId,
+    ...itemFields.group,
+    reason: RequiredReason,
+  }).annotate(itemMessages("group", "rejected item", ["reason"])),
+  Schema.Struct({
+    kind: Schema.Literal("chapter"),
+    id: ChangeId,
+    ...itemFields.chapter,
+    reason: RequiredReason,
+  }).annotate(itemMessages("chapter", "rejected item", ["reason"])),
 ]).annotate({ message: itemUnionMessage("rejected item", ["reason"]) });
 
 export type RejectedItem = typeof RejectedItem.Type;

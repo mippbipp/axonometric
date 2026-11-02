@@ -69,6 +69,8 @@ import {
   reopenWrite,
   setFlowWrite,
   setHopWrite,
+  setChapterWrite,
+  setGroupWrite,
   setStructureWrite,
 } from "./review-writes.ts";
 import { recordServer, runningServer } from "./server-state.ts";
@@ -482,6 +484,8 @@ const routes = ({
     structure: Str.slice(1)(serverPaths.structure),
     hop: Str.slice(1)(serverPaths.hop),
     flow: Str.slice(1)(serverPaths.flow),
+    group: Str.slice(1)(serverPaths.group),
+    chapter: Str.slice(1)(serverPaths.chapter),
     freeze: Str.slice(1)(serverPaths.freeze),
     dismiss: Str.slice(1)(serverPaths.dismiss),
     reopen: Str.slice(1)(serverPaths.reopen),
@@ -592,6 +596,8 @@ const routes = ({
       .handle("setStructure", reviewing(setStructureWrite))
       .handle("setHop", reviewing(setHopWrite))
       .handle("setFlow", reviewing(setFlowWrite))
+      .handle("setGroup", reviewing(setGroupWrite))
+      .handle("setChapter", reviewing(setChapterWrite))
       .handle("freeze", reviewing(freezeWrite))
       .handle("dismiss", reviewing(dismissWrite))
       .handle("reopen", reviewing(reopenWrite))

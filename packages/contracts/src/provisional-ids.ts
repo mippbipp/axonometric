@@ -4,10 +4,15 @@ import { dual } from "effect/Function";
 import type { BatchItem, Verdict } from "./proposals.ts";
 
 /** The things the engineer can propose under a provisional id. */
-export type Entity = "structure" | "hop" | "flow";
+export type Entity = "structure" | "hop" | "flow" | "group";
 
 /** Every entity, in the order the messages list them. */
-export const entities: readonly Entity[] = ["structure", "hop", "flow"];
+export const entities: readonly Entity[] = [
+  "structure",
+  "hop",
+  "flow",
+  "group",
+];
 
 /** One provisional id the agent gave a final id. */
 export interface Rename {
@@ -24,6 +29,7 @@ export const noRenames: Renames = {
   structure: new Map(),
   hop: new Map(),
   flow: new Map(),
+  group: new Map(),
 };
 
 /** `list` as `Renames`. Ids the agent kept as they were are not renames. */
@@ -41,6 +47,7 @@ export const renamesOf = (list: readonly Rename[]): Renames => {
     structure: mapOf("structure"),
     hop: mapOf("hop"),
     flow: mapOf("flow"),
+    group: mapOf("group"),
   };
 };
 
@@ -66,6 +73,7 @@ export const noKnownIds: KnownIds = {
   structure: new Set(),
   hop: new Set(),
   flow: new Set(),
+  group: new Set(),
 };
 
 /** The key of a `Batch` list of the ids an entity had when the batch was frozen. */
@@ -73,6 +81,7 @@ export const batchKeyOf = {
   structure: "structures",
   hop: "hops",
   flow: "flows",
+  group: "groups",
 } as const satisfies Record<Entity, string>;
 
 /** The ids frozen into a batch, by entity. */

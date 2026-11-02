@@ -44,8 +44,8 @@ import {
   renamesOf,
 } from "./provisional-ids.ts";
 import type { Entity, KnownIds, Renames } from "./provisional-ids.ts";
-import { allKinds, specOf } from "./review-kinds.ts";
-import type { Waiting } from "./review-kinds.ts";
+import { allKinds, sections, sectionTitles, specOf } from "./review-kinds.ts";
+import type { Names, Section, Waiting } from "./review-kinds.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
 type Listed = Proposals;
@@ -249,6 +249,8 @@ export const checkOpenItems: {
   const existing = {
     structures: new Set(Arr.map(data.structures, ({ id }) => id)),
     hops: new Set([...Arr.map(data.hops, ({ id }) => id), ...drawn]),
+    groups: new Set(Arr.map(data.groups, ({ id }) => id)),
+    chapters: new Set(Arr.map(data.chapters, ({ id }) => id)),
   };
 
   return Arr.flatMap(allKinds, (spec) =>
@@ -539,6 +541,11 @@ export const reopenItem = ({
     return Result.fail(refusedText.value);
   }
 
+  // A kind with no text of its own leaves nothing for `text` to edit.
+  if (text !== undefined && Option.isNone(spec.text(item))) {
+    return Result.fail(`A ${spec.name(item)} has no text to edit.`);
+  }
+
   const reopened = spec.reopened(item, newId, text);
 
   const broken = spec.breakage(reopened, {
@@ -546,10 +553,24 @@ export const reopenItem = ({
     structureIds: known,
     hops,
     data,
+    // The items waiting are judged together, as a batch is.
+    siblings: [...openItems(dismissed.success), reopened],
   });
 
   if (Option.isSome(broken)) {
     return Result.fail(broken.value);
+  }
+
+  // The map the item lands on: as proposed, without the rejected item it
+  // replaces, which has left the page. The same checks a fresh proposal runs.
+  const unfit = Option.flatMap(Option.fromNullishOr(data), (map) =>
+    spec.fits === undefined
+      ? Option.none()
+      : spec.fits(reopened, proposedData(map, dismissed.success))
+  );
+
+  if (Option.isSome(unfit)) {
+    return Result.fail(unfit.value);
   }
 
   const clash = spec.clash?.(reopened, waitingItems(dismissed.success));
@@ -567,6 +588,23 @@ export const reopenItem = ({
       reopened
     )
   );
+};
+
+/** `data` with every open and frozen item of `proposals` applied. */
+const proposedData = (data: MapData, proposals: Proposals): MapData => {
+  const waiting: readonly Batch[] = Arr.filter(
+    batchesOf(proposals),
+    isOpenBatch
+  );
+
+  const items: readonly BatchItem[] = [
+    ...Arr.flatMap(waiting, ({ items: held }) => held),
+    ...openItems(proposals),
+  ];
+
+  return Arr.reduce(items, { data, layout: emptyLayout }, (map, item) =>
+    specOf(item).appliesToData(item, map)
+  ).data;
 };
 
 /** Why open item `id` can't be found among the open items. */
@@ -665,8 +703,21 @@ export const discardProposal = ({
 
   const dropped = rewriteOpen(proposals, found.value, Option.none());
   const spec = specOf(found.value);
+  const settled = spec.discarded?.(dropped, found.value) ?? dropped;
 
-  return Result.succeed(spec.discarded?.(dropped, found.value) ?? dropped);
+  // What only makes sense with the item goes with it: the structures a new
+  // group took in go back where they were.
+  const dependents = spec.dependents?.(found.value, proposals) ?? [];
+
+  const withoutDependent = (held: Proposals, dependent: string): Proposals => {
+    const other = openItemNamed(held, dependent);
+
+    return Option.isNone(other)
+      ? held
+      : rewriteOpen(held, other.value, Option.none());
+  };
+
+  return Result.succeed(Arr.reduce(dependents, settled, withoutDependent));
 };
 
 /** What the agent can say about the items still without a verdict. */
@@ -750,6 +801,7 @@ export const recordVerdict = ({
     structure: frozenIds("structure"),
     hop: frozenIds("hop"),
     flow: frozenIds("flow"),
+    group: frozenIds("group"),
   };
 
   const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
@@ -785,6 +837,7 @@ export const breakageOf = ({
   structureIds,
   hops,
   data,
+  siblings,
 }: {
   readonly item: BatchItem;
   readonly layout: Layout;
@@ -792,8 +845,10 @@ export const breakageOf = ({
   readonly hops: readonly HopEnds[];
   /** The map, for the kinds that point into its text. */
   readonly data?: MapData | undefined;
+  /** The batch's items, for the kinds that are judged together. */
+  readonly siblings?: readonly BatchItem[] | undefined;
 }): Option.Option<string> =>
-  specOf(item).breakage(item, { layout, structureIds, hops, data });
+  specOf(item).breakage(item, { layout, structureIds, hops, data, siblings });
 
 /** What committing a batch makes. */
 export interface Committing {
@@ -1081,21 +1136,68 @@ export const dismissItem = ({
   });
 };
 
-/** How a summary names what an item acts on. */
-export interface Names {
-  /** A structure's name. */
-  readonly structure: (id: string) => string;
-  /** A hop's label. */
-  readonly hop: (id: string) => string;
-}
+/**
+ * `Names` with the group and chapter titles left out where a caller has none:
+ * the id stands in for the title.
+ */
+export type PartialNames = Pick<Names, "structure" | "hop"> &
+  Partial<Pick<Names, "group" | "acceptedGroup" | "chapter">>;
+
+/** `names` with an id standing in for each title it lacks. */
+export const fullNames = (names: PartialNames): Names => ({
+  structure: names.structure,
+  hop: names.hop,
+  group: names.group ?? ((id) => id),
+  acceptedGroup: names.acceptedGroup ?? names.group ?? ((id) => id),
+  chapter: names.chapter ?? ((id) => id),
+});
 
 /** One line that says what an item is. */
 export const summaryLine: {
-  (names: Names): (item: BatchItem) => string;
-  (item: BatchItem, names: Names): string;
-} = dual(2, (item: BatchItem, names: Names): string =>
-  specOf(item).summary(item, names.structure, names.hop)
+  (names: PartialNames): (item: BatchItem) => string;
+  (item: BatchItem, names: PartialNames): string;
+} = dual(2, (item: BatchItem, names: PartialNames): string =>
+  specOf(item).summary(item, fullNames(names))
 );
+
+/** The section an item is listed in. */
+export const sectionOf = (item: BatchItem): Section => specOf(item).section;
+
+/**
+ * `items` split by section, in the order sections are listed, leaving out a
+ * section with no item. Items keep their order within a section.
+ * `sectionOfItem` says which section an item is in.
+ */
+export const inSections: {
+  <A>(
+    sectionOfItem: (item: A) => Section
+  ): (
+    items: readonly A[]
+  ) => readonly { readonly section: Section; readonly items: readonly A[] }[];
+  <A>(
+    items: readonly A[],
+    sectionOfItem: (item: A) => Section
+  ): readonly { readonly section: Section; readonly items: readonly A[] }[];
+} = dual(
+  2,
+  <A>(
+    items: readonly A[],
+    sectionOfItem: (item: A) => Section
+  ): readonly { readonly section: Section; readonly items: readonly A[] }[] =>
+    Arr.flatMap(sections, (section) => {
+      const held = Arr.filter(items, (item) => sectionOfItem(item) === section);
+
+      return held.length === 0 ? [] : [{ section, items: held }];
+    })
+);
+
+/** Batch items split by section; see `inSections`. */
+export const bySection = (
+  items: readonly BatchItem[]
+): readonly {
+  readonly section: Section;
+  readonly items: readonly BatchItem[];
+}[] => inSections(items, sectionOf);
 
 /**
  * Said in the prompt and in `review`'s output. The engineer's text reaches the
@@ -1143,7 +1245,7 @@ export const reviewPrompt = ({
   /** The absolute path of the home folder. */
   readonly home: string;
   readonly batch: Batch;
-  readonly names: Names;
+  readonly names: PartialNames;
 }): string =>
   Arr.join(
     [
@@ -1153,11 +1255,13 @@ export const reviewPrompt = ({
       "",
       `Run axonometric review ${quoted(home)}, give every item a verdict with axonometric verdict, then run axonometric commit ${quoted(home)}.`,
       changedLayoutNotice,
-      ...kindNotices(batch.items),
       engineerTextNotice,
       ...kindNotices(batch.items),
-      "",
-      ...Arr.map(batch.items, (item) => `- ${summaryLine(item, names)}`),
+      ...Arr.flatMap(bySection(batch.items), ({ section, items }) => [
+        "",
+        `${sectionTitles[section]}:`,
+        ...Arr.map(items, (item) => `- ${summaryLine(item, names)}`),
+      ]),
     ],
     "\n"
   );

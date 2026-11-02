@@ -4,6 +4,7 @@ import { Option, Result } from "effect";
 
 import { useChangePreview } from "./drag-preview-context.ts";
 import { useEditing } from "./editing-context.ts";
+import { structureItem } from "./proposal-items.ts";
 import { useProposed } from "./proposed-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -43,7 +44,9 @@ export const useDrop = () => {
       return;
     }
 
-    panel?.show({ problems: proposing.problemsOf([change], moved) });
+    panel?.show({
+      problems: proposing.problemsOf([structureItem(change)], { moved }),
+    });
     proposing.propose(change, (outcome) => {
       const why = Option.getOrUndefined(Result.getFailure(outcome));
 

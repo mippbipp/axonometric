@@ -7,7 +7,7 @@ import type { KindSpec, Touches } from "./review-kinds.ts";
 export const touchesNothing: Touches = {
   structures: [],
   hops: [],
-  marks: {},
+  marks: [],
 };
 
 /** `--as` names a structure's final id, so it only fits an item that adds one. */
@@ -20,8 +20,9 @@ export const asRefusal = (verdict: Verdict): Option.Option<string> =>
 
 /**
  * The members of `KindSpec` that a kind with no effect on the map's data,
- * no `--as` and no new structure of its own leaves as they are. A kind
- * spreads `plain<Item>()` and overrides the members it uses, so a member
+ * no `--as` and no new structure of its own leaves as they are, and the
+ * `diagram` section, which every kind but a chapter change is listed in. A
+ * kind spreads `plain<Item>()` and overrides the members it uses, so a member
  * added to `KindSpec` for one kind does not touch the others.
  */
 export const plain = <I extends BatchItem>(): Pick<
@@ -32,7 +33,9 @@ export const plain = <I extends BatchItem>(): Pick<
   | "verdictRefusal"
   | "renames"
   | "retargeted"
+  | "section"
 > => ({
+  section: "diagram",
   appliesToData: (_item, map) => map,
   touches: () => touchesNothing,
   commitRefusal: () => Option.none(),

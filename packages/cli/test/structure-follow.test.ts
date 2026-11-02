@@ -381,15 +381,11 @@ describe("a group change", () => {
         );
 
         // The group change is written after the move, so wait for it.
-        yield* Effect.promise(() =>
-          page.waitForFunction(
-            `[...document.querySelectorAll("[data-pending-structure-proposal]")].length >= 0`,
-            undefined,
-            waitTimeout
-          )
-        );
         yield* click(page, '[role="tab"][data-tab="pending"]');
-        yield* waitFor(page, '[data-pending-action="group"]');
+        yield* waitFor(
+          page,
+          '[data-review-kind="structure"][data-review-action="group"]'
+        );
 
         const proposals = yield* readProposals(home);
 

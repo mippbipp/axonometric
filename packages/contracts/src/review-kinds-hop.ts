@@ -64,8 +64,10 @@ export const hopKind: KindSpec<HopItem> = {
     Option.isNone(hopActionOf(change).text())
       ? Option.none()
       : refusalOf(HopLabel, text),
-  describe: ({ change }, nameOf, hopLabelOf) =>
-    Option.some(describeHop(change, { structure: nameOf, hop: hopLabelOf })),
+  describe: ({ change }, called) =>
+    Option.some(
+      describeHop(change, { structure: called.structure, hop: called.hop })
+    ),
   // Whether the hop or the structures it joins exist depends on what other
   // proposals add, so `checkConnectionProposals` words these.
   dangling: () => Option.none(),
@@ -87,8 +89,8 @@ export const hopKind: KindSpec<HopItem> = {
       : proposals,
   name: ({ change }) => hopLabel(change),
   targets: ({ change }): readonly Pointer[] => hopActionOf(change).targets(),
-  summary: ({ id, change }, nameOf, hopLabelOf) =>
-    summarizeHop(change, id, { structure: nameOf, hop: hopLabelOf }),
+  summary: ({ id, change }, called) =>
+    summarizeHop(change, id, { structure: called.structure, hop: called.hop }),
   facts: ({ change }, _layout, data) => factsOfHop(change, data),
   appliesToData: ({ change }, map) => ({
     ...map,
@@ -100,7 +102,10 @@ export const hopKind: KindSpec<HopItem> = {
     return {
       structures: [],
       hops: [hopOf(change)],
-      marks: { [removedHopMark]: removed, [proposedHopMark]: proposed },
+      marks: [
+        { name: removedHopMark, ids: removed },
+        { name: proposedHopMark, ids: proposed },
+      ],
     };
   },
   breakage: ({ change }, { structureIds, hops, data }) =>

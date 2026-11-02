@@ -4,11 +4,13 @@ import {
   dismissItem,
   editProposal,
   freezeOpen,
-  hopLabelOf,
   MapFilesUnreadable,
+  namesOf,
   proposedMap,
   ProposalRefused,
+  proposeChapter,
   proposeFlow,
+  proposeGroupWithMembers,
   proposeHop,
   proposeStructure,
   reopenItem,
@@ -33,6 +35,8 @@ import type {
   Proposals,
   QuestionAdd,
   ReopenWrite,
+  ChapterWrite,
+  GroupWrite,
   StructureWrite,
   SuggestionAdd,
 } from "@axonometric/contracts";
@@ -291,6 +295,42 @@ export const setFlowWrite = editing<FlowWrite>(
     })
 );
 
+/**
+ * Sets an open group proposal: creates a group, with the structures that go
+ * into it as their own group changes in the same write, or renames one. All of
+ * it goes in or none of it.
+ */
+export const setGroupWrite = editing<GroupWrite>(
+  "setGroupWrite",
+  (held, { id, change, members }) =>
+    proposeGroupWithMembers({
+      proposals: held.proposals,
+      id,
+      change,
+      members: members ?? [],
+      world: connectionWorld(held),
+      structures: {
+        data: held.proposed.state.data,
+        layout: held.proposed.state.layout,
+      },
+    })
+);
+
+/**
+ * Sets an open chapter proposal: reveals or hides a structure in one chapter,
+ * adds or removes a hop it plays, or puts its hops in a new order.
+ */
+export const setChapterWrite = editing<ChapterWrite>(
+  "setChapterWrite",
+  ({ proposals, proposed, data }, { id, change }) =>
+    proposeChapter({
+      proposals,
+      id,
+      change,
+      world: { data, proposed: proposed.state.data },
+    })
+);
+
 /** Takes a reviewed item off the page. */
 export const dismissWrite = editing<ItemWrite>(
   "dismissWrite",
@@ -330,7 +370,7 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, structures, proposed, data, now }) =>
+    change: ({ proposals, proposed, data, now }) =>
       Result.map(
         freezeOpen({
           proposals,
@@ -339,6 +379,7 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
             structure: Arr.map(data.structures, ({ id }) => id),
             hop: Arr.map(data.hops, ({ id }) => id),
             flow: Arr.map(data.flows, ({ id }) => id),
+            group: Arr.map(data.groups, ({ id }) => id),
           },
         }),
         (frozen) => ({
@@ -350,12 +391,9 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
             prompt: reviewPrompt({
               home: absolute,
               batch: frozen.batch,
-              names: {
-                structure: (id) => structures.get(id) ?? id,
-                // A hop the engineer drew has a label on the page and none
-                // in data.mjs yet.
-                hop: hopLabelOf(proposed.state.data.hops),
-              },
+              // A hop the engineer drew has a label on the page and none in
+              // data.mjs yet, and so has a group.
+              names: namesOf({ shown: proposed.state.data, accepted: data }),
             }),
           },
         })
