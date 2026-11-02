@@ -87,14 +87,38 @@ const rightAngled = (points: readonly GridPoint[]) =>
   });
 
 /**
+ * The most points a route override may have. A real route has a handful of
+ * bends; the cap keeps a hand-written file or a large write from making the
+ * router and the lane ordering do quadratic work.
+ */
+export const maxRoutePoints = 200;
+
+/** How far from the origin a route override's points may lie, on each axis. */
+export const maxRouteReach = 1000;
+
+const withinReach = (points: readonly GridPoint[]) =>
+  Arr.every(
+    points,
+    ({ x, y }) => Math.abs(x) <= maxRouteReach && Math.abs(y) <= maxRouteReach
+  );
+
+/**
  * A route override: the points a hop's route runs through, from the edge of
- * one footprint to the edge of the other. Every leg runs along x or y.
+ * one footprint to the edge of the other. Every leg runs along x or y. It
+ * has at most `maxRoutePoints` points, each within `maxRouteReach` of the
+ * origin.
  */
 export const RouteOverride = Schema.Array(GridPoint)
   .annotate({ message: `expected an array of points. ${routeFix}` })
   .check(
     Schema.isMinLength(2, {
       message: `expected at least two points. ${routeFix}`,
+    }),
+    Schema.isMaxLength(maxRoutePoints, {
+      message: `expected at most ${maxRoutePoints} points. Remove the bends that aren't needed, or delete the override so the hop routes itself.`,
+    }),
+    Schema.makeFilter(withinReach, {
+      message: `expected every point within ${maxRouteReach} units of the origin on both axes. Bring the points back onto the map.`,
     }),
     Schema.makeFilter(rightAngled, {
       message: `expected every leg to run along x or y. ${routeFix}`,

@@ -4,9 +4,11 @@ import { useId, useMemo, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { DragWarnings } from "./drag-preview.tsx";
 import { useEditing } from "./editing-context.ts";
 import { useHistory } from "./history-context.ts";
 import { HistoryTab } from "./history-tab.tsx";
+import { HopPanel } from "./hop-panel.tsx";
 import { PendingTab } from "./pending-tab.tsx";
 import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
@@ -143,6 +145,7 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
  */
 export type PanelContent =
   | { readonly kind: "chapter" }
+  | { readonly kind: "hop"; readonly hop: string }
   | { readonly kind: "packet"; readonly packet: SelectedPacket }
   | { readonly kind: "structure"; readonly structure: Structure }
   | { readonly kind: "inside"; readonly structure: Structure };
@@ -151,10 +154,12 @@ const panelContentOf = ({
   packet,
   pinned,
   inside,
+  hop,
 }: {
   readonly packet: SelectedPacket | null;
   readonly pinned: Structure | undefined;
   readonly inside: Structure | undefined;
+  readonly hop: string | null;
 }): PanelContent => {
   if (inside !== undefined) {
     return { kind: "inside", structure: inside };
@@ -162,6 +167,10 @@ const panelContentOf = ({
 
   if (packet !== null) {
     return { kind: "packet", packet };
+  }
+
+  if (hop !== null) {
+    return { kind: "hop", hop };
   }
 
   return pinned === undefined
@@ -172,6 +181,7 @@ const panelContentOf = ({
 const renderContent = Match.type<PanelContent>().pipe(
   Match.discriminatorsExhaustive("kind")({
     chapter: () => <ChapterStory />,
+    hop: ({ hop }) => <HopPanel key={hop} id={hop} />,
     packet: ({ packet }) => <PacketDetails packet={packet} />,
     structure: ({ structure }) => (
       <StructurePanel key={structure.id} structure={structure} />
@@ -270,7 +280,7 @@ const useWaitingCount = () =>
  */
 export function SidePanel() {
   const { selected: packet } = usePlayback();
-  const { selected, inside } = useSelection();
+  const { selected, selectedHop, inside } = useSelection();
   const byId = useStructuresById();
   const { open } = useRevealedQuestions();
 
@@ -286,6 +296,9 @@ export function SidePanel() {
   const waiting = useWaitingCount();
 
   // A tab other than Details stays open until the selection changes.
+  const picked =
+    selected ?? (selectedHop === null ? null : `hop:${selectedHop}`);
+
   const [otherTab, setOtherTab] = useState<{
     readonly tab: Tab;
     readonly selected: string | null;
@@ -307,13 +320,13 @@ export function SidePanel() {
 
   const tab: Tab =
     otherTab !== null &&
-    otherTab.selected === selected &&
+    otherTab.selected === picked &&
     Arr.some(tabs, ({ id, disabled }) => id === otherTab.tab && !disabled)
       ? otherTab.tab
       : "details";
 
   const choose = (next: Tab) => {
-    setOtherTab(next === "details" ? null : { tab: next, selected });
+    setOtherTab(next === "details" ? null : { tab: next, selected: picked });
   };
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -382,6 +395,7 @@ export function SidePanel() {
             packet,
             pinned: selected === null ? undefined : byId.get(selected),
             inside: inside === null ? undefined : byId.get(inside),
+            hop: selectedHop,
           })
         )}
       </TabPanel>
@@ -402,6 +416,9 @@ export function SidePanel() {
           <HistoryTab />
         </TabPanel>
       )}
+      {/* Docked under the tabs, so what a drag would leave never covers the
+          drawing. */}
+      <DragWarnings className="border-x-0 border-b-0" />
     </aside>
   );
 }

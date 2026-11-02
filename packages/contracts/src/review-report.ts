@@ -6,12 +6,20 @@ const Spot = Schema.Struct({ x: Schema.Finite, y: Schema.Finite });
 
 const Size = Schema.Struct({ w: Schema.Finite, d: Schema.Finite });
 
-/** What an item changes or leaves: positions, a size, or a note's text. */
+/**
+ * What an item changes or leaves: positions, a size, a note's text, or a
+ * hop's route, which is "automatic" or a route override's points.
+ */
+const Route = Schema.Struct({
+  route: Schema.Union([Schema.Literal("automatic"), Schema.Array(Spot)]),
+});
+
 export const Facts = Schema.NullOr(
   Schema.Union([
     Schema.Record(Schema.String, Spot),
     Size,
     Schema.Struct({ text: Schema.String }),
+    Route,
   ])
 );
 

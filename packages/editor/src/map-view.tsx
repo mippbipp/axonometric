@@ -19,13 +19,16 @@ import type { ReactNode } from "react";
 
 import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
+import { DragOutlines } from "./drop-outline.tsx";
 import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
+import { GroupEditor } from "./group-editor.tsx";
 import { NoteMarkers } from "./note-markers.tsx";
 import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { routesOf } from "./projection.ts";
+import { RouteEditor } from "./route-editor.tsx";
 import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
 import { useSpotlight, useSpotlightActions } from "./spotlight-context.ts";
@@ -197,27 +200,44 @@ export function MapView({
             hatch={hatch}
             newlyRevealed={newlyRevealed}
             spotlight={spotlight}
+            ground={<DragOutlines view={view} />}
             underlay={
-              <g>
-                {Arr.map(marked, (item) => (
-                  <NewMarker
-                    key={item.structure.id}
-                    placed={item}
+              <>
+                <GroupEditor
+                  view={view}
+                  data={state.data}
+                  layout={state.layout}
+                  zones={scene.zones}
+                />
+                <g>
+                  {Arr.map(marked, (item) => (
+                    <NewMarker
+                      key={item.structure.id}
+                      placed={item}
+                      view={view}
+                    />
+                  ))}
+                  <SelectionMarker
+                    placements={state.layout.structures}
                     view={view}
                   />
-                ))}
-                <SelectionMarker
-                  placements={state.layout.structures}
-                  view={view}
-                />
-                <AcceptedOutlines structures={scene.structures} view={view} />
-                <CompareRings
-                  structures={scene.structures}
-                  view={view}
-                  marks={marks}
-                />
-                <CompareHops hops={scene.hops} marks={marks} />
-              </g>
+                  <AcceptedOutlines structures={scene.structures} view={view} />
+                  <CompareRings
+                    structures={scene.structures}
+                    view={view}
+                    marks={marks}
+                  />
+                  <CompareHops hops={scene.hops} marks={marks} />
+                </g>
+              </>
+            }
+            hopsOverlay={
+              <RouteEditor
+                view={view}
+                hops={scene.hops}
+                placements={state.layout.structures}
+                onHover={hoverHop}
+              />
             }
             overlay={<NoteMarkers scene={scene} />}
             onHopHover={hoverHop}

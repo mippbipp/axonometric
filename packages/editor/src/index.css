@@ -138,6 +138,14 @@
   opacity: calc(0.55 * var(--faded-structure));
 }
 
+/* A hop with an end on a structure being dragged, its label, and its packet.
+   The hop stays where it was until the drop, so its label would lie on
+   whatever the structure passes over. */
+[data-drag-hidden],
+[data-packet-hidden] {
+  visibility: hidden;
+}
+
 /* A compare draws a structure only the accepted map has as a ghost: faint,
    under the rings that mark it. */
 [data-structure][data-compare~="removed"] {

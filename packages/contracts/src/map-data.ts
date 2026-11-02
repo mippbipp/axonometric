@@ -411,3 +411,25 @@ export const MapData = Schema.Struct({
 );
 
 export type MapData = typeof MapData.Type;
+
+/**
+ * A hop's name wherever one is said: its label, or its id when `hops` has
+ * no such hop. The review prompt, `review`, the commit message and the page
+ * all call a hop this.
+ */
+export function hopLabelOf(hops: readonly Hop[]): (id: string) => string;
+export function hopLabelOf(hops: readonly Hop[], id: string): string;
+export function hopLabelOf(
+  hops: readonly Hop[],
+  ...rest: readonly [] | readonly [string]
+): string | ((id: string) => string) {
+  const labelOf = (id: string) =>
+    Arr.findFirst(hops, (hop) => hop.id === id).pipe(
+      Option.map(({ label }) => label),
+      Option.getOrElse(() => id)
+    );
+
+  const [id] = rest;
+
+  return id === undefined ? labelOf : labelOf(id);
+}

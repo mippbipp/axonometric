@@ -81,3 +81,23 @@ export const zonesOf = ({
       },
     ];
   });
+
+/**
+ * The ids of every structure in group `group` that the layout places, in
+ * data.mjs order. A zone fits only the structures revealed so far, but
+ * moving the group moves all of them.
+ */
+export const groupMembers = ({
+  data,
+  layout,
+  group,
+}: {
+  readonly data: Pick<MapData, "structures">;
+  readonly layout: Layout;
+  readonly group: string;
+}): readonly string[] =>
+  Arr.flatMap(data.structures, (structure) =>
+    structure.group === group && layout.structures[structure.id] !== undefined
+      ? [structure.id]
+      : []
+  );

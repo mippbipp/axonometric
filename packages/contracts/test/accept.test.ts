@@ -61,8 +61,13 @@ const groupMove = (id: string): LayoutChange => ({
   ],
 });
 
+const hops = [
+  { id: "h-ab", from: "a", to: "b" },
+  { id: "h-bc", from: "b", to: "c" },
+];
+
 const accept = (pending: readonly LayoutChange[], ids: "all" | string[]) =>
-  acceptLayoutChanges({ layout, pending, ids });
+  acceptLayoutChanges({ layout, pending, ids, hops });
 
 /** The acceptance, or a failed assertion carrying the refusal. */
 const accepted = (pending: readonly LayoutChange[], ids: "all" | string[]) => {
@@ -183,6 +188,7 @@ describe("accepting layout changes", () => {
       layout: crowded,
       pending: [move("m1", "e", [16, 6])],
       ids: ["m1"],
+      hops,
     });
 
     assert.isTrue(Result.isSuccess(result));
@@ -194,7 +200,7 @@ describe("accepting layout changes", () => {
 
     assert.deepStrictEqual(result.remaining, []);
     assert.deepStrictEqual(result.dropped, [
-      { id: "m1", kind: "move", structures: ["a"] },
+      { id: "m1", kind: "move", structures: ["a"], hops: [] },
     ]);
     assert.deepStrictEqual(result.layout.structures.a, {
       x: 0,
@@ -218,7 +224,7 @@ describe("accepting layout changes", () => {
       },
     ]);
     assert.deepStrictEqual(result.dropped, [
-      { id: "g1", kind: "move", structures: ["a"] },
+      { id: "g1", kind: "move", structures: ["a"], hops: [] },
     ]);
   });
 
@@ -228,7 +234,7 @@ describe("accepting layout changes", () => {
 
     assert.deepStrictEqual(result.remaining, []);
     assert.deepStrictEqual(result.dropped, [
-      { id: "g1", kind: "move", structures: ["a", "b"] },
+      { id: "g1", kind: "move", structures: ["a", "b"], hops: [] },
     ]);
   });
 
@@ -344,10 +350,12 @@ describe("the message for an acceptance", () => {
 
   it("says which earlier changes the accepted ones replace", () => {
     assert.strictEqual(
-      acceptanceMessage([move("m2", "a", [0, 30])], nameOf, [
-        { id: "m1", kind: "move", structures: ["a", "b"] },
-        { id: "r1", kind: "resize", structures: ["c"] },
-      ]),
+      acceptanceMessage([move("m2", "a", [0, 30])], nameOf, {
+        dropped: [
+          { id: "m1", kind: "move", structures: ["a", "b"], hops: [] },
+          { id: "r1", kind: "resize", structures: ["c"], hops: [] },
+        ],
+      }),
       "Move Save server; replaces earlier pending changes to Save server, Map page and Proposals"
     );
   });
@@ -379,6 +387,122 @@ describe("the message for an acceptance", () => {
     assert.strictEqual(
       acceptanceMessage([move("m1", "x", [0, 6])], (id) => id),
       "Move x"
+    );
+  });
+});
+
+const reroute = (
+  id: string,
+  hop: string,
+  points: LayoutChange extends infer C
+    ? C extends { kind: "reroute"; points: infer P }
+      ? P
+      : never
+    : never
+): LayoutChange => ({
+  id,
+  kind: "reroute",
+  target: { kind: "hop", id: hop },
+  points,
+});
+
+/** A route from a's +x face to b's -x face. */
+const route = [
+  { x: 2, y: 1 },
+  { x: 3, y: 1 },
+  { x: 3, y: 3 },
+  { x: 3.5, y: 3 },
+  { x: 3.5, y: 1 },
+  { x: 4, y: 1 },
+];
+
+describe("accepting reroutes", () => {
+  it("writes the route override to the layout", () => {
+    const result = accepted([reroute("r1", "h-ab", route)], "all");
+
+    assert.deepStrictEqual(result.layout.routes, { "h-ab": route });
+    assert.strictEqual(result.layout.revision, 4);
+  });
+
+  it("removes the override when a reset is accepted", () => {
+    const routed: Layout = { ...layout, routes: { "h-ab": route } };
+
+    const result = acceptLayoutChanges({
+      layout: routed,
+      pending: [reroute("r1", "h-ab", null)],
+      ids: "all",
+      hops,
+    });
+
+    assert.isUndefined(Result.getOrThrow(result).layout.routes);
+  });
+
+  it("refuses a reroute of a hop the map doesn't have", () => {
+    assert.include(
+      refusal([reroute("r1", "h-nope", route)], "all"),
+      '"h-nope"'
+    );
+  });
+
+  it("refuses a route that starts off its footprint", () => {
+    const off = [{ x: 1, y: 1 }, ...route.slice(1)];
+
+    assert.include(
+      refusal([reroute("r1", "h-ab", off)], "all"),
+      "off the edge of"
+    );
+  });
+
+  it("drops an earlier reroute of the same hop when a later one is accepted", () => {
+    const pending = [reroute("r1", "h-ab", route), reroute("r2", "h-ab", null)];
+
+    const result = accepted(pending, ["r2"]);
+
+    assert.deepStrictEqual(result.remaining, []);
+    assert.deepStrictEqual(result.dropped, [
+      { id: "r1", kind: "reroute", structures: [], hops: ["h-ab"] },
+    ]);
+  });
+
+  it("leaves a reroute of another hop, and moves, pending", () => {
+    const pending = [
+      reroute("r1", "h-bc", [
+        { x: 6, y: 1 },
+        { x: 8, y: 1 },
+      ]),
+      move("m1", "a", [0, 6]),
+    ];
+
+    const result = accepted(pending, ["m1"]);
+
+    assert.deepStrictEqual(
+      Arr.map(result.remaining, ({ id }) => id),
+      ["r1"]
+    );
+    assert.deepStrictEqual(result.dropped, []);
+  });
+
+  it("refuses to accept a move that leaves a pending-less override off its end", () => {
+    const routed: Layout = { ...layout, routes: { "h-ab": route } };
+
+    const result = acceptLayoutChanges({
+      layout: routed,
+      pending: [move("m1", "a", [0, 6])],
+      ids: "all",
+      hops,
+    });
+
+    assert.isTrue(Result.isFailure(result));
+  });
+
+  it("names a reroute and a reset in the message", () => {
+    assert.strictEqual(
+      acceptanceMessage(
+        [reroute("r1", "h-ab", route), reroute("r2", "h-bc", null)],
+        nameOf,
+        { hopNameOf: (id) => `hop ${id}` }
+      ),
+      "Reroute hop h-ab; reset the route of hop h-bc"
     );
   });
 });

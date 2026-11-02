@@ -169,23 +169,44 @@ const routeWarnings = (
 };
 
 /** Whether a point sits on a footprint's outline, edges and corners included. */
-const onOutline = (point: GridPoint, box: Placement) => {
+export const onOutline: {
+  (box: Placement): (point: GridPoint) => boolean;
+  (point: GridPoint, box: Placement): boolean;
+} = dual(2, (point: GridPoint, box: Placement) => {
   const withinX = point.x >= box.x && point.x <= box.x + box.w;
   const withinY = point.y >= box.y && point.y <= box.y + box.d;
   const onX = point.x === box.x || point.x === box.x + box.w;
   const onY = point.y === box.y || point.y === box.y + box.d;
 
   return (onX && withinY) || (onY && withinX);
-};
+});
+
+/** A hop's id and the structures at its ends. */
+export interface HopEnds {
+  readonly id: string;
+  readonly from: string;
+  readonly to: string;
+}
+
+/** A route override with an end off its footprint, and the problem it makes. */
+export interface OffEnd {
+  readonly hop: HopEnds;
+  readonly end: "first" | "last";
+  readonly problem: MapProblem;
+}
 
 /**
  * Errors for route overrides whose first point isn't on the edge of the
  * hop's source footprint, or whose last point isn't on its target's. Such
  * a route starts or ends in the open, or inside a box, so it can't be
- * drawn as a hop between the two.
+ * drawn as a hop between the two. `check` and the page's reroute refusals
+ * both ask this, so they never disagree about what an override may be.
  */
-const offEndOverrides = (data: MapData, layout: Layout) =>
-  Arr.flatMap(data.hops, (hop) => {
+export const offEndFindings: {
+  (layout: Layout): (hops: readonly HopEnds[]) => readonly OffEnd[];
+  (hops: readonly HopEnds[], layout: Layout): readonly OffEnd[];
+} = dual(2, (hops: readonly HopEnds[], layout: Layout): readonly OffEnd[] =>
+  Arr.flatMap(hops, (hop) => {
     const points = layout.routes?.[hop.id];
     const from = layout.structures[hop.from];
     const to = layout.structures[hop.to];
@@ -203,14 +224,27 @@ const offEndOverrides = (data: MapData, layout: Layout) =>
       point === undefined || onOutline(point, box)
         ? []
         : [
-            mapError({
-              file: "layout.json",
-              path: ["routes", hop.id],
-              message: `hop "${hop.id}"'s route override ${end === "first" ? "starts" : "ends"} at (${point.x}, ${point.y}), which isn't on the edge of "${structure}" at x ${box.x}–${box.x + box.w}, y ${box.y}–${box.y + box.d}. Move its ${end} point onto that footprint's edge.`,
-            }),
+            {
+              hop,
+              end,
+              problem: mapError({
+                file: "layout.json",
+                path: ["routes", hop.id],
+                message: `hop "${hop.id}"'s route override ${end === "first" ? "starts" : "ends"} at (${point.x}, ${point.y}), which isn't on the edge of "${structure}" at x ${box.x}–${box.x + box.w}, y ${box.y}–${box.y + box.d}. Move its ${end} point onto that footprint's edge.`,
+              }),
+            },
           ]
     );
-  });
+  })
+);
+
+/** The errors `offEndFindings` finds. */
+export const offEndOverrides: {
+  (layout: Layout): (hops: readonly HopEnds[]) => readonly MapProblem[];
+  (hops: readonly HopEnds[], layout: Layout): readonly MapProblem[];
+} = dual(2, (hops: readonly HopEnds[], layout: Layout): readonly MapProblem[] =>
+  Arr.map(offEndFindings(hops, layout), ({ problem }) => problem)
+);
 
 const staleRoutes = (data: MapData, layout: Layout) => {
   const ids = new Set(Arr.map(data.hops, ({ id }) => id));
@@ -477,10 +511,59 @@ export const checkLayout: {
   return [
     ...staleEntries(data, layout),
     ...staleRoutes(data, layout),
-    ...offEndOverrides(data, layout),
+    ...offEndOverrides(data.hops, layout),
     ...overlaps(placed),
     ...coveredTags(placed),
     ...overlappingZones(data, layout),
     ...chapterWarnings(data, layout),
   ];
 });
+
+const lineOf = (problem: MapProblem) =>
+  `${problem.severity} ${problem.file} ${problem.path}: ${problem.message}`;
+
+/** A problem `checkLayout` finds in a dragged layout, and whether the drag made it. */
+export interface DraggedProblem {
+  readonly problem: MapProblem;
+  /** Whether the layout before the drag didn't have it. */
+  readonly added: boolean;
+}
+
+const checked = new WeakMap<MapData, WeakMap<Layout, readonly MapProblem[]>>();
+
+/**
+ * `checkLayout`, remembered for this data and this layout. A drag asks about
+ * the same layout before it again at every step, and the check is the slow
+ * part.
+ */
+const checkLayoutOnce = (data: MapData, layout: Layout) => {
+  const byLayout = checked.get(data) ?? new WeakMap();
+  const found = byLayout.get(layout) ?? checkLayout(data, layout);
+
+  byLayout.set(layout, found);
+  checked.set(data, byLayout);
+
+  return found;
+};
+
+/**
+ * Everything `check` would report for the layout `after`, in the order it
+ * reports it, each marked `added` when the layout `before` didn't have it.
+ * It is the check `check` runs, on the layout a drag would leave, so the
+ * page lists exactly what `check` would then print, and can set apart what
+ * the drag made.
+ */
+export const draggedProblems: {
+  (before: Layout, after: Layout): (data: MapData) => readonly DraggedProblem[];
+  (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[];
+} = dual(
+  3,
+  (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[] => {
+    const known = new Set(Arr.map(checkLayoutOnce(data, before), lineOf));
+
+    return Arr.map(checkLayoutOnce(data, after), (problem) => ({
+      problem,
+      added: !known.has(lineOf(problem)),
+    }));
+  }
+);

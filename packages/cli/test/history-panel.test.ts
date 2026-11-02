@@ -666,7 +666,7 @@ describe("the History panel", () => {
           yield* readIn(root, "review/map/proposals.json")
         );
 
-        const summary = Arr.flatMap(proposals.layout, (change) =>
+        const moves = Arr.flatMap(proposals.layout, (change) =>
           change.kind === "move"
             ? Arr.map(change.moves, ({ target, position }) => ({
                 kind: "move",
@@ -674,7 +674,12 @@ describe("the History panel", () => {
                 x: position.x,
                 y: position.y,
               }))
-            : [
+            : []
+        );
+
+        const resizes = Arr.flatMap(proposals.layout, (change) =>
+          change.kind === "resize"
+            ? [
                 {
                   kind: "resize",
                   id: change.target.id,
@@ -682,7 +687,10 @@ describe("the History panel", () => {
                   y: change.footprint.d,
                 },
               ]
+            : []
         );
+
+        const summary = [...moves, ...resizes];
 
         assert.sameDeepMembers(summary, [
           { kind: "move", id: "engineer", x: 0, y: 0 },

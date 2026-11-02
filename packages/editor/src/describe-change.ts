@@ -5,24 +5,32 @@ import { dual } from "effect/Function";
 const spot = ({ x, y }: { readonly x: number; readonly y: number }) =>
   `${x}, ${y}`;
 
-/** Each structure a change acts on, named, and what happens to it. */
+/** How a change names what it acts on. */
+export interface Names {
+  readonly structure: (id: string) => string;
+  /** A hop by the structures at its ends, such as "Page to Server". */
+  readonly hop: (id: string) => string;
+}
+
+/** Each structure or hop a change acts on, named, and what happens to it. */
 export const describeChange: {
-  (
-    accepted: Layout,
-    nameOf: (id: string) => string
-  ): (change: LayoutChange) => readonly string[];
-  (
-    change: LayoutChange,
-    accepted: Layout,
-    nameOf: (id: string) => string
-  ): readonly string[];
+  (accepted: Layout, names: Names): (change: LayoutChange) => readonly string[];
+  (change: LayoutChange, accepted: Layout, names: Names): readonly string[];
 } = dual(
   3,
-  (
-    change: LayoutChange,
-    accepted: Layout,
-    nameOf: (id: string) => string
-  ): readonly string[] => {
+  (change: LayoutChange, accepted: Layout, names: Names): readonly string[] => {
+    const nameOf = names.structure;
+
+    if (change.kind === "reroute") {
+      const hop = names.hop(change.target.id);
+
+      return [
+        change.points === null
+          ? `Route ${hop} reset to automatic routing`
+          : `Route ${hop} set by hand`,
+      ];
+    }
+
     if (change.kind === "move") {
       return Arr.map(change.moves, ({ target, position }) => {
         const before = Rec.get(accepted.structures, target.id);

@@ -514,12 +514,18 @@ const routes = ({
     (group) =>
       group
         .handle("putLayout", ({ payload }) =>
-          writePendingLayout(home, payload, (proposals) =>
-            SubscriptionRef.update(held, (current) => ({
-              ...current,
-              proposals,
-            }))
-          ).pipe(
+          SubscriptionRef.get(held).pipe(
+            Effect.flatMap(({ good }) =>
+              writePendingLayout(
+                home,
+                { write: payload, hops: good.data.hops },
+                (proposals) =>
+                  SubscriptionRef.update(held, (current) => ({
+                    ...current,
+                    proposals,
+                  }))
+              )
+            ),
             Effect.catchTag(
               ["PlatformError", "LockHeld", "SchemaError", "OutputExists"],
               Effect.die

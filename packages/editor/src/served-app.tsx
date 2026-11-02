@@ -146,6 +146,8 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
             discard: store.discard,
             refusalOfMoves: store.refusalOfMoves,
             arrange: store.arrange,
+            reroute: store.reroute,
+            refusalOfReroute: store.refusalOfReroute,
             canUndo: view.canUndo,
             canRedo: view.canRedo,
             undo: store.undo,

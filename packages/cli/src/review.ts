@@ -2,6 +2,7 @@ import {
   breakageOf,
   changedLayoutNotice,
   engineerTextNotice,
+  hopLabelOf,
   oldestOpenBatch,
   ReviewReport,
   specOf,
@@ -9,6 +10,7 @@ import {
 import type {
   Batch,
   BatchItem,
+  Hop,
   Layout,
   ReportedItem,
 } from "@axonometric/contracts";
@@ -38,6 +40,7 @@ const reportItem = ({
   replaces,
   layout,
   names,
+  hops,
 }: {
   readonly item: BatchItem;
   readonly batch: Batch;
@@ -45,21 +48,28 @@ const reportItem = ({
   readonly replaces: Readonly<Record<string, string>> | undefined;
   readonly layout: Layout;
   readonly names: ReadonlyMap<string, string>;
+  readonly hops: readonly Hop[];
 }): ReportedItem => {
   const spec = specOf(item);
   const { before, after } = spec.facts(item, layout);
   const structureIds = new Set(names.keys());
+
+  // A reroute acts on a hop, which the engineer knows by its label.
+  const nameOf = (id: string) =>
+    item.kind === "layout" && item.change.kind === "reroute"
+      ? hopLabelOf(hops, id)
+      : (names.get(id) ?? id);
 
   return {
     id: item.id,
     kind: spec.name(item),
     targets: Arr.map(spec.targets(item), (id) => ({
       id,
-      name: names.get(id) ?? id,
+      name: nameOf(id),
     })),
     before,
     after,
-    breaks: Option.getOrNull(breakageOf({ item, layout, structureIds })),
+    breaks: Option.getOrNull(breakageOf({ item, layout, structureIds, hops })),
     replaces: Option.getOrNull(Rec.get(replaces ?? {}, item.id)),
     verdict: Option.getOrNull(Rec.get(batch.verdicts, item.id)),
   };
@@ -114,6 +124,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
           replaces: map.proposals.replaces,
           layout: map.layout,
           names,
+          hops: map.data.hops,
         })
       ),
   });

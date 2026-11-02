@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
+import { DragPreviewProvider } from "./drag-preview.tsx";
 import { useArrowOwner, useEditKeys } from "./edit-keys.ts";
 import { EditToolbar } from "./edit-toolbar.tsx";
 import { useEditing } from "./editing-context.ts";
@@ -289,11 +290,13 @@ export function App({
       <PlaybackProvider>
         <SelectionProvider>
           <TooltipProvider>
-            <SpotlightProvider>
-              <OverviewPageProvider>
-                <WalkthroughPage notices={notices} />
-              </OverviewPageProvider>
-            </SpotlightProvider>
+            <DragPreviewProvider state={state}>
+              <SpotlightProvider>
+                <OverviewPageProvider>
+                  <WalkthroughPage notices={notices} />
+                </OverviewPageProvider>
+              </SpotlightProvider>
+            </DragPreviewProvider>
           </TooltipProvider>
         </SelectionProvider>
       </PlaybackProvider>

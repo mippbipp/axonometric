@@ -1,13 +1,19 @@
 import { Schema } from "effect";
 
-import { Batch, ChangeId, NoteText, Proposals, Target } from "./proposals.ts";
+import {
+  Batch,
+  ChangeId,
+  NoteText,
+  Proposals,
+  StructureTarget,
+} from "./proposals.ts";
 
 /** Adds a note to the open notes. The page makes the id, so a retry can't add it twice. */
 export const NoteAdd = Schema.Struct({
   /** The `proposals.json` revision the page based the write on. */
   baseFileRevision: Schema.Int,
   id: ChangeId,
-  target: Target,
+  target: StructureTarget,
   text: NoteText,
 });
 

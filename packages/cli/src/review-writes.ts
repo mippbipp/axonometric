@@ -6,6 +6,7 @@ import {
   dismissItem,
   editNote,
   freezeOpen,
+  hopLabelOf,
   MapFilesUnreadable,
   ProposalRefused,
   reopenItem,
@@ -14,6 +15,7 @@ import {
 import type {
   FreezeWrite,
   FreezeAnswer,
+  Hop,
   Layout,
   ItemWrite,
   NoteAdd,
@@ -41,6 +43,8 @@ interface Held {
   /** The layout open changes land on: the accepted one with frozen changes applied. */
   readonly layout: Layout;
   readonly structures: ReadonlyMap<string, string>;
+  /** The map's hops, with their labels. */
+  readonly hops: readonly Hop[];
   readonly now: string;
 }
 
@@ -79,6 +83,7 @@ const writeProposals = Effect.fnUntraced(
         frozenLayoutChanges(map.proposals)
       ),
       structures: structureNames(map.data),
+      hops: map.data.hops,
       now,
     });
 
@@ -170,13 +175,14 @@ export const dismissWrite = editing<ItemWrite>(
 /** Reopens a rejected item as a new open item linked to it. */
 export const reopenWrite = editing<ReopenWrite>(
   "reopenWrite",
-  ({ proposals, layout, structures }, { id, newId, text }) =>
+  ({ proposals, layout, structures, hops }, { id, newId, text }) =>
     reopenItem({
       proposals,
       id,
       newId,
       layout,
       known: new Set(structures.keys()),
+      hops,
       text,
     })
 );
@@ -198,7 +204,7 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, structures, now }) =>
+    change: ({ proposals, structures, hops, now }) =>
       Result.map(freezeOpen({ proposals, at: now }), (frozen) => ({
         proposals: frozen.proposals,
         answer: {
@@ -208,7 +214,10 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
           prompt: reviewPrompt({
             home: absolute,
             batch: frozen.batch,
-            nameOf: (id) => structures.get(id) ?? id,
+            names: {
+              structure: (id) => structures.get(id) ?? id,
+              hop: hopLabelOf(hops),
+            },
           }),
         },
       })),

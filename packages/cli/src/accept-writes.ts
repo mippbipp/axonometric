@@ -1,6 +1,7 @@
 import {
   acceptanceMessage,
   acceptRefusal,
+  hopLabelOf,
   acceptLayoutChanges,
   historyFolder,
   LayoutChangeRefused,
@@ -90,6 +91,7 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
     proposals: current,
     layout: map.layout,
     ids: write.changeIds,
+    hops: map.data.hops,
   });
 
   if (Option.isSome(waiting)) {
@@ -103,6 +105,7 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
     layout: map.layout,
     pending: current.layout,
     ids: write.changeIds,
+    hops: map.data.hops,
   });
 
   if (Result.isFailure(result)) {
@@ -122,11 +125,10 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
 
   const message =
     given === ""
-      ? acceptanceMessage(
-          accepted,
-          (id) => structureNames.get(id) ?? id,
-          dropped
-        )
+      ? acceptanceMessage(accepted, (id) => structureNames.get(id) ?? id, {
+          dropped,
+          hopNameOf: hopLabelOf(map.data.hops),
+        })
       : given;
 
   const number = yield* nextRevision(home);

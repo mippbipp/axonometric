@@ -1,5 +1,6 @@
 import {
   Array as Arr,
+  Match,
   Option,
   pipe,
   Record as Rec,
@@ -9,11 +10,13 @@ import {
 } from "effect";
 import { dual } from "effect/Function";
 
+import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import {
   applyLayoutChanges,
   layoutRefusal,
   structuresOf,
+  targetIdsOf,
 } from "./proposals.ts";
 import type {
   BatchItem,
@@ -57,6 +60,8 @@ export interface Landing {
   readonly layout: Layout;
   /** The ids of the structures data.mjs has. */
   readonly structureIds: ReadonlySet<string>;
+  /** The hops data.mjs has, which say where a reroute's ends belong. */
+  readonly hops: readonly HopEnds[];
 }
 
 const decorate = <A extends object>(
@@ -92,10 +97,20 @@ export interface KindSpec<I extends BatchItem> {
   add(proposals: Proposals, item: I): Proposals;
   /** A word for what the item is, such as "move". */
   name(item: I): string;
-  /** The ids of the structures the item acts on or points at. */
+  /**
+   * The ids of what the item acts on or points at: structures, and for a
+   * reroute the hop.
+   */
   targets(item: I): readonly string[];
-  /** One line for the prompt. Text the engineer wrote goes through `quoteText`. */
-  summary(item: I, nameOf: (id: string) => string): string;
+  /**
+   * One line for the prompt. Text the engineer wrote goes through
+   * `quoteText`. `hopLabelOf` gives a hop's label, for a reroute.
+   */
+  summary(
+    item: I,
+    nameOf: (id: string) => string,
+    hopLabelOf: (id: string) => string
+  ): string;
   /** What the item changes, from `layout`, for `review`. */
   facts(item: I, layout: Layout): { before: Facts; after: Facts };
   /** Why accepting the item would break the map, or nothing. */
@@ -132,6 +147,18 @@ const sizeOf = (layout: Layout, id: string): Facts => {
   return placement === undefined ? null : { w: placement.w, d: placement.d };
 };
 
+/** A hop's route override, or "automatic" when it routes itself. */
+const routeOf = (layout: Layout, hop: string): Facts => {
+  const points = layout.routes?.[hop];
+
+  return {
+    route:
+      points === undefined
+        ? "automatic"
+        : Arr.map(points, ({ x, y }) => ({ x, y })),
+  };
+};
+
 const layoutKind: KindSpec<LayoutItem> = {
   open: (proposals) =>
     Arr.map(proposals.layout, (change): LayoutItem => ({
@@ -145,29 +172,40 @@ const layoutKind: KindSpec<LayoutItem> = {
     layout: [...proposals.layout, item.change],
   }),
   name: (item) => item.change.kind,
-  targets: (item) => structuresOf(item.change),
-  summary: (item, nameOf) => {
-    const names = Arr.map(structuresOf(item.change), (id) =>
-      quoteText(nameOf(id))
-    );
+  targets: (item) => targetIdsOf(item.change),
+  summary: (item, nameOf, hopLabelOf) => {
+    const { change } = item;
 
-    return `${item.change.kind} ${item.id}: ${Arr.join(names, ", ")}`;
+    if (change.kind === "reroute") {
+      return `reroute ${item.id} on ${quoteText(hopLabelOf(change.target.id))}`;
+    }
+
+    const names = Arr.map(structuresOf(change), (id) => quoteText(nameOf(id)));
+
+    return `${change.kind} ${item.id}: ${Arr.join(names, ", ")}`;
   },
   facts: ({ change }, layout) => {
     const next = applyLayoutChanges(layout, [change]);
 
-    return change.kind === "move"
-      ? {
+    return Match.value(change).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        move: () => ({
           before: positionsOf(layout, structuresOf(change)),
           after: positionsOf(next, structuresOf(change)),
-        }
-      : {
-          before: sizeOf(layout, change.target.id),
-          after: sizeOf(next, change.target.id),
-        };
+        }),
+        resize: ({ target }) => ({
+          before: sizeOf(layout, target.id),
+          after: sizeOf(next, target.id),
+        }),
+        reroute: ({ target }) => ({
+          before: routeOf(layout, target.id),
+          after: routeOf(next, target.id),
+        }),
+      })
+    );
   },
-  breakage: (item, { layout }) =>
-    layoutRefusal({ accepted: layout, before: [], after: [item.change] }),
+  breakage: (item, { layout, hops }) =>
+    layoutRefusal({ accepted: layout, before: [], after: [item.change], hops }),
   // A changed layout item is not applied: the agent set the layout itself.
   applies: (item, { verdict }) => (verdict === "accepted" ? [item.change] : []),
   accepted: (item, verdict) =>

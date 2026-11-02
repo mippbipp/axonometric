@@ -16,9 +16,11 @@ import { useSelection } from "./selection-context.ts";
 export const useSelectionKeys = (arrows: boolean) => {
   const {
     selected,
+    selectedHop,
     inside,
     multiSelection,
     select,
+    selectHop,
     goInside,
     comeOut,
     clearMultiSelection,
@@ -38,6 +40,13 @@ export const useSelectionKeys = (arrows: boolean) => {
     if (event.key === "Escape" && multiSelection.size > 0) {
       event.preventDefault();
       clearMultiSelection();
+
+      return;
+    }
+
+    if (event.key === "Escape" && selectedHop !== null) {
+      event.preventDefault();
+      selectHop(null);
 
       return;
     }

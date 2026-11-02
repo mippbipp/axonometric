@@ -9,7 +9,7 @@ import {
   NoteText,
   Reason,
   RequiredReason,
-  Target,
+  StructureTarget,
 } from "./proposals.ts";
 
 /** The folder in the home folder that holds one file per revision. */
@@ -39,7 +39,7 @@ export const AcceptedItem = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("note"),
     id: ChangeId,
-    target: Target,
+    target: StructureTarget,
     text: NoteText,
     reason: Schema.optionalKey(Reason),
     changed: changedFlag,
@@ -70,7 +70,7 @@ export const RejectedItem = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("note"),
     id: ChangeId,
-    target: Target,
+    target: StructureTarget,
     text: NoteText,
     reason: RequiredReason,
   }).annotate(

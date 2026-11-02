@@ -1,14 +1,23 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Option, Result, Schema } from "effect";
+import { Array as Arr, Option, Record as Rec, Result, Schema } from "effect";
 import { vi } from "vitest";
 
 import {
   applyLayoutChanges,
   checkProposals,
   discardChange,
+  groupMembers,
+  hopLabelOf,
+  idOfTargetKey,
   layoutRefusal,
+  maxRoutePoints,
+  maxRouteReach,
+  placeRoute,
   placeStructure,
   Proposals,
+  shiftedRoutes,
+  sharedTarget,
+  targetKeysOf,
 } from "../src/index.ts";
 import type { Layout, LayoutChange, MapData, Structure } from "../src/index.ts";
 
@@ -65,6 +74,8 @@ const structure = (id: string): Structure => ({
   howItsBuilt: "Built.",
 });
 
+const hops = [{ id: "h-ab", from: "a", to: "b" }];
+
 const decode = Schema.decodeUnknownResult(Proposals, {
   onExcessProperty: "error",
 });
@@ -74,7 +85,7 @@ const refused = (
   before: readonly LayoutChange[],
   after: readonly LayoutChange[],
   layout: Layout = accepted
-) => Option.isSome(layoutRefusal({ accepted: layout, before, after }));
+) => Option.isSome(layoutRefusal({ accepted: layout, before, after, hops }));
 
 const file = (layout: readonly LayoutChange[], format = 1) => ({
   format,
@@ -157,6 +168,399 @@ describe("applying pending layout changes", () => {
     ]);
 
     assert.deepStrictEqual(shown.structures, accepted.structures);
+  });
+});
+
+const via = [
+  { x: 2, y: 1 },
+  { x: 3, y: 1 },
+  { x: 3, y: 3 },
+  { x: 3.5, y: 3 },
+  { x: 3.5, y: 1 },
+  { x: 4, y: 1 },
+];
+
+const reroute = (
+  id: string,
+  points: readonly { x: number; y: number }[] | null
+): LayoutChange => ({
+  id,
+  kind: "reroute",
+  target: { kind: "hop", id: "h-ab" },
+  points,
+});
+
+/** A staircase: right half a unit, down half a unit, and so on. */
+const staircase = (count: number) =>
+  Arr.makeBy(count, (index) => ({
+    x: Math.ceil(index / 2) / 2,
+    y: Math.floor(index / 2) / 2,
+  }));
+
+describe("rerouting", () => {
+  it("sets the hop's route override, and a reset takes it away", () => {
+    const set = applyLayoutChanges(accepted, [reroute("r1", via)]);
+
+    assert.deepStrictEqual(set.routes, { "h-ab": via });
+
+    const reset = applyLayoutChanges(set, [reroute("r2", null)]);
+
+    assert.isUndefined(reset.routes);
+  });
+
+  it("applies in list order, so a later reroute of the hop wins", () => {
+    const shown = applyLayoutChanges(accepted, [
+      reroute("r1", via),
+      reroute("r2", null),
+    ]);
+
+    assert.isUndefined(shown.routes);
+  });
+
+  it("keeps the other hops' overrides", () => {
+    const routed: Layout = {
+      ...accepted,
+      routes: {
+        "h-other": [
+          { x: 0, y: 0 },
+          { x: 0, y: 5 },
+        ],
+      },
+    };
+
+    const shown = applyLayoutChanges(routed, [reroute("r1", via)]);
+
+    assert.deepStrictEqual(Rec.keys({ ...shown.routes }), ["h-other", "h-ab"]);
+  });
+
+  it("decodes a reroute with points or null, and rejects a bent leg", () => {
+    assert.isTrue(decodes([reroute("r1", via)]));
+    assert.isTrue(decodes([reroute("r1", null)]));
+    assert.isFalse(
+      decodes([
+        reroute("r1", [
+          { x: 2, y: 1 },
+          { x: 3, y: 2 },
+        ]),
+      ])
+    );
+  });
+
+  it("caps a route override's points and how far they lie from the origin", () => {
+    const exact = staircase(maxRoutePoints);
+
+    const over = staircase(maxRoutePoints + 1);
+
+    assert.isTrue(decodes([reroute("r1", exact)]));
+    assert.isFalse(decodes([reroute("r1", over)]));
+    assert.isTrue(
+      decodes([
+        reroute("r1", [
+          { x: maxRouteReach, y: 0 },
+          { x: maxRouteReach, y: -maxRouteReach },
+        ]),
+      ])
+    );
+    assert.isFalse(
+      decodes([
+        reroute("r1", [
+          { x: maxRouteReach + 0.5, y: 0 },
+          { x: maxRouteReach + 0.5, y: 2 },
+        ]),
+      ])
+    );
+  });
+
+  it("allows a route that starts and ends on the footprints", () => {
+    assert.isFalse(refused([], [reroute("r1", via)]));
+  });
+
+  it("refuses a route that starts off the source footprint, with the message check gives", () => {
+    const refusal = layoutRefusal({
+      accepted,
+      before: [],
+      after: [reroute("r1", [{ x: 1, y: 1 }, ...via.slice(1)])],
+      hops,
+    });
+
+    assert.include(
+      Option.getOrElse(refusal, () => ""),
+      `route of hop "h-ab" starting off the edge of "a"`
+    );
+  });
+
+  it("refuses a reroute of a hop the map doesn't have", () => {
+    const refusal = layoutRefusal({
+      accepted,
+      before: [],
+      after: [
+        {
+          id: "r1",
+          kind: "reroute",
+          target: { kind: "hop", id: "h-gone" },
+          points: via,
+        },
+      ],
+      hops,
+    });
+
+    assert.include(
+      Option.getOrElse(refusal, () => ""),
+      '"h-gone"'
+    );
+  });
+
+  it("refuses moving a structure off the end of an override, but not a move that keeps it on", () => {
+    const routed: Layout = { ...accepted, routes: { "h-ab": via } };
+
+    // The route starts at (2, 1). a at y 2–4 leaves that point off its edge.
+    assert.isTrue(refused([], [move("m1", "a", [0, 2])], routed));
+    // At y 0.5–2.5 the point is still on a's +x edge.
+    assert.isFalse(refused([], [move("m1", "a", [0, 0.5])], routed));
+  });
+
+  it("allows moving a structure together with a reset of its hop's route", () => {
+    const routed: Layout = { ...accepted, routes: { "h-ab": via } };
+
+    assert.isFalse(
+      refused([], [reroute("r1", null), move("m1", "a", [0, 6])], routed)
+    );
+  });
+
+  it("doesn't count an override that was already off its end", () => {
+    const off: Layout = {
+      ...accepted,
+      routes: { "h-ab": [{ x: 1, y: 1 }, ...via.slice(1)] },
+    };
+
+    // Its start is off a already. b at y 0.5–2.5 keeps the end on b's edge.
+    assert.isFalse(refused([], [move("m1", "b", [4, 0.5])], off));
+  });
+
+  it("warns about a reroute of a hop data.mjs doesn't have", () => {
+    const problems = checkProposals(
+      {
+        format: 1,
+        revision: 0,
+        overview: { title: "Map", summary: "A map." },
+        groups: [{ id: "main", title: "Main" }],
+        structures: [structure("a"), structure("b")],
+        hops: [],
+        flows: [],
+        chapters: [],
+      },
+      accepted,
+      { format: 1, revision: 1, layout: [reroute("r1", via)] }
+    );
+
+    assert.deepStrictEqual(
+      Arr.map(problems, ({ message }) => message),
+      [
+        'no hop in data.mjs has the id "h-ab", so this reroute does nothing. Discard it from the page\'s Pending list.',
+      ]
+    );
+  });
+});
+
+const route = (
+  changes: readonly LayoutChange[],
+  points: readonly { x: number; y: number }[] | null = via
+) =>
+  placeRoute({
+    changes,
+    accepted,
+    hop: "h-ab",
+    points,
+    newId: () => "fresh",
+  });
+
+describe("placing a route", () => {
+  it("adds a reroute with a new id", () => {
+    assert.deepStrictEqual(route([]), [reroute("fresh", via)]);
+  });
+
+  it("keeps the hop's reroute id as the route changes", () => {
+    const first = route([]);
+    const longer = [...via.slice(0, -1), { x: 3.5, y: 0.5 }, { x: 4, y: 0.5 }];
+    const second = route(first, longer);
+
+    assert.strictEqual(second.length, 1);
+    assert.strictEqual(second[0]?.id, first[0]?.id);
+    assert.deepStrictEqual(applyLayoutChanges(accepted, second).routes, {
+      "h-ab": longer,
+    });
+  });
+
+  it("drops the reroute of a reset hop that had no override", () => {
+    assert.deepStrictEqual(route(route([]), null), []);
+  });
+
+  it("records a reset of an accepted override as a reroute with null points", () => {
+    const routed: Layout = { ...accepted, routes: { "h-ab": via } };
+
+    const changes = placeRoute({
+      changes: [],
+      accepted: routed,
+      hop: "h-ab",
+      points: null,
+      newId: () => "fresh",
+    });
+
+    assert.deepStrictEqual(changes, [reroute("fresh", null)]);
+  });
+
+  it("drops a reroute that sets the accepted override again", () => {
+    const routed: Layout = { ...accepted, routes: { "h-ab": via } };
+
+    const changes = placeRoute({
+      changes: [],
+      accepted: routed,
+      hop: "h-ab",
+      points: via,
+      newId: () => "fresh",
+    });
+
+    assert.deepStrictEqual(changes, []);
+  });
+});
+
+describe("carrying routes along with a move", () => {
+  const routed: Layout = { ...accepted, routes: { "h-ab": via } };
+
+  const shift = (moves: Parameters<typeof shiftedRoutes>[0]["moves"]) =>
+    shiftedRoutes({
+      layout: routed,
+      hops,
+      moves,
+      id: (hop) => `r-${hop}`,
+    });
+
+  const both = [
+    { target: { kind: "structure" as const, id: "a" }, position: at(0, 6) },
+    { target: { kind: "structure" as const, id: "b" }, position: at(4, 6) },
+  ] as const;
+
+  it("shifts an override whose two ends move by the same amount", () => {
+    assert.deepStrictEqual(shift(both), [
+      {
+        id: "r-h-ab",
+        kind: "reroute",
+        target: { kind: "hop", id: "h-ab" },
+        points: Arr.map(via, ({ x, y }) => ({ x, y: y + 6 })),
+      },
+    ]);
+  });
+
+  it("leaves an override alone when only one end moves", () => {
+    assert.deepStrictEqual(shift(both.slice(0, 1)), []);
+  });
+
+  it("leaves an override alone when its ends move apart", () => {
+    assert.deepStrictEqual(
+      shift([
+        { target: { kind: "structure", id: "a" }, position: at(0, 6) },
+        { target: { kind: "structure", id: "b" }, position: at(4, 8) },
+      ]),
+      []
+    );
+  });
+
+  it("makes a group move that the refusal accepts", () => {
+    const changes: LayoutChange[] = [
+      { id: "g", kind: "move", moves: [both[0], both[1]] },
+      ...shift(both),
+    ];
+
+    assert.isFalse(
+      Option.isSome(
+        layoutRefusal({ accepted: routed, before: [], after: changes, hops })
+      )
+    );
+  });
+});
+
+describe("a group's members", () => {
+  const data: Pick<MapData, "structures"> = {
+    structures: [
+      { ...structure("a"), group: "one" },
+      { ...structure("b"), group: "two" },
+      { ...structure("c"), group: "one" },
+    ],
+  };
+
+  it("lists every placed structure of the group in data.mjs order", () => {
+    assert.deepStrictEqual(
+      groupMembers({
+        data,
+        layout: {
+          ...accepted,
+          structures: { ...accepted.structures, c: { x: 8, y: 0, w: 2, d: 2 } },
+        },
+        group: "one",
+      }),
+      ["a", "c"]
+    );
+  });
+
+  it("leaves out a structure the layout doesn't place", () => {
+    assert.deepStrictEqual(
+      groupMembers({ data, layout: accepted, group: "one" }),
+      ["a"]
+    );
+  });
+});
+
+const groupMoveTo = (to: readonly [number, number]): LayoutChange => ({
+  id: "g",
+  kind: "move",
+  moves: [
+    { target: { kind: "structure", id: "a" }, position: at(to[0], to[1]) },
+    {
+      target: { kind: "structure", id: "b" },
+      position: at(to[0] + 4, to[1]),
+    },
+  ],
+});
+
+/** A move of a structure called x, and a reroute of a hop called x. */
+const structureX = move("m", "x", [0, 6]);
+
+const hopX: LayoutChange = {
+  id: "r",
+  kind: "reroute",
+  target: { kind: "hop", id: "x" },
+  points: via,
+};
+
+describe("targets by kind", () => {
+  it("tells a structure and a hop with the same id apart", () => {
+    assert.deepStrictEqual(targetKeysOf(structureX), ["structure:x"]);
+    assert.deepStrictEqual(targetKeysOf(hopX), ["hop:x"]);
+    assert.isTrue(Option.isNone(sharedTarget([structureX], [hopX])));
+  });
+
+  it("finds a target two lists share, by kind and id", () => {
+    assert.deepStrictEqual(sharedTarget([hopX], [hopX]), Option.some("hop:x"));
+    assert.strictEqual(idOfTargetKey("hop:x"), "x");
+  });
+});
+
+describe("moving a group", () => {
+  const grouped: Layout = {
+    ...accepted,
+    structures: {
+      ...accepted.structures,
+      c: { x: 8, y: 0, w: 2, d: 2 },
+    },
+  };
+
+  it("is refused when a member would land on a structure outside the group", () => {
+    // Moving a and b right by 4 puts b on c.
+    assert.isTrue(refused([], [groupMoveTo([4, 0])], grouped));
+  });
+
+  it("is allowed when the members only cross each other's old places", () => {
+    assert.isFalse(refused([], [groupMoveTo([2, 6])], grouped));
   });
 });
 
@@ -244,6 +648,7 @@ describe("refusing layout changes", () => {
       accepted,
       before: [],
       after: [move("m1", "a", [3, 0])],
+      hops,
     });
 
     assert.deepStrictEqual(
@@ -309,6 +714,7 @@ describe("refusing layout changes", () => {
       accepted,
       before,
       after: [move("m2", "b", [0, 0])],
+      hops,
     });
 
     assert.isTrue(Option.isSome(refusal));
@@ -434,5 +840,15 @@ describe("checking proposals", () => {
 
     assert.strictEqual(problems.length, 1);
     assert.include(problems[0]?.message, 'overlap "b"');
+  });
+});
+
+describe("a hop's name", () => {
+  const named = [{ id: "h1", from: "a", to: "b", label: "pins a note" }];
+
+  it("is its label, whichever way round it's called, and its id when unknown", () => {
+    assert.strictEqual(hopLabelOf(named, "h1"), "pins a note");
+    assert.strictEqual(hopLabelOf(named)("h1"), "pins a note");
+    assert.strictEqual(hopLabelOf(named)("gone"), "gone");
   });
 });

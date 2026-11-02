@@ -2,7 +2,7 @@ export { describeCause } from "./cause.ts";
 
 export { acceptanceMessage, acceptLayoutChanges } from "./accept.ts";
 
-export type { Acceptance, DroppedChange } from "./accept.ts";
+export type { Acceptance, DroppedChange, MessageOptions } from "./accept.ts";
 
 export { chapterStopsOf, wholeMapChapterId } from "./chapters.ts";
 
@@ -73,12 +73,20 @@ export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 export {
   checkLayout,
   clashWarnings,
+  draggedProblems,
   footprintsOverlap,
+  offEndFindings,
+  onOutline,
   placedStructures,
   tagCovers,
 } from "./layout-checks.ts";
 
-export type { PlacedStructure } from "./layout-checks.ts";
+export type {
+  DraggedProblem,
+  HopEnds,
+  OffEnd,
+  PlacedStructure,
+} from "./layout-checks.ts";
 
 export { isoHeights } from "./iso-heights.ts";
 
@@ -97,6 +105,8 @@ export {
   GridPoint,
   Layout,
   LayoutFile,
+  maxRoutePoints,
+  maxRouteReach,
   Placement,
   RouteOverride,
   samePlacement,
@@ -185,7 +195,7 @@ export type {
 
 export type { HopRoute } from "./routing.ts";
 
-export { zonePadding, zonesOf } from "./zones.ts";
+export { groupMembers, zonePadding, zonesOf } from "./zones.ts";
 
 export type { Zone, ZoneSource } from "./zones.ts";
 
@@ -196,6 +206,7 @@ export {
   Flow,
   Group,
   Hop,
+  hopLabelOf,
   MapData,
   OpenQuestion,
   Overview,
@@ -265,24 +276,33 @@ export {
   discardChange,
   emptyProposals,
   Footprint,
+  hopsOf,
+  HopTarget,
+  idOfTargetKey,
   LayoutChange,
   layoutChangeKey,
   LayoutChanges,
   layoutRefusal,
   MoveChange,
   newChangeId,
+  placeRoute,
   placeStructure,
   Proposals,
   ProposalsFile,
+  RerouteChange,
   ResizeChange,
   sameLayoutChanges,
+  shiftedRoutes,
+  sharedTarget,
   StructureMove,
   StructureTarget,
   structuresOf,
   Target,
+  targetIdsOf,
+  targetKeysOf,
 } from "./proposals.ts";
 
-export type { Clash, Placing } from "./proposals.ts";
+export type { Clash, Placing, PlacingRoute } from "./proposals.ts";
 
 export {
   Accepted,
@@ -327,6 +347,10 @@ export {
   splitProblems,
 } from "./problems.ts";
 
+export { dragSegment, routeVertices, segmentGuides } from "./route-drag.ts";
+
+export type { RouteEnds, SegmentGuide } from "./route-drag.ts";
+
 export {
   Batch,
   BatchItem,
@@ -354,6 +378,7 @@ export {
   findBatchItem,
   freezeOpen,
   frozenLayoutChanges,
+  frozenWriteRefusal,
   frozenRefusal,
   nextBatchNumber,
   oldestOpenBatch,
@@ -373,6 +398,7 @@ export type {
   Committing,
   FreezeResult,
   ItemStatus,
+  Names,
   ReviewEntry,
 } from "./review.ts";
 

@@ -1,10 +1,12 @@
 import {
+  hopLabelOf,
+  hopsOf,
   layoutChangeKey,
   maxMessageLength,
   structuresOf,
 } from "@axonometric/contracts";
 import type { ChangeId, LayoutChange } from "@axonometric/contracts";
-import { Array as Arr } from "effect";
+import { Array as Arr, Record as Rec } from "effect";
 import { useId, useState } from "react";
 
 import { useAccepting } from "./accepting-context.ts";
@@ -13,6 +15,7 @@ import { describeChange } from "./describe-change.ts";
 import { useEditing } from "./editing-context.ts";
 import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 /**
  * The Pending tab: every pending layout change, with buttons that accept it
@@ -25,6 +28,7 @@ export function PendingTab() {
   const editing = useEditing();
   const accepting = useAccepting();
   const byId = useStructuresById();
+  const { state } = useWalkthrough();
   const [refusal, setRefusal] = useState<string | undefined>();
   const [message, setMessage] = useState("");
   const messageId = useId();
@@ -35,6 +39,16 @@ export function PendingTab() {
 
   const { pending, accepted, canEdit, discard } = editing;
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
+  const hopName = hopLabelOf(state.data.hops);
+
+  const namesOf = (change: LayoutChange) =>
+    Arr.join(
+      [
+        ...Arr.map(structuresOf(change), nameOf),
+        ...Arr.map(hopsOf(change), hopName),
+      ],
+      ", "
+    );
 
   const discardWith = (change: LayoutChange) => {
     setRefusal(discard(change.id));
@@ -48,12 +62,17 @@ export function PendingTab() {
 
   const acceptable = canEdit && accepting?.canAccept === true;
 
+  // Hops whose shown route is a hand-drawn override, which Reset route clears.
+  const overridden = Arr.filter(state.data.hops, ({ id }) =>
+    Rec.has(state.layout.routes ?? {}, id)
+  );
+
   return (
     <section data-pending-list className="flex flex-col gap-3">
       <p className="text-xs opacity-70">
         Layout changes saved to proposals.json and not yet accepted. Accepting
         writes them to layout.json and saves a revision. Discarding one puts the
-        structure back where layout.json has it.
+        structure or route back as layout.json has it.
       </p>
       {refusal === undefined ? null : (
         <p
@@ -65,8 +84,9 @@ export function PendingTab() {
       )}
       {pending.length === 0 ? (
         <p className="text-sm">
-          Nothing is pending. Drag a structure to move it, or drag a corner of
-          the selected one to resize it.
+          Nothing is pending. Drag a structure to move it, drag a corner of the
+          selected one to resize it, drag a segment of an arrow to reroute it,
+          or drag a zone title to move its group.
         </p>
       ) : (
         <>
@@ -103,10 +123,7 @@ export function PendingTab() {
           ) : null}
           <ul className="flex flex-col gap-2">
             {Arr.map(pending, (change) => {
-              const names = Arr.join(
-                Arr.map(structuresOf(change), nameOf),
-                ", "
-              );
+              const names = namesOf(change);
 
               return (
                 <li
@@ -114,10 +131,17 @@ export function PendingTab() {
                   data-pending-change={change.kind}
                   data-pending-id={change.id}
                   data-pending-structure={structuresOf(change)[0]}
+                  data-pending-hop={hopsOf(change)[0]}
                   className="border-pending flex items-start gap-2 border-l-2 pl-2 text-sm"
                 >
                   <span className="min-w-0 flex-1">
-                    {Arr.join(describeChange(change, accepted, nameOf), "; ")}
+                    {Arr.join(
+                      describeChange(change, accepted, {
+                        structure: nameOf,
+                        hop: hopName,
+                      }),
+                      "; "
+                    )}
                   </span>
                   {acceptable ? (
                     <button
@@ -151,6 +175,35 @@ export function PendingTab() {
           </ul>
         </>
       )}
+      {canEdit && overridden.length > 0 ? (
+        <section data-route-overrides className="flex flex-col gap-2">
+          <h3 className="text-xs tracking-widest uppercase opacity-70">
+            Routes set by hand
+          </h3>
+          <ul className="flex flex-col gap-2">
+            {Arr.map(overridden, ({ id }) => (
+              <li
+                key={id}
+                data-route-override={id}
+                className="flex items-start gap-2 text-sm"
+              >
+                <span className="min-w-0 flex-1">{hopName(id)}</span>
+                <button
+                  type="button"
+                  data-reset-route={id}
+                  className={controlClass}
+                  aria-label={`Reset the route ${hopName(id)}`}
+                  onClick={() => {
+                    setRefusal(editing.reroute(id, null));
+                  }}
+                >
+                  Reset route
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <ReviewList />
     </section>
   );

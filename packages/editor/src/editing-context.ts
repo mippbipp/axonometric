@@ -1,6 +1,7 @@
-import { structuresOf } from "@axonometric/contracts";
+import { hopsOf, structuresOf } from "@axonometric/contracts";
 import type {
   ChangeId,
+  GridPoint,
   Layout,
   LayoutChange,
   Placement,
@@ -51,6 +52,20 @@ export interface Editing {
    * was refused, or `undefined`.
    */
   readonly arrange: (plan: Arrangement) => string | undefined;
+  /**
+   * Gives hop `hop` the route override `points` as a pending change, or puts
+   * it back on automatic routing with `null`. Returns why it was refused, or
+   * `undefined`.
+   */
+  readonly reroute: (
+    hop: string,
+    points: readonly GridPoint[] | null
+  ) => string | undefined;
+  /** Why `reroute` would refuse `points` for `hop`, without saving anything. */
+  readonly refusalOfReroute: (
+    hop: string,
+    points: readonly GridPoint[] | null
+  ) => string | undefined;
   /** Whether there is an edit to undo. */
   readonly canUndo: boolean;
   /** Whether there is an undone edit to redo. */
@@ -74,5 +89,14 @@ export const pendingStructures = (
     Arr.flatMap(
       [...(editing?.frozen ?? []), ...(editing?.pending ?? [])],
       structuresOf
+    )
+  );
+
+/** The ids of the hops the pending changes reroute. */
+export const pendingHops = (editing: Editing | null): ReadonlySet<string> =>
+  new Set(
+    Arr.flatMap(
+      [...(editing?.frozen ?? []), ...(editing?.pending ?? [])],
+      hopsOf
     )
   );

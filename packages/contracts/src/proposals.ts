@@ -1,5 +1,6 @@
 import {
   Array as Arr,
+  Match,
   Option,
   Record as Rec,
   Schema,
@@ -8,8 +9,9 @@ import {
 import { dual } from "effect/Function";
 
 import { fileVersionFields, objectMessages } from "./fields.ts";
-import { footprintsOverlap } from "./layout-checks.ts";
-import { GridPoint, JsonText, Placement } from "./layout.ts";
+import { footprintsOverlap, offEndFindings } from "./layout-checks.ts";
+import type { HopEnds } from "./layout-checks.ts";
+import { GridPoint, JsonText, Placement, RouteOverride } from "./layout.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
@@ -34,12 +36,25 @@ export const StructureTarget = Schema.Struct({
 
 export type StructureTarget = typeof StructureTarget.Type;
 
+const hopIdMessage = "expected the id of a hop in data.mjs.";
+
+/** A hop, named by its id in data.mjs. */
+export const HopTarget = Schema.Struct({
+  kind: Schema.Literal("hop"),
+  id: Schema.String.annotate({ message: hopIdMessage }).check(
+    Schema.isNonEmpty({ message: hopIdMessage })
+  ),
+}).annotate(objectMessages("A hop target has only kind and id."));
+
+export type HopTarget = typeof HopTarget.Type;
+
 /**
- * What a change acts on. Only structures for now; a reroute will add
- * `{ kind: "hop", id }` here, and a group move its own kind.
+ * What a change acts on: a structure, or a hop. A group move has no target
+ * of its own. It is a move that lists every member of the group.
  */
-export const Target = Schema.Union([StructureTarget]).annotate({
-  message: 'expected a target: { kind: "structure", id }.',
+export const Target = Schema.Union([StructureTarget, HopTarget]).annotate({
+  message:
+    'expected a target: { kind: "structure", id } or { kind: "hop", id }.',
 });
 
 export type Target = typeof Target.Type;
@@ -93,12 +108,31 @@ export const ResizeChange = Schema.Struct({
 export type ResizeChange = typeof ResizeChange.Type;
 
 /**
- * One pending layout change. Each kind names what it acts on, so a later
- * kind, such as a reroute of a hop, joins the union without touching these.
+ * A pending reroute: hop `target`'s route override becomes `points`, from the
+ * edge of one footprint to the edge of the other. `null` puts the hop back on
+ * automatic routing, which is "Reset route".
  */
-export const LayoutChange = Schema.Union([MoveChange, ResizeChange]).annotate({
+export const RerouteChange = Schema.Struct({
+  id: ChangeId,
+  kind: Schema.Literal("reroute"),
+  target: HopTarget,
+  points: Schema.NullOr(RouteOverride),
+}).annotate(objectMessages("A reroute has only id, kind, target and points."));
+
+export type RerouteChange = typeof RerouteChange.Type;
+
+/**
+ * One pending layout change. Each kind names what it acts on, so a later
+ * kind joins the union without touching these. Moving a whole group is a
+ * `move` that lists every member.
+ */
+export const LayoutChange = Schema.Union([
+  MoveChange,
+  ResizeChange,
+  RerouteChange,
+]).annotate({
   message:
-    'expected a layout change: { id, kind: "move", moves: [{ target, position: { x, y } }] } or { id, kind: "resize", target, footprint: { w, d } }.',
+    'expected a layout change: { id, kind: "move", moves: [{ target, position: { x, y } }] }, { id, kind: "resize", target, footprint: { w, d } } or { id, kind: "reroute", target: { kind: "hop", id }, points: [{ x, y }, ...] or null }.',
 });
 
 export type LayoutChange = typeof LayoutChange.Type;
@@ -108,11 +142,74 @@ const sameChange = Schema.toEquivalence(LayoutChange);
 /** The key a change is listed by: its id. */
 export const layoutChangeKey = (change: LayoutChange) => change.id;
 
-/** The ids of the structures a change acts on. */
+/** The ids of the structures a change acts on. A reroute acts on none. */
 export const structuresOf = (change: LayoutChange): readonly string[] =>
-  change.kind === "move"
-    ? Arr.map(change.moves, ({ target }) => target.id)
-    : [change.target.id];
+  Match.value(change).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      move: ({ moves }) => Arr.map(moves, ({ target }) => target.id),
+      resize: ({ target }) => [target.id],
+      reroute: () => [],
+    })
+  );
+
+/** The ids of the hops a change acts on. Only a reroute acts on one. */
+export const hopsOf = (change: LayoutChange): readonly string[] =>
+  Match.value(change).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      move: () => [],
+      resize: () => [],
+      reroute: ({ target }) => [target.id],
+    })
+  );
+
+/**
+ * The ids of everything a change acts on, structures first and then hops.
+ * They may repeat across kinds; `targetKeysOf` tells those apart.
+ */
+export const targetIdsOf = (change: LayoutChange): readonly string[] => [
+  ...structuresOf(change),
+  ...hopsOf(change),
+];
+
+/**
+ * What a change acts on, keyed by what it is: `structure:engineer` and
+ * `hop:engineer` are different targets, so a structure and a hop that share
+ * an id never collide.
+ */
+export const targetKeysOf = (change: LayoutChange): readonly string[] => [
+  ...Arr.map(structuresOf(change), (id) => `structure:${id}`),
+  ...Arr.map(hopsOf(change), (id) => `hop:${id}`),
+];
+
+/** The id inside a key from `targetKeysOf`, for a message. */
+export const idOfTargetKey = (key: string): string =>
+  Str.slice(Str.indexOf(":")(key).pipe(Option.getOrElse(() => -1)) + 1)(key);
+
+/**
+ * The first target that a change in `candidates` shares with a change in
+ * `held`, or nothing. Structures and hops are told apart by kind.
+ */
+export const sharedTarget: {
+  (
+    held: readonly LayoutChange[]
+  ): (candidates: readonly LayoutChange[]) => Option.Option<string>;
+  (
+    candidates: readonly LayoutChange[],
+    held: readonly LayoutChange[]
+  ): Option.Option<string>;
+} = dual(
+  2,
+  (
+    candidates: readonly LayoutChange[],
+    held: readonly LayoutChange[]
+  ): Option.Option<string> => {
+    const taken = new Set(Arr.flatMap(held, targetKeysOf));
+
+    return Arr.findFirst(Arr.flatMap(candidates, targetKeysOf), (key) =>
+      taken.has(key)
+    );
+  }
+);
 
 /** Whether two lists make the same changes in the same order. */
 export const sameLayoutChanges: {
@@ -139,7 +236,8 @@ const uniqueIds = (changes: readonly LayoutChange[]) =>
  */
 export const LayoutChanges = Schema.Array(LayoutChange)
   .annotate({
-    message: "expected an array of layout changes, each a move or a resize.",
+    message:
+      "expected an array of layout changes, each a move, a resize or a reroute.",
   })
   .check(
     Schema.makeFilter(uniqueIds, {
@@ -161,7 +259,7 @@ export const NoteText = Schema.String.annotate({ message: noteFix }).check(
 /** A note pinned to a target, for the agent to read. */
 export const Note = Schema.Struct({
   id: ChangeId,
-  target: Target,
+  target: StructureTarget,
   text: NoteText,
 }).annotate(objectMessages("A note has only id, target and text."));
 
@@ -235,7 +333,7 @@ export const BatchItem = Schema.Union([
   Schema.Struct({
     id: ChangeId,
     kind: Schema.Literal("note"),
-    target: Target,
+    target: StructureTarget,
     text: NoteText,
   }).annotate(
     objectMessages("A note item has only id, kind, target and text.")
@@ -369,10 +467,24 @@ export const newChangeId = (): ChangeId => {
   );
 };
 
+/** One thing a change sets on the layout. */
+type Setting =
+  | {
+      readonly what: "place";
+      readonly id: string;
+      readonly placement: Partial<Placement>;
+    }
+  | {
+      readonly what: "route";
+      readonly id: string;
+      readonly points: readonly GridPoint[] | null;
+    };
+
 /**
  * The layout the page shows while editing: the accepted layout with every
  * pending change applied in list order. A change for a structure the layout
- * doesn't place is skipped.
+ * doesn't place is skipped. A reroute sets the hop's route override, or
+ * removes it when its points are `null`.
  */
 export const applyLayoutChanges: {
   (changes: readonly LayoutChange[]): (layout: Layout) => Layout;
@@ -383,6 +495,7 @@ export const applyLayoutChanges: {
   }
 
   const placements = new Map(Rec.toEntries(layout.structures));
+  const routes = new Map(Rec.toEntries(layout.routes ?? {}));
 
   const place = (id: string, change: Partial<Placement>) => {
     const current = placements.get(id);
@@ -392,17 +505,48 @@ export const applyLayoutChanges: {
     }
   };
 
-  for (const change of changes) {
-    if (change.kind === "move") {
-      for (const { target, position } of change.moves) {
-        place(target.id, position);
-      }
+  const setRoute = (hop: string, points: readonly GridPoint[] | null) => {
+    if (points === null) {
+      routes.delete(hop);
     } else {
-      place(change.target.id, change.footprint);
+      routes.set(hop, points);
+    }
+  };
+
+  // Each kind says what it sets; the setting happens here, in list order.
+  const settings = Arr.flatMap(changes, (change) =>
+    Match.value(change).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        move: ({ moves }): readonly Setting[] =>
+          Arr.map(moves, ({ target, position }) => ({
+            what: "place",
+            id: target.id,
+            placement: position,
+          })),
+        resize: ({ target, footprint }): readonly Setting[] => [
+          { what: "place", id: target.id, placement: footprint },
+        ],
+        reroute: ({ target, points }): readonly Setting[] => [
+          { what: "route", id: target.id, points },
+        ],
+      })
+    )
+  );
+
+  for (const setting of settings) {
+    if (setting.what === "place") {
+      place(setting.id, setting.placement);
+    } else {
+      setRoute(setting.id, setting.points);
     }
   }
 
-  return { ...layout, structures: Rec.fromEntries(placements) };
+  const { routes: _saved, ...rest } = layout;
+  const shown: Layout = { ...rest, structures: Rec.fromEntries(placements) };
+
+  return routes.size === 0
+    ? shown
+    : { ...shown, routes: Rec.fromEntries(routes) };
 });
 
 /** Where the accepted layout, with `changes`, puts structure `id`. */
@@ -503,6 +647,135 @@ export const placeStructure = ({
   ];
 };
 
+const routeOf = (layout: Layout, hop: string): readonly GridPoint[] | null =>
+  layout.routes?.[hop] ?? null;
+
+const samePoints = (
+  a: readonly GridPoint[] | null,
+  b: readonly GridPoint[] | null
+) =>
+  a === null || b === null
+    ? a === b
+    : a.length === b.length &&
+      Arr.every(a, (point, index) => {
+        const other = b[index];
+
+        return (
+          other !== undefined && other.x === point.x && other.y === point.y
+        );
+      });
+
+/** What `placeRoute` takes. */
+export interface PlacingRoute {
+  readonly changes: readonly LayoutChange[];
+  readonly accepted: Layout;
+  readonly hop: string;
+  /** The route override to set, or `null` to go back to automatic routing. */
+  readonly points: readonly GridPoint[] | null;
+  /** Makes the id of a change that has to be added. */
+  readonly newId: () => ChangeId;
+}
+
+/**
+ * The changes after hop `hop` is given the route override `points`, or none
+ * with `null`. A hop that already has a reroute keeps its id as the route
+ * changes. A route that leaves the hop as the rest of the list already has it,
+ * such as a reset of a hop with no override, drops the change instead.
+ */
+export const placeRoute = ({
+  changes,
+  accepted,
+  hop,
+  points,
+  newId,
+}: PlacingRoute): readonly LayoutChange[] => {
+  const own = (change: LayoutChange) =>
+    change.kind === "reroute" && change.target.id === hop;
+
+  const others = Arr.filter(changes, (change) => !own(change));
+  const before = routeOf(applyLayoutChanges(accepted, others), hop);
+
+  if (samePoints(before, points)) {
+    return others;
+  }
+
+  const old = Arr.findLast(changes, own);
+
+  return [
+    ...others,
+    {
+      id: Option.match(old, { onNone: newId, onSome: (change) => change.id }),
+      kind: "reroute",
+      target: { kind: "hop", id: hop },
+      points,
+    },
+  ];
+};
+
+/**
+ * The reroutes that carry route overrides along with moved structures. An
+ * override whose two ends both move by the same distance is shifted by it,
+ * so it still starts and ends on its footprints. Overrides with one end
+ * moved, or the ends moved apart, are left alone: the move is refused if
+ * that leaves one off its footprint. `layout` is the layout the moves start
+ * from, and `id` makes the id of each reroute from its hop's id.
+ */
+export const shiftedRoutes = ({
+  layout,
+  hops,
+  moves,
+  id,
+}: {
+  readonly layout: Layout;
+  readonly hops: readonly HopEnds[];
+  readonly moves: readonly StructureMove[];
+  readonly id: (hop: string) => ChangeId;
+}): readonly LayoutChange[] => {
+  const deltas = new Map(
+    Arr.flatMap(moves, ({ target, position }) => {
+      const at = layout.structures[target.id];
+
+      return at === undefined
+        ? []
+        : [
+            [
+              target.id,
+              { x: position.x - at.x, y: position.y - at.y },
+            ] as const,
+          ];
+    })
+  );
+
+  return Arr.flatMap(hops, ({ id: hop, from, to }): readonly LayoutChange[] => {
+    const points = layout.routes?.[hop];
+    const start = deltas.get(from);
+    const end = deltas.get(to);
+
+    if (
+      points === undefined ||
+      start === undefined ||
+      end === undefined ||
+      start.x !== end.x ||
+      start.y !== end.y ||
+      (start.x === 0 && start.y === 0)
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        id: id(hop),
+        kind: "reroute",
+        target: { kind: "hop", id: hop },
+        points: Arr.map(points, ({ x, y }) => ({
+          x: x + start.x,
+          y: y + start.y,
+        })),
+      },
+    ];
+  });
+};
+
 /** `changes` without the change that has `id`. */
 export const discardChange: {
   (id: ChangeId): (changes: readonly LayoutChange[]) => readonly LayoutChange[];
@@ -552,27 +825,49 @@ const describePlacement = ({ x, y, w, d }: Placement) =>
 const structuresIn = (changes: readonly LayoutChange[]) =>
   Arr.dedupe(Arr.flatMap(changes, structuresOf));
 
+/** The hops that a list of changes acts on. */
+const hopsIn = (changes: readonly LayoutChange[]) =>
+  Arr.dedupe(Arr.flatMap(changes, hopsOf));
+
+/**
+ * The ends of route overrides in `layout` that aren't on their hops'
+ * footprints, such as `h-save first`.
+ */
+const offEndKeys = (hops: readonly HopEnds[], layout: Layout) =>
+  new Set(
+    Arr.map(offEndFindings(hops, layout), ({ hop, end }) => `${hop.id} ${end}`)
+  );
+
 /**
  * Why going from the pending changes `before` to `after` is refused, or
- * nothing when it's allowed.
+ * nothing when it's allowed. `hops` are the map's hops, which say where a
+ * reroute's ends belong.
  *
  * - A change that's new or different must act on structures the accepted
- *   layout places, and must leave each footprint clear of every other
- *   footprint in the resulting layout.
+ *   layout places and hops the map has, and must leave each footprint clear
+ *   of every other footprint in the resulting layout. That holds for a
+ *   group move too: a move that lists a group's members is refused when any
+ *   of them would land on a structure outside the group.
  * - A change that's removed, a discard, is refused when it puts a structure
  *   back on top of one with a pending change of its own. The message names
  *   that change. Overlaps with structures that have no pending change were
  *   already there in the accepted layout, so they don't stop a discard.
+ * - No list may leave a route override that doesn't start and end on its
+ *   hop's footprints, which `check` reports as an error, when the list
+ *   before it didn't. So a move of a structure whose hop has an override is
+ *   refused until the route is reset or moved with it.
  * - Changes kept as they were are never checked again.
  */
 export const layoutRefusal = ({
   accepted,
   before,
   after,
+  hops,
 }: {
   readonly accepted: Layout;
   readonly before: readonly LayoutChange[];
   readonly after: readonly LayoutChange[];
+  readonly hops: readonly HopEnds[];
 }): Option.Option<string> => {
   const added = Arr.filter(
     after,
@@ -594,6 +889,31 @@ export const layoutRefusal = ({
     );
   }
 
+  const known = new Map(Arr.map(hops, (hop) => [hop.id, hop]));
+  const unknownHop = Arr.findFirst(hopsIn(added), (id) => !known.has(id));
+
+  if (Option.isSome(unknownHop)) {
+    return Option.some(
+      `No hop in the map has the id "${unknownHop.value}". Reroute a hop the map draws.`
+    );
+  }
+
+  const unroutable = Arr.findFirst(hopsIn(added), (id) => {
+    const hop = known.get(id);
+
+    return (
+      hop === undefined ||
+      !Rec.has(accepted.structures, hop.from) ||
+      !Rec.has(accepted.structures, hop.to)
+    );
+  });
+
+  if (Option.isSome(unroutable)) {
+    return Option.some(
+      `Hop "${unroutable.value}" has an end the layout doesn't place, so it can't be rerouted.`
+    );
+  }
+
   const effective = applyLayoutChanges(accepted, after);
 
   const overlap = Arr.findFirst(touched, (id) =>
@@ -608,6 +928,21 @@ export const layoutRefusal = ({
 
   if (Option.isSome(overlap)) {
     return overlap;
+  }
+
+  const wasOff = offEndKeys(hops, applyLayoutChanges(accepted, before));
+
+  const nowOff = Arr.findFirst(
+    offEndFindings(hops, effective),
+    ({ hop, end }) => !wasOff.has(`${hop.id} ${end}`)
+  );
+
+  if (Option.isSome(nowOff)) {
+    const { hop, end } = nowOff.value;
+
+    return Option.some(
+      `This would leave the route of hop "${hop.id}" ${end === "first" ? "starting" : "ending"} off the edge of "${end === "first" ? hop.from : hop.to}", which check reports as an error. Reset the route of hop "${hop.id}" first, then move the structure.`
+    );
   }
 
   const pending = new Set(structuresIn(after));
@@ -633,20 +968,38 @@ export const layoutRefusal = ({
   );
 };
 
-/** Each structure a change names, with where its id sits in the change. */
-const targetPaths = (change: LayoutChange) =>
-  change.kind === "move"
-    ? Arr.map(change.moves, ({ target }, index) => ({
-        id: target.id,
-        path: ["moves", index, "target", "id"],
-      }))
-    : [{ id: change.target.id, path: ["target", "id"] }];
+/** One thing a change names, and where its id sits in the change. */
+interface NamedTarget {
+  readonly what: "structure" | "hop";
+  readonly id: string;
+  readonly path: readonly (string | number)[];
+}
+
+/** Each thing a change names, with where its id sits in the change. */
+const targetPaths = (change: LayoutChange): readonly NamedTarget[] =>
+  Match.value(change).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      move: ({ moves }): readonly NamedTarget[] =>
+        Arr.map(moves, ({ target }, index) => ({
+          what: "structure",
+          id: target.id,
+          path: ["moves", index, "target", "id"],
+        })),
+      resize: ({ target }): readonly NamedTarget[] => [
+        { what: "structure", id: target.id, path: ["target", "id"] },
+      ],
+      reroute: ({ target }): readonly NamedTarget[] => [
+        { what: "hop", id: target.id, path: ["target", "id"] },
+      ],
+    })
+  );
 
 /**
  * Warnings about the pending changes in `proposals.json`: changes and notes
- * for a structure data.mjs doesn't have, and pending footprints that
- * overlap, which happens when the accepted layout changes under a pending
- * move.
+ * for a structure or hop data.mjs doesn't have, pending footprints that
+ * overlap, and pending route overrides that don't start and end on their
+ * hops' footprints. The last two happen when the accepted layout changes
+ * under a pending change.
  */
 export const checkProposals: {
   (
@@ -661,17 +1014,20 @@ export const checkProposals: {
     layout: Layout,
     proposals: Proposals
   ): readonly MapProblem[] => {
-    const ids = new Set(Arr.map(data.structures, ({ id }) => id));
+    const known = {
+      structure: new Set(Arr.map(data.structures, ({ id }) => id)),
+      hop: new Set(Arr.map(data.hops, ({ id }) => id)),
+    };
 
     const stale = Arr.flatMap(proposals.layout, (change, index) =>
-      Arr.flatMap(targetPaths(change), ({ id, path }) =>
-        ids.has(id)
+      Arr.flatMap(targetPaths(change), ({ what, id, path }) =>
+        known[what].has(id)
           ? []
           : [
               mapWarning({
                 file: "proposals.json",
                 path: ["layout", index, ...path],
-                message: `no structure in data.mjs has the id "${id}", so this ${change.kind} does nothing. Discard it from the page's Pending list.`,
+                message: `no ${what} in data.mjs has the id "${id}", so this ${change.kind} does nothing. Discard it from the page's Pending list.`,
               }),
             ]
       )
@@ -696,8 +1052,29 @@ export const checkProposals: {
       })
     );
 
+    const wasOff = offEndKeys(data.hops, layout);
+    const pendingHops = new Set(hopsIn(proposals.layout));
+    const pendingStructures = new Set(structuresIn(proposals.layout));
+
+    const offEnds = Arr.flatMap(
+      offEndFindings(data.hops, effective),
+      ({ hop, end, problem }) =>
+        (pendingHops.has(hop.id) ||
+          pendingStructures.has(hop.from) ||
+          pendingStructures.has(hop.to)) &&
+        !wasOff.has(`${hop.id} ${end}`)
+          ? [
+              mapWarning({
+                file: "proposals.json",
+                path: ["layout"],
+                message: `${problem.message} Reset the route in the page, or discard the pending change.`,
+              }),
+            ]
+          : []
+    );
+
     const orphaned = Arr.flatMap(proposals.notes ?? [], (note, index) =>
-      ids.has(note.target.id)
+      known.structure.has(note.target.id)
         ? []
         : [
             mapWarning({
@@ -708,6 +1085,6 @@ export const checkProposals: {
           ]
     );
 
-    return [...stale, ...overlaps, ...orphaned];
+    return [...stale, ...overlaps, ...offEnds, ...orphaned];
   }
 );

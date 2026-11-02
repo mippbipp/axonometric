@@ -1,3 +1,4 @@
+import { hopLabelOf } from "@axonometric/contracts";
 import type { BatchItem, ReviewEntry, Verdict } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr, Match, Option, Record as Rec, Result } from "effect";
@@ -9,6 +10,7 @@ import { useEditing } from "./editing-context.ts";
 import { NoteForm } from "./note-form.tsx";
 import { useReview } from "./review-context.ts";
 import { useStructuresById } from "./structures.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 const verdictLabels = {
   accepted: "Accepted",
@@ -51,7 +53,10 @@ export function VerdictBadge({
 const useItemDescription = () => {
   const byId = useStructuresById();
   const editing = useEditing();
+  const { state } = useWalkthrough();
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
+
+  const hopName = hopLabelOf(state.data.hops);
 
   return (item: BatchItem): string => {
     if (item.kind === "note") {
@@ -60,7 +65,13 @@ const useItemDescription = () => {
 
     return editing === null
       ? item.id
-      : Arr.join(describeChange(item.change, editing.accepted, nameOf), "; ");
+      : Arr.join(
+          describeChange(item.change, editing.accepted, {
+            structure: nameOf,
+            hop: hopName,
+          }),
+          "; "
+        );
   };
 };
 

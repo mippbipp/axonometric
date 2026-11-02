@@ -9,11 +9,13 @@ import {
 import { dual } from "effect/Function";
 
 import { acceptLayoutChanges } from "./accept.ts";
+import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import {
   applyLayoutChanges,
+  idOfTargetKey,
   layoutRefusal,
-  structuresOf,
+  sharedTarget,
 } from "./proposals.ts";
 import type {
   Batch,
@@ -105,6 +107,57 @@ export const frozenRefusal: {
       : Option.none()
   )
 );
+
+const keyOf = (change: LayoutChange) => JSON.stringify(change);
+
+/**
+ * Why a write that sets the open layout changes to `after` has to wait, or
+ * nothing when it can go ahead.
+ *
+ * A route is one setting per hop, so a reroute frozen in a batch belongs to
+ * the agent until the commit: no write may add, change, reset or remove a
+ * reroute of that hop. Structures differ. An engineer who moves a structure
+ * again after sending it makes a new open move, which goes in the next batch
+ * and stacks on the frozen one, so those writes are allowed; accepting such a
+ * move waits for the commit (`acceptRefusal`).
+ *
+ * Targets are told apart by kind, so a hop and a structure that share an id
+ * never collide. This is the server's check, for every write, so it holds
+ * for an undo, which is a write too, and for a client that doesn't ask the
+ * page first. A change counts when it is new or different from `proposals`'
+ * open list, or when it is removed from it.
+ */
+export const frozenWriteRefusal = ({
+  proposals,
+  after,
+}: {
+  readonly proposals: Proposals;
+  /** The list of open layout changes the write would leave. */
+  readonly after: readonly LayoutChange[];
+}): Option.Option<string> => {
+  const frozen = Arr.filter(
+    frozenLayoutChanges(proposals),
+    (change) => change.kind === "reroute"
+  );
+
+  const before = proposals.layout;
+  const beforeKeys = new Set(Arr.map(before, keyOf));
+  const afterKeys = new Set(Arr.map(after, keyOf));
+
+  const touched = Arr.filter(
+    [
+      ...Arr.filter(after, (change) => !beforeKeys.has(keyOf(change))),
+      ...Arr.filter(before, (change) => !afterKeys.has(keyOf(change))),
+    ],
+    (change) => change.kind === "reroute"
+  );
+
+  return Option.map(
+    sharedTarget(touched, frozen),
+    (key) =>
+      `The route of hop "${idOfTargetKey(key)}" is in a batch that is waiting for the agent. A new route goes in the next batch, once the agent commits.`
+  );
+};
 
 /** The result of freezing the open items. */
 export interface FreezeResult {
@@ -204,7 +257,7 @@ export const addNote = ({
  * Why accepting open layout changes `ids` has to wait, or nothing when it
  * can go ahead.
  *
- * - A change on a structure that a frozen item also changes waits for the
+ * - A change on a structure or hop that a frozen item also changes waits for the
  *   agent's commit. The agent may take the frozen item in another form, and
  *   the accept would then land on, or under, the wrong layout.
  * - The rest are checked against the accepted layout with the frozen changes
@@ -215,11 +268,14 @@ export const acceptRefusal = ({
   proposals,
   layout,
   ids,
+  hops,
 }: {
   readonly proposals: Proposals;
   /** The accepted layout, as `layout.json` holds it. */
   readonly layout: Layout;
   readonly ids: "all" | readonly string[];
+  /** The map's hops, which say where a reroute's ends belong. */
+  readonly hops: readonly HopEnds[];
 }): Option.Option<string> => {
   const wanted =
     ids === "all"
@@ -227,15 +283,11 @@ export const acceptRefusal = ({
       : Arr.filter(proposals.layout, ({ id }) => ids.includes(id));
 
   const frozen = frozenLayoutChanges(proposals);
-  const frozenStructures = new Set(Arr.flatMap(frozen, structuresOf));
-
-  const shared = Arr.findFirst(Arr.flatMap(wanted, structuresOf), (id) =>
-    frozenStructures.has(id)
-  );
+  const shared = sharedTarget(wanted, frozen);
 
   if (Option.isSome(shared)) {
     return Option.some(
-      `"${shared.value}" has a change waiting in a batch for the agent. Wait for the agent's commit, then accept this change.`
+      `"${idOfTargetKey(shared.value)}" has a change waiting in a batch for the agent. Wait for the agent's commit, then accept this change.`
     );
   }
 
@@ -243,6 +295,7 @@ export const acceptRefusal = ({
     accepted: applyLayoutChanges(layout, frozen),
     before: [],
     after: wanted,
+    hops,
   });
 };
 
@@ -262,6 +315,7 @@ export const reopenItem = ({
   newId,
   layout,
   known,
+  hops,
   text,
 }: {
   readonly proposals: Proposals;
@@ -269,6 +323,8 @@ export const reopenItem = ({
   readonly newId: ChangeId;
   readonly layout: Layout;
   readonly known: ReadonlySet<string>;
+  /** The map's hops, which say where a reroute's ends belong. */
+  readonly hops: readonly HopEnds[];
   /** For a note, the words the new note starts with instead of the old ones. */
   readonly text?: string | undefined;
 }): Result.Result<Proposals, string> => {
@@ -310,6 +366,7 @@ export const reopenItem = ({
   const broken = spec.breakage(reopened, {
     layout: applyLayoutChanges(layout, proposals.layout),
     structureIds: known,
+    hops,
   });
 
   if (Option.isSome(broken)) {
@@ -451,12 +508,14 @@ export const breakageOf = ({
   item,
   layout,
   structureIds,
+  hops,
 }: {
   readonly item: BatchItem;
   readonly layout: Layout;
   readonly structureIds: ReadonlySet<string>;
+  readonly hops: readonly HopEnds[];
 }): Option.Option<string> =>
-  specOf(item).breakage(item, { layout, structureIds });
+  specOf(item).breakage(item, { layout, structureIds, hops });
 
 /** What committing a batch makes. */
 export interface Committing {
@@ -486,11 +545,14 @@ export interface Committing {
 export const commitBatch = ({
   proposals,
   layout,
+  hops,
   revision,
   at,
 }: {
   readonly proposals: Proposals;
   readonly layout: Layout;
+  /** The map's hops, which say where a reroute's ends belong. */
+  readonly hops: readonly HopEnds[];
   /** The number of the revision this commit saves. */
   readonly revision: number;
   /** When the commit is made, as an ISO date and time in UTC. */
@@ -535,7 +597,7 @@ export const commitBatch = ({
     toApply.length === 0
       ? Result.succeed(layout)
       : Result.map(
-          acceptLayoutChanges({ layout, pending: toApply, ids: "all" }),
+          acceptLayoutChanges({ layout, pending: toApply, ids: "all", hops }),
           (result) => result.layout
         );
 
@@ -663,12 +725,20 @@ export const dismissItem = ({
   });
 };
 
+/** How a summary names what an item acts on. */
+export interface Names {
+  /** A structure's name. */
+  readonly structure: (id: string) => string;
+  /** A hop's label. */
+  readonly hop: (id: string) => string;
+}
+
 /** One line that says what an item is. */
 export const summaryLine: {
-  (nameOf: (id: string) => string): (item: BatchItem) => string;
-  (item: BatchItem, nameOf: (id: string) => string): string;
-} = dual(2, (item: BatchItem, nameOf: (id: string) => string): string =>
-  specOf(item).summary(item, nameOf)
+  (names: Names): (item: BatchItem) => string;
+  (item: BatchItem, names: Names): string;
+} = dual(2, (item: BatchItem, names: Names): string =>
+  specOf(item).summary(item, names.structure, names.hop)
 );
 
 /**
@@ -680,7 +750,7 @@ export const engineerTextNotice =
 
 /** Said in the prompt and in `review`'s output. */
 export const changedLayoutNotice =
-  "To change a layout item, set the layout yourself with axonometric layout, then give it the verdict changed.";
+  "To change a layout item, set the layout yourself with axonometric layout, then give it the verdict changed. A reroute has no command: edit the hop's entry under routes in layout.json, then give it the verdict changed.";
 
 const needsQuotes = /[\s"'$`\\]/u;
 
@@ -699,12 +769,12 @@ const quoted = (path: string) =>
 export const reviewPrompt = ({
   home,
   batch,
-  nameOf,
+  names,
 }: {
   /** The absolute path of the home folder. */
   readonly home: string;
   readonly batch: Batch;
-  readonly nameOf: (id: string) => string;
+  readonly names: Names;
 }): string =>
   Arr.join(
     [
@@ -716,7 +786,7 @@ export const reviewPrompt = ({
       changedLayoutNotice,
       engineerTextNotice,
       "",
-      ...Arr.map(batch.items, (item) => `- ${summaryLine(item, nameOf)}`),
+      ...Arr.map(batch.items, (item) => `- ${summaryLine(item, names)}`),
     ],
     "\n"
   );
