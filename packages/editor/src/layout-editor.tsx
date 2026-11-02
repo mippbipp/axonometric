@@ -1,5 +1,4 @@
 import {
-  droppedIntoGroup,
   groundProjections,
   samePlacement,
   samePosition,
@@ -11,7 +10,7 @@ import type {
   StructureMove,
   View,
 } from "@axonometric/contracts";
-import { Array as Arr, Option } from "effect";
+import { Array as Arr } from "effect";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
@@ -20,8 +19,8 @@ import { shiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { useDropOutlines } from "./outlines-context.ts";
-import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { useDrop } from "./use-drop.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** How far a press must move before it drags a structure, in pixels. */
@@ -146,6 +145,25 @@ const movesOf = (
         ];
   });
 
+/** The layout changes a drag would make, for the warnings beside the map. */
+const previewChanges = (
+  drag: Drag,
+  placements: Readonly<Partial<Record<string, Placement>>>
+): readonly LayoutChange[] =>
+  drag.resizing
+    ? [
+        {
+          id: "preview",
+          kind: "resize",
+          target: { kind: "structure", id: drag.id },
+          footprint: { w: drag.next.w, d: drag.next.d },
+        },
+        ...(samePosition(drag.next, drag.start)
+          ? []
+          : movesChange(movesOf([drag.id], placements, drag)).slice(0, 1)),
+      ]
+    : movesChange(movesOf(drag.ids, placements, drag));
+
 /**
  * Moves and resizes structures by dragging, while the page can edit. It
  * wraps a view's drawing, inside the viewport's transformed group.
@@ -170,10 +188,10 @@ export function LayoutEditor({
   readonly children: ReactNode;
 }) {
   const editing = useEditing();
-  const proposing = useProposed();
+  const dropping = useDrop();
   const preview = useDragPreview();
   const setOutlines = useDropOutlines()?.set;
-  const { state, revealed } = useWalkthrough();
+  const { state } = useWalkthrough();
   const { selected, multiSelection } = useSelection();
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
@@ -210,19 +228,7 @@ export function LayoutEditor({
       return;
     }
 
-    const changes: readonly LayoutChange[] = drag.resizing
-      ? [
-          {
-            id: "preview",
-            kind: "resize",
-            target: { kind: "structure", id: drag.id },
-            footprint: { w: drag.next.w, d: drag.next.d },
-          },
-          ...(samePosition(drag.next, drag.start)
-            ? []
-            : movesChange(movesOf([drag.id], placements, drag)).slice(0, 1)),
-        ]
-      : movesChange(movesOf(drag.ids, placements, drag));
+    const changes = previewChanges(drag, placements);
 
     preview?.show({ changes, refusal: drag.refusal });
   }, [drag, placements, preview]);
@@ -391,8 +397,7 @@ export function LayoutEditor({
               ? editing.refusalOfMoves(
                   movesOf(ids, placements, { start: current.start, next })
                 )
-              : (proposing?.refusalOfPlace(current.id, next) ??
-                editing.refusalOf(current.id, next)),
+              : dropping.refusalOf(current.id, next),
           }
     );
   };
@@ -415,30 +420,8 @@ export function LayoutEditor({
     ) {
       if (drag.ids.length > 1) {
         editing.arrange(() => movesOf(drag.ids, placements, drag));
-      } else if (proposing?.isOpenAdd(drag.id) === true) {
-        // A structure that is only proposed moves with its proposal.
-        proposing.place(drag.id, drag.next, () => {});
       } else {
-        editing.place(drag.id, drag.next);
-
-        // A drop in another group's zone proposes that group as well. In
-        // its own zone, or in none, the move is a layout change alone.
-        const group = Option.getOrUndefined(
-          droppedIntoGroup({
-            data: state.data,
-            layout: state.layout,
-            id: drag.id,
-            at: drag.next,
-            revealed,
-          })
-        );
-
-        if (group !== undefined) {
-          proposing?.propose(
-            { action: "group", structure: drag.id, group },
-            () => {}
-          );
-        }
+        dropping.drop(drag.id, drag.next);
       }
     }
 
