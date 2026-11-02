@@ -178,14 +178,32 @@ const onOutline = (point: GridPoint, box: Placement) => {
   return (onX && withinY) || (onY && withinX);
 };
 
+/** A hop's id and the structures at its ends. */
+export interface HopEnds {
+  readonly id: string;
+  readonly from: string;
+  readonly to: string;
+}
+
+/** A route override with an end off its footprint, and the problem it makes. */
+export interface OffEnd {
+  readonly hop: HopEnds;
+  readonly end: "first" | "last";
+  readonly problem: MapProblem;
+}
+
 /**
  * Errors for route overrides whose first point isn't on the edge of the
  * hop's source footprint, or whose last point isn't on its target's. Such
  * a route starts or ends in the open, or inside a box, so it can't be
- * drawn as a hop between the two.
+ * drawn as a hop between the two. `check` and the page's reroute refusals
+ * both ask this, so they never disagree about what an override may be.
  */
-const offEndOverrides = (data: MapData, layout: Layout) =>
-  Arr.flatMap(data.hops, (hop) => {
+export const offEndFindings: {
+  (layout: Layout): (hops: readonly HopEnds[]) => readonly OffEnd[];
+  (hops: readonly HopEnds[], layout: Layout): readonly OffEnd[];
+} = dual(2, (hops: readonly HopEnds[], layout: Layout): readonly OffEnd[] =>
+  Arr.flatMap(hops, (hop) => {
     const points = layout.routes?.[hop.id];
     const from = layout.structures[hop.from];
     const to = layout.structures[hop.to];
@@ -203,14 +221,27 @@ const offEndOverrides = (data: MapData, layout: Layout) =>
       point === undefined || onOutline(point, box)
         ? []
         : [
-            mapError({
-              file: "layout.json",
-              path: ["routes", hop.id],
-              message: `hop "${hop.id}"'s route override ${end === "first" ? "starts" : "ends"} at (${point.x}, ${point.y}), which isn't on the edge of "${structure}" at x ${box.x}–${box.x + box.w}, y ${box.y}–${box.y + box.d}. Move its ${end} point onto that footprint's edge.`,
-            }),
+            {
+              hop,
+              end,
+              problem: mapError({
+                file: "layout.json",
+                path: ["routes", hop.id],
+                message: `hop "${hop.id}"'s route override ${end === "first" ? "starts" : "ends"} at (${point.x}, ${point.y}), which isn't on the edge of "${structure}" at x ${box.x}–${box.x + box.w}, y ${box.y}–${box.y + box.d}. Move its ${end} point onto that footprint's edge.`,
+              }),
+            },
           ]
     );
-  });
+  })
+);
+
+/** The errors `offEndFindings` finds. */
+export const offEndOverrides: {
+  (layout: Layout): (hops: readonly HopEnds[]) => readonly MapProblem[];
+  (hops: readonly HopEnds[], layout: Layout): readonly MapProblem[];
+} = dual(2, (hops: readonly HopEnds[], layout: Layout): readonly MapProblem[] =>
+  Arr.map(offEndFindings(hops, layout), ({ problem }) => problem)
+);
 
 const staleRoutes = (data: MapData, layout: Layout) => {
   const ids = new Set(Arr.map(data.hops, ({ id }) => id));
@@ -477,10 +508,34 @@ export const checkLayout: {
   return [
     ...staleEntries(data, layout),
     ...staleRoutes(data, layout),
-    ...offEndOverrides(data, layout),
+    ...offEndOverrides(data.hops, layout),
     ...overlaps(placed),
     ...coveredTags(placed),
     ...overlappingZones(data, layout),
     ...chapterWarnings(data, layout),
   ];
 });
+
+const lineOf = (problem: MapProblem) =>
+  `${problem.severity} ${problem.file} ${problem.path}: ${problem.message}`;
+
+/**
+ * The problems `checkLayout` finds in `after` that it doesn't find in
+ * `before`, in `after`'s order. It's the check `check` runs, on the layout a
+ * drag would leave, so the page warns of exactly what `check` would then
+ * print.
+ */
+export const problemsAdded: {
+  (before: Layout, after: Layout): (data: MapData) => readonly MapProblem[];
+  (data: MapData, before: Layout, after: Layout): readonly MapProblem[];
+} = dual(
+  3,
+  (data: MapData, before: Layout, after: Layout): readonly MapProblem[] => {
+    const known = new Set(Arr.map(checkLayout(data, before), lineOf));
+
+    return Arr.filter(
+      checkLayout(data, after),
+      (problem) => !known.has(lineOf(problem))
+    );
+  }
+);

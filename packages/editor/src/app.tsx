@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
+import { DragPreviewProvider, DragWarnings } from "./drag-preview.tsx";
 import { useArrowOwner, useEditKeys } from "./edit-keys.ts";
 import { EditToolbar } from "./edit-toolbar.tsx";
 import { useEditing } from "./editing-context.ts";
@@ -207,7 +208,12 @@ function WalkthroughPage({ notices }: Notices) {
             <div className="pointer-events-none absolute inset-x-3 top-3 bottom-2/3 flex flex-col items-start gap-2">
               <ChapterRail className="pointer-events-auto shrink-0" />
               {/* The inside view shows the notices instead, while it's open. */}
-              {insideStructure === undefined ? notices : null}
+              {insideStructure === undefined ? (
+                <>
+                  {notices}
+                  <DragWarnings className="pointer-events-auto shrink-0" />
+                </>
+              ) : null}
             </div>
             <EditToolbar
               view={view}
@@ -286,9 +292,11 @@ export function App({
       <PlaybackProvider>
         <SelectionProvider>
           <TooltipProvider>
-            <OverviewPageProvider>
-              <WalkthroughPage notices={notices} />
-            </OverviewPageProvider>
+            <DragPreviewProvider state={state}>
+              <OverviewPageProvider>
+                <WalkthroughPage notices={notices} />
+              </OverviewPageProvider>
+            </DragPreviewProvider>
           </TooltipProvider>
         </SelectionProvider>
       </PlaybackProvider>

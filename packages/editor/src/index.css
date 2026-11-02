@@ -82,6 +82,15 @@
   fill: color-mix(in oklab, var(--face), var(--pending) 14%);
 }
 
+/* A hop with a pending reroute: its line and arrowhead in the pending blue. */
+[data-hop][data-pending="true"] {
+  stroke: var(--pending);
+}
+
+[data-hop][data-pending="true"] [data-arrowhead] {
+  fill: var(--pending);
+}
+
 /* A structure in the multi-selection: outlined in the multi-selection
    colour, and ringed on the ground under it. This comes after the pending
    rule, so a structure that is both keeps the pending face tint and badge

@@ -5,7 +5,11 @@ import {
   maxWriteBytes,
   StaleProposals,
 } from "@axonometric/contracts";
-import type { PendingLayoutWrite, Proposals } from "@axonometric/contracts";
+import type {
+  HopEnds,
+  PendingLayoutWrite,
+  Proposals,
+} from "@axonometric/contracts";
 import { WriteGuard } from "@axonometric/contracts/api";
 import { Effect, Layer, Option, Path, Result, String as Str } from "effect";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -130,17 +134,25 @@ export const loadForWrite = Effect.fnUntraced(function* <
   return loaded;
 });
 
+/** A write of the pending layout, and the map's hops it is checked against. */
+export interface PendingWrite {
+  readonly write: PendingLayoutWrite;
+  /** The map's hops, as the server last built them. */
+  readonly hops: readonly HopEnds[];
+}
+
 /**
  * Replaces the pending layout changes in `proposals.json` in `home` with
  * those in `write`, under the lock. The write is refused, and nothing
  * written, when `write.baseFileRevision` isn't the file's revision, or when a
  * new or changed change would leave footprints overlapping in the layout
- * the page shows. `written` runs under the lock, once the file is saved, to
+ * the page shows, name a hop `hops` lacks, or leave a route override off its
+ * footprints. `written` runs under the lock, once the file is saved, to
  * tell the open pages. Returns what `proposals.json` holds after the write.
  */
 export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   home: string,
-  write: PendingLayoutWrite,
+  { write, hops }: PendingWrite,
   written: (proposals: Proposals) => Effect.Effect<void>
 ) {
   const path = yield* Path.Path;
@@ -160,6 +172,7 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
     accepted,
     before: current.layout,
     after: write.layout,
+    hops,
   });
 
   if (Option.isSome(refusal)) {

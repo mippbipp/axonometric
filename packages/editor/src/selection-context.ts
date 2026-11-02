@@ -21,6 +21,12 @@ export interface Selection {
    */
   readonly inside: string | null;
   /**
+   * The selected hop's id, or `null`. A hop and a structure are never
+   * selected together, and the hop's ends are both revealed in the current
+   * chapter. Its panel is pinned in the side panel, with "Reset route".
+   */
+  readonly selectedHop: string | null;
+  /**
    * The structures in the multi-selection, all revealed in the current
    * chapter. A chapter that hides one drops it.
    */
@@ -30,6 +36,8 @@ export interface Selection {
    * multi-selection too.
    */
   readonly select: (id: string | null) => void;
+  /** Selects a hop, or clears the selection with `null`. */
+  readonly selectHop: (id: string | null) => void;
   /**
    * Adds structure `id` to the multi-selection, or takes it out when it's
    * there. When the multi-selection is empty and another structure is

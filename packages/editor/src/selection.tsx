@@ -12,6 +12,7 @@ interface Stored {
   /** The chapter the selection was made in. Another chapter clears it. */
   readonly chapter: string;
   readonly selected: string | null;
+  readonly hop: string | null;
   readonly inside: string | null;
   readonly multiSelection: ReadonlySet<string>;
 }
@@ -26,6 +27,7 @@ const inChapter = (before: Stored, chapter: string): Stored =>
 const nothingIn = (chapter: string): Stored => ({
   chapter,
   selected: null,
+  hop: null,
   inside: null,
   multiSelection: nobody,
 });
@@ -40,7 +42,7 @@ export function SelectionProvider({
 }: {
   readonly children: ReactNode;
 }) {
-  const { stop } = useWalkthrough();
+  const { stop, state } = useWalkthrough();
   const { closePacket } = usePlayback();
   const byId = useStructuresById();
   const chapter = stop.id;
@@ -57,6 +59,19 @@ export function SelectionProvider({
   const selected = current?.selected ?? null;
   const inside = current?.inside ?? null;
 
+  // A hop stays selected only while both its ends are revealed.
+  const storedHop = stored.chapter === chapter ? stored.hop : null;
+
+  const selectedHop =
+    storedHop !== null &&
+    Arr.some(
+      state.data.hops,
+      ({ id, from, to }) =>
+        id === storedHop && stop.revealed.has(from) && stop.revealed.has(to)
+    )
+      ? storedHop
+      : null;
+
   const storedMulti =
     stored.chapter === chapter ? stored.multiSelection : nobody;
 
@@ -71,11 +86,16 @@ export function SelectionProvider({
   const value = useMemo(
     (): Selection => ({
       selected,
+      selectedHop,
       inside,
       multiSelection,
       select: (id) => {
         closePacket();
         setStored({ ...nothingIn(chapter), selected: id });
+      },
+      selectHop: (id) => {
+        closePacket();
+        setStored({ ...nothingIn(chapter), hop: id });
       },
       toggleMultiSelected: (id) => {
         setStored((before) => {
@@ -111,6 +131,7 @@ export function SelectionProvider({
         setStored({
           chapter,
           selected: id,
+          hop: null,
           inside: hasSteps(byId.get(id)) ? id : null,
           multiSelection: nobody,
         });
@@ -119,7 +140,7 @@ export function SelectionProvider({
         setStored((before) => ({ ...before, inside: null }));
       },
     }),
-    [byId, chapter, selected, inside, multiSelection, closePacket]
+    [byId, chapter, selected, selectedHop, inside, multiSelection, closePacket]
   );
 
   return <SelectionContext value={value}>{children}</SelectionContext>;

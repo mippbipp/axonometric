@@ -12,12 +12,14 @@ import {
   newChangeId,
   observeFile,
   PendingLayoutWrite,
+  placeRoute,
   placeStructure,
   Proposals,
   pushStep,
   redoStep,
   sameLayoutChanges,
   ServedPage,
+  shiftedRoutes,
   servedPageElementId,
   ServerEvent,
   StaleProposals,
@@ -26,6 +28,8 @@ import {
 } from "@axonometric/contracts";
 import type {
   ChangeId,
+  GridPoint,
+  HopEnds,
   Layout,
   LayoutChange,
   MapProblem,
@@ -181,6 +185,20 @@ export interface ServedStore {
    */
   readonly arrange: (plan: Arrangement) => string | undefined;
   /**
+   * Gives hop `hop` the route override `points` as a pending change, or puts
+   * it back on automatic routing with `null`. A refusal also shows as a
+   * notice. Returns why it was refused, or `undefined`.
+   */
+  readonly reroute: (
+    hop: string,
+    points: readonly GridPoint[] | null
+  ) => string | undefined;
+  /** Why `reroute` would refuse `points` for `hop`, without saving anything. */
+  readonly refusalOfReroute: (
+    hop: string,
+    points: readonly GridPoint[] | null
+  ) => string | undefined;
+  /**
    * Puts the pending changes back as they were before the last edit. A
    * refusal shows as a notice; the step is kept.
    */
@@ -221,19 +239,59 @@ interface Rerun {
  * An edit that arranges a set as one change, with its id fixed up front. The
  * moves are planned from the list the edit runs on.
  */
-const arranging = (plan: Arrangement): Edit => {
+const arranging = (plan: Arrangement, hops: readonly HopEnds[] = []): Edit => {
+  const id = newChangeId();
+  const reroutes = new Map<string, ChangeId>();
+
+  const rerouteId = (hop: string) => {
+    const made = reroutes.get(hop) ?? newChangeId();
+
+    reroutes.set(hop, made);
+
+    return made;
+  };
+
+  return (changes, accepted) => {
+    const shown = applyLayoutChanges(accepted, changes);
+    const moves = plan(shown.structures);
+
+    // A route override travels with its hop when both ends move together.
+    const carried = shiftedRoutes({
+      layout: shown,
+      hops,
+      moves,
+      id: rerouteId,
+    });
+
+    return Arr.reduce(
+      carried,
+      appendMove({ changes, id, moves }),
+      (so, change) =>
+        change.kind === "reroute"
+          ? placeRoute({
+              changes: so,
+              accepted,
+              hop: change.target.id,
+              points: change.points,
+              newId: () => change.id,
+            })
+          : so
+    );
+  };
+};
+
+/** An edit that gives `hop` the route override `points`, or none. */
+const rerouting = (hop: string, points: readonly GridPoint[] | null): Edit => {
   const id = newChangeId();
 
   return (changes, accepted) =>
-    appendMove({
-      changes,
-      id,
-      moves: plan(applyLayoutChanges(accepted, changes).structures),
-    });
+    placeRoute({ changes, accepted, hop, points, newId: () => id });
 };
 
-const moving = (moves: readonly StructureMove[]): Edit =>
-  arranging(() => moves);
+const moving = (
+  moves: readonly StructureMove[],
+  hops: readonly HopEnds[]
+): Edit => arranging(() => moves, hops);
 
 /** An edit that puts `id` at `next`, with change ids fixed up front. */
 const placing = (id: string, next: Placement): Edit => {
@@ -577,7 +635,12 @@ export const connectServed = ({
 
       const after = edit(so.layout, accepted);
 
-      const refusal = layoutRefusal({ accepted, before: so.layout, after });
+      const refusal = layoutRefusal({
+        accepted,
+        before: so.layout,
+        after,
+        hops: view.state.data.hops,
+      });
 
       return Option.isNone(refusal)
         ? {
@@ -717,7 +780,15 @@ export const connectServed = ({
     const before = view.pending;
     const after = edit(before, accepted);
 
-    return { after, refusal: layoutRefusal({ accepted, before, after }) };
+    return {
+      after,
+      refusal: layoutRefusal({
+        accepted,
+        before,
+        after,
+        hops: view.state.data.hops,
+      }),
+    };
   };
 
   /** Queues the write of list `after`, based on the revision the queue ends at. */
@@ -823,6 +894,7 @@ export const connectServed = ({
       accepted: view.state.layout,
       before,
       after: target,
+      hops: view.state.data.hops,
     });
 
     if (Option.isSome(refusal)) {
@@ -951,8 +1023,13 @@ export const connectServed = ({
     place: (id, next) => run(placing(id, next)),
     discard: (id) => run((changes) => discardChange(changes, id)),
     refusalOfMoves: (moves) =>
-      Option.getOrUndefined(tryEdit(moving(moves)).refusal),
-    arrange: (plan) => runShowingRefusal(arranging(plan)),
+      Option.getOrUndefined(
+        tryEdit(moving(moves, view.state.data.hops)).refusal
+      ),
+    arrange: (plan) => runShowingRefusal(arranging(plan, view.state.data.hops)),
+    reroute: (hop, points) => runShowingRefusal(rerouting(hop, points)),
+    refusalOfReroute: (hop, points) =>
+      Option.getOrUndefined(tryEdit(rerouting(hop, points)).refusal),
     undo: () => {
       stepThrough("undo");
     },

@@ -2,7 +2,7 @@ export { describeCause } from "./cause.ts";
 
 export { acceptanceMessage, acceptLayoutChanges } from "./accept.ts";
 
-export type { Acceptance, DroppedChange } from "./accept.ts";
+export type { Acceptance, DroppedChange, MessageOptions } from "./accept.ts";
 
 export { checkMap, linkTargets } from "./check.ts";
 
@@ -61,11 +61,13 @@ export {
   checkLayout,
   clashWarnings,
   footprintsOverlap,
+  offEndFindings,
   placedStructures,
+  problemsAdded,
   tagCovers,
 } from "./layout-checks.ts";
 
-export type { PlacedStructure } from "./layout-checks.ts";
+export type { HopEnds, OffEnd, PlacedStructure } from "./layout-checks.ts";
 
 export { isoHeights } from "./iso-heights.ts";
 
@@ -153,7 +155,7 @@ export type {
 
 export type { HopRoute } from "./routing.ts";
 
-export { zonePadding, zonesOf } from "./zones.ts";
+export { groupMembers, zonePadding, zonesOf } from "./zones.ts";
 
 export type { Zone, ZoneSource } from "./zones.ts";
 
@@ -211,24 +213,29 @@ export {
   discardChange,
   emptyProposals,
   Footprint,
+  hopsOf,
+  HopTarget,
   LayoutChange,
   layoutChangeKey,
   LayoutChanges,
   layoutRefusal,
   MoveChange,
   newChangeId,
+  placeRoute,
   placeStructure,
   Proposals,
   ProposalsFile,
+  RerouteChange,
   ResizeChange,
   sameLayoutChanges,
+  shiftedRoutes,
   StructureMove,
   StructureTarget,
   structuresOf,
   Target,
 } from "./proposals.ts";
 
-export type { Clash, Placing } from "./proposals.ts";
+export type { Clash, Placing, PlacingRoute } from "./proposals.ts";
 
 export {
   Accepted,
@@ -267,3 +274,7 @@ export {
   Severity,
   splitProblems,
 } from "./problems.ts";
+
+export { dragSegment, routeVertices, segmentGuides } from "./route-drag.ts";
+
+export type { RouteEnds, SegmentGuide } from "./route-drag.ts";

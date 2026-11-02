@@ -1,9 +1,11 @@
-import { Array as Arr, Option, Result, String as Str } from "effect";
+import { Array as Arr, Match, Option, Result, String as Str } from "effect";
 import { dual } from "effect/Function";
 
+import type { HopEnds } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import {
   applyLayoutChanges,
+  hopsOf,
   layoutRefusal,
   structuresOf,
 } from "./proposals.ts";
@@ -27,52 +29,69 @@ export interface Acceptance {
 
 /**
  * An earlier pending change that an accepted change overrides: `structures`
- * are the ones taken out of it. When they were all of its structures, the
- * change is gone from the pending list.
+ * and `hops` are the ones taken out of it. When they were all of what it
+ * acts on, the change is gone from the pending list.
  */
 export interface DroppedChange {
   readonly id: string;
   readonly kind: LayoutChange["kind"];
   readonly structures: readonly string[];
-}
-
-/** What a change sets on a structure, for telling which changes collide. */
-const settingOf = (kind: LayoutChange["kind"], id: string) =>
-  `${kind === "move" ? "position" : "size"} of ${id}`;
-
-const settings = (change: LayoutChange) =>
-  Arr.map(structuresOf(change), (id) => settingOf(change.kind, id));
-
-/** What is left of a pending change, and the structures taken out of it. */
-interface Overridden {
-  readonly left: Option.Option<LayoutChange>;
-  readonly taken: readonly string[];
+  readonly hops: readonly string[];
 }
 
 /**
- * Takes `change` out of the structures whose setting is in `overridden`:
- * nothing for a resize, which sets one, and the moves of those structures for
- * a move. Returns what is left of it, if anything, and what was taken out.
+ * What a change sets on a structure or hop, for telling which changes
+ * collide: a move sets a position, a resize a size and a reroute a route.
+ */
+const settingOf = (kind: LayoutChange["kind"], id: string) =>
+  Match.value(kind).pipe(
+    Match.when("move", () => `position of ${id}`),
+    Match.when("resize", () => `size of ${id}`),
+    Match.when("reroute", () => `route of hop ${id}`),
+    Match.exhaustive
+  );
+
+const settings = (change: LayoutChange) =>
+  Arr.map([...structuresOf(change), ...hopsOf(change)], (id) =>
+    settingOf(change.kind, id)
+  );
+
+/** What is left of a pending change, and what was taken out of it. */
+interface Overridden {
+  readonly left: Option.Option<LayoutChange>;
+  readonly structures: readonly string[];
+  readonly hops: readonly string[];
+}
+
+/**
+ * Takes `change` out of the structures and hops whose setting is in
+ * `overridden`: nothing for a resize or a reroute, which set one thing each,
+ * and the moves of those structures for a move. Returns what is left of it,
+ * if anything, and what was taken out.
  */
 const withoutOverridden = (
   change: LayoutChange,
   overridden: ReadonlySet<string>
 ): Overridden => {
-  const taken = Arr.filter(structuresOf(change), (id) =>
+  const structures = Arr.filter(structuresOf(change), (id) =>
     overridden.has(settingOf(change.kind, id))
   );
 
-  if (taken.length === 0) {
-    return { left: Option.some(change), taken };
+  const hops = Arr.filter(hopsOf(change), (id) =>
+    overridden.has(settingOf(change.kind, id))
+  );
+
+  if (structures.length === 0 && hops.length === 0) {
+    return { left: Option.some(change), structures, hops };
   }
 
-  if (change.kind === "resize") {
-    return { left: Option.none(), taken };
+  if (change.kind !== "move") {
+    return { left: Option.none(), structures, hops };
   }
 
   const kept = Arr.filter(
     change.moves,
-    ({ target }) => !taken.includes(target.id)
+    ({ target }) => !structures.includes(target.id)
   );
 
   return {
@@ -80,7 +99,8 @@ const withoutOverridden = (
       onEmpty: () => Option.none(),
       onNonEmpty: (moves) => Option.some({ ...change, moves }),
     }),
-    taken,
+    structures,
+    hops,
   };
 };
 
@@ -88,8 +108,8 @@ const withoutOverridden = (
  * Takes the pending changes named in `ids` (or all of them) into `layout`.
  * Fails with why it can't, and changes nothing, when nothing is pending, an
  * id names no pending change, or a change acts on a structure the layout
- * doesn't place or leaves a footprint on top of another, as `layoutRefusal`
- * says.
+ * doesn't place or a hop the map lacks, leaves a footprint on top of another,
+ * or leaves a route override off its footprints, as `layoutRefusal` says.
  *
  * The page applies changes in list order, so a pending change that comes
  * before an accepted one and sets the same position or size would be
@@ -100,13 +120,18 @@ export const acceptLayoutChanges = ({
   layout,
   pending,
   ids,
+  hops,
 }: {
   readonly layout: Layout;
   readonly pending: readonly LayoutChange[];
   readonly ids: "all" | readonly string[];
+  /** The map's hops, which say where a reroute's ends belong. */
+  readonly hops: readonly HopEnds[];
 }): Result.Result<Acceptance, string> => {
   if (pending.length === 0) {
-    return Result.fail("Nothing is pending. Move or resize a structure first.");
+    return Result.fail(
+      "Nothing is pending. Move, resize or reroute something first."
+    );
   }
 
   const wanted =
@@ -127,6 +152,7 @@ export const acceptLayoutChanges = ({
     accepted: layout,
     before: [],
     after: accepted,
+    hops,
   });
 
   if (Option.isSome(refusal)) {
@@ -154,10 +180,17 @@ export const acceptLayoutChanges = ({
   return Result.succeed({
     accepted,
     remaining: Arr.flatMap(outcomes, ({ left }) => Option.toArray(left)),
-    dropped: Arr.flatMap(outcomes, ({ change, taken }) =>
-      taken.length === 0
+    dropped: Arr.flatMap(outcomes, ({ change, structures, hops: lost }) =>
+      structures.length === 0 && lost.length === 0
         ? []
-        : [{ id: change.id, kind: change.kind, structures: taken }]
+        : [
+            {
+              id: change.id,
+              kind: change.kind,
+              structures,
+              hops: lost,
+            },
+          ]
     ),
     layout: {
       ...applyLayoutChanges(layout, accepted),
@@ -166,7 +199,15 @@ export const acceptLayoutChanges = ({
   });
 };
 
-const verbs = { move: "Move", resize: "Resize" } as const;
+/** What a message calls a change, by kind. A reset reroute has its own. */
+const verbOf = (change: LayoutChange) =>
+  change.kind === "move"
+    ? "Move"
+    : change.kind === "resize"
+      ? "Resize"
+      : change.points === null
+        ? "Reset the route of"
+        : "Reroute";
 
 /** Past this many structures, a kind of change names three and counts the rest. */
 const namedInFull = 4;
@@ -188,52 +229,66 @@ const namesOf = (names: readonly string[]) =>
 const lowerFirst = (text: string) =>
   `${Str.toLowerCase(Str.slice(0, 1)(text))}${Str.slice(1)(text)}`;
 
+/** What `acceptanceMessage` can also say. */
+export interface MessageOptions {
+  /** Earlier pending changes that the accepted ones replace. */
+  readonly dropped?: readonly DroppedChange[];
+  /** Turns a hop id into the name to use for it. The id itself by default. */
+  readonly hopNameOf?: (id: string) => string;
+}
+
 /**
  * The message for accepting `changes` when the engineer gave none, such as
- * "Move Save server; resize Map page". A kind of change comes in the order it
- * first appears, and names each structure once, however many changes touch
- * it. `nameOf` turns a structure id into the name the page shows.
+ * "Move Save server; resize Map page; reroute Save note". A verb comes in the
+ * order it first appears, and names each structure or hop once, however many
+ * changes touch it. `nameOf` turns a structure id into the name the page
+ * shows.
  */
 export const acceptanceMessage: {
   (
     nameOf: (id: string) => string,
-    dropped?: readonly DroppedChange[]
+    options?: MessageOptions
   ): (changes: readonly LayoutChange[]) => string;
   (
     changes: readonly LayoutChange[],
     nameOf: (id: string) => string,
-    dropped?: readonly DroppedChange[]
+    options?: MessageOptions
   ): string;
 } = dual(
   (args) => Arr.isArray(args[0]),
   (
     changes: readonly LayoutChange[],
     nameOf: (id: string) => string,
-    dropped: readonly DroppedChange[] = []
+    { dropped = [], hopNameOf = (id) => id }: MessageOptions = {}
   ): string => {
-    const kinds = Arr.dedupe(Arr.map(changes, ({ kind }) => kind));
+    const verbs = Arr.dedupe(Arr.map(changes, verbOf));
 
-    const parts = Arr.map(kinds, (kind) => {
-      const ids = Arr.dedupe(
-        Arr.flatMap(
-          Arr.filter(changes, (change) => change.kind === kind),
-          structuresOf
-        )
-      );
+    const parts = Arr.map(verbs, (verb) => {
+      const same = Arr.filter(changes, (change) => verbOf(change) === verb);
 
-      return `${verbs[kind]} ${namesOf(Arr.map(ids, nameOf))}`;
+      const names = Arr.dedupe([
+        ...Arr.map(Arr.flatMap(same, structuresOf), nameOf),
+        ...Arr.map(Arr.flatMap(same, hopsOf), hopNameOf),
+      ]);
+
+      return `${verb} ${namesOf(names)}`;
     });
 
-    const replaced = Arr.dedupe(
-      Arr.flatMap(dropped, ({ structures }) => structures)
-    );
+    const replaced = Arr.dedupe([
+      ...Arr.map(
+        Arr.flatMap(dropped, ({ structures }) => structures),
+        nameOf
+      ),
+      ...Arr.map(
+        Arr.flatMap(dropped, ({ hops }) => hops),
+        hopNameOf
+      ),
+    ]);
 
     const replaces =
       replaced.length === 0
         ? []
-        : [
-            `replaces earlier pending changes to ${namesOf(Arr.map(replaced, nameOf))}`,
-          ];
+        : [`replaces earlier pending changes to ${namesOf(replaced)}`];
 
     return Arr.join(
       Arr.map([...parts, ...replaces], (part, index) =>

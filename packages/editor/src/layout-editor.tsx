@@ -9,9 +9,10 @@ import { Array as Arr } from "effect";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
+import { shiftDrawing } from "./drag-shift.ts";
+import { DragOrigin, DropOutline } from "./drop-outline.tsx";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
-import { groundOutline, toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
 
 /** How far a press must move before it drags a structure, in pixels. */
@@ -109,48 +110,6 @@ interface Drag {
 const samePlacement = (a: Placement, b: Placement) =>
   a.x === b.x && a.y === b.y && a.w === b.w && a.d === b.d;
 
-/**
- * Shifts the drawing of a structure being moved, its name tag and its
- * pending badge by the snapped move, so the box follows the pointer without rerouting every hop
- * on each step. Both views project the ground linearly, so one offset moves
- * the whole drawing. The routes follow on drop.
- */
-const shiftDrawing = (
-  root: SVGGElement,
-  drag: Drag | undefined,
-  view: View
-) => {
-  for (const element of root.querySelectorAll<SVGElement>(
-    "[data-drag-shifted]"
-  )) {
-    element.removeAttribute("transform");
-    delete element.dataset.dragShifted;
-  }
-
-  if (drag === undefined || drag.resizing) {
-    return;
-  }
-
-  const ground = groundProjections[view];
-  const from = ground.toScreen(drag.start);
-  const to = ground.toScreen(drag.next);
-  const transform = `translate(${to.sx - from.sx} ${to.sy - from.sy})`;
-
-  const selector = Arr.join(
-    Arr.map(drag.ids, (moving) => {
-      const id = CSS.escape(moving);
-
-      return `[data-structure="${id}"], [data-name-tag="${id}"], [data-pending-badge="${id}"]`;
-    }),
-    ", "
-  );
-
-  for (const element of root.querySelectorAll<SVGElement>(selector)) {
-    element.setAttribute("transform", transform);
-    element.dataset.dragShifted = "";
-  }
-};
-
 /** Where each of `ids` goes when the pressed structure goes from `start` to `next`. */
 const movesOf = (
   ids: readonly string[],
@@ -206,7 +165,15 @@ export function LayoutEditor({
 
   useEffect(() => {
     if (root.current !== null) {
-      shiftDrawing(root.current, drag, view);
+      shiftDrawing({
+        root: root.current,
+        view,
+        ids: drag === undefined || drag.resizing ? [] : drag.ids,
+        by:
+          drag === undefined
+            ? undefined
+            : { x: drag.next.x - drag.start.x, y: drag.next.y - drag.start.y },
+      });
     }
   }, [drag, view]);
 
@@ -417,19 +384,7 @@ export function LayoutEditor({
 
             return at === undefined
               ? []
-              : [
-                  <polygon
-                    key={id}
-                    data-drag-origin={id}
-                    aria-hidden="true"
-                    points={toPoints(
-                      groundOutline(at, groundProjections[view])
-                    )}
-                    className="stroke-ink pointer-events-none fill-none opacity-40"
-                    strokeWidth={1.2}
-                    strokeDasharray="3 3"
-                  />,
-                ];
+              : [<DragOrigin key={id} id={id} at={at} view={view} />];
           })}
       {live && selected !== null && handlesAt !== undefined ? (
         <ResizeHandles
@@ -456,7 +411,14 @@ function DragOutlines({
   readonly view: View;
 }) {
   if (drag.ids.length === 1) {
-    return <DragOutline drag={drag} id={drag.id} at={drag.next} view={view} />;
+    return (
+      <DropOutline
+        refusal={drag.refusal}
+        id={drag.id}
+        at={drag.next}
+        view={view}
+      />
+    );
   }
 
   return Arr.flatMap(
@@ -467,46 +429,15 @@ function DragOutlines({
       return at === undefined
         ? []
         : [
-            <DragOutline
+            <DropOutline
               key={target.id}
-              drag={drag}
+              refusal={drag.refusal}
               id={target.id}
               at={{ ...at, ...position }}
               view={view}
             />,
           ];
     }
-  );
-}
-
-function DragOutline({
-  drag,
-  id,
-  at,
-  view,
-}: {
-  readonly drag: Drag;
-  readonly id: string;
-  readonly at: Placement;
-  readonly view: View;
-}) {
-  const refused = drag.refusal !== undefined;
-
-  return (
-    <polygon
-      data-drag-outline={id}
-      data-refused={refused}
-      points={toPoints(groundOutline(at, groundProjections[view]))}
-      className={
-        refused
-          ? "fill-refused/15 stroke-refused pointer-events-none"
-          : "stroke-pending pointer-events-none fill-none"
-      }
-      strokeWidth={refused ? 2.5 : 1.5}
-      strokeDasharray={refused ? undefined : "5 3"}
-    >
-      {refused ? <title>{drag.refusal}</title> : null}
-    </polygon>
   );
 }
 

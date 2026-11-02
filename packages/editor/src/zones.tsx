@@ -2,19 +2,45 @@ import { planZoneRadius } from "@axonometric/contracts";
 import type { SceneZone } from "@axonometric/contracts";
 import type { ComponentType } from "react";
 
+import { useEditing } from "./editing-context.ts";
 import { toPoints } from "./projection.ts";
 
 const plateClass = "fill-ink/5 stroke-ink/45";
 
+/**
+ * A zone's title. While the page can edit, an invisible area over the title
+ * is what you press to move the whole group (see `GroupEditor`).
+ */
 function ZoneTitle({ drawing }: { readonly drawing: SceneZone }) {
-  return drawing.titleTransform === undefined ? null : (
-    <text
-      data-zone-title=""
-      transform={drawing.titleTransform}
-      className="fill-ink/75 text-2xs stroke-none font-mono font-medium tracking-widest uppercase"
-    >
-      {drawing.zone.group.title}
-    </text>
+  const editing = useEditing();
+
+  if (drawing.titleTransform === undefined) {
+    return null;
+  }
+
+  return (
+    <>
+      <text
+        data-zone-title=""
+        transform={drawing.titleTransform}
+        className="fill-ink/75 text-2xs stroke-none font-mono font-medium tracking-widest uppercase"
+      >
+        {drawing.zone.group.title}
+      </text>
+      {editing?.canEdit === true && drawing.title !== undefined ? (
+        <polygon
+          data-zone-title-hit={drawing.zone.group.id}
+          points={toPoints(drawing.title)}
+          fill="transparent"
+          stroke="none"
+          className="cursor-move"
+        >
+          <title>
+            Drag to move every structure in {drawing.zone.group.title}
+          </title>
+        </polygon>
+      ) : null}
+    </>
   );
 }
 

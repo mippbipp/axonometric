@@ -19,12 +19,15 @@ import { use, useCallback, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { BoxSelect } from "./box-select.tsx";
+import { pendingHops, useEditing } from "./editing-context.ts";
 import { fitOf } from "./fit.ts";
+import { GroupEditor } from "./group-editor.tsx";
 import { LayoutEditor } from "./layout-editor.tsx";
 import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { groundOutline, routesOf, toPoints } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
+import { RouteEditor } from "./route-editor.tsx";
 import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
 import { Viewport } from "./viewport.tsx";
@@ -124,9 +127,12 @@ function Arrow({
 function HopArrow({
   routed,
   markBends,
+  pending,
   onHover,
 }: {
   readonly routed: SceneHop;
+  /** Whether the hop has a pending reroute, drawn in the pending colour. */
+  readonly pending: boolean;
   /** Whether to mark the route's bends with diamonds. */
   readonly markBends: boolean;
   /** Called with the hop's id while the pointer is on its line, else null. */
@@ -139,6 +145,7 @@ function HopArrow({
     <g
       data-hop={hop.id}
       data-route={toPoints(points)}
+      data-pending={pending}
       className="stroke-ink"
       onPointerEnter={() => {
         onHover(hop.id);
@@ -352,6 +359,7 @@ export function MapView({
 
   const drawing = viewDrawings[view];
   const { Structure } = drawing;
+  const rerouted = pendingHops(useEditing());
 
   const marked = drawing.newRing
     ? Arr.filter(scene.structures, ({ structure }) =>
@@ -419,7 +427,9 @@ export function MapView({
           />
         </pattern>
       </defs>
-      <Zones zones={scene.zones} Plate={drawing.Plate} />
+      <GroupEditor view={view} data={state.data} layout={state.layout}>
+        <Zones zones={scene.zones} Plate={drawing.Plate} />
+      </GroupEditor>
       <g>
         {Arr.map(marked, (item) => (
           <NewMarker key={item.structure.id} placed={item} view={view} />
@@ -427,16 +437,24 @@ export function MapView({
         <SelectionMarker placements={state.layout.structures} view={view} />
         <AcceptedOutlines structures={scene.structures} view={view} />
       </g>
-      <g>
-        {Arr.map(scene.hops, (item) => (
-          <HopArrow
-            key={item.hop.id}
-            routed={item}
-            markBends={drawing.markBends}
-            onHover={setHoveredHop}
-          />
-        ))}
-      </g>
+      <RouteEditor
+        view={view}
+        hops={scene.hops}
+        placements={state.layout.structures}
+        onHover={setHoveredHop}
+      >
+        <g>
+          {Arr.map(scene.hops, (item) => (
+            <HopArrow
+              key={item.hop.id}
+              routed={item}
+              markBends={drawing.markBends}
+              pending={rerouted.has(item.hop.id)}
+              onHover={setHoveredHop}
+            />
+          ))}
+        </g>
+      </RouteEditor>
       <BoxSelect
         view={view}
         placements={state.layout.structures}
