@@ -72,6 +72,14 @@ export const ChapterChange = Schema.Union([
 
 export type ChapterChange = typeof ChapterChange.Type;
 
+const equivalent = Schema.toEquivalence(ChapterChange);
+
+/** Whether two chapter changes are the same change. */
+export const sameChapterChange: {
+  (b: ChapterChange): (a: ChapterChange) => boolean;
+  (a: ChapterChange, b: ChapterChange): boolean;
+} = dual(2, (a: ChapterChange, b: ChapterChange): boolean => equivalent(a, b));
+
 /** The change for one action. */
 type Of<A extends ChapterChange["action"]> = Extract<
   ChapterChange,

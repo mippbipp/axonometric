@@ -2,6 +2,7 @@ import { Array as Arr, Option, Result, String as Str } from "effect";
 
 import {
   groupOf,
+  sameGroupChange,
   sameGroupSubject,
   titleOf,
   provisionalGroupIdOf,
@@ -245,7 +246,7 @@ export const proposeGroup = ({
   if (
     Option.isSome(existing) &&
     sameGroupSubject(existing.value.change, change) &&
-    JSON.stringify(existing.value.change) === JSON.stringify(change)
+    sameGroupChange(existing.value.change, change)
   ) {
     return Result.succeed(proposals);
   }

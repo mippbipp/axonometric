@@ -1,6 +1,10 @@
 import { Array as Arr, Option, Order, Result } from "effect";
 
-import { chapterHolds, subjectOf } from "./chapter-change.ts";
+import {
+  chapterHolds,
+  sameChapterChange,
+  subjectOf,
+} from "./chapter-change.ts";
 import type { ChapterChange } from "./chapter-change.ts";
 import type { MapData } from "./map-data.ts";
 import type { ChangeId, ChapterProposal, Proposals } from "./proposals.ts";
@@ -177,7 +181,7 @@ export const proposeChapter = ({
 
   if (
     Option.isSome(existing) &&
-    JSON.stringify(existing.value.change) === JSON.stringify(change)
+    sameChapterChange(existing.value.change, change)
   ) {
     return Result.succeed(proposals);
   }

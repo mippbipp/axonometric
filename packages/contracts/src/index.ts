@@ -576,6 +576,7 @@ export {
   maxGroupTitleLength,
   NewGroup,
   provisionalGroupIdOf,
+  sameGroupChange,
   sameGroupSubject,
   titleOf,
 } from "./group-change.ts";
@@ -604,6 +605,7 @@ export {
   maxPlayedHops,
   resequenced,
   revealedUpTo,
+  sameChapterChange,
   structuresOfChange,
   subjectOf,
 } from "./chapter-change.ts";

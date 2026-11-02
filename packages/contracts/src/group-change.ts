@@ -55,6 +55,14 @@ export const groupOf = (change: GroupChange): string =>
 export const titleOf = (change: GroupChange): string =>
   change.action === "add" ? change.group.title : change.title;
 
+const equivalent = Schema.toEquivalence(GroupChange);
+
+/** Whether two group changes are the same change. */
+export const sameGroupChange: {
+  (b: GroupChange): (a: GroupChange) => boolean;
+  (a: GroupChange, b: GroupChange): boolean;
+} = dual(2, (a: GroupChange, b: GroupChange): boolean => equivalent(a, b));
+
 /** Whether two changes act on the same group in the same way. */
 export const sameGroupSubject: {
   (b: GroupChange): (a: GroupChange) => boolean;
