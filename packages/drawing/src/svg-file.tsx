@@ -14,9 +14,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { DrawingContext } from "./drawing-context.ts";
 import type { DrawingEnvironment, Paint } from "./drawing-context.ts";
 import { extentOf } from "./extent.ts";
-import { FileFrame, PassThrough } from "./file-frame.tsx";
+import { FileFrame } from "./file-frame.tsx";
 import { fontFaceCss } from "./font-face.ts";
 import { MapDrawing } from "./map-drawing.tsx";
+import { PassThrough } from "./pass-through.ts";
 
 /** Space around the drawing, in drawing units. */
 const margin = 16;
@@ -143,6 +144,7 @@ export const svgFileOf = ({
       >
         <title id={`${prefix}title`}>{title}</title>
         <desc id={`${prefix}desc`}>{description}</desc>
+        {/* oxlint-disable-next-line shadcn/no-inline-styles -- a standalone SVG has no stylesheet to put its @font-face in */}
         <style>{fontFaceCss}</style>
         <rect
           x={x}

@@ -112,7 +112,7 @@ describe("build", () => {
       // The inlined scripts hold strings that look like tags, such as React's
       // server renderer's, so only the markup around them is checked.
       assert.notMatch(
-        Str.replace(/(?<=<script[^>]*>)[^]*?(?=<\/script>)/gu, "")(page),
+        Str.replaceAll(/(?<=<script[^>]*>)[^]*?(?=<\/script>)/gu, "")(page),
         /<(?:link|script)[^>]+(?:src|href)=/u
       );
     })

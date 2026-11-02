@@ -317,8 +317,11 @@ describe("export --format png", () => {
 
           const share = differingShare(fromPage, fromCli);
 
-          console.log(`PNG difference ratio: ${(share * 100).toFixed(3)}%`);
-          assert.isBelow(share, 0.01);
+          assert.isBelow(
+            share,
+            0.01,
+            `${(share * 100).toFixed(3)}% of pixels differ`
+          );
         }).pipe(Effect.provide(NodeServices.layer))
       ),
     120_000
