@@ -1,5 +1,7 @@
 import {
   addNote,
+  applyLayoutChanges,
+  frozenLayoutChanges,
   discardNote,
   dismissItem,
   editNote,
@@ -7,15 +9,18 @@ import {
   MapFilesUnreadable,
   placeStructures,
   ProposalRefused,
+  reopenItem,
   reviewPrompt,
 } from "@axonometric/contracts";
 import type {
   FreezeWrite,
   FrozenReview,
+  Layout,
   ItemWrite,
   NoteAdd,
   NoteEdit,
   Proposals,
+  ReopenWrite,
 } from "@axonometric/contracts";
 import { Array as Arr, DateTime, Effect, Path, Result } from "effect";
 
@@ -40,6 +45,7 @@ const writeProposals = Effect.fnUntraced(function* <A>({
   readonly baseFileRevision: number;
   readonly change: (held: {
     readonly proposals: Proposals;
+    readonly layout: Layout;
     readonly structures: ReadonlyMap<string, string>;
     readonly now: string;
   }) => Result.Result<
@@ -70,6 +76,9 @@ const writeProposals = Effect.fnUntraced(function* <A>({
 
   const changed = change({
     proposals: map.proposals,
+    // The layout an open change lands on: the accepted one with the
+    // changes frozen in batches applied.
+    layout: applyLayoutChanges(map.layout, frozenLayoutChanges(map.proposals)),
     structures: new Map(
       Arr.map(map.data.structures, ({ id, name }) => [id, name])
     ),
@@ -176,6 +185,33 @@ export const dismissWrite = Effect.fn("dismissWrite")(function* (
       const dismissed = dismissItem({ proposals, id: write.id });
 
       return Result.map(dismissed, (next) => ({
+        proposals: next,
+        answer: next,
+      }));
+    },
+  });
+});
+
+/** Reopens a rejected item as a new open item linked to it. */
+export const reopenWrite = Effect.fn("reopenWrite")(function* (
+  home: string,
+  write: ReopenWrite,
+  written: Told
+) {
+  return yield* writeProposals({
+    home,
+    baseFileRevision: write.baseFileRevision,
+    written,
+    change: ({ proposals, layout }) => {
+      const reopened = reopenItem({
+        proposals,
+        id: write.id,
+        newId: write.newId,
+        layout,
+        text: write.text,
+      });
+
+      return Result.map(reopened, (next) => ({
         proposals: next,
         answer: next,
       }));

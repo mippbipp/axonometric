@@ -6,16 +6,25 @@ import {
   discardChange,
   emptyHistory,
   emptyProposals,
+  FreezeWrite,
+  FrozenReview,
+  frozenLayoutChanges,
+  frozenRefusal,
+  ItemWrite,
   LayoutChangeRefused,
   layoutRefusal,
   MapFilesUnreadable,
   newChangeId,
+  NoteAdd,
+  NoteEdit,
   observeFile,
   PendingLayoutWrite,
   placeStructure,
+  ProposalRefused,
   Proposals,
   pushStep,
   redoStep,
+  ReopenWrite,
   sameLayoutChanges,
   ServedPage,
   servedPageElementId,
@@ -74,7 +83,32 @@ const WriteRefusal = Schema.Union([
   StaleProposals,
   LayoutChangeRefused,
   MapFilesUnreadable,
+  ProposalRefused,
 ]);
+
+const ReviewRefusal = Schema.Union([
+  StaleProposals,
+  ProposalRefused,
+  MapFilesUnreadable,
+]);
+
+const decodeReviewRefusal = Schema.decodeUnknownOption(
+  Schema.fromJsonString(ReviewRefusal)
+);
+
+const decodeFrozen = Schema.decodeUnknownOption(
+  Schema.fromJsonString(FrozenReview)
+);
+
+const encodeNoteAdd = Schema.encodeEffect(Schema.fromJsonString(NoteAdd));
+
+const encodeNoteEdit = Schema.encodeEffect(Schema.fromJsonString(NoteEdit));
+
+const encodeItem = Schema.encodeEffect(Schema.fromJsonString(ItemWrite));
+
+const encodeFreeze = Schema.encodeEffect(Schema.fromJsonString(FreezeWrite));
+
+const encodeReopen = Schema.encodeEffect(Schema.fromJsonString(ReopenWrite));
 
 const decodeRefusal = Schema.decodeUnknownOption(
   Schema.fromJsonString(WriteRefusal)
@@ -148,6 +182,8 @@ export type Edit = (
 ) => readonly LayoutChange[];
 
 export interface ServedStore {
+  /** The absolute path of the map's home folder, as `serve` reports it. */
+  readonly home: string;
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => ServedView;
   /**
@@ -195,6 +231,50 @@ export interface ServedStore {
   readonly accept: (
     ids: "all" | Arr.NonEmptyReadonlyArray<ChangeId>,
     message: string
+  ) => void;
+  /** Notes and the review loop. */
+  readonly review: ReviewOps;
+}
+
+/** What a review write answers: the id of what it made or changed, or why it was refused. */
+export type ReviewOutcome<A> = Result.Result<A, string>;
+
+/** Called once with how a review write ended. */
+export type ReviewDone<A> = (outcome: ReviewOutcome<A>) => void;
+
+/**
+ * The review loop's writes. Each goes after the layout writes already on
+ * their way, is based on the latest file revision, and is sent again on a
+ * fresher file when another writer got in first, such as the agent's commit,
+ * so a note typed meanwhile is not lost. `done` runs when it ends.
+ */
+export interface ReviewOps {
+  /** Pins a note with `text` to structure `structureId`. */
+  readonly addNote: (
+    structureId: string,
+    text: string,
+    done: ReviewDone<ChangeId>
+  ) => void;
+  /** Changes the text of an open note. */
+  readonly editNote: (
+    id: ChangeId,
+    text: string,
+    done: ReviewDone<ChangeId>
+  ) => void;
+  /** Removes an open note. */
+  readonly discardNote: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+  /** Freezes every open change and note into the next batch. */
+  readonly freeze: (done: ReviewDone<FrozenReview>) => void;
+  /** Takes a reviewed item off the page. */
+  readonly dismiss: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+  /**
+   * Reopens a rejected item as a new open item, and returns its id. For a
+   * note, `text` replaces the old words.
+   */
+  readonly reopen: (
+    id: ChangeId,
+    text: string | undefined,
+    done: ReviewDone<ChangeId>
   ) => void;
 }
 
@@ -330,6 +410,10 @@ const problemsText = (problems: readonly MapProblem[]) =>
 /** What the page says when the server refuses a write. */
 const noticeOf = Match.type<typeof WriteRefusal.Type>().pipe(
   Match.tagsExhaustive({
+    ProposalRefused: ({ reason }): EditNotice => ({
+      kind: "refused",
+      message: reason,
+    }),
     StaleProposals: (): EditNotice => ({
       kind: "conflict",
       message: conflictMessage(Option.none()),
@@ -373,6 +457,17 @@ export const connectServed = ({
 
   /** The accepted layout's revision. Accepting a change moves it. */
   let acceptedRevision = initial.layout.revision;
+
+  /**
+   * The layout open changes land on: the accepted layout with the changes
+   * frozen in batches applied, as the server checks them. Frozen changes
+   * aren't accepted yet, but they stay drawn and can't be edited.
+   */
+  const baseLayout = () =>
+    applyLayoutChanges(
+      view.state.layout,
+      frozenLayoutChanges(proposalsOf(view.state))
+    );
 
   /**
    * The writes asked for and not answered, oldest first. Each holds the
@@ -562,7 +657,7 @@ export const connectServed = ({
    */
   const recover = (stale: Queued, fresh: Proposals) => {
     const edits = Arr.map(queue, ({ edit }) => edit);
-    const accepted = view.state.layout;
+    const accepted = baseLayout();
 
     const start: Rerun = {
       layout: fresh.layout,
@@ -713,7 +808,7 @@ export const connectServed = ({
 
   /** Why `edit` would be refused, and the list it would make. */
   const tryEdit = (edit: Edit) => {
-    const accepted = view.state.layout;
+    const accepted = baseLayout();
     const before = view.pending;
     const after = edit(before, accepted);
 
@@ -820,7 +915,7 @@ export const connectServed = ({
     const { target, history: next } = stepped.value;
 
     const refusal = layoutRefusal({
-      accepted: view.state.layout,
+      accepted: baseLayout(),
       before,
       after: target,
     });
@@ -935,9 +1030,228 @@ export const connectServed = ({
       )
     );
 
+  /** One review write: where it goes, and how to send it and read the answer. */
+  interface ReviewCall<A> {
+    readonly url: string;
+    readonly encode: (base: number) => Effect.Effect<string>;
+    readonly read: (text: string) => Option.Option<{
+      readonly value: A;
+      readonly proposals: Proposals;
+    }>;
+    /** Whether the write moves layout changes, which ends undo. */
+    readonly endsUndo: boolean;
+  }
+
+  /** Shows `proposals` as what the server holds, after one of our writes. */
+  const adoptReviewed = (proposals: Proposals, endsUndo: boolean) => {
+    const state = withFreshestProposals(view.state, {
+      ...view.state,
+      proposals,
+    });
+
+    history = endsUndo
+      ? emptyHistory(proposalsOf(state).revision)
+      : wroteFile({ history, revision: proposalsOf(state).revision });
+    update({ state, pending: pendingAfter(state), notice: null });
+  };
+
+  /** The most times a review write is sent again on a fresher file. */
+  const reviewTries = 3;
+
+  const attemptReview = <A>(
+    call: ReviewCall<A>,
+    tries: number
+  ): Effect.Effect<ReviewOutcome<A>, never, HttpClient.HttpClient> =>
+    Effect.gen(function* () {
+      const body = yield* call.encode(proposalsOf(view.state).revision);
+      const client = yield* HttpClient.HttpClient;
+
+      const response = yield* client.execute(
+        HttpClientRequest.post(new URL(call.url, document.baseURI)).pipe(
+          HttpClientRequest.bodyText(body, "application/json")
+        )
+      );
+
+      const { status } = response;
+      const text = yield* response.text;
+
+      if (status >= 200 && status < 300) {
+        return Option.match(call.read(text), {
+          onNone: () =>
+            Result.fail(
+              "The server's answer didn't make sense. Reload the page."
+            ),
+          onSome: ({ value, proposals }) => {
+            adoptReviewed(proposals, call.endsUndo);
+
+            return Result.succeed(value);
+          },
+        });
+      }
+
+      return yield* Option.match(decodeReviewRefusal(text), {
+        onNone: () =>
+          Effect.succeed(
+            Result.fail<string>(
+              `The server refused the write (${status}): ${text.trim()}`
+            )
+          ),
+        onSome: (refusal) => {
+          if (Predicate.isTagged(refusal, "StaleProposals")) {
+            // Someone else wrote the file first, such as the agent's commit.
+            // Show their file, then send this write again on top of it.
+            adoptReviewed(refusal.proposals, false);
+
+            return tries + 1 < reviewTries
+              ? attemptReview(call, tries + 1)
+              : Effect.succeed(
+                  Result.fail<string>(
+                    "The map changed on disk while this was saving. The page now shows what's saved. Try again."
+                  )
+                );
+          }
+
+          if (Predicate.isTagged(refusal, "ProposalRefused")) {
+            adoptReviewed(refusal.proposals, false);
+
+            return Effect.succeed(Result.fail<string>(refusal.reason));
+          }
+
+          return Effect.succeed(
+            Result.fail<string>(problemsText(refusal.problems))
+          );
+        },
+      });
+    }).pipe(
+      Effect.catchTag("HttpClientError", () =>
+        Effect.succeed(
+          Result.fail<string>(
+            "Nothing was saved: the server didn't answer. It may have stopped."
+          )
+        )
+      )
+    );
+
+  /** Sends a review write once the layout writes before it are done. */
+  const callReview = <A>(call: ReviewCall<A>, done: ReviewDone<A>) => {
+    Effect.runFork(
+      writeTurn.withPermit(attemptReview(call, 0)).pipe(
+        Effect.tap((outcome) =>
+          Effect.sync(() => {
+            done(outcome);
+          })
+        ),
+        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
+        Effect.provide(FetchHttpClient.layer)
+      )
+    );
+  };
+
+  const readProposalsWith =
+    (id: ChangeId) =>
+    (answer: string): ReturnType<ReviewCall<ChangeId>["read"]> =>
+      Option.map(decodeSaved(answer), (proposals) => ({
+        value: id,
+        proposals,
+      }));
+
+  const writeItem = (id: ChangeId, url: string, done: ReviewDone<ChangeId>) => {
+    callReview<ChangeId>(
+      {
+        url,
+        encode: (base) =>
+          encodeItem({ baseFileRevision: base, id }).pipe(Effect.orDie),
+        read: readProposalsWith(id),
+        endsUndo: false,
+      },
+      done
+    );
+  };
+
+  const review: ReviewOps = {
+    addNote: (structureId, text, done) => {
+      const id = newChangeId();
+
+      callReview<ChangeId>(
+        {
+          url: served.notes,
+          encode: (base) =>
+            encodeNoteAdd({
+              baseFileRevision: base,
+              id,
+              target: { kind: "structure", id: structureId },
+              text,
+            }).pipe(Effect.orDie),
+          read: readProposalsWith(id),
+          endsUndo: false,
+        },
+        done
+      );
+    },
+    editNote: (id, text, done) => {
+      callReview<ChangeId>(
+        {
+          url: served.editNote,
+          encode: (base) =>
+            encodeNoteEdit({ baseFileRevision: base, id, text }).pipe(
+              Effect.orDie
+            ),
+          read: readProposalsWith(id),
+          endsUndo: false,
+        },
+        done
+      );
+    },
+    discardNote: (id, done) => {
+      writeItem(id, served.discardNote, done);
+    },
+    dismiss: (id, done) => {
+      writeItem(id, served.dismiss, done);
+    },
+    freeze: (done) => {
+      callReview<FrozenReview>(
+        {
+          url: served.freeze,
+          encode: (base) =>
+            encodeFreeze({ baseFileRevision: base }).pipe(Effect.orDie),
+          read: (answer) =>
+            Option.map(decodeFrozen(answer), (frozen) => ({
+              value: frozen,
+              proposals: frozen.proposals,
+            })),
+          // Freezing moves the open layout changes into the batch, so the
+          // lists undo would put back no longer exist.
+          endsUndo: true,
+        },
+        done
+      );
+    },
+    reopen: (id, text, done) => {
+      const newId = newChangeId();
+
+      callReview<ChangeId>(
+        {
+          url: served.reopen,
+          encode: (base) => {
+            const write = { baseFileRevision: base, id, newId };
+
+            return encodeReopen(
+              text === undefined ? write : { ...write, text }
+            ).pipe(Effect.orDie);
+          },
+          read: readProposalsWith(newId),
+          endsUndo: true,
+        },
+        done
+      );
+    },
+  };
+
   connect();
 
   return {
+    home: served.home,
+    review,
     subscribe: (listener) => {
       listeners.add(listener);
 
@@ -949,7 +1263,9 @@ export const connectServed = ({
     refusalOf: (id, next) =>
       Option.getOrUndefined(tryEdit(placing(id, next)).refusal),
     place: (id, next) => run(placing(id, next)),
-    discard: (id) => run((changes) => discardChange(changes, id)),
+    discard: (id) =>
+      Option.getOrUndefined(frozenRefusal(proposalsOf(view.state), id)) ??
+      run((changes) => discardChange(changes, id)),
     refusalOfMoves: (moves) =>
       Option.getOrUndefined(tryEdit(moving(moves)).refusal),
     arrange: (plan) => runShowingRefusal(arranging(plan)),

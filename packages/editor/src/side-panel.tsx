@@ -10,6 +10,7 @@ import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
 import { QuestionsTab } from "./questions.tsx";
 import { useRevealedQuestions } from "./revealed-questions.ts";
+import { useReview } from "./review-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { InsidePanel, StructurePanel } from "./structure-panel.tsx";
 import { useStructuresById } from "./structures.ts";
@@ -202,6 +203,20 @@ export function SidePanel() {
 
   const idPrefix = useId();
   const editing = useEditing();
+  const review = useReview();
+
+  // Open layout changes, open notes, and everything waiting on the agent.
+  const waiting = Arr.filter(
+    review?.entries ?? [],
+    ({ item, status }) =>
+      status.state === "frozen" ||
+      (status.state === "open" && item.kind === "note") ||
+      (status.state === "reviewed" &&
+        !status.dismissed &&
+        status.verdict.verdict === "rejected")
+  );
+
+  const unsettled = (editing?.pending.length ?? 0) + waiting.length;
 
   // A tab other than Details stays open until the selection changes.
   const [otherTab, setOtherTab] = useState<{
@@ -217,7 +232,7 @@ export function SidePanel() {
       : [
           {
             id: "pending" as const,
-            label: `Pending · ${editing.pending.length}`,
+            label: `Pending · ${unsettled}`,
           },
         ]),
   ];

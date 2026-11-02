@@ -21,6 +21,7 @@ import type { ReactNode } from "react";
 import { BoxSelect } from "./box-select.tsx";
 import { fitOf } from "./fit.ts";
 import { LayoutEditor } from "./layout-editor.tsx";
+import { NoteMarkers } from "./note-markers.tsx";
 import { AcceptedOutlines, PendingBadges } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { groundOutline, routesOf, toPoints } from "./projection.ts";
@@ -468,6 +469,7 @@ export function MapView({
           ))}
         </g>
         <PendingBadges structures={scene.structures} />
+        <NoteMarkers structures={scene.structures} />
       </LayoutEditor>
       <g className="pointer-events-none">
         {Arr.map(scene.hops, (item) => (

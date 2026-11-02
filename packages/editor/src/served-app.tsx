@@ -1,4 +1,9 @@
-import { applyLayoutChanges } from "@axonometric/contracts";
+import {
+  applyLayoutChanges,
+  emptyProposals,
+  frozenLayoutChanges,
+  reviewEntries,
+} from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useMemo, useSyncExternalStore } from "react";
@@ -8,6 +13,8 @@ import type { Accepting } from "./accepting-context.ts";
 import { App } from "./app.tsx";
 import { EditingContext } from "./editing-context.ts";
 import type { Editing } from "./editing-context.ts";
+import { ReviewContext } from "./review-context.ts";
+import type { Review } from "./review-context.ts";
 import type {
   EditNotice,
   Rejection,
@@ -101,15 +108,24 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
   const accepted = view.state.layout;
   const { pending } = view;
 
+  const proposals = view.state.proposals ?? emptyProposals;
+  const frozen = useMemo(() => frozenLayoutChanges(proposals), [proposals]);
+
+  // Frozen layout changes wait for the agent. They stay drawn as pending,
+  // under the open ones.
   const shown = useMemo(
-    () => ({ ...view.state, layout: applyLayoutChanges(accepted, pending) }),
-    [view.state, accepted, pending]
+    () => ({
+      ...view.state,
+      layout: applyLayoutChanges(accepted, [...frozen, ...pending]),
+    }),
+    [view.state, accepted, frozen, pending]
   );
 
   const editing = useMemo(
     (): Editing => ({
       accepted,
       pending,
+      frozen,
       canEdit: !view.stopped,
       refusalOf: store.refusalOf,
       place: store.place,
@@ -121,7 +137,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       undo: store.undo,
       redo: store.redo,
     }),
-    [accepted, pending, view.stopped, view.canUndo, view.canRedo, store]
+    [accepted, pending, frozen, view.stopped, view.canUndo, view.canRedo, store]
   );
 
   const accepting = useMemo(
@@ -133,20 +149,36 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [view.stopped, view.accepting, store]
   );
 
+  const review = useMemo((): Review => {
+    const entries = reviewEntries(proposals);
+
+    return {
+      canWrite: !view.stopped,
+      home: store.home,
+      entries,
+      notes: Arr.filter(entries, ({ item }) => item.kind === "note"),
+      openNotes: proposals.notes?.length ?? 0,
+      replaces: proposals.replaces ?? {},
+      ops: store.review,
+    };
+  }, [proposals, view.stopped, store]);
+
   return (
     <EditingContext value={editing}>
       <AcceptingContext value={accepting}>
-        <App
-          state={shown}
-          notices={
-            <ServedNotices
-              rejection={view.rejection}
-              stopped={view.stopped}
-              notice={view.notice}
-              saved={view.saved}
-            />
-          }
-        />
+        <ReviewContext value={review}>
+          <App
+            state={shown}
+            notices={
+              <ServedNotices
+                rejection={view.rejection}
+                stopped={view.stopped}
+                notice={view.notice}
+                saved={view.saved}
+              />
+            }
+          />
+        </ReviewContext>
       </AcceptingContext>
     </EditingContext>
   );

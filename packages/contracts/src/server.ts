@@ -31,6 +31,7 @@ export const serverPaths = {
   discardNote: "/api/notes/discard",
   freeze: "/api/review/freeze",
   dismiss: "/api/review/dismiss",
+  reopen: "/api/review/reopen",
 } as const;
 
 /** The largest request body the server reads, in bytes. */
@@ -162,6 +163,8 @@ export type ServerEvent = typeof ServerEvent.Type;
  * file. Its presence tells the page to connect to the server.
  */
 export const ServedPage = Schema.Struct({
+  /** The absolute path of the map's home folder, for the review prompt. */
+  home: Schema.String,
   /** The events stream, relative to the page's URL. */
   events: Schema.String,
   /** Where to write the pending layout changes, relative to the page's URL. */
@@ -176,6 +179,8 @@ export const ServedPage = Schema.Struct({
   freeze: Schema.String,
   /** Where a reviewed item is dismissed, relative to the page's URL. */
   dismiss: Schema.String,
+  /** Where a rejected item is reopened, relative to the page's URL. */
+  reopen: Schema.String,
 });
 
 export type ServedPage = typeof ServedPage.Type;

@@ -13,6 +13,10 @@ import {
   oldestOpenBatch,
   Proposals,
   recordVerdict,
+  reopenItem,
+  addNote,
+  discardNote,
+  editNote,
   reviewEntries,
   reviewPrompt,
 } from "../src/index.ts";
@@ -411,6 +415,169 @@ describe("what the page lists", () => {
 
   it("dismisses a reviewed item, and refuses one still waiting", () => {
     const result = dismissItem({ proposals: frozen(), id: "n1" });
+
+    assert.isTrue(Result.isFailure(result));
+  });
+});
+
+describe("notes", () => {
+  const known = new Set(["a", "b"]);
+
+  it("adds a note to the open notes", () => {
+    const next = unwrap(
+      addNote({ proposals: open, note: note("n2", "A second one"), known })
+    );
+
+    const ids = Arr.map(
+      Option.fromNullishOr(next.notes).pipe(Option.getOrElse(() => [])),
+      ({ id }) => id
+    );
+
+    assert.deepStrictEqual(ids, ["n1", "n2"]);
+    assert.strictEqual(next.revision, open.revision + 1);
+  });
+
+  it("refuses a note on a structure the map doesn't have", () => {
+    const bad = {
+      ...note("n2", "x"),
+      target: { kind: "structure" as const, id: "zzz" },
+    };
+
+    const result = addNote({ proposals: open, note: bad, known });
+
+    assert.isTrue(Result.isFailure(result));
+  });
+
+  it("refuses an id that is already taken, even by a frozen item", () => {
+    const result = addNote({
+      proposals: frozen(),
+      note: note("n1", "again"),
+      known,
+    });
+
+    assert.isTrue(Result.isFailure(result));
+  });
+
+  it("edits and discards an open note", () => {
+    const edited = unwrap(
+      editNote({ proposals: open, id: "n1", text: "New words" })
+    );
+
+    assert.strictEqual(edited.notes?.[0]?.text, "New words");
+
+    const gone = unwrap(discardNote({ proposals: open, id: "n1" }));
+
+    assert.deepStrictEqual(gone.notes, []);
+  });
+
+  it("refuses to edit or discard a note in a batch, and says it waits for the agent", () => {
+    const edit = editNote({ proposals: frozen(), id: "n1", text: "x" });
+    const discard = discardNote({ proposals: frozen(), id: "n1" });
+
+    assert.include(
+      Result.match(edit, { onSuccess: () => "", onFailure: String }),
+      "waiting for the agent"
+    );
+    assert.include(
+      Result.match(discard, { onSuccess: () => "", onFailure: String }),
+      "waiting for the agent"
+    );
+  });
+});
+
+const reviewed = (): P =>
+  unwrap(
+    commitBatch({
+      proposals: decided({
+        m1: { verdict: "accepted" },
+        n1: { verdict: "rejected", reason: "No." },
+      }),
+      layout,
+      revision: 1,
+      at,
+    })
+  ).proposals;
+
+describe("editing a rejected item", () => {
+  it("opens a new note that links to the rejected one and leaves it dismissed", () => {
+    const next = unwrap(
+      reopenItem({ proposals: reviewed(), id: "n1", newId: "n9", layout })
+    );
+
+    assert.deepStrictEqual(next.notes, [
+      {
+        id: "n9",
+        target: { kind: "structure", id: "b" },
+        text: "Why is this a tall box?",
+      },
+    ]);
+    assert.deepStrictEqual(next.replaces, { n9: "n1" });
+    assert.deepStrictEqual(next.batches?.[0]?.dismissed, ["n1"]);
+  });
+
+  it("lands in the next batch, which keeps the link", () => {
+    const next = unwrap(
+      reopenItem({ proposals: reviewed(), id: "n1", newId: "n9", layout })
+    );
+
+    const second = unwrap(freezeOpen({ proposals: next, at })).proposals;
+
+    const batches = Option.getOrElse(
+      Option.fromNullishOr(second.batches),
+      () => []
+    );
+
+    const batch = Option.getOrThrow(Arr.get(batches, 1));
+
+    assert.strictEqual(batch.number, 2);
+    assert.deepStrictEqual(
+      Arr.map(batch.items, ({ id }) => id),
+      ["n9"]
+    );
+    assert.deepStrictEqual(second.replaces, { n9: "n1" });
+  });
+
+  it("reopens a rejected layout change as an open change with a new id", () => {
+    const rejected = unwrap(
+      commitBatch({
+        proposals: decided({
+          m1: { verdict: "rejected", reason: "Too close." },
+          n1: { verdict: "accepted" },
+        }),
+        layout,
+        revision: 1,
+        at,
+      })
+    ).proposals;
+
+    const next = unwrap(
+      reopenItem({ proposals: rejected, id: "m1", newId: "m7", layout })
+    );
+
+    assert.deepStrictEqual(
+      Arr.map(next.layout, ({ id }) => id),
+      ["m7"]
+    );
+  });
+
+  it("refuses to reopen an item that wasn't rejected", () => {
+    const result = reopenItem({
+      proposals: reviewed(),
+      id: "m1",
+      newId: "m7",
+      layout,
+    });
+
+    assert.isTrue(Result.isFailure(result));
+  });
+
+  it("refuses to reopen an item still waiting for the agent", () => {
+    const result = reopenItem({
+      proposals: frozen(),
+      id: "n1",
+      newId: "n9",
+      layout,
+    });
 
     assert.isTrue(Result.isFailure(result));
   });

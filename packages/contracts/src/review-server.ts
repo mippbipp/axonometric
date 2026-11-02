@@ -9,8 +9,6 @@ export const NoteAdd = Schema.Struct({
   id: ChangeId,
   target: Target,
   text: NoteText,
-  /** The rejected note this one takes up again. */
-  replaces: Schema.optionalKey(ChangeId),
 });
 
 export type NoteAdd = typeof NoteAdd.Type;
@@ -31,6 +29,17 @@ export const ItemWrite = Schema.Struct({
 });
 
 export type ItemWrite = typeof ItemWrite.Type;
+
+/** Reopens a rejected item as a new open item with the id `newId`. */
+export const ReopenWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  newId: ChangeId,
+  /** For a note, the new words. Left out, the new note copies the old one. */
+  text: Schema.optionalKey(NoteText),
+});
+
+export type ReopenWrite = typeof ReopenWrite.Type;
 
 /** "Ready for review": freezes every open change and note into a batch. */
 export const FreezeWrite = Schema.Struct({

@@ -298,6 +298,7 @@ export {
   oldestOpenBatch,
   openItemCount,
   recordVerdict,
+  reopenItem,
   reviewEntries,
   reviewPrompt,
   summaryLine,
@@ -313,4 +314,5 @@ export {
   NoteAdd,
   NoteEdit,
   ProposalRefused,
+  ReopenWrite,
 } from "./review-server.ts";

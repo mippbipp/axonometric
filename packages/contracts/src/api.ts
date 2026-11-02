@@ -16,6 +16,7 @@ import {
   NoteAdd,
   NoteEdit,
   ProposalRefused,
+  ReopenWrite,
 } from "./review-server.ts";
 import {
   Accepted,
@@ -108,6 +109,11 @@ export class ReviewApiGroup extends HttpApiGroup.make("review")
     }),
     HttpApiEndpoint.post("dismiss", serverPaths.dismiss, {
       payload: ItemWrite,
+      success: Proposals,
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
+    }),
+    HttpApiEndpoint.post("reopen", serverPaths.reopen, {
+      payload: ReopenWrite,
       success: Proposals,
       error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     })

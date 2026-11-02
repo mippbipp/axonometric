@@ -104,18 +104,12 @@ export interface Frozen {
   readonly batch: Batch;
 }
 
-const asItem = (note: Note): BatchItem => {
-  const item: BatchItem = {
-    id: note.id,
-    kind: "note",
-    target: note.target,
-    text: note.text,
-  };
-
-  return note.replaces === undefined
-    ? item
-    : { ...item, replaces: note.replaces };
-};
+const asItem = (note: Note): BatchItem => ({
+  id: note.id,
+  kind: "note",
+  target: note.target,
+  text: note.text,
+});
 
 /**
  * Moves every open layout change and note into a new batch, numbered one
@@ -162,25 +156,10 @@ export const freezeOpen = ({
   });
 };
 
-/** The committed batch that holds rejected note `id`, when there is one. */
-const batchOfRejectedNote = (proposals: Listed, id: string) =>
-  Option.flatMap(findBatchItem(proposals, id), ({ batch, item }) =>
-    batch.committed !== undefined &&
-    item.kind === "note" &&
-    Option.exists(
-      Rec.get(batch.verdicts, id),
-      ({ verdict }) => verdict === "rejected"
-    )
-      ? Option.some(batch)
-      : Option.none()
-  );
-
 /**
  * Adds `note` to the open notes, where the next batch will pick it up.
- * Fails, and changes nothing, when its structure isn't in `known`, its id is
- * taken, or `replaces` names something other than a rejected note. A note
- * that replaces a rejected one takes that note off the page, as a dismiss
- * would: the new note carries the link.
+ * Fails, and changes nothing, when its structure isn't in `known` or its id
+ * is taken.
  */
 export const addNote = ({
   proposals,
@@ -207,37 +186,96 @@ export const addNote = ({
     return Result.fail(`The id "${note.id}" is already in use.`);
   }
 
-  if (note.replaces === undefined) {
-    return Result.succeed({
-      ...proposals,
-      revision: proposals.revision + 1,
-      notes: [...(proposals.notes ?? []), note],
-    });
-  }
-
-  const replaced = batchOfRejectedNote(proposals, note.replaces);
-
-  if (Option.isNone(replaced)) {
-    return Result.fail(
-      `"${note.replaces}" is not a rejected note, so there is nothing to replace.`
-    );
-  }
-
-  const { number } = replaced.value;
-  const replacedId = note.replaces;
-
   return Result.succeed({
     ...proposals,
     revision: proposals.revision + 1,
     notes: [...(proposals.notes ?? []), note],
-    batches: Arr.map(proposals.batches ?? [], (other) =>
-      other.number === number
-        ? {
-            ...other,
-            dismissed: Arr.dedupe([...(other.dismissed ?? []), replacedId]),
-          }
-        : other
-    ),
+  });
+};
+
+/**
+ * Reopens rejected item `id` as a new open item `newId`, which lands in the
+ * next batch. The new item starts as a copy of the rejected one, and
+ * `replaces` links it back. The rejected item leaves the page, as a dismiss
+ * would. A reopened layout change is checked against `layout`, the accepted
+ * layout with the frozen changes applied. Fails, and changes nothing, when
+ * `id` is not a rejected item in a committed batch, is already dismissed, or
+ * `newId` is taken.
+ */
+export const reopenItem = ({
+  proposals,
+  id,
+  newId,
+  layout,
+  text,
+}: {
+  readonly proposals: Proposals;
+  readonly id: ChangeId;
+  readonly newId: ChangeId;
+  readonly layout: Layout;
+  /** For a note, the words the new note starts with instead of the old ones. */
+  readonly text?: string | undefined;
+}): Result.Result<Proposals, string> => {
+  const found = findBatchItem(proposals, id);
+
+  if (Option.isNone(found)) {
+    return Result.fail(`No reviewed item has the id "${id}".`);
+  }
+
+  const { batch, item } = found.value;
+  const verdict = Rec.get(batch.verdicts, id);
+
+  if (
+    batch.committed === undefined ||
+    !Option.exists(verdict, ({ verdict: kind }) => kind === "rejected")
+  ) {
+    return Result.fail(
+      `"${id}" was not rejected, so there is nothing to edit again.`
+    );
+  }
+
+  if ((batch.dismissed ?? []).includes(id)) {
+    return Result.fail(`"${id}" is already dismissed.`);
+  }
+
+  if (Arr.some(reviewEntries(proposals), (entry) => entry.item.id === newId)) {
+    return Result.fail(`The id "${newId}" is already in use.`);
+  }
+
+  const dismissed = dismissItem({ proposals, id });
+
+  if (Result.isFailure(dismissed)) {
+    return dismissed;
+  }
+
+  const base = {
+    ...dismissed.success,
+    replaces: { ...proposals.replaces, [newId]: id },
+  };
+
+  if (item.kind === "note") {
+    return Result.succeed({
+      ...base,
+      notes: [
+        ...(proposals.notes ?? []),
+        { id: newId, target: item.target, text: text ?? item.text },
+      ],
+    });
+  }
+
+  const reopened: LayoutChange = { ...item.change, id: newId };
+
+  const after = [...proposals.layout, reopened];
+
+  const refusal = layoutRefusal({
+    accepted: layout,
+    before: proposals.layout,
+    after,
+  });
+
+  return Option.match(refusal, {
+    onNone: () => Result.succeed({ ...base, layout: after }),
+    onSome: (why) => Result.fail(why),
   });
 };
 
@@ -676,7 +714,7 @@ export const reviewPrompt = ({
       "",
       `This list is a summary. The full details are in ${home}/proposals.json.`,
       "",
-      `Run axonometric review ${quoted(home)}, give each item a verdict with axonometric verdict, then run axonometric commit.`,
+      `Run axonometric review ${quoted(home)}, give every item a verdict with axonometric verdict, then run axonometric commit ${quoted(home)}.`,
       "",
       ...Arr.map(batch.items, (item) => `- ${summaryLine(item, nameOf)}`),
     ],

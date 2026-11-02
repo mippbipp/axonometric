@@ -53,7 +53,7 @@ const ReportedItem = Schema.Struct({
   after: Facts,
   /** Why accepting the item would break the map, or null when it wouldn't. */
   breaks: Schema.NullOr(Schema.String),
-  /** The note this one takes up again, or null. */
+  /** The rejected item this one takes up again, or null. */
   replaces: Schema.NullOr(Schema.String),
   verdict: Schema.NullOr(Decision),
 });
@@ -123,11 +123,14 @@ const targetsOf = (item: BatchItem) =>
 const reportItem = ({
   item,
   batch,
+  replaces,
   layout,
   names,
 }: {
   readonly item: BatchItem;
   readonly batch: Batch;
+  /** For items reopened after a rejection, the rejected item's id. */
+  readonly replaces: Readonly<Record<string, string>> | undefined;
   readonly layout: Layout;
   readonly names: ReadonlyMap<string, string>;
 }): Reported => {
@@ -144,7 +147,7 @@ const reportItem = ({
     before,
     after,
     breaks: Option.getOrNull(breakageOf({ item, layout, structureIds })),
-    replaces: item.kind === "note" ? (item.replaces ?? null) : null,
+    replaces: Option.getOrNull(Rec.get(replaces ?? {}, item.id)),
     verdict: Option.getOrNull(Rec.get(batch.verdicts, item.id)),
   };
 };
@@ -198,7 +201,13 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
     onNone: () => [],
     onSome: (batch) =>
       Arr.map(batch.items, (item) =>
-        reportItem({ item, batch, layout: map.layout, names })
+        reportItem({
+          item,
+          batch,
+          replaces: map.proposals.replaces,
+          layout: map.layout,
+          names,
+        })
       ),
   });
 

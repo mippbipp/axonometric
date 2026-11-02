@@ -54,6 +54,7 @@ import {
   dismissWrite,
   editNoteWrite,
   freezeWrite,
+  reopenWrite,
 } from "./review-writes.ts";
 import { recordServer, runningServer } from "./server-state.ts";
 
@@ -395,11 +396,14 @@ const heartbeats = Stream.tick(heartbeatInterval).pipe(
 /** The HTTP routes: the API, behind the Host check and the write guard. */
 const routes = ({
   home,
+  absoluteHome,
   held,
   stopping,
   answeredHosts,
 }: {
   readonly home: string;
+  /** `home` as an absolute path, which the page shows in the review prompt. */
+  readonly absoluteHome: string;
   readonly held: SubscriptionRef.SubscriptionRef<Held>;
   readonly stopping: Latch.Latch;
   /** The host names the server answers; any other Host gets a 403. */
@@ -414,6 +418,7 @@ const routes = ({
   );
 
   const served = {
+    home: absoluteHome,
     events: Str.slice(1)(serverPaths.events),
     pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
     accept: Str.slice(1)(serverPaths.accept),
@@ -422,6 +427,7 @@ const routes = ({
     discardNote: Str.slice(1)(serverPaths.discardNote),
     freeze: Str.slice(1)(serverPaths.freeze),
     dismiss: Str.slice(1)(serverPaths.dismiss),
+    reopen: Str.slice(1)(serverPaths.reopen),
   };
 
   const tell = (proposals: Proposals) =>
@@ -516,6 +522,11 @@ const routes = ({
           Effect.catchTag(reviewDefects, Effect.die)
         )
       )
+      .handle("reopen", ({ payload }) =>
+        reopenWrite(home, payload, tell).pipe(
+          Effect.catchTag(reviewDefects, Effect.die)
+        )
+      )
   );
 
   const api = HttpApiBuilder.layer(ServerApi).pipe(
@@ -596,9 +607,16 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   ]);
 
   const stopping = yield* Latch.make();
+  const path = yield* Path.Path;
 
   const app = yield* HttpRouter.toHttpEffect(
-    routes({ home, held, stopping, answeredHosts })
+    routes({
+      home,
+      absoluteHome: path.resolve(home),
+      held,
+      stopping,
+      answeredHosts,
+    })
   );
 
   const urlHostName = wildcardHosts.has(host) ? defaultHost : urlHost(host);

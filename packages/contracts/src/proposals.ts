@@ -239,9 +239,8 @@ export const BatchItem = Schema.Union([
     kind: Schema.Literal("note"),
     target: Target,
     text: NoteText,
-    replaces: Schema.optionalKey(ChangeId),
   }).annotate(
-    objectMessages("A note item has only id, kind, target, text and replaces.")
+    objectMessages("A note item has only id, kind, target and text.")
   ),
 ]).annotate({
   message:
@@ -318,6 +317,9 @@ const hasUniqueIds = (proposals: Parameters<typeof allIds>[0]) => {
  * - `layout`: the open layout changes, not yet in a batch.
  * - `notes`: the open notes.
  * - `batches`: the numbered batches, each with its verdicts once given.
+ * - `replaces`: for an item the engineer reopened after a rejection, the id
+ *   of the rejected item it takes up again, keyed by the new item's id. It
+ *   works for every kind of item, so a new kind needs nothing here.
  *
  * Each kind of proposal adds its own optional list, and `BatchItem` gains
  * a member, so a file written before a kind existed still reads. `revision`
@@ -334,10 +336,11 @@ export const Proposals = Schema.Struct({
   ),
   notes: Schema.optionalKey(Schema.Array(Note)),
   batches: Schema.optionalKey(Schema.Array(Batch)),
+  replaces: Schema.optionalKey(Schema.Record(ChangeId, ChangeId)),
 })
   .annotate(
     objectMessages(
-      "A proposals file has only format, revision, layout, notes and batches."
+      "A proposals file has only format, revision, layout, notes, batches and replaces."
     )
   )
   .check(
@@ -642,9 +645,10 @@ const targetPaths = (change: LayoutChange) =>
     : [{ id: change.target.id, path: ["target", "id"] }];
 
 /**
- * Warnings about the pending changes in `proposals.json`: changes for a
- * structure data.mjs doesn't have, and pending footprints that overlap,
- * which happens when the accepted layout changes under a pending move.
+ * Warnings about the pending changes in `proposals.json`: changes and notes
+ * for a structure data.mjs doesn't have, and pending footprints that
+ * overlap, which happens when the accepted layout changes under a pending
+ * move.
  */
 export const checkProposals: {
   (
@@ -694,6 +698,18 @@ export const checkProposals: {
       })
     );
 
-    return [...stale, ...overlaps];
+    const orphaned = Arr.flatMap(proposals.notes ?? [], (note, index) =>
+      ids.has(note.target.id)
+        ? []
+        : [
+            mapWarning({
+              file: "proposals.json",
+              path: ["notes", index, "target", "id"],
+              message: `no structure in data.mjs has the id "${note.target.id}", so this note points at nothing. Discard it from the page's Pending list.`,
+            }),
+          ]
+    );
+
+    return [...stale, ...overlaps, ...orphaned];
   }
 );
