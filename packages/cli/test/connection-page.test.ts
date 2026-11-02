@@ -1505,6 +1505,49 @@ describe("a flow that lists a hop proposed for deletion", () => {
 
         assert.strictEqual(yield* count(page, "[data-flow-failure]"), 0);
 
+        // The row says so, in words and in the refused dashed border, and the
+        // buttons carry it in their names. The hop is still reorderable.
+        const note = yield* Effect.promise(() =>
+          page.locator('[data-sort-note="h-save"]').textContent()
+        );
+
+        assert.include(note ?? "", "proposed for deletion");
+
+        const rowStyle = yield* Effect.promise(() =>
+          page.evaluate<{
+            readonly marked: string | null;
+            readonly style: string;
+            readonly color: string;
+            readonly refused: string;
+            readonly label: string | null;
+          }>(`(() => {
+            const list = '[data-sortable="hops:f-note"]';
+            const row = document.querySelector(list + ' [data-sort-row="h-save"]');
+            const probe = document.createElement("i");
+            probe.style.color = "var(--refused)";
+            document.body.append(probe);
+            const refused = getComputedStyle(probe).color;
+            probe.remove();
+            const style = getComputedStyle(row);
+
+            return {
+              marked: row.getAttribute("data-sort-marked"),
+              style: style.borderTopStyle,
+              color: style.borderTopColor,
+              refused,
+              label: document
+                .querySelector(list + ' [data-sort-up="h-save"]')
+                .getAttribute("aria-label"),
+            };
+          })()`)
+        );
+
+        assert.strictEqual(rowStyle.marked, "true");
+        assert.strictEqual(rowStyle.style, "dashed");
+        assert.strictEqual(rowStyle.color, rowStyle.refused);
+        assert.include(rowStyle.label ?? "", "proposed for deletion");
+        assert.strictEqual(yield* count(page, '[data-sort-note="h-note"]'), 0);
+
         const [saved] = (yield* readProposals(home)).flows ?? [];
 
         assert.deepStrictEqual(

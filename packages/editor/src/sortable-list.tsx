@@ -15,7 +15,17 @@ export interface SortableRow {
   readonly name: string;
   /** Text before the name, such as its place in the list. */
   readonly prefix?: string;
+  /**
+   * A note after the name, such as "proposed for deletion". It is drawn muted,
+   * the row gets the refused dashed border, and the note joins the name in the
+   * row's buttons, so it is heard as well as seen.
+   */
+  readonly note?: string | undefined;
 }
+
+/** A row's name as a screen reader says it, with its note. */
+const spoken = ({ name, note }: SortableRow) =>
+  note === undefined ? name : `${name}, ${note}`;
 
 /**
  * A list whose rows are reordered two ways. Dragging a row by its grip moves
@@ -144,12 +154,13 @@ export function SortableList({
           data-sort-row={row.id}
           data-sort-over={dragging?.over === index && dragging.from !== index}
           data-sort-dragging={dragging?.from === index}
-          className="border-ink/40 data-[sort-over=true]:border-pending flex items-center gap-1.5 border px-1.5 py-1 text-sm data-[sort-dragging=true]:opacity-50"
+          data-sort-marked={row.note !== undefined}
+          className="border-ink/40 data-[sort-over=true]:border-pending data-[sort-marked=true]:border-refused flex items-center gap-1.5 border px-1.5 py-1 text-sm data-[sort-dragging=true]:opacity-50 data-[sort-marked=true]:border-dashed"
         >
           <button
             type="button"
             data-sort-grip={row.id}
-            aria-label={`Drag ${row.name} to reorder. Alt plus arrow keys also move it.`}
+            aria-label={`Drag ${spoken(row)} to reorder. Alt plus arrow keys also move it.`}
             disabled={disabled}
             className="focus-visible:outline-ink cursor-grab touch-none px-1 select-none focus-visible:outline-2 disabled:cursor-default disabled:opacity-40"
             onPointerDown={(event) => {
@@ -179,11 +190,16 @@ export function SortableList({
               <span className="opacity-60">{row.prefix}</span>
             )}
             {row.name}
+            {row.note === undefined ? null : (
+              <span data-sort-note={row.id} className="opacity-60">
+                {` · ${row.note}`}
+              </span>
+            )}
           </span>
           <button
             type="button"
             data-sort-up={row.id}
-            aria-label={`Move ${row.name} up`}
+            aria-label={`Move ${spoken(row)} up`}
             disabled={disabled || index === 0}
             className={controlClass}
             onClick={() => {
@@ -195,7 +211,7 @@ export function SortableList({
           <button
             type="button"
             data-sort-down={row.id}
-            aria-label={`Move ${row.name} down`}
+            aria-label={`Move ${spoken(row)} down`}
             disabled={disabled || index === rows.length - 1}
             className={controlClass}
             onClick={() => {

@@ -34,6 +34,7 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
   const { canPropose } = connections;
   const { hops } = connections.proposed.state.data;
   const labelOf = hopLabelOf(hops);
+  const removed = marked(connections.proposed, removedHopMark);
 
   const proposedHere = !Arr.some(
     state.data.flows,
@@ -107,6 +108,7 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
           id: hop,
           name: labelOf(hop),
           prefix: `${index + 1}. `,
+          note: removed.has(hop) ? "proposed for deletion" : undefined,
         }))}
         onMove={(order) => {
           if (Arr.isReadonlyArrayNonEmpty(order)) {
