@@ -88,9 +88,14 @@ const pinServer = Effect.fnUntraced(function* (page: Page) {
 /** Types `text` in the pinned structure's note form and pins it. */
 const pinNote = Effect.fnUntraced(function* (page: Page, text: string) {
   yield* Effect.promise(() =>
-    page.locator("[data-structure-panel] [data-note-text]").fill(text)
+    page
+      .locator("[data-structure-panel] [data-notes-section] [data-note-text]")
+      .fill(text)
   );
-  yield* click(page, "[data-structure-panel] [data-note-send]");
+  yield* click(
+    page,
+    "[data-structure-panel] [data-notes-section] [data-note-send]"
+  );
 });
 
 const readProposals = Effect.fnUntraced(function* (home: string) {
