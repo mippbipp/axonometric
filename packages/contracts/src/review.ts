@@ -31,8 +31,14 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
-import { allKinds, specOf } from "./review-kinds.ts";
-import type { Waiting } from "./review-kinds.ts";
+import {
+  allKinds,
+  sections,
+  sectionTitles,
+  specOf,
+  kindTable,
+} from "./review-kinds.ts";
+import type { Section, Titles, Waiting } from "./review-kinds.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
 type Listed = Proposals;
@@ -230,6 +236,8 @@ export const checkOpenItems: {
   const existing = {
     structures: new Set(Arr.map(data.structures, ({ id }) => id)),
     hops: new Set(Arr.map(data.hops, ({ id }) => id)),
+    groups: new Set(Arr.map(data.groups, ({ id }) => id)),
+    chapters: new Set(Arr.map(data.chapters, ({ id }) => id)),
   };
 
   return Arr.flatMap(allKinds, (spec) =>
@@ -263,12 +271,15 @@ export const freezeOpen = ({
   proposals,
   at,
   structures,
+  groups,
 }: {
   readonly proposals: Proposals;
   /** When the batch is frozen, as an ISO date and time in UTC. */
   readonly at: string;
   /** The ids of the structures the accepted map has now; see `Batch.structures`. */
   readonly structures?: readonly string[] | undefined;
+  /** The ids of the groups the accepted map has now; see `Batch.groups`. */
+  readonly groups?: readonly string[] | undefined;
 }): Result.Result<FreezeResult, string> => {
   const items = openItems(proposals);
 
@@ -285,8 +296,13 @@ export const freezeOpen = ({
     verdicts: {},
   };
 
-  const batch: Batch =
+  // The ids the accepted map has are left out when unknown, as in a batch
+  // frozen before they were recorded.
+  const withStructures: Batch =
     structures === undefined ? frozen : { ...frozen, structures };
+
+  const batch: Batch =
+    groups === undefined ? withStructures : { ...withStructures, groups };
 
   const emptied = Arr.reduce(allKinds, proposals, (held, kind) =>
     kind.clear(held)
@@ -621,9 +637,26 @@ export const discardProposal = ({
 }): Result.Result<Proposals, string> => {
   const found = openItemNamed(proposals, id);
 
-  return Option.isNone(found)
-    ? Result.fail(noOpenItem(proposals, id))
-    : Result.succeed(rewriteOpen(proposals, found.value, Option.none()));
+  if (Option.isNone(found)) {
+    return Result.fail(noOpenItem(proposals, id));
+  }
+
+  const dependents =
+    specOf(found.value).dependents?.(found.value, proposals) ?? [];
+
+  const without = rewriteOpen(proposals, found.value, Option.none());
+
+  const dropped = (held: Proposals, dependent: string): Proposals => {
+    const other = openItemNamed(held, dependent);
+
+    return Option.isNone(other)
+      ? held
+      : rewriteOpen(held, other.value, Option.none());
+  };
+
+  // What only makes sense with the item goes with it: the structures a
+  // new group took in go back where they were.
+  return Result.succeed(Arr.reduce(dependents, without, dropped));
 };
 
 /** What the agent can say about the items still without a verdict. */
@@ -641,6 +674,7 @@ export const recordVerdict = ({
   id,
   verdict,
   accepted = new Set(),
+  acceptedGroups,
 }: {
   readonly proposals: Proposals;
   readonly id: string;
@@ -652,6 +686,8 @@ export const recordVerdict = ({
    * neither, none is known and the check is skipped.
    */
   readonly accepted?: ReadonlySet<string>;
+  /** The same for the groups, for a batch frozen without `Batch.groups`. */
+  readonly acceptedGroups?: ReadonlySet<string> | undefined;
 }): Result.Result<Proposals, string> => {
   const oldest = oldestOpenBatch(proposals);
 
@@ -681,24 +717,35 @@ export const recordVerdict = ({
     );
   }
 
-  const taken = new Map(
-    Arr.flatMap(Rec.toEntries(oldest.value.verdicts), ([other, held]) =>
-      held.verdict === "changed" && held.as !== undefined
-        ? [[other, held.as] as const]
-        : []
-    )
-  );
-
   const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
-    Option.flatMap((item) =>
-      specOf(item).verdictRefusal(item, verdict, {
+    Option.flatMap((item) => {
+      // A final id is only taken by an item of the same kind: a structure
+      // and a group may share one.
+      const taken = new Map(
+        Arr.flatMap(items, (other) => {
+          const held = Rec.get(oldest.value.verdicts, other.id);
+
+          return other.kind === item.kind &&
+            Option.isSome(held) &&
+            held.value.verdict === "changed" &&
+            held.value.as !== undefined
+            ? [[other.id, held.value.as] as const]
+            : [];
+        })
+      );
+
+      return specOf(item).verdictRefusal(item, verdict, {
         accepted:
           oldest.value.structures === undefined
             ? accepted
             : new Set(oldest.value.structures),
+        acceptedGroups:
+          oldest.value.groups === undefined
+            ? acceptedGroups
+            : new Set(oldest.value.groups),
         taken,
-      })
-    )
+      });
+    })
   );
 
   if (Option.isSome(refused)) {
@@ -728,6 +775,7 @@ export const breakageOf = ({
   structureIds,
   hops,
   data,
+  siblings,
 }: {
   readonly item: BatchItem;
   readonly layout: Layout;
@@ -735,8 +783,10 @@ export const breakageOf = ({
   readonly hops: readonly HopEnds[];
   /** The map, for the kinds that point into its text. */
   readonly data?: MapData | undefined;
+  /** The batch's items, for the kinds that are judged together. */
+  readonly siblings?: readonly BatchItem[] | undefined;
 }): Option.Option<string> =>
-  specOf(item).breakage(item, { layout, structureIds, hops, data });
+  specOf(item).breakage(item, { layout, structureIds, hops, data, siblings });
 
 /** What committing a batch makes. */
 export interface Committing {
@@ -1010,6 +1060,10 @@ export interface Names {
   readonly structure: (id: string) => string;
   /** A hop's label. */
   readonly hop: (id: string) => string;
+  /** A group's title, or its id when the map has no such group. */
+  readonly group?: (id: string) => string;
+  /** A chapter's title, or its id when the map has no such chapter. */
+  readonly chapter?: (id: string) => string;
 }
 
 /** One line that says what an item is. */
@@ -1017,8 +1071,33 @@ export const summaryLine: {
   (names: Names): (item: BatchItem) => string;
   (item: BatchItem, names: Names): string;
 } = dual(2, (item: BatchItem, names: Names): string =>
-  specOf(item).summary(item, names.structure, names.hop)
+  specOf(item).summary(item, names.structure, names.hop, titlesOf(names))
 );
+
+/** `names` as the titles the kinds ask for, with the id standing in for a missing one. */
+export const titlesOf = (names: Names): Titles => ({
+  group: names.group ?? ((id) => id),
+  chapter: names.chapter ?? ((id) => id),
+});
+
+/** The section an item is listed in. */
+export const sectionOf = (item: BatchItem): Section => specOf(item).section;
+
+/**
+ * `items` split by section, in the order sections are listed, leaving out a
+ * section with no item. Items keep their order within a section.
+ */
+export const bySection = <A extends { readonly kind: BatchItem["kind"] }>(
+  items: readonly A[]
+): readonly { readonly section: Section; readonly items: readonly A[] }[] =>
+  Arr.flatMap(sections, (section) => {
+    const held = Arr.filter(
+      items,
+      (item) => kindTable[item.kind].section === section
+    );
+
+    return held.length === 0 ? [] : [{ section, items: held }];
+  });
 
 /**
  * Said in the prompt and in `review`'s output. The engineer's text reaches the
@@ -1076,11 +1155,13 @@ export const reviewPrompt = ({
       "",
       `Run axonometric review ${quoted(home)}, give every item a verdict with axonometric verdict, then run axonometric commit ${quoted(home)}.`,
       changedLayoutNotice,
-      ...kindNotices(batch.items),
       engineerTextNotice,
       ...kindNotices(batch.items),
-      "",
-      ...Arr.map(batch.items, (item) => `- ${summaryLine(item, names)}`),
+      ...Arr.flatMap(bySection(batch.items), ({ section, items }) => [
+        "",
+        `${sectionTitles[section]}:`,
+        ...Arr.map(items, (item) => `- ${summaryLine(item, names)}`),
+      ]),
     ],
     "\n"
   );

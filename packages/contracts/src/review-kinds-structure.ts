@@ -1,5 +1,6 @@
 import { Array as Arr, Option, Record as Rec } from "effect";
 
+import { groupKey } from "./group-change.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { placeStructures } from "./placement.ts";
@@ -166,13 +167,31 @@ export const structureKind: KindSpec<StructureItem> = {
   retargeted: (item, renames) => {
     const { change } = item;
 
+    // A structure that goes into a new group follows the id the agent gave
+    // the group.
+    const groupId = (group: string) => renames.get(groupKey(group)) ?? group;
+
     if (change.action === "add") {
-      return item;
+      const group = groupId(change.structure.group);
+
+      return group === change.structure.group
+        ? item
+        : {
+            ...item,
+            change: { ...change, structure: { ...change.structure, group } },
+          };
     }
 
-    const to = renames.get(change.structure);
+    const to = renames.get(change.structure) ?? change.structure;
 
-    return to === undefined
+    if (change.action === "group") {
+      return {
+        ...item,
+        change: { ...change, structure: to, group: groupId(change.group) },
+      };
+    }
+
+    return to === change.structure
       ? item
       : { ...item, change: { ...change, structure: to } };
   },

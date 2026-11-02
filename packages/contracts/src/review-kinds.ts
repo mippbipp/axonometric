@@ -18,6 +18,8 @@ import type {
   Verdict,
 } from "./proposals.ts";
 import { plain } from "./review-kind-defaults.ts";
+import { chapterKind } from "./review-kinds-chapter.ts";
+import { groupKind } from "./review-kinds-group.ts";
 import { structureKind } from "./review-kinds-structure.ts";
 import {
   answerKind,
@@ -32,9 +34,9 @@ export { oneLine, quoteText } from "./review-quote.ts";
 
 export { plain, removedMark, touchesNothing } from "./review-kind-defaults.ts";
 
-/** A structure or a hop, named by its id. */
+/** A structure, a hop, a group or a chapter, named by its id. */
 export interface Pointer {
-  readonly kind: "structure" | "hop";
+  readonly kind: "structure" | "hop" | "group" | "chapter";
   readonly id: string;
 }
 
@@ -42,6 +44,33 @@ export interface Pointer {
 export interface Existing {
   readonly structures: ReadonlySet<string>;
   readonly hops: ReadonlySet<string>;
+  readonly groups: ReadonlySet<string>;
+  readonly chapters: ReadonlySet<string>;
+}
+
+/**
+ * Where an item is listed: a change to the diagram, or a change to the
+ * walkthrough. The Pending tab, the prompt and `review` list the two
+ * separately.
+ */
+export type Section = "diagram" | "chapter";
+
+/** The sections in the order they are listed. */
+export const sections: readonly Section[] = ["diagram", "chapter"];
+
+/** What the section is called where it heads a list. */
+export const sectionTitles: Readonly<Record<Section, string>> = {
+  diagram: "Diagram changes",
+  chapter: "Chapter changes",
+};
+
+/**
+ * How a description names the groups and chapters it mentions: by title, or
+ * by id when the map has no such one. Kinds that mention neither ignore it.
+ */
+export interface Titles {
+  readonly group: (id: string) => string;
+  readonly chapter: (id: string) => string;
 }
 
 /** An item still waiting on the agent, and the batch it is in, if any. */
@@ -59,7 +88,15 @@ export interface VerdictContext {
    * `--as` may not name one of them.
    */
   readonly accepted: ReadonlySet<string>;
-  /** The `--as` ids the batch's other items already have, by item id. */
+  /**
+   * The ids of the groups the accepted map had before the agent edited
+   * data.mjs, for `--as` on a new group. Left out when none is known.
+   */
+  readonly acceptedGroups?: ReadonlySet<string> | undefined;
+  /**
+   * The `--as` ids the batch's other items of the same kind already have, by
+   * item id. A group and a structure may share a final id.
+   */
   readonly taken: ReadonlyMap<string, string>;
 }
 
@@ -106,6 +143,12 @@ export interface Landing {
    * the ids; those kinds then check what they can.
    */
   readonly data?: MapData | undefined;
+  /**
+   * The items of the batch under review, for a kind whose items only make
+   * sense together, such as a chapter that reveals a structure and plays a
+   * hop at it. Only `review` supplies them.
+   */
+  readonly siblings?: readonly BatchItem[] | undefined;
 }
 
 /**
@@ -119,6 +162,8 @@ export interface Landing {
  */
 // oxlint-disable typescript/method-signature-style -- method signatures are bivariant in their parameters, which lets the table's entries for one kind stand as the generic `KindSpec<BatchItem>`; property signatures would not.
 export interface KindSpec<I extends BatchItem> {
+  /** Where the kind's items are listed; see `Section`. */
+  readonly section: Section;
   /** The kind's open items: those not in a batch yet. */
   open(proposals: Proposals): readonly I[];
   /** `proposals` without the kind's open items. */
@@ -140,7 +185,8 @@ export interface KindSpec<I extends BatchItem> {
   describe(
     item: I,
     nameOf: (id: string) => string,
-    hopLabelOf: (id: string) => string
+    hopLabelOf: (id: string) => string,
+    titles?: Titles
   ): Option.Option<string>;
   /**
    * Why the item points at a structure or hop that data.mjs lacks, or
@@ -154,7 +200,8 @@ export interface KindSpec<I extends BatchItem> {
   summary(
     item: I,
     nameOf: (id: string) => string,
-    hopLabelOf: (id: string) => string
+    hopLabelOf: (id: string) => string,
+    titles?: Titles
   ): string;
   /**
    * What the item changes, from `layout` and, for the kinds that point into
@@ -217,6 +264,11 @@ export interface KindSpec<I extends BatchItem> {
   rejected(item: I, reason: string): RejectedItem;
   /** The item again under a new id, for an engineer who edits it after a rejection. */
   reopened(item: I, newId: ChangeId, text: string | undefined): I;
+  /**
+   * The ids of the other open items that make no sense without this one, such
+   * as the structures a new group takes in. Discarding the item discards them.
+   */
+  dependents?(item: I, proposals: Proposals): readonly ChangeId[];
   /** The most characters the kind's text holds. */
   readonly textLimit: number;
   /**
@@ -531,6 +583,8 @@ export const kindTable = {
   answer: answerKind,
   question: questionKind,
   structure: structureKind,
+  group: groupKind,
+  chapter: chapterKind,
 } satisfies {
   readonly [K in BatchItem["kind"]]: KindSpec<Extract<BatchItem, { kind: K }>>;
 };
@@ -546,11 +600,14 @@ function satisfiesEvery<const K extends readonly BatchItem["kind"][]>(
 /**
  * The order the kinds apply to the map, first to last. A kind that others
  * depend on goes first: a layout change may act on a structure that a
- * structure item adds, so structures apply before layout changes. Listing
+ * structure item adds, so structures apply before layout changes, and a
+ * structure may go into a group that a group item adds. Listing
  * every kind is checked by the compiler.
  */
 export const applyOrder: readonly BatchItem["kind"][] = satisfiesEvery([
+  "group",
   "structure",
+  "chapter",
   "layout",
   "note",
   "suggestion",

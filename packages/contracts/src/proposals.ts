@@ -8,7 +8,9 @@ import {
 } from "effect";
 import { dual } from "effect/Function";
 
+import { ChapterChange } from "./chapter-change.ts";
 import { fileVersionFields, isCalendarDay, objectMessages } from "./fields.ts";
+import { GroupChange } from "./group-change.ts";
 import { footprintsOverlap, offEndFindings } from "./layout-checks.ts";
 import type { HopEnds } from "./layout-checks.ts";
 import {
@@ -323,6 +325,22 @@ export const StructureProposal = Schema.Struct({
 
 export type StructureProposal = typeof StructureProposal.Type;
 
+/** An open proposal to add or rename a group. */
+export const GroupProposal = Schema.Struct({
+  id: ChangeId,
+  change: GroupChange,
+}).annotate(objectMessages("A group proposal has only id and change."));
+
+export type GroupProposal = typeof GroupProposal.Type;
+
+/** An open proposal to change what one chapter reveals or plays. */
+export const ChapterProposal = Schema.Struct({
+  id: ChangeId,
+  change: ChapterChange,
+}).annotate(objectMessages("A chapter proposal has only id and change."));
+
+export type ChapterProposal = typeof ChapterProposal.Type;
+
 /** The most characters a text suggestion's new text holds. */
 export const maxSuggestionLength = 8000;
 
@@ -464,7 +482,7 @@ export const Verdict = Schema.Union([
   Schema.Struct({
     verdict: Schema.Literal("changed"),
     reason: RequiredReason,
-    /** For a new structure the agent took under another id: the final id. */
+    /** For a new structure or group the agent took under another id: the final id. */
     as: Schema.optionalKey(FinalId),
   }).annotate(
     objectMessages("A changed verdict has only verdict, reason and as.")
@@ -499,6 +517,8 @@ export const itemFields = {
   answer: answerFields,
   question: raisedFields,
   structure: { change: StructureChange },
+  group: { change: GroupChange },
+  chapter: { change: ChapterChange },
 };
 
 /** The kind of every item the review loop carries. */
@@ -591,6 +611,16 @@ export const BatchItem = Schema.Union([
     kind: Schema.Literal("structure"),
     ...itemFields.structure,
   }).annotate(itemMessages("structure")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("group"),
+    ...itemFields.group,
+  }).annotate(itemMessages("group")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("chapter"),
+    ...itemFields.chapter,
+  }).annotate(itemMessages("chapter")),
 ]).annotate({ message: itemUnionMessage("batch item") });
 
 export type BatchItem = typeof BatchItem.Type;
@@ -639,9 +669,15 @@ export const Batch = Schema.Struct({
    * before this field has none.
    */
   structures: Schema.optionalKey(Schema.Array(Schema.String)),
+  /**
+   * The ids of the groups the accepted map had when the batch was frozen, for
+   * the same check on a new group's `--as`. A batch frozen before this field
+   * has none.
+   */
+  groups: Schema.optionalKey(Schema.Array(Schema.String)),
 }).annotate(
   objectMessages(
-    "A batch has only number, frozenAt, items, verdicts, committed, dismissed and structures."
+    "A batch has only number, frozenAt, items, verdicts, committed, dismissed, structures and groups."
   )
 );
 
@@ -651,6 +687,8 @@ const allIds = (proposals: {
   readonly layout: readonly LayoutChange[];
   readonly notes?: readonly Note[] | undefined;
   readonly structures?: readonly StructureProposal[] | undefined;
+  readonly groups?: readonly GroupProposal[] | undefined;
+  readonly chapters?: readonly ChapterProposal[] | undefined;
   readonly suggestions?: readonly Suggestion[] | undefined;
   readonly answers?: readonly Answer[] | undefined;
   readonly raised?: readonly RaisedQuestion[] | undefined;
@@ -659,6 +697,8 @@ const allIds = (proposals: {
   ...Arr.map(proposals.layout, layoutChangeKey),
   ...Arr.map(proposals.notes ?? [], ({ id }) => id),
   ...Arr.map(proposals.structures ?? [], ({ id }) => id),
+  ...Arr.map(proposals.groups ?? [], ({ id }) => id),
+  ...Arr.map(proposals.chapters ?? [], ({ id }) => id),
   ...Arr.map(proposals.suggestions ?? [], ({ id }) => id),
   ...Arr.map(proposals.answers ?? [], ({ id }) => id),
   ...Arr.map(proposals.raised ?? [], ({ id }) => id),
@@ -679,6 +719,8 @@ const hasUniqueIds = (proposals: Parameters<typeof allIds>[0]) => {
  * - `layout`: the open layout changes, not yet in a batch.
  * - `notes`: the open notes.
  * - `structures`: the open proposals to add, delete or change a structure.
+ * - `groups`: the open proposals to add or rename a group.
+ * - `chapters`: the open proposals to change what a chapter reveals or plays.
  * - `suggestions`: the open text suggestions.
  * - `answers`: the open answers to questions.
  * - `raised`: the open questions the engineer raised.
@@ -702,6 +744,8 @@ export const Proposals = Schema.Struct({
   ),
   notes: Schema.optionalKey(Schema.Array(Note)),
   structures: Schema.optionalKey(Schema.Array(StructureProposal)),
+  groups: Schema.optionalKey(Schema.Array(GroupProposal)),
+  chapters: Schema.optionalKey(Schema.Array(ChapterProposal)),
   suggestions: Schema.optionalKey(Schema.Array(Suggestion)),
   answers: Schema.optionalKey(Schema.Array(Answer)),
   raised: Schema.optionalKey(Schema.Array(RaisedQuestion)),
@@ -710,7 +754,7 @@ export const Proposals = Schema.Struct({
 })
   .annotate(
     objectMessages(
-      "A proposals file has only format, revision, layout, notes, structures, suggestions, answers, raised, batches and replaces."
+      "A proposals file has only format, revision, layout, notes, structures, groups, chapters, suggestions, answers, raised, batches and replaces."
     )
   )
   .check(

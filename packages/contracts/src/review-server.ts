@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ChapterChange } from "./chapter-change.ts";
+import { GroupChange } from "./group-change.ts";
 import {
   answerFields,
   Batch,
@@ -87,6 +89,32 @@ export const StructureWrite = Schema.Struct({
 });
 
 export type StructureWrite = typeof StructureWrite.Type;
+
+/**
+ * Sets the open group proposal `id` to `change`: a new group, or a new title
+ * for one. `members` are the structures that go into a new group, each with
+ * the id of its own group change, which the server adds in the same write, so
+ * a group made from a selection is all there or not at all.
+ */
+const GroupMember = Schema.Struct({ id: ChangeId, structure: Schema.String });
+
+export const GroupWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: GroupChange,
+  members: Schema.optionalKey(Schema.Array(GroupMember)),
+});
+
+export type GroupWrite = typeof GroupWrite.Type;
+
+/** Sets the open chapter proposal `id` to `change`. */
+export const ChapterWrite = Schema.Struct({
+  baseFileRevision: Schema.Int,
+  id: ChangeId,
+  change: ChapterChange,
+});
+
+export type ChapterWrite = typeof ChapterWrite.Type;
 
 /** Reopens a rejected item as a new open item with the id `newId`. */
 export const ReopenWrite = Schema.Struct({

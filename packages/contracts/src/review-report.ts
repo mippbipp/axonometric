@@ -34,9 +34,21 @@ const StructureFacts = Schema.Struct({
   structure: Schema.Record(Schema.String, Schema.Json),
 });
 
+/** A group as a proposal adds or renames it: its id and title. */
+const GroupFacts = Schema.Struct({
+  group: Schema.Record(Schema.String, Schema.Json),
+});
+
+/** A chapter's reveals or plays, before or after a chapter proposal. */
+const ChapterFacts = Schema.Struct({
+  chapter: Schema.Record(Schema.String, Schema.Json),
+});
+
 export const Facts = Schema.NullOr(
   Schema.Union([
     StructureFacts,
+    GroupFacts,
+    ChapterFacts,
     Schema.Record(Schema.String, Spot),
     Size,
     TextFacts,

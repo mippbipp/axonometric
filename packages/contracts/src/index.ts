@@ -377,6 +377,8 @@ export {
   Reason,
   RequiredReason,
   StructureProposal,
+  GroupProposal,
+  ChapterProposal,
   Verdict,
   verdictKinds,
 } from "./proposals.ts";
@@ -409,6 +411,9 @@ export {
   engineerTextNotice,
   kindNotices,
   summaryLine,
+  titlesOf,
+  bySection,
+  sectionOf,
   withoutVerdict,
 } from "./review.ts";
 
@@ -431,6 +436,8 @@ export {
   ProposalRefused,
   QuestionAdd,
   ReopenWrite,
+  ChapterWrite,
+  GroupWrite,
   StructureWrite,
   SuggestionAdd,
 } from "./review-server.ts";
@@ -459,6 +466,8 @@ export {
   allKinds,
   applyOrder,
   kindTable,
+  sections,
+  sectionTitles,
   oneLine,
   quoteText,
   removedMark,
@@ -472,6 +481,8 @@ export type {
   Landing,
   MapShape,
   Pointer,
+  Section,
+  Titles,
   Touches,
   VerdictContext,
   Waiting,
@@ -539,6 +550,56 @@ export {
 } from "./structure-proposals.ts";
 
 export type { StructureWorld } from "./structure-proposals.ts";
+
+export {
+  GroupChange,
+  GroupId,
+  groupKey,
+  groupOf,
+  GroupTitle,
+  maxGroupTitleLength,
+  NewGroup,
+  provisionalGroupIdOf,
+  sameGroupChange,
+  sameGroupSubject,
+  titleOf,
+} from "./group-change.ts";
+
+export {
+  newProvisionalGroupId,
+  proposeGroup,
+  proposeGroupWithMembers,
+} from "./group-proposals.ts";
+
+export type { GroupWorld, Member } from "./group-proposals.ts";
+
+export { groupMark } from "./review-kinds-group.ts";
+
+export {
+  applyChapterChange,
+  chapterBreakage,
+  ChapterChange,
+  ChapterId,
+  chapterHolds,
+  chapterProblems,
+  chaptersAfter,
+  hopsOfChange,
+  HopId,
+  maxPlayedHops,
+  resequenced,
+  revealedUpTo,
+  sameChapterChange,
+  structuresOfChange,
+  subjectOf,
+} from "./chapter-change.ts";
+
+export type { ChapterProblem } from "./chapter-change.ts";
+
+export { proposeChapter } from "./chapter-proposals.ts";
+
+export type { ChapterWorld } from "./chapter-proposals.ts";
+
+export { chapterMark, orderMark } from "./review-kinds-chapter.ts";
 
 export {
   fieldLabel,
