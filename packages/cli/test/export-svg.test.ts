@@ -96,6 +96,8 @@ const fixtures: readonly Fixture[] = [
     files: pipelineMap,
     chapters: [
       ["c-monday", 1],
+      // Plays one of the two hops it draws, so the other one fades.
+      ["c-pr", 2],
       ["c-all", 8],
     ],
   },
@@ -188,6 +190,93 @@ describe("export --format svg", () => {
       240_000
     );
   }
+
+  it.live(
+    "marks the hops and structures a chapter fades, and equals the page's SVG",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const fs = yield* FileSystem.FileSystem;
+          const home = yield* makeHome(yield* pipelineMap);
+          const map = path.join(home, "flake-pipeline", "map");
+
+          assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
+
+          const { page } = yield* openPage(
+            path.join(home, "flake-pipeline", "flake-pipeline.html")
+          );
+
+          yield* click(page, '[data-chapter-rail] button[data-chapter="c-pr"]');
+
+          const target = path.join(home, "faded.svg");
+
+          const exported = yield* runCli(home, [
+            "export",
+            map,
+            "--chapter",
+            "c-pr",
+            "-o",
+            target,
+          ]);
+
+          assert.strictEqual(exported.exitCode, 0, exported.stderr);
+
+          const fromCli = yield* fs.readFileString(target);
+          const prefix = "flake-pipeline-iso-chapter-2";
+
+          // Chapter 2 reveals updater, main, upstream and pr, and plays
+          // h-updater-pr. h-main-updater and h-upstream-updater are drawn
+          // but not played.
+          const partOf = (kind: string, id: string) => {
+            const tag = new RegExp(
+              `<g id="${prefix}-${kind}-${id}"[^>]*>`,
+              "u"
+            ).exec(fromCli)?.[0];
+
+            return {
+              faded: /data-faded="(?<value>[^"]*)"/u.exec(tag ?? "")?.groups
+                ?.value,
+              opacity: /\sopacity="(?<value>[^"]*)"/u.exec(tag ?? "")?.groups
+                ?.value,
+            };
+          };
+
+          assert.deepInclude(partOf("hop", "h-updater-pr"), {
+            faded: "false",
+            opacity: undefined,
+          });
+
+          for (const hop of ["h-main-updater", "h-upstream-updater"]) {
+            assert.deepInclude(partOf("hop", hop), {
+              faded: "true",
+              opacity: "0.25",
+            });
+          }
+
+          for (const id of ["updater", "pr"]) {
+            assert.deepInclude(partOf("structure", id), {
+              faded: "false",
+              opacity: undefined,
+            });
+          }
+
+          for (const id of ["main", "upstream"]) {
+            assert.deepInclude(partOf("structure", id), {
+              faded: "true",
+              opacity: "0.5",
+            });
+          }
+
+          assert.include(fromCli, '<g data-faded="true" opacity="0.5">');
+
+          const fromPage = decoder.decode(yield* exportFile(page, "svg"));
+
+          assert.isTrue(fromPage === fromCli);
+        }).pipe(Effect.provide(NodeServices.layer))
+      ),
+    120_000
+  );
 
   it.live(
     "the CLI's SVG is the page's on white too",
