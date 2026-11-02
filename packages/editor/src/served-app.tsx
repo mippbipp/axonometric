@@ -1,9 +1,15 @@
 import {
+  addedIds,
   applyLayoutChanges,
+  candidateProblems,
   emptyProposals,
+  frozenStructureChanges,
+  openStructureChanges,
   frozenLayoutChanges,
+  proposedMap,
   openItems,
   reviewEntries,
+  structureRenames,
 } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
@@ -15,8 +21,13 @@ import { App } from "./app.tsx";
 import { CompareContext } from "./compare-context.ts";
 import { EditingContext } from "./editing-context.ts";
 import type { Editing } from "./editing-context.ts";
+import { ExportStateContext } from "./export-state-context.ts";
 import { HistoryContext } from "./history-context.ts";
 import { useHistoryView } from "./history-view.tsx";
+import { ProposedAddsContext } from "./proposed-adds-context.ts";
+import { ProposedContext } from "./proposed-context.ts";
+import type { ProposedStructures } from "./proposed-context.ts";
+import { RenamesContext } from "./renames-context.ts";
 import { RestoreDialog } from "./restore-dialog.tsx";
 import { ReviewContext } from "./review-context.ts";
 import type { Review } from "./review-context.ts";
@@ -103,6 +114,8 @@ function ServedNotices({
   );
 }
 
+const none: readonly string[] = [];
+
 /**
  * The map page as `axonometric serve` serves it, kept up to date. It shows
  * the accepted layout with the pending changes applied, and edits them
@@ -121,9 +134,40 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
   const proposals = view.state.proposals ?? emptyProposals;
   const frozen = useMemo(() => frozenLayoutChanges(proposals), [proposals]);
 
-  // Frozen layout changes wait for the agent. They stay drawn as pending,
-  // under the open ones.
+  // Frozen items wait for the agent. They stay drawn as pending, under the
+  // open ones. Layout changes land on the accepted layout last, so a
+  // structure that is only proposed can be dragged like any other.
+  const proposed = useMemo(
+    () =>
+      proposedMap({
+        state: view.state,
+        proposals: { ...proposals, layout: pending },
+      }),
+    [view.state, proposals, pending]
+  );
+
+  const adds = useMemo(
+    () =>
+      addedIds([
+        ...openStructureChanges(proposals),
+        ...frozenStructureChanges(proposals),
+      ]),
+    [proposals]
+  );
+
   const shown = useMemo(
+    () => ({
+      ...proposed.state,
+      layout: applyLayoutChanges(proposed.state.layout, frozen),
+    }),
+    [proposed.state, frozen]
+  );
+
+  const renames = useMemo(() => structureRenames(proposals), [proposals]);
+
+  // What an export saves: the map as it was before proposals, with the
+  // pending layout changes it always showed.
+  const exported = useMemo(
     () => ({
       ...view.state,
       layout: applyLayoutChanges(accepted, [...frozen, ...pending]),
@@ -175,6 +219,31 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [view.stopped, view.accepting, store]
   );
 
+  const proposing = useMemo((): ProposedStructures | null => {
+    const names = new Map(
+      Arr.map(proposed.state.data.structures, ({ id, name }) => [id, name])
+    );
+
+    return {
+      proposed,
+      canPropose: !view.stopped,
+      open: proposals.structures ?? [],
+      nameOf: (id) => names.get(id) ?? id,
+      propose: store.structures.propose,
+      refusalOf: store.structures.refusalOf,
+      problemsOf: (changes, moved) =>
+        candidateProblems({
+          before: { data: shown.data, layout: shown.layout },
+          changes,
+          moved,
+        }),
+      isOpenAdd: store.structures.isOpenAdd,
+      refusalOfPlace: store.structures.refusalOfPlace,
+      place: store.structures.place,
+      discard: store.structures.discard,
+    };
+  }, [proposed, shown, proposals.structures, view.stopped, store]);
+
   const review = useMemo((): Review => {
     const entries = reviewEntries(proposals);
 
@@ -194,30 +263,38 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     <EditingContext value={editing}>
       <AcceptingContext value={accepting}>
         <ReviewContext value={review}>
-          <HistoryContext value={history.panel}>
-            <CompareContext value={history.marks}>
-              <App
-                state={history.drawn}
-                notices={
-                  <>
-                    {history.banner}
-                    <ServedNotices
-                      rejection={view.rejection}
-                      stopped={view.stopped}
-                      notice={view.notice}
-                      saved={view.saved}
-                    />
-                  </>
-                }
-              />
-              {history.report === null ? null : (
-                <RestoreDialog
-                  report={history.report}
-                  onClose={history.handleCloseReport}
-                />
-              )}
-            </CompareContext>
-          </HistoryContext>
+          <ProposedContext value={history.past ? null : proposing}>
+            <RenamesContext value={renames}>
+              <ExportStateContext value={history.past ? null : exported}>
+                <ProposedAddsContext value={history.past ? none : adds}>
+                  <HistoryContext value={history.panel}>
+                    <CompareContext value={history.marks}>
+                      <App
+                        state={history.drawn}
+                        notices={
+                          <>
+                            {history.banner}
+                            <ServedNotices
+                              rejection={view.rejection}
+                              stopped={view.stopped}
+                              notice={view.notice}
+                              saved={view.saved}
+                            />
+                          </>
+                        }
+                      />
+                      {history.report === null ? null : (
+                        <RestoreDialog
+                          report={history.report}
+                          onClose={history.handleCloseReport}
+                        />
+                      )}
+                    </CompareContext>
+                  </HistoryContext>
+                </ProposedAddsContext>
+              </ExportStateContext>
+            </RenamesContext>
+          </ProposedContext>
         </ReviewContext>
       </AcceptingContext>
     </EditingContext>

@@ -11,6 +11,7 @@ import {
   Reason,
   RequiredReason,
 } from "./proposals.ts";
+import { FinalId } from "./structure-change.ts";
 
 /** The folder in the home folder that holds one file per revision. */
 export const historyFolder = "history";
@@ -62,6 +63,17 @@ export const AcceptedItem = Schema.Union([
     reason: Schema.optionalKey(Reason),
     changed: changedFlag,
   }).annotate(itemMessages("question", "accepted item", acceptedMore)),
+  Schema.Struct({
+    kind: Schema.Literal("structure"),
+    id: ChangeId,
+    ...itemFields.structure,
+    /** For an added structure: the id it has on the map now. */
+    as: Schema.optionalKey(FinalId),
+    reason: Schema.optionalKey(Reason),
+    changed: changedFlag,
+  }).annotate(
+    itemMessages("structure", "accepted item", ["as", ...acceptedMore])
+  ),
 ]).annotate({ message: itemUnionMessage("accepted item", ["reason?"]) });
 
 export type AcceptedItem = typeof AcceptedItem.Type;
@@ -98,6 +110,12 @@ export const RejectedItem = Schema.Union([
     ...itemFields.question,
     reason: RequiredReason,
   }).annotate(itemMessages("question", "rejected item", ["reason"])),
+  Schema.Struct({
+    kind: Schema.Literal("structure"),
+    id: ChangeId,
+    ...itemFields.structure,
+    reason: RequiredReason,
+  }).annotate(itemMessages("structure", "rejected item", ["reason"])),
 ]).annotate({ message: itemUnionMessage("rejected item", ["reason"]) });
 
 export type RejectedItem = typeof RejectedItem.Type;

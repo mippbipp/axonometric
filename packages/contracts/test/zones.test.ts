@@ -176,8 +176,8 @@ describe("zone overlap check", () => {
           severity: "warning",
           file: "layout.json",
           path: "",
-          message:
-            'the zones of groups "front" and "back" overlap. Move one group\'s structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.',
+          message: 'the zones of groups "front" and "back" overlap.',
+          hint: "Move one group's structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.",
         },
       ]);
     })

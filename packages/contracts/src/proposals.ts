@@ -22,6 +22,12 @@ import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapWarning } from "./problems.ts";
 import type { MapProblem } from "./problems.ts";
+import { FinalId, StructureChange } from "./structure-change.ts";
+import {
+  addedIds,
+  frozenStructureChanges,
+  openStructureChanges,
+} from "./structure-held.ts";
 import { isTextField } from "./text-fields.ts";
 import type { TextField as TextFieldType } from "./text-fields.ts";
 
@@ -309,6 +315,14 @@ export const Note = Schema.Struct({
 
 export type Note = typeof Note.Type;
 
+/** An open proposal to add, delete or change a structure. */
+export const StructureProposal = Schema.Struct({
+  id: ChangeId,
+  change: StructureChange,
+}).annotate(objectMessages("A structure proposal has only id and change."));
+
+export type StructureProposal = typeof StructureProposal.Type;
+
 /** The most characters a text suggestion's new text holds. */
 export const maxSuggestionLength = 8000;
 
@@ -450,7 +464,11 @@ export const Verdict = Schema.Union([
   Schema.Struct({
     verdict: Schema.Literal("changed"),
     reason: RequiredReason,
-  }).annotate(objectMessages("A changed verdict has only verdict and reason.")),
+    /** For a new structure the agent took under another id: the final id. */
+    as: Schema.optionalKey(FinalId),
+  }).annotate(
+    objectMessages("A changed verdict has only verdict, reason and as.")
+  ),
   Schema.Struct({
     verdict: Schema.Literal("rejected"),
     reason: RequiredReason,
@@ -459,7 +477,7 @@ export const Verdict = Schema.Union([
   ),
 ]).annotate({
   message:
-    'expected a verdict: { verdict: "accepted", reason? }, or { verdict: "changed" | "rejected", reason }.',
+    'expected a verdict: { verdict: "accepted", reason? }, { verdict: "changed", reason, as? } or { verdict: "rejected", reason }.',
 });
 
 export type Verdict = typeof Verdict.Type;
@@ -480,6 +498,7 @@ export const itemFields = {
   suggestion: suggestionFields,
   answer: answerFields,
   question: raisedFields,
+  structure: { change: StructureChange },
 };
 
 /** The kind of every item the review loop carries. */
@@ -567,6 +586,11 @@ export const BatchItem = Schema.Union([
     kind: Schema.Literal("question"),
     ...itemFields.question,
   }).annotate(itemMessages("question")),
+  Schema.Struct({
+    id: ChangeId,
+    kind: Schema.Literal("structure"),
+    ...itemFields.structure,
+  }).annotate(itemMessages("structure")),
 ]).annotate({ message: itemUnionMessage("batch item") });
 
 export type BatchItem = typeof BatchItem.Type;
@@ -607,9 +631,17 @@ export const Batch = Schema.Struct({
   verdicts: Schema.Record(ChangeId, Verdict),
   committed: Schema.optionalKey(Committed),
   dismissed: Schema.optionalKey(Schema.Array(ChangeId)),
+  /**
+   * The ids of the structures the accepted map had when the batch was frozen,
+   * before the agent edited data.mjs for it. `verdict --as` may not name
+   * one. Neither a data.mjs edit nor a rebuild changes it, which layout.json
+   * can't promise: `build` places a new structure there. A batch frozen
+   * before this field has none.
+   */
+  structures: Schema.optionalKey(Schema.Array(Schema.String)),
 }).annotate(
   objectMessages(
-    "A batch has only number, frozenAt, items, verdicts, committed and dismissed."
+    "A batch has only number, frozenAt, items, verdicts, committed, dismissed and structures."
   )
 );
 
@@ -618,6 +650,7 @@ export type Batch = typeof Batch.Type;
 const allIds = (proposals: {
   readonly layout: readonly LayoutChange[];
   readonly notes?: readonly Note[] | undefined;
+  readonly structures?: readonly StructureProposal[] | undefined;
   readonly suggestions?: readonly Suggestion[] | undefined;
   readonly answers?: readonly Answer[] | undefined;
   readonly raised?: readonly RaisedQuestion[] | undefined;
@@ -625,6 +658,7 @@ const allIds = (proposals: {
 }) => [
   ...Arr.map(proposals.layout, layoutChangeKey),
   ...Arr.map(proposals.notes ?? [], ({ id }) => id),
+  ...Arr.map(proposals.structures ?? [], ({ id }) => id),
   ...Arr.map(proposals.suggestions ?? [], ({ id }) => id),
   ...Arr.map(proposals.answers ?? [], ({ id }) => id),
   ...Arr.map(proposals.raised ?? [], ({ id }) => id),
@@ -644,6 +678,7 @@ const hasUniqueIds = (proposals: Parameters<typeof allIds>[0]) => {
  *
  * - `layout`: the open layout changes, not yet in a batch.
  * - `notes`: the open notes.
+ * - `structures`: the open proposals to add, delete or change a structure.
  * - `suggestions`: the open text suggestions.
  * - `answers`: the open answers to questions.
  * - `raised`: the open questions the engineer raised.
@@ -666,6 +701,7 @@ export const Proposals = Schema.Struct({
     })
   ),
   notes: Schema.optionalKey(Schema.Array(Note)),
+  structures: Schema.optionalKey(Schema.Array(StructureProposal)),
   suggestions: Schema.optionalKey(Schema.Array(Suggestion)),
   answers: Schema.optionalKey(Schema.Array(Answer)),
   raised: Schema.optionalKey(Schema.Array(RaisedQuestion)),
@@ -674,7 +710,7 @@ export const Proposals = Schema.Struct({
 })
   .annotate(
     objectMessages(
-      "A proposals file has only format, revision, layout, notes, suggestions, answers, raised, batches and replaces."
+      "A proposals file has only format, revision, layout, notes, structures, suggestions, answers, raised, batches and replaces."
     )
   )
   .check(
@@ -695,6 +731,31 @@ export const emptyProposals: Proposals = {
   revision: 0,
   layout: [],
 };
+
+/**
+ * The provisional ids that committed batches gave final ids, keyed by
+ * provisional id. The page follows them: a selection of `new-1` becomes a
+ * selection of the id the agent accepted it under.
+ */
+export const structureRenames = (
+  proposals: Pick<Proposals, "batches">
+): ReadonlyMap<string, string> =>
+  new Map(
+    Arr.flatMap(proposals.batches ?? [], (batch) =>
+      batch.committed === undefined
+        ? []
+        : Arr.flatMap(batch.items, (item) => {
+            const verdict = batch.verdicts[item.id];
+
+            return item.kind === "structure" &&
+              item.change.action === "add" &&
+              verdict?.verdict === "changed" &&
+              verdict.as !== undefined
+              ? [[item.change.structure.id, verdict.as] as const]
+              : [];
+          })
+    )
+  );
 
 /** A fresh change id: twelve random hex digits. */
 export const newChangeId = (): ChangeId => {
@@ -1254,8 +1315,17 @@ export const checkProposals: {
     layout: Layout,
     proposals: Proposals
   ): readonly MapProblem[] => {
+    // A structure the engineer proposed is known to the changes that follow.
+    const proposed = addedIds([
+      ...openStructureChanges(proposals),
+      ...frozenStructureChanges(proposals),
+    ]);
+
     const known = {
-      structure: new Set(Arr.map(data.structures, ({ id }) => id)),
+      structure: new Set([
+        ...Arr.map(data.structures, ({ id }) => id),
+        ...proposed,
+      ]),
       hop: new Set(Arr.map(data.hops, ({ id }) => id)),
     };
 

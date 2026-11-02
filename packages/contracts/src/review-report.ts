@@ -26,8 +26,22 @@ const Route = Schema.Struct({
   route: Schema.Union([Schema.Literal("automatic"), Schema.Array(Spot)]),
 });
 
+/**
+ * A structure as a proposal adds or changes it: the fields that differ, or
+ * all of them for a new structure, and `deleted: true` when it is removed.
+ */
+const StructureFacts = Schema.Struct({
+  structure: Schema.Record(Schema.String, Schema.Json),
+});
+
 export const Facts = Schema.NullOr(
-  Schema.Union([Schema.Record(Schema.String, Spot), Size, TextFacts, Route])
+  Schema.Union([
+    StructureFacts,
+    Schema.Record(Schema.String, Spot),
+    Size,
+    TextFacts,
+    Route,
+  ])
 );
 
 export type Facts = typeof Facts.Type;

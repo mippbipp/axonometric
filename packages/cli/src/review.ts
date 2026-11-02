@@ -5,7 +5,9 @@ import {
   hopLabelOf,
   kindNotices,
   oldestOpenBatch,
+  proposedMap,
   ReviewReport,
+  quoteText,
   specOf,
 } from "@axonometric/contracts";
 import type {
@@ -14,6 +16,7 @@ import type {
   Layout,
   MapData,
   ReportedItem,
+  Verdict,
 } from "@axonometric/contracts";
 import {
   Array as Arr,
@@ -35,6 +38,28 @@ const encodeFacts = Schema.encodeEffect(
   Schema.fromJsonString(Schema.NullOr(Schema.Json))
 );
 
+/**
+ * `layout` without the structure a `changed --as` verdict names. It is the
+ * item's own structure under the id the agent gave it, which `build` may have
+ * placed already, so it can't be what the item overlaps.
+ */
+const withoutRenamed = (
+  layout: Layout,
+  verdict: Option.Option<Verdict>
+): Layout => {
+  const renamed = Option.flatMap(verdict, (found) =>
+    found.verdict === "changed" ? Option.fromNullishOr(found.as) : Option.none()
+  );
+
+  return Option.match(renamed, {
+    onNone: () => layout,
+    onSome: (id) => ({
+      ...layout,
+      structures: Rec.remove(layout.structures, id),
+    }),
+  });
+};
+
 const reportItem = ({
   item,
   batch,
@@ -55,6 +80,8 @@ const reportItem = ({
   const spec = specOf(item);
   const { before, after } = spec.facts(item, layout, data);
   const structureIds = new Set(names.keys());
+  const decided = Rec.get(batch.verdicts, item.id);
+  const landing = withoutRenamed(layout, decided);
 
   // Each kind says whether it points at a structure or a hop. A hop is known
   // by its label.
@@ -70,11 +97,11 @@ const reportItem = ({
     before,
     after,
     breaks: Option.getOrNull(
-      breakageOf({ item, layout, structureIds, hops, data })
+      breakageOf({ item, layout: landing, structureIds, hops, data })
     ),
     outOfDate: Option.getOrNull(spec.outOfDate?.(item, data) ?? Option.none()),
     replaces: Option.getOrNull(Rec.get(replaces ?? {}, item.id)),
-    verdict: Option.getOrNull(Rec.get(batch.verdicts, item.id)),
+    verdict: Option.getOrNull(decided),
   };
 };
 
@@ -85,7 +112,7 @@ const textOf = Effect.fnUntraced(function* (item: ReportedItem) {
 
   const targets = Arr.map(
     item.targets,
-    ({ id, name }) => `${JSON.stringify(name)} (${id})`
+    ({ id, name }) => `${quoteText(name)} (${id})`
   );
 
   const verdict =
@@ -114,7 +141,16 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
   yield* withLock(home, "review");
 
   const map = yield* loadReviewMap(home, "review");
-  const names = structureNames(map.data);
+
+  // A structure the engineer proposed has a name on the page and none in
+  // data.mjs yet, so review names it from the proposed map.
+  const names = structureNames(
+    proposedMap({
+      state: { data: map.data, layout: map.layout },
+      proposals: map.proposals,
+    }).state.data
+  );
+
   const oldest = oldestOpenBatch(map.proposals);
   const absolute = path.resolve(home);
 

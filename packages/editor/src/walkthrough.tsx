@@ -1,9 +1,11 @@
 import { chapterStopsOf, defaultFlowChoice } from "@axonometric/contracts";
-import type { FlowChoice, MapState } from "@axonometric/contracts";
+import type { ChapterStop, FlowChoice, MapState } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { chapterPlayOf } from "./chapters.ts";
+import { useProposedAdds } from "./proposed-adds-context.ts";
 import { WalkthroughContext } from "./walkthrough-context.ts";
 import type { Walkthrough } from "./walkthrough-context.ts";
 
@@ -21,7 +23,19 @@ export function WalkthroughProvider({
   readonly state: MapState;
   readonly children: ReactNode;
 }) {
-  const stops = useMemo(() => chapterStopsOf(state), [state]);
+  const always = useProposedAdds();
+
+  // A structure the engineer proposed shows in every chapter, and is not "new"
+  // in any of them. Chapter data is left alone: the agent decides where it is
+  // revealed when it accepts the structure.
+  const stops = useMemo(
+    () =>
+      Arr.map(chapterStopsOf(state), (stop): ChapterStop => ({
+        ...stop,
+        revealed: new Set([...stop.revealed, ...always]),
+      })),
+    [state, always]
+  );
 
   const [position, setPosition] = useState<Position>({
     index: 0,

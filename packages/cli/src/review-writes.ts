@@ -1,14 +1,14 @@
 import {
   addItem,
-  applyLayoutChanges,
-  frozenLayoutChanges,
   discardProposal,
   dismissItem,
   editProposal,
   freezeOpen,
   hopLabelOf,
   MapFilesUnreadable,
+  proposedMap,
   ProposalRefused,
+  proposeStructure,
   reopenItem,
   reviewPrompt,
 } from "@axonometric/contracts";
@@ -21,15 +21,18 @@ import type {
   Layout,
   ItemWrite,
   Known,
+  Mappable,
   MapData,
+  ProposedMap,
   NoteAdd,
   ItemEdit,
   Proposals,
   QuestionAdd,
   ReopenWrite,
+  StructureWrite,
   SuggestionAdd,
 } from "@axonometric/contracts";
-import { DateTime, Effect, Path, Result } from "effect";
+import { Array as Arr, DateTime, Effect, Path, Result } from "effect";
 
 import { encodeProposals } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
@@ -46,13 +49,20 @@ import { writeAll } from "./write-files.ts";
 /** What a write's change is given: the files as read under the lock. */
 interface Held {
   readonly proposals: Proposals;
-  /** The layout open changes land on: the accepted one with frozen changes applied. */
+  /** The layout open changes land on: the accepted one with frozen items applied. */
   readonly layout: Layout;
+  /** The names of the structures the map shows, proposed ones included. */
   readonly structures: ReadonlyMap<string, string>;
   /** The map's hops, with their labels. */
   readonly hops: readonly Hop[];
   /** The map as data.mjs has it, for the items that point into its text. */
   readonly data: MapData;
+  /**
+   * The map as proposed, with every frozen and open item applied. Checks
+   * read it, so a structure or group an earlier proposal adds is known to
+   * the later ones.
+   */
+  readonly proposed: ProposedMap<Mappable>;
   readonly now: string;
 }
 
@@ -82,17 +92,19 @@ const writeProposals = Effect.fnUntraced(
 
     const now = DateTime.formatIso(yield* DateTime.now);
 
+    // Built once per write: the frozen items alone are what open changes
+    // land on, and all of them are what the checks read.
+    const state = { data: map.data, layout: map.layout };
+    const proposed = proposedMap({ state, proposals: map.proposals });
+
     const changed = change({
       proposals: map.proposals,
-      // The layout an open change lands on: the accepted one with the
-      // changes frozen in batches applied.
-      layout: applyLayoutChanges(
-        map.layout,
-        frozenLayoutChanges(map.proposals)
-      ),
-      structures: structureNames(map.data),
+      layout: proposedMap({ state, proposals: map.proposals, open: false })
+        .state.layout,
+      structures: structureNames(proposed.state.data),
       hops: map.data.hops,
       data: map.data,
+      proposed,
       now,
     });
 
@@ -212,6 +224,22 @@ export const discardItemWrite = editing<ItemWrite>(
   ({ proposals }, { id }) => discardProposal({ proposals, id })
 );
 
+/**
+ * Sets an open structure proposal: adds a structure, deletes or changes one,
+ * or moves a structure the engineer proposed. Refused when it names a group
+ * the map lacks or lands on another footprint.
+ */
+export const setStructureWrite = editing<StructureWrite>(
+  "setStructureWrite",
+  ({ proposals, proposed }, { id, change }) =>
+    proposeStructure({
+      proposals,
+      id,
+      change,
+      world: { data: proposed.state.data, layout: proposed.state.layout },
+    })
+);
+
 /** Takes a reviewed item off the page. */
 export const dismissWrite = editing<ItemWrite>(
   "dismissWrite",
@@ -251,22 +279,29 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
     home,
     baseFileRevision: write.baseFileRevision,
     written,
-    change: ({ proposals, structures, hops, now }) =>
-      Result.map(freezeOpen({ proposals, at: now }), (frozen) => ({
-        proposals: frozen.proposals,
-        answer: {
-          batch: frozen.batch,
-          home: absolute,
+    change: ({ proposals, structures, hops, data, now }) =>
+      Result.map(
+        freezeOpen({
+          proposals,
+          at: now,
+          structures: Arr.map(data.structures, ({ id }) => id),
+        }),
+        (frozen) => ({
           proposals: frozen.proposals,
-          prompt: reviewPrompt({
-            home: absolute,
+          answer: {
             batch: frozen.batch,
-            names: {
-              structure: (id) => structures.get(id) ?? id,
-              hop: hopLabelOf(hops),
-            },
-          }),
-        },
-      })),
+            home: absolute,
+            proposals: frozen.proposals,
+            prompt: reviewPrompt({
+              home: absolute,
+              batch: frozen.batch,
+              names: {
+                structure: (id) => structures.get(id) ?? id,
+                hop: hopLabelOf(hops),
+              },
+            }),
+          },
+        })
+      ),
   });
 });

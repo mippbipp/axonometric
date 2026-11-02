@@ -81,7 +81,7 @@ export const EditingContext = createContext<Editing | null>(null);
 /** The editing state, or `null` on a page that can't edit. */
 export const useEditing = (): Editing | null => use(EditingContext);
 
-/** The ids of the structures the pending and frozen changes act on. */
+/** The ids of the structures the pending and frozen layout changes act on. */
 export const pendingStructures = (
   editing: Editing | null
 ): ReadonlySet<string> =>

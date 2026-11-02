@@ -73,6 +73,18 @@ const failure = <A>(result: Result.Result<A, string>): string =>
   Result.match(result, { onSuccess: () => "", onFailure: (why) => why });
 
 /** Why accepting `item` would break the map, which the test expects it to. */
+/** A map with nothing in it, for commits that read no structure. */
+const emptyData: MapData = {
+  format: 1,
+  revision: 0,
+  overview: { title: "T", summary: "S" },
+  groups: [],
+  structures: [],
+  hops: [],
+  flows: [],
+  chapters: [],
+};
+
 const breaksBecause = (item: BatchItem, data: MapData): string =>
   Option.getOrThrow(breakageOf({ item, ...landing(data) }));
 
@@ -682,7 +694,15 @@ describe("the revision records the new kinds", () => {
     );
 
     const committed = unwrap(
-      commitBatch({ proposals: decided, layout, hops: [], revision: 1, at })
+      commitBatch({
+        proposals: decided,
+        layout,
+        saved: layout,
+        data: emptyData,
+        hops: [],
+        revision: 1,
+        at,
+      })
     );
 
     assert.deepStrictEqual(
@@ -741,7 +761,15 @@ describe("the revision records the new kinds", () => {
     );
 
     const committed = unwrap(
-      commitBatch({ proposals: decided, layout, hops: [], revision: 1, at })
+      commitBatch({
+        proposals: decided,
+        layout,
+        saved: layout,
+        data: emptyData,
+        hops: [],
+        revision: 1,
+        at,
+      })
     );
 
     assert.deepStrictEqual(committed.rejected, [
@@ -762,6 +790,8 @@ describe("the revision records the new kinds", () => {
       commitBatch({
         proposals: allDecided({ verdict: "accepted" }),
         layout,
+        saved: layout,
+        data: emptyData,
         hops: [],
         revision: 1,
         at,
@@ -783,7 +813,15 @@ describe("a rejected item", () => {
     );
 
     const closed = unwrap(
-      commitBatch({ proposals: decided, layout, hops: [], revision: 1, at })
+      commitBatch({
+        proposals: decided,
+        layout,
+        saved: layout,
+        data: emptyData,
+        hops: [],
+        revision: 1,
+        at,
+      })
     ).proposals;
 
     const reopened = unwrap(

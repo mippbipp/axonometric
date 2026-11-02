@@ -19,10 +19,12 @@ import type { ReactNode } from "react";
 
 import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
+import { useDraftSpot } from "./draft-spot.ts";
 import { DragOutlines } from "./drop-outline.tsx";
 import { EditorViewContext } from "./editor-view.ts";
 import { fitOf } from "./fit.ts";
 import { GroupEditor } from "./group-editor.tsx";
+import { NewStructureSpot } from "./new-structure-spot.tsx";
 import { spotDrawn, useNoteBearers } from "./note-bearers.ts";
 import { NoteMarkers } from "./note-markers.tsx";
 import { SpotCursor, SpotPicker } from "./note-tool.tsx";
@@ -30,6 +32,7 @@ import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines } from "./pending-look.tsx";
 import { PlaybackContext } from "./playback.ts";
 import { routesOf } from "./projection.ts";
+import { RemovedMarks } from "./removed-marks.tsx";
 import { RouteEditor } from "./route-editor.tsx";
 import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
@@ -152,6 +155,19 @@ export function MapView({
 
   const bearers = useNoteBearers();
 
+  // The new structure's footprint counts in the fit while the form is open,
+  // so it is never off the canvas.
+  const candidate = useDraftSpot();
+  const candidateSpot = candidate?.spot;
+
+  const candidateCorners = useMemo(
+    () =>
+      candidateSpot === undefined
+        ? []
+        : groundOutline(candidateSpot, groundProjections[view]),
+    [candidateSpot, view]
+  );
+
   const fitAt = useCallback(
     (zoom: number) => {
       const fitted = sceneAt(textZoomOf(zoom));
@@ -162,11 +178,14 @@ export function MapView({
       const drawn = [
         ...drawnIn({ scene: fitted, drawing }),
         ...spotDrawn(fitted, bearers, fitIds),
+        ...(candidateCorners.length === 0
+          ? []
+          : [{ ids: fitIds, points: candidateCorners }]),
       ];
 
       return fitOf({ drawn, fitTo: fitIds }).bounds;
     },
-    [sceneAt, drawing, fitIds, bearers]
+    [sceneAt, drawing, fitIds, bearers, candidateCorners]
   );
 
   // The floor looks at name tags only, which place quickly.
@@ -189,7 +208,16 @@ export function MapView({
     [state.data, state.layout, revealed, view]
   );
 
-  const key = fitKey ?? fitOf({ drawn: [], fitTo: fitIds }).key;
+  // The view fits again when the form opens and when it picks a new default
+  // spot. A spot the engineer picked doesn't move the map under their hand.
+  const candidateKey =
+    candidate === null
+      ? ""
+      : candidate.picked
+        ? "+adding"
+        : `+adding ${candidate.spot.x},${candidate.spot.y}`;
+
+  const key = `${fitKey ?? fitOf({ drawn: [], fitTo: fitIds }).key}${candidateKey}`;
 
   const editorView = useMemo(
     () => ({ view, placements: state.layout.structures, revealed }),
@@ -239,6 +267,7 @@ export function MapView({
                     view={view}
                   />
                   <AcceptedOutlines structures={scene.structures} view={view} />
+                  <NewStructureSpot view={view} />
                   <CompareRings
                     structures={scene.structures}
                     view={view}
@@ -259,6 +288,7 @@ export function MapView({
             overlay={
               <>
                 <NoteMarkers scene={scene} />
+                <RemovedMarks structures={scene.structures} view={view} />
                 <SpotCursor view={view} />
               </>
             }

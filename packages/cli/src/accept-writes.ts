@@ -2,6 +2,7 @@ import {
   acceptanceMessage,
   acceptRefusal,
   hopLabelOf,
+  layoutUnderProposals,
   acceptLayoutChanges,
   historyFolder,
   LayoutChangeRefused,
@@ -89,7 +90,12 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
   // change waits too, and the rest is checked on top of them.
   const waiting = acceptRefusal({
     proposals: current,
-    layout: map.layout,
+    // Structures the engineer has proposed take ground too.
+    layout: layoutUnderProposals({
+      data: map.data,
+      layout: map.layout,
+      proposals: current,
+    }),
     ids: write.changeIds,
     hops: map.data.hops,
   });

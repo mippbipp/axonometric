@@ -71,6 +71,7 @@ export {
 export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 
 export {
+  changedProblems,
   checkLayout,
   clashWarnings,
   draggedProblems,
@@ -82,6 +83,7 @@ export {
 } from "./layout-checks.ts";
 
 export type {
+  Checkable,
   DraggedProblem,
   HopEnds,
   OffEnd,
@@ -295,6 +297,7 @@ export {
   shiftedRoutes,
   sharedTarget,
   StructureMove,
+  structureRenames,
   StructureTarget,
   structuresOf,
   Target,
@@ -347,6 +350,8 @@ export {
   splitProblems,
 } from "./problems.ts";
 
+export { strikeSegments } from "./strike.ts";
+
 export { dragSegment, routeVertices, segmentGuides } from "./route-drag.ts";
 
 export type { RouteEnds, SegmentGuide } from "./route-drag.ts";
@@ -371,6 +376,7 @@ export {
   maxReasonLength,
   Reason,
   RequiredReason,
+  StructureProposal,
   Verdict,
   verdictKinds,
 } from "./proposals.ts";
@@ -425,6 +431,7 @@ export {
   ProposalRefused,
   QuestionAdd,
   ReopenWrite,
+  StructureWrite,
   SuggestionAdd,
 } from "./review-server.ts";
 
@@ -450,19 +457,88 @@ export type {
 
 export {
   allKinds,
+  applyOrder,
   kindTable,
   oneLine,
   quoteText,
+  removedMark,
   specOf,
 } from "./review-kinds.ts";
 
 export type {
+  CommitContext,
   Existing,
   KindSpec,
   Landing,
+  MapShape,
   Pointer,
+  Touches,
+  VerdictContext,
   Waiting,
 } from "./review-kinds.ts";
+
+export {
+  frozenItems,
+  layoutUnderProposals,
+  marked,
+  proposedMap,
+} from "./proposed-map.ts";
+
+export type { Mappable, ProposedMap } from "./proposed-map.ts";
+
+export {
+  FinalId,
+  maxProposedReach,
+  maxProposedSide,
+  maxStructureNameLength,
+  NewStructure,
+  ProposedPlacement,
+  provisionalIdOf,
+  ProvisionalId,
+  sameStructureChange,
+  StructureChange,
+  StructureId,
+  StructureName,
+  structureOf,
+} from "./structure-change.ts";
+
+export {
+  actionOf,
+  codeOfName,
+  proposedDetails,
+  proposedOneLiner,
+  structureActions,
+  structureOfNew,
+} from "./structure-actions.ts";
+
+export type { DescribeNames, StructureAction } from "./structure-actions.ts";
+
+export {
+  candidateProblems,
+  defaultSpotFor,
+  describePlacement,
+  droppedIntoGroup,
+  referencesTo,
+  structureBreakage,
+  structureChangeToData,
+  structureChangeToLayout,
+} from "./structure-effects.ts";
+
+export type { StructureLanding } from "./structure-effects.ts";
+
+export {
+  addedIds,
+  frozenStructureChanges,
+  openStructureChanges,
+} from "./structure-held.ts";
+
+export {
+  checkStructureProposals,
+  newProvisionalId,
+  proposeStructure,
+} from "./structure-proposals.ts";
+
+export type { StructureWorld } from "./structure-proposals.ts";
 
 export {
   fieldLabel,

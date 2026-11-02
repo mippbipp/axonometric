@@ -183,3 +183,25 @@ export const loadHistory = Effect.fnUntraced(function* (
 
   return Arr.reverse(Arr.flatMap(entries, Option.toArray));
 });
+
+/**
+ * The ids of the structures in the newest revision that reads, for a batch
+ * frozen before it recorded `structures`. It is `data.mjs` as the last commit
+ * accepted it, which an edit or a rebuild can't change. `layout.json` is not
+ * a source: `build` writes a new structure there. With no revision, nothing
+ * is known, and the `--as` check against the accepted map is skipped.
+ */
+export const acceptedStructureIds = Effect.fnUntraced(function* (home: string) {
+  const saved = yield* revisionsIn(home);
+
+  const newest = saved.at(-1);
+
+  const found =
+    newest === undefined ? undefined : yield* readRevision(home, newest);
+
+  return new Set(
+    found === undefined || Option.isNone(found)
+      ? []
+      : Arr.map(found.value.data.structures, ({ id }) => id)
+  );
+});

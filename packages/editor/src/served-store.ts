@@ -8,12 +8,12 @@ import {
   emptyProposals,
   FreezeWrite,
   FreezeAnswer,
-  frozenLayoutChanges,
   frozenRefusal,
   frozenWriteRefusal,
   ItemWrite,
   LayoutChangeRefused,
   layoutRefusal,
+  layoutUnderProposals,
   MapFilesUnreadable,
   newChangeId,
   NoteAdd,
@@ -27,6 +27,8 @@ import {
   placeStructure,
   ProposalRefused,
   Proposals,
+  proposedMap,
+  proposeStructure,
   pushStep,
   redoStep,
   ReopenWrite,
@@ -36,6 +38,7 @@ import {
   servedPageElementId,
   ServerEvent,
   StaleProposals,
+  StructureWrite,
   undoStep,
   wroteFile,
 } from "@axonometric/contracts";
@@ -52,6 +55,7 @@ import type {
   MapState,
   Placement,
   Placements,
+  StructureChange,
   StructureMove,
   UndoHistory,
 } from "@axonometric/contracts";
@@ -129,6 +133,10 @@ const encodeQuestionAdd = Schema.encodeEffect(
 const encodeItemEdit = Schema.encodeEffect(Schema.fromJsonString(ItemEdit));
 
 const encodeItem = Schema.encodeEffect(Schema.fromJsonString(ItemWrite));
+
+const encodeStructure = Schema.encodeEffect(
+  Schema.fromJsonString(StructureWrite)
+);
 
 const encodeFreeze = Schema.encodeEffect(Schema.fromJsonString(FreezeWrite));
 
@@ -281,6 +289,51 @@ export interface ServedStore {
   ) => void;
   /** Notes and the review loop. */
   readonly review: ReviewOps;
+  /** Proposals to add, delete or change structures. */
+  readonly structures: StructureOps;
+}
+
+/**
+ * Proposing changes to structures. Like the review writes, each goes after
+ * the layout writes already on their way, is based on the latest file
+ * revision, and is sent again on a fresher file when another writer got in
+ * first. `done` runs when it ends.
+ */
+export interface StructureOps {
+  /**
+   * Proposes `change`: a new structure, a deletion, a rename, or a change of
+   * shape, group or status. The server keeps one proposal per structure and
+   * kind of change, and edits the proposal of a new structure instead of
+   * adding another. `done` gets the id of the proposal.
+   */
+  readonly propose: (
+    change: StructureChange,
+    done: ReviewDone<ChangeId>
+  ) => void;
+  /**
+   * Why `change` would be refused, without sending it. The server checks
+   * again when it is sent.
+   */
+  readonly refusalOf: (change: StructureChange) => string | undefined;
+  /**
+   * Puts a structure the engineer proposed, and has not sent yet, at
+   * `next`. Returns why it was refused, or `undefined`; `done` runs when the
+   * write ends.
+   */
+  readonly place: (
+    id: string,
+    next: Placement,
+    done: ReviewDone<ChangeId>
+  ) => string | undefined;
+  /** Whether structure `id` is a new structure in an open proposal. */
+  readonly isOpenAdd: (id: string) => boolean;
+  /**
+   * Why putting the proposed structure `id` at `next` would be refused, or
+   * `undefined` when it wouldn't, or when `id` isn't one the engineer proposed.
+   */
+  readonly refusalOfPlace: (id: string, next: Placement) => string | undefined;
+  /** Removes an open proposal. */
+  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
 }
 
 /** What a review write answers: the id of what it made or changed, or why it was refused. */
@@ -622,15 +675,17 @@ export const connectServed = ({
   let acceptedRevision = initial.layout.revision;
 
   /**
-   * The layout open changes land on: the accepted layout with the changes
-   * frozen in batches applied, as the server checks them. Frozen changes
-   * aren't accepted yet, but they stay drawn and can't be edited.
+   * The layout open changes land on: the accepted layout with the items
+   * frozen in batches applied and the structures the engineer proposed
+   * placed, as the server checks them. Frozen changes aren't accepted yet,
+   * but they stay drawn and can't be edited.
    */
   const baseLayout = () =>
-    applyLayoutChanges(
-      view.state.layout,
-      frozenLayoutChanges(proposalsOf(view.state))
-    );
+    layoutUnderProposals({
+      data: view.state.data,
+      layout: view.state.layout,
+      proposals: proposalsOf(view.state),
+    });
 
   /**
    * The writes asked for and not answered, oldest first. Each holds the
@@ -1437,10 +1492,97 @@ export const connectServed = ({
     },
   };
 
+  /** The open proposal that adds structure `id`, if there is one. */
+  const openAddOf = (id: string) =>
+    Arr.findFirst(
+      proposalsOf(view.state).structures ?? [],
+      ({ change }) => change.action === "add" && change.structure.id === id
+    );
+
+  /**
+   * What a structure proposal is checked against on the page: the map with
+   * every pending change shown, as the server checks it.
+   */
+  const structureWorld = () => ({
+    data: view.state.data,
+    layout: proposedMap({
+      state: view.state,
+      proposals: { ...proposalsOf(view.state), layout: view.pending },
+    }).state.layout,
+  });
+
+  const proposed = (id: string, change: StructureChange) =>
+    proposeStructure({
+      proposals: proposalsOf(view.state),
+      id,
+      change,
+      world: structureWorld(),
+    });
+
+  const structureRefusal = (
+    id: string,
+    change: StructureChange
+  ): string | undefined =>
+    Option.getOrUndefined(Result.getFailure(proposed(id, change)));
+
+  const sendStructure = (
+    id: ChangeId,
+    change: StructureChange,
+    done: ReviewDone<ChangeId>
+  ) => {
+    callReview<ChangeId>(
+      {
+        url: served.structure,
+        encode: (base) =>
+          encodeStructure({ baseFileRevision: base, id, change }).pipe(
+            Effect.orDie
+          ),
+        read: readProposalsWith(id),
+        endsUndo: false,
+      },
+      done
+    );
+  };
+
+  const structures: StructureOps = {
+    propose: (change, done) => {
+      sendStructure(newChangeId(), change, done);
+    },
+    refusalOf: (change) => structureRefusal(newChangeId(), change),
+    isOpenAdd: (id) => Option.isSome(openAddOf(id)),
+    refusalOfPlace: (id, next) => {
+      const found = openAddOf(id);
+
+      return Option.isSome(found) && found.value.change.action === "add"
+        ? structureRefusal(found.value.id, { ...found.value.change, at: next })
+        : undefined;
+    },
+    place: (id, next, done) => {
+      const found = openAddOf(id);
+
+      if (Option.isNone(found) || found.value.change.action !== "add") {
+        return `"${id}" isn't a structure you proposed.`;
+      }
+
+      const change: StructureChange = { ...found.value.change, at: next };
+      const refusal = structureRefusal(found.value.id, change);
+
+      if (refusal === undefined) {
+        sendStructure(found.value.id, change, done);
+      }
+
+      return refusal;
+    },
+    discard: (id, done) => {
+      review.discardProposal(id, done);
+    },
+  };
+
   connect();
 
   return {
     review,
+    structures,
     subscribe: (listener) => {
       listeners.add(listener);
 

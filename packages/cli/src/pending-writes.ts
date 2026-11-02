@@ -1,7 +1,6 @@
 import {
-  applyLayoutChanges,
-  frozenLayoutChanges,
   frozenWriteRefusal,
+  layoutUnderProposals,
   LayoutChangeRefused,
   layoutRefusal,
   MapFilesUnreadable,
@@ -12,6 +11,7 @@ import {
 import type {
   HopEnds,
   LayoutChange,
+  MapData,
   PendingLayoutWrite,
   Proposals,
 } from "@axonometric/contracts";
@@ -152,6 +152,8 @@ export interface PendingWrite {
   readonly write: PendingLayoutWrite;
   /** The map's hops, as the server last built them. */
   readonly hops: readonly HopEnds[];
+  /** The map's data as the server last built it, which proposed structures change. */
+  readonly data: MapData;
 }
 
 /**
@@ -190,7 +192,7 @@ const usedElsewhere = (
  */
 export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   home: string,
-  { write, hops }: PendingWrite,
+  { write, hops, data }: PendingWrite,
   written: (proposals: Proposals) => Effect.Effect<void>
 ) {
   const path = yield* Path.Path;
@@ -206,9 +208,14 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
     readFiles
   );
 
-  // Frozen layout changes wait for the agent, and still count: an open
-  // change is checked against the layout they would make.
-  const base = applyLayoutChanges(accepted, frozenLayoutChanges(current));
+  // Frozen items wait for the agent, and still count, and so do the
+  // structures the engineer has proposed: an open change is checked against
+  // the ground they would take.
+  const base = layoutUnderProposals({
+    data,
+    layout: accepted,
+    proposals: current,
+  });
 
   // The server holds this line for every client, the page's undo included:
   // a write can't touch what a frozen item acts on.

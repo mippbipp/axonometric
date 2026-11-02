@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { usePlayback } from "./playback.ts";
+import { useRenames } from "./renames-context.ts";
 import { SelectionContext } from "./selection-context.ts";
 import type { Selection } from "./selection-context.ts";
 import { hasSteps, useStructuresById } from "./structures.ts";
@@ -45,19 +46,27 @@ export function SelectionProvider({
   const { stop, state } = useWalkthrough();
   const { closePacket } = usePlayback();
   const byId = useStructuresById();
+  const renames = useRenames();
   const chapter = stop.id;
+
+  // The agent may accept a structure the engineer proposed under another id.
+  // The selection follows it, so the panel stays open on the same structure.
+  const followed = (id: string | null) =>
+    id === null || byId.has(id) ? id : (renames.get(id) ?? id);
 
   const [stored, setStored] = useState<Stored>(() => nothingIn(chapter));
 
+  const storedSelected = followed(stored.selected);
+
   const current =
     stored.chapter === chapter &&
-    stored.selected !== null &&
-    stop.revealed.has(stored.selected)
+    storedSelected !== null &&
+    stop.revealed.has(storedSelected)
       ? stored
       : null;
 
-  const selected = current?.selected ?? null;
-  const inside = current?.inside ?? null;
+  const selected = current === null ? null : storedSelected;
+  const inside = followed(current?.inside ?? null);
 
   // A hop stays selected only while both its ends are revealed.
   const storedHop = stored.chapter === chapter ? stored.hop : null;

@@ -1,9 +1,11 @@
+import { marked as marksOf, removedMark } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
 
 import { spokenMarks, useCompare } from "./compare-context.ts";
 import { pendingStructures, useEditing } from "./editing-context.ts";
+import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useTooltipActions } from "./tooltip-context.ts";
@@ -37,7 +39,14 @@ export function StructureTarget({
   const editing = useEditing();
   const isMultiSelected = multiSelection.has(id);
 
-  const isPending = pendingStructures(editing).has(id);
+  const proposed = useProposed()?.proposed;
+
+  const isRemoved =
+    proposed !== undefined && marksOf(proposed, removedMark).has(id);
+
+  const isPending =
+    pendingStructures(editing).has(id) || proposed?.structures.has(id) === true;
+
   const marks = useCompare();
   const kinds = marks?.structures.get(id);
   const marked = spokenMarks({ marks, id });
@@ -82,6 +91,7 @@ export function StructureTarget({
       data-selected={isSelected}
       data-multi-selected={isMultiSelected}
       data-pending={isPending}
+      data-removed={isRemoved}
       data-compare={kinds?.join(" ")}
       // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
       role="button"
@@ -90,6 +100,7 @@ export function StructureTarget({
         [
           isMultiSelected ? `${name}, in the multi-selection` : name,
           ...(isPending ? ["pending change"] : []),
+          ...(isRemoved ? ["proposed for deletion"] : []),
           ...(marked === undefined ? [] : [marked]),
         ],
         ", "

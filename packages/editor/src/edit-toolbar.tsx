@@ -8,6 +8,8 @@ import type { ReactNode } from "react";
 import { controlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
 import { NoteToolButton, NoteToolHint } from "./note-tool.tsx";
+import { usePlacing } from "./place-context.ts";
+import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 
 /**
@@ -208,9 +210,11 @@ export function EditToolbar({
   readonly className?: string;
 }) {
   const editing = useEditing();
+  const proposing = useProposed();
   const { multiSelection } = useSelection();
   const [refusal, setRefusal] = useState<string | undefined>();
   const [hint, setHint] = useState<string | undefined>();
+  const placing = usePlacing();
 
   if (editing === null || !editing.canEdit) {
     return null;
@@ -265,6 +269,19 @@ export function EditToolbar({
           }}
         >
           <span aria-hidden="true">↶ Undo</span>
+        </button>
+        <button
+          type="button"
+          data-control="add-structure"
+          className={controlClass}
+          aria-expanded={placing?.open === true}
+          disabled={proposing === null || !proposing.canPropose}
+          title="Propose a new structure"
+          onClick={() => {
+            placing?.setOpen(!placing.open);
+          }}
+        >
+          + Structure
         </button>
         <button
           type="button"

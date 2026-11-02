@@ -8,6 +8,7 @@ import type { Source, Structure } from "@axonometric/contracts";
 import { Array as Arr, String as Str } from "effect";
 import type { ReactNode } from "react";
 
+import { ChangeStructure } from "./change-structure.tsx";
 import { controlClass } from "./control-class.ts";
 import { MapLink } from "./map-link.tsx";
 import { NotesSection } from "./notes-section.tsx";
@@ -189,6 +190,7 @@ export function StructurePanel({
       )}
       <RaisedQuestions structure={structure.id} />
       <NotesSection target={{ kind: "structure", id: structure.id }} />
+      <ChangeStructure structure={structure} />
       <div className="flex gap-1.5">
         {hasSteps(structure) ? (
           <button

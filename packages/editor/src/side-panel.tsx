@@ -3,6 +3,7 @@ import { Array as Arr, Match } from "effect";
 import { useId, useMemo, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
+import { AddStructureForm } from "./add-structure.tsx";
 import { controlClass } from "./control-class.ts";
 import { DragWarnings } from "./drag-preview.tsx";
 import { useEditing } from "./editing-context.ts";
@@ -11,6 +12,7 @@ import { HistoryTab } from "./history-tab.tsx";
 import { HopPanel } from "./hop-panel.tsx";
 import { useNoteTool } from "./note-tool-context.ts";
 import { PendingTab } from "./pending-tab.tsx";
+import { usePlacing } from "./place-context.ts";
 import { usePlayback } from "./playback.ts";
 import type { SelectedPacket } from "./playback.ts";
 import { QuestionsTab } from "./questions.tsx";
@@ -306,6 +308,7 @@ export function SidePanel() {
   const editing = useEditing();
   const history = useHistory();
   const waiting = useWaitingCount();
+  const placing = usePlacing();
 
   // A tab other than Details stays open until the selection changes.
   const picked =
@@ -434,8 +437,20 @@ export function SidePanel() {
           <HistoryTab />
         </TabPanel>
       )}
-      {/* Docked under the tabs, so what a drag would leave never covers the
-          drawing. */}
+      {/* Docked under the tabs, so the add form and what a drag or a proposal
+          would leave never cover the drawing. */}
+      {placing?.open === true ? (
+        <section
+          data-add-structure-panel
+          aria-label="Add a structure"
+          className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+        >
+          <h2 className="text-xs tracking-widest uppercase opacity-70">
+            Add a structure
+          </h2>
+          <AddStructureForm />
+        </section>
+      ) : null}
       <DragWarnings className="border-x-0 border-b-0" />
     </aside>
   );

@@ -3,6 +3,7 @@ import { Array as Arr, Option } from "effect";
 import type { MapData } from "./map-data.ts";
 import { maxNoteLength, maxSuggestionLength } from "./proposals.ts";
 import type { BatchItem } from "./proposals.ts";
+import { plain } from "./review-kind-defaults.ts";
 import type { Existing, KindSpec, Pointer } from "./review-kinds.ts";
 import { decorate, oneLine, quoteText } from "./review-quote.ts";
 import { fieldLabel, textOfField } from "./text-fields.ts";
@@ -60,6 +61,7 @@ const questionOn = (data: MapData, on: string, id: string) =>
   );
 
 export const suggestionKind: KindSpec<SuggestionItem> = {
+  ...plain<SuggestionItem>(),
   textLimit: maxSuggestionLength,
   listKey: "suggestions",
   text: ({ after }) => Option.some(after),
@@ -167,6 +169,7 @@ export const suggestionKind: KindSpec<SuggestionItem> = {
 };
 
 export const answerKind: KindSpec<AnswerItem> = {
+  ...plain<AnswerItem>(),
   textLimit: maxNoteLength,
   listKey: "answers",
   text: ({ text }) => Option.some(text),
@@ -274,6 +277,7 @@ export const answerKind: KindSpec<AnswerItem> = {
 };
 
 export const questionKind: KindSpec<QuestionItem> = {
+  ...plain<QuestionItem>(),
   textLimit: maxNoteLength,
   listKey: "raised",
   text: ({ text }) => Option.some(text),

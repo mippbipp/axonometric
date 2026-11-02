@@ -13,6 +13,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, Ref } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { useExportState } from "./export-state-context.ts";
 import { useSpotlightActions } from "./spotlight-context.ts";
 import { download, ExportFailed, pngOf } from "./svg-export.ts";
 import { shownTheme } from "./theme-state.ts";
@@ -76,7 +77,9 @@ function MenuItem({
  * nothing.
  */
 export function ExportMenu({ view }: { readonly view: View }) {
-  const { state, index } = useWalkthrough();
+  const { state: shown, index } = useWalkthrough();
+  // Proposals are drawn on the page and left out of what it saves.
+  const state = useExportState() ?? shown;
   const spotlightNow = useSpotlightActions().current;
   const [open, setOpen] = useState(false);
   const [onWhite, setOnWhite] = useState(false);

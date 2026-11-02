@@ -26,6 +26,7 @@ import {
 } from "../src/index.ts";
 import type {
   Batch,
+  MapData,
   Layout,
   LayoutChange,
   Proposals as P,
@@ -80,6 +81,17 @@ const addNote = ({
   });
 
 const hops = [{ id: "h-ab", from: "a", to: "b" }];
+
+const data: MapData = {
+  format: 1,
+  revision: 0,
+  overview: { title: "T", summary: "S" },
+  groups: [{ id: "g", title: "G" }],
+  structures: [],
+  hops: [],
+  flows: [],
+  chapters: [],
+};
 
 const open: P = {
   format: 1,
@@ -266,6 +278,8 @@ describe("applying a batch with its verdicts to a map state", () => {
       proposals: decided({ m1: { verdict: "accepted" } }),
       layout,
       hops,
+      saved: layout,
+      data,
       revision: 1,
       at,
     });
@@ -283,6 +297,8 @@ describe("applying a batch with its verdicts to a map state", () => {
         }),
         layout,
         hops,
+        saved: layout,
+        data,
         revision: 1,
         at,
       })
@@ -323,6 +339,8 @@ describe("applying a batch with its verdicts to a map state", () => {
         }),
         layout,
         hops,
+        saved: layout,
+        data,
         revision: 1,
         at,
       })
@@ -340,6 +358,8 @@ describe("applying a batch with its verdicts to a map state", () => {
         }),
         layout,
         hops,
+        saved: layout,
+        data,
         revision: 1,
         at,
       })
@@ -372,6 +392,8 @@ describe("applying a batch with its verdicts to a map state", () => {
         }),
         layout: agents,
         hops,
+        saved: layout,
+        data,
         revision: 1,
         at,
       })
@@ -391,6 +413,8 @@ describe("applying a batch with its verdicts to a map state", () => {
         }),
         layout,
         hops,
+        saved: layout,
+        data,
         revision: 1,
         at,
       })
@@ -420,6 +444,8 @@ describe("applying a batch with its verdicts to a map state", () => {
         }),
         layout,
         hops,
+        saved: layout,
+        data,
         revision: 1,
         at,
       })
@@ -451,6 +477,8 @@ describe("what the page lists", () => {
         }),
         layout,
         hops,
+        saved: layout,
+        data,
         revision: 1,
         at,
       })
@@ -578,6 +606,8 @@ const reviewed = (): P =>
       }),
       layout,
       hops,
+      saved: layout,
+      data,
       revision: 1,
       at,
     })
@@ -593,6 +623,7 @@ describe("editing a rejected item", () => {
         layout,
         known,
         hops,
+        data,
       })
     );
 
@@ -616,6 +647,7 @@ describe("editing a rejected item", () => {
         layout,
         known,
         hops,
+        data,
       })
     );
 
@@ -645,6 +677,8 @@ describe("editing a rejected item", () => {
         }),
         layout,
         hops,
+        saved: layout,
+        data,
         revision: 1,
         at,
       })
@@ -658,6 +692,7 @@ describe("editing a rejected item", () => {
         layout,
         known,
         hops,
+        data,
       })
     );
 
@@ -675,6 +710,7 @@ describe("editing a rejected item", () => {
       layout,
       known,
       hops,
+      data,
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -688,6 +724,7 @@ describe("editing a rejected item", () => {
       layout,
       known,
       hops,
+      data,
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -873,6 +910,8 @@ describe("a reroute in the prompt", () => {
       },
       layout,
       hops,
+      saved: layout,
+      data,
       revision: 1,
       at,
     });

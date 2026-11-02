@@ -28,6 +28,11 @@ export const MapProblem = Schema.Struct({
   /** Where in the file, such as `structures[1].id`. Empty for the whole file. */
   path: Schema.String,
   message: Schema.String,
+  /**
+   * What to do about it, when that is a command for the agent to run. The
+   * page shows the message alone; `check` prints the hint after it.
+   */
+  hint: Schema.optionalKey(Schema.String),
 });
 
 export type MapProblem = typeof MapProblem.Type;
@@ -58,16 +63,21 @@ interface ProblemAt {
   readonly file: MapFile;
   readonly path: readonly PropertyKey[];
   readonly message: string;
+  readonly hint?: string;
 }
 
 const make =
   (severity: Severity) =>
-  ({ file, path, message }: ProblemAt): MapProblem => ({
-    severity,
-    file,
-    path: formatPath(path),
-    message,
-  });
+  ({ file, path, message, hint }: ProblemAt): MapProblem => {
+    const problem: MapProblem = {
+      severity,
+      file,
+      path: formatPath(path),
+      message,
+    };
+
+    return hint === undefined ? problem : { ...problem, hint };
+  };
 
 /** An error, which stops `build`. */
 export const mapError = make("error");
@@ -97,10 +107,16 @@ export const problemsFromIssue: {
  * Formats a problem as one line, such as
  * `error data.mjs structures[1].id: ...`.
  */
-export const formatProblem = (problem: MapProblem) =>
-  problem.path === ""
-    ? `${problem.severity} ${problem.file}: ${problem.message}`
-    : `${problem.severity} ${problem.file} ${problem.path}: ${problem.message}`;
+export const formatProblem = (problem: MapProblem) => {
+  const text =
+    problem.hint === undefined
+      ? problem.message
+      : `${problem.message} ${problem.hint}`;
+
+  return problem.path === ""
+    ? `${problem.severity} ${problem.file}: ${text}`
+    : `${problem.severity} ${problem.file} ${problem.path}: ${text}`;
+};
 
 /** Splits `problems` into errors and warnings, each in their original order. */
 export const splitProblems = (problems: readonly MapProblem[]) => {

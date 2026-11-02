@@ -21,6 +21,7 @@ import {
   layoutRefusal,
   sharedTarget,
   BatchItem as BatchItemSchema,
+  structuresOf,
 } from "./proposals.ts";
 import type {
   Batch,
@@ -116,6 +117,53 @@ export const frozenRefusal: {
 const keyOf = (change: LayoutChange) => JSON.stringify(change);
 
 /**
+ * Why layout changes `after` can't act on a structure the engineer proposed.
+ * Such a structure moves with its proposal: an open one when it is dragged,
+ * and a frozen one not until the agent commits.
+ */
+const proposedStructureRefusal = (
+  proposals: Proposals,
+  after: readonly LayoutChange[]
+): Option.Option<string> => {
+  const before = new Set(Arr.map(proposals.layout, keyOf));
+
+  const touched = new Set(
+    Arr.flatMap(
+      Arr.filter(after, (change) => !before.has(keyOf(change))),
+      structuresOf
+    )
+  );
+
+  const open = Arr.flatMap(proposals.structures ?? [], ({ change }) =>
+    change.action === "add" ? [change.structure.id] : []
+  );
+
+  const waiting = Arr.flatMap(batchesOf(proposals), (batch) =>
+    isOpenBatch(batch)
+      ? Arr.flatMap(batch.items, (item) =>
+          item.kind === "structure" && item.change.action === "add"
+            ? [item.change.structure.id]
+            : []
+        )
+      : []
+  );
+
+  const inBatch = Arr.findFirst(waiting, (id) => touched.has(id));
+
+  if (Option.isSome(inBatch)) {
+    return Option.some(
+      `"${inBatch.value}" is a new structure in a batch that is waiting for the agent. It can be moved once the agent commits.`
+    );
+  }
+
+  return Option.map(
+    Arr.findFirst(open, (id) => touched.has(id)),
+    (id) =>
+      `"${id}" is a structure you proposed. Move it by dragging it, which changes the proposal.`
+  );
+};
+
+/**
  * Why a write that sets the open layout changes to `after` has to wait, or
  * nothing when it can go ahead.
  *
@@ -140,6 +188,12 @@ export const frozenWriteRefusal = ({
   /** The list of open layout changes the write would leave. */
   readonly after: readonly LayoutChange[];
 }): Option.Option<string> => {
+  const proposedOnly = proposedStructureRefusal(proposals, after);
+
+  if (Option.isSome(proposedOnly)) {
+    return proposedOnly;
+  }
+
   const frozen = Arr.filter(
     frozenLayoutChanges(proposals),
     (change) => change.kind === "reroute"
@@ -208,10 +262,13 @@ export interface FreezeResult {
 export const freezeOpen = ({
   proposals,
   at,
+  structures,
 }: {
   readonly proposals: Proposals;
   /** When the batch is frozen, as an ISO date and time in UTC. */
   readonly at: string;
+  /** The ids of the structures the accepted map has now; see `Batch.structures`. */
+  readonly structures?: readonly string[] | undefined;
 }): Result.Result<FreezeResult, string> => {
   const items = openItems(proposals);
 
@@ -221,12 +278,15 @@ export const freezeOpen = ({
     );
   }
 
-  const batch: Batch = {
+  const frozen: Batch = {
     number: nextBatchNumber(proposals),
     frozenAt: at,
     items,
     verdicts: {},
   };
+
+  const batch: Batch =
+    structures === undefined ? frozen : { ...frozen, structures };
 
   const emptied = Arr.reduce(allKinds, proposals, (held, kind) =>
     kind.clear(held)
@@ -580,10 +640,18 @@ export const recordVerdict = ({
   proposals,
   id,
   verdict,
+  accepted = new Set(),
 }: {
   readonly proposals: Proposals;
   readonly id: string;
   readonly verdict: Verdict;
+  /**
+   * The ids of the structures the accepted map has, for a batch frozen
+   * without `Batch.structures`. `--as` may not name one, since it gives a new
+   * structure its own id. The batch's own list wins when it has one. With
+   * neither, none is known and the check is skipped.
+   */
+  readonly accepted?: ReadonlySet<string>;
 }): Result.Result<Proposals, string> => {
   const oldest = oldestOpenBatch(proposals);
 
@@ -611,6 +679,30 @@ export const recordVerdict = ({
             : `"${id}" is in batch ${batch.number}, which was committed already.`,
       })
     );
+  }
+
+  const taken = new Map(
+    Arr.flatMap(Rec.toEntries(oldest.value.verdicts), ([other, held]) =>
+      held.verdict === "changed" && held.as !== undefined
+        ? [[other, held.as] as const]
+        : []
+    )
+  );
+
+  const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
+    Option.flatMap((item) =>
+      specOf(item).verdictRefusal(item, verdict, {
+        accepted:
+          oldest.value.structures === undefined
+            ? accepted
+            : new Set(oldest.value.structures),
+        taken,
+      })
+    )
+  );
+
+  if (Option.isSome(refused)) {
+    return Result.fail(refused.value);
   }
 
   const batches = Arr.map(proposals.batches ?? [], (batch) =>
@@ -674,12 +766,19 @@ export interface Committing {
 export const commitBatch = ({
   proposals,
   layout,
+  saved,
+  data,
   hops,
   revision,
   at,
 }: {
   readonly proposals: Proposals;
+  /** The layout the commit starts from: `layout.json` with new structures placed. */
   readonly layout: Layout;
+  /** `layout.json` as the file holds it. */
+  readonly saved: Layout;
+  /** The map as the agent left data.mjs. */
+  readonly data: MapData;
   /** The map's hops, which say where a reroute's ends belong. */
   readonly hops: readonly HopEnds[];
   /** The number of the revision this commit saves. */
@@ -705,12 +804,40 @@ export const commitBatch = ({
     );
   }
 
-  const decided = Arr.flatMap(batch.items, (item) =>
+  const verdicts = Arr.flatMap(batch.items, (item) =>
     Option.match(Rec.get(batch.verdicts, item.id), {
       onNone: () => [],
       onSome: (verdict) => [{ item, verdict }],
     })
   );
+
+  // A structure the agent accepted under another id: items that point at the
+  // provisional one now point at the final one.
+  const renames = new Map(
+    Arr.flatMap(verdicts, ({ item, verdict }) =>
+      specOf(item).renames(item, verdict)
+    )
+  );
+
+  const decided = Arr.map(verdicts, ({ item, verdict }) => ({
+    item: specOf(item).retargeted(item, renames),
+    verdict,
+  }));
+
+  const context = { layout, saved, data };
+
+  const refused = Arr.findFirst(
+    Arr.flatMap(decided, ({ item, verdict }) =>
+      verdict.verdict === "rejected"
+        ? []
+        : Option.toArray(specOf(item).commitRefusal(item, verdict, context))
+    ),
+    () => true
+  );
+
+  if (Option.isSome(refused)) {
+    return Result.fail(refused.value);
+  }
 
   const taken = Arr.filter(
     decided,
@@ -719,7 +846,7 @@ export const commitBatch = ({
 
   const toApply: readonly LayoutChange[] = Arr.flatMap(
     decided,
-    ({ item, verdict }) => specOf(item).applies(item, verdict)
+    ({ item, verdict }) => specOf(item).applies(item, verdict, context)
   );
 
   const applied =
@@ -731,17 +858,40 @@ export const commitBatch = ({
         );
 
   return Result.map(applied, (nextLayout): Committing => {
-    const batches = Arr.map(proposals.batches ?? [], (other) =>
-      other.number === batch.number
-        ? { ...other, committed: { revision, at } }
-        : other
+    const retargetItems = (items: readonly BatchItem[]) =>
+      renames.size === 0
+        ? items
+        : Arr.map(items, (one) => specOf(one).retargeted(one, renames));
+
+    // Batches that still wait, and the open items, point at the id the
+    // agent gave the structure, so the page follows it.
+    const batches = Arr.map(proposals.batches ?? [], (other) => {
+      if (other.number === batch.number) {
+        return {
+          ...other,
+          items: retargetItems(other.items),
+          committed: { revision, at },
+        };
+      }
+
+      return other.committed === undefined
+        ? { ...other, items: retargetItems(other.items) }
+        : other;
+    });
+
+    const retargetedOpen = Arr.reduce(allKinds, proposals, (held, kind) =>
+      Arr.reduce(
+        retargetItems(kind.open(proposals)),
+        kind.clear(held),
+        (so, one) => kind.add(so, one)
+      )
     );
 
     return {
       batch,
       layout: nextLayout,
       proposals: {
-        ...proposals,
+        ...(renames.size === 0 ? proposals : retargetedOpen),
         revision: proposals.revision + 1,
         batches,
       },
@@ -926,6 +1076,7 @@ export const reviewPrompt = ({
       "",
       `Run axonometric review ${quoted(home)}, give every item a verdict with axonometric verdict, then run axonometric commit ${quoted(home)}.`,
       changedLayoutNotice,
+      ...kindNotices(batch.items),
       engineerTextNotice,
       ...kindNotices(batch.items),
       "",

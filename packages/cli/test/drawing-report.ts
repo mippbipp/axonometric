@@ -83,6 +83,21 @@ export const drawingReport = `(() => {
     })),
   ];
 
+  // The strike through a structure proposed for deletion, as segments on screen.
+  const strikes = [...document.querySelectorAll("[data-strike]")].map((line) => ({
+    id: "strike:" + line.closest("[data-removed-mark]").dataset.removedMark,
+    segment: toScreen(line, [
+      { x: line.x1.baseVal.value, y: line.y1.baseVal.value },
+      { x: line.x2.baseVal.value, y: line.y2.baseVal.value },
+    ]),
+  }));
+
+  const chips = [...document.querySelectorAll("[data-code-chip]")].map((chip) => ({
+    id: "chip:" + chip.closest("[data-structure]").dataset.structure,
+    // The chip's rendered box, with its stroke.
+    polygon: rectPolygon(chip.getBoundingClientRect()),
+  }));
+
   const structures = [...document.querySelectorAll("[data-structure]")].map(
     (structure) => ({
       id: "box:" + structure.dataset.structure,
@@ -115,7 +130,7 @@ export const drawingReport = `(() => {
     };
   });
 
-  return { text, structures, firstLegs };
+  return { text, chips, strikes, structures, firstLegs };
 })()`;
 
 interface Point {
@@ -123,13 +138,20 @@ interface Point {
   readonly y: number;
 }
 
-interface Drawn {
+export interface Drawn {
   readonly id: string;
   readonly polygon: readonly { readonly x: number; readonly y: number }[];
 }
 
 export interface DrawingReport {
   readonly text: readonly Drawn[];
+  /** Each structure's code chip, as the page draws it. */
+  readonly chips: readonly Drawn[];
+  /** The pieces of the cross through a structure proposed for deletion. */
+  readonly strikes: readonly {
+    readonly id: string;
+    readonly segment: readonly { readonly x: number; readonly y: number }[];
+  }[];
   readonly structures: readonly Drawn[];
   readonly firstLegs: readonly {
     readonly hop: string;

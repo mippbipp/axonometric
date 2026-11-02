@@ -17,12 +17,11 @@ import { shiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { useDropOutlines } from "./outlines-context.ts";
+import { snap } from "./snap.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** How far a press must move before it drags a group, in pixels. */
 const dragThreshold = 4;
-
-const snap = (value: number) => Math.round(value * 2) / 2;
 
 /** One press on a zone's title, until it's released. */
 interface Press {

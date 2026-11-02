@@ -8,6 +8,7 @@ import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditing } from "./editing-context.ts";
 import { NoteForm } from "./note-form.tsx";
+import { useProposed } from "./proposed-context.ts";
 import { listedEntries, useReview } from "./review-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -53,8 +54,11 @@ export function VerdictBadge({
 const useItemDescription = () => {
   const byId = useStructuresById();
   const editing = useEditing();
+  const proposed = useProposed();
   const { state } = useWalkthrough();
-  const nameOf = (id: string) => byId.get(id)?.name ?? id;
+
+  const nameOf = (id: string) =>
+    byId.get(id)?.name ?? proposed?.nameOf(id) ?? id;
 
   const hopName = hopLabelOf(state.data.hops);
 

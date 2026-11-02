@@ -172,6 +172,14 @@ _Avoid_: position, pin
 The proposals frozen by one press of "Ready for review".
 _Avoid_: review round
 
+**Provisional id**:
+The id the page gives a structure the engineer proposes. The agent either adds the structure to the map under it, or accepts it under another id with a changed verdict, and the page follows the final id.
+_Avoid_: temporary id, draft id
+
+**Proposed map**:
+The accepted map with every open and frozen proposal applied, as the page draws it. The read-only file and exports never show it.
+_Avoid_: preview, draft map
+
 **Verdict**:
 The agent's decision on one proposal: accepted, changed or rejected, with a reason.
 _Avoid_: decision

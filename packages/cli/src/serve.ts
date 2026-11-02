@@ -67,6 +67,7 @@ import {
   editItemWrite,
   freezeWrite,
   reopenWrite,
+  setStructureWrite,
 } from "./review-writes.ts";
 import { recordServer, runningServer } from "./server-state.ts";
 
@@ -476,6 +477,7 @@ const routes = ({
     suggestions: Str.slice(1)(serverPaths.suggestions),
     answers: Str.slice(1)(serverPaths.answers),
     questions: Str.slice(1)(serverPaths.questions),
+    structure: Str.slice(1)(serverPaths.structure),
     freeze: Str.slice(1)(serverPaths.freeze),
     dismiss: Str.slice(1)(serverPaths.dismiss),
     reopen: Str.slice(1)(serverPaths.reopen),
@@ -524,7 +526,7 @@ const routes = ({
             Effect.flatMap(({ good }) =>
               writePendingLayout(
                 home,
-                { write: payload, hops: good.data.hops },
+                { write: payload, hops: good.data.hops, data: good.data },
                 (proposals) =>
                   SubscriptionRef.update(held, (current) => ({
                     ...current,
@@ -583,6 +585,7 @@ const routes = ({
       .handle("addSuggestion", reviewing(addSuggestionWrite))
       .handle("addAnswer", reviewing(addAnswerWrite))
       .handle("addQuestion", reviewing(addQuestionWrite))
+      .handle("setStructure", reviewing(setStructureWrite))
       .handle("freeze", reviewing(freezeWrite))
       .handle("dismiss", reviewing(dismissWrite))
       .handle("reopen", reviewing(reopenWrite))

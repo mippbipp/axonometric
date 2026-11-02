@@ -28,6 +28,7 @@ export const serverPaths = {
   pendingLayout: "/api/proposals/layout",
   accept: "/api/proposals/accept",
   notes: "/api/notes",
+  structure: "/api/structures",
   editItem: "/api/items/edit",
   discardItem: "/api/items/discard",
   suggestions: "/api/suggestions",
@@ -242,6 +243,8 @@ export const ServedPage = Schema.Struct({
   answers: Schema.String,
   /** Where to raise a new question. */
   questions: Schema.String,
+  /** Where a structure proposal is set, relative to the page's URL. */
+  structure: Schema.String,
   /** Where "Ready for review" freezes a batch, relative to the page's URL. */
   freeze: Schema.String,
   /** Where a reviewed item is dismissed, relative to the page's URL. */

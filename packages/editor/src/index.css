@@ -155,3 +155,15 @@
 [data-structure][data-compare~="removed"][data-faded="true"] {
   opacity: calc(0.45 * var(--faded-structure));
 }
+
+/* The menu comes from the UI package, which paints with shadcn's tokens.
+   Inside a menu they take the map's colours, so it reads as part of the page. */
+[data-slot="menu-content"],
+[data-slot="menu-sub-content"] {
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  --border: var(--ink);
+  --accent: var(--ink);
+  --accent-foreground: var(--paper);
+  --muted: var(--face);
+}

@@ -81,6 +81,8 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
   const committing = commitBatch({
     proposals: map.proposals,
     layout: map.layout,
+    saved: map.saved,
+    data: map.data,
     hops: map.data.hops,
     revision: number,
     at,

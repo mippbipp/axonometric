@@ -17,6 +17,8 @@ import type {
   Proposals,
   Verdict,
 } from "./proposals.ts";
+import { plain } from "./review-kind-defaults.ts";
+import { structureKind } from "./review-kinds-structure.ts";
 import {
   answerKind,
   questionKind,
@@ -27,6 +29,8 @@ import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
 export { oneLine, quoteText } from "./review-quote.ts";
+
+export { plain, removedMark, touchesNothing } from "./review-kind-defaults.ts";
 
 /** A structure or a hop, named by its id. */
 export interface Pointer {
@@ -45,6 +49,47 @@ export interface Waiting {
   readonly item: BatchItem;
   /** The number of the batch holding the item, or nothing while it is open. */
   readonly batch: number | undefined;
+}
+
+/** What `verdict` knows when it checks a verdict. */
+export interface VerdictContext {
+  /**
+   * The ids of the structures the accepted map had before the agent edited
+   * data.mjs: those in the last revision, or the layout when there is none.
+   * `--as` may not name one of them.
+   */
+  readonly accepted: ReadonlySet<string>;
+  /** The `--as` ids the batch's other items already have, by item id. */
+  readonly taken: ReadonlyMap<string, string>;
+}
+
+/** What a commit knows when it takes an item. */
+export interface CommitContext {
+  /** The layout the commit starts from: `layout.json` with new structures placed. */
+  readonly layout: Layout;
+  /** `layout.json` as the file holds it. */
+  readonly saved: Layout;
+  /** The map's data, as the agent left `data.mjs`. */
+  readonly data: MapData;
+}
+
+/** The two parts of a map that proposals change on the page. */
+export interface MapShape {
+  readonly data: MapData;
+  readonly layout: Layout;
+}
+
+/**
+ * What an item changes in how the map is drawn. `structures` and `hops` are
+ * what it draws in the pending look. `marks` is for anything else a kind
+ * draws: a name for the mark and the ids it marks, such as the structures
+ * proposed for deletion. The page reads the marks it knows by name, and a
+ * kind's marks stay behind its own entry.
+ */
+export interface Touches {
+  readonly structures: readonly string[];
+  readonly hops: readonly string[];
+  readonly marks: Readonly<Record<string, readonly string[]>>;
 }
 
 /** What a kind of item needs to know about the map. */
@@ -122,8 +167,50 @@ export interface KindSpec<I extends BatchItem> {
   ): { before: Facts; after: Facts };
   /** Why accepting the item would break the map, or nothing. */
   breakage(item: I, landing: Landing): Option.Option<string>;
+  /**
+   * The map once the item is applied, as the page shows it before the agent
+   * has decided. `proposedMap` runs every open and frozen item through this.
+   */
+  appliesToData(item: I, map: MapShape): MapShape;
+  /** What the item changes in the drawing; see `Touches`. */
+  touches(item: I): Touches;
   /** The layout changes that take effect when the item gets `verdict`. */
-  applies(item: I, verdict: Verdict): readonly LayoutChange[];
+  applies(
+    item: I,
+    verdict: Verdict,
+    context: CommitContext
+  ): readonly LayoutChange[];
+  /**
+   * Why the commit can't take the item with `verdict`, or nothing. Only
+   * asked for items that are accepted or changed.
+   */
+  commitRefusal(
+    item: I,
+    verdict: Verdict,
+    context: CommitContext
+  ): Option.Option<string>;
+  /**
+   * Why `verdict` can't be given to the item, or nothing. Checked when the
+   * agent runs `verdict`, before anything is written.
+   */
+  verdictRefusal(
+    item: I,
+    verdict: Verdict,
+    context: VerdictContext
+  ): Option.Option<string>;
+  /**
+   * The structure ids the item makes new when it is taken with `verdict`, as
+   * `[provisional, final]` pairs, when the agent used another id.
+   */
+  renames(
+    item: I,
+    verdict: Verdict
+  ): readonly (readonly [from: string, to: string])[];
+  /**
+   * The item with each structure id in `renames` replaced by the id it
+   * became, for an item that points at a structure accepted under another id.
+   */
+  retargeted(item: I, renames: ReadonlyMap<string, string>): I;
   /** The item as a revision records it when taken: accepted or changed. */
   accepted(item: I, verdict: Verdict): AcceptedItem;
   /** The item as a revision records it when rejected. */
@@ -185,8 +272,47 @@ const routeOf = (layout: Layout, hop: string): Facts => {
   };
 };
 
+const retargetLayoutChange = (
+  change: LayoutChange,
+  renames: ReadonlyMap<string, string>
+): LayoutChange => {
+  const id = (from: string) => renames.get(from) ?? from;
+
+  return Match.value(change).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      move: (move) => ({
+        ...move,
+        moves: Arr.map(move.moves, (one) => ({
+          ...one,
+          target: { ...one.target, id: id(one.target.id) },
+        })),
+      }),
+      resize: (resize) => ({
+        ...resize,
+        target: { ...resize.target, id: id(resize.target.id) },
+      }),
+      reroute: (reroute) => reroute,
+    })
+  );
+};
+
 const layoutKind: KindSpec<LayoutItem> = {
+  ...plain<LayoutItem>(),
   textLimit: Number.POSITIVE_INFINITY,
+  appliesToData: (item, map) => ({
+    ...map,
+    layout: applyLayoutChanges(map.layout, [item.change]),
+  }),
+  touches: ({ change }) => ({
+    structures: structuresOf(change),
+    hops: hopsOf(change),
+    marks: {},
+  }),
+  retargeted: (item, renames) => {
+    const change = retargetLayoutChange(item.change, renames);
+
+    return change === item.change ? item : { ...item, change };
+  },
   open: (proposals) =>
     Arr.map(proposals.layout, (change): LayoutItem => ({
       id: change.id,
@@ -265,7 +391,18 @@ const layoutKind: KindSpec<LayoutItem> = {
 };
 
 const noteKind: KindSpec<NoteItem> = {
+  ...plain<NoteItem>(),
   textLimit: maxNoteLength,
+  retargeted: (item, renames) => {
+    const id = renames.get(
+      item.target.kind === "structure" ? item.target.id : ""
+    );
+
+    // Only a structure can be renamed; a hop or a spot keeps its target.
+    return item.target.kind === "structure" && id !== undefined
+      ? { ...item, target: { ...item.target, id } }
+      : item;
+  },
   open: (proposals) =>
     Arr.map(proposals.notes ?? [], (note): NoteItem => ({
       id: note.id,
@@ -393,9 +530,33 @@ export const kindTable = {
   suggestion: suggestionKind,
   answer: answerKind,
   question: questionKind,
+  structure: structureKind,
 } satisfies {
   readonly [K in BatchItem["kind"]]: KindSpec<Extract<BatchItem, { kind: K }>>;
 };
+
+/** `kinds` if it lists every kind of item; a missing kind won't compile. */
+function satisfiesEvery<const K extends readonly BatchItem["kind"][]>(
+  kinds: K &
+    ([BatchItem["kind"]] extends [K[number]] ? unknown : "a kind is missing")
+): K {
+  return kinds;
+}
+
+/**
+ * The order the kinds apply to the map, first to last. A kind that others
+ * depend on goes first: a layout change may act on a structure that a
+ * structure item adds, so structures apply before layout changes. Listing
+ * every kind is checked by the compiler.
+ */
+export const applyOrder: readonly BatchItem["kind"][] = satisfiesEvery([
+  "structure",
+  "layout",
+  "note",
+  "suggestion",
+  "answer",
+  "question",
+]);
 
 /** The table seen through `BatchItem`, for code that handles any kind. */
 const kinds: Readonly<Record<BatchItem["kind"], KindSpec<BatchItem>>> =
