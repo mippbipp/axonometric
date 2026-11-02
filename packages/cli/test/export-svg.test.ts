@@ -244,7 +244,86 @@ describe("export --format svg", () => {
   );
 });
 
+/**
+ * The share of pixels that differ by more than a few levels in any channel,
+ * between two PNGs of the same size.
+ */
+const differingShare = (
+  a: { readonly pixels: Uint8Array },
+  b: { readonly pixels: Uint8Array }
+) => {
+  let differing = 0;
+
+  for (let at = 0; at < a.pixels.length; at += 4) {
+    const gap = Math.max(
+      Math.abs((a.pixels[at] ?? 0) - (b.pixels[at] ?? 0)),
+      Math.abs((a.pixels[at + 1] ?? 0) - (b.pixels[at + 1] ?? 0)),
+      Math.abs((a.pixels[at + 2] ?? 0) - (b.pixels[at + 2] ?? 0))
+    );
+
+    if (gap > 48) {
+      differing += 1;
+    }
+  }
+
+  return differing / (a.pixels.length / 4);
+};
+
 describe("export --format png", () => {
+  it.live(
+    "is near-identical to the page's PNG for the pipeline map's Iso chapter 1",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const fs = yield* FileSystem.FileSystem;
+          const home = yield* makeHome(yield* pipelineMap);
+          const map = path.join(home, "flake-pipeline", "map");
+
+          assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
+
+          const { page } = yield* openPage(
+            path.join(home, "flake-pipeline", "flake-pipeline.html")
+          );
+
+          yield* Effect.promise(() =>
+            page.setViewportSize({ width: 1280, height: 800 })
+          );
+
+          const target = path.join(home, "cli.png");
+
+          const exported = yield* runCli(home, [
+            "export",
+            map,
+            "--format",
+            "png",
+            "--chapter",
+            "1",
+            "-o",
+            target,
+          ]);
+
+          assert.strictEqual(exported.exitCode, 0, exported.stderr);
+
+          // The page's PNG is the browser drawing the same SVG, with the
+          // embedded font; the CLI's is resvg drawing it with the TTF.
+          const fromPage = yield* decodePng(yield* exportFile(page, "png"));
+          const fromCli = yield* decodePng(yield* fs.readFile(target));
+
+          assert.deepStrictEqual(
+            { width: fromPage.width, height: fromPage.height },
+            { width: fromCli.width, height: fromCli.height }
+          );
+
+          const share = differingShare(fromPage, fromCli);
+
+          console.log(`PNG difference ratio: ${(share * 100).toFixed(3)}%`);
+          assert.isBelow(share, 0.01);
+        }).pipe(Effect.provide(NodeServices.layer))
+      ),
+    120_000
+  );
+
   it.effect(
     "is twice the SVG's size, on paper or on white",
     () =>

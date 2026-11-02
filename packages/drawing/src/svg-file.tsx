@@ -15,6 +15,7 @@ import { DrawingContext } from "./drawing-context.ts";
 import type { DrawingEnvironment, Paint } from "./drawing-context.ts";
 import { extentOf } from "./extent.ts";
 import { FileFrame, PassThrough } from "./file-frame.tsx";
+import { fontFaceCss } from "./font-face.ts";
 import { MapDrawing } from "./map-drawing.tsx";
 
 /** Space around the drawing, in drawing units. */
@@ -142,6 +143,7 @@ export const svgFileOf = ({
       >
         <title id={`${prefix}title`}>{title}</title>
         <desc id={`${prefix}desc`}>{description}</desc>
+        <style>{fontFaceCss}</style>
         <rect
           x={x}
           y={y}
