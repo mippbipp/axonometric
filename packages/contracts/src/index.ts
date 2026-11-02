@@ -24,7 +24,10 @@ export type {
 
 export { exportName, pngScale } from "./export-name.ts";
 
+export { groundOutline, toPoints } from "./ground-outline.ts";
+
 export {
+  dashes,
   exportFontFamily,
   exportFontStack,
   palette,
@@ -94,6 +97,7 @@ export {
 export type { PlacedLayout } from "./placement.ts";
 
 export {
+  boundsOfPoints,
   convexOverlap,
   distanceToPolyline,
   gapBetween,

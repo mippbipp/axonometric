@@ -1,31 +1,57 @@
-import { planZoneRadius } from "@axonometric/contracts";
+import { planZoneRadius, toPoints } from "@axonometric/contracts";
 import type { SceneZone } from "@axonometric/contracts";
+import { String as Str } from "effect";
 import type { ComponentType } from "react";
 
-import { toPoints } from "./projection.ts";
+import { partId, useDrawing } from "./drawing-context.ts";
 
-const plateClass = "fill-ink/5 stroke-ink/45";
+/** How strong a zone's fill and outline are, as shares of ink. */
+const plateFill = 0.05;
+
+const plateStroke = 0.45;
+
+const titleOpacity = 0.75;
 
 function ZoneTitle({ drawing }: { readonly drawing: SceneZone }) {
+  const { paint, live } = useDrawing();
+  const { title } = drawing.zone.group;
+
   return drawing.titleTransform === undefined ? null : (
     <text
       data-zone-title=""
       transform={drawing.titleTransform}
-      className="fill-ink/75 text-2xs stroke-none font-mono font-medium tracking-widest uppercase"
+      fill={paint.ink}
+      fillOpacity={titleOpacity}
+      stroke="none"
+      fontSize={10}
+      fontWeight={500}
+      letterSpacing={1}
+      // The page keeps the title as written and sets it in capitals with CSS;
+      // a file has no stylesheet, so it holds the capitals.
+      style={live ? { textTransform: "uppercase" } : undefined}
     >
-      {drawing.zone.group.title}
+      {live ? title : Str.toUpperCase(title)}
     </text>
   );
 }
 
 /** A zone in the Iso view: a plate on the ground, with its title. */
 export function IsoPlate({ drawing }: { readonly drawing: SceneZone }) {
+  const environment = useDrawing();
+  const { paint } = environment;
+
   return (
-    <g data-zone={drawing.zone.group.id}>
+    <g
+      data-zone={drawing.zone.group.id}
+      id={partId(environment, "zone", drawing.zone.group.id)}
+    >
       <polygon
         data-zone-plate=""
         points={toPoints(drawing.plate)}
-        className={plateClass}
+        fill={paint.ink}
+        fillOpacity={plateFill}
+        stroke={paint.ink}
+        strokeOpacity={plateStroke}
         strokeWidth={0.9}
       />
       <ZoneTitle drawing={drawing} />
@@ -35,10 +61,15 @@ export function IsoPlate({ drawing }: { readonly drawing: SceneZone }) {
 
 /** A zone in Plan view: a rounded outline from above, with its title. */
 export function PlanPlate({ drawing }: { readonly drawing: SceneZone }) {
+  const environment = useDrawing();
+  const { paint } = environment;
   const { bounds } = drawing;
 
   return (
-    <g data-zone={drawing.zone.group.id}>
+    <g
+      data-zone={drawing.zone.group.id}
+      id={partId(environment, "zone", drawing.zone.group.id)}
+    >
       <rect
         data-zone-plate=""
         x={bounds.left}
@@ -46,7 +77,10 @@ export function PlanPlate({ drawing }: { readonly drawing: SceneZone }) {
         width={bounds.right - bounds.left}
         height={bounds.bottom - bounds.top}
         rx={planZoneRadius}
-        className={plateClass}
+        fill={paint.ink}
+        fillOpacity={plateFill}
+        stroke={paint.ink}
+        strokeOpacity={plateStroke}
         strokeWidth={0.9}
       />
       <ZoneTitle drawing={drawing} />

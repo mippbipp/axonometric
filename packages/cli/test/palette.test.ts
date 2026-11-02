@@ -1,7 +1,14 @@
 import { palette } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Option, Path, Record as Rec } from "effect";
+import {
+  Effect,
+  FileSystem,
+  Option,
+  Path,
+  Record as Rec,
+  String as Str,
+} from "effect";
 
 const stylesheet = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -11,6 +18,10 @@ const stylesheet = Effect.gen(function* () {
     path.join(import.meta.dirname, "..", "..", "editor", "src", "index.css")
   );
 }).pipe(Effect.orDie, Effect.provide(NodeServices.layer));
+
+/** `faceOff` is `--face-off`. */
+const kebab = (name: string) =>
+  name.replaceAll(/[A-Z]/gu, (letter) => `-${Str.toLowerCase(letter)}`);
 
 describe("map colours", () => {
   it.effect(
@@ -22,7 +33,7 @@ describe("map colours", () => {
         for (const [name, light] of Rec.toEntries(palette.light)) {
           const pair = Option.fromNullishOr(
             new RegExp(
-              String.raw`--${name}:\s*light-dark\((#[0-9a-f]{6}),\s*(#[0-9a-f]{6})\)`,
+              String.raw`--${kebab(name)}:\s*light-dark\((#[0-9a-f]{6}),\s*(#[0-9a-f]{6})\)`,
               "u"
             ).exec(css)
           );

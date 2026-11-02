@@ -9,6 +9,7 @@ import {
   whiteBackground,
 } from "@axonometric/contracts";
 import type { ChapterStop, MapState, View } from "@axonometric/contracts";
+import { svgFileOf } from "@axonometric/drawing";
 import {
   Array as Arr,
   Console,
@@ -42,16 +43,6 @@ export class ExportRejected extends Schema.TaggedError<
 >()("ExportRejected", { reason: Schema.String }) {
   public override get [CliError.userMessage]() {
     return `${this.reason} export wrote nothing.`;
-  }
-}
-
-/** The format is valid but its renderer hasn't landed. */
-export class ExportNotYet extends Schema.TaggedError<
-  ExportNotYet,
-  { readonly brand: unique symbol }
->()("ExportNotYet", { format: Schema.Literals(["svg", "png"]) }) {
-  public override get [CliError.userMessage]() {
-    return `--format ${this.format} isn't available yet: the command can't draw the map without a browser until the shared renderer lands. Use --format excalidraw, or the page's Export menu. export wrote nothing.`;
   }
 }
 
@@ -136,29 +127,19 @@ interface Drawing {
   readonly state: MapState;
   readonly view: View;
   readonly background: Background;
+  /** The chapter's index, from 0. */
   readonly chapter: number;
 }
 
 /**
- * The SVG of a view and chapter. The page draws it from the browser's
- * layout, and the command has none, so this fails until the shared renderer
- * lands.
+ * A format's file: text, or the bytes of a PNG. The SVG comes from the same
+ * `svgFileOf` as the page's Export menu, drawn in the light palette, and a
+ * PNG is that SVG rasterised.
  */
-const svgOf = (
-  _drawing: Drawing,
-  format: "svg" | "png"
-): Effect.Effect<string, ExportNotYet> =>
-  Effect.fail(ExportNotYet.make({ format }));
-
-/** A format's file: text, or the bytes of a PNG. */
 const contentOf = Effect.fnUntraced(function* (
   format: Format,
   drawing: Drawing
-): Effect.fn.Return<
-  string | Uint8Array,
-  ExportNotYet | RasteriseFailed,
-  FileSystem.FileSystem | Path.Path
-> {
+): Effect.fn.Return<string | Uint8Array, RasteriseFailed> {
   if (format === "excalidraw") {
     return excalidrawText(
       excalidrawOf({
@@ -170,9 +151,9 @@ const contentOf = Effect.fnUntraced(function* (
     );
   }
 
-  const svg = yield* svgOf(drawing, format);
+  const { text } = svgFileOf({ ...drawing, theme: "light" });
 
-  return format === "svg" ? svg : yield* rasterise(svg, pngScale);
+  return format === "svg" ? text : yield* rasterise(text, pngScale);
 });
 
 const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
@@ -223,7 +204,7 @@ const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
     state,
     view,
     background,
-    chapter: index + 1,
+    chapter: index,
   });
 
   yield* fs.makeDirectory(path.dirname(target), { recursive: true });
@@ -249,7 +230,7 @@ export const exportCommand = Command.make(
     format: choice("format", formats).pipe(
       Flag.withDefault("svg"),
       Flag.withDescription(
-        "The file to write: an SVG or PNG of one view and chapter, or an Excalidraw file of the whole map at Plan view's positions"
+        "The file to write: an SVG or PNG of one view and chapter, like the page's Export menu, or an Excalidraw file of the whole map at Plan view's positions"
       )
     ),
     view: choice("view", views).pipe(
@@ -287,7 +268,7 @@ export const exportCommand = Command.make(
     {
       command:
         "axonometric export docs/pipeline/map --format png --view plan --chapter 3 --background white",
-      description: "Draw chapter 3 in Plan view on white (not available yet)",
+      description: "Draw chapter 3 in Plan view on white as a PNG",
     },
   ])
 );

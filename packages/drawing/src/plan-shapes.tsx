@@ -1,12 +1,12 @@
-import { growRect } from "@axonometric/contracts";
+import { growRect, toPoints } from "@axonometric/contracts";
 import type { ScreenPoint, ScreenRect, Shape } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import type { ReactNode } from "react";
 
-import { toPoints } from "./projection.ts";
+import { useDrawing } from "./drawing-context.ts";
+import { LookContext, lookOf, useHatching, useLook } from "./look.ts";
 import { CodeChip, OffMark } from "./shapes.tsx";
 import type { StructureDrawingProps } from "./structure-drawing.ts";
-import { StructureTarget } from "./structure-target.tsx";
 
 // How each shape is drawn in Plan view: its footprint as a flat box seen
 // from above, with a hatched strip along the bottom edge where the Iso view
@@ -24,9 +24,8 @@ interface IconProps {
   readonly hatch: string;
 }
 
-const face = "fill-face";
-
 function BoxIcon() {
+  const { face } = useLook();
   // A cube, the Iso view's box in miniature.
   const s = iconSize;
 
@@ -42,7 +41,7 @@ function BoxIcon() {
           { sx: -s, sy: s / 2 },
           { sx: -s, sy: -s / 2 },
         ])}
-        className={face}
+        fill={face}
       />
       <polyline
         points={toPoints([
@@ -58,6 +57,7 @@ function BoxIcon() {
 }
 
 function TallIcon() {
+  const { face } = useLook();
   // A tall, narrow block of stacked floors: the brain stands highest.
   const s = iconSize;
   const floors = [-0.5, 0, 0.5];
@@ -70,7 +70,7 @@ function TallIcon() {
         y={-s * 1.1}
         width={s * 1.2}
         height={s * 2.2}
-        className={face}
+        fill={face}
       />
       {Arr.map(floors, (at) => (
         <line key={at} x1={-s * 0.6} y1={s * at} x2={s * 0.6} y2={s * at} />
@@ -80,6 +80,7 @@ function TallIcon() {
 }
 
 function StoreIcon() {
+  const { face } = useLook();
   // Three stacked drums.
   const rx = iconSize;
   const ry = iconSize * 0.36;
@@ -96,16 +97,17 @@ function StoreIcon() {
             key={index}
             data-face=""
             d={`M${-rx},${y} L${-rx},${y + layer} A${rx},${ry} 0 0 0 ${rx},${y + layer} L${rx},${y} Z`}
-            className={face}
+            fill={face}
           />
         );
       })}
-      <ellipse data-face="" cx={0} cy={top} rx={rx} ry={ry} className={face} />
+      <ellipse data-face="" cx={0} cy={top} rx={rx} ry={ry} fill={face} />
     </>
   );
 }
 
 function CardsIcon() {
+  const { face } = useLook();
   // A fanned deck: three cards, each a little further down and right.
   const s = iconSize;
 
@@ -119,7 +121,7 @@ function CardsIcon() {
           y={-s + index * 4}
           width={s * 2 - 8}
           height={s * 2 - 8}
-          className={face}
+          fill={face}
         />
       ))}
     </>
@@ -127,27 +129,30 @@ function CardsIcon() {
 }
 
 function SlabIcon({ hatch }: IconProps) {
+  const { face } = useLook();
+  const hatching = useHatching(hatch);
   // A wide, flat block, hatched across its top like the Iso view's slab.
   const s = iconSize;
   const top = { x: -s * 2, y: -s * 0.55, width: s * 4, height: s * 0.8 };
 
   return (
     <>
-      <rect data-face="" {...top} className={face} />
-      <rect data-hatch="" {...top} fill={`url(#${hatch})`} stroke="none" />
+      <rect data-face="" {...top} fill={face} />
+      {hatching === undefined ? null : <rect {...top} {...hatching} />}
       <rect
         data-face=""
         x={top.x}
         y={top.y + top.height}
         width={top.width}
         height={s * 0.35}
-        className={face}
+        fill={face}
       />
     </>
   );
 }
 
 function ScreenIcon() {
+  const { face, paint } = useLook();
   // A screen with lines of text on it.
   const s = iconSize;
 
@@ -159,14 +164,14 @@ function ScreenIcon() {
         y={-s * 0.85}
         width={s * 2.4}
         height={s * 1.7}
-        className={face}
+        fill={face}
       />
       <rect
         x={-s * 0.95}
         y={-s * 0.6}
         width={s * 1.9}
         height={s * 1.2}
-        className="fill-paper"
+        fill={paint.paper}
         strokeWidth={0.9}
       />
       {Arr.map([-0.3, 0, 0.3], (at, index) => (
@@ -184,6 +189,7 @@ function ScreenIcon() {
 }
 
 function GateIcon() {
+  const { face, solid } = useLook();
   // A box with a dark band across it.
   const s = iconSize;
 
@@ -195,26 +201,21 @@ function GateIcon() {
         y={-s}
         width={s * 2}
         height={s * 2}
-        className={face}
+        fill={face}
       />
-      <rect
-        x={-s}
-        y={-s * 0.25}
-        width={s * 2}
-        height={s * 0.5}
-        className="fill-ink"
-      />
+      <rect x={-s} y={-s * 0.25} width={s * 2} height={s * 0.5} fill={solid} />
     </>
   );
 }
 
 function JobIcon() {
+  const { face } = useLook();
   // A clock.
   const s = iconSize;
 
   return (
     <>
-      <circle data-face="" r={s} className={face} />
+      <circle data-face="" r={s} fill={face} />
       <path
         d={`M0,${-s * 0.65} L0,0 L${s * 0.5},0`}
         fill="none"
@@ -225,6 +226,7 @@ function JobIcon() {
 }
 
 function PersonIcon() {
+  const { face } = useLook();
   // A head and shoulders.
   const s = iconSize;
 
@@ -233,14 +235,15 @@ function PersonIcon() {
       <path
         data-face=""
         d={`M${-s},${s} A${s},${s * 0.9} 0 0 1 ${s},${s} Z`}
-        className={face}
+        fill={face}
       />
-      <circle data-face="" cy={-s * 0.35} r={s * 0.5} className={face} />
+      <circle data-face="" cy={-s * 0.35} r={s * 0.5} fill={face} />
     </>
   );
 }
 
 function DocumentIcon() {
+  const { face } = useLook();
   // A page with a folded corner and lines of text.
   const s = iconSize;
   const fold = s * 0.6;
@@ -258,7 +261,7 @@ function DocumentIcon() {
           { sx: right, sy: s },
           { sx: left, sy: s },
         ])}
-        className={face}
+        fill={face}
       />
       <g data-fold="">
         <polygon
@@ -268,7 +271,7 @@ function DocumentIcon() {
             { sx: right - fold, sy: -s + fold },
             { sx: right, sy: -s + fold },
           ])}
-          className={face}
+          fill={face}
         />
       </g>
       {Arr.map([0, 0.35, 0.7], (at, index) => (
@@ -286,6 +289,7 @@ function DocumentIcon() {
 }
 
 function ExternalIcon() {
+  const { face } = useLook();
   // An arrow coming in from outside, drawn lighter than a hop.
   const s = iconSize;
 
@@ -298,7 +302,7 @@ function ExternalIcon() {
         y={-s * 0.8}
         width={s * 1.2}
         height={s * 1.6}
-        className={face}
+        fill={face}
       />
       <path
         d={`M${-s},0 L${s * 0.4},0 M${s * 0.05},${-s * 0.35} L${s * 0.4},0 L${s * 0.05},${s * 0.35}`}
@@ -338,6 +342,8 @@ function Box({
   readonly rect: ScreenRect;
   readonly hatch: string;
 }) {
+  const { face } = useLook();
+  const hatching = useHatching(hatch);
   const width = rect.right - rect.left;
   const height = rect.bottom - rect.top;
 
@@ -349,17 +355,17 @@ function Box({
         y={rect.top}
         width={width}
         height={height}
-        className={face}
+        fill={face}
       />
-      <rect
-        data-hatch=""
-        x={rect.left}
-        y={rect.bottom - stripHeight}
-        width={width}
-        height={stripHeight}
-        fill={`url(#${hatch})`}
-        stroke="none"
-      />
+      {hatching === undefined ? null : (
+        <rect
+          x={rect.left}
+          y={rect.bottom - stripHeight}
+          width={width}
+          height={stripHeight}
+          {...hatching}
+        />
+      )}
       <line
         x1={rect.left}
         y1={rect.bottom - stripHeight}
@@ -388,54 +394,59 @@ export function PlanStructure({
   hatch,
   isNew,
 }: StructureDrawingProps) {
+  const { paint, Frame } = useDrawing();
+  const look = lookOf(structure.status, paint);
   const Icon = icons[structure.shape];
   const external = structure.shape === "external";
   const box = external ? growRect(bounds, -haloInset) : bounds;
   const ring = growRect(box, ringGap);
 
   return (
-    <StructureTarget
+    <Frame
       id={structure.id}
-      data-shape={structure.shape}
-      data-status={structure.status}
-      data-new={isNew}
-      className="stroke-ink"
-      strokeWidth={1.2}
-      strokeLinejoin="round"
+      name={structure.name}
+      shape={structure.shape}
+      status={structure.status}
+      isNew={isNew}
+      look={look}
     >
-      {external ? (
-        <rect
-          data-external-ring=""
-          x={ring.left}
-          y={ring.top}
-          width={ring.right - ring.left}
-          height={ring.bottom - ring.top}
-          className="fill-paper"
-          strokeWidth={0.9}
-        />
-      ) : null}
-      <Box rect={box} hatch={hatch} />
-      {isNew ? (
-        <rect
-          data-new-marker={structure.id}
-          x={box.left}
-          y={box.top}
-          width={box.right - box.left}
-          height={box.bottom - box.top}
-          className="fill-ink/15 pointer-events-none"
-          stroke="none"
-        />
-      ) : null}
-      <g
-        data-plan-icon={structure.shape}
-        transform={`translate(${(box.left + box.right) / 2} ${(box.top + box.bottom - stripHeight) / 2})`}
-      >
-        <Icon hatch={hatch} />
-      </g>
-      {chip === undefined ? null : (
-        <CodeChip code={structure.code} rect={chip} />
-      )}
-      {structure.status === "off" ? <OffMark at={offMarkAt(box)} /> : null}
-    </StructureTarget>
+      <LookContext value={look}>
+        {external ? (
+          <rect
+            data-external-ring=""
+            x={ring.left}
+            y={ring.top}
+            width={ring.right - ring.left}
+            height={ring.bottom - ring.top}
+            fill={paint.paper}
+            strokeWidth={0.9}
+          />
+        ) : null}
+        <Box rect={box} hatch={hatch} />
+        {isNew ? (
+          <rect
+            data-new-marker={structure.id}
+            x={box.left}
+            y={box.top}
+            width={box.right - box.left}
+            height={box.bottom - box.top}
+            fill={paint.ink}
+            fillOpacity={0.15}
+            pointerEvents="none"
+            stroke="none"
+          />
+        ) : null}
+        <g
+          data-plan-icon={structure.shape}
+          transform={`translate(${(box.left + box.right) / 2} ${(box.top + box.bottom - stripHeight) / 2})`}
+        >
+          <Icon hatch={hatch} />
+        </g>
+        {chip === undefined ? null : (
+          <CodeChip code={structure.code} rect={chip} />
+        )}
+        {structure.status === "off" ? <OffMark at={offMarkAt(box)} /> : null}
+      </LookContext>
+    </Frame>
   );
 }

@@ -42,6 +42,13 @@ const readChoice = (): ThemeChoice => {
 const readSystem = (): Theme =>
   globalThis.matchMedia(darkQuery).matches ? "dark" : "light";
 
+/** The theme the page is showing now: the choice, or else the system's. */
+export const shownTheme = (): Theme => {
+  const choice = readChoice();
+
+  return choice === "system" ? readSystem() : choice;
+};
+
 const subscribeChoice = (listener: () => void) => {
   listeners.add(listener);
 

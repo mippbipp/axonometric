@@ -1,0 +1,303 @@
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, FileSystem, Path } from "effect";
+import type { Page } from "playwright";
+
+import { openPage } from "./browser.ts";
+import {
+  crowdedMap,
+  fullMap,
+  minimalMap,
+  pipelineMap,
+  shapesMap,
+} from "./fixtures.ts";
+import type { HomeFiles } from "./harness.ts";
+import { makeHome, runCli } from "./harness.ts";
+import { decodePng } from "./png.ts";
+
+// Seam 1: `export --format svg` writes the SVG the page's Export menu saves.
+// Both call `svgFileOf`, so they should be byte-equal. The comparison is
+// made on the files each really writes, with one normalisation, listed in
+// `normalised`. The tests open the built page in Chromium.
+
+const decoder = new TextDecoder();
+
+const click = (page: Page, selector: string) =>
+  Effect.promise(() => page.locator(selector).first().click());
+
+/** Opens the Export menu, picks `item`, and returns the file it saved. */
+const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
+  yield* click(page, '[data-control="export"]');
+
+  const [download] = yield* Effect.promise(() =>
+    Promise.all([
+      page.waitForEvent("download"),
+      page.locator(`[data-export-item="${item}"]`).click(),
+    ])
+  );
+
+  const file = yield* Effect.promise(() => download.path());
+  const fs = yield* FileSystem.FileSystem;
+
+  return yield* fs.readFile(file);
+});
+
+/**
+ * What differs between the two files on purpose: nothing so far. The page
+ * draws in the theme it shows, and Chromium starts in the light one, as the
+ * command always does; both give ids from the same prefix; both come from
+ * one `svgFileOf`. A difference here is a bug.
+ */
+const normalised = (text: string) => text;
+
+interface Fixture {
+  readonly name: string;
+  readonly system: string;
+  readonly files: Effect.Effect<HomeFiles>;
+  /** The ids of the chapters to compare, with their numbers from 1. */
+  readonly chapters: readonly (readonly [id: string, number: number])[];
+}
+
+// Maps with no chapters have one, "whole-map", so they compare only that.
+const fixtures: readonly Fixture[] = [
+  {
+    name: "the starter map",
+    system: "pipeline",
+    files: minimalMap,
+    chapters: [["whole-map", 1]],
+  },
+  {
+    name: "every shape",
+    system: "shapes",
+    files: shapesMap,
+    chapters: [["whole-map", 1]],
+  },
+  {
+    name: "the review map",
+    system: "review",
+    files: fullMap,
+    chapters: [
+      ["c-page", 1],
+      ["c-all", 3],
+    ],
+  },
+  {
+    name: "the crowded map",
+    system: "crowded",
+    files: crowdedMap,
+    chapters: [
+      ["c-edge", 1],
+      ["c-all", 2],
+    ],
+  },
+  {
+    name: "the flake pipeline",
+    system: "flake-pipeline",
+    files: pipelineMap,
+    chapters: [
+      ["c-monday", 1],
+      ["c-all", 8],
+    ],
+  },
+];
+
+describe("export --format svg", () => {
+  for (const fixture of fixtures) {
+    it.live(
+      `equals the page's SVG for ${fixture.name}, in both views and its chapters`,
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const path = yield* Path.Path;
+            const fs = yield* FileSystem.FileSystem;
+            const home = yield* makeHome(yield* fixture.files);
+            const map = path.join(home, fixture.system, "map");
+            const built = yield* runCli(home, ["build", map]);
+
+            assert.strictEqual(built.exitCode, 0, built.stderr);
+
+            const { page } = yield* openPage(
+              path.join(home, fixture.system, `${fixture.system}.html`)
+            );
+
+            yield* Effect.promise(() =>
+              page.setViewportSize({ width: 1280, height: 800 })
+            );
+
+            for (const view of ["iso", "plan"] as const) {
+              yield* click(page, `[data-view-toggle] [data-view="${view}"]`);
+
+              for (const [id, number] of fixture.chapters) {
+                yield* click(
+                  page,
+                  `[data-chapter-rail] button[data-chapter="${id}"]`
+                );
+                yield* Effect.promise(() =>
+                  page
+                    .locator(
+                      `[data-walkthrough][data-chapter="${id}"][data-view="${view}"]`
+                    )
+                    .waitFor()
+                );
+
+                const target = path.join(home, "out", `${view}-${number}.svg`);
+
+                const exported = yield* runCli(home, [
+                  "export",
+                  map,
+                  "--format",
+                  "svg",
+                  "--view",
+                  view,
+                  "--chapter",
+                  String(number),
+                  "--output",
+                  target,
+                ]);
+
+                assert.strictEqual(exported.exitCode, 0, exported.stderr);
+
+                const fromPage = normalised(
+                  decoder.decode(yield* exportFile(page, "svg"))
+                );
+                const fromCli = normalised(yield* fs.readFileString(target));
+
+                assert.isTrue(
+                  fromPage === fromCli,
+                  `${fixture.system} ${view} chapter ${number}: the CLI's SVG differs from the page's`
+                );
+                assert.include(
+                  fromCli,
+                  `${fixture.system}-${view}-chapter-${number}-title`
+                );
+              }
+            }
+          }).pipe(Effect.provide(NodeServices.layer))
+        ),
+      240_000
+    );
+  }
+
+  it.live(
+    "the CLI's SVG is the page's on white too",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const fs = yield* FileSystem.FileSystem;
+          const home = yield* makeHome(yield* crowdedMap);
+          const map = path.join(home, "crowded", "map");
+
+          assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
+
+          const { page } = yield* openPage(
+            path.join(home, "crowded", "crowded.html")
+          );
+
+          yield* click(page, '[data-control="export"]');
+          yield* click(page, '[data-export-item="background"]');
+          yield* Effect.promise(() => page.keyboard.press("Escape"));
+
+          const target = path.join(home, "white.svg");
+
+          yield* runCli(home, [
+            "export",
+            map,
+            "--format",
+            "svg",
+            "--chapter",
+            "2",
+            "--background",
+            "white",
+            "-o",
+            target,
+          ]);
+
+          const fromPage = decoder.decode(yield* exportFile(page, "svg"));
+
+          // The page opens on chapter 1, so compare the same chapter.
+          yield* click(
+            page,
+            '[data-chapter-rail] button[data-chapter="c-all"]'
+          );
+
+          const lastFromPage = decoder.decode(yield* exportFile(page, "svg"));
+          const fromCli = yield* fs.readFileString(target);
+
+          assert.isFalse(fromPage === fromCli);
+          assert.isTrue(lastFromPage === fromCli);
+          assert.include(fromCli, 'fill="#ffffff"');
+        }).pipe(Effect.provide(NodeServices.layer))
+      ),
+    120_000
+  );
+});
+
+describe("export --format png", () => {
+  it.effect(
+    "is twice the SVG's size, on paper or on white",
+    () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const fs = yield* FileSystem.FileSystem;
+        const home = yield* makeHome(yield* crowdedMap);
+        const map = path.join(home, "crowded", "map");
+
+        const sizeOf = (text: string) => {
+          const header =
+            /<svg[^>]* width="(?<width>\d+)" height="(?<height>\d+)"/u.exec(
+              text
+            )?.groups;
+
+          return {
+            width: Number(header?.width),
+            height: Number(header?.height),
+          };
+        };
+
+        const corner = Effect.fnUntraced(function* (background: string) {
+          const svg = path.join(home, `${background}.svg`);
+          const png = path.join(home, `${background}.png`);
+          const args = [
+            "export",
+            map,
+            "--view",
+            "plan",
+            "--background",
+            background,
+          ];
+          const drawn = yield* runCli(home, [
+            ...args,
+            "--format",
+            "svg",
+            "-o",
+            svg,
+          ]);
+          const rasterised = yield* runCli(home, [
+            ...args,
+            "--format",
+            "png",
+            "-o",
+            png,
+          ]);
+
+          assert.strictEqual(drawn.exitCode, 0, drawn.stderr);
+          assert.strictEqual(rasterised.exitCode, 0, rasterised.stderr);
+
+          const size = sizeOf(yield* fs.readFileString(svg));
+          const image = yield* decodePng(yield* fs.readFile(png));
+
+          assert.deepStrictEqual(
+            { width: image.width, height: image.height },
+            { width: size.width * 2, height: size.height * 2 }
+          );
+
+          return image.pixel(2, 2);
+        });
+
+        assert.deepStrictEqual(yield* corner("paper"), [230, 223, 190, 255]);
+        assert.deepStrictEqual(yield* corner("white"), [255, 255, 255, 255]);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    120_000
+  );
+});

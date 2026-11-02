@@ -273,42 +273,10 @@ describe("export", () => {
             chapter,
           ]);
 
-          // The chapter was found, so the command got as far as drawing.
-          assert.strictEqual(result.exitCode, 1);
-          assert.notInclude(result.stderr, "Unknown chapter");
-          assert.include(result.stderr, "isn't available yet");
+          assert.strictEqual(result.exitCode, 0, result.stderr);
+          assert.isDefined(result.files["crowded/crowded-iso-chapter-1.svg"]);
         }
       }).pipe(Effect.provide(NodeServices.layer))
-    );
-  });
-
-  describe("--format svg and png", () => {
-    it.effect.each(["svg", "png"] as const)(
-      "%s says it isn't available yet and writes nothing",
-      (format) =>
-        Effect.gen(function* () {
-          const path = yield* Path.Path;
-          const home = yield* makeHome(yield* minimalMap);
-          const map = path.join(home, "pipeline", "map");
-
-          const result = yield* runCli(home, [
-            "export",
-            map,
-            "--format",
-            format,
-          ]);
-
-          assert.strictEqual(result.exitCode, 1);
-          assert.include(
-            result.stderr,
-            `--format ${format} isn't available yet`
-          );
-          assert.include(result.stderr, "--format excalidraw");
-          assert.deepStrictEqual(mapFiles(result.files), [
-            "pipeline/map/data.mjs",
-            "pipeline/map/layout.json",
-          ]);
-        }).pipe(Effect.provide(NodeServices.layer))
     );
   });
 

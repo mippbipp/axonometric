@@ -6,27 +6,16 @@ import {
   whiteBackground,
 } from "@axonometric/contracts";
 import type { View } from "@axonometric/contracts";
+import { svgFileOf } from "@axonometric/drawing";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Effect } from "effect";
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, Ref } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { download, ExportFailed, exportSvg, pngOf } from "./svg-export.ts";
-import type { ExportLabel } from "./svg-export.ts";
+import { download, ExportFailed, pngOf } from "./svg-export.ts";
+import { shownTheme } from "./theme.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
-
-const viewNames = {
-  iso: "Iso view",
-  plan: "Plan view",
-} as const satisfies Record<View, string>;
-
-/** The map's drawing on the page: the pan-and-zoom group of its view. */
-const drawnMap = () => {
-  const world = document.querySelector("[data-map-layer] [data-viewport]");
-
-  return world instanceof SVGGElement ? world : null;
-};
 
 const items = ["svg", "png", "excalidraw", "background"] as const;
 
@@ -86,7 +75,7 @@ function MenuItem({
  * nothing.
  */
 export function ExportMenu({ view }: { readonly view: View }) {
-  const { state, stop, index, stops } = useWalkthrough();
+  const { state, index } = useWalkthrough();
   const [open, setOpen] = useState(false);
   const [onWhite, setOnWhite] = useState(false);
   const [problem, setProblem] = useState("");
@@ -132,22 +121,18 @@ export function ExportMenu({ view }: { readonly view: View }) {
     };
   }, []);
 
-  const label = (): ExportLabel => ({
-    prefix: `${name}-`,
-    title: `${state.data.overview.title}: ${viewNames[view]}, chapter ${chapter}`,
-    description: `${viewNames[view]} of ${state.data.overview.title}, at chapter ${chapter} of ${stops.length}, ${stop.title}. ${stop.lede}`,
-    background: onWhite ? "white" : "paper",
-  });
-
-  const svgFile = () => {
-    const world = drawnMap();
-
-    return world === null
-      ? Effect.fail(
-          ExportFailed.make({ reason: "The map isn't on the page to export." })
-        )
-      : exportSvg({ world, label: label() });
-  };
+  const svgFile = () =>
+    Effect.try({
+      try: () =>
+        svgFileOf({
+          state,
+          view,
+          chapter: index,
+          background: onWhite ? "white" : "paper",
+          theme: shownTheme(),
+        }),
+      catch: () => ExportFailed.make({ reason: "The map couldn't be drawn." }),
+    });
 
   const actions: Readonly<
     Record<Export, () => Effect.Effect<void, ExportFailed>>

@@ -36,6 +36,10 @@ const shared: UserConfig = {
   platform: "node",
   target: "node24.22",
   dts: false,
+  // React picks its development or production build from NODE_ENV at run
+  // time. Fixing it here drops the development build, which would run
+  // whenever the variable is unset, and keeps the bundle's size down.
+  define: { "process.env.NODE_ENV": '"production"' },
   // The npm package is one self-contained file. Everything, including
   // @axonometric/contracts and effect, is bundled, so the output may import
   // Node built-ins only.
