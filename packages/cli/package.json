@@ -2,7 +2,19 @@
   "name": "axonometric",
   "version": "0.1.0",
   "description": "Editable architecture maps built with an AI agent",
+  "keywords": [
+    "ai-agent",
+    "architecture",
+    "cli",
+    "diagram",
+    "isometric"
+  ],
+  "homepage": "https://github.com/mippbipp/axonometric#readme",
+  "bugs": {
+    "url": "https://github.com/mippbipp/axonometric/issues"
+  },
   "license": "MIT",
+  "author": "mippbipp",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mippbipp/axonometric.git"

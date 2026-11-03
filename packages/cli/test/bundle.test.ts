@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path, Stream, String as Str } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import packageJson from "../package.json" with { type: "json" };
 import { minimalMap } from "./fixtures.ts";
 import { makeHome } from "./harness.ts";
 
@@ -48,7 +49,10 @@ describe("the built bundle", () => {
       const result = yield* runBundle(home, ["--version"]);
 
       assert.strictEqual(result.exitCode, 0);
-      assert.strictEqual(Str.trim(result.stdout), "axonometric v0.1.0");
+      assert.strictEqual(
+        Str.trim(result.stdout),
+        `axonometric v${packageJson.version}`
+      );
     })
   );
 
