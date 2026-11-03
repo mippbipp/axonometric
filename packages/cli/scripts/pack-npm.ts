@@ -8,9 +8,11 @@
 // has no file of its own. dist/sea.cjs is only for the single-executable
 // binaries.
 //
-// pnpm packs it, not npm, because pnpm replaces `workspace:` and `catalog:`
-// specifiers with real versions. The repo's README.md and LICENSE are copied
-// into the package folder for the pack and removed afterwards.
+// The pack runs in a temporary folder that holds only those files: the
+// bundle, the repo's README.md and LICENSE, and package.json without the
+// fields that only matter in this repo. Everything is bundled, so the
+// devDependencies and the build scripts mean nothing to someone installing
+// the package, and package scanners count them against it.
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import {
   Array as Arr,
@@ -40,14 +42,8 @@ const expectedFiles = [
 
 const repoFiles = ["README.md", "LICENSE"] as const;
 
-const forbidden = Schema.optionalKey(Schema.Never);
-
-const InstallScriptsAbsent = Schema.Struct({
-  preinstall: forbidden,
-  install: forbidden,
-  postinstall: forbidden,
-  prepare: forbidden,
-});
+/** package.json fields that only matter in this repo, left out of the tarball. */
+const repoOnlyFields = ["devDependencies", "scripts"] as const;
 
 // npm's provenance check compares repository.url with the GitHub repo that
 // published the package.
@@ -73,9 +69,19 @@ const PublishedManifest = Schema.Struct({
   optionalDependencies: Schema.optionalKey(Schema.Never),
   peerDependencies: Schema.optionalKey(Schema.Never),
   bundleDependencies: Schema.optionalKey(Schema.Never),
-  // npm runs these on the user's machine when the package installs.
-  scripts: Schema.optionalKey(InstallScriptsAbsent),
+  devDependencies: Schema.optionalKey(Schema.Never),
+  // npm runs install scripts on the user's machine, and the rest only work
+  // in this repo, so the tarball has none.
+  scripts: Schema.optionalKey(Schema.Never),
 });
+
+const JsonObjectText = Schema.fromJsonString(
+  Schema.Record(Schema.String, Schema.Unknown)
+);
+
+const decodeJsonObject = Schema.decodeUnknownEffect(JsonObjectText);
+
+const encodeJsonObject = Schema.encodeEffect(JsonObjectText);
 
 const decodeManifest = Schema.decodeUnknownEffect(
   Schema.fromJsonString(PublishedManifest),
@@ -120,35 +126,49 @@ const runText = Effect.fnUntraced(function* (
 const sorted = (paths: readonly string[]) =>
   Arr.join(Arr.sort(paths, Order.String), "\n  ");
 
-/** Copies the repo's README.md and LICENSE in, and removes them afterwards. */
-const withRepoFiles = Effect.fnUntraced(function* (
+/**
+ * Copies what the tarball holds into a temporary folder that lasts as long
+ * as the scope, with package.json trimmed of `repoOnlyFields`, and returns
+ * the folder.
+ */
+const staged = Effect.fnUntraced(function* (
   packageDir: string,
   repoDir: string
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  for (const file of repoFiles) {
-    const target = path.join(packageDir, file);
+  const stage = yield* fs.makeTempDirectoryScoped({
+    prefix: "axonometric-pack-",
+  });
 
-    if (yield* fs.exists(target)) {
-      return yield* PackCheckFailed.make({
-        message: `${target} exists. The pack copies it from the repo root, so remove it.`,
-      });
-    }
+  yield* fs.makeDirectory(path.join(stage, "dist"));
+  yield* fs.copyFile(
+    path.join(packageDir, "dist", "bin.mjs"),
+    path.join(stage, "dist", "bin.mjs")
+  );
+
+  for (const file of repoFiles) {
+    yield* fs.copyFile(path.join(repoDir, file), path.join(stage, file));
   }
 
-  return yield* Effect.acquireRelease(
-    Effect.forEach(repoFiles, (file) =>
-      fs.copyFile(path.join(repoDir, file), path.join(packageDir, file))
-    ),
-    () =>
-      Effect.forEach(
-        repoFiles,
-        (file) => fs.remove(path.join(packageDir, file), { force: true }),
-        { discard: true }
-      ).pipe(Effect.orDie)
+  const manifest = yield* decodeJsonObject(
+    yield* fs.readFileString(path.join(packageDir, "package.json"))
+  ).pipe(
+    Effect.mapError((error) =>
+      PackCheckFailed.make({
+        message: `Can't read package.json:\n${error.message}`,
+      })
+    )
   );
+
+  const trimmed = yield* encodeJsonObject(
+    Rec.filter(manifest, (_, key) => !Arr.contains(repoOnlyFields, key))
+  ).pipe(Effect.orDie);
+
+  yield* fs.writeFileString(path.join(stage, "package.json"), trimmed);
+
+  return stage;
 });
 
 const packNpm = Effect.gen(function* () {
@@ -169,9 +189,8 @@ const packNpm = Effect.gen(function* () {
   yield* fs.remove(tarball, { force: true });
 
   const packOutput = yield* Effect.scoped(
-    Effect.andThen(
-      withRepoFiles(packageDir, repoDir),
-      runText("pnpm", ["pack", "--json", "--out", tarball], packageDir)
+    Effect.flatMap(staged(packageDir, repoDir), (stage) =>
+      runText("pnpm", ["pack", "--json", "--out", tarball], stage)
     )
   );
 
