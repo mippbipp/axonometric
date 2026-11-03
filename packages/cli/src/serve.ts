@@ -740,7 +740,20 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
     const server = yield* listen(host, options.port).pipe(Scope.provide(scope));
 
-    yield* HttpServer.serveEffect()(app).pipe(
+    // A defect answers 500 with an empty body, so print why. Refusals are
+    // typed failures with their own answers, and a closed connection is an
+    // interruption, so neither is printed.
+    const answering = app.pipe(
+      Effect.tapCause((cause) =>
+        Cause.hasDies(cause)
+          ? Console.error(
+              `serve could not answer a request: ${Cause.pretty(cause)}`
+            )
+          : Effect.void
+      )
+    );
+
+    yield* HttpServer.serveEffect()(answering).pipe(
       Effect.provideService(HttpServer.HttpServer, server),
       Scope.provide(scope)
     );

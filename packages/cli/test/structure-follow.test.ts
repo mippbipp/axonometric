@@ -85,6 +85,27 @@ const readProposals = Effect.fnUntraced(function* (home: string) {
   );
 }, Effect.provide(NodeServices.layer));
 
+/**
+ * Waits until proposals.json in `home` has been written at least once. The
+ * page shows an edit as pending before the server has saved it, so a test
+ * that reads the file after seeing the pending mark waits here first.
+ */
+const savedProposals = Effect.fnUntraced(function* (home: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const file = path.join(home, "proposals.json");
+
+  for (let tries = 0; tries < 150; tries++) {
+    if (yield* fs.exists(file)) {
+      return yield* readProposals(home);
+    }
+
+    yield* Effect.sleep("100 millis");
+  }
+
+  return assert.fail("proposals.json was never written");
+}, Effect.provide(NodeServices.layer));
+
 const report = (page: Page) =>
   Effect.promise(() => page.evaluate<DrawingReport>(drawingReport));
 
@@ -424,7 +445,7 @@ describe("a group change", () => {
       yield* Effect.promise(() => page.mouse.up());
       yield* pendingWait(page);
 
-      const proposals = yield* readProposals(home);
+      const proposals = yield* savedProposals(home);
 
       assert.isAbove(proposals.layout.length, 0);
       assert.deepStrictEqual(proposals.structures ?? [], []);
@@ -449,7 +470,7 @@ describe("the open page after verdict changed --as and commit", () => {
         yield* click(page, '[data-add="submit"]');
         yield* pendingWait(page);
 
-        const [proposal] = (yield* readProposals(home)).structures ?? [];
+        const [proposal] = (yield* savedProposals(home)).structures ?? [];
 
         const provisional =
           proposal?.change.action === "add" ? proposal.change.structure.id : "";

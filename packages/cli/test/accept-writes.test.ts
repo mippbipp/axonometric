@@ -35,7 +35,7 @@ const served = Effect.gen(function* () {
   const home = path.join(root, "review", "map");
   const serve = yield* startServe(home, ["--port", "0"]);
 
-  return { root, home, url: serve.url };
+  return { root, home, url: serve.url, output: serve.output };
 }).pipe(Effect.provide(NodeServices.layer));
 
 interface Sent {
@@ -486,12 +486,12 @@ describe("accepting pending layout changes over HTTP", () => {
   );
 
   it.live(
-    "leaves layout.json, proposals.json and history untouched when the revision can't be written",
+    "leaves layout.json, proposals.json and history untouched when the revision can't be written, and prints why",
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { root, home, url } = yield* served;
+        const { root, home, url, output } = yield* served;
 
         yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
 
@@ -508,6 +508,10 @@ describe("accepting pending layout changes over HTTP", () => {
           yield* fs.readFileString(path.join(home, "history")),
           "not a folder"
         );
+
+        // The 500 has an empty body, so serve prints the cause.
+        assert.include(output.stderr, "serve could not answer a request:");
+        assert.include(output.stderr, "history");
       }).pipe(Effect.provide(NodeServices.layer))
   );
 
