@@ -17,6 +17,7 @@ import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
 import { makeHome, startServe } from "./harness.ts";
+import type { RunningServe } from "./harness.ts";
 import { acceptChanges, get, moveOf } from "./revisions.ts";
 
 // The history routes of a real serve, over plain HTTP: what they list, what
@@ -44,8 +45,8 @@ interface Move {
  * Moves the page to `[x, y]` and accepts it, through the API, as the next
  * revision. `base` is the file revision of proposals.json before the move.
  */
-const acceptMove = (url: string, move: Move) =>
-  acceptChanges(url, {
+const acceptMove = (serve: RunningServe, move: Move) =>
+  acceptChanges(serve, {
     base: move.base,
     changes: [moveOf(`move-${move.to.x}-${move.to.y}`, "page", move.to)],
     message: move.message,
@@ -58,18 +59,18 @@ const servedWithTwo = Effect.gen(function* () {
   const home = path.join(root, "review", "map");
   const serve = yield* startServe(home, ["--port", "0"]);
 
-  yield* acceptMove(serve.url, {
+  yield* acceptMove(serve, {
     base: 0,
     to: { x: 4, y: 4 },
     message: "Drop the page",
   });
-  yield* acceptMove(serve.url, {
+  yield* acceptMove(serve, {
     base: 2,
     to: { x: 4, y: 8 },
     message: "Drop it further",
   });
 
-  return { root, home, url: serve.url };
+  return { root, home, url: serve.url, serve };
 }).pipe(Effect.provide(NodeServices.layer));
 
 describe("gET /api/history", () => {
@@ -266,7 +267,7 @@ describe("the events stream", () => {
     "sends HistoryUpdated when it opens, and again when a revision is saved",
     () =>
       Effect.gen(function* () {
-        const { url } = yield* servedWithTwo;
+        const { url, serve } = yield* servedWithTwo;
         const open = yield* Latch.make();
 
         const response = yield* HttpClient.HttpClient.use((client) =>
@@ -298,7 +299,7 @@ describe("the events stream", () => {
         const seen = yield* Effect.forkChild(lengths);
 
         yield* open.await;
-        yield* acceptMove(url, {
+        yield* acceptMove(serve, {
           base: 4,
           to: { x: 4, y: 10 },
           message: "Third",

@@ -89,12 +89,12 @@ const servedWithTwo = Effect.gen(function* () {
   const home = path.join(root, "review", "map");
   const serve = yield* startServe(home, ["--port", "0"]);
 
-  yield* acceptChanges(serve.url, {
+  yield* acceptChanges(serve, {
     base: 0,
     changes: [moveOf("drop-page", "page", { x: 4, y: 4 })],
     message: "Drop the page",
   });
-  yield* acceptChanges(serve.url, {
+  yield* acceptChanges(serve, {
     base: 2,
     changes: [
       moveOf("engineer-down", "engineer", { x: 0, y: 4 }),
@@ -285,7 +285,7 @@ describe("the History panel", () => {
           2
         );
 
-        yield* acceptChanges(serve.url, {
+        yield* acceptChanges(serve, {
           base: 4,
           changes: [moveOf("engineer-back", "engineer", { x: 0, y: 0 })],
           message: "Engineer home",
@@ -531,7 +531,7 @@ describe("the History panel", () => {
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 
-        yield* acceptChanges(serve.url, {
+        yield* acceptChanges(serve, {
           base: 0,
           changes: [moveOf("drop-page", "page", { x: 4, y: 4 })],
           message: "Before the rewrite",
@@ -724,12 +724,12 @@ describe("the History panel", () => {
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 
-        yield* acceptChanges(serve.url, {
+        yield* acceptChanges(serve, {
           base: 0,
           changes: [moveOf("a", "page", { x: 4, y: 4 })],
           message: "First",
         });
-        yield* acceptChanges(serve.url, {
+        yield* acceptChanges(serve, {
           base: 2,
           changes: [moveOf("b", "engineer", { x: 0, y: 4 })],
           message: "Second",
@@ -763,7 +763,7 @@ describe("the History panel", () => {
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 
-        yield* acceptChanges(serve.url, {
+        yield* acceptChanges(serve, {
           base: 0,
           changes: [moveOf("drop-page", "page", { x: 4, y: 4 })],
           message: "Before the rewrite",

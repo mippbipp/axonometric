@@ -93,21 +93,30 @@ export interface Acceptance {
   readonly message: string;
 }
 
+/** What the serve answering the writes has printed, read when one fails. */
+export interface ServeOutput {
+  readonly output: { readonly stderr: string };
+}
+
 /**
  * Saves `changes` as pending layout changes and accepts them as the next
- * revision.
+ * revision. A write the server doesn't answer with 200 fails the test with
+ * the answer and what serve printed, which says why for a 500.
  */
 export const acceptChanges = Effect.fnUntraced(function* (
-  url: string,
+  { url, output }: ServeOutput & { readonly url: string },
   { base, changes, message }: Acceptance
 ) {
+  const why = (sent: Sent) =>
+    `${sent.status}: ${sent.body}\nserve printed:\n${output.stderr}`;
+
   const put = yield* write(url, {
     method: "put",
     target: "/api/proposals/layout",
     body: { baseFileRevision: base, layout: changes },
   });
 
-  assert.strictEqual(put.status, 200, put.body);
+  assert.strictEqual(put.status, 200, why(put));
 
   const accepted = yield* write(url, {
     method: "post",
@@ -115,5 +124,5 @@ export const acceptChanges = Effect.fnUntraced(function* (
     body: { baseFileRevision: base + 1, changeIds: "all", message },
   });
 
-  assert.strictEqual(accepted.status, 200, accepted.body);
+  assert.strictEqual(accepted.status, 200, why(accepted));
 });
