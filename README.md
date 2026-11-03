@@ -21,11 +21,19 @@ npm install -g axonometric
 npx skills add mippbipp/axonometric
 ```
 
-The npm package needs Node 24.22.1 or newer. Without Node, install a standalone binary, which has Node built in:
+The npm package needs Node 24.22.1 or newer. Without Node, install a standalone binary, which has Node built in. On Linux and macOS, this installs to `~/.local/bin`:
 
-- **Linux and macOS:** `curl -fsSL https://github.com/mippbipp/axonometric/releases/latest/download/install.sh | sh` installs to `~/.local/bin`.
-- **Windows, in PowerShell:** `irm https://github.com/mippbipp/axonometric/releases/latest/download/install.ps1 | iex` installs to `%LOCALAPPDATA%\Programs\axonometric`.
-- **Nix:** `nix run github:mippbipp/axonometric -- --help`, or add `github:mippbipp/axonometric` as a flake input and install `packages.<system>.default`.
+```sh
+curl -fsSL https://github.com/mippbipp/axonometric/releases/latest/download/install.sh | sh
+```
+
+On Windows, in PowerShell, this installs to `%LOCALAPPDATA%\Programs\axonometric`:
+
+```powershell
+irm https://github.com/mippbipp/axonometric/releases/latest/download/install.ps1 | iex
+```
+
+With Nix, run `nix run github:mippbipp/axonometric -- --help`, or add `github:mippbipp/axonometric` as a flake input and install `packages.<system>.default`.
 
 The install scripts check the binary against the release's `SHA256SUMS`. Set `AXONOMETRIC_VERSION` (for example `0.1.0`) to install another version, or `AXONOMETRIC_INSTALL_DIR` to install somewhere else.
 
