@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 
+import packageJson from "../package.json" with { type: "json" };
 import { makeHome, runCli } from "./harness.ts";
 
 describe("axonometric", () => {
@@ -11,7 +12,10 @@ describe("axonometric", () => {
       const result = yield* runCli(home, ["--version"]);
 
       assert.strictEqual(result.exitCode, 0);
-      assert.strictEqual(result.stdout, "axonometric v0.1.0\n");
+      assert.strictEqual(
+        result.stdout,
+        `axonometric v${packageJson.version}\n`
+      );
       assert.strictEqual(result.stderr, "");
       assert.deepStrictEqual(result.files, {});
     })

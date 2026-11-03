@@ -5,8 +5,20 @@ name: Release
 # and on a pull request that changes how the binaries are built or installed,
 # it runs the same builds and checks without releasing anything. Other pull
 # requests skip it, and the push to main catches whatever they break.
+#
+# To release, run this workflow from main in the Actions tab and pick the
+# version bump. The `bump` job commits the new version to main, tags it, and
+# runs this workflow again on the tag, which releases. A tag pushed by hand,
+# such as a pre-release, releases the same way.
 
 on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
   push:
     tags: ["v*"]
     branches: [main]
@@ -33,15 +45,96 @@ on:
 permissions:
   contents: read
 
+# The button's run on main gets its own group, so a push to main can't
+# cancel it while it waits.
 concurrency:
-  group: release-${{ github.event.pull_request.number || github.ref }}
+  group: release-${{ github.event.pull_request.number || (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && 'bump') || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Pushes the version commit and its tag to main in one atomic push, so a
+  # commit that lands on main meanwhile fails the push and leaves no tag. A
+  # tag pushed with GITHUB_TOKEN starts no workflow, but a dispatch does, so
+  # it dispatches this workflow on the tag. That run's commit is the tagged
+  # one, which the npm provenance statement records. If the push succeeds and
+  # the dispatch fails, run `gh workflow run release.yml --ref v<version>`
+  # rather than pressing the button again, which would bump again.
+  bump:
+    if: github.event_name == 'workflow_dispatch' && github.ref_type == 'branch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
+    env:
+      BUMP: ${{ inputs.bump }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check that this is main
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "Run the release from main, not $GITHUB_REF_NAME." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - name: Check that CI passed on this commit
+        run: |
+          state=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+            --commit "$GITHUB_SHA" --json status,conclusion \
+            --jq '.[0] | if . == null then "not run" elif .status != "completed" then .status else .conclusion end')
+          if [ "$state" != success ]; then
+            echo "CI on $GITHUB_SHA is $state, not success. Release once it passes." >&2
+            exit 1
+          fi
+
+      - id: version
+        name: Bump the version
+        run: |
+          old=$(jq -r .version packages/cli/package.json)
+          case $old in
+            *-*)
+              echo "$old is a pre-release. Tag the next version by hand." >&2
+              exit 1
+              ;;
+          esac
+          IFS=. read -r major minor patch <<<"$old"
+          case $BUMP in
+            major) new="$((major + 1)).0.0" ;;
+            minor) new="$major.$((minor + 1)).0" ;;
+            patch) new="$major.$minor.$((patch + 1))" ;;
+            *)
+              echo "Unknown bump: $BUMP" >&2
+              exit 1
+              ;;
+          esac
+          sed -i "s/\"version\": \"$old\"/\"version\": \"$new\"/" packages/cli/package.json
+          test "$(jq -r .version packages/cli/package.json)" = "$new"
+          echo "Version $old to $new"
+          echo "version=$new" >>"$GITHUB_OUTPUT"
+
+      - name: Commit, tag and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qm "chore: release $VERSION" packages/cli/package.json
+          git tag -a "v$VERSION" -m "axonometric $VERSION"
+          git push --atomic origin HEAD:main "v$VERSION"
+
+      - name: Release the tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "v$VERSION"
+
   # Reads the version once, for every job after it. On a tag, the tag must
   # match packages/cli/package.json. A version with a suffix, such as
-  # 0.1.0-rc.1, is a pre-release.
+  # 0.1.0-rc.1, is a pre-release. The button's run builds nothing, and the
+  # run on the tag it dispatches does.
   meta:
+    if: github.event_name != 'workflow_dispatch' || github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -138,7 +231,7 @@ jobs:
   # nothing in the install or build can request one.
   npm-pack:
     needs: meta
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     outputs:
       node-version: ${{ steps.node.outputs.version }}
@@ -173,7 +266,7 @@ jobs:
   # code. `--provenance` requests a provenance statement explicitly.
   npm:
     needs: [meta, binary, npm-pack]
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     environment: npm
     permissions:
@@ -212,7 +305,7 @@ jobs:
 
   release:
     needs: [meta, binary]
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -237,7 +330,8 @@ jobs:
           cat SHA256SUMS
 
       # The install commands pin this release's version, because GitHub's
-      # "latest" release skips pre-releases.
+      # "latest" release skips pre-releases. GitHub appends the list of pull
+      # requests merged since the last release.
       - name: Write the release notes
         working-directory: release
         run: |
@@ -258,7 +352,7 @@ jobs:
             echo
             echo "Each archive holds one binary with Node $node_version built in, so you don't need Node installed. The macOS binaries have an ad-hoc signature and aren't notarized. The Windows binary isn't signed. SHA256SUMS lists every file's checksum."
             echo
-            echo "The npm package \`axonometric@$VERSION\` is staged on npm and goes live once the maintainer approves it."
+            echo "On npm, run \`npx axonometric@$VERSION\`, or install it with \`npm install -g axonometric@$VERSION\`."
             echo
             echo "| Download | Size |"
             echo "| --- | --- |"
@@ -285,11 +379,12 @@ jobs:
             --draft \
             --title "v$VERSION" \
             --notes-file notes.md \
+            --generate-notes \
             "${prerelease[@]}"
 
   publish-release:
     needs: [meta, release, npm]
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
