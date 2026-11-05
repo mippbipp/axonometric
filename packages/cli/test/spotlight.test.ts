@@ -48,8 +48,32 @@ const showView = Effect.fnUntraced(function* (
 const attribute = (page: Page, selector: string, name: string) =>
   Effect.promise(() => page.locator(selector).first().getAttribute(name));
 
-const fadedOf = (page: Page, selector: string) =>
-  attribute(page, selector, "data-faded");
+/**
+ * Asserts that the page marks `selector` with `data-faded="<expected>"`. The
+ * page applies a hover in a later task than the pointer event, so it waits
+ * up to 5 s for the mark first, then asserts on what's there.
+ */
+const assertFaded = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string,
+  expected: "true" | "false"
+) {
+  yield* Effect.ignore(
+    Effect.tryPromise(() =>
+      page.waitForFunction(
+        `document.querySelector(${literal(selector)})?.getAttribute("data-faded") === ${literal(expected)}`,
+        undefined,
+        { timeout: 5000 }
+      )
+    )
+  );
+
+  assert.strictEqual(
+    yield* attribute(page, selector, "data-faded"),
+    expected,
+    selector
+  );
+});
 
 /** Waits out the opacity transition, then returns the computed opacity. */
 const opacityOf = Effect.fnUntraced(function* (
@@ -85,13 +109,13 @@ const styleOf = (page: Page, selector: string, property: string) =>
 
 /** The hop is inside the spotlight, at full strength. */
 const assertInside = Effect.fnUntraced(function* (page: Page, hopId: string) {
-  assert.strictEqual(yield* fadedOf(page, hop(hopId)), "false", hopId);
+  yield* assertFaded(page, hop(hopId), "false");
   assert.strictEqual(yield* opacityOf(page, hop(hopId), "1"), "1", hopId);
 });
 
 /** The hop is outside the spotlight, at the faded strength. */
 const assertOutside = Effect.fnUntraced(function* (page: Page, hopId: string) {
-  assert.strictEqual(yield* fadedOf(page, hop(hopId)), "true", hopId);
+  yield* assertFaded(page, hop(hopId), "true");
   assert.strictEqual(
     yield* opacityOf(page, hop(hopId), faded.line),
     faded.line,
@@ -103,7 +127,7 @@ const assertStructureInside = Effect.fnUntraced(function* (
   page: Page,
   id: string
 ) {
-  assert.strictEqual(yield* fadedOf(page, structure(id)), "false", id);
+  yield* assertFaded(page, structure(id), "false");
   assert.strictEqual(yield* opacityOf(page, structure(id), "1"), "1", id);
 });
 
@@ -111,7 +135,7 @@ const assertStructureOutside = Effect.fnUntraced(function* (
   page: Page,
   id: string
 ) {
-  assert.strictEqual(yield* fadedOf(page, structure(id)), "true", id);
+  yield* assertFaded(page, structure(id), "true");
   assert.strictEqual(
     yield* opacityOf(page, structure(id), faded.structure),
     faded.structure,
@@ -185,14 +209,8 @@ describe("the spotlight of a chapter", () => {
             );
             assert.strictEqual(yield* styleOf(page, tag, "opacity"), "1");
 
-            assert.strictEqual(
-              yield* fadedOf(page, '[data-name-tag="main"]'),
-              "true"
-            );
-            assert.strictEqual(
-              yield* fadedOf(page, '[data-name-tag="pr"]'),
-              "false"
-            );
+            yield* assertFaded(page, '[data-name-tag="main"]', "true");
+            yield* assertFaded(page, '[data-name-tag="pr"]', "false");
           }
 
           assert.deepStrictEqual(errors, []);
