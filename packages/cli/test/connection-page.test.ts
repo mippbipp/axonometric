@@ -24,6 +24,7 @@ import {
   pointOnHop,
   showViewFitted,
   waitFor,
+  waitForAttributes,
   waitTimeout,
 } from "./browser.ts";
 import {
@@ -94,6 +95,28 @@ const waitForFlowHops = (page: Page, flow: string, hops: readonly string[]) =>
   Effect.promise(() =>
     page.waitForFunction(
       `[...document.querySelectorAll(${literal(`[data-sortable="hops:${flow}"] [data-sort-content]`)})].map((e) => e.getAttribute("data-sort-content")).join(",") === ${literal(Arr.join(hops, ","))}`,
+      undefined,
+      waitTimeout
+    )
+  );
+
+/**
+ * Waits until the line being drawn ends at `at`, in window pixels: the drag
+ * has reached the page, not only its first steps.
+ */
+const waitForPreviewAt = (
+  page: Page,
+  at: { readonly x: number; readonly y: number }
+) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `(() => {
+        const line = [...document.querySelectorAll("[data-hop-preview]")].at(-1);
+        const m = line?.getScreenCTM();
+        if (!m) return false;
+        const end = new DOMPoint(line.x2.baseVal.value, line.y2.baseVal.value).matrixTransform(m);
+        return Math.hypot(end.x - ${at.x}, end.y - ${at.y}) < 1;
+      })()`,
       undefined,
       waitTimeout
     )
@@ -285,7 +308,12 @@ const selectHop = Effect.fnUntraced(function* (page: Page, id: string) {
 const drawHop = Effect.fnUntraced(function* (page: Page, label: string) {
   const target = yield* centreOf(page, '[data-structure="server"]');
 
-  yield* dragFromHandle(page, { from: "engineer", to: target, drop: true });
+  // The drop reads the target the page last drew, so wait for it first.
+  yield* dragFromHandle(page, { from: "engineer", to: target, drop: false });
+  yield* waitForAttributes(page, "[data-hop-preview]", {
+    "data-over": "server",
+  });
+  yield* Effect.promise(() => page.mouse.up());
   yield* waitFor(page, "[data-draw-hop]");
   yield* Effect.promise(() => page.locator('[data-draw="label"]').fill(label));
   yield* click(page, '[data-draw="submit"]');
@@ -317,7 +345,16 @@ describe.each(["iso", "plan"] as const)(
             to: target,
             drop: false,
           });
-          yield* waitAttached(page, "[data-hop-preview]");
+          // The preview shows from the first step of the drag, before the
+          // pointer reaches the server, so wait for the target.
+          yield* waitForAttributes(page, "[data-hop-preview]", {
+            "data-over": "server",
+          });
+
+          // Once a target is under the pointer the line is routed like the hop.
+          yield* waitForAttributes(page, "[data-hop-preview]", {
+            "data-routed": "true",
+          });
 
           const dash = yield* Effect.promise(() =>
             page.evaluate<string>(
@@ -326,16 +363,6 @@ describe.each(["iso", "plan"] as const)(
           );
 
           assert.notStrictEqual(dash, "none", "the preview is dashed");
-          assert.strictEqual(
-            yield* attributeOf(page, "[data-hop-preview]", "data-over"),
-            "server"
-          );
-
-          // Once a target is under the pointer the line is routed like the hop.
-          assert.strictEqual(
-            yield* attributeOf(page, "[data-hop-preview]", "data-routed"),
-            "true"
-          );
 
           yield* Effect.promise(() => page.mouse.up());
           yield* waitFor(page, "[data-draw-hop]");
@@ -515,9 +542,11 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
             to: target,
             drop: false,
           });
-          yield* waitAttached(page, "[data-hop-preview]");
-          // Let the camera settle, so the report is read at rest.
-          yield* Effect.sleep("200 millis");
+          // Read the report once the line is routed to the target.
+          yield* waitForAttributes(page, "[data-hop-preview]", {
+            "data-over": over,
+            "data-routed": "true",
+          });
 
           const report = yield* Effect.promise(() =>
             page.evaluate<DrawingReport>(drawingReport)
@@ -551,17 +580,13 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
             .boundingBox()
         );
 
-        yield* dragFromHandle(page, {
-          from: "engineer",
-          to: {
-            x: (surface?.x ?? 0) + (surface?.width ?? 0) * 0.92,
-            y: (surface?.y ?? 0) + (surface?.height ?? 0) * 0.9,
-          },
-          drop: false,
-        });
-        yield* waitAttached(page, "[data-hop-preview]");
+        const to = {
+          x: (surface?.x ?? 0) + (surface?.width ?? 0) * 0.92,
+          y: (surface?.y ?? 0) + (surface?.height ?? 0) * 0.9,
+        };
 
-        yield* Effect.sleep("200 millis");
+        yield* dragFromHandle(page, { from: "engineer", to, drop: false });
+        yield* waitForPreviewAt(page, to);
 
         // The line may be cut where it passes text, but every piece lies on
         // the one straight line from the handle to the pointer.
@@ -586,10 +611,12 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
         yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-flow="f-note"]');
 
-        const faded = (id: string) =>
-          attributeOf(page, `[data-structure="${id}"]`, "data-faded");
+        const faded = (id: string, expected: "true" | "false") =>
+          waitForAttributes(page, `[data-structure="${id}"]`, {
+            "data-faded": expected,
+          });
 
-        assert.strictEqual(yield* faded("pull-request"), "true");
+        yield* faded("pull-request", "true");
 
         const target = yield* centreOf(page, '[data-structure="pull-request"]');
 
@@ -598,21 +625,16 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
           to: target,
           drop: false,
         });
-        yield* waitAttached(page, "[data-hop-preview]");
-        yield* Effect.sleep("200 millis");
-
-        assert.strictEqual(yield* faded("pull-request"), "false");
-        assert.strictEqual(yield* faded("engineer"), "false");
+        yield* faded("pull-request", "false");
+        yield* faded("engineer", "false");
         // Only the two ends are lit while a hop is drawn.
-        assert.strictEqual(yield* faded("upstream"), "true");
+        yield* faded("upstream", "true");
 
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* Effect.promise(() => page.mouse.up());
         // Off every structure, so only the chapter's spotlight is left.
         yield* Effect.promise(() => page.mouse.move(700, 120));
-        yield* Effect.sleep("300 millis");
-
-        assert.strictEqual(yield* faded("pull-request"), "true");
+        yield* faded("pull-request", "true");
       }),
     60_000
   );
