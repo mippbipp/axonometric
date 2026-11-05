@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, String as Str } from "effect";
+import { Array as Arr, Effect } from "effect";
 import { vi } from "vitest";
 
 import { proposalProblems } from "../src/index.ts";
@@ -69,32 +69,33 @@ describe("what a group proposal adds to the layout checks", () => {
       })
   );
 
-  it.effect(
-    "warns for an empty group only when the checks find something",
-    () =>
-      Effect.gen(function* () {
-        assert.deepStrictEqual(
-          yield* addedBy([newGroup], inChapter("c-all")),
-          []
-        );
-      })
-  );
-
-  it.effect("judges a rename by the chapter it is viewed in", () =>
+  it.effect("adds nothing for an empty group, which has no zone to draw", () =>
     Effect.gen(function* () {
-      const rename: BatchItem = {
-        id: "r",
-        kind: "group",
-        change: { action: "rename", group: "loop", title: "The save loop" },
-      };
-
-      // A longer title can need a different spot for the zone's title.
-      const added = yield* addedBy([rename], inChapter("c-all"));
-
-      assert.isTrue(
-        Arr.every(added, (message) => Str.includes("chapter")(message))
+      assert.deepStrictEqual(
+        yield* addedBy([newGroup], inChapter("c-all")),
+        []
       );
     })
+  );
+
+  it.effect(
+    "adds nothing for a longer title that still fits, in any chapter",
+    () =>
+      Effect.gen(function* () {
+        const rename: BatchItem = {
+          id: "r",
+          kind: "group",
+          change: { action: "rename", group: "loop", title: "The save loop" },
+        };
+
+        for (const chapter of ["c-page", "c-save", "c-all"]) {
+          assert.deepStrictEqual(
+            yield* addedBy([rename], inChapter(chapter)),
+            [],
+            chapter
+          );
+        }
+      })
   );
 });
 
@@ -124,7 +125,7 @@ describe("what a chapter proposal adds to the layout checks", () => {
     })
   );
 
-  it.effect("checks the hop a chapter would play against what it reveals", () =>
+  it.effect("adds nothing for a hop that is not drawn in that chapter", () =>
     Effect.gen(function* () {
       const play: BatchItem = {
         id: "p",
@@ -138,35 +139,43 @@ describe("what a chapter proposal adds to the layout checks", () => {
     })
   );
 
-  it.effect("runs for every action without throwing", () =>
-    Effect.gen(function* () {
-      const actions: readonly BatchItem[] = [
-        {
-          id: "a",
-          kind: "chapter",
-          change: { action: "hide", chapter: "c-save", structure: "proposals" },
-        },
-        {
-          id: "b",
-          kind: "chapter",
-          change: { action: "unplay", chapter: "c-save", hop: "h-store" },
-        },
-        {
-          id: "c",
-          kind: "chapter",
-          change: {
-            action: "order",
-            chapter: "c-save",
-            plays: ["h-store", "h-note", "h-save"],
+  it.effect(
+    "adds nothing for a hide, an unplay or an order that draws nothing new",
+    () =>
+      Effect.gen(function* () {
+        const actions: readonly BatchItem[] = [
+          {
+            id: "a",
+            kind: "chapter",
+            change: {
+              action: "hide",
+              chapter: "c-save",
+              structure: "proposals",
+            },
           },
-        },
-      ];
+          {
+            id: "b",
+            kind: "chapter",
+            change: { action: "unplay", chapter: "c-save", hop: "h-store" },
+          },
+          {
+            id: "c",
+            kind: "chapter",
+            change: {
+              action: "order",
+              chapter: "c-save",
+              plays: ["h-store", "h-note", "h-save"],
+            },
+          },
+        ];
 
-      for (const item of actions) {
-        const added = yield* addedBy([item], inChapter("c-save"));
-
-        assert.isArray(added);
-      }
-    })
+        for (const item of actions) {
+          assert.deepStrictEqual(
+            yield* addedBy([item], inChapter("c-save")),
+            [],
+            item.id
+          );
+        }
+      })
   );
 });
