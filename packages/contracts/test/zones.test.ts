@@ -14,6 +14,7 @@ import type {
   Placement,
   Structure,
 } from "../src/index.ts";
+import { grow } from "./footprints.ts";
 
 type MapParts = Pick<MapData, "groups" | "structures">;
 
@@ -68,13 +69,6 @@ const layout = layoutOf({
   cache: at(6, 4),
 });
 
-const pad = (box: Placement, by: number): Placement => ({
-  x: box.x - by,
-  y: box.y - by,
-  w: box.w + 2 * by,
-  d: box.d + 2 * by,
-});
-
 const zoneWarnings = (problems: readonly MapProblem[]) =>
   Arr.filter(problems, ({ message }) => Str.includes("zones of")(message));
 
@@ -107,12 +101,12 @@ describe("zones", () => {
           {
             group: { id: "front", title: "Front" },
             members: ["web"],
-            box: pad(at(0, 0), 1),
+            box: grow(at(0, 0), 1),
           },
           {
             group: { id: "back", title: "Back end" },
             members: ["api", "db", "cache"],
-            box: pad({ x: 6, y: 0, w: 7, d: 6 }, 1),
+            box: grow({ x: 6, y: 0, w: 7, d: 6 }, 1),
           },
         ]);
       })
@@ -123,7 +117,7 @@ describe("zones", () => {
       const moved = layoutOf({ ...layout.structures, web: at(-4, 2.5) });
       const [front] = zonesOf({ data, layout: moved });
 
-      assert.deepStrictEqual(front?.box, pad(at(-4, 2.5), 1));
+      assert.deepStrictEqual(front?.box, grow(at(-4, 2.5), 1));
     })
   );
 
@@ -145,7 +139,7 @@ describe("zones", () => {
           {
             group: "back",
             members: ["api", "cache"],
-            box: pad({ x: 6, y: 0, w: 2, d: 6 }, 1),
+            box: grow({ x: 6, y: 0, w: 2, d: 6 }, 1),
           },
         ]
       );
@@ -264,7 +258,7 @@ describe("placement and zones", () => {
           // Next to its zone means within one slot of the zone's edge.
           if (Option.isSome(own)) {
             assert.isTrue(
-              footprintsOverlap(pad(own.value.box, 4), spot),
+              footprintsOverlap(grow(own.value.box, 4), spot),
               `${added.id} is far from ${added.group}'s zone`
             );
           }

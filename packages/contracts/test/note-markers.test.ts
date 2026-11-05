@@ -9,13 +9,9 @@ import {
   placeNoteMarkers,
   sceneOf,
 } from "../src/index.ts";
-import type {
-  NoteMarkerSpot,
-  Scene,
-  ScreenPoint,
-  ScreenRect,
-} from "../src/index.ts";
+import type { NoteMarkerSpot, Scene, ScreenPoint } from "../src/index.ts";
 import { chaptersOf, fixture } from "./fixture-maps.ts";
+import { lineDistance, rectCorners } from "./screen-geometry.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 
@@ -42,15 +38,8 @@ const screenGap = 3;
 /** The gap a ring keeps in a scene drawn for `zoom`, by the rule above. */
 const gapFor = (zoom: number) => Math.max(fullSizeGap, screenGap / zoom);
 
-const corners = (rect: ScreenRect): readonly ScreenPoint[] => [
-  { sx: rect.left, sy: rect.top },
-  { sx: rect.right, sy: rect.top },
-  { sx: rect.right, sy: rect.bottom },
-  { sx: rect.left, sy: rect.bottom },
-];
-
 const square = ({ sx, sy }: NoteMarkerSpot) =>
-  corners({
+  rectCorners({
     left: sx - ringRadius,
     top: sy - ringRadius,
     right: sx + ringRadius,
@@ -82,39 +71,6 @@ const overlap = (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
     })
   );
 
-/** How far `point` is from the segment `from` to `to`. */
-const segmentDistance = (
-  point: ScreenPoint,
-  from: ScreenPoint,
-  to: ScreenPoint
-) => {
-  const dx = to.sx - from.sx;
-  const dy = to.sy - from.sy;
-  const length = dx * dx + dy * dy;
-
-  const t =
-    length === 0
-      ? 0
-      : Math.min(
-          1,
-          Math.max(
-            0,
-            ((point.sx - from.sx) * dx + (point.sy - from.sy) * dy) / length
-          )
-        );
-
-  return Math.hypot(point.sx - from.sx - dx * t, point.sy - from.sy - dy * t);
-};
-
-/** How far `point` is from the polyline `points`. */
-const lineDistance = (points: readonly ScreenPoint[], point: ScreenPoint) => {
-  const legs = Arr.zip(points, Arr.drop(points, 1));
-
-  return Math.min(
-    ...Arr.map(legs, ([from, to]) => segmentDistance(point, from, to))
-  );
-};
-
 /** Something a ring must stay clear of, with how wide its edge is drawn. */
 interface Solid {
   readonly name: string;
@@ -131,7 +87,7 @@ const solids = (scene: Scene): readonly Solid[] => [
   })),
   ...Arr.map(scene.structures, ({ structure, tag }) => ({
     name: `tag ${structure.id}`,
-    polygon: corners(tag),
+    polygon: rectCorners(tag),
     stroke: edgeStroke,
   })),
   ...Arr.flatMap(scene.structures, ({ structure, chip }) =>
@@ -140,7 +96,7 @@ const solids = (scene: Scene): readonly Solid[] => [
       : [
           {
             name: `chip ${structure.id}`,
-            polygon: corners(chip),
+            polygon: rectCorners(chip),
             stroke: edgeStroke,
           },
         ]
@@ -156,7 +112,7 @@ const solids = (scene: Scene): readonly Solid[] => [
       : [
           {
             name: `label ${hop.id}`,
-            polygon: corners(label),
+            polygon: rectCorners(label),
             stroke: edgeStroke,
           },
         ]

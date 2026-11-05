@@ -2,6 +2,7 @@ import { Array as Arr, Order } from "effect";
 
 import { boxOutline, gridOnScreen } from "../src/index.ts";
 import type {
+  GridPoint,
   Placement,
   ScreenPoint,
   ScreenRect,
@@ -11,6 +12,60 @@ import type {
 // The routing rules the tests check routes against, written out from the
 // spec rather than taken from the router, so a router change can't move
 // the goalposts with it.
+
+/** One straight stretch of a route, between two of its points. */
+export interface Leg {
+  readonly start: GridPoint;
+  readonly end: GridPoint;
+}
+
+/** The legs of a route, in order. */
+export const legsOf = (points: readonly GridPoint[]): readonly Leg[] =>
+  Arr.flatMap(points, (start, index) => {
+    const end = points[index + 1];
+
+    return end === undefined ? [] : [{ start, end }];
+  });
+
+/** Every half-unit step a route takes, as an order-free key. */
+export const stepsOf = (points: readonly GridPoint[]): readonly string[] =>
+  Arr.flatMap(legsOf(points), ({ start, end }) => {
+    const count = Math.abs(end.x - start.x + end.y - start.y) * 2;
+    const dx = Math.sign(end.x - start.x) / 2;
+    const dy = Math.sign(end.y - start.y) / 2;
+
+    return Arr.map(Arr.range(0, count - 1), (step) => {
+      const a = { x: start.x + dx * step, y: start.y + dy * step };
+      const b = { x: a.x + dx, y: a.y + dy };
+      const low = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) };
+      const high = { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) };
+
+      return `${low.x},${low.y}-${high.x},${high.y}`;
+    });
+  });
+
+/** Whether `point` is on the outline of `box`, corners included. */
+export const onEdge = (point: GridPoint | undefined, box: Placement) =>
+  point !== undefined &&
+  ((Arr.contains([box.x, box.x + box.w], point.x) &&
+    point.y >= box.y &&
+    point.y <= box.y + box.d) ||
+    (Arr.contains([box.y, box.y + box.d], point.y) &&
+      point.x >= box.x &&
+      point.x <= box.x + box.w));
+
+/**
+ * Which edge of a footprint a route's end leaves by, from the end and the
+ * next point along the route: +x, +y, -x or -y. A route may leave a corner,
+ * which sits on two edges, so the leg's direction decides.
+ */
+export const edgeOf = (point: GridPoint, next: GridPoint) => {
+  if (next.x !== point.x) {
+    return next.x > point.x ? 0 : 2;
+  }
+
+  return next.y > point.y ? 1 : 3;
+};
 
 /**
  * Whether `other` lies beyond each edge of `box`, in edge order +x, +y,

@@ -20,7 +20,6 @@ import {
   proposeHop,
   recordVerdict,
   removedHopMark,
-  reviewPrompt,
   specOf,
 } from "../src/index.ts";
 import type {
@@ -31,10 +30,16 @@ import type {
   Layout,
   MapData,
   MapState,
-  PartialNames,
   Proposals,
   Verdict,
 } from "../src/index.ts";
+import {
+  asOf,
+  changedAs,
+  changedOf,
+  promptLine,
+  unwrap,
+} from "./review-helpers.ts";
 
 // Seam 3: the pure functions behind hop and flow proposals, with plain data.
 
@@ -138,12 +143,6 @@ const committedAll = (proposals: Proposals): Proposals => ({
     committed: { revision: 2, at },
   })),
 });
-
-const unwrap = <A>(result: Result.Result<A, string>): A => {
-  assert.isTrue(Result.isSuccess(result), String(Result.merge(result)));
-
-  return Result.getOrThrow(result);
-};
 
 const shownWith = (proposals: Proposals) => proposedMap({ state, proposals });
 
@@ -262,12 +261,6 @@ const reorderFlows = (
     })
   );
 
-const changedAs = (as: string): Verdict => ({
-  verdict: "changed",
-  reason: "Renamed.",
-  as,
-});
-
 const withNewHop = (id: string): MapData => ({
   ...data,
   hops: [...data.hops, { id, from: "a", to: "c", label: "skips b" }],
@@ -296,23 +289,8 @@ const commitWith = (proposals: Proposals, next: MapData) =>
 const hopEntryOf = (entries: readonly AcceptedItem[]) =>
   Arr.findFirst(entries, ({ kind }) => kind === "hop").pipe(Option.getOrThrow);
 
-const asOf = (entry: AcceptedItem) => ("as" in entry ? entry.as : undefined);
-
-const changedFlagOf = (entry: AcceptedItem) =>
-  "changed" in entry ? entry.changed : undefined;
-
 const flowHopsOf = (entry: AcceptedItem) =>
   entry.kind === "flow" ? hopsOfFlowChange(entry.change) : [];
-
-/** The prompt's line for the one item `proposals` holds, once frozen. */
-const promptLine = (proposals: Proposals, names: PartialNames) => {
-  const { batch } = unwrap(freezeOpen({ proposals, at }));
-  const prompt = reviewPrompt({ home: "/maps/t", batch, names });
-
-  return Arr.findFirst(Str.split("\n")(prompt), Str.startsWith("- ")).pipe(
-    Option.getOrThrow
-  );
-};
 
 const breakage = (item: BatchItem, over: Partial<MapData> = {}) =>
   breakageOf({
@@ -906,7 +884,7 @@ describe("committing a drawn hop", () => {
     const entry = hopEntryOf(done.accepted);
 
     assert.strictEqual(asOf(entry), "skip");
-    assert.isTrue(changedFlagOf(entry));
+    assert.isTrue(changedOf(entry));
   });
 
   it("refuses a changed add while data.mjs lacks the hop under the final id", () => {
@@ -1176,6 +1154,15 @@ describe("a new flow that lists a hop being deleted", () => {
   });
 });
 
+const rejected = (proposals: Proposals): Proposals =>
+  unwrap(
+    recordVerdict({
+      proposals,
+      id: "h1",
+      verdict: { verdict: "rejected", reason: "No." },
+    })
+  );
+
 describe("a hop label or flow name edited or reopened", () => {
   const frozenRelabel = unwrap(
     freezeOpen({
@@ -1186,15 +1173,6 @@ describe("a hop label or flow name edited or reopened", () => {
       at,
     })
   ).proposals;
-
-  const rejected = (proposals: Proposals): Proposals =>
-    unwrap(
-      recordVerdict({
-        proposals,
-        id: "h1",
-        verdict: { verdict: "rejected", reason: "No." },
-      })
-    );
 
   it("names the schema's words when it refuses an edit", () => {
     const open = withFlows([

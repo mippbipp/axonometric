@@ -35,38 +35,18 @@ import type {
   ScreenRect,
 } from "../src/index.ts";
 import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
+import { placementOf } from "./footprints.ts";
 import {
+  edgeOf,
   facingEdges,
   facingEdgesFull,
+  legsOf,
   outsideArea,
   routeArea,
+  stepsOf,
 } from "./route-geometry.ts";
-
-/** Which edge of a footprint a point sits on: +x, +y, -x or -y. */
-/**
- * Which edge of a footprint a route's end leaves by, from the end and the
- * next point along the route: +x, +y, -x or -y. A route may leave a corner,
- * which sits on two edges, so the leg's direction decides.
- */
-const edgeOf = (point: GridPoint, next: GridPoint) => {
-  if (next.x !== point.x) {
-    return next.x > point.x ? 0 : 2;
-  }
-
-  return next.y > point.y ? 1 : 3;
-};
-
-interface Leg {
-  readonly start: GridPoint;
-  readonly end: GridPoint;
-}
-
-const legsOf = (points: readonly GridPoint[]): readonly Leg[] =>
-  Arr.flatMap(points, (start, index) => {
-    const end = points[index + 1];
-
-    return end === undefined ? [] : [{ start, end }];
-  });
+import type { Leg } from "./route-geometry.ts";
+import { rectCorners, segmentDistance } from "./screen-geometry.ts";
 
 /**
  * Whether a leg along x and a leg along y cross: each passes strictly
@@ -246,12 +226,10 @@ const legTouches = (leg: Leg, box: Placement) => {
 
 /** Whether a leg's line on screen runs through a name tag. */
 const legCrossesTag = (leg: Leg, tag: ScreenRect) =>
-  segmentCrosses({ start: project(leg.start), end: project(leg.end) }, [
-    { sx: tag.left, sy: tag.top },
-    { sx: tag.right, sy: tag.top },
-    { sx: tag.right, sy: tag.bottom },
-    { sx: tag.left, sy: tag.bottom },
-  ]);
+  segmentCrosses(
+    { start: project(leg.start), end: project(leg.end) },
+    rectCorners(tag)
+  );
 
 /**
  * The least stray any route with at most two bends could have: leaving its
@@ -336,28 +314,11 @@ const fewestStrayClear = (
     )
   );
 
-/** Every half-unit step a route takes, as order-free keys. */
-const stepKeysOf = (points: readonly GridPoint[]) =>
-  new Set(
-    Arr.flatMap(legsOf(points), ({ start, end }) => {
-      const count = Math.abs(end.x - start.x + end.y - start.y) * 2;
-      const dx = Math.sign(end.x - start.x) / 2;
-      const dy = Math.sign(end.y - start.y) / 2;
-
-      return Arr.map(Arr.range(0, count - 1), (step) => {
-        const x = start.x + dx * step;
-        const y = start.y + dy * step;
-
-        return `${Math.min(x, x + dx)},${Math.min(y, y + dy)},${dx === 0 ? "y" : "x"}`;
-      });
-    })
-  );
-
 /** Whether two routes share a half-unit step anywhere. */
 const shareStep = (a: readonly GridPoint[], b: readonly GridPoint[]) => {
-  const first = stepKeysOf(a);
+  const first = new Set(stepsOf(a));
 
-  return Arr.some([...stepKeysOf(b)], (step) => first.has(step));
+  return Arr.some(stepsOf(b), (step) => first.has(step));
 };
 
 /**
@@ -389,36 +350,8 @@ const fewestPairStray = (
   return pairs.length > 0 ? 0 : Number.POSITIVE_INFINITY;
 };
 
-const placementOf = (layout: Layout, id: string): Placement => {
-  const placement = layout.structures[id];
-
-  assert.isDefined(placement, `${id} has no placement`);
-
-  return placement;
-};
-
 const distance = (a: ScreenPoint, b: ScreenPoint) =>
   Math.hypot(a.sx - b.sx, a.sy - b.sy);
-
-/** How far a point is from the segment between `a` and `b`, ends included. */
-const toSegment = (point: ScreenPoint, a: ScreenPoint, b: ScreenPoint) => {
-  const dx = b.sx - a.sx;
-  const dy = b.sy - a.sy;
-  const length = dx * dx + dy * dy;
-
-  const along =
-    length === 0
-      ? 0
-      : Math.min(
-          1,
-          Math.max(
-            0,
-            ((point.sx - a.sx) * dx + (point.sy - a.sy) * dy) / length
-          )
-        );
-
-  return distance(point, { sx: a.sx + along * dx, sy: a.sy + along * dy });
-};
 
 /**
  * How far a line is from a rect on screen: 0 when the line runs into it.
@@ -426,12 +359,7 @@ const toSegment = (point: ScreenPoint, a: ScreenPoint, b: ScreenPoint) => {
  * one of the rect's corners.
  */
 const rectGap = (points: readonly ScreenPoint[], rect: ScreenRect) => {
-  const box = [
-    { sx: rect.left, sy: rect.top },
-    { sx: rect.right, sy: rect.top },
-    { sx: rect.right, sy: rect.bottom },
-    { sx: rect.left, sy: rect.bottom },
-  ];
+  const box = rectCorners(rect);
 
   const inside = ({ sx, sy }: ScreenPoint) =>
     sx >= rect.left && sx <= rect.right && sy >= rect.top && sy <= rect.bottom;
@@ -450,11 +378,11 @@ const rectGap = (points: readonly ScreenPoint[], rect: ScreenRect) => {
     return through
       ? [0]
       : [
-          ...Arr.map(box, (corner) => toSegment(corner, a, b)),
+          ...Arr.map(box, (corner) => segmentDistance(corner, a, b)),
           ...Arr.map([a, b], (end) =>
             Math.min(
               ...Arr.map(box, (corner, index) =>
-                toSegment(end, corner, box[(index + 1) % 4] ?? corner)
+                segmentDistance(end, corner, box[(index + 1) % 4] ?? corner)
               )
             )
           ),

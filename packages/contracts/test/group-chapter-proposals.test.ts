@@ -22,7 +22,6 @@ import {
   proposeChapter,
   proposeGroupWithMembers,
   recordVerdict,
-  reviewPrompt,
   specOf,
 } from "../src/index.ts";
 import type {
@@ -36,6 +35,7 @@ import type {
   Proposals,
   Verdict,
 } from "../src/index.ts";
+import { promptLine, promptLines, unwrap } from "./review-helpers.ts";
 
 // Seam 3: the pure functions behind group and chapter proposals, with plain
 // data.
@@ -108,12 +108,6 @@ const layout: Layout = {
 const state: MapState = { system: "t", data, layout };
 
 const empty: Proposals = { format: 1, revision: 0, layout: [] };
-
-const unwrap = <A>(result: Result.Result<A, string>): A => {
-  assert.isTrue(Result.isSuccess(result), String(Result.merge(result)));
-
-  return Result.getOrThrow(result);
-};
 
 const withGroups = (
   ...groups: readonly (readonly [string, GroupChange])[]
@@ -209,13 +203,6 @@ const lineAt = (held: readonly string[], position: number) =>
 
 /** Whether `line` starts with `start`. */
 const startsWith = (line: string, start: string) => Str.startsWith(start)(line);
-
-/** The prompt's lines for a batch of `proposals`. */
-const promptLines = (proposals: Proposals) => {
-  const { batch } = unwrap(freezeOpen({ proposals, at }));
-
-  return Str.split("\n")(reviewPrompt({ home: "/maps/t", batch, names }));
-};
 
 /** The change a chapter item holds, for a test that builds the proposal from it. */
 const changeOf = (item: BatchItem): ChapterChange =>
@@ -1031,11 +1018,14 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
   });
 
   it("the prompt has a heading for each section, and each item under its own", () => {
-    const lines = promptLines({
-      ...empty,
-      groups: [{ id: "g-1", change: addGroup }],
-      chapters: [{ id: "c-1", change: changeOf(play) }],
-    });
+    const lines = promptLines(
+      {
+        ...empty,
+        groups: [{ id: "g-1", change: addGroup }],
+        chapters: [{ id: "c-1", change: changeOf(play) }],
+      },
+      names
+    );
 
     const diagram = lines.indexOf("Diagram changes:");
     const chapters = lines.indexOf("Chapter changes:");
@@ -1056,23 +1046,23 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
   });
 
   it("a batch with only diagram changes has no chapter heading", () => {
-    const lines = promptLines({
-      ...empty,
-      groups: [{ id: "g-1", change: addGroup }],
-    });
+    const lines = promptLines(
+      {
+        ...empty,
+        groups: [{ id: "g-1", change: addGroup }],
+      },
+      names
+    );
 
     assert.include(lines, "Diagram changes:");
     assert.notInclude(lines, "Chapter changes:");
   });
 
   it("names the chapter by its title and the hop by its label", () => {
-    const line = Arr.findFirst(
-      promptLines({
-        ...empty,
-        chapters: [{ id: "c-1", change: changeOf(play) }],
-      }),
-      Str.startsWith("- ")
-    ).pipe(Option.getOrThrow);
+    const line = promptLine(
+      { ...empty, chapters: [{ id: "c-1", change: changeOf(play) }] },
+      names
+    );
 
     assert.include(line, '"a to b"');
     assert.include(line, '"Second"');

@@ -40,6 +40,7 @@ import type {
   Proposals,
 } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
+import { asOf, changedAs, changedOf, unwrap } from "./review-helpers.ts";
 
 // Seam 3: the pure functions behind structure proposals, with plain data.
 
@@ -144,12 +145,6 @@ const item = (id: string, change: StructureChange): BatchItem => ({
 
 const world = { data, layout };
 
-const unwrap = <A>(result: Result.Result<A, string>): A => {
-  assert.isTrue(Result.isSuccess(result), String(Result.merge(result)));
-
-  return Result.getOrThrow(result);
-};
-
 const proposed = (change: StructureChange) =>
   proposedMap({ state, proposals: withStructures(["p1", change]) });
 
@@ -189,11 +184,6 @@ const structureEntry = (entries: readonly AcceptedItem[]) => {
 
   return entry.pipe(Option.getOrThrow);
 };
-
-const asOf = (entry: AcceptedItem) => ("as" in entry ? entry.as : undefined);
-
-const changedOf = (entry: AcceptedItem) =>
-  "changed" in entry ? entry.changed : undefined;
 
 const targetOf = (entry: AcceptedItem) =>
   "target" in entry && "id" in entry.target ? entry.target.id : "";
@@ -274,12 +264,6 @@ const frozenAddsOf = (ids: readonly string[]): Proposals => {
 
   return unwrap(freezeOpen({ proposals: open, at })).proposals;
 };
-
-const changedAs = (as: string): Verdict => ({
-  verdict: "changed",
-  reason: "Renamed.",
-  as,
-});
 
 /** How far a spot is from the left edge of group g2's structure b, by taxicab. */
 const distanceFromB = (spot: Spot) => Math.abs(spot.x - 8) + Math.abs(spot.y);

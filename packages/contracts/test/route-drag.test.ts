@@ -4,6 +4,7 @@ import { vi } from "vitest";
 
 import { dragSegment, routeVertices, segmentGuides } from "../src/index.ts";
 import type { GridPoint, Placement } from "../src/index.ts";
+import { onEdge } from "./route-geometry.ts";
 
 vi.setConfig({ testTimeout: 5000 });
 
@@ -41,16 +42,6 @@ const allDrags: readonly (readonly [number, number])[] = Arr.flatMap(
       (offset) => [segment, offset] as const
     )
 );
-
-/** Whether `point` is on the outline of `box`, corners included. */
-const onEdge = (point: GridPoint | undefined, box: Placement) =>
-  point !== undefined &&
-  ((Arr.contains([box.x, box.x + box.w], point.x) &&
-    point.y >= box.y &&
-    point.y <= box.y + box.d) ||
-    (Arr.contains([box.y, box.y + box.d], point.y) &&
-      point.x >= box.x &&
-      point.x <= box.x + box.w));
 
 const straight = (before: GridPoint | undefined, point: GridPoint) =>
   before !== undefined && (before.x === point.x || before.y === point.y);

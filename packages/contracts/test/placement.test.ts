@@ -15,6 +15,7 @@ import type {
   ScreenPoint,
   Structure,
 } from "../src/index.ts";
+import { grow, placementOf } from "./footprints.ts";
 
 const structure = (id: string, group = "main", name = id): Structure => ({
   id,
@@ -60,15 +61,6 @@ const at = (x: number, y: number): Placement => ({ x, y, w: 2, d: 2 });
 
 const sized = (placement: Placement): Placement => placement;
 
-/** The placement of `id`, failing the test when it has none. */
-const placementOf = (layout: Layout, id: string): Placement => {
-  const placement = layout.structures[id];
-
-  assert.isDefined(placement, `${id} has no placement`);
-
-  return placement;
-};
-
 /** The highest screen point of an outline. Screen y grows downwards. */
 const topOf = (outline: readonly ScreenPoint[]) =>
   Math.min(...Arr.map(outline, (point) => point.sy));
@@ -83,13 +75,6 @@ const outlineTop = (shape: Structure["shape"]) => {
 
   return topOf(Arr.flatMap(scene.structures, ({ outline }) => outline));
 };
-
-const grow = (box: Placement, by: number): Placement => ({
-  x: box.x - by,
-  y: box.y - by,
-  w: box.w + 2 * by,
-  d: box.d + 2 * by,
-});
 
 const centre = (placement: Placement) => ({
   x: placement.x + placement.w / 2,

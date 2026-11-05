@@ -39,6 +39,7 @@ import type {
   Verdict,
 } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
+import { unwrap } from "./review-helpers.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 
@@ -59,12 +60,6 @@ const decode = Schema.decodeUnknownResult(Proposals, {
 });
 
 const empty: P = { format: 1, revision: 1, layout: [] };
-
-const unwrap = <A, E>(result: Result.Result<A, E>): A => {
-  assert.isTrue(Result.isSuccess(result), JSON.stringify(result));
-
-  return Result.getOrThrow(result);
-};
 
 const failure = <A>(result: Result.Result<A, string>): string =>
   Result.match(result, { onSuccess: () => "", onFailure: (why) => why });

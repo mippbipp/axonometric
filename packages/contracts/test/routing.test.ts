@@ -9,7 +9,6 @@ import {
 
 import { checkLayout, routeHops } from "../src/index.ts";
 import type {
-  GridPoint,
   Hop,
   HopRoute,
   Layout,
@@ -17,7 +16,14 @@ import type {
   Placement,
   Structure,
 } from "../src/index.ts";
-import { facingEdges } from "./route-geometry.ts";
+import {
+  edgeOf,
+  facingEdges,
+  legsOf,
+  onEdge,
+  stepsOf,
+} from "./route-geometry.ts";
+import type { Leg } from "./route-geometry.ts";
 
 const structure = (id: string): Structure => ({
   id,
@@ -85,35 +91,8 @@ const routeOf = (
   return route;
 };
 
-const legsOf = (points: readonly GridPoint[]) =>
-  Arr.flatMap(points, (start, index) => {
-    const end = points[index + 1];
-
-    return end === undefined ? [] : [{ start, end }];
-  });
-
-/** Every half-unit step a route takes, as an order-free key. */
-const stepsOf = (points: readonly GridPoint[]) =>
-  Arr.flatMap(legsOf(points), ({ start, end }) => {
-    const count = Math.abs(end.x - start.x + end.y - start.y) * 2;
-    const dx = Math.sign(end.x - start.x) / 2;
-    const dy = Math.sign(end.y - start.y) / 2;
-
-    return Arr.map(Arr.range(0, count - 1), (step) => {
-      const a = { x: start.x + dx * step, y: start.y + dy * step };
-      const b = { x: a.x + dx, y: a.y + dy };
-      const low = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) };
-      const high = { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) };
-
-      return `${low.x},${low.y}-${high.x},${high.y}`;
-    });
-  });
-
 /** Whether a leg runs through the inside of a footprint. */
-const legCrosses = (
-  { start, end }: { readonly start: GridPoint; readonly end: GridPoint },
-  box: Placement
-) => {
+const legCrosses = ({ start, end }: Leg, box: Placement) => {
   const left = Math.min(start.x, end.x);
   const right = Math.max(start.x, end.x);
   const top = Math.min(start.y, end.y);
@@ -128,29 +107,6 @@ const legCrosses = (
         start.x < box.x + box.w &&
         top < box.y + box.d &&
         bottom > box.y;
-};
-
-const onEdge = (point: GridPoint, box: Placement) => {
-  const insideX = point.x >= box.x && point.x <= box.x + box.w;
-  const insideY = point.y >= box.y && point.y <= box.y + box.d;
-  const onX = point.x === box.x || point.x === box.x + box.w;
-  const onY = point.y === box.y || point.y === box.y + box.d;
-
-  return (onX && insideY) || (onY && insideX);
-};
-
-/** Which edge of a footprint a point sits on: +x, +y, -x or -y. */
-/**
- * Which edge of a footprint a route's end leaves by, from the end and the
- * next point along the route: +x, +y, -x or -y. A route may leave a corner,
- * which sits on two edges, so the leg's direction decides.
- */
-const edgeOf = (point: GridPoint, next: GridPoint) => {
-  if (next.x !== point.x) {
-    return next.x > point.x ? 0 : 2;
-  }
-
-  return next.y > point.y ? 1 : 3;
 };
 
 /** A between two connected structures, with M in the way. */

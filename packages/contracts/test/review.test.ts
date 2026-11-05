@@ -31,6 +31,7 @@ import type {
   Proposals as P,
   Verdict,
 } from "../src/index.ts";
+import { unwrap } from "./review-helpers.ts";
 
 vi.setConfig({ testTimeout: 5000 });
 
@@ -105,12 +106,6 @@ const decode = Schema.decodeUnknownResult(Proposals, {
 });
 
 const encode = Schema.encodeResult(Proposals);
-
-const unwrap = <A, E>(result: Result.Result<A, E>): A => {
-  assert.isTrue(Result.isSuccess(result), JSON.stringify(result));
-
-  return Result.getOrThrow(result);
-};
 
 const firstBatch = (proposals: P): Batch =>
   Option.getOrThrow(Arr.head(proposals.batches ?? []));
