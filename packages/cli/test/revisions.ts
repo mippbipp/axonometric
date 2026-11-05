@@ -36,16 +36,42 @@ export const get = (url: string, target: string) =>
 
 const jsonType = "application/json";
 
-const ownOrigin = (url: string) => ({
+/** The headers a page the server served sends with a write. */
+export const ownOrigin = (url: string) => ({
   origin: url,
-  "content-type": "application/json",
+  "content-type": jsonType,
 });
 
-const bodyText = ({
-  body,
-}: {
-  readonly body: PendingLayoutWrite | AcceptWrite;
-}) => JSON.stringify(body);
+/**
+ * Sends `body`, already JSON text or deliberately not, to `target`. The
+ * headers default to the server's own origin, as the page sends them, so a
+ * test can send what the page never would.
+ */
+export const writeText = (
+  url: string,
+  request: {
+    readonly method: "put" | "post";
+    readonly target: string;
+    readonly body: string;
+    readonly headers?: Readonly<Record<string, string>>;
+  }
+) => {
+  const headers = request.headers ?? ownOrigin(url);
+
+  return send(
+    HttpClientRequest[request.method](new URL(request.target, url)).pipe(
+      HttpClientRequest.setHeaders(headers),
+      HttpClientRequest.bodyText(
+        request.body,
+        headers["content-type"] ?? jsonType
+      )
+    )
+  );
+};
+
+/** A POST of `body`, already JSON text, from the server's own origin. */
+export const post = (url: string, target: string, body: string) =>
+  writeText(url, { method: "post", target, body });
 
 /** A write from the server's own origin, as the page sends it. */
 export const write = (
@@ -55,14 +81,13 @@ export const write = (
     readonly target: string;
     readonly body: PendingLayoutWrite | AcceptWrite;
   }
-) => {
-  const make = HttpClientRequest[request.method];
-
-  const withHeaders = HttpClientRequest.setHeaders(ownOrigin(url));
-  const withBody = HttpClientRequest.bodyText(bodyText(request), jsonType);
-
-  return send(make(new URL(request.target, url)).pipe(withHeaders, withBody));
-};
+) =>
+  writeText(url, {
+    method: request.method,
+    target: request.target,
+    // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- the bodies are plain JSON objects
+    body: JSON.stringify(request.body),
+  });
 
 export const moveOf = (
   id: string,

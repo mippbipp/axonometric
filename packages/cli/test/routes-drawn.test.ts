@@ -2,17 +2,9 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { Page } from "playwright";
 
+import { goToChapter } from "./browser.ts";
 import { crowdedMap, fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
-
-const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* Effect.promise(() =>
-    page.locator(`[data-chapter-rail] button[data-chapter="${id}"]`).click()
-  );
-  yield* Effect.promise(() =>
-    page.locator(`[data-walkthrough][data-chapter="${id}"]`).waitFor()
-  );
-});
 
 /**
  * How far the packet's dot sits from its hop's drawn route, in screen

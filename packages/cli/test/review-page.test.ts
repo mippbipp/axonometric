@@ -1,34 +1,20 @@
-import { ProposalsFile } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Option, Path, Schema } from "effect";
+import { Array as Arr, Effect, Option } from "effect";
 import type { Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { click, count, textOf, waitFor, waitGone } from "./browser.ts";
+import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // The review loop in a page that a real serve serves: pin a note, send it to
 // the agent, and read the verdicts that the CLI commits.
-
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
 
 /** How the page's clipboard answers: allowed, or blocked as a browser may. */
 type Clipboard = "allowed" | "blocked";
 
 const servedReview = (clipboard: Clipboard = "allowed") =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
-    const root = yield* makeHome(yield* fullMap);
-    const home = path.join(root, "review", "map");
-    const serve = yield* startServe(home, ["--port", "0"]);
-    const opened = yield* openUrl(serve.url);
-
-    yield* Effect.promise(() =>
-      opened.page.setViewportSize({ width: 1280, height: 800 })
-    );
+    const opened = yield* openReviewMap({});
 
     // Playwright's browser has no clipboard permission, so the page's
     // writeText either works or fails by what the test installs.
@@ -48,34 +34,8 @@ const servedReview = (clipboard: Clipboard = "allowed") =>
       `)
     );
 
-    return { root, home, serve, ...opened };
-  }).pipe(Effect.provide(NodeServices.layer));
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
+    return opened;
+  });
 
 /** Goes to the saving chapter and pins the server structure. */
 const pinServer = Effect.fnUntraced(function* (page: Page) {
@@ -97,15 +57,6 @@ const pinNote = Effect.fnUntraced(function* (page: Page, text: string) {
     "[data-structure-panel] [data-notes-section] [data-note-send]"
   );
 });
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
-  );
-}, Effect.provide(NodeServices.layer));
 
 const copiedText = (page: Page) =>
   Effect.promise(() =>

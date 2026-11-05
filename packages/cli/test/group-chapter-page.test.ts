@@ -1,93 +1,31 @@
-import { emptyProposals, Proposals } from "@axonometric/contracts";
-import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  FileSystem,
-  Path,
-  Schema,
-  String as Str,
-} from "effect";
+import { Array as Arr, Effect, String as Str } from "effect";
 import type { Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
+import {
+  click,
+  count,
+  goToChapterPaused,
+  showViewFitted,
+  textOf,
+  waitFor,
+  waitTimeout,
+} from "./browser.ts";
 import { crosses, drawingReport } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { openReviewMap, proposalsOrEmpty } from "./harness.ts";
 
 // Seam 2: group and chapter proposals in a page that a real serve serves. The
 // review map's chapters are c-page (engineer, page), c-save (server,
 // proposals) and c-all (the rest), and its hops h-note, h-save, h-store, h-pr.
 
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
-
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
-
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const chapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-  yield* click(page, '[data-playback-controls] [data-control="pause"]');
-});
-
-const view = Effect.fnUntraced(function* (page: Page, which: "iso" | "plan") {
-  yield* click(page, `[data-view-toggle] [data-view="${which}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-view="${which}"]`);
-  yield* Effect.promise(() => page.keyboard.press("0"));
-});
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  const file = path.join(home, "proposals.json");
-
-  // The file is made by the first write.
-  return (yield* fs.exists(file))
-    ? yield* decodeProposals(yield* fs.readFileString(file))
-    : emptyProposals;
-}, Effect.provide(NodeServices.layer));
+const served = openReviewMap({});
 
 /** Waits until proposals.json holds `wanted` open chapter proposals. */
 const waitForChapters = (page: Page, home: string, wanted: number) =>
   Effect.gen(function* () {
     for (let tries = 0; tries < 60; tries += 1) {
-      const held = yield* readProposals(home);
+      const held = yield* proposalsOrEmpty(home);
 
       if ((held.chapters ?? []).length === wanted) {
         return held;
@@ -96,7 +34,7 @@ const waitForChapters = (page: Page, home: string, wanted: number) =>
       yield* Effect.promise(() => page.waitForTimeout(100));
     }
 
-    return yield* readProposals(home);
+    return yield* proposalsOrEmpty(home);
   });
 
 const middleOf = Effect.fnUntraced(function* (page: Page, selector: string) {
@@ -143,10 +81,10 @@ describe("creating a group", () => {
       Effect.gen(function* () {
         const { home, page, errors } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* makeGroup(page, "Data layer");
 
-        const held = yield* readProposals(home);
+        const held = yield* proposalsOrEmpty(home);
 
         assert.strictEqual(held.groups?.length, 1);
         assert.deepStrictEqual(
@@ -157,7 +95,7 @@ describe("creating a group", () => {
         );
 
         for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
           assert.strictEqual(yield* count(page, "[data-pending-zone]"), 1);
           assert.strictEqual(
             yield* count(
@@ -193,7 +131,7 @@ describe("creating a group", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, "[data-review-item]");
 
-        const held = yield* readProposals(home);
+        const held = yield* proposalsOrEmpty(home);
 
         assert.strictEqual(held.groups?.length, 1);
         assert.deepStrictEqual(held.structures ?? [], []);
@@ -209,7 +147,7 @@ describe("renaming a group", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
 
         const title = yield* middleOf(page, '[data-zone-title-hit="loop"]');
 
@@ -231,7 +169,7 @@ describe("renaming a group", () => {
         );
         yield* click(page, '[role="tab"][data-tab="details"]');
 
-        const held = yield* readProposals(home);
+        const held = yield* proposalsOrEmpty(home);
 
         assert.deepStrictEqual(
           Arr.map(held.groups ?? [], ({ change }) => change),
@@ -271,7 +209,7 @@ describe("a chapter proposal", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* click(page, '[data-structure="server"]');
         yield* click(page, '[data-chapter-toggle="hide"]');
         yield* waitFor(page, '[data-chapter-mark="hide"]');
@@ -290,7 +228,7 @@ describe("a chapter proposal", () => {
           1
         );
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         assert.strictEqual(yield* count(page, '[data-structure="server"]'), 1);
         assert.strictEqual(yield* count(page, "[data-chapter-mark]"), 0);
         assert.strictEqual(
@@ -298,7 +236,7 @@ describe("a chapter proposal", () => {
           0
         );
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         assert.strictEqual(
           yield* count(page, '[data-structure="server"][data-pending="true"]'),
           1
@@ -313,7 +251,7 @@ describe("a chapter proposal", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* click(page, '[data-reveal="pull-request"]');
         yield* waitForChapters(page, home, 1);
         yield* waitFor(
@@ -321,7 +259,7 @@ describe("a chapter proposal", () => {
           '[data-chapter-mark="reveal"][data-chapter-mark-of="pull-request"]'
         );
 
-        yield* chapter(page, "c-page");
+        yield* goToChapterPaused(page, "c-page");
         assert.strictEqual(yield* count(page, "[data-chapter-mark]"), 0);
         assert.strictEqual(
           yield* count(page, '[data-structure="pull-request"]'),
@@ -337,7 +275,7 @@ describe("a chapter proposal", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* Effect.promise(() =>
           page
             .locator('[data-structure="proposals"]')
@@ -361,7 +299,7 @@ describe("a chapter proposal", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* Effect.promise(() =>
           page
             .locator('[data-play="h-store"]')
@@ -386,7 +324,7 @@ describe("a chapter proposal", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* Effect.promise(() =>
           page.locator('[data-play-down="h-note"]').focus()
         );
@@ -414,7 +352,7 @@ describe("a chapter proposal", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-page");
+        yield* goToChapterPaused(page, "c-page");
         yield* Effect.promise(() =>
           page.locator("[data-add-play-hop]").selectOption("h-store")
         );
@@ -436,7 +374,7 @@ describe("the Pending tab", () => {
       Effect.gen(function* () {
         const { page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* makeGroup(page, "Data layer");
         yield* unpin(page);
         yield* click(page, '[data-reveal="pull-request"]');
@@ -510,7 +448,7 @@ describe("the pending rings and lines", () => {
       Effect.gen(function* () {
         const { page, errors } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* makeGroup(page, "Data layer");
         yield* unpin(page);
         yield* click(page, '[data-reveal="pull-request"]');
@@ -521,7 +459,7 @@ describe("the pending rings and lines", () => {
         yield* unpin(page);
 
         for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
 
           const report = yield* reportOf(page);
 
@@ -564,7 +502,7 @@ describe("the warnings panel for group and chapter proposals", () => {
       Effect.gen(function* () {
         const { page } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-structure="server"]');
         yield* Effect.promise(() =>
           page
@@ -620,7 +558,7 @@ describe("the warnings panel for group and chapter proposals", () => {
       Effect.gen(function* () {
         const { page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* makeGroup(page, "Data layer");
         yield* unpin(page);
         yield* click(page, '[data-reveal="pull-request"]');
@@ -650,7 +588,7 @@ describe("the chapter details for a proposal", () => {
       Effect.gen(function* () {
         const { page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         yield* click(page, '[data-play-down="h-note"]');
         yield* waitFor(page, '[data-play-pending="order"]');
 
@@ -689,7 +627,7 @@ describe("the chapter details for a proposal", () => {
       Effect.gen(function* () {
         const { page } = yield* served;
 
-        yield* chapter(page, "c-save");
+        yield* goToChapterPaused(page, "c-save");
         assert.strictEqual(yield* count(page, "[data-chapter-legend]"), 0);
 
         yield* click(page, '[data-reveal="pull-request"]');
@@ -710,7 +648,7 @@ describe("the chapter details for a proposal", () => {
         );
 
         // Another chapter shows none of it.
-        yield* chapter(page, "c-page");
+        yield* goToChapterPaused(page, "c-page");
         assert.strictEqual(yield* count(page, "[data-chapter-legend]"), 0);
       }),
     90_000

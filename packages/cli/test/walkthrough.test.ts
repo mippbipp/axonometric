@@ -2,7 +2,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Order } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf, boxesOf } from "./browser.ts";
+import {
+  attributesOf,
+  boxesOf,
+  click,
+  press,
+  scaleOf,
+  waitForScale,
+} from "./browser.ts";
 import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -23,26 +30,6 @@ const newMarkers = (page: Page) =>
 const waitForChapter = (page: Page, id: string) =>
   Effect.promise(() =>
     page.locator(`[data-walkthrough][data-chapter="${id}"]`).waitFor()
-  );
-
-const press = (page: Page, key: string) =>
-  Effect.promise(() => page.keyboard.press(key));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).click());
-
-const scaleExpression =
-  'Number(document.querySelector("svg[data-scale]").dataset.scale)';
-
-const scaleOf = (page: Page) =>
-  Effect.promise(() => page.evaluate<number>(scaleExpression));
-
-/** Waits until the viewport's zoom passes `test`, such as `> 2`. */
-const waitForScale = (page: Page, test: string) =>
-  Effect.promise(() =>
-    page.waitForFunction(`${scaleExpression} ${test}`, undefined, {
-      timeout: 5000,
-    })
   );
 
 const zoomIn = (page: Page) =>

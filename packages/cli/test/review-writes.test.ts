@@ -1,11 +1,9 @@
 import { Proposals } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Path, Schema, String as Str } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
+import { Effect, Schema, String as Str } from "effect";
 
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { proposalsText, readHome, serveReviewMap } from "./harness.ts";
+import { ownOrigin, writeText } from "./revisions.ts";
 
 // Plain HTTP writes to the review routes of a real serve, for the requests a
 // browser won't send. Each refused write must leave every file as it was.
@@ -52,87 +50,24 @@ const frozenFile = `${JSON.stringify(
   2
 )}\n`;
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
+const served = serveReviewMap({ "review/map/proposals.json": frozenFile }, []);
 
-  const root = yield* makeHome({
-    ...(yield* fullMap),
-    "review/map/proposals.json": frozenFile,
-  });
-
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-
-  return { home, url: serve.url };
-}).pipe(Effect.provide(NodeServices.layer));
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
-
-interface Write {
-  readonly url: string;
-  readonly pathname: string;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: string;
-}
-
-const send =
-  (make: typeof HttpClientRequest.post) =>
-  ({ url, pathname, headers, body }: Write) =>
-    HttpClient.HttpClient.use((client) =>
-      client.execute(
-        make(new URL(pathname, url)).pipe(
-          HttpClientRequest.setHeaders(headers),
-          HttpClientRequest.bodyText(
-            body,
-            headers["content-type"] ?? "application/json"
-          )
-        )
-      )
-    ).pipe(
-      Effect.flatMap((response) =>
-        Effect.map(response.text, (text): Sent => ({
-          status: response.status,
-          body: text,
-        }))
-      ),
-      Effect.scoped,
-      Effect.orDie,
-      Effect.provide(NodeHttpClient.layerNodeHttp)
-    );
-
-const sendPost = send(HttpClientRequest.post);
-
-const sendPut = send(HttpClientRequest.put);
-
-/** A write to `pathname`, as `[url, pathname, headers, body]`. */
+/** A write to `target`, as `[url, target, headers, body]`. */
 type Args = readonly [
   url: string,
-  pathname: string,
+  target: string,
   headers: Readonly<Record<string, string>>,
   body: string,
 ];
 
-const post = (...[url, pathname, headers, body]: Args) =>
-  sendPost({ url, pathname, headers, body });
+const post = (...[url, target, headers, body]: Args) =>
+  writeText(url, { method: "post", target, headers, body });
 
-const put = (...[url, pathname, headers, body]: Args) =>
-  sendPut({ url, pathname, headers, body });
-
-const own = (url: string) => ({
-  origin: url,
-  "content-type": "application/json",
-});
+const put = (...[url, target, headers, body]: Args) =>
+  writeText(url, { method: "put", target, headers, body });
 
 const json = (value: Readonly<Record<string, Schema.Json>>) =>
   JSON.stringify(value);
-
-const proposalsText = (home: string) =>
-  runCli(home, ["--version"]).pipe(
-    Effect.map(({ files }) => files["proposals.json"] ?? "")
-  );
 
 const FrozenAnswer = Schema.Struct({
   batch: Schema.Struct({ number: Schema.Int }),
@@ -239,7 +174,7 @@ describe("the review routes", () => {
       ];
 
       for (const body of bad) {
-        const sent = yield* post(url, "/api/notes", own(url), body);
+        const sent = yield* post(url, "/api/notes", ownOrigin(url), body);
 
         assert.strictEqual(sent.status, 400, body);
       }
@@ -252,7 +187,7 @@ describe("the review routes", () => {
       });
 
       assert.strictEqual(
-        (yield* post(url, "/api/notes", own(url), long)).status,
+        (yield* post(url, "/api/notes", ownOrigin(url), long)).status,
         400
       );
       assert.strictEqual(yield* proposalsText(home), before);
@@ -267,7 +202,7 @@ describe("the review routes", () => {
       const sent = yield* post(
         url,
         "/api/notes",
-        own(url),
+        ownOrigin(url),
         json({
           baseFileRevision: 1,
           id: "n1",
@@ -291,7 +226,7 @@ describe("the review routes", () => {
         const added = yield* post(
           url,
           "/api/notes",
-          own(url),
+          ownOrigin(url),
           json({
             baseFileRevision: 3,
             id: "n-open",
@@ -305,7 +240,7 @@ describe("the review routes", () => {
         const frozen = yield* post(
           url,
           "/api/review/freeze",
-          own(url),
+          ownOrigin(url),
           json({ baseFileRevision: 4 })
         );
 
@@ -334,7 +269,7 @@ describe("the review routes", () => {
         const reuse = yield* put(
           url,
           "/api/proposals/layout",
-          own(url),
+          ownOrigin(url),
           json({
             baseFileRevision: 3,
             layout: [
@@ -361,7 +296,7 @@ describe("the review routes", () => {
         const onto = yield* put(
           url,
           "/api/proposals/layout",
-          own(url),
+          ownOrigin(url),
           json({
             baseFileRevision: 3,
             layout: [
@@ -394,7 +329,7 @@ describe("the review routes", () => {
         const open = yield* put(
           url,
           "/api/proposals/layout",
-          own(url),
+          ownOrigin(url),
           json({
             baseFileRevision: 3,
             layout: [
@@ -419,7 +354,7 @@ describe("the review routes", () => {
         const accepted = yield* post(
           url,
           "/api/proposals/accept",
-          own(url),
+          ownOrigin(url),
           json({ baseFileRevision: 4, changeIds: "all" })
         );
 
@@ -427,9 +362,10 @@ describe("the review routes", () => {
         assert.include(accepted.body, "Wait for the agent");
         assert.strictEqual(yield* proposalsText(home), before);
 
-        const layout = yield* runCli(home, ["--version"]);
-
-        assert.strictEqual(layout.files["history/0001.json"], undefined);
+        assert.strictEqual(
+          (yield* readHome(home))["history/0001.json"],
+          undefined
+        );
       })
   );
 });
@@ -485,7 +421,7 @@ describe("text suggestions, answers and questions", () => {
       const result = yield* post(
         url,
         route,
-        own(url),
+        ownOrigin(url),
         json({ baseFileRevision: revision, ...item })
       );
 
@@ -525,7 +461,7 @@ describe("text suggestions, answers and questions", () => {
         const sent = yield* post(
           url,
           route,
-          own(url),
+          ownOrigin(url),
           json({ baseFileRevision: 3, ...item })
         );
 
@@ -545,7 +481,7 @@ describe("text suggestions, answers and questions", () => {
       const edited = yield* post(
         url,
         "/api/items/edit",
-        own(url),
+        ownOrigin(url),
         json({ baseFileRevision: revision, id: "s-one", text: "Better." })
       );
 
@@ -554,7 +490,7 @@ describe("text suggestions, answers and questions", () => {
       const gone = yield* post(
         url,
         "/api/items/discard",
-        own(url),
+        ownOrigin(url),
         json({ baseFileRevision: revision + 1, id: "a-one" })
       );
 

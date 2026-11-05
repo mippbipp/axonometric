@@ -1,67 +1,22 @@
-import { ProposalsFile, ReviewReport } from "@axonometric/contracts";
-import { NodeServices } from "@effect/platform-node";
+import { ReviewReport } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Path, Schema } from "effect";
+import { Array as Arr, Effect, Schema } from "effect";
 import type { Locator, Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { click, count, textOf, waitFor, waitTimeout } from "./browser.ts";
+import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // Words on the page, against a real serve: a text suggestion shown beside the
 // original, an answer, a raised question, and notes on a hop and an empty spot.
-
-const wait = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
 
 const decodeReview = Schema.decodeUnknownEffect(
   Schema.fromJsonString(ReviewReport)
 );
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
-
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(wait));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
+const served = openReviewMap({});
 
 const fill = (page: Page, selector: string, text: string) =>
   Effect.promise(() => page.locator(selector).first().fill(text));
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
-  );
-}, Effect.provide(NodeServices.layer));
 
 /** Opens the saving chapter and pins the structure `id`. */
 const pin = Effect.fnUntraced(function* (page: Page, id: string) {
@@ -288,7 +243,7 @@ describe("a text suggestion", () => {
       yield* Effect.promise(() =>
         page
           .locator(`${panel} [data-suggestable="whatItDoes"] [data-suggested]`)
-          .waitFor({ state: "detached", ...wait })
+          .waitFor({ state: "detached", ...waitTimeout })
       );
 
       assert.deepStrictEqual((yield* readProposals(home)).suggestions, []);

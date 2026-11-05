@@ -5,7 +5,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, FileSystem } from "effect";
 import type { Page } from "playwright";
 
-import { literal } from "./browser.ts";
+import { click, inPage, literal, press, waitFor, waitGone } from "./browser.ts";
 import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -21,25 +21,8 @@ const overviewButton = "header [data-control='overview']";
 
 const overviewPage = "dialog[open][data-overview-page]";
 
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).click());
-
-const press = (page: Page, key: string) =>
-  Effect.promise(() => page.keyboard.press(key));
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor());
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page.locator(selector).first().waitFor({ state: "detached" })
-  );
-
 const texts = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).allTextContents());
-
-const inPage = <A>(page: Page, expression: string) =>
-  Effect.promise(() => page.evaluate<A>(expression));
 
 const openOverview = Effect.fnUntraced(function* (page: Page) {
   yield* click(page, overviewButton);

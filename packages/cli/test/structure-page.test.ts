@@ -1,4 +1,3 @@
-import { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -7,70 +6,29 @@ import {
   FileSystem,
   Path,
   Schedule,
-  Schema,
   String as Str,
 } from "effect";
 import type { Page } from "playwright";
 
-import { literal, openUrl } from "./browser.ts";
-import { crosses, drawingReport, overlap } from "./drawing-report.ts";
+import {
+  click,
+  count,
+  goToChapterPaused,
+  inPage,
+  showViewFitted,
+  strokeOf,
+  waitFor,
+  waitTimeout,
+} from "./browser.ts";
+import { crosses, drawingReport, nameTagClashes } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // Seam 2: structure proposals in a page that a real serve serves. The review
 // map's chapters reveal engineer and page, then server and proposals, then
 // the rest, so a proposed structure is revealed in each of them.
 
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
-
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
-
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const chapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-  yield* click(page, '[data-playback-controls] [data-control="pause"]');
-});
-
-const view = Effect.fnUntraced(function* (page: Page, which: "iso" | "plan") {
-  yield* click(page, `[data-view-toggle] [data-view="${which}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-view="${which}"]`);
-  yield* Effect.promise(() => page.keyboard.press("0"));
-});
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
-  );
-}, Effect.provide(NodeServices.layer));
+const served = openReviewMap({});
 
 /**
  * The structure proposals in proposals.json once there are `expected` of them.
@@ -145,14 +103,6 @@ const addStructure = Effect.fnUntraced(function* (
   yield* click(page, '[data-add="submit"]');
 });
 
-/** The computed stroke of the element matching `selector`, read in the page. */
-const strokeOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page.evaluate<string>(
-      `getComputedStyle(document.querySelector(${literal(selector)})).stroke`
-    )
-  );
-
 /** The pieces of the cross that run over a code chip or a name tag. */
 const strikesOverText = (report: DrawingReport): readonly string[] => {
   // The chip's rendered box, with 3 pixels of air round it.
@@ -185,34 +135,9 @@ const strikesOverText = (report: DrawingReport): readonly string[] => {
   );
 };
 
-const clashes = Effect.fnUntraced(function* (page: Page) {
-  const report = yield* Effect.promise(() =>
-    page.evaluate<DrawingReport>(drawingReport)
-  );
-
-  const tags = Arr.filter(report.text, ({ id }) => Str.startsWith("tag:")(id));
-
-  const withText = Arr.flatMap(tags, (tag) =>
-    Arr.flatMap(
-      Arr.filter(report.text, ({ id }) => id !== tag.id),
-      (other: DrawingReport["text"][number]) =>
-        overlap(tag.polygon, other.polygon) ? [`${tag.id} × ${other.id}`] : []
-    )
-  );
-
-  const withBoxes = Arr.flatMap(tags, (tag) =>
-    Arr.flatMap(
-      Arr.filter(
-        report.structures,
-        ({ id }) => id !== `box:${Str.slice(4)(tag.id)}`
-      ),
-      (box: DrawingReport["structures"][number]) =>
-        overlap(tag.polygon, box.polygon) ? [`${tag.id} × ${box.id}`] : []
-    )
-  );
-
-  return [...new Set([...withText, ...withBoxes])];
-});
+/** Every name tag drawn now over other text or a box other than its own. */
+const clashes = (page: Page) =>
+  inPage<DrawingReport>(page, drawingReport).pipe(Effect.map(nameTagClashes));
 
 describe("adding a structure from the toolbar", () => {
   it.live(
@@ -221,7 +146,7 @@ describe("adding a structure from the toolbar", () => {
       Effect.gen(function* () {
         const { home, page, errors } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-control="add-structure"]');
         yield* waitFor(page, "[data-add-structure]");
 
@@ -291,7 +216,7 @@ describe("adding a structure from the toolbar", () => {
     Effect.gen(function* () {
       const { home, page } = yield* served;
 
-      yield* chapter(page, "c-all");
+      yield* goToChapterPaused(page, "c-all");
       yield* click(page, '[data-control="add-structure"]');
       yield* click(page, '[data-add="pick"]');
 
@@ -351,14 +276,14 @@ describe.each(["iso", "plan"] as const)(
         Effect.gen(function* () {
           const { page } = yield* served;
 
-          yield* chapter(page, "c-all");
+          yield* goToChapterPaused(page, "c-all");
           yield* addStructure(page, { name: "Build cache", x: 12, y: 12 });
           yield* waitFor(page, '[data-structure][data-pending="true"]');
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
 
           for (const id of ["c-page", "c-save", "c-all"]) {
-            yield* chapter(page, id);
-            yield* view(page, which);
+            yield* goToChapterPaused(page, id);
+            yield* showViewFitted(page, which);
 
             const proposed = page.locator(
               '[data-structure][data-pending="true"]'
@@ -401,14 +326,14 @@ describe("deleting a structure", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-structure="upstream"]');
         yield* waitFor(page, '[data-structure-panel="upstream"]');
         yield* click(page, '[data-change="delete"]');
         yield* waitFor(page, '[data-removed-mark="upstream"]');
 
         for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
 
           const mark = page.locator('[data-removed-mark="upstream"]');
 
@@ -446,7 +371,7 @@ describe("deleting a structure", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         yield* addStructure(page, { name: "Build cache", x: 12, y: 12 });
         yield* waitFor(page, '[data-structure][data-pending="true"]');
         yield* click(page, '[data-structure="server"]');
@@ -481,7 +406,7 @@ describe("deleting a structure", () => {
         );
 
         for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
           yield* click(page, '[data-control="export"]');
 
           const [download] = yield* Effect.promise(() =>
@@ -537,10 +462,10 @@ describe("the context menu on a structure", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
 
         for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
           yield* Effect.promise(() =>
             page.locator('[data-structure="server"]').click({ button: "right" })
           );

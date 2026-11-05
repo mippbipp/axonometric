@@ -12,52 +12,33 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf, boxesOf, literal, openUrl } from "./browser.ts";
-import { drawingReport, overlap } from "./drawing-report.ts";
+import {
+  attributeOf,
+  attributesOf,
+  boxesOf,
+  click,
+  count,
+  literal,
+  openUrl,
+  textOf,
+  waitFor,
+  waitGone,
+  waitTimeout,
+} from "./browser.ts";
+import { drawingReport, textClashes } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { makeHome, readIn, serveReviewMap, startServe } from "./harness.ts";
 import { acceptChanges, moveOf, resizeOf } from "./revisions.ts";
 
 // The History panel in a page that a real serve serves: two revisions made
 // through the API, then opened, compared and restored in Chromium.
-
-const waitTimeout = { timeout: 15_000 };
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 const decodeProposals = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Proposals)
 );
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const attributeOf = (page: Page, selector: string, name: string) =>
-  Effect.promise(() => page.locator(selector).first().getAttribute(name));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
 
 /** Where the page's drawing puts structure `id`: its centre on screen. */
 const centreOf = Effect.fnUntraced(function* (page: Page, id: string) {
@@ -84,10 +65,7 @@ const centreOf = Effect.fnUntraced(function* (page: Page, id: string) {
  * the page 2 × 2, and the server at (8, 0).
  */
 const servedWithTwo = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
+  const { root, home, serve } = yield* serveReviewMap({}, []);
 
   yield* acceptChanges(serve, {
     base: 0,
@@ -135,19 +113,7 @@ const assertReadable = Effect.fnUntraced(function* (page: Page, where: string) {
     page.evaluate(drawingReport)
   );
 
-  const textClashes = Arr.flatMap(report.text, (first, index) =>
-    Arr.flatMap(Arr.drop(report.text, index + 1), (second) =>
-      overlap(first.polygon, second.polygon)
-        ? [`${first.id} × ${second.id}`]
-        : []
-    )
-  );
-
-  const underBoxes = Arr.flatMap(report.text, (text) =>
-    Arr.flatMap(report.structures, (box) =>
-      overlap(text.polygon, box.polygon) ? [`${text.id} × ${box.id}`] : []
-    )
-  );
+  const clashes = textClashes(report);
 
   const sizes = yield* Effect.promise(() =>
     page.evaluate<
@@ -169,8 +135,7 @@ const assertReadable = Effect.fnUntraced(function* (page: Page, where: string) {
   );
 
   assert.isNotEmpty(report.text, where);
-  assert.deepStrictEqual(textClashes, [], `text over text in ${where}`);
-  assert.deepStrictEqual(underBoxes, [], `text under boxes in ${where}`);
+  assert.deepStrictEqual(clashes, [], `text over text or a box in ${where}`);
   assert.deepStrictEqual(
     stray,
     [],
@@ -225,13 +190,6 @@ const openRevision = Effect.fnUntraced(function* (page: Page, n: number) {
   yield* click(page, `[data-history-list] [data-revision="${n}"]`);
   yield* waitFor(page, `[data-past-revision="${n}"]`);
 });
-
-const readIn = Effect.fnUntraced(function* (root: string, file: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* fs.readFileString(path.join(root, file));
-}, Effect.provide(NodeServices.layer));
 
 /** Waits until proposals.json in `root` holds `wanted` pending layout changes. */
 const waitForPendingCount = Effect.fnUntraced(function* (

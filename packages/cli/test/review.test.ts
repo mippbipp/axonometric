@@ -23,7 +23,7 @@ import {
 import { HttpClient } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { makeHome, pageState, readIn, runCli, startServe } from "./harness.ts";
 import type { HomeFiles } from "./harness.ts";
 
 // The review commands on a temporary home folder: review, verdict and commit.
@@ -126,21 +126,7 @@ const decodeRevision = Schema.decodeUnknownEffect(
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
-const readIn = Effect.fnUntraced(function* (root: string, file: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* fs.readFileString(path.join(root, file));
-}, Effect.provide(NodeServices.layer));
-
 const decodeState = Schema.decodeUnknownEffect(Schema.fromJsonString(MapState));
-
-/** The map state a page embeds. */
-const pageState = (page: string) =>
-  decodeState(
-    /id="axonometric-map-state">(?<json>.*?)<\/script>/su.exec(page)?.groups
-      ?.json ?? ""
-  );
 
 const writeIn = Effect.fnUntraced(function* (
   root: string,

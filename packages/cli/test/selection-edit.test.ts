@@ -12,9 +12,25 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
-import { openPage, openUrl } from "./browser.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import {
+  attributeOf,
+  centreOf,
+  count,
+  goToChapter,
+  openPage,
+  press,
+  showView,
+  unitOnScreen,
+  waitFor,
+  waitGone,
+} from "./browser.ts";
+import type { View } from "./browser.ts";
+import {
+  openReviewMap,
+  proposalsIn,
+  runCli,
+  waitForRevision,
+} from "./harness.ts";
 
 // Selecting several structures in a page that a real serve serves, and
 // moving, nudging, aligning, distributing, undoing and redoing them. The
@@ -22,107 +38,16 @@ import { makeHome, runCli, startServe } from "./harness.ts";
 // upstream at 0,0, 4,0, 8,0, 8,6, 12,6 and 18,0; the first chapter shows
 // engineer and page.
 
-type View = "iso" | "plan";
-
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
-
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
-
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
+const served = openReviewMap({});
 
 /** The served review map, open in its last chapter, which shows everything. */
 const servedAll = Effect.gen(function* () {
   const opened = yield* served;
 
-  yield* Effect.promise(() =>
-    opened.page
-      .locator('[data-chapter-rail] button[data-chapter="c-all"]')
-      .click()
-  );
-  yield* Effect.promise(() =>
-    opened.page
-      .locator('[data-walkthrough][data-chapter="c-all"]')
-      .waitFor(waitTimeout)
-  );
+  yield* goToChapter(opened.page, "c-all");
 
   return opened;
 });
-
-const toView = Effect.fnUntraced(function* (page: Page, view: View) {
-  yield* Effect.promise(() =>
-    page.locator(`[data-view-toggle] [data-view="${view}"]`).click()
-  );
-  yield* Effect.promise(() =>
-    page.locator(`[data-walkthrough][data-view="${view}"]`).waitFor()
-  );
-});
-
-/** What proposals.json in `home` holds, or nothing when there's no file. */
-const proposalsIn = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, "proposals.json");
-
-  if (!(yield* fs.exists(file))) {
-    return Option.none<Proposals>();
-  }
-
-  return Option.some(yield* decodeProposals(yield* fs.readFileString(file)));
-}, Effect.provide(NodeServices.layer));
-
-/** Waits until proposals.json in `home` is at `revision`, and returns it. */
-const waitForRevision = Effect.fnUntraced(function* (
-  home: string,
-  revision: number
-) {
-  for (let tries = 0; tries < 150; tries++) {
-    const now = yield* proposalsIn(home);
-
-    if (Option.isSome(now) && now.value.revision >= revision) {
-      assert.strictEqual(now.value.revision, revision);
-
-      return now.value;
-    }
-
-    yield* Effect.sleep("100 millis");
-  }
-
-  return assert.fail(`proposals.json never reached revision ${revision}`);
-});
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const attribute = (page: Page, selector: string, name: string) =>
-  Effect.promise(() => page.locator(selector).first().getAttribute(name));
-
-const press = (page: Page, key: string) =>
-  Effect.promise(() => page.keyboard.press(key));
 
 /** Shift-clicks each structure in turn. */
 const shiftClick = Effect.fnUntraced(function* (
@@ -178,13 +103,6 @@ const groundToPage = Effect.fnUntraced(function* (
   };
 });
 
-/** One grid unit along x or y on screen, at the view's current zoom. */
-const unitOnScreen = Effect.fnUntraced(function* (page: Page, view: View) {
-  const scale = yield* attribute(page, "svg[data-scale]", "data-scale");
-
-  return (view === "plan" ? 60 : Math.hypot(36, 18)) * Number(scale);
-});
-
 /** Holds Shift and drags a box between two ground points on empty canvas. */
 const dragBox = Effect.fnUntraced(function* ({
   page,
@@ -212,18 +130,6 @@ const dragBox = Effect.fnUntraced(function* ({
     yield* Effect.promise(() => page.mouse.up());
     yield* Effect.promise(() => page.keyboard.up("Shift"));
   }
-});
-
-const centreOf = Effect.fnUntraced(function* (page: Page, selector: string) {
-  const box = yield* Effect.promise(() =>
-    page.locator(selector).first().boundingBox()
-  );
-
-  assert.isNotNull(box, `${selector} isn't on screen`);
-
-  return box === null
-    ? { x: 0, y: 0 }
-    : { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 });
 
 const dragBy = Effect.fnUntraced(function* (
@@ -270,7 +176,7 @@ describe("selecting several structures", () => {
         Effect.gen(function* () {
           const { page, errors } = yield* servedAll;
 
-          yield* toView(page, view);
+          yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
           assert.deepStrictEqual(yield* multiSelectedIds(page), [
             "engineer",
@@ -297,7 +203,7 @@ describe("selecting several structures", () => {
         Effect.gen(function* () {
           const { page, home } = yield* servedAll;
 
-          yield* toView(page, view);
+          yield* showView(page, view);
 
           // Ground x -0.3 to 9.5 and y -0.3 to 2.6 reaches engineer, page
           // and server along the top row, and nothing below it.
@@ -336,15 +242,15 @@ describe("selecting several structures", () => {
     Effect.gen(function* () {
       const { page } = yield* servedAll;
 
-      yield* toView(page, "plan");
+      yield* showView(page, "plan");
 
       const start = yield* groundToPage(page, "plan", { x: -0.3, y: 2.6 });
-      const before = yield* attribute(page, "[data-viewport]", "transform");
+      const before = yield* attributeOf(page, "[data-viewport]", "transform");
 
       yield* dragBy(page, start, { x: 30, y: 20 });
 
       assert.notStrictEqual(
-        yield* attribute(page, "[data-viewport]", "transform"),
+        yield* attributeOf(page, "[data-viewport]", "transform"),
         before
       );
       assert.deepStrictEqual(yield* multiSelectedIds(page), []);
@@ -360,7 +266,7 @@ describe("moving a selection", () => {
         Effect.gen(function* () {
           const { page, home } = yield* servedAll;
 
-          yield* toView(page, view);
+          yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
 
           const unit = yield* unitOnScreen(page, view);
@@ -414,7 +320,7 @@ describe("moving a selection", () => {
         Effect.gen(function* () {
           const { page, home } = yield* servedAll;
 
-          yield* toView(page, "plan");
+          yield* showView(page, "plan");
           yield* shiftClick(page, select);
 
           const unit = yield* unitOnScreen(page, "plan");
@@ -429,7 +335,7 @@ describe("moving a selection", () => {
           );
 
           assert.strictEqual(
-            yield* attribute(page, "[data-drag-outline]", "data-refused"),
+            yield* attributeOf(page, "[data-drag-outline]", "data-refused"),
             "true"
           );
           assert.strictEqual(
@@ -460,7 +366,7 @@ describe("nudging a selection", () => {
         Effect.gen(function* () {
           const { page, home } = yield* served;
 
-          yield* toView(page, view);
+          yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
 
           yield* press(page, "ArrowRight");
@@ -492,7 +398,7 @@ describe("nudging a selection", () => {
             ],
           });
           assert.strictEqual(
-            yield* attribute(page, "[data-walkthrough]", "data-chapter"),
+            yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
             "c-page"
           );
         }),
@@ -512,7 +418,7 @@ describe("nudging a selection", () => {
       yield* press(page, "ArrowRight");
       yield* waitForRevision(home, 1);
       assert.strictEqual(
-        yield* attribute(page, "[data-walkthrough]", "data-chapter"),
+        yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
         "c-save"
       );
 
@@ -641,7 +547,7 @@ describe("aligning and distributing", () => {
         Effect.gen(function* () {
           const { page, home } = yield* servedAll;
 
-          yield* toView(page, view);
+          yield* showView(page, view);
 
           let revision = 0;
 
@@ -715,7 +621,7 @@ describe("undo and redo", () => {
       Effect.gen(function* () {
         const { page, home } = yield* servedAll;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
         assert.isTrue(
           yield* Effect.promise(() => page.locator(undoButton).isDisabled())
         );
@@ -751,7 +657,7 @@ describe("undo and redo", () => {
       Effect.gen(function* () {
         const { page, home } = yield* servedAll;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
         yield* dragEngineer(page);
         const moved = yield* waitForRevision(home, 1);
 
@@ -781,7 +687,7 @@ describe("undo and redo", () => {
       Effect.gen(function* () {
         const { page, home } = yield* servedAll;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
         yield* dragEngineer(page);
         yield* waitForRevision(home, 1);
         yield* press(page, "Control+z");
@@ -804,7 +710,7 @@ describe("undo and redo", () => {
       Effect.gen(function* () {
         const { page, home, serve } = yield* servedAll;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
         yield* dragEngineer(page);
         yield* waitForRevision(home, 1);
         yield* waitFor(
@@ -924,7 +830,7 @@ describe("how the multi-selection looks", () => {
         Effect.gen(function* () {
           const { page, home } = yield* servedAll;
 
-          yield* toView(page, view);
+          yield* showView(page, view);
 
           // Upstream moves on its own, so it is pending.
           const unit = yield* unitOnScreen(page, view);
@@ -972,7 +878,7 @@ describe("the toolbar", () => {
       Effect.gen(function* () {
         const { page } = yield* servedAll;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
         yield* shiftClick(page, ["engineer", "page"]);
         yield* waitFor(page, "[data-arrange-toolbar]");
 
@@ -1000,11 +906,11 @@ describe("the toolbar", () => {
 
         // Undo and Redo are named without their arrows.
         assert.strictEqual(
-          yield* attribute(page, "[data-control='undo']", "aria-label"),
+          yield* attributeOf(page, "[data-control='undo']", "aria-label"),
           "Undo"
         );
         assert.strictEqual(
-          yield* attribute(page, "[data-control='redo']", "aria-label"),
+          yield* attributeOf(page, "[data-control='redo']", "aria-label"),
           "Redo"
         );
       }),
@@ -1015,22 +921,22 @@ describe("the toolbar", () => {
     Effect.gen(function* () {
       const { page } = yield* servedAll;
 
-      yield* toView(page, "iso");
+      yield* showView(page, "iso");
       yield* shiftClick(page, ["engineer", "page"]);
       yield* waitFor(page, "[data-arrange-toolbar]");
 
       assert.include(
-        (yield* attribute(page, "[data-align='left']", "aria-label")) ?? "",
+        (yield* attributeOf(page, "[data-align='left']", "aria-label")) ?? "",
         "smallest x"
       );
       assert.include(
-        (yield* attribute(page, "[data-align='top']", "aria-label")) ?? "",
+        (yield* attributeOf(page, "[data-align='top']", "aria-label")) ?? "",
         "smallest y"
       );
 
-      yield* toView(page, "plan");
+      yield* showView(page, "plan");
       assert.strictEqual(
-        yield* attribute(page, "[data-align='left']", "aria-label"),
+        yield* attributeOf(page, "[data-align='left']", "aria-label"),
         "Align left edges"
       );
     })

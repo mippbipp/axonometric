@@ -1,11 +1,9 @@
 import { LayoutChange, Proposals } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Path, Schema } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
+import { Array as Arr, Effect, Schema } from "effect";
 
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { proposalsText, serveReviewMap } from "./harness.ts";
+import { writeText } from "./revisions.ts";
 
 // Plain HTTP writes to a real serve, for a reroute frozen in a batch. The
 // server holds the line for every client, undo included, so these go round
@@ -63,24 +61,7 @@ const frozenFile = `${JSON.stringify(
   2
 )}\n`;
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-
-  const root = yield* makeHome({
-    ...(yield* fullMap),
-    "review/map/proposals.json": frozenFile,
-  });
-
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-
-  return { home, url: serve.url };
-}).pipe(Effect.provide(NodeServices.layer));
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
+const served = serveReviewMap({ "review/map/proposals.json": frozenFile }, []);
 
 const LayoutWrite = Schema.Struct({
   baseFileRevision: Schema.Finite,
@@ -97,32 +78,8 @@ const putLayout = (
   encodeWrite({ baseFileRevision, layout }).pipe(
     Effect.orDie,
     Effect.flatMap((body) =>
-      HttpClient.HttpClient.use((client) =>
-        client.execute(
-          HttpClientRequest.put(new URL("/api/proposals/layout", url)).pipe(
-            HttpClientRequest.setHeaders({
-              origin: url,
-              "content-type": "application/json",
-            }),
-            HttpClientRequest.bodyText(body, "application/json")
-          )
-        )
-      )
-    ),
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text): Sent => ({
-        status: response.status,
-        body: text,
-      }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
-  );
-
-const proposalsText = (home: string) =>
-  runCli(home, ["--version"]).pipe(
-    Effect.map(({ files }) => files["proposals.json"] ?? "")
+      writeText(url, { method: "put", target: "/api/proposals/layout", body })
+    )
   );
 
 const decodeProposals = Schema.decodeUnknownEffect(

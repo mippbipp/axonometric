@@ -2,16 +2,19 @@ import { LayoutFile, Revision } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path, Schema } from "effect";
-import type { Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
+import { click, count, openUrl, textOf, waitFor, waitGone } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import {
+  makeHome,
+  openReviewMap,
+  readIn,
+  runCli,
+  startServe,
+} from "./harness.ts";
 
 // Accepting pending layout changes in a page that a real serve serves: what
 // the Pending tab shows, and what lands on disk.
-
-const waitTimeout = { timeout: 15_000 };
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
@@ -49,46 +52,15 @@ const pendingProposals = `${JSON.stringify(
 
 /** The review map with two pending changes, served on a free port and opened. */
 const servedWithPending = Effect.gen(function* () {
-  const path = yield* Path.Path;
-
-  const root = yield* makeHome({
-    ...(yield* fullMap),
+  const opened = yield* openReviewMap({
     "review/map/proposals.json": pendingProposals,
   });
 
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
+  yield* click(opened.page, '[role="tab"][data-tab="pending"]');
+  yield* waitFor(opened.page, "[data-pending-list]");
 
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-  yield* Effect.promise(() =>
-    opened.page.locator('[role="tab"][data-tab="pending"]').click()
-  );
-  yield* Effect.promise(() =>
-    opened.page.locator("[data-pending-list]").waitFor(waitTimeout)
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().textContent());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
+  return opened;
+});
 
 /** Whether `file` is in `root`, relative to it. */
 const exists = Effect.fnUntraced(function* (root: string, file: string) {
@@ -96,14 +68,6 @@ const exists = Effect.fnUntraced(function* (root: string, file: string) {
   const path = yield* Path.Path;
 
   return yield* fs.exists(path.join(root, file));
-}, Effect.provide(NodeServices.layer));
-
-/** The text of `file` in `root`, relative to it. */
-const readIn = Effect.fnUntraced(function* (root: string, file: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* fs.readFileString(path.join(root, file));
 }, Effect.provide(NodeServices.layer));
 
 describe("accepting layout changes in the page", () => {

@@ -2,7 +2,18 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf, boxesOf, literal } from "./browser.ts";
+import {
+  attributesOf,
+  boxesOf,
+  click,
+  count,
+  goToChapter,
+  literal,
+  press,
+  textOf,
+  waitFor,
+  waitGone,
+} from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -31,37 +42,6 @@ const structure = (id: string) => `[data-structure="${id}"]`;
 
 const indexItem = (id: string) =>
   `[data-side-index] button[data-index-structure="${id}"]`;
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor());
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page.locator(selector).first().waitFor({ state: "detached" })
-  );
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).click());
-
-const press = (page: Page, key: string) =>
-  Effect.promise(() => page.keyboard.press(key));
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-});
 
 /** Clicks a structure and waits for its panel to say it's pinned. */
 const pin = Effect.fnUntraced(function* (page: Page, id: string) {

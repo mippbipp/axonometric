@@ -11,7 +11,7 @@ import type {
   Proposals,
   StructureChange,
 } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
@@ -21,10 +21,10 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
+import { post as postText, write } from "./revisions.ts";
 
 // Seam 1: a proposed structure through the review loop. The review map has
 // engineer, page, server, proposals, pull-request and upstream. The page
@@ -360,37 +360,9 @@ describe("review and the prompt for structure items", () => {
 /** A write the page could send: a JSON object of known fields. */
 type Write = Readonly<Record<string, Schema.Json>>;
 
-const send = ({
-  method,
-  url,
-  path,
-  body,
-}: {
-  readonly method: "post" | "put";
-  readonly url: string;
-  readonly path: string;
-  readonly body: Write;
-}) => {
-  const request = HttpClientRequest[method](new URL(path, url)).pipe(
-    HttpClientRequest.setHeaders({
-      origin: url,
-      "content-type": "application/json",
-    }),
-    HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
-  );
-
-  return HttpClient.HttpClient.use((client) => client.execute(request)).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text) => ({ status: response.status, text }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
-  );
-};
-
+/** A POST of `body` from the server's own origin. */
 const post = (url: string, path: string, body: Write) =>
-  send({ method: "post", url, path, body });
+  postText(url, path, JSON.stringify(body));
 
 describe("structure writes over HTTP", () => {
   it.live(
@@ -408,7 +380,7 @@ describe("structure writes over HTTP", () => {
           change: added,
         });
 
-        assert.strictEqual(sent.status, 200, sent.text);
+        assert.strictEqual(sent.status, 200, sent.body);
 
         // Moving a structure into a group needs a group the map has.
         const badGroup = yield* post(serve.url, "/api/structures", {
@@ -418,13 +390,12 @@ describe("structure writes over HTTP", () => {
         });
 
         assert.strictEqual(badGroup.status, 422);
-        assert.include(badGroup.text, "nowhere");
+        assert.include(badGroup.body, "nowhere");
 
         // A layout write may not land on the ground a proposed structure takes.
-        const moveOnto = yield* send({
+        const moveOnto = yield* write(serve.url, {
           method: "put",
-          url: serve.url,
-          path: "/api/proposals/layout",
+          target: "/api/proposals/layout",
           body: {
             baseFileRevision: 1,
             layout: [
@@ -442,8 +413,8 @@ describe("structure writes over HTTP", () => {
           },
         });
 
-        assert.strictEqual(moveOnto.status, 422, moveOnto.text);
-        assert.include(moveOnto.text, "new-1");
+        assert.strictEqual(moveOnto.status, 422, moveOnto.body);
+        assert.include(moveOnto.body, "new-1");
       }).pipe(Effect.provide(NodeServices.layer))
   );
 });

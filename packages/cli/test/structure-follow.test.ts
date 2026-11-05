@@ -1,4 +1,4 @@
-import { LayoutFile, Proposals, ReviewReport } from "@axonometric/contracts";
+import { LayoutFile, ReviewReport } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -15,11 +15,19 @@ import {
 } from "effect";
 import type { Locator, Page } from "playwright";
 
-import { literal, openUrl } from "./browser.ts";
+import {
+  click,
+  count,
+  goToChapterPaused,
+  literal,
+  press,
+  textOf,
+  waitFor,
+  waitTimeout,
+} from "./browser.ts";
 import { drawingReport, overlap } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // Seam 2, for the gaps: what a proposal adds to check's report, where the add
 // form puts a structure and where it sits on the page, dragging a structure
@@ -27,65 +35,19 @@ import { makeHome, runCli, startServe } from "./harness.ts";
 // map has groups people (engineer), loop (page, server, proposals, pull
 // request) and outside (upstream) in a row, so the zones can be made to meet.
 
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
-
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 const decodeReview = Schema.decodeUnknownEffect(
   Schema.fromJsonString(ReviewReport)
 );
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
+const served = openReviewMap({});
 
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
+/** Opens chapter `id` with its packets paused, zoomed to fit. */
 const chapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-  yield* click(page, '[data-playback-controls] [data-control="pause"]');
-  yield* Effect.promise(() => page.keyboard.press("0"));
+  yield* goToChapterPaused(page, id);
+  yield* press(page, "0");
 });
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
-  );
-}, Effect.provide(NodeServices.layer));
 
 /**
  * Waits until proposals.json in `home` has been written at least once. The

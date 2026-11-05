@@ -16,7 +16,9 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { makeHome, runCli, serveReviewMap, startServe } from "./harness.ts";
+import { ownOrigin, writeText } from "./revisions.ts";
+import type { Sent } from "./revisions.ts";
 
 // Plain HTTP writes to a real serve, for the requests a browser won't send.
 // Each refused write must leave every file in the home folder as it was.
@@ -24,22 +26,9 @@ import { makeHome, runCli, startServe } from "./harness.ts";
 const pendingLayout = "/api/proposals/layout";
 
 /** The review map served on a free port, with extra `serve` arguments. */
-const servedWith = (args: readonly string[]) =>
-  Effect.gen(function* () {
-    const path = yield* Path.Path;
-    const root = yield* makeHome(yield* fullMap);
-    const home = path.join(root, "review", "map");
-    const serve = yield* startServe(home, ["--port", "0", ...args]);
-
-    return { home, url: serve.url };
-  }).pipe(Effect.provide(NodeServices.layer));
+const servedWith = (args: readonly string[]) => serveReviewMap({}, args);
 
 const served = servedWith([]);
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
 
 /** A body for the endpoint, which the server may refuse. */
 const WriteBody = Schema.Struct({
@@ -68,33 +57,14 @@ const put = (
   url: string,
   headers: Readonly<Record<string, string>>,
   body: Effect.Effect<string>
-) => Effect.flatMap(body, (text) => sendText(url, headers, text));
-
-const sendText = (
-  url: string,
-  headers: Readonly<Record<string, string>>,
-  body: string
 ) =>
-  HttpClient.HttpClient.use((client) =>
-    client.execute(
-      HttpClientRequest.put(new URL(pendingLayout, url)).pipe(
-        HttpClientRequest.setHeaders(headers),
-        HttpClientRequest.bodyText(
-          body,
-          headers["content-type"] ?? "application/json"
-        )
-      )
-    )
-  ).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text): Sent => ({
-        status: response.status,
-        body: text,
-      }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
+  Effect.flatMap(body, (text) =>
+    writeText(url, {
+      method: "put",
+      target: pendingLayout,
+      headers,
+      body: text,
+    })
   );
 
 const chunk = new Uint8Array(64 * 1024).fill(32);
@@ -152,12 +122,6 @@ const asProxied = (origin: string) => ({
   "content-type": "application/json",
   host: "map.example.test",
   origin,
-});
-
-/** The headers a page the server served sends. */
-const ownOrigin = (url: string) => ({
-  origin: url,
-  "content-type": "application/json",
 });
 
 const pageAt = (x: number, y = 3): LayoutChange => ({
