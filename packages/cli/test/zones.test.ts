@@ -27,7 +27,7 @@ const goToLast = Effect.fnUntraced(function* (page: Page) {
 /**
  * At the middle of each structure and of each hop's first leg, what the
  * browser finds on top there: the item itself, or a zone over it. Only spots
- * where a zone plate lies under the pointer too are reported.
+ * where a zone lies under the pointer too are reported.
  */
 const stacksOverZones = `(() => {
   const viewport = document.querySelector("[data-viewport]");
@@ -70,8 +70,8 @@ interface TitleReport {
 }
 
 /**
- * For each zone, where its title sits on screen: inside its own plate, and
- * which other plates it touches. The title is its text's own box, mapped to
+ * For each zone, where its title sits on screen: inside its own zone, and
+ * which other zones it touches. The title is its text's own box, mapped to
  * the screen through its skew.
  */
 const titleReports = `(() => {
@@ -130,10 +130,10 @@ const titleReports = `(() => {
     });
 
   const zones = [...document.querySelectorAll("[data-zone]")];
-  const plateOf = (zone) => {
-    const plate = zone.querySelector("[data-zone-plate]");
+  const outlineOf = (zone) => {
+    const shape = zone.querySelector("[data-zone-plate]");
 
-    return toScreen(plate, [...plate.points]);
+    return toScreen(shape, [...shape.points]);
   };
 
   return zones.map((zone) => {
@@ -141,9 +141,9 @@ const titleReports = `(() => {
 
     return {
       zone: zone.dataset.zone,
-      insideOwn: title.every((point) => inside(plateOf(zone), point)),
+      insideOwn: title.every((point) => inside(outlineOf(zone), point)),
       overOtherZones: zones
-        .filter((other) => other !== zone && overlap(title, plateOf(other)))
+        .filter((other) => other !== zone && overlap(title, outlineOf(other)))
         .map((other) => other.dataset.zone),
     };
   });
@@ -176,7 +176,7 @@ describe("zones in the Iso view", () => {
       )
   );
 
-  it.live("puts each title on its own plate, clear of other zones", () =>
+  it.live("puts each title inside its own zone, clear of other zones", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { page } = yield* reviewPage;

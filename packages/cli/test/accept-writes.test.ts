@@ -18,7 +18,7 @@ import {
 } from "effect";
 
 import { pageState, serveReviewMap } from "./harness.ts";
-import { ownOrigin, writeText } from "./revisions.ts";
+import { moveOf, ownOrigin, writeText } from "./revisions.ts";
 import type { Sent } from "./revisions.ts";
 
 // Plain HTTP accepts against a real serve, for the requests a browser won't
@@ -35,16 +35,6 @@ const json = (value: Schema.JsonObject) =>
   Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(value).pipe(
     Effect.orDie
   );
-
-const moveOf = (
-  id: string,
-  structure: string,
-  to: { readonly x: number; readonly y: number }
-): LayoutChange => ({
-  id,
-  kind: "move",
-  moves: [{ target: { kind: "structure", id: structure }, position: to }],
-});
 
 /** Saves `layout` as the pending changes, from revision `base`. */
 const pend = (url: string, base: number, layout: readonly LayoutChange[]) =>

@@ -14,7 +14,6 @@ import {
   arrowPolygon,
   checkLayout,
   corners,
-  distanceToPolyline,
   groundProjections,
   routeRevealed,
   nameTagRect,
@@ -23,7 +22,6 @@ import {
   views,
   sceneClashes,
   sceneOf,
-  segmentCrosses,
 } from "../src/index.ts";
 import type {
   GridPoint,
@@ -46,7 +44,12 @@ import {
   stepsOf,
 } from "./route-geometry.ts";
 import type { Leg } from "./route-geometry.ts";
-import { rectCorners, segmentDistance } from "./screen-geometry.ts";
+import {
+  crossesPolygon,
+  lineDistance,
+  rectCorners,
+  segmentDistance,
+} from "./screen-geometry.ts";
 
 /**
  * Whether a leg along x and a leg along y cross: each passes strictly
@@ -226,7 +229,7 @@ const legTouches = (leg: Leg, box: Placement) => {
 
 /** Whether a leg's line on screen runs through a name tag. */
 const legCrossesTag = (leg: Leg, tag: ScreenRect) =>
-  segmentCrosses(
+  crossesPolygon(
     { start: project(leg.start), end: project(leg.end) },
     rectCorners(tag)
   );
@@ -636,7 +639,7 @@ describe("scene", () => {
           );
 
           assert.isBelow(
-            distanceToPolyline([back, right, front, left, back], head.tip),
+            lineDistance([back, right, front, left, back], head.tip),
             0.5,
             `${hop.hop.id} ends off its target`
           );
@@ -1159,11 +1162,11 @@ describe("ground clashes", () => {
           assert.isDefined(one);
           assert.isDefined(two);
           assert.isAbove(
-            distanceToPolyline(one, two[1] ?? project({ x: 0, y: 0 })),
+            lineDistance(one, two[1] ?? project({ x: 0, y: 0 })),
             1
           );
           assert.isAbove(
-            distanceToPolyline(two, one[2] ?? project({ x: 0, y: 0 })),
+            lineDistance(two, one[2] ?? project({ x: 0, y: 0 })),
             1
           );
         }
@@ -1233,7 +1236,7 @@ describe("ground clashes", () => {
 
           for (const tip of tips) {
             assert.isDefined(tip);
-            assert.isBelow(distanceToPolyline(edge, tip), 1e-6, view);
+            assert.isBelow(lineDistance(edge, tip), 1e-6, view);
           }
 
           // The lines keep apart wherever they run side by side: each of
@@ -1244,7 +1247,7 @@ describe("ground clashes", () => {
           ] as const) {
             for (const point of line) {
               assert.isAbove(
-                distanceToPolyline(other, point),
+                lineDistance(other, point),
                 1,
                 `the two lines meet in ${view}`
               );
@@ -1517,13 +1520,13 @@ describe("arrowheads", () => {
             Arr.map(heads.slice(index + 1), (second) =>
               Math.min(
                 ...Arr.map(first.polygon, (point) =>
-                  distanceToPolyline(
+                  lineDistance(
                     [...second.polygon, second.polygon[0] ?? point],
                     point
                   )
                 ),
                 ...Arr.map(second.polygon, (point) =>
-                  distanceToPolyline(
+                  lineDistance(
                     [...first.polygon, first.polygon[0] ?? point],
                     point
                   )

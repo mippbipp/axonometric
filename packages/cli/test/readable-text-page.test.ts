@@ -307,7 +307,7 @@ describe("grown text at 1280×800", () => {
   }
 
   it.live(
-    "stays clear of text and boxes on the pipeline map at 1780×1020",
+    "stays clear of text and boxes on the pipeline map at 1780×1020, and starts no Iso hop through its source's name tag",
     () =>
       Effect.scoped(
         Effect.gen(function* () {

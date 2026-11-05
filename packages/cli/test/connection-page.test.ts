@@ -179,7 +179,7 @@ const grown = (polygon: Drawn["polygon"], by: number): Drawn["polygon"] => {
 };
 
 /** The text every mark must keep clear of: tags, hop labels and chips, not zone titles. */
-const textOf = (report: DrawingReport): readonly Drawn[] => [
+const textToAvoid = (report: DrawingReport): readonly Drawn[] => [
   ...Arr.filter(report.text, ({ id }) => !Str.startsWith("title:")(id)),
   ...report.chips,
 ];
@@ -187,7 +187,7 @@ const textOf = (report: DrawingReport): readonly Drawn[] => [
 /** The handles that come within `clearance` screen pixels of text. */
 const handlesNearText = (report: DrawingReport): readonly string[] =>
   Arr.flatMap(report.handles, (handle) =>
-    Arr.flatMap(textOf(report), (other: Drawn) =>
+    Arr.flatMap(textToAvoid(report), (other: Drawn) =>
       overlap(grown(handle.polygon, clearance), other.polygon)
         ? [`${handle.id} × ${other.id}`]
         : []
@@ -197,7 +197,7 @@ const handlesNearText = (report: DrawingReport): readonly string[] =>
 /** The legs of the line being drawn that run through text. */
 const previewsOverText = (report: DrawingReport): readonly string[] =>
   Arr.flatMap(report.previews, ({ id, segment }) =>
-    Arr.flatMap(textOf(report), (other: Drawn) =>
+    Arr.flatMap(textToAvoid(report), (other: Drawn) =>
       crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
     )
   );

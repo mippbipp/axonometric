@@ -546,7 +546,7 @@ describe("proposing a structure", () => {
     assert.strictEqual(once.revision, 1);
   });
 
-  it("refuses an unknown group, a taken id and a footprint on another", () => {
+  it("refuses an unknown group, a taken id, a footprint on another and a rename of an unknown structure", () => {
     assert.include(
       refusedBy({ ...add, structure: { ...add.structure, group: "nope" } }),
       "nope"

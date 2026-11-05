@@ -510,7 +510,10 @@ describe("what the page lists", () => {
     assert.deepStrictEqual(dismissed.batches?.[0]?.dismissed, ["n1"]);
     const waiting = dismissItem({ proposals: frozen(), id: "n1" });
 
-    assert.isTrue(Result.isFailure(waiting));
+    assert.strictEqual(
+      Result.match(waiting, { onSuccess: () => "", onFailure: String }),
+      `"n1" is in batch 1, which is waiting for the agent. It can be dismissed once the agent commits.`
+    );
   });
 });
 

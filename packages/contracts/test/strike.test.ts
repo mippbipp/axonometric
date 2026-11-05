@@ -4,10 +4,10 @@ import { Array as Arr } from "effect";
 import {
   groundOutline,
   groundProjections,
-  segmentCrosses,
   strikeSegments,
 } from "../src/index.ts";
 import type { View } from "../src/index.ts";
+import { crossesPolygon, rectCorners } from "./screen-geometry.ts";
 
 const placement = { x: 0, y: 0, w: 2, d: 2 };
 
@@ -28,16 +28,11 @@ const crossingChip = (view: View) => {
     text: [chip],
   });
 
-  const box = [
-    { sx: chip.left, sy: chip.top },
-    { sx: chip.right, sy: chip.top },
-    { sx: chip.right, sy: chip.bottom },
-    { sx: chip.left, sy: chip.bottom },
-  ];
-
   return {
     count: pieces.length,
-    crossing: Arr.filter(pieces, (piece) => segmentCrosses(piece, box)),
+    crossing: Arr.filter(pieces, (piece) =>
+      crossesPolygon(piece, rectCorners(chip))
+    ),
   };
 };
 

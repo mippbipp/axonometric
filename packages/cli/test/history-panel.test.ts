@@ -16,6 +16,7 @@ import {
   attributeOf,
   attributesOf,
   boxesOf,
+  centreOf,
   click,
   count,
   literal,
@@ -39,20 +40,6 @@ const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 const decodeProposals = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Proposals)
 );
-
-/** Where the page's drawing puts structure `id`: its centre on screen. */
-const centreOf = Effect.fnUntraced(function* (page: Page, id: string) {
-  const box = yield* Effect.promise(() =>
-    page.locator(`[data-structure="${id}"]`).first().boundingBox()
-  );
-
-  assert.isNotNull(box);
-
-  return {
-    x: (box?.x ?? 0) + (box?.width ?? 0) / 2,
-    y: (box?.y ?? 0) + (box?.height ?? 0) / 2,
-  };
-});
 
 /**
  * The review map, served on a free port with two revisions saved:
@@ -288,7 +275,10 @@ describe("the History panel", () => {
       Effect.gen(function* () {
         const { page, errors } = yield* servedWithTwo;
 
-        const nowEngineer = yield* centreOf(page, "engineer");
+        const nowEngineer = yield* centreOf(
+          page,
+          '[data-structure="engineer"]'
+        );
 
         yield* openHistory(page);
 
@@ -310,7 +300,10 @@ describe("the History panel", () => {
         );
 
         // Revision 1 has the engineer at (0, 0), above where revision 2 put it.
-        const thenEngineer = yield* centreOf(page, "engineer");
+        const thenEngineer = yield* centreOf(
+          page,
+          '[data-structure="engineer"]'
+        );
 
         assert.isBelow(thenEngineer.y, nowEngineer.y - 20);
 
@@ -344,7 +337,7 @@ describe("the History panel", () => {
         yield* click(page, '[data-structure="engineer"]');
         assert.strictEqual(yield* count(page, "[data-resize-handle]"), 0);
 
-        const before = yield* centreOf(page, "engineer");
+        const before = yield* centreOf(page, '[data-structure="engineer"]');
 
         yield* Effect.promise(() => page.mouse.move(before.x, before.y));
         yield* Effect.promise(() => page.mouse.down());
@@ -369,7 +362,7 @@ describe("the History panel", () => {
           null
         );
 
-        const back = yield* centreOf(page, "engineer");
+        const back = yield* centreOf(page, '[data-structure="engineer"]');
 
         assert.closeTo(back.y, nowEngineer.y, 2);
         assert.deepStrictEqual(errors, []);

@@ -35,6 +35,7 @@ import {
   runCli,
   waitForRevision,
 } from "./harness.ts";
+import { moveOf } from "./revisions.ts";
 
 // Editing the layout in a page that a real serve serves: dragging and
 // resizing structures, and what lands in proposals.json.
@@ -85,17 +86,6 @@ const opacityOf = (page: Page, selector: string) =>
 /** The changes without their random ids, for comparing what they do. */
 const withoutIds = (layout: Proposals["layout"]) =>
   Arr.map(layout, ({ id: _id, ...rest }) => rest);
-
-/** A move of structure `id` to a spot well clear of the others. */
-const moveOf = (
-  changeId: string,
-  id: string,
-  to: { readonly x: number; readonly y: number }
-) => ({
-  id: changeId,
-  kind: "move",
-  moves: [{ target: { kind: "structure", id }, position: to }],
-});
 
 const onHalfUnit = (value: number) => Number.isInteger(value * 2);
 
