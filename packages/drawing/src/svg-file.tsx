@@ -153,6 +153,8 @@ export const svgFileOf = ({
         aria-labelledby={`${prefix}title ${prefix}desc`}
         fontFamily={exportFontStack}
         fontSize={12}
+        // Text at the width the scene measured, as on the page.
+        textRendering="geometricPrecision"
       >
         <title id={`${prefix}title`}>{title}</title>
         <desc id={`${prefix}desc`}>{description}</desc>
