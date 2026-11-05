@@ -1,6 +1,6 @@
 import { tagCharWidth } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect } from "effect";
+import { Effect } from "effect";
 import type { Page } from "playwright";
 
 import { inPage } from "./browser.ts";
@@ -68,7 +68,7 @@ const textWidths = (page: Page) =>
 
 describe("the page's font", () => {
   it.live(
-    "draws name tags and controls at 0.6 em a character, and hop labels in one monospace advance",
+    "draws name tags, hop labels and controls at 0.6 em a character",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -110,7 +110,7 @@ describe("the page's font", () => {
           // 0.6 em a character too. HTML rounds each advance to a whole pixel
           // at small sizes, so 7.2 px a character shows as 7: a quarter of a
           // pixel a character allows that, and DejaVu Sans is off by more.
-          const [control, ...labels] = yield* textWidths(page);
+          const [control] = yield* textWidths(page);
 
           assert.isDefined(control);
 
@@ -123,22 +123,77 @@ describe("the page's font", () => {
             );
           }
 
-          // Every hop label is drawn at one advance a character, as only a
-          // monospace font draws them: a proportional one gives each label
-          // its own.
-          const advances = Arr.map(
-            labels,
-            ({ width, text, size }) => width / text.length / size
+          // Hop labels are SVG text like the name tags, so they measure
+          // 0.6 em a character too, at any zoom. Without geometric
+          // precision Chromium rounds each advance to a whole screen pixel:
+          // a 9 px label drew at 5 px a character, narrower than the scene
+          // measured, and a 9.25 px one at 6, wider.
+          const checkLabels = (at: string) =>
+            Effect.gen(function* () {
+              const [, ...shown] = yield* textWidths(page);
+
+              assert.isAtLeast(shown.length, 2, at);
+
+              for (const label of shown) {
+                const expected = label.text.length * 0.6 * label.size;
+
+                assert.closeTo(
+                  label.width,
+                  expected,
+                  Math.max(1, expected * 0.005),
+                  `${label.id} "${label.text}" ${at}`
+                );
+              }
+            });
+
+          yield* checkLabels("at fit");
+
+          // Zoom in until a label is 9.25 px on screen. The wheel zooms by
+          // e^(0.0015 a pixel); the wait checks the size it reached.
+          const box = yield* Effect.promise(() =>
+            page.locator("svg[data-scale]").boundingBox()
           );
 
-          assert.isAtLeast(advances.length, 2);
+          const onScreen = yield* inPage<number>(
+            page,
+            `(() => {
+              const label = document.querySelector("[data-map-layer] [data-hop-label]");
+              return parseFloat(getComputedStyle(label).fontSize) * label.getScreenCTM().a;
+            })()`
+          );
 
-          for (const [index, advance] of advances.entries()) {
+          assert.isNotNull(box);
+
+          if (box !== null) {
+            yield* Effect.promise(() =>
+              page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+            );
+          }
+
+          yield* Effect.promise(() =>
+            page.mouse.wheel(0, -Math.log(9.25 / onScreen) / 0.0015)
+          );
+          yield* Effect.promise(() =>
+            page.waitForFunction(
+              `(() => {
+                const label = document.querySelector("[data-map-layer] [data-hop-label]");
+                return Math.abs(parseFloat(getComputedStyle(label).fontSize) * label.getScreenCTM().a - 9.25) < 0.05;
+              })()`,
+              undefined,
+              { timeout: 5000 }
+            )
+          );
+          yield* checkLabels("at 9.25 px on screen");
+
+          // Name tags too, at whatever size this zoom draws them.
+          for (const tag of yield* nameTags(page)) {
+            const expected = tag.text.length * 0.6 * tag.size;
+
             assert.closeTo(
-              advance,
-              advances[0] ?? 0,
-              0.005,
-              `${labels[index]?.id} "${labels[index]?.text}"`
+              tag.width,
+              expected,
+              Math.max(1, expected * 0.005),
+              `${tag.id} "${tag.text}" zoomed in`
             );
           }
 

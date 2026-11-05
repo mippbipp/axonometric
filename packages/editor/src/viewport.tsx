@@ -550,10 +550,14 @@ export function Viewport({
 
   return (
     <div className="relative size-full">
+      {/* geometricPrecision draws text at the width the scene measured. With
+          the default, Chromium rounds each glyph's advance to a whole pixel
+          on screen, so a 9 px label is drawn at 5 px a character, not 5.4. */}
       <svg
         ref={svgRef}
         aria-labelledby={titleId}
         className="text-ink block size-full cursor-grab touch-none select-none active:cursor-grabbing"
+        textRendering="geometricPrecision"
       >
         <title id={titleId}>{title}</title>
         <g ref={worldRef} data-viewport="">
