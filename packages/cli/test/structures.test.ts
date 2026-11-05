@@ -210,7 +210,16 @@ describe("clicking a structure", () => {
         const panel = yield* textOf(page, "[data-structure-panel]");
 
         assert.include(panel, "Pinned");
-        assert.include(panel, "P");
+        // The code chip's letter heads the panel, beside "Pinned".
+        assert.strictEqual(
+          yield* Effect.promise(() =>
+            page
+              .locator("[data-structure-panel]")
+              .getByText(/^P · Pinned\b/u)
+              .count()
+          ),
+          1
+        );
         assert.include(panel, "Map page");
         assert.include(panel, "Live");
         assert.include(panel, "Shows the map and records notes.");
@@ -241,13 +250,20 @@ describe("clicking a structure", () => {
     )
   );
 
-  it.live("then clicking empty space unpins it", () =>
+  it.live("then clicking empty space or pressing Escape unpins it", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { page } = yield* reviewPage;
 
         yield* pin(page, "page");
         yield* clickEmptySpace(page);
+        yield* waitGone(page, "[data-structure-panel]");
+        yield* waitFor(page, "[data-chapter-story]");
+
+        assert.strictEqual(yield* count(page, '[data-selected="true"]'), 0);
+
+        yield* pin(page, "page");
+        yield* press(page, "Escape");
         yield* waitGone(page, "[data-structure-panel]");
         yield* waitFor(page, "[data-chapter-story]");
 
@@ -329,18 +345,6 @@ describe("clicking a structure", () => {
 
         assert.deepStrictEqual(after, before);
         assert.strictEqual(yield* scale(), zoomed);
-      })
-    )
-  );
-
-  it.live("then Escape unpins it", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* reviewPage;
-
-        yield* pin(page, "page");
-        yield* press(page, "Escape");
-        yield* waitFor(page, "[data-chapter-story]");
       })
     )
   );
@@ -474,48 +478,34 @@ describe("the inside view", () => {
     )
   );
 
-  it.live("opens from the Go inside button, and Come out returns", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+  it.live(
+    "opens from the Go inside button, a double-click or →, and Come out or ← returns",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page, errors } = yield* reviewPage;
 
-        yield* goToChapter(page, "c-save");
-        yield* pin(page, "page");
-        yield* click(page, '[data-control="go-inside"]');
-        yield* expectInside(page);
+          yield* goToChapter(page, "c-save");
+          yield* pin(page, "page");
+          yield* click(page, '[data-control="go-inside"]');
+          yield* expectInside(page);
+          yield* click(page, '[data-breadcrumb] [data-control="come-out"]');
+          yield* expectOutWithPin(page, "c-save");
 
-        yield* click(page, '[data-breadcrumb] [data-control="come-out"]');
-        yield* expectOutWithPin(page, "c-save");
-        assert.deepStrictEqual(errors, []);
-      })
-    )
-  );
+          yield* Effect.promise(() =>
+            page.locator(structure("page")).dblclick()
+          );
+          yield* expectInside(page);
+          yield* press(page, "ArrowLeft");
+          yield* expectOutWithPin(page, "c-save");
 
-  it.live("opens on a double-click", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* reviewPage;
-
-        yield* Effect.promise(() => page.locator(structure("page")).dblclick());
-        yield* expectInside(page);
-      })
-    )
-  );
-
-  it.live("opens with → while a structure is selected, and ← comes out", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* reviewPage;
-
-        yield* goToChapter(page, "c-save");
-        yield* pin(page, "page");
-        yield* press(page, "ArrowRight");
-        yield* expectInside(page);
-
-        yield* press(page, "ArrowLeft");
-        yield* expectOutWithPin(page, "c-save");
-      })
-    )
+          yield* press(page, "ArrowRight");
+          yield* expectInside(page);
+          yield* press(page, "ArrowLeft");
+          yield* expectOutWithPin(page, "c-save");
+          assert.deepStrictEqual(errors, []);
+        })
+      )
   );
 
   it.live("plays a packet along the steps, still under reduced motion", () =>

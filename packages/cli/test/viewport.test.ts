@@ -124,13 +124,45 @@ describe("the viewport", () => {
       Effect.gen(function* () {
         const { page } = yield* builtPage;
         const before = yield* scaleOf(page);
+        const svg = yield* canvasOf(page);
+        const [box] = yield* boxesOf(page, '[data-structure="box"]');
 
-        yield* wheelAtCentre(page, -300);
+        assert.isDefined(box);
+
+        // A corner of the box, away from the canvas's middle, stays under
+        // the cursor while the map grows around it.
+        const at = {
+          x: (box?.x ?? 0) + (box?.width ?? 0) * 0.25,
+          y: (box?.y ?? 0) + (box?.height ?? 0) * 0.25,
+        };
+
+        assert.isAbove(
+          Math.hypot(
+            at.x - (svg.x + svg.width / 2),
+            at.y - (svg.y + svg.height / 2)
+          ),
+          50
+        );
+
+        yield* Effect.promise(() => page.mouse.move(at.x, at.y));
+        yield* Effect.promise(() => page.mouse.wheel(0, -300));
         yield* waitForScale(page, `> ${before * 1.3}`);
 
         const after = yield* scaleOf(page);
+        const [grown] = yield* boxesOf(page, '[data-structure="box"]');
+        const ratio = after / before;
 
-        assert.isAbove(after, before * 1.3);
+        assert.isAbove(ratio, 1.3);
+        assert.closeTo(
+          at.x - (grown?.x ?? 0),
+          (at.x - (box?.x ?? 0)) * ratio,
+          2
+        );
+        assert.closeTo(
+          at.y - (grown?.y ?? 0),
+          (at.y - (box?.y ?? 0)) * ratio,
+          2
+        );
       })
     )
   );
@@ -143,29 +175,53 @@ describe("the viewport", () => {
           const { page } = yield* builtPage;
           const fitted = yield* scaleOf(page);
 
-          // Each step zooms by e^3, about 20 times, so a few reach either
-          // limit. Many small steps time out on slower machines.
-          for (let turn = 0; turn < 4; turn += 1) {
-            yield* wheelAtCentre(page, -2000);
-          }
+          /** Turns the wheel until the scale stops changing, and returns it. */
+          const wheelToLimit = Effect.fnUntraced(function* (deltaY: number) {
+            let previous = yield* scaleOf(page);
 
-          yield* waitForScale(page, `> ${fitted * 2}`);
-          const most = yield* scaleOf(page);
+            for (let turn = 0; turn < 10; turn += 1) {
+              const moved = yield* transformOf(page);
 
-          for (let turn = 0; turn < 8; turn += 1) {
-            yield* wheelAtCentre(page, 2000);
-          }
+              yield* wheelAtCentre(page, deltaY);
 
-          yield* waitForScale(page, `< ${fitted}`);
-          const least = yield* scaleOf(page);
+              // Each turn either moves the view or, at the limit, does not.
+              yield* Effect.promise(() =>
+                page
+                  .waitForFunction(
+                    `${transformExpression} !== ${literal(moved)}`,
+                    undefined,
+                    { timeout: 1000 }
+                  )
+                  .then(
+                    () => true,
+                    () => false
+                  )
+              );
 
+              const now = yield* scaleOf(page);
+
+              if (now === previous) {
+                return now;
+              }
+
+              previous = now;
+            }
+
+            return assert.fail(`the zoom never stopped at ${previous}`);
+          });
+
+          // Each step zooms by e^3, about 20 times, so a few reach either limit.
+          const most = yield* wheelToLimit(-2000);
+          const least = yield* wheelToLimit(2000);
+
+          assert.isAbove(most, fitted * 2);
           assert.isBelow(most, fitted * 10);
-          assert.isAbove(least, fitted / 10);
           assert.isBelow(least, fitted);
+          assert.isAbove(least, fitted / 10);
         })
       ),
     // Wheel turns through Playwright are slow on some machines.
-    15_000
+    30_000
   );
 
   it.live("pans when dragged on empty space", () =>
