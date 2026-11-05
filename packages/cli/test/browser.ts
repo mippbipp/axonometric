@@ -11,14 +11,21 @@ import { afterAll } from "vitest";
 // page that `serve` serves from another origin.
 
 // Each test file launches Chromium once, on its first page, and closes it in
-// an `afterAll` hook, which runs even when a test failed. Vitest gives every
-// test file its own module graph, so this promise is per file. Every test
-// still gets a fresh browser context, so storage, theme and viewport don't
-// carry over.
+// an `afterAll` hook, which runs even when a test failed. Vitest runs without
+// isolation (see vitest.config.ts), so later test files in the same worker
+// share this module. The hook clears `browser` before closing it, so the next
+// file launches its own. Every test still gets a fresh browser context, so
+// storage, theme and viewport don't carry over.
 let browser: Promise<Browser> | undefined;
 
 // oxlint-disable-next-line vitest/require-top-level-describe, vitest/no-hooks -- one hook per file, from the shared helper, so test files don't register it
-afterAll(() => browser?.then((launched) => launched.close()));
+afterAll(() => {
+  const launched = browser;
+
+  browser = undefined;
+
+  return launched?.then((closing) => closing.close());
+});
 
 const openContext = Effect.acquireRelease(
   Effect.promise(() => {
