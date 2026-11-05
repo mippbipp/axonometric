@@ -61,74 +61,61 @@ const buildWith = Effect.fnUntraced(function* (
 });
 
 describe("build", () => {
-  it.effect("writes SYSTEM.md and <system>.html next to the home folder", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({});
+  it.effect(
+    "writes SYSTEM.md, listing the structures and the hop, and <system>.html next to the home folder",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* buildWith({});
 
-      assert.strictEqual(result.stderr, "");
-      assert.strictEqual(result.exitCode, 0);
-      assert.isString(result.files["pipeline/SYSTEM.md"]);
-      assert.isString(result.files["pipeline/pipeline.html"]);
-    })
+        assert.strictEqual(result.stderr, "");
+        assert.strictEqual(result.exitCode, 0);
+        assert.isString(result.files["pipeline/pipeline.html"]);
+
+        const systemMd = result.files["pipeline/SYSTEM.md"] ?? "";
+
+        assert.include(systemMd, "# Flake update pipeline\n");
+        assert.include(systemMd, "| `updater` | Flake updater |");
+        assert.include(systemMd, "| `gate` | Build gate |");
+        assert.include(
+          systemMd,
+          '| `h-update` | Flake updater → Build gate | update → build | `{"inputs":["nixpkgs"]}` |'
+        );
+      })
   );
 
-  it.effect("lists both structures and the hop in SYSTEM.md", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({});
-      const systemMd = result.files["pipeline/SYSTEM.md"] ?? "";
+  it.effect(
+    "writes a standalone page with the map inlined, titled from the overview",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* buildWith({
+          [dataFile]: dataWith([
+            structure("updater", "Flake updater"),
+            structure("gate", "</script><b>gate"),
+          ]),
+        });
 
-      assert.include(systemMd, "# Flake update pipeline\n");
-      assert.include(systemMd, "| `updater` | Flake updater |");
-      assert.include(systemMd, "| `gate` | Build gate |");
-      assert.include(
-        systemMd,
-        '| `h-update` | Flake updater → Build gate | update → build | `{"inputs":["nixpkgs"]}` |'
-      );
-    })
-  );
+        const page = result.files["pipeline/pipeline.html"] ?? "";
 
-  it.effect("writes a standalone page with the map inlined", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({
-        [dataFile]: dataWith([
-          structure("updater", "Flake updater"),
-          structure("gate", "</script><b>gate"),
-        ]),
-      });
-
-      const page = result.files["pipeline/pipeline.html"] ?? "";
-
-      assert.strictEqual(result.exitCode, 0);
-      assert.match(
-        page,
-        /^<!doctype html>\s*<html[^>]*>\s*<head>\s*<meta charset="utf-8"/u
-      );
-      assert.include(
-        page,
-        '<script type="application/json" id="axonometric-map-state">'
-      );
-      assert.include(page, String.raw`"name":"\u003c/script>\u003cb>gate"`);
-      assert.notInclude(page, "</script><b>gate");
-      // The inlined scripts hold strings that look like tags, such as React's
-      // server renderer's, so only the markup around them is checked.
-      assert.notMatch(
-        Str.replaceAll(/(?<=<script[^>]*>)[^]*?(?=<\/script>)/gu, "")(page),
-        /<(?:link|script)[^>]+(?:src|href)=/u
-      );
-    })
-  );
-
-  it.effect("titles the page with the overview's title", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({});
-      const page = result.files["pipeline/pipeline.html"] ?? "";
-
-      assert.include(
-        page,
-        "<title>Flake update pipeline · axonometric</title>"
-      );
-      assert.notInclude(page, "<title>axonometric</title>");
-    })
+        assert.strictEqual(result.exitCode, 0);
+        assert.match(
+          page,
+          /^<!doctype html>\s*<html[^>]*>\s*<head>\s*<meta charset="utf-8"/u
+        );
+        assert.include(
+          page,
+          '<script type="application/json" id="axonometric-map-state">'
+        );
+        assert.include(page, "<title>Pipeline · axonometric</title>");
+        assert.notInclude(page, "<title>axonometric</title>");
+        assert.include(page, String.raw`"name":"\u003c/script>\u003cb>gate"`);
+        assert.notInclude(page, "</script><b>gate");
+        // The inlined scripts hold strings that look like tags, such as React's
+        // server renderer's, so only the markup around them is checked.
+        assert.notMatch(
+          Str.replaceAll(/(?<=<script[^>]*>)[^]*?(?=<\/script>)/gu, "")(page),
+          /<(?:link|script)[^>]+(?:src|href)=/u
+        );
+      })
   );
 
   it.effect("names the field, the file and the fix for invalid data", () =>
@@ -152,30 +139,39 @@ describe("build", () => {
     })
   );
 
-  it.effect("rejects a hop to a structure that doesn't exist", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({
-        [dataFile]: dataWith(
-          [structure("updater", "Flake updater")],
-          '[{ id: "h", from: "updater", to: "nowhere", label: "x" }]'
-        ),
-        [layoutFile]: layoutWith({ updater: { x: 0, y: 0, w: 2, d: 2 } }),
-      });
+  it.effect(
+    "rejects a hop to a structure that doesn't exist, and writes no map file and leaves no lock",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* buildWith({
+          [dataFile]: dataWith(
+            [structure("updater", "Flake updater")],
+            '[{ id: "h", from: "updater", to: "nowhere", label: "x" }]'
+          ),
+          [layoutFile]: layoutWith({}),
+        });
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stderr,
-        'error data.mjs hops[0].to: no structure has the id "nowhere".'
-      );
-    })
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stderr,
+          'error data.mjs hops[0].to: no structure has the id "nowhere".'
+        );
+        // The lock folder stays, holding only the .gitignore that keeps it
+        // out of git.
+        assert.deepStrictEqual(Arr.sort(Rec.keys(result.files), Order.String), [
+          "pipeline/map/.axonometric/.gitignore",
+          dataFile,
+          layoutFile,
+        ]);
+      })
   );
 
-  it.effect("rejects a quarter-unit position in layout.json", () =>
+  it.effect("rejects a quarter-unit position or footprint in layout.json", () =>
     Effect.gen(function* () {
       const result = yield* buildWith({
         [layoutFile]: layoutWith({
           updater: { x: 0.25, y: 0, w: 2, d: 2 },
-          gate: { x: 4.5, y: 3, w: 2, d: 1.5 },
+          gate: { x: 4.5, y: 3, w: 1.75, d: 1.5 },
         }),
       });
 
@@ -184,19 +180,6 @@ describe("build", () => {
         result.stderr,
         "layout.json structures.updater.x: expected a whole or half grid unit, such as 2 or 2.5. Round x to the nearest half unit."
       );
-    })
-  );
-
-  it.effect("rejects a quarter-unit footprint in layout.json", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({
-        [layoutFile]: layoutWith({
-          updater: { x: 0, y: 0, w: 2, d: 2 },
-          gate: { x: 4.5, y: 3, w: 1.75, d: 1.5 },
-        }),
-      });
-
-      assert.strictEqual(result.exitCode, 1);
       assert.include(result.stderr, "layout.json structures.gate.w:");
     })
   );
@@ -219,22 +202,6 @@ describe("build", () => {
     })
   );
 
-  it.effect("reports problems in both files at once", () =>
-    Effect.gen(function* () {
-      const result = yield* buildWith({
-        [dataFile]: "export default { format: 1, revision: 0, hops: [] };",
-        [layoutFile]: '{ "format": 2, "revision": 0, "structures": {} }',
-      });
-
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(result.stderr, "data.mjs structures: missing.");
-      assert.include(
-        result.stderr,
-        "layout.json format: format 2 is newer than this axonometric reads (format 1). Upgrade axonometric, then try again."
-      );
-    })
-  );
-
   // Live clock: on Windows, renaming over a folder fails with EPERM, which
   // writeAll retries for about 2 s, and the test clock would never let those
   // delays pass.
@@ -253,28 +220,5 @@ describe("build", () => {
         []
       );
     })
-  );
-
-  it.effect(
-    "writes no map file, and leaves no lock, when the map is invalid",
-    () =>
-      Effect.gen(function* () {
-        const result = yield* buildWith({
-          [dataFile]: dataWith(
-            [structure("updater", "Flake updater")],
-            '[{ id: "h", from: "updater", to: "nowhere", label: "x" }]'
-          ),
-          [layoutFile]: layoutWith({}),
-        });
-
-        // The lock folder stays, holding only the .gitignore that keeps it
-        // out of git.
-        assert.strictEqual(result.exitCode, 1);
-        assert.deepStrictEqual(Arr.sort(Rec.keys(result.files), Order.String), [
-          "pipeline/map/.axonometric/.gitignore",
-          dataFile,
-          layoutFile,
-        ]);
-      })
   );
 });

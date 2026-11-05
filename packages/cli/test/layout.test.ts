@@ -1,7 +1,16 @@
 import { LayoutFile } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Clock, Effect, Fiber, FileSystem, Path, Schema } from "effect";
+import {
+  Clock,
+  Effect,
+  Fiber,
+  FileSystem,
+  Path,
+  Record as Rec,
+  Schema,
+  String as Str,
+} from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { withLock } from "../src/lock.ts";
@@ -227,15 +236,36 @@ describe("layout", () => {
     })
   );
 
-  it.effect("refuses to change a map with errors", () =>
-    Effect.gen(function* () {
-      const { result } = yield* layoutWith(["gate", "--x", "8"], {
-        "pipeline/map/data.mjs": "export default {",
-      });
+  it.effect.each([
+    ["layout", ["gate", "--x", "8"]],
+    ["export", ["--format", "excalidraw"]],
+  ] as const)(
+    "%s refuses a map with errors, and writes nothing",
+    ([command, args]) =>
+      Effect.gen(function* () {
+        const files = {
+          ...(yield* minimalMap),
+          "pipeline/map/data.mjs": "export default {",
+        };
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(result.stderr, "layout wrote nothing.");
-    })
+        const home = yield* makeHome(files);
+
+        const result = yield* runCli(home, [
+          command,
+          `${home}/pipeline/map`,
+          ...args,
+        ]);
+
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(result.stderr, `${command} wrote nothing.`);
+        assert.deepStrictEqual(
+          Rec.filter(
+            result.files,
+            (_, name) => !Str.startsWith("pipeline/map/.axonometric/")(name)
+          ),
+          files
+        );
+      })
   );
 
   it.live(

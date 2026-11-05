@@ -137,49 +137,26 @@ const handNote = [
 ];
 
 describe("a reroute frozen in a batch, written over HTTP", () => {
-  it.live("can't be set again on the same hop", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-      const before = yield* proposalsText(home);
+  it.live(
+    "can't be set again on the same hop, nor reset with null points",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* served;
+        const before = yield* proposalsText(home);
 
-      const sent = yield* putLayout(url, 3, [reroute("again", detour)]);
+        for (const [why, points] of [
+          ["again", detour],
+          ["reset", null],
+        ] as const) {
+          const sent = yield* putLayout(url, 3, [reroute(why, points)]);
 
-      assert.strictEqual(sent.status, 422, sent.body);
-      assert.include(sent.body, waiting);
-      assert.include(sent.body, "h-store");
-      assert.strictEqual(yield* proposalsText(home), before);
-    })
-  );
+          assert.strictEqual(sent.status, 422, `${why}: ${sent.body}`);
+          assert.include(sent.body, waiting, why);
+          assert.include(sent.body, "h-store", why);
+        }
 
-  it.live("can't be reset with a reroute of null points", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-      const before = yield* proposalsText(home);
-
-      const sent = yield* putLayout(url, 3, [reroute("reset", null)]);
-
-      assert.strictEqual(sent.status, 422, sent.body);
-      assert.include(sent.body, waiting);
-      assert.strictEqual(yield* proposalsText(home), before);
-    })
-  );
-
-  it.live("can't be reset by an undo that drops an open reroute of it", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-
-      // An open reroute of the frozen hop can only get in as a client that
-      // skips the page's check would send it. It is refused, so there is
-      // nothing for an undo to remove, and an undo that sets the list back
-      // to empty while also adding a reroute of the hop is refused too.
-      const before = yield* proposalsText(home);
-
-      const undone = yield* putLayout(url, 3, [reroute("sneaky", null)]);
-
-      assert.strictEqual(undone.status, 422, undone.body);
-      assert.include(undone.body, waiting);
-      assert.strictEqual(yield* proposalsText(home), before);
-    })
+        assert.strictEqual(yield* proposalsText(home), before);
+      })
   );
 
   it.live("doesn't stop a reroute of another hop", () =>

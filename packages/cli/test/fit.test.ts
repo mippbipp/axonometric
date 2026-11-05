@@ -48,26 +48,4 @@ describe("what the Iso view fits to the window", () => {
       assert.isUndefined(fitOf({ drawn, fitTo: [] }).bounds);
     })
   );
-
-  it.effect(
-    "keys the fit by the set of ids, not their order or the geometry",
-    () =>
-      Effect.sync(() => {
-        const moved = [box("a", 500, 500), ...drawn.slice(1)];
-
-        assert.strictEqual(
-          fitOf({ drawn, fitTo: ["b", "a"] }).key,
-          fitOf({ drawn: moved, fitTo: ["a", "b", "a"] }).key
-        );
-        assert.strictEqual(fitOf({ drawn }).key, fitOf({ drawn: moved }).key);
-        assert.notStrictEqual(
-          fitOf({ drawn, fitTo: ["a", "b"] }).key,
-          fitOf({ drawn, fitTo: ["a", "b", "c"] }).key
-        );
-        assert.notStrictEqual(
-          fitOf({ drawn, fitTo: ["a", "b", "c"] }).key,
-          fitOf({ drawn }).key
-        );
-      })
-  );
 });

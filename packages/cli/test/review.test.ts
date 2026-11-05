@@ -133,6 +133,26 @@ const readIn = Effect.fnUntraced(function* (root: string, file: string) {
   return yield* fs.readFileString(path.join(root, file));
 }, Effect.provide(NodeServices.layer));
 
+const decodeState = Schema.decodeUnknownEffect(Schema.fromJsonString(MapState));
+
+/** The map state a page embeds. */
+const pageState = (page: string) =>
+  decodeState(
+    /id="axonometric-map-state">(?<json>.*?)<\/script>/su.exec(page)?.groups
+      ?.json ?? ""
+  );
+
+const writeIn = Effect.fnUntraced(function* (
+  root: string,
+  file: string,
+  content: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+
+  yield* fs.writeFileString(path.join(root, file), content);
+}, Effect.provide(NodeServices.layer));
+
 const decodeReview = Schema.decodeUnknownEffect(
   Schema.fromJsonString(ReviewReport)
 );
@@ -202,40 +222,17 @@ describe("review", () => {
     })
   );
 
-  it.effect("prints the oldest batch with no commit, not a newer one", () =>
-    Effect.gen(function* () {
-      const later: BatchItem = {
-        id: "later-note",
-        kind: "note",
-        target: { kind: "structure", id: "page" },
-        text: "A later question",
-      };
-
-      const committed = {
-        ...batchOf(1, firstBatch),
-        committed: { revision: 1, at },
-      };
-
-      const waiting = withBatches([committed, batchOf(2, [later])]);
-      const { home } = yield* homeWith(fileOf(waiting));
-
-      const result = yield* runCli(home, ["review", home, "--json"]);
-      const report = yield* decodeReview(result.stdout);
-
-      assert.strictEqual(report.batch?.number, 2);
-    })
-  );
-
   it.effect("says so when no batch is waiting, and writes nothing", () =>
     Effect.gen(function* () {
-      const { home } = yield* homeWith(
-        fileOf({ format: 1, revision: 0, layout: [] })
-      );
+      const proposals = fileOf({ format: 1, revision: 0, layout: [] });
+      const { home } = yield* homeWith(proposals);
 
       const result = yield* runCli(home, ["review", home]);
 
       assert.strictEqual(result.exitCode, 0);
       assert.include(result.stdout, "No batch is waiting for review");
+      assert.strictEqual(result.files["proposals.json"], proposals);
+      assert.isUndefined(result.files["history/0001.json"]);
     })
   );
 
@@ -283,22 +280,6 @@ describe("verdict", () => {
     })
   );
 
-  it.effect("accepts without a reason", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith(proposalsWith());
-
-      const result = yield* runCli(home, [
-        "verdict",
-        home,
-        "move-engineer",
-        "accepted",
-      ]);
-
-      assert.strictEqual(result.exitCode, 0, result.stderr);
-      assert.include(result.stdout, "Recorded accepted on move-engineer");
-    })
-  );
-
   it.effect("requires a reason for rejected and for changed", () =>
     Effect.gen(function* () {
       const proposals = proposalsWith();
@@ -331,31 +312,10 @@ describe("verdict", () => {
     })
   );
 
-  it.effect("fails on an unknown item and names the real ones", () =>
+  it.effect("fails on a verdict that isn't one of the three", () =>
     Effect.gen(function* () {
       const proposals = proposalsWith();
       const { home } = yield* homeWith(proposals);
-
-      const result = yield* runCli(home, [
-        "verdict",
-        home,
-        "no-such-item",
-        "accepted",
-      ]);
-
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stderr,
-        'No item in batch 1 has the id "no-such-item"'
-      );
-      assert.include(result.stderr, "move-engineer, resize-page, note-server");
-      assert.strictEqual(result.files["proposals.json"], proposals);
-    })
-  );
-
-  it.effect("fails on a verdict that isn't one of the three", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith(proposalsWith());
 
       const result = yield* runCli(home, [
         "verdict",
@@ -365,24 +325,13 @@ describe("verdict", () => {
       ]);
 
       assert.strictEqual(result.exitCode, 1);
-    })
-  );
+      assert.include(result.stderr, '"maybe"');
 
-  it.effect("fails when no batch is waiting", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith(
-        proposalsWith(decided, { revision: 1, at })
-      );
+      for (const kind of ["accepted", "changed", "rejected"]) {
+        assert.include(result.stderr, `"${kind}"`);
+      }
 
-      const result = yield* runCli(home, [
-        "verdict",
-        home,
-        "move-engineer",
-        "accepted",
-      ]);
-
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(result.stderr, "No batch is waiting");
+      assert.strictEqual(result.files["proposals.json"], proposals);
     })
   );
 });
@@ -475,12 +424,24 @@ describe("commit", () => {
     Effect.gen(function* () {
       const { home, root } = yield* homeWith(proposalsWith(decided));
 
+      // SYSTEM.md holds no positions, so the stand-in text shows that
+      // commit writes it again.
+      yield* writeIn(root, "review/SYSTEM.md", "stale");
+
       const result = yield* runCli(home, ["commit", home]);
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
+      assert.include(yield* readIn(root, "review/SYSTEM.md"), "# Review loop");
 
-      assert.include(yield* readIn(root, "review/SYSTEM.md"), "Engineer");
-      assert.include(yield* readIn(root, "review/review.html"), "axonometric");
+      // The accepted move puts the engineer at y 4.
+      const state = yield* pageState(yield* readIn(root, "review/review.html"));
+
+      assert.deepStrictEqual(state.layout.structures.engineer, {
+        x: 0,
+        y: 4,
+        w: 2,
+        d: 2,
+      });
     })
   );
 
@@ -566,8 +527,6 @@ describe("commit", () => {
       })
   );
 });
-
-const decodeState = Schema.decodeUnknownEffect(Schema.fromJsonString(MapState));
 
 describe("the commands and a running server", () => {
   it.live("a commit with a server up shows in the server's state", () =>

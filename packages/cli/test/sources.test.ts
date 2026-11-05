@@ -21,15 +21,23 @@ const dataFile = "pipeline/map/data.mjs";
  * The minimal map with `sources` on its first structure. `sources` is a JS
  * expression, so a test can pin the commit it just made.
  */
-const mapWithSources = Effect.fnUntraced(function* (sources: string) {
+const mapWithSources = Effect.fnUntraced(function* (
+  sources: string,
+  gateSources?: string
+) {
   const files = yield* minimalMap;
   const original = files[dataFile] ?? "";
+
+  const gate =
+    gateSources === undefined
+      ? ""
+      : `data.structures[1].sources = ${gateSources};\n`;
 
   return {
     ...files,
     [dataFile]: `${Str.replace("export default {", "const data = {")(original)}
 data.structures[0].sources = ${sources};
-export default data;
+${gate}export default data;
 `,
   } satisfies HomeFiles;
 });
@@ -62,9 +70,16 @@ const repoHome = Effect.fnUntraced(function* () {
   return { home, commit };
 });
 
-/** Writes the minimal map into `home`, with `sources` on its first structure. */
-const writeMap = Effect.fnUntraced(function* (home: string, sources: string) {
-  const files = yield* mapWithSources(sources);
+/**
+ * Writes the minimal map into `home`, with `sources` on its first structure
+ * and `gateSources`, if given, on its second.
+ */
+const writeMap = Effect.fnUntraced(function* (
+  home: string,
+  sources: string,
+  gateSources?: string
+) {
+  const files = yield* mapWithSources(sources, gateSources);
 
   yield* Effect.forEach(
     Rec.toEntries(files),
@@ -337,7 +352,8 @@ const decodeReport = Schema.decodeUnknownEffect(
 /** Builds the map in a repo whose origin is `remote`, if any. */
 const buildWith = Effect.fnUntraced(function* (
   remote: string | undefined,
-  sources: (commit: string) => string
+  sources: (commit: string) => string,
+  gateSources?: string
 ) {
   const { home, commit } = yield* repoHome();
 
@@ -345,7 +361,7 @@ const buildWith = Effect.fnUntraced(function* (
     yield* git(home, ["remote", "add", "origin", remote]);
   }
 
-  yield* writeMap(home, sources(commit));
+  yield* writeMap(home, sources(commit), gateSources);
 
   const result = yield* runOnMap(home, "build");
 
@@ -368,15 +384,19 @@ describe.skipIf(noGit)("build's source links", { timeout: 30_000 }, () => {
   ]) {
     it.effect(`links to GitHub's blob URL for ${remote}`, () =>
       Effect.gen(function* () {
-        const pinned = yield* buildWith(remote, pinnedSource);
-        const unpinned = yield* buildWith(remote, unpinnedSource);
+        // The updater pins its source and the gate doesn't.
+        const { commit, systemMd } = yield* buildWith(
+          remote,
+          pinnedSource,
+          unpinnedSource()
+        );
 
         assert.include(
-          pinned.systemMd,
-          `- [\`src/updater.ts\`](https://github.com/mippbipp/pipeline/blob/${pinned.commit}/src/updater.ts) at \`${Str.slice(0, 7)(pinned.commit)}\``
+          systemMd,
+          `- [\`src/updater.ts\`](https://github.com/mippbipp/pipeline/blob/${commit}/src/updater.ts) at \`${Str.slice(0, 7)(commit)}\``
         );
         assert.include(
-          unpinned.systemMd,
+          systemMd,
           "- [`src/updater.ts`](https://github.com/mippbipp/pipeline/blob/main/src/updater.ts)\n"
         );
       })
