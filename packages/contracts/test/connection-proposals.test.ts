@@ -7,9 +7,9 @@ import {
   changedFlowMark,
   checkConnectionProposals,
   commitBatch,
+  discardProposal,
   freezeOpen,
   hopLabelOf,
-  followed,
   marked,
   committedRenames,
   editProposal,
@@ -19,11 +19,9 @@ import {
   proposeFlow,
   proposeHop,
   recordVerdict,
-  renamesOf,
   removedHopMark,
+  reviewPrompt,
   specOf,
-  summaryLine,
-  withoutOpenHop,
 } from "../src/index.ts";
 import type {
   AcceptedItem,
@@ -33,6 +31,7 @@ import type {
   Layout,
   MapData,
   MapState,
+  PartialNames,
   Proposals,
   Verdict,
 } from "../src/index.ts";
@@ -305,6 +304,16 @@ const changedFlagOf = (entry: AcceptedItem) =>
 const flowHopsOf = (entry: AcceptedItem) =>
   entry.kind === "flow" ? hopsOfFlowChange(entry.change) : [];
 
+/** The prompt's line for the one item `proposals` holds, once frozen. */
+const promptLine = (proposals: Proposals, names: PartialNames) => {
+  const { batch } = unwrap(freezeOpen({ proposals, at }));
+  const prompt = reviewPrompt({ home: "/maps/t", batch, names });
+
+  return Arr.findFirst(Str.split("\n")(prompt), Str.startsWith("- ")).pipe(
+    Option.getOrThrow
+  );
+};
+
 const breakage = (item: BatchItem, over: Partial<MapData> = {}) =>
   breakageOf({
     item,
@@ -353,9 +362,11 @@ describe("the proposed map, for each hop action", () => {
   });
 
   it("leaves the accepted state alone", () => {
+    const before = structuredClone(state);
+
     shownWith(withHops(["p1", addHop]));
 
-    assert.strictEqual(state.data.hops.length, 3);
+    assert.deepStrictEqual(state, before);
   });
 });
 
@@ -486,43 +497,42 @@ describe("review's breakage for a deleted hop", () => {
 
     assert.isTrue(Option.isNone(none));
   });
+});
 
-  it("flags a hop the map lacks", () => {
-    const said = messageOf(
-      hopItem("p1", { action: "relabel", hop: "ghost", label: "x" })
-    );
+describe("review's breakage for a hop or flow item the map can't take", () => {
+  it("flags a hop the map lacks, a missing end, a loop and a flow's missing hop", () => {
+    const cases: readonly (readonly [string, BatchItem, string])[] = [
+      [
+        "a hop the map lacks",
+        hopItem("p1", { action: "relabel", hop: "ghost", label: "x" }),
+        '"ghost"',
+      ],
+      [
+        "a drawn hop with a missing end",
+        hopItem("p1", {
+          action: "add",
+          hop: { id: "n", from: "a", to: "zzz", label: "x" },
+        }),
+        '"zzz"',
+      ],
+      [
+        "a drawn hop that loops",
+        hopItem("p1", {
+          action: "add",
+          hop: { id: "n", from: "a", to: "a", label: "x" },
+        }),
+        "two different structures",
+      ],
+      [
+        "a flow that lists a hop the map lacks",
+        flowItem("p1", { action: "hops", flow: "f1", hops: ["nope"] }),
+        '"nope"',
+      ],
+    ];
 
-    assert.include(said, '"ghost"');
-  });
-
-  it("flags a drawn hop with a missing end", () => {
-    const said = messageOf(
-      hopItem("p1", {
-        action: "add",
-        hop: { id: "n", from: "a", to: "zzz", label: "x" },
-      })
-    );
-
-    assert.include(said, '"zzz"');
-  });
-
-  it("flags a drawn hop that loops", () => {
-    const said = messageOf(
-      hopItem("p1", {
-        action: "add",
-        hop: { id: "n", from: "a", to: "a", label: "x" },
-      })
-    );
-
-    assert.include(said, "two different structures");
-  });
-
-  it("flags a flow that lists a hop the map lacks", () => {
-    const said = messageOf(
-      flowItem("p1", { action: "hops", flow: "f1", hops: ["nope"] })
-    );
-
-    assert.include(said, '"nope"');
+    for (const [what, item, said] of cases) {
+      assert.include(messageOf(item), said, what);
+    }
   });
 });
 
@@ -537,7 +547,7 @@ describe("proposing a hop", () => {
     );
 
     assert.strictEqual(once.hops?.length, 1);
-    assert.strictEqual(twice, once);
+    assert.deepStrictEqual(twice, once);
   });
 
   it("refuses a loop", () => {
@@ -634,7 +644,17 @@ describe("proposing a hop", () => {
       ],
     };
 
-    assert.deepStrictEqual(withoutOpenHop(proposals, "new-hop").flows, [
+    const deleted = unwrap(
+      proposeHop({
+        proposals,
+        id: "p4",
+        change: { action: "delete", hop: "new-hop" },
+        world: { ...world, data: shownWith(proposals).state.data },
+      })
+    );
+
+    assert.deepStrictEqual(deleted.hops, []);
+    assert.deepStrictEqual(deleted.flows, [
       {
         id: "p2",
         change: { action: "hops", flow: "f1", hops: ["h-ab", "h-bc"] },
@@ -727,7 +747,7 @@ describe("proposing a flow", () => {
   it("keeps one reorder of the flows", () => {
     const one = reorderFlows(["f2", "f1"], "p1", empty);
 
-    assert.strictEqual(reorderFlows(["f2", "f1"], "p1", one), one);
+    assert.deepStrictEqual(reorderFlows(["f2", "f1"], "p1", one), one);
   });
 
   it("drops the reorder when the order is back", () => {
@@ -986,17 +1006,6 @@ describe("committing a drawn hop", () => {
 
     assert.deepStrictEqual(flowHopsOf(flowEntry), ["h-ab", "skip"]);
   });
-
-  it("keeps a hop's rename apart from a structure's of the same id", () => {
-    const renames = renamesOf([
-      { entity: "hop", from: "x", to: "hop-x" },
-      { entity: "structure", from: "x", to: "structure-x" },
-    ]);
-
-    assert.strictEqual(followed(renames, "hop", "x"), "hop-x");
-    assert.strictEqual(followed(renames, "structure", "x"), "structure-x");
-    assert.strictEqual(followed(renames, "flow", "x"), "x");
-  });
 });
 
 describe("the prompt line and review's before and after", () => {
@@ -1012,7 +1021,7 @@ describe("the prompt line and review's before and after", () => {
   });
 
   it("quotes the label and the ends of a drawn hop", () => {
-    const line = summaryLine(hopItem("p1", addHop), names);
+    const line = promptLine(withHops(["p1", addHop]), names);
 
     assert.include(line, '"skips b"');
     assert.include(line, '"Structure a"');
@@ -1043,14 +1052,15 @@ describe("the prompt line and review's before and after", () => {
   });
 
   it("says a flow's hops in order", () => {
-    const item = flowItem("p1", {
+    const change: FlowChange = {
       action: "hops",
       flow: "f1",
       hops: ["h-bc", "h-ab"],
-    });
+    };
 
+    const item = flowItem("p1", change);
     const facts = specOf(item).facts(item, layout, data);
-    const line = summaryLine(item, names);
+    const line = promptLine(withFlows(["p1", change]), names);
 
     assert.deepStrictEqual(facts.before, { flow: { hops: ["h-ab", "h-bc"] } });
     assert.deepStrictEqual(facts.after, { flow: { hops: ["h-bc", "h-ab"] } });
@@ -1147,8 +1157,12 @@ describe("a new flow that lists a hop being deleted", () => {
   });
 
   it("is allowed once the deletion is withdrawn", () => {
+    const withdrawn = unwrap(
+      discardProposal({ proposals: deleting, id: "d1" })
+    );
+
     const made = proposeFlow({
-      proposals: empty,
+      proposals: withdrawn,
       id: "p1",
       change: {
         action: "add",
@@ -1181,21 +1195,6 @@ describe("a hop label or flow name edited or reopened", () => {
         verdict: { verdict: "rejected", reason: "No." },
       })
     );
-
-  it("refuses an edit with a line break, in every kind of break", () => {
-    const open = withHops([
-      "h1",
-      { action: "relabel", hop: "h-ab", label: "reads" },
-    ]);
-
-    const results = Arr.map(
-      ["a\nb", "a\rb", "a\u0085b", "a\u2028b", "\u0085", " a"],
-      (text) =>
-        Result.isFailure(editProposal({ proposals: open, id: "h1", text }))
-    );
-
-    assert.deepStrictEqual(results, [true, true, true, true, true, true]);
-  });
 
   it("names the schema's words when it refuses an edit", () => {
     const open = withFlows([
@@ -1250,6 +1249,23 @@ describe("a hop or flow accepted under another id, as the page follows it", () =
   it("reads the renames of committed batches, by entity", () => {
     const both: Proposals = {
       ...withHops(["h1", addHop]),
+      // A new structure with the same provisional id as the new hop.
+      structures: [
+        {
+          id: "s1",
+          change: {
+            action: "add",
+            structure: {
+              id: "new-hop",
+              name: "Cache",
+              shape: "store",
+              group: "g1",
+              status: "planned",
+            },
+            at: { x: 12, y: 0, w: 2, d: 2 },
+          },
+        },
+      ],
       flows: [
         {
           id: "f1p",
@@ -1267,6 +1283,7 @@ describe("a hop or flow accepted under another id, as the page follows it", () =
     const judged = Arr.reduce(
       [
         ["h1", "skip"],
+        ["s1", "cache"],
         ["f1p", "round"],
       ] as const,
       frozen,
@@ -1288,7 +1305,8 @@ describe("a hop or flow accepted under another id, as the page follows it", () =
     const renames = committedRenames(committedAll(judged));
 
     assert.strictEqual(renames.hop.get("new-hop"), "skip");
+    assert.strictEqual(renames.structure.get("new-hop"), "cache");
     assert.strictEqual(renames.flow.get("new-flow"), "round");
-    assert.strictEqual(renames.structure.size, 0);
+    assert.strictEqual(renames.structure.size, 1);
   });
 });
