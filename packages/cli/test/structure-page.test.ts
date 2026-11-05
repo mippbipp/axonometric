@@ -6,6 +6,7 @@ import {
   Effect,
   FileSystem,
   Path,
+  Schedule,
   Schema,
   String as Str,
 } from "effect";
@@ -70,6 +71,54 @@ const readProposals = Effect.fnUntraced(function* (home: string) {
     yield* fs.readFileString(path.join(home, "proposals.json"))
   );
 }, Effect.provide(NodeServices.layer));
+
+/**
+ * The structure proposals in proposals.json once there are `expected` of them.
+ * The page draws a proposal as pending before the server has written it.
+ */
+const savedStructures = (home: string, expected: number) =>
+  readProposals(home).pipe(
+    Effect.map((proposals) => proposals.structures ?? []),
+    Effect.filterOrFail(
+      (saved) => saved.length === expected,
+      () => `proposals.json never held ${expected} structure proposals`
+    ),
+    Effect.retry({ times: 100, schedule: Schedule.spaced("100 millis") }),
+    Effect.orDie
+  );
+
+const rightClick = (page: Page, id: string) =>
+  Effect.promise(() =>
+    page.locator(`[data-structure="${id}"]`).click({ button: "right" })
+  );
+
+/** Closes the context menu, which stays open after a pick from a submenu. */
+const closeMenu = Effect.fnUntraced(function* (page: Page) {
+  const menu = page.locator("[data-structure-menu]");
+
+  // The first Escape closes the submenu, the next the menu.
+  for (
+    let tries = 0;
+    tries < 3 && (yield* Effect.promise(() => menu.count())) > 0;
+    tries++
+  ) {
+    yield* Effect.promise(() => page.keyboard.press("Escape"));
+    yield* Effect.promise(() => page.waitForTimeout(100));
+  }
+
+  yield* Effect.promise(() =>
+    menu.waitFor({ state: "detached", ...waitTimeout })
+  );
+});
+
+const pendingOn = (page: Page, id: string) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `document.querySelector('[data-structure="${id}"][data-pending="true"]') !== null`,
+      undefined,
+      waitTimeout
+    )
+  );
 
 /** Opens the form, names the structure and clicks the map at (x, y) in the page. */
 const addStructure = Effect.fnUntraced(function* (
@@ -392,7 +441,7 @@ describe("deleting a structure", () => {
   );
 
   it.live(
-    "is not in the exported SVG, which equals the CLI's",
+    "is not in the exported SVG, which equals the CLI's, with a note and an added structure pending too",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
@@ -400,11 +449,28 @@ describe("deleting a structure", () => {
         yield* chapter(page, "c-all");
         yield* addStructure(page, { name: "Build cache", x: 12, y: 12 });
         yield* waitFor(page, '[data-structure][data-pending="true"]');
+        yield* click(page, '[data-structure="server"]');
+        yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
+        yield* Effect.promise(() =>
+          page
+            .locator(
+              "[data-structure-panel] [data-notes-section] [data-note-text]"
+            )
+            .fill("Why a server?")
+        );
+        yield* click(
+          page,
+          "[data-structure-panel] [data-notes-section] [data-note-send]"
+        );
+        yield* waitFor(page, '[data-note-marker="server"]');
         yield* click(page, '[data-structure="upstream"]');
         yield* click(page, '[data-change="delete"]');
         yield* waitFor(page, '[data-removed-mark="upstream"]');
         // A pinned structure puts the spotlight on it, which the CLI has no
         // way to match. Unpin it so both draw the chapter's spotlight.
+        yield* Effect.promise(() =>
+          page.evaluate("document.activeElement?.blur()")
+        );
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* Effect.promise(() =>
           page.waitForFunction(
@@ -436,6 +502,8 @@ describe("deleting a structure", () => {
           assert.notInclude(fromPage, "Build cache");
           assert.notInclude(fromPage, "removed");
           assert.notInclude(fromPage, "strike");
+          assert.notInclude(fromPage, "data-note-marker");
+          assert.notInclude(fromPage, "data-verdict");
 
           const target = path.join(home, "..", "out", `${which}.svg`);
 
@@ -464,7 +532,7 @@ describe("deleting a structure", () => {
 
 describe("the context menu on a structure", () => {
   it.live(
-    "proposes a rename, a shape, a group, a status and a deletion, in both views",
+    "offers a rename, a shape, a group, a status and a deletion in both views, and proposes each",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
@@ -492,27 +560,57 @@ describe("the context menu on a structure", () => {
           yield* Effect.promise(() => page.keyboard.press("Escape"));
         }
 
-        yield* Effect.promise(() =>
-          page.locator('[data-structure="server"]').click({ button: "right" })
-        );
+        yield* rightClick(page, "server");
         yield* click(page, '[data-menu="status"]');
         yield* click(page, '[data-menu-status="off"]');
+        yield* pendingOn(page, "server");
+        yield* closeMenu(page);
 
+        yield* rightClick(page, "proposals");
+        yield* click(page, '[data-menu="group"]');
+        yield* click(page, '[data-menu-group="outside"]');
+        yield* pendingOn(page, "proposals");
+        yield* closeMenu(page);
+
+        yield* rightClick(page, "engineer");
+        yield* click(page, '[data-menu="shape"]');
+        yield* click(page, '[data-menu-shape="box"]');
+        yield* pendingOn(page, "engineer");
+        yield* closeMenu(page);
+
+        // Rename puts the typing in the panel's name field.
+        yield* rightClick(page, "page");
+        yield* click(page, '[data-menu="rename"]');
         yield* Effect.promise(() =>
           page.waitForFunction(
-            `document.querySelector('[data-structure="server"][data-pending="true"]') !== null`,
+            `document.activeElement?.getAttribute("data-change") === "name"`,
             undefined,
             waitTimeout
           )
         );
+        yield* Effect.promise(() => page.keyboard.type("Map view"));
+        yield* Effect.promise(() => page.keyboard.press("Enter"));
+        yield* pendingOn(page, "page");
 
-        const [saved] = (yield* readProposals(home)).structures ?? [];
+        yield* rightClick(page, "upstream");
+        yield* click(page, '[data-menu="delete"]');
+        yield* waitFor(page, '[data-removed-mark="upstream"]');
 
-        assert.deepStrictEqual(saved?.change, {
-          action: "status",
-          structure: "server",
-          status: "off",
-        });
+        const changes = Arr.map(
+          yield* savedStructures(home, 5),
+          ({ change }) => change
+        );
+
+        assert.sameDeepMembers(
+          [...changes],
+          [
+            { action: "status", structure: "server", status: "off" },
+            { action: "group", structure: "proposals", group: "outside" },
+            { action: "shape", structure: "engineer", shape: "box" },
+            { action: "rename", structure: "page", name: "Map view" },
+            { action: "delete", structure: "upstream" },
+          ]
+        );
       }),
     90_000
   );

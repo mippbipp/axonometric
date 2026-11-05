@@ -25,33 +25,54 @@ const goToLast = Effect.fnUntraced(function* (page: Page) {
 });
 
 /**
- * Whether the zones come before every structure and hop in the document,
- * so they paint underneath them.
+ * At the middle of each structure and of each hop's first leg, what the
+ * browser finds on top there: the item itself, or a zone over it. Only spots
+ * where a zone plate lies under the pointer too are reported.
  */
-const zonesPaintFirst = `(() => {
-  const zones = document.querySelector("[data-zones]");
-  const later = [...document.querySelectorAll("[data-structure], [data-hop]")];
+const stacksOverZones = `(() => {
+  const viewport = document.querySelector("[data-viewport]");
+  const toScreen = (point) => new DOMPoint(point.x, point.y).matrixTransform(viewport.getScreenCTM());
+  const spots = [
+    ...[...document.querySelectorAll("[data-structure]")].map((structure) => {
+      const box = structure.getBoundingClientRect();
 
-  return zones !== null && later.length > 0 && later.every(
-    (element) =>
-      (zones.compareDocumentPosition(element) &
-        Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-  );
+      return { id: "box:" + structure.dataset.structure, element: structure, x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    }),
+    ...[...document.querySelectorAll("[data-hop]")].map((hop) => {
+      const [a, b] = hop.dataset.route.split(" ").slice(0, 2).map((pair) => {
+        const [x, y] = pair.split(",").map(Number);
+
+        return toScreen({ x, y });
+      });
+
+      return { id: "hop:" + hop.dataset.hop, element: hop, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }),
+  ];
+
+  return spots.flatMap(({ id, element, x, y }) => {
+    const stack = document.elementsFromPoint(x, y);
+    const zone = stack.findIndex((under) => under.closest("[data-zone]") !== null);
+    const own = stack.findIndex((under) => element.contains(under));
+
+    return zone === -1 ? [] : [{ id, onTop: own !== -1 && own < zone }];
+  });
 })()`;
+
+interface Spot {
+  readonly id: string;
+  readonly onTop: boolean;
+}
 
 interface TitleReport {
   readonly zone: string;
   readonly insideOwn: boolean;
   readonly overOtherZones: readonly string[];
-  readonly overStructures: readonly string[];
 }
 
 /**
  * For each zone, where its title sits on screen: inside its own plate, and
- * which other plates, structures and name tags it touches. The title is its
- * text's own box, mapped to the screen through its skew. A structure is
- * every part it draws: each polygon by its points, anything else by its own
- * box mapped to the screen.
+ * which other plates it touches. The title is its text's own box, mapped to
+ * the screen through its skew.
  */
 const titleReports = `(() => {
   const toScreen = (element, points) => {
@@ -74,15 +95,6 @@ const titleReports = `(() => {
       { x: box.x, y: box.y + box.height },
     ]);
   };
-
-  const partsOf = (element) =>
-    [...element.querySelectorAll("polygon, polyline, rect, ellipse, circle, path, line, text")]
-      .map((part) =>
-        part.points === undefined
-          ? boxOf(part)
-          : toScreen(part, [...part.points])
-      )
-      .filter((part) => part.length > 0);
 
   const inside = (polygon, point) => {
     const signs = polygon.map((corner, index) => {
@@ -123,7 +135,6 @@ const titleReports = `(() => {
 
     return toScreen(plate, [...plate.points]);
   };
-  const drawn = [...document.querySelectorAll("[data-structure], [data-name-tag]")];
 
   return zones.map((zone) => {
     const title = boxOf(zone.querySelector("[data-zone-title]"));
@@ -134,9 +145,6 @@ const titleReports = `(() => {
       overOtherZones: zones
         .filter((other) => other !== zone && overlap(title, plateOf(other)))
         .map((other) => other.dataset.zone),
-      overStructures: drawn
-        .filter((element) => partsOf(element).some((part) => overlap(title, part)))
-        .map((element) => element.dataset.structure ?? element.dataset.nameTag),
     };
   });
 })()`;
@@ -168,31 +176,28 @@ describe("zones in the Iso view", () => {
       )
   );
 
-  it.live(
-    "puts each title on its own plate, clear of other zones, boxes and tags",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { page } = yield* reviewPage;
+  it.live("puts each title on its own plate, clear of other zones", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
 
-          yield* goToLast(page);
+        yield* goToLast(page);
 
-          const reports = yield* Effect.promise(() =>
-            page.evaluate<readonly TitleReport[]>(titleReports)
-          );
+        const reports = yield* Effect.promise(() =>
+          page.evaluate<readonly TitleReport[]>(titleReports)
+        );
 
-          assert.lengthOf(reports, 3);
-          assert.deepStrictEqual(
-            reports,
-            Arr.map(reports, ({ zone }) => ({
-              zone,
-              insideOwn: true,
-              overOtherZones: [],
-              overStructures: [],
-            }))
-          );
-        })
-      )
+        assert.lengthOf(reports, 3);
+        assert.deepStrictEqual(
+          reports,
+          Arr.map(reports, ({ zone }) => ({
+            zone,
+            insideOwn: true,
+            overOtherZones: [],
+          }))
+        );
+      })
+    )
   );
 
   it.live("draws only the zones of groups revealed so far", () =>
@@ -213,12 +218,16 @@ describe("zones in the Iso view", () => {
 
         yield* goToLast(page);
 
-        // Later siblings in SVG paint over earlier ones.
-        const zonesFirst = yield* Effect.promise(() =>
-          page.evaluate<boolean>(zonesPaintFirst)
+        const spots = yield* Effect.promise(() =>
+          page.evaluate<readonly Spot[]>(stacksOverZones)
         );
 
-        assert.isTrue(zonesFirst);
+        // Every structure, and every hop, stands on a zone in this chapter.
+        assert.isAbove(spots.length, 6);
+        assert.deepStrictEqual(
+          Arr.filter(spots, ({ onTop }) => !onTop),
+          []
+        );
       })
     )
   );

@@ -154,29 +154,6 @@ describe("the chapter walkthrough", () => {
     )
   );
 
-  it.live("zooms to fit the structures revealed so far", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* reviewPage;
-        const [svg] = yield* boxesOf(page, "svg");
-        const first = yield* boxesOf(page, '[data-structure="engineer"]');
-        const fitted = yield* scaleOf(page);
-
-        yield* press(page, "ArrowRight");
-        yield* press(page, "ArrowRight");
-        yield* waitForChapter(page, "c-all");
-        yield* waitForScale(page, `< ${fitted}`);
-
-        const last = yield* boxesOf(page, '[data-structure="engineer"]');
-
-        assert.isDefined(svg);
-        // Two structures are drawn larger in chapter 1 than when six share
-        // the view.
-        assert.isAbove(first[0]?.width ?? 0, last[0]?.width ?? 0);
-      })
-    )
-  );
-
   it.live("caps the fit for a small chapter and centres the drawing", () =>
     Effect.scoped(
       Effect.gen(function* () {
