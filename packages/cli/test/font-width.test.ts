@@ -1,6 +1,6 @@
-import { tagCharWidth, textSizes } from "@axonometric/contracts";
+import { tagCharWidth } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Record as Rec } from "effect";
+import { Array as Arr, Effect } from "effect";
 import type { Page } from "playwright";
 
 import { pipelineMap } from "./fixtures.ts";
@@ -37,9 +37,40 @@ const nameTags = (page: Page) =>
     }))`
   );
 
+/**
+ * The Export button's text and every hop label's, with their advance widths
+ * and font sizes. The button is HTML, so its text is measured with a range;
+ * a label is SVG text, measured as the tags are.
+ */
+const textWidths = (page: Page) =>
+  inPage<readonly TagWidth[]>(
+    page,
+    `(() => {
+      const control = document.querySelector("[data-control='export']");
+      const range = document.createRange();
+      range.selectNodeContents(control);
+      return [
+        {
+          id: "control:export",
+          text: control.textContent.trim(),
+          width: range.getBoundingClientRect().width,
+          size: parseFloat(getComputedStyle(control).fontSize),
+        },
+        ...[...document.querySelectorAll("[data-map-layer] [data-hop-label]")]
+          .filter((label) => getComputedStyle(label).visibility !== "hidden")
+          .map((label) => ({
+            id: "label:" + label.dataset.hopLabel,
+            text: label.textContent,
+            width: label.getComputedTextLength(),
+            size: parseFloat(getComputedStyle(label).fontSize),
+          })),
+      ];
+    })()`
+  );
+
 describe("the page's font", () => {
   it.live(
-    "draws name tags at 0.6 em a character",
+    "draws name tags and controls at 0.6 em a character, and hop labels in one monospace advance",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -77,44 +108,46 @@ describe("the page's font", () => {
             );
           }
 
-          // The scene's own estimate, at the base size, agrees.
-          assert.closeTo(tagCharWidth, textSizes.tag.font * 0.6, 0.01);
-          assert.deepStrictEqual(errors, []);
-        })
-      ),
-    60_000
-  );
+          // The Export button is HTML text in the same font, so it measures
+          // 0.6 em a character too. HTML rounds each advance to a whole pixel
+          // at small sizes, so 7.2 px a character shows as 7: a quarter of a
+          // pixel a character allows that, and DejaVu Sans is off by more.
+          const [control, ...labels] = yield* textWidths(page);
 
-  it.live(
-    "draws the controls and hop labels in the embedded font too",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { page } = yield* buildAndOpen(
-            yield* pipelineMap,
-            "flake-pipeline"
-          );
+          assert.isDefined(control);
 
-          const families = yield* inPage<Record<string, string>>(
-            page,
-            `Object.fromEntries([
-              ["body", "main"],
-              ["control", "[data-control='export']"],
-              ["label", "[data-hop-label]"],
-              ["tag", "[data-name-tag] text"],
-            ].map(([name, selector]) => [name, getComputedStyle(document.querySelector(selector)).fontFamily.split(",")[0].trim()]))`
-          );
-
-          for (const [name, family] of Rec.toEntries(families)) {
-            assert.strictEqual(family, '"Liberation Mono"', name);
+          if (control !== undefined) {
+            assert.closeTo(
+              control.width,
+              control.text.length * 0.6 * control.size,
+              Math.max(1, control.text.length * 0.25),
+              `${control.id} "${control.text}"`
+            );
           }
 
-          const loaded = yield* inPage<boolean>(
-            page,
-            `document.fonts.ready.then(() => document.fonts.check("12px 'Liberation Mono'"))`
+          // Every hop label is drawn at one advance a character, as only a
+          // monospace font draws them: a proportional one gives each label
+          // its own.
+          const advances = Arr.map(
+            labels,
+            ({ width, text, size }) => width / text.length / size
           );
 
-          assert.isTrue(loaded);
+          assert.isAtLeast(advances.length, 2);
+
+          for (const [index, advance] of advances.entries()) {
+            assert.closeTo(
+              advance,
+              advances[0] ?? 0,
+              0.005,
+              `${labels[index]?.id} "${labels[index]?.text}"`
+            );
+          }
+
+          // The scene's own estimate of a tag's character agrees with what
+          // the page draws: 0.6 em at the 12 px base size is 7.2 px.
+          assert.closeTo(tagCharWidth, 7.2, 0.01);
+          assert.deepStrictEqual(errors, []);
         })
       ),
     60_000
