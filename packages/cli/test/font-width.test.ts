@@ -162,12 +162,14 @@ describe("the page's font", () => {
             })()`
           );
 
-          yield* Effect.promise(() =>
-            page.mouse.move(
-              (box?.x ?? 0) + (box?.width ?? 0) / 2,
-              (box?.y ?? 0) + (box?.height ?? 0) / 2
-            )
-          );
+          assert.isNotNull(box);
+
+          if (box !== null) {
+            yield* Effect.promise(() =>
+              page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+            );
+          }
+
           yield* Effect.promise(() =>
             page.mouse.wheel(0, -Math.log(9.25 / onScreen) / 0.0015)
           );
@@ -182,6 +184,18 @@ describe("the page's font", () => {
             )
           );
           yield* checkLabels("at 9.25 px on screen");
+
+          // Name tags too, at whatever size this zoom draws them.
+          for (const tag of yield* nameTags(page)) {
+            const expected = tag.text.length * 0.6 * tag.size;
+
+            assert.closeTo(
+              tag.width,
+              expected,
+              Math.max(1, expected * 0.005),
+              `${tag.id} "${tag.text}" zoomed in`
+            );
+          }
 
           // The scene's own estimate of a tag's character agrees with what
           // the page draws: 0.6 em at the 12 px base size is 7.2 px.
