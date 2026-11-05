@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path, String as Str } from "effect";
 import type { Page } from "playwright";
 
-import { boxesOf, literal, openUrl } from "./browser.ts";
+import { boxesOf, openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { commitAll, git, initRepo, noGit } from "./git.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
@@ -183,7 +183,7 @@ describe("live reload", () => {
   );
 
   it.live(
-    "moves a structure in Plan view when layout.json changes, staying in Plan view",
+    "moves a structure in Plan view when the layout command changes layout.json, keeping the view, the chapter and the selection",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
@@ -224,43 +224,6 @@ describe("live reload", () => {
           yield* attributeOf(page, "[data-walkthrough]", "data-view"),
           "plan"
         );
-        assert.strictEqual(
-          yield* attributeOf(page, '[data-selected="true"]', "data-structure"),
-          "server"
-        );
-      }),
-    60_000
-  );
-
-  it.live(
-    "applies a change to layout.json, such as from the layout command, keeping the chapter",
-    () =>
-      Effect.gen(function* () {
-        const { home, page } = yield* servedReview;
-        const face = '[data-structure="server"] [data-face]';
-
-        yield* settle(page);
-
-        const before = yield* attributeOf(page, face, "points");
-
-        const moved = yield* runCli(home, [
-          "layout",
-          home,
-          "server",
-          "--x",
-          "10",
-        ]);
-
-        assert.strictEqual(moved.exitCode, 0, moved.stderr);
-
-        yield* Effect.promise(() =>
-          page.waitForFunction(
-            `document.querySelector('${face}')?.getAttribute("points") !== ${literal(before)}`,
-            undefined,
-            waitTimeout
-          )
-        );
-
         assert.strictEqual(
           yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
           "c-save"

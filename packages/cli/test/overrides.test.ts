@@ -1,7 +1,7 @@
-import { LayoutFile, project } from "@axonometric/contracts";
+import { LayoutFile } from "@axonometric/contracts";
 import type { GridPoint } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Schema } from "effect";
+import { Array as Arr, Effect, Schema, String as Str } from "effect";
 
 import { minimalMap } from "./fixtures.ts";
 import type { HomeFiles } from "./harness.ts";
@@ -81,38 +81,36 @@ describe("route overrides", () => {
     })
   );
 
-  it.effect("check rejects an override with too many points", () =>
-    Effect.gen(function* () {
+  it.effect.each([
+    {
+      broken: "too many points",
       // A staircase of 201 right-angled points, one over the cap.
-      const many = Arr.makeBy(201, (index) => ({
+      route: Arr.makeBy(201, (index) => ({
         x: 2 + Math.ceil(index / 2) / 2,
         y: 5 + Math.floor(index / 2) / 2,
-      }));
-
-      const result = yield* checkIn(yield* withRawRoutes({ "h-update": many }));
-
-      assert.notStrictEqual(result.exitCode, 0);
-      assert.include(result.stdout, "expected at most 200 points");
-    })
-  );
-
-  it.effect("check rejects an override that lies far off the map", () =>
+      })),
+      says: "expected at most 200 points",
+    },
+    {
+      broken: "a point far off the map",
+      route: [
+        { x: 2, y: 5 },
+        { x: 5000, y: 5 },
+      ],
+      says: "within 1000 units of the origin",
+    },
+  ])("check rejects an override with $broken", ({ route, says }) =>
     Effect.gen(function* () {
       const result = yield* checkIn(
-        yield* withRawRoutes({
-          "h-update": [
-            { x: 2, y: 5 },
-            { x: 5000, y: 5 },
-          ],
-        })
+        yield* withRawRoutes({ "h-update": route })
       );
 
       assert.notStrictEqual(result.exitCode, 0);
-      assert.include(result.stdout, "within 1000 units of the origin");
+      assert.include(result.stdout, says);
     })
   );
 
-  it.effect("check rejects an override whose end is off its structure", () =>
+  it.effect("check rejects an override that starts off its structure", () =>
     Effect.gen(function* () {
       const result = yield* checkIn(
         yield* withRoutes({
@@ -147,16 +145,18 @@ describe("route overrides", () => {
           )
         );
 
-        const expected = Arr.join(
-          Arr.map(goodOverride, (point) => {
-            const { sx, sy } = project(point);
+        // The Iso view draws a ground unit along x as 36 right and 18 down,
+        // and along y as 36 left and 18 down, so a drawn point turns back
+        // into ground units this way.
+        const ground = Arr.map(Str.split(drawn, " "), (pair) => {
+          const [sx, sy] = Arr.map(Str.split(pair, ","), Number);
+          const across = (sx ?? 0) / 36;
+          const down = (sy ?? 0) / 18;
 
-            return `${sx},${sy}`;
-          }),
-          " "
-        );
+          return { x: (across + down) / 2, y: (down - across) / 2 };
+        });
 
-        assert.strictEqual(drawn, expected);
+        assert.deepStrictEqual(ground, goodOverride);
       })
     )
   );

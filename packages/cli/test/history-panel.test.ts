@@ -233,6 +233,26 @@ const readIn = Effect.fnUntraced(function* (root: string, file: string) {
   return yield* fs.readFileString(path.join(root, file));
 }, Effect.provide(NodeServices.layer));
 
+/** Waits until proposals.json in `root` holds `wanted` pending layout changes. */
+const waitForPendingCount = Effect.fnUntraced(function* (
+  root: string,
+  wanted: number
+) {
+  for (let tries = 0; tries < 150; tries += 1) {
+    const proposals = yield* decodeProposals(
+      yield* readIn(root, "review/map/proposals.json")
+    );
+
+    if (proposals.layout.length === wanted) {
+      return proposals;
+    }
+
+    yield* Effect.sleep("100 millis");
+  }
+
+  return assert.fail(`proposals.json never held ${wanted} layout changes`);
+});
+
 describe("the History panel", () => {
   it.live(
     "lists revisions newest first with number, message, date and item count",
@@ -622,7 +642,7 @@ describe("the History panel", () => {
     "restores a layout difference as pending changes the Pending tab lists, and writes proposals.json",
     () =>
       Effect.gen(function* () {
-        const { root, page, errors } = yield* servedWithTwo;
+        const { root, serve, page, errors } = yield* servedWithTwo;
 
         yield* openHistory(page);
         yield* openRevision(page, 1);
@@ -710,38 +730,20 @@ describe("the History panel", () => {
         // The restore is one undo step like any other edit.
         yield* click(page, '[data-control="undo"]');
         yield* waitGone(page, "[data-pending-change]");
-        assert.deepStrictEqual(errors, []);
-      }),
-    60_000
-  );
 
-  it.live(
-    "words the restore dialog for one layout difference in the singular",
-    () =>
-      Effect.gen(function* () {
-        const path = yield* Path.Path;
-        const root = yield* makeHome(yield* fullMap);
-        const home = path.join(root, "review", "map");
-        const serve = yield* startServe(home, ["--port", "0"]);
+        // A third revision moves the engineer back to where revision 2 has it
+        // not, so restoring revision 2 differs in that one place, and the
+        // dialog says so in the singular.
+        const { revision: base } = yield* waitForPendingCount(root, 0);
 
         yield* acceptChanges(serve, {
-          base: 0,
-          changes: [moveOf("a", "page", { x: 4, y: 4 })],
-          message: "First",
+          base,
+          changes: [moveOf("engineer-home", "engineer", { x: 0, y: 0 })],
+          message: "Engineer home",
         });
-        yield* acceptChanges(serve, {
-          base: 2,
-          changes: [moveOf("b", "engineer", { x: 0, y: 4 })],
-          message: "Second",
-        });
-
-        const { page, errors } = yield* openUrl(serve.url);
-
-        yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1280, height: 800 })
-        );
         yield* openHistory(page);
-        yield* openRevision(page, 1);
+        yield* waitFor(page, '[data-history-list] [data-revision="3"]');
+        yield* openRevision(page, 2);
         yield* click(page, '[data-control="restore"]');
         yield* waitFor(page, "[data-restore-dialog]");
         assert.include(
@@ -749,8 +751,8 @@ describe("the History panel", () => {
           "1 layout difference is now a pending change. Review it in the Pending tab, or undo it."
         );
         assert.deepStrictEqual(errors, []);
-      }).pipe(Effect.provide(NodeServices.layer)),
-    60_000
+      }).pipe(Effect.scoped),
+    90_000
   );
 
   it.live(

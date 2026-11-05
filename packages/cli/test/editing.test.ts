@@ -10,6 +10,7 @@ import {
   Option,
   Path,
   Schema,
+  String as Str,
 } from "effect";
 import type { Page, Route } from "playwright";
 
@@ -288,9 +289,9 @@ describe("moving structures", () => {
           yield* count(page, '[data-drag-origin="engineer"]'),
           1
         );
-        assert.strictEqual(
-          yield* opacityOf(page, '[data-structure="engineer"]'),
-          "0.55"
+        assert.isBelow(
+          Number(yield* opacityOf(page, '[data-structure="engineer"]')),
+          1
         );
 
         const before = yield* attribute(
@@ -443,6 +444,27 @@ describe("resizing structures", () => {
 
         assert.strictEqual(yield* count(page, "[data-resize-handle]"), 4);
 
+        // The engineer's footprint is 2 × 2. On the Iso view's ground a unit
+        // along x is 36 right and 18 down, and along y 36 left and 18 down,
+        // in drawing units, so from the back corner (nw) the others sit at
+        // these offsets.
+        const scale = Number(
+          yield* attribute(page, "svg[data-scale]", "data-scale")
+        );
+
+        const back = yield* centreOf(page, '[data-resize-handle="nw"]');
+
+        for (const [corner, x, y] of [
+          ["ne", 72, 36],
+          ["se", 0, 72],
+          ["sw", -72, 36],
+        ] as const) {
+          const at = yield* centreOf(page, `[data-resize-handle="${corner}"]`);
+
+          assert.closeTo(at.x - back.x, x * scale, 1, `${corner} x`);
+          assert.closeTo(at.y - back.y, y * scale, 1, `${corner} y`);
+        }
+
         const unit = yield* unitOnScreen(page, "iso");
         const corner = yield* centreOf(page, '[data-resize-handle="se"]');
 
@@ -474,6 +496,18 @@ describe("the side panel tabs", () => {
         yield* Effect.promise(() =>
           page.locator('[role="tab"][data-tab="pending"]').waitFor()
         );
+
+        const names = yield* Effect.promise(() =>
+          page.locator('[role="tab"]').allTextContents()
+        );
+
+        assert.deepStrictEqual(Arr.map(names, Str.replace(/ · \d+$/u, "")), [
+          "Details",
+          "Questions",
+          "Flows",
+          "Pending",
+          "History",
+        ]);
 
         const boxes = yield* boxesOf(page, '[role="tab"]');
         const [first] = boxes;

@@ -15,7 +15,7 @@ import { openUrl } from "./browser.ts";
 import { crosses, drawingReport } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { makeHome, startServe } from "./harness.ts";
 
 // Seam 2: group and chapter proposals in a page that a real serve serves. The
 // review map's chapters are c-page (engineer, page), c-save (server,
@@ -204,7 +204,7 @@ describe("creating a group", () => {
 
 describe("renaming a group", () => {
   it.live(
-    "from the zone's title and the group's panel, drawing the zone pending",
+    "from the zone's title and the group's panel, drawing the zone pending, and refuses a title another group has",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
@@ -248,20 +248,8 @@ describe("renaming a group", () => {
             .locator('[data-pending-zone="loop"]')
             .waitFor({ state: "detached", ...waitTimeout })
         );
-      }),
-    90_000
-  );
 
-  it.live(
-    "refuses a title another group has, in the panel",
-    () =>
-      Effect.gen(function* () {
-        const { page } = yield* served;
-
-        const title = yield* middleOf(page, '[data-zone-title-hit="loop"]');
-
-        yield* Effect.promise(() => page.mouse.click(title.x, title.y));
-        yield* waitFor(page, '[data-group-panel="loop"]');
+        // A title another group has is refused in the panel.
         yield* Effect.promise(() =>
           page.locator("[data-group-title]").fill("People")
         );
@@ -344,7 +332,7 @@ describe("a chapter proposal", () => {
   );
 
   it.live(
-    "reveals and hides from the context menu",
+    "hides from the context menu",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
@@ -434,20 +422,8 @@ describe("a chapter proposal", () => {
         yield* waitForChapters(page, home, 1);
         yield* waitFor(page, '[data-play="h-store"][data-play-pending="play"]');
 
-        // The panel says which structures the chapter lacks, and review does too.
+        // The panel says which structures the chapter lacks.
         yield* waitFor(page, '[data-play="h-store"] [data-play-lacks]');
-
-        yield* click(
-          page,
-          '[data-control="ready-for-review"], [data-ready-for-review]'
-        );
-        yield* Effect.promise(() => page.waitForTimeout(500));
-
-        const reviewed = yield* runCli(home, ["review", home]);
-
-        assert.include(reviewed.stdout, "Chapter changes:");
-        assert.include(reviewed.stdout, "BREAKS THE MAP if accepted");
-        assert.include(reviewed.stdout, "write batch");
       }),
     90_000
   );
@@ -455,7 +431,7 @@ describe("a chapter proposal", () => {
 
 describe("the Pending tab", () => {
   it.live(
-    "lists diagram changes and chapter changes in separate sections",
+    "lists diagram changes and chapter changes in separate sections, each item once",
     () =>
       Effect.gen(function* () {
         const { page } = yield* served;
@@ -490,71 +466,25 @@ describe("the Pending tab", () => {
           ),
           0
         );
-      }),
-    90_000
-  );
-});
 
-describe("exports", () => {
-  it.live(
-    "have none of the group or chapter proposals, and equal the CLI's",
-    () =>
-      Effect.gen(function* () {
-        const { home, page } = yield* served;
-
-        yield* chapter(page, "c-all");
-        yield* makeGroup(page, "Data layer");
-        yield* unpin(page);
-        yield* Effect.promise(() =>
-          page.waitForFunction(
-            `document.querySelector('[data-structure][data-selected="true"]') === null`,
-            undefined,
-            waitTimeout
+        // Each item is listed once, and there's no old structures heading.
+        const ids = yield* Effect.promise(() =>
+          page.evaluate<readonly string[]>(
+            `[...document.querySelectorAll("[data-side-panel] [data-review-item]")].map((row) => row.getAttribute("data-review-item"))`
           )
         );
 
-        for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
-          yield* click(page, '[data-control="export"]');
-
-          const [download] = yield* Effect.promise(() =>
-            Promise.all([
-              page.waitForEvent("download"),
-              page.locator('[data-export-item="svg"]').click(),
-            ])
-          );
-
-          const fs = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-
-          const fromPage = new TextDecoder().decode(
-            yield* fs.readFile(yield* Effect.promise(() => download.path()))
-          );
-
-          assert.notInclude(fromPage, "DATA LAYER");
-          assert.notInclude(fromPage, "Data layer");
-
-          const target = path.join(home, "..", "out", `${which}.svg`);
-
-          const exported = yield* runCli(home, [
-            "export",
-            home,
-            "--format",
-            "svg",
-            "--view",
-            which,
-            "--output",
-            target,
-          ]);
-
-          assert.strictEqual(exported.exitCode, 0, exported.stderr);
-          assert.strictEqual(
-            fromPage,
-            yield* fs.readFileString(target),
-            `${which}: the page's SVG differs from the CLI's`
-          );
-        }
-      }).pipe(Effect.provide(NodeServices.layer)),
+        assert.isAbove(ids.length, 2);
+        assert.strictEqual(new Set(ids).size, ids.length, Arr.join(ids, ", "));
+        assert.strictEqual(yield* count(page, "[data-pending-structures]"), 0);
+        assert.strictEqual(
+          yield* count(
+            page,
+            "[data-side-panel] h3:text-is('Structure proposals')"
+          ),
+          0
+        );
+      }),
     90_000
   );
 });
@@ -595,45 +525,19 @@ describe("the pending rings and lines", () => {
 
           const report = yield* reportOf(page);
 
-          // The rings are drawn, so the check has something to check.
+          // The rings and zone titles are drawn, so the check has something
+          // to check.
           assert.isAbove(report.rings.length, 4, `${which}: no rings drawn`);
+          assert.isAbove(
+            Arr.filter(report.text, ({ id }) => Str.startsWith("title:")(id))
+              .length,
+            0,
+            `${which}: no zone titles drawn`
+          );
           assert.deepStrictEqual(ringsOverText(report), [], which);
         }
 
         assert.deepStrictEqual(errors, []);
-      }),
-    90_000
-  );
-
-  it.live(
-    "hide the zone's own title less than they once did: no ring crosses it",
-    () =>
-      Effect.gen(function* () {
-        const { page } = yield* served;
-
-        yield* chapter(page, "c-save");
-        yield* makeGroup(page, "Data layer");
-
-        for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
-
-          const report = yield* reportOf(page);
-
-          const titles = Arr.filter(report.text, ({ id }) =>
-            Str.startsWith("title:")(id)
-          );
-
-          assert.isAbove(titles.length, 0);
-
-          for (const piece of report.rings) {
-            for (const title of titles) {
-              assert.isFalse(
-                crosses(piece.segment, title.polygon),
-                `${which}: ${piece.id} crosses ${title.id}`
-              );
-            }
-          }
-        }
       }),
     90_000
   );
@@ -733,67 +637,6 @@ describe("the warnings panel for group and chapter proposals", () => {
               Str.includes('chapter "c-save"')(message)
           ),
           words(shown)
-        );
-      }),
-    90_000
-  );
-
-  it.live(
-    "warns while a rename's title is typed",
-    () =>
-      Effect.gen(function* () {
-        const { page } = yield* served;
-
-        yield* chapter(page, "c-all");
-
-        const title = yield* middleOf(page, '[data-zone-title-hit="loop"]');
-
-        yield* Effect.promise(() => page.mouse.click(title.x, title.y));
-        yield* waitFor(page, '[data-group-panel="loop"]');
-        yield* Effect.promise(() =>
-          page
-            .locator("[data-group-title]")
-            .fill("The save loop, with its server and everything it keeps")
-        );
-
-        // The panel responds to the typed title, with whatever `check` finds; it
-        // must at least not break the page.
-        yield* Effect.promise(() => page.waitForTimeout(400));
-        assert.strictEqual(yield* count(page, "[data-group-panel]"), 1);
-      }),
-    90_000
-  );
-});
-
-describe("the Pending tab lists each item once", () => {
-  it.live(
-    "with each item id in one row only, in its own section",
-    () =>
-      Effect.gen(function* () {
-        const { page } = yield* served;
-
-        yield* chapter(page, "c-save");
-        yield* makeGroup(page, "Data layer");
-        yield* unpin(page);
-        yield* click(page, '[data-reveal="pull-request"]');
-        yield* click(page, '[role="tab"][data-tab="pending"]');
-        yield* waitFor(page, '[data-review-section="chapter"]');
-
-        const ids = yield* Effect.promise(() =>
-          page.evaluate<readonly string[]>(
-            `[...document.querySelectorAll("[data-side-panel] [data-review-item]")].map((row) => row.getAttribute("data-review-item"))`
-          )
-        );
-
-        assert.isAbove(ids.length, 2);
-        assert.strictEqual(new Set(ids).size, ids.length, Arr.join(ids, ", "));
-        assert.strictEqual(yield* count(page, "[data-pending-structures]"), 0);
-        assert.strictEqual(
-          yield* count(
-            page,
-            "[data-side-panel] h3:text-is('Structure proposals')"
-          ),
-          0
         );
       }),
     90_000

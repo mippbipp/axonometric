@@ -1,7 +1,7 @@
-import { LayoutFile, Proposals, Revision } from "@axonometric/contracts";
+import { LayoutFile, Revision } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Path, Schema } from "effect";
+import { Effect, FileSystem, Path, Schema } from "effect";
 import type { Page } from "playwright";
 
 import { openUrl } from "./browser.ts";
@@ -14,10 +14,6 @@ import { makeHome, runCli, startServe } from "./harness.ts";
 const waitTimeout = { timeout: 15_000 };
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
-
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
 
 const decodeRevision = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Revision)
@@ -94,6 +90,14 @@ const textOf = (page: Page, selector: string) =>
 const waitFor = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
 
+/** Whether `file` is in `root`, relative to it. */
+const exists = Effect.fnUntraced(function* (root: string, file: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+
+  return yield* fs.exists(path.join(root, file));
+}, Effect.provide(NodeServices.layer));
+
 /** The text of `file` in `root`, relative to it. */
 const readIn = Effect.fnUntraced(function* (root: string, file: string) {
   const fs = yield* FileSystem.FileSystem;
@@ -104,7 +108,7 @@ const readIn = Effect.fnUntraced(function* (root: string, file: string) {
 
 describe("accepting layout changes in the page", () => {
   it.live(
-    "accepts one change: layout.json, proposals.json and history/0001.json change together, and the pending look goes",
+    "accepts one change from its button, and the pending look goes",
     () =>
       Effect.gen(function* () {
         const { root, page, errors } = yield* servedWithPending;
@@ -140,62 +144,22 @@ describe("accepting layout changes in the page", () => {
         );
         assert.strictEqual(yield* count(page, "[data-pending-change]"), 1);
 
-        const layout = yield* decodeLayout(
-          yield* readIn(root, "review/map/layout.json")
+        // What the accept writes is accept-writes.test.ts's to check. The
+        // page's accept reaches the history.
+        assert.isTrue(
+          yield* exists(root, "review/map/history/0001.json"),
+          "history/0001.json"
         );
-
-        assert.deepStrictEqual(layout.structures.engineer, {
-          x: 0,
-          y: 4,
-          w: 2,
-          d: 2,
-        });
-        assert.deepStrictEqual(layout.structures.page, {
-          x: 4,
-          y: 0,
-          w: 2,
-          d: 2,
-        });
-
-        const proposals = yield* decodeProposals(
-          yield* readIn(root, "review/map/proposals.json")
-        );
-
-        assert.strictEqual(proposals.revision, 2);
-        assert.deepStrictEqual(
-          Arr.map(proposals.layout, ({ id }) => id),
-          ["resize-page"]
-        );
-
-        const revision = yield* decodeRevision(
-          yield* readIn(root, "review/map/history/0001.json")
-        );
-
-        assert.strictEqual(revision.revision, 1);
-        assert.strictEqual(revision.message, "Move Engineer");
-        assert.deepStrictEqual(
-          Arr.flatMap(revision.accepted, (item) =>
-            item.kind === "layout" ? [item.change.id] : []
-          ),
-          ["move-engineer"]
-        );
-        assert.deepStrictEqual(revision.rejected, []);
-        assert.deepStrictEqual(revision.layout, layout);
-        assert.strictEqual(revision.data.structures.length, 6);
         assert.deepStrictEqual(errors, []);
       }),
     60_000
   );
 
   it.live(
-    "accepts all with the typed message, and rebuilds SYSTEM.md and the read-only page",
+    "accepts all with the typed message, says nothing is left, and rebuilds what build writes",
     () =>
       Effect.gen(function* () {
         const { root, page, errors } = yield* servedWithPending;
-
-        const html = yield* readIn(root, "review/review.html");
-
-        assert.notInclude(html, '"y":4');
 
         yield* Effect.promise(() =>
           page.getByLabel("Revision message (optional)").fill("Tidy the loop")
@@ -214,16 +178,14 @@ describe("accepting layout changes in the page", () => {
         );
 
         assert.strictEqual(revision.message, "Tidy the loop");
-        assert.strictEqual(revision.accepted.length, 2);
 
-        const proposals = yield* decodeProposals(
-          yield* readIn(root, "review/map/proposals.json")
+        // The Pending tab says what is left: nothing, and no Accept all.
+        yield* waitFor(page, "[data-pending-list]");
+        assert.include(
+          yield* textOf(page, "[data-pending-list]"),
+          "Nothing is pending"
         );
-
-        assert.deepStrictEqual(proposals.layout, []);
-
-        // The read-only page now draws the accepted layout.
-        assert.include(yield* readIn(root, "review/review.html"), '"y":4');
+        assert.strictEqual(yield* count(page, "[data-accept-all]"), 0);
 
         // What accept rebuilt is what `build` writes for the same files.
         const systemMd = yield* readIn(root, "review/SYSTEM.md");
@@ -235,33 +197,6 @@ describe("accepting layout changes in the page", () => {
         assert.strictEqual(built.files["review/SYSTEM.md"], systemMd);
         assert.strictEqual(built.files["review/review.html"], readOnly);
         assert.deepStrictEqual(errors, []);
-      }),
-    60_000
-  );
-
-  it.live(
-    "writes a message from the changes when the field is empty, and the Pending tab says what is left",
-    () =>
-      Effect.gen(function* () {
-        const { root, page } = yield* servedWithPending;
-
-        yield* Effect.promise(() =>
-          page.getByRole("button", { name: "Accept all" }).click()
-        );
-        yield* waitFor(page, '[data-saved-revision="1"]');
-
-        const revision = yield* decodeRevision(
-          yield* readIn(root, "review/map/history/0001.json")
-        );
-
-        assert.strictEqual(revision.message, "Move Engineer; resize Map page");
-
-        yield* waitFor(page, "[data-pending-list]");
-        assert.include(
-          yield* textOf(page, "[data-pending-list]"),
-          "Nothing is pending"
-        );
-        assert.strictEqual(yield* count(page, "[data-accept-all]"), 0);
       }),
     60_000
   );

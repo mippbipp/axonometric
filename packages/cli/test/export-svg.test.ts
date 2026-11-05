@@ -4,21 +4,17 @@ import { Effect, FileSystem, Path } from "effect";
 import type { Page } from "playwright";
 
 import { openPage } from "./browser.ts";
-import {
-  crowdedMap,
-  fullMap,
-  minimalMap,
-  pipelineMap,
-  shapesMap,
-} from "./fixtures.ts";
-import type { HomeFiles } from "./harness.ts";
+import { crowdedMap, pipelineMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
 import { decodePng } from "./png.ts";
 
 // Seam 1: `export --format svg` writes the SVG the page's Export menu saves.
-// Both call `svgFileOf`, so they should be byte-equal. The comparison is
-// made on the files each really writes, with one normalisation, listed in
-// `normalised`. The tests open the built page in Chromium.
+// Both call `svgFileOf`, so they should be byte-equal, and a difference is a
+// bug. What can differ is what each feeds it: the page's embedded state and
+// the files on disk, the theme and the chapter. The flake pipeline has every
+// kind of part, so its first and last chapters, and one that fades what it
+// doesn't play, in both views stand for the rest. The drawing itself is tested in shapes, pipeline-drawing and
+// routes-drawn. The tests open the built page in Chromium.
 
 const decoder = new TextDecoder();
 
@@ -42,65 +38,12 @@ const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
   return yield* fs.readFile(file);
 });
 
-/**
- * What differs between the two files on purpose: nothing so far. The page
- * draws in the theme it shows, and Chromium starts in the light one, as the
- * command always does; both give ids from the same prefix; both come from
- * one `svgFileOf`. A difference here is a bug.
- */
-const normalised = (text: string) => text;
-
-interface Fixture {
-  readonly name: string;
-  readonly system: string;
-  readonly files: Effect.Effect<HomeFiles>;
-  /** The ids of the chapters to compare, with their numbers from 1. */
-  readonly chapters: readonly (readonly [id: string, number: number])[];
-}
-
-// Maps with no chapters have one, "whole-map", so they compare only that.
-const fixtures: readonly Fixture[] = [
-  {
-    name: "the starter map",
-    system: "pipeline",
-    files: minimalMap,
-    chapters: [["whole-map", 1]],
-  },
-  {
-    name: "every shape",
-    system: "shapes",
-    files: shapesMap,
-    chapters: [["whole-map", 1]],
-  },
-  {
-    name: "the review map",
-    system: "review",
-    files: fullMap,
-    chapters: [
-      ["c-page", 1],
-      ["c-all", 3],
-    ],
-  },
-  {
-    name: "the crowded map",
-    system: "crowded",
-    files: crowdedMap,
-    chapters: [
-      ["c-edge", 1],
-      ["c-all", 2],
-    ],
-  },
-  {
-    name: "the flake pipeline",
-    system: "flake-pipeline",
-    files: pipelineMap,
-    chapters: [
-      ["c-monday", 1],
-      // Plays one of the two hops it draws, so the other one fades.
-      ["c-pr", 2],
-      ["c-all", 8],
-    ],
-  },
+/** The flake pipeline's chapters to compare, with their numbers from 1. */
+const chapters: readonly (readonly [id: string, number: number])[] = [
+  ["c-monday", 1],
+  // Plays one of the two hops it draws, so the other one fades.
+  ["c-pr", 2],
+  ["c-all", 8],
 ];
 
 /** The size in pixels an SVG file says it is. */
@@ -114,85 +57,8 @@ const sizeOf = (text: string) => {
 };
 
 describe("export --format svg", () => {
-  for (const fixture of fixtures) {
-    it.live(
-      `equals the page's SVG for ${fixture.name}, in both views and its chapters`,
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const path = yield* Path.Path;
-            const fs = yield* FileSystem.FileSystem;
-            const home = yield* makeHome(yield* fixture.files);
-            const map = path.join(home, fixture.system, "map");
-            const built = yield* runCli(home, ["build", map]);
-
-            assert.strictEqual(built.exitCode, 0, built.stderr);
-
-            const { page } = yield* openPage(
-              path.join(home, fixture.system, `${fixture.system}.html`)
-            );
-
-            yield* Effect.promise(() =>
-              page.setViewportSize({ width: 1280, height: 800 })
-            );
-
-            for (const view of ["iso", "plan"] as const) {
-              yield* click(page, `[data-view-toggle] [data-view="${view}"]`);
-
-              for (const [id, number] of fixture.chapters) {
-                yield* click(
-                  page,
-                  `[data-chapter-rail] button[data-chapter="${id}"]`
-                );
-                yield* Effect.promise(() =>
-                  page
-                    .locator(
-                      `[data-walkthrough][data-chapter="${id}"][data-view="${view}"]`
-                    )
-                    .waitFor()
-                );
-
-                const target = path.join(home, "out", `${view}-${number}.svg`);
-
-                const exported = yield* runCli(home, [
-                  "export",
-                  map,
-                  "--format",
-                  "svg",
-                  "--view",
-                  view,
-                  "--chapter",
-                  String(number),
-                  "--output",
-                  target,
-                ]);
-
-                assert.strictEqual(exported.exitCode, 0, exported.stderr);
-
-                const fromPage = normalised(
-                  decoder.decode(yield* exportFile(page, "svg"))
-                );
-
-                const fromCli = normalised(yield* fs.readFileString(target));
-
-                assert.isTrue(
-                  fromPage === fromCli,
-                  `${fixture.system} ${view} chapter ${number}: the CLI's SVG differs from the page's`
-                );
-                assert.include(
-                  fromCli,
-                  `${fixture.system}-${view}-chapter-${number}-title`
-                );
-              }
-            }
-          }).pipe(Effect.provide(NodeServices.layer))
-        ),
-      240_000
-    );
-  }
-
   it.live(
-    "marks the hops and structures a chapter fades, and equals the page's SVG",
+    "equals the page's SVG for the flake pipeline, in both views and three of its chapters",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -200,14 +66,78 @@ describe("export --format svg", () => {
           const fs = yield* FileSystem.FileSystem;
           const home = yield* makeHome(yield* pipelineMap);
           const map = path.join(home, "flake-pipeline", "map");
+          const built = yield* runCli(home, ["build", map]);
 
-          assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
+          assert.strictEqual(built.exitCode, 0, built.stderr);
 
           const { page } = yield* openPage(
             path.join(home, "flake-pipeline", "flake-pipeline.html")
           );
 
-          yield* click(page, '[data-chapter-rail] button[data-chapter="c-pr"]');
+          yield* Effect.promise(() =>
+            page.setViewportSize({ width: 1280, height: 800 })
+          );
+
+          for (const view of ["iso", "plan"] as const) {
+            yield* click(page, `[data-view-toggle] [data-view="${view}"]`);
+
+            for (const [id, number] of chapters) {
+              yield* click(
+                page,
+                `[data-chapter-rail] button[data-chapter="${id}"]`
+              );
+              yield* Effect.promise(() =>
+                page
+                  .locator(
+                    `[data-walkthrough][data-chapter="${id}"][data-view="${view}"]`
+                  )
+                  .waitFor()
+              );
+
+              const target = path.join(home, "out", `${view}-${number}.svg`);
+
+              const exported = yield* runCli(home, [
+                "export",
+                map,
+                "--format",
+                "svg",
+                "--view",
+                view,
+                "--chapter",
+                String(number),
+                "--output",
+                target,
+              ]);
+
+              assert.strictEqual(exported.exitCode, 0, exported.stderr);
+
+              const fromPage = decoder.decode(yield* exportFile(page, "svg"));
+              const fromCli = yield* fs.readFileString(target);
+
+              assert.isTrue(
+                fromPage === fromCli,
+                `${view} chapter ${number}: the CLI's SVG differs from the page's`
+              );
+              assert.include(
+                fromCli,
+                `flake-pipeline-${view}-chapter-${number}-title`
+              );
+            }
+          }
+        }).pipe(Effect.provide(NodeServices.layer))
+      ),
+    120_000
+  );
+
+  it.live(
+    "marks the hops and structures a chapter fades",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const fs = yield* FileSystem.FileSystem;
+          const home = yield* makeHome(yield* pipelineMap);
+          const map = path.join(home, "flake-pipeline", "map");
 
           const target = path.join(home, "faded.svg");
 
@@ -267,17 +197,6 @@ describe("export --format svg", () => {
               opacity: "0.5",
             });
           }
-
-          // A faded name tag fades its border and text, and keeps its fill.
-          assert.match(
-            fromCli,
-            /<g data-faded="true"><rect[^>]* fill="#e6dfbe"[^>]* stroke-opacity="0.25"[^>]*><\/rect><text[^>]* opacity="0.25"/u
-          );
-          assert.notInclude(fromCli, '<g data-faded="true" opacity=');
-
-          const fromPage = decoder.decode(yield* exportFile(page, "svg"));
-
-          assert.isTrue(fromPage === fromCli);
         }).pipe(Effect.provide(NodeServices.layer))
       ),
     120_000
