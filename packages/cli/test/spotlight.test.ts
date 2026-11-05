@@ -1,11 +1,11 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem } from "effect";
+import { Effect, FileSystem, Path } from "effect";
 import type { Page } from "playwright";
 
-import { literal } from "./browser.ts";
+import { literal, openUrl } from "./browser.ts";
 import { pipelineMap } from "./fixtures.ts";
-import { buildAndOpen } from "./harness.ts";
+import { buildAndOpen, makeHome, startServe } from "./harness.ts";
 
 // Seam 2: parts outside the spotlight are faded on the page, in both views.
 // The flake pipeline's chapter 2 reveals updater, main, upstream and pr, and
@@ -209,51 +209,35 @@ describe("the spotlight of a chapter", () => {
       ),
     120_000
   );
-
-  it.live("fades nothing in a chapter that plays every hop it draws", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* pipelinePage;
-
-        yield* Effect.promise(() =>
-          page.locator(hop("h-main-updater")).waitFor()
-        );
-
-        assert.strictEqual(
-          yield* Effect.promise(() =>
-            page.locator('[data-faded="true"]').count()
-          ),
-          0
-        );
-      })
-    )
-  );
-
-  it.live("looks as it did before when it plays nothing", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* pipelinePage;
-
-        yield* openChapter(page, "c-all");
-
-        assert.strictEqual(
-          yield* Effect.promise(() => page.locator("[data-faded]").count()),
-          0
-        );
-      })
-    )
-  );
 });
 
 describe("the spotlight of a picked flow", () => {
   it.live(
-    'fades every hop outside the flow, and "All flows" fades nothing',
+    'fades every hop outside the flow, and nothing for a chapter that plays every hop it draws, plays nothing, or plays "All flows"',
     () =>
       Effect.scoped(
         Effect.gen(function* () {
           const { page } = yield* pipelinePage;
 
+          // The opening chapter plays every hop it draws.
+          yield* Effect.promise(() =>
+            page.locator(hop("h-main-updater")).waitFor()
+          );
+          assert.strictEqual(
+            yield* Effect.promise(() =>
+              page.locator('[data-faded="true"]').count()
+            ),
+            0,
+            "the opening chapter"
+          );
+
+          // The last chapter plays nothing, so nothing carries a fade at all.
           yield* openChapter(page, "c-all");
+          assert.strictEqual(
+            yield* Effect.promise(() => page.locator("[data-faded]").count()),
+            0,
+            "a chapter that plays nothing"
+          );
 
           for (const view of views) {
             yield* showView(page, view);
@@ -366,42 +350,72 @@ describe("the spotlight of a focused structure", () => {
 });
 
 describe("a faded structure", () => {
-  it.live(
-    "multiplies the fade into the see-through looks of a drag and a ghost",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { page } = yield* pipelinePage;
+  it.live("stays fainter than the rest while it is dragged", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const root = yield* makeHome(yield* pipelineMap);
 
-          yield* openChapter(page, "c-pr");
-          yield* assertStructureOutside(page, "main");
+        const serve = yield* startServe(
+          path.join(root, "flake-pipeline", "map"),
+          ["--port", "0"]
+        );
 
-          const mark = (name: string, value: string) =>
-            Effect.promise(() =>
-              page.evaluate(
-                `document.querySelector(${literal(structure("main"))}).setAttribute(${literal(name)}, ${literal(value)})`
-              )
-            );
+        const { page } = yield* openUrl(serve.url);
 
-          yield* mark("data-drag-shifted", "");
-          assert.strictEqual(
-            yield* opacityOf(page, structure("main"), "0.275"),
-            "0.275"
-          );
+        yield* Effect.promise(() =>
+          page.setViewportSize({ width: 1280, height: 800 })
+        );
 
+        yield* openChapter(page, "c-pr");
+        yield* assertStructureOutside(page, "main");
+        // No transition, so the opacity read is the settled one.
+        yield* Effect.promise(() =>
+          page.emulateMedia({ reducedMotion: "reduce" })
+        );
+
+        // Shift-click puts main and pr in one set, so dragging pr moves the
+        // faded main with it.
+        for (const id of ["main", "pr"]) {
           yield* Effect.promise(() =>
-            page.evaluate(
-              `document.querySelector(${literal(structure("main"))}).removeAttribute("data-drag-shifted")`
-            )
+            page.locator(structure(id)).click({ modifiers: ["Shift"] })
           );
-          yield* mark("data-compare", "removed");
-          assert.strictEqual(
-            yield* opacityOf(page, structure("main"), "0.225"),
-            "0.225"
-          );
-        })
-      ),
-    60_000
+        }
+
+        const box = yield* Effect.promise(() =>
+          page.locator(structure("pr")).boundingBox()
+        );
+
+        const from = {
+          x: (box?.x ?? 0) + (box?.width ?? 0) / 2,
+          y: (box?.y ?? 0) + (box?.height ?? 0) / 2,
+        };
+
+        yield* Effect.promise(() => page.mouse.move(from.x, from.y));
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() =>
+          page.mouse.move(from.x, from.y + 40, { steps: 8 })
+        );
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `document.querySelectorAll("[data-structure][data-drag-shifted]").length === 2`
+          )
+        );
+        yield* waitForFaded(page, structure("main"), "true");
+
+        const opacity = (id: string) =>
+          styleOf(page, structure(id), "opacity").pipe(Effect.map(Number));
+
+        const dragged = yield* opacity("pr");
+        const fadedAndDragged = yield* opacity("main");
+
+        assert.isBelow(dragged, 1, "a dragged structure is see-through");
+        assert.isBelow(fadedAndDragged, dragged, "the fade still shows");
+        assert.isAbove(fadedAndDragged, 0);
+
+        yield* Effect.promise(() => page.mouse.up());
+      }).pipe(Effect.provide(NodeServices.layer))
+    )
   );
 });
 
@@ -526,20 +540,44 @@ describe("faded parts", () => {
         const { page } = yield* pipelinePage;
 
         yield* openChapter(page, "c-pr");
+        yield* assertOutside(page, "h-main-updater");
 
-        const duration = () =>
-          Effect.promise(() =>
+        // The opacity at the moment the spotlight takes the hop in, read as
+        // the page marks it: mid-change it is still faded.
+        const opacityOnHover = Effect.fnUntraced(function* () {
+          const read = Effect.promise(() =>
             page.evaluate<string>(
-              `getComputedStyle(document.querySelector(${literal(hop("h-main-updater"))})).transitionDuration`
+              `new Promise((resolve) => {
+                const line = document.querySelector(${literal(hop("h-main-updater"))});
+                new MutationObserver((_, observer) => {
+                  if (line.getAttribute("data-faded") === "false") {
+                    observer.disconnect();
+                    resolve(getComputedStyle(line).opacity);
+                  }
+                }).observe(line, { attributes: true });
+              })`
             )
           );
 
-        assert.strictEqual(yield* duration(), "0.12s, 0.12s");
+          const [opacity] = yield* Effect.all(
+            [read, pointAtHop(page, "h-main-updater")],
+            { concurrency: "unbounded" }
+          );
+
+          yield* Effect.promise(() =>
+            page.locator(hop("h-main-updater")).dispatchEvent("pointerout")
+          );
+          yield* assertOutside(page, "h-main-updater");
+
+          return opacity;
+        });
+
+        assert.notStrictEqual(yield* opacityOnHover(), "1", "with motion");
 
         yield* Effect.promise(() =>
           page.emulateMedia({ reducedMotion: "reduce" })
         );
-        assert.strictEqual(yield* duration(), "0s");
+        assert.strictEqual(yield* opacityOnHover(), "1", "reduced motion");
       })
     )
   );
