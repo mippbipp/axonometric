@@ -5,7 +5,6 @@ import {
   checkLayout,
   footprintsOverlap,
   placeStructures,
-  zonePadding,
   zonesOf,
 } from "../src/index.ts";
 import type {
@@ -101,19 +100,19 @@ const assertSeparate = (parts: MapParts, placed: Layout) => {
 
 describe("zones", () => {
   it.effect(
-    "fits each group's placed structures plus padding, in groups order",
+    "fits each group's placed structures plus one unit, in groups order",
     () =>
       Effect.sync(() => {
         assert.deepStrictEqual(zonesOf({ data, layout }), [
           {
             group: { id: "front", title: "Front" },
             members: ["web"],
-            box: pad(at(0, 0), zonePadding),
+            box: pad(at(0, 0), 1),
           },
           {
             group: { id: "back", title: "Back end" },
             members: ["api", "db", "cache"],
-            box: pad({ x: 6, y: 0, w: 7, d: 6 }, zonePadding),
+            box: pad({ x: 6, y: 0, w: 7, d: 6 }, 1),
           },
         ]);
       })
@@ -124,7 +123,7 @@ describe("zones", () => {
       const moved = layoutOf({ ...layout.structures, web: at(-4, 2.5) });
       const [front] = zonesOf({ data, layout: moved });
 
-      assert.deepStrictEqual(front?.box, pad(at(-4, 2.5), zonePadding));
+      assert.deepStrictEqual(front?.box, pad(at(-4, 2.5), 1));
     })
   );
 
@@ -146,7 +145,7 @@ describe("zones", () => {
           {
             group: "back",
             members: ["api", "cache"],
-            box: pad({ x: 6, y: 0, w: 2, d: 6 }, zonePadding),
+            box: pad({ x: 6, y: 0, w: 2, d: 6 }, 1),
           },
         ]
       );
@@ -291,6 +290,11 @@ describe("placement and zones", () => {
         layoutOf({ a1: at(0, 0), b1: at(6, 0) })
       );
 
+      const { a2 } = placed.structures;
+
+      assert.isDefined(a2);
+      // b1 sits to the right of a1, so a2 goes anywhere but further right.
+      assert.isAtMost(a2.x + a2.w, 2, "a2 grows a's zone towards b1");
       assertSeparate(parts, placed);
     })
   );

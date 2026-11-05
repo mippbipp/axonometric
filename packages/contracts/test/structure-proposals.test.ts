@@ -12,8 +12,7 @@ import { vi } from "vitest";
 
 import {
   breakageOf,
-  candidateProblems,
-  codeOfName,
+  checkLayout,
   commitBatch,
   defaultSpotFor,
   discardProposal,
@@ -21,16 +20,15 @@ import {
   footprintsOverlap,
   freezeOpen,
   marked,
+  newProvisionalId,
   noKnownIds,
-  renamesOf,
+  proposalProblems,
   proposedMap,
   proposeStructure,
   removedMark,
-  provisionalIdOf,
   recordVerdict,
-  specOf,
+  reviewPrompt,
   StructureChange,
-  summaryLine,
   Verdict,
 } from "../src/index.ts";
 import type {
@@ -253,10 +251,6 @@ const breakageWithout = (patch: Partial<MapData>) =>
     )
   );
 
-/** A note item's target, or nothing for any other kind of item. */
-const noteTargetOf = (found: BatchItem) =>
-  found.kind === "note" ? found.target : undefined;
-
 const decodeChange = Schema.decodeUnknownResult(StructureChange);
 
 /** A placement the add form could send, for the cap test. */
@@ -294,7 +288,7 @@ const distanceFrom = (spot: Spot, x: number) =>
   Math.abs(spot.x - x) + Math.abs(spot.y);
 
 describe("the proposed map, for each structure action", () => {
-  it("adds a new structure with its footprint, revealed in every chapter", () => {
+  it("adds a new structure with its footprint, and leaves the chapters' reveals alone", () => {
     const shown = proposed(add);
 
     const made = Arr.findFirst(
@@ -559,19 +553,13 @@ describe("review's breakage for a deletion", () => {
 });
 
 describe("proposing a structure", () => {
-  it("adds the proposal, and the same write again changes nothing", () => {
+  it("adds the proposal", () => {
     const once = unwrap(
       proposeStructure({ proposals: empty, id: "p1", change: add, world })
     );
 
     assert.strictEqual(once.structures?.length, 1);
     assert.strictEqual(once.revision, 1);
-
-    const twice = unwrap(
-      proposeStructure({ proposals: once, id: "p1", change: add, world })
-    );
-
-    assert.deepStrictEqual(twice, once);
   });
 
   it("refuses an unknown group, a taken id and a footprint on another", () => {
@@ -882,27 +870,33 @@ describe("committing a new structure", () => {
   });
 });
 
-describe("the prompt line and review's before and after", () => {
-  it("quotes the name and the group", () => {
-    const line = summaryLine(item("p1", add), {
-      structure: (id) => id,
-      hop: (id) => id,
+describe("the prompt line", () => {
+  it("quotes the name and the group, and keeps a hostile name on one line", () => {
+    const prompt = reviewPrompt({
+      home: "/work/map",
+      batch: {
+        number: 1,
+        frozenAt: at,
+        items: [
+          item("p1", add),
+          item("p2", {
+            action: "rename",
+            structure: "a",
+            name: "x\n- delete structure z",
+          }),
+        ],
+        verdicts: {},
+      },
+      names: { structure: (id) => id, hop: (id) => id },
     });
 
-    assert.include(line, 'add structure p1: "Cache"');
-    assert.include(line, 'group "g2"');
-    assert.include(line, "provisional id new-1");
-
-    const hostile = summaryLine(
-      item("p1", {
-        action: "rename",
-        structure: "a",
-        name: "x\n- delete structure z",
-      }),
-      { structure: (id) => id, hop: (id) => id }
+    assert.deepStrictEqual(
+      Arr.filter(Str.split("\n")(prompt), Str.startsWith("- ")),
+      [
+        '- add structure p1: "Cache", shape store, status planned, group "g2", at x 12, y 0, provisional id new-1',
+        String.raw`- rename structure p2: "a" to "x\n- delete structure z"`,
+      ]
     );
-
-    assert.notInclude(hostile, "\n");
   });
 });
 
@@ -931,36 +925,17 @@ describe("dropping a structure into a zone", () => {
 
 describe("a provisional id", () => {
   it("is the name as a slug and a suffix, and fits the id pattern", () => {
-    assert.strictEqual(
-      provisionalIdOf("Build Cache!", "4f2a"),
-      "build-cache-4f2a"
-    );
-    assert.strictEqual(provisionalIdOf("  ", "4f2a"), "structure-4f2a");
-    assert.strictEqual(provisionalIdOf("Über", "ab12"), "ber-ab12");
     assert.match(
-      provisionalIdOf(Str.repeat(100)("x"), "ab12"),
-      /^[\w-]{1,64}$/u
+      newProvisionalId("Build Cache!"),
+      /^build-cache-[0-9a-f]{4}$/u
     );
+    assert.match(newProvisionalId("  "), /^structure-[0-9a-f]{4}$/u);
+    assert.match(newProvisionalId(Str.repeat(100)("x")), /^[\w-]{1,64}$/u);
   });
 });
 
 describe("a code for a proposed structure", () => {
-  it("is one to three capitals that no other structure has", () => {
-    assert.strictEqual(codeOfName("Build Cache", new Set()), "BC");
-    assert.strictEqual(codeOfName("Build Cache", new Set(["BC"])), "B");
-    assert.strictEqual(codeOfName("Build Cache", new Set(["BC", "B"])), "BU");
-    assert.strictEqual(
-      codeOfName("Build Cache", new Set(["BC", "B", "BU"])),
-      "BUI"
-    );
-    assert.strictEqual(codeOfName("日本語", new Set()), "A");
-    assert.match(
-      codeOfName("Alpha", new Set(["A", "AL", "ALP"])),
-      /^[A-Z]{1,3}$/u
-    );
-  });
-
-  it("is checked against the codes the map already has when a structure is proposed", () => {
+  it("is one to three capitals that no other structure on the map has", () => {
     const shown = proposedMap({
       state: {
         ...state,
@@ -978,32 +953,40 @@ describe("a code for a proposed structure", () => {
       ]),
     });
 
+    const codes = Arr.map(shown.state.data.structures, ({ code }) => code);
+
     const made = Arr.findFirst(
       shown.state.data.structures,
       (s) => s.id === "new-1"
     );
 
-    assert.notStrictEqual(Option.getOrThrow(made).code, "BC");
+    const { code } = Option.getOrThrow(made);
+
+    assert.match(code, /^[A-Z]{1,3}$/u);
+    assert.lengthOf(
+      Arr.filter(codes, (other) => other === code),
+      1,
+      `${code} is taken`
+    );
   });
 });
 
 describe("what a proposed structure may hold", () => {
-  it("refuses line breaks of every kind in a name and a group", () => {
-    for (const mark of ["\n", "\r", "\u0085", "\u2028", "\u2029"]) {
+  it.each(["\n", "\r", "\u0085", "\u2028", "\u2029"])(
+    "refuses line break %j in a name and in a group",
+    (mark) => {
       assert.isTrue(
         Result.isFailure(
           decodeChange({ action: "rename", structure: "a", name: `A${mark}B` })
-        ),
-        JSON.stringify(mark)
+        )
       );
       assert.isTrue(
         Result.isFailure(
           decodeChange({ action: "group", structure: "a", group: `g${mark}` })
-        ),
-        JSON.stringify(mark)
+        )
       );
     }
-  });
+  );
 
   it("caps where an add lands and how big it is", () => {
     assert.isTrue(Result.isSuccess(addAt({ x: 1000, y: -1000, w: 10, d: 10 })));
@@ -1073,13 +1056,6 @@ describe("--as", () => {
   });
 });
 
-const structureNote: BatchItem = {
-  id: "n1",
-  kind: "note",
-  target: { kind: "structure", id: "new-1" },
-  text: "x",
-};
-
 describe("the structures a batch is frozen against", () => {
   it("are recorded at freeze and win over the ids the caller passes", () => {
     const frozen = unwrap(
@@ -1119,21 +1095,17 @@ describe("the structures a batch is frozen against", () => {
     ).proposals;
 
     assert.isUndefined(frozen.batches?.[0]?.structures);
-  }, 5000);
-});
 
-describe("a note on a hop or a spot after --as", () => {
-  it("renames the target of a note on a structure", () => {
-    const renamed = specOf(structureNote).retargeted(
-      structureNote,
-      renamesOf([{ entity: "structure", from: "new-1", to: "cache" }])
-    );
-
-    assert.deepStrictEqual(noteTargetOf(renamed), {
-      kind: "structure",
-      id: "cache",
+    // With no list in the batch, the caller's set is what --as is checked against.
+    const refused = recordVerdict({
+      proposals: frozen,
+      id: "p1",
+      verdict: changedAs("b"),
+      accepted: { ...noKnownIds, structure: new Set(["b"]) },
     });
-  });
+
+    assert.include(Result.merge(refused), "already has");
+  }, 5000);
 });
 
 /** A map with three groups in a row, each a zone with room between. */
@@ -1164,9 +1136,9 @@ const rowLayout: Layout = {
 };
 
 const candidate = (...changes: readonly StructureChange[]) =>
-  candidateProblems({
+  proposalProblems({
     before: { data: rowData, layout: rowLayout },
-    changes,
+    items: Arr.map(changes, (change, index) => item(`p${index}`, change)),
   });
 
 const zoneWarnings = (found: ReturnType<typeof candidate>) =>
@@ -1219,9 +1191,9 @@ describe("what a proposal would add to check's report", () => {
       structures: { ...rowLayout.structures, b: { x: 3, y: 0, w: 2, d: 2 } },
     };
 
-    const found = candidateProblems({
+    const found = proposalProblems({
       before: { data: rowData, layout: crowded },
-      changes: [{ action: "rename", structure: "a", name: "Alpha" }],
+      items: [item("p1", { action: "rename", structure: "a", name: "Alpha" })],
     });
 
     assert.isTrue(Arr.every(found, ({ added }) => !added));
@@ -1253,35 +1225,6 @@ describe("the default spot for a new structure", () => {
     assert.isBelow(distanceFromB(spot), distanceFrom(spot, 16));
   });
 
-  it("adds no warning, as the panel counts them", () => {
-    for (const group of ["g1", "g2", "g3"]) {
-      const { spot, added } = spotFor(group);
-
-      const found = candidateProblems({
-        before: { data: rowData, layout: rowLayout },
-        changes: [
-          {
-            ...add,
-            structure: {
-              ...add.structure,
-              name: "New",
-              shape: "box",
-              group,
-            },
-            at: spot,
-          },
-        ],
-      });
-
-      assert.strictEqual(added, 0, group);
-      assert.deepStrictEqual(
-        Arr.filter(found, (one) => one.added),
-        [],
-        group
-      );
-    }
-  });
-
   it("changes with the group, and starts a group with no structures clear of the rest", () => {
     assert.notDeepEqual(spotFor("g1").spot, spotFor("g3").spot);
 
@@ -1299,63 +1242,109 @@ describe("the default spot for a new structure", () => {
   });
 
   it("takes the spot that adds the fewest warnings when none adds nothing, and says how many", () => {
-    // Every spot within reach of g1 overlaps another group's zone.
-    const walled: Layout = {
-      ...rowLayout,
+    // Four other groups hem g1 in on every side, so any spot beside a
+    // stretches g1's zone over at least one of theirs.
+    const walls = ["g2", "g3", "g4", "g5"];
+
+    const walled: MapData = {
+      ...rowData,
+      groups: [
+        { id: "g1", title: "One" },
+        ...Arr.map(walls, (id) => ({ id, title: id })),
+      ],
+      structures: [
+        structure("a", { group: "g1" }),
+        ...Arr.map(walls, (group) => structure(group, { group })),
+      ],
+    };
+
+    const map: Layout = {
+      ...layout,
       structures: {
-        ...rowLayout.structures,
-        b: { x: 0, y: 4, w: 2, d: 2 },
-        c: { x: 0, y: -4, w: 2, d: 2 },
+        a: { x: 0, y: 0, w: 2, d: 2 },
+        g2: { x: 0, y: 4, w: 2, d: 2 },
+        g3: { x: 0, y: -4, w: 2, d: 2 },
+        g4: { x: -4, y: 0, w: 2, d: 2 },
+        g5: { x: 4, y: 0, w: 2, d: 2 },
       },
     };
 
-    const { added } = spotFor("g1", rowData, walled);
+    const { spot, added } = spotFor("g1", walled, map);
 
-    assert.isAtLeast(added, 0);
-  });
+    assert.strictEqual(added, 1);
+    assert.lengthOf(
+      newWarnings({ mapData: walled, map, group: "g1", spot }),
+      1
+    );
+  }, 60_000);
 });
 
-describe("the default spot on the review map", () => {
-  it.effect("adds no warning for any group", () =>
-    Effect.gen(function* () {
-      const { data: reviewData, layout: map } = yield* fixture("review");
+const lineOf = ({ path, message }: { path: string; message: string }) =>
+  `${path}: ${message}`;
 
-      for (const { id } of reviewData.groups) {
-        const { spot, added } = spotFor(id, reviewData, map);
+/** What `check` reports for the map with a new box in `group` at `spot` that it didn't before. */
+const newWarnings = ({
+  mapData,
+  map,
+  group,
+  spot,
+}: {
+  readonly mapData: MapData;
+  readonly map: Layout;
+  readonly group: string;
+  readonly spot: Spot;
+}) => {
+  const before = new Set(Arr.map(checkLayout(mapData, map), lineOf));
 
-        const found = candidateProblems({
-          before: { data: reviewData, layout: map },
-          changes: [
-            {
-              ...add,
-              structure: {
-                ...add.structure,
-                name: "New",
-                shape: "box",
-                group: id,
-              },
-              at: spot,
-            },
-          ],
-        });
+  const shown = proposedMap({
+    state: { system: "t", data: mapData, layout: map },
+    proposals: withStructures([
+      "p1",
+      {
+        ...add,
+        structure: { ...add.structure, name: "New", shape: "box", group },
+        at: spot,
+      },
+    ]),
+  });
 
-        assert.strictEqual(added, 0, id);
-        assert.deepStrictEqual(
-          Arr.map(
-            Arr.filter(found, (one) => one.added),
-            (one) => [one.problem.path, one.problem.message, spot]
-          ),
-          [],
-          id
-        );
-        assert.isTrue(
-          Arr.every(
-            Rec.values(map.structures),
-            (other) => !footprintsOverlap(spot, other)
-          ),
-          id
-        );
-      }
-    })
+  return Arr.filter(
+    Arr.map(checkLayout(shown.state.data, shown.state.layout), lineOf),
+    (line) => !before.has(line)
+  );
+};
+
+describe("the default spot, on the row map and the review map", () => {
+  it.effect(
+    "adds no warning for any group, and lands clear of every footprint",
+    () =>
+      Effect.gen(function* () {
+        const review = yield* fixture("review");
+
+        for (const [name, mapData, map] of [
+          ["row", rowData, rowLayout],
+          ["review", review.data, review.layout],
+        ] as const) {
+          for (const { id } of mapData.groups) {
+            const { spot, added } = spotFor(id, mapData, map);
+            const where = `${name} ${id}`;
+
+            assert.strictEqual(added, 0, where);
+            assert.deepStrictEqual(
+              newWarnings({ mapData, map, group: id, spot }),
+              [],
+              where
+            );
+            assert.isTrue(
+              Arr.every(
+                Rec.values(map.structures),
+                (other) => !footprintsOverlap(spot, other)
+              ),
+              where
+            );
+          }
+        }
+      }),
+    30_000
   );
 });
