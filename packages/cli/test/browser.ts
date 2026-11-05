@@ -3,29 +3,28 @@ import { pathToFileURL } from "node:url";
 import { Array as Arr, Effect, String as Str } from "effect";
 import { chromium } from "playwright";
 import type { Browser, Page } from "playwright";
-import { afterAll } from "vitest";
 
 // Browser tests build a map through the CLI, open the HTML file it wrote in
 // Chromium, and check what's on screen. They drive Playwright from Node,
 // because a Vitest browser-mode test page can't read a file:// page, or a
 // page that `serve` serves from another origin.
 
-// Each test file launches Chromium once, on its first page, and closes it in
-// an `afterAll` hook, which runs even when a test failed. Vitest runs without
-// isolation (see vitest.config.ts), so later test files in the same worker
-// share this module. The hook clears `browser` before closing it, so the next
-// file launches its own. Every test still gets a fresh browser context, so
-// storage, theme and viewport don't carry over.
+// Each test file launches Chromium once, on its first page, and
+// test/browser-setup.ts closes it after the file, even when a test failed.
+// Vitest runs without isolation (see vitest.config.ts), so the test files in
+// one worker share this module, but it runs the setup file again for each.
+// Every test still gets a fresh browser context, so storage, theme and
+// viewport don't carry over.
 let browser: Promise<Browser> | undefined;
 
-// oxlint-disable-next-line vitest/require-top-level-describe, vitest/no-hooks -- one hook per file, from the shared helper, so test files don't register it
-afterAll(() => {
+/** Closes the test file's Chromium, if it launched one. */
+export const closeBrowser = () => {
   const launched = browser;
 
   browser = undefined;
 
-  return launched?.then((closing) => closing.close());
-});
+  return launched?.then((open) => open.close());
+};
 
 const openContext = Effect.acquireRelease(
   Effect.promise(() => {
