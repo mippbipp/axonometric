@@ -264,7 +264,7 @@ const frozenWith = (...items: readonly (readonly [string, BatchItem])[]) => {
 };
 
 /** Proposes group change `change` the way the page does, with no members. */
-const proposeGroup = ({
+const proposeEmptyGroup = ({
   proposals,
   id,
   change: proposed,
@@ -402,7 +402,7 @@ describe("proposing a group", () => {
   });
 
   it("refuses a group with the title another group has", () => {
-    const refused = proposeGroup({
+    const refused = proposeEmptyGroup({
       proposals: empty,
       id: "g-1",
       change: { action: "add", group: { id: "again", title: "two" } },
@@ -414,7 +414,7 @@ describe("proposing a group", () => {
   });
 
   it("refuses to rename a group the map lacks", () => {
-    const refused = proposeGroup({
+    const refused = proposeEmptyGroup({
       proposals: empty,
       id: "g-1",
       change: { action: "rename", group: "nope", title: "Nope" },
@@ -429,7 +429,7 @@ describe("proposing a group", () => {
 
   it("edits the add when a group that is only proposed is renamed", () => {
     const first = unwrap(
-      proposeGroup({
+      proposeEmptyGroup({
         proposals: empty,
         id: "g-1",
         change: addGroup,
@@ -443,7 +443,7 @@ describe("proposing a group", () => {
     };
 
     const renamed = unwrap(
-      proposeGroup({
+      proposeEmptyGroup({
         proposals: first,
         id: "g-2",
         change: { action: "rename", group: "data-1", title: "Storage" },
@@ -460,7 +460,7 @@ describe("proposing a group", () => {
 
   it("takes the open rename away when the title goes back to what the map has", () => {
     const renamed = unwrap(
-      proposeGroup({
+      proposeEmptyGroup({
         proposals: empty,
         id: "g-1",
         change: renameGroup,
@@ -469,7 +469,7 @@ describe("proposing a group", () => {
     );
 
     const undone = unwrap(
-      proposeGroup({
+      proposeEmptyGroup({
         proposals: renamed,
         id: "g-2",
         change: { action: "rename", group: "g1", title: "One" },
