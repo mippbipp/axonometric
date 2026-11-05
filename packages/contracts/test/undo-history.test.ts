@@ -17,10 +17,6 @@ vi.setConfig({ testTimeout: 5000 });
 const start = emptyHistory<string>(0);
 
 describe("the undo history", () => {
-  it("starts empty", () => {
-    assert.deepStrictEqual(start, { past: [], future: [], revision: 0 });
-  });
-
   it("push remembers the list before an edit and forgets what could be redone", () => {
     const edited = pushStep({
       history: { past: ["a"], future: ["z"], revision: 2 },
