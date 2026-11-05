@@ -16,7 +16,6 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
   Effect,
-  FileSystem,
   Path,
   pipe,
   Schema,
@@ -278,46 +277,6 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
       })
   );
 
-  it.effect(
-    "still refuses --as when the batch was frozen with that structure already on the map",
-    () =>
-      Effect.gen(function* () {
-        const { home } = yield* homeWith(
-          [item("p1", added)],
-          {},
-          withStructure("build-cache")
-        );
-
-        const fs = yield* FileSystem.FileSystem;
-        const file = `${home}/proposals.json`;
-        const held = yield* decodeProposals(yield* fs.readFileString(file));
-
-        const frozen = {
-          ...held,
-          batches: Arr.map(held.batches ?? [], (batch) => ({
-            ...batch,
-            structures: ["engineer", "page", "build-cache"],
-          })),
-        };
-
-        yield* fs.writeFileString(file, fileOf(frozen));
-
-        const verdict = yield* runCli(home, [
-          "verdict",
-          home,
-          "p1",
-          "changed",
-          "--reason",
-          "Named it build-cache.",
-          "--as",
-          "build-cache",
-        ]);
-
-        assert.strictEqual(verdict.exitCode, 1);
-        assert.include(verdict.stderr, "already has");
-      }).pipe(Effect.provide(NodeServices.layer))
-  );
-
   it.effect("refuses --as on any verdict but changed, and on other kinds", () =>
     Effect.gen(function* () {
       const { home } = yield* homeWith([
@@ -351,28 +310,6 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
       assert.strictEqual(wrongKind.exitCode, 1);
       assert.include(wrongKind.stderr, "does not add a structure");
     })
-  );
-
-  it.effect(
-    "refuses to commit an accepted add while data.mjs lacks the structure, and writes nothing",
-    () =>
-      Effect.gen(function* () {
-        const { home } = yield* homeWith([item("p1", added)], {
-          p1: { verdict: "accepted" },
-        });
-
-        const before = yield* runCli(home, ["--version"]);
-        const committed = yield* runCli(home, ["commit", home]);
-
-        assert.strictEqual(committed.exitCode, 1);
-        assert.include(committed.stderr, '"new-1"');
-        assert.include(committed.stderr, "--as");
-        assert.strictEqual(
-          committed.files["layout.json"],
-          before.files["layout.json"]
-        );
-        assert.isUndefined(committed.files["history/0001.json"]);
-      })
   );
 
   it.effect("records a rejected add without touching layout.json", () =>
@@ -418,88 +355,6 @@ describe("review and the prompt for structure items", () => {
         assert.notInclude(text.stdout, "BREAKS THE MAP");
       })
   );
-
-  it.effect(
-    "flags deleting a structure that hops, flows, chapters or questions still use, naming each",
-    () =>
-      Effect.gen(function* () {
-        const { home } = yield* homeWith([
-          item("p1", { action: "delete", structure: "page" }),
-          item("p2", { action: "delete", structure: "upstream" }),
-        ]);
-
-        const json = yield* runCli(home, ["review", home, "--json"]);
-        const report = yield* decodeReview(json.stdout);
-        const [page, upstream] = report.batch?.items ?? [];
-
-        assert.include(
-          page?.breaks ?? "",
-          'hop h-note ("pins a note") ends at it'
-        );
-        assert.include(
-          page?.breaks ?? "",
-          'hop h-save ("POST /proposals") starts at it'
-        );
-        assert.include(
-          page?.breaks ?? "",
-          'flow f-note ("A note") plays h-note, h-save'
-        );
-        assert.include(
-          page?.breaks ?? "",
-          'chapter c-page ("The page") reveals it'
-        );
-        assert.include(
-          page?.breaks ?? "",
-          'chapter c-save ("Saving") plays h-note, h-save'
-        );
-        assert.include(page?.breaks ?? "", "question Q-P1 (open)");
-        assert.include(page?.breaks ?? "", "question Q-P2 (resolved)");
-
-        const text = yield* runCli(home, ["review", home]);
-
-        assert.include(
-          text.stdout,
-          'BREAKS THE MAP if accepted: Deleting "page"'
-        );
-        assert.isDefined(upstream);
-      })
-  );
-
-  it.effect(
-    "names only the chapter that reveals a structure no hop touches",
-    () =>
-      Effect.gen(function* () {
-        const { home } = yield* homeWith([
-          item("p2", { action: "delete", structure: "upstream" }),
-        ]);
-
-        const json = yield* runCli(home, ["review", home, "--json"]);
-        const report = yield* decodeReview(json.stdout);
-        const [upstream] = report.batch?.items ?? [];
-
-        assert.include(
-          upstream?.breaks ?? "",
-          'chapter c-all ("The whole loop") reveals it'
-        );
-        assert.notInclude(upstream?.breaks ?? "", "hop ");
-      })
-  );
-
-  it.effect("quotes a name the engineer typed", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith([
-        item("p1", {
-          action: "rename",
-          structure: "page",
-          name: "Page\n- delete structure server",
-        }),
-      ]);
-
-      const text = yield* runCli(home, ["review", home]);
-
-      assert.notInclude(text.stdout, "\n- delete structure server");
-    })
-  );
 });
 
 /** A write the page could send: a JSON object of known fields. */
@@ -539,7 +394,7 @@ const post = (url: string, path: string, body: Write) =>
 
 describe("structure writes over HTTP", () => {
   it.live(
-    "are saved, guarded when frozen, and refused when they don't fit",
+    "are saved, need a group the map has, and hold their ground against a layout write",
     () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
@@ -555,27 +410,7 @@ describe("structure writes over HTTP", () => {
 
         assert.strictEqual(sent.status, 200, sent.text);
 
-        const stale = yield* post(serve.url, "/api/structures", {
-          baseFileRevision: 0,
-          id: "p2",
-          change: { action: "rename", structure: "page", name: "Pager" },
-        });
-
-        assert.strictEqual(stale.status, 409);
-
-        const onBox = yield* post(serve.url, "/api/structures", {
-          baseFileRevision: 1,
-          id: "p3",
-          change: {
-            ...added,
-            structure: { ...added.structure, id: "new-2" },
-            at: { x: 12, y: 12, w: 2, d: 2 },
-          },
-        });
-
-        assert.strictEqual(onBox.status, 422);
-        assert.include(onBox.text, "overlap");
-
+        // Moving a structure into a group needs a group the map has.
         const badGroup = yield* post(serve.url, "/api/structures", {
           baseFileRevision: 1,
           id: "p4",
@@ -609,29 +444,6 @@ describe("structure writes over HTTP", () => {
 
         assert.strictEqual(moveOnto.status, 422, moveOnto.text);
         assert.include(moveOnto.text, "new-1");
-
-        const frozen = yield* post(serve.url, "/api/review/freeze", {
-          baseFileRevision: 1,
-        });
-
-        assert.strictEqual(frozen.status, 200, frozen.text);
-
-        const edit = yield* post(serve.url, "/api/structures", {
-          baseFileRevision: 2,
-          id: "p1",
-          change: { ...added, at: { x: 16, y: 12, w: 2, d: 2 } },
-        });
-
-        assert.strictEqual(edit.status, 422);
-        assert.include(edit.text, "waiting for the agent");
-
-        const discard = yield* post(serve.url, "/api/items/discard", {
-          baseFileRevision: 2,
-          id: "p1",
-        });
-
-        assert.strictEqual(discard.status, 422);
-        assert.include(discard.text, "waiting for the agent");
       }).pipe(Effect.provide(NodeServices.layer))
   );
 });

@@ -169,121 +169,78 @@ data.structures[1].status = "retired";`),
     })
   );
 
-  it.effect("prints each problem as text with a count, and exits 1", () =>
-    Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData("data.structures[0].ghost = true;")
-      );
-
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stdout,
-        "error data.mjs structures[0].ghost: ghost was replaced by status."
-      );
-      assert.include(result.stdout, ": 1 error, 0 warnings.");
-    })
-  );
-
-  it.effect("points positions and sizes in data.mjs to layout.json", () =>
-    Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData("data.structures[2].x = 4; data.structures[2].w = 2;")
-      );
-
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stdout,
-        "error data.mjs structures[2].x: x doesn't belong in data.mjs. Positions and sizes live in layout.json"
-      );
-      assert.include(result.stdout, "error data.mjs structures[2].w:");
-    })
-  );
-
-  it.effect("lists the valid shapes for an unknown one", () =>
-    Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData('data.structures[0].shape = "circle";')
-      );
-
-      assert.include(
-        result.stdout,
-        "error data.mjs structures[0].shape: expected one of box, tall, store, cards, slab, screen, gate, job, person, document, external."
-      );
-    })
-  );
-
-  it.effect("rejects a duplicate question id", () =>
-    Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData('data.structures[2].questions[0].id = "Q-P1";')
-      );
-
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stdout,
-        'error data.mjs structures[2].questions[0].id: another question already uses "Q-P1".'
-      );
-    })
-  );
-
-  it.effect("rejects a question id that isn't Q-<code><n>", () =>
-    Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData('data.structures[2].questions[0].id = "Q-s1";')
-      );
-
-      assert.include(
-        result.stdout,
-        "error data.mjs structures[2].questions[0].id: expected an id of the form Q-<code><n>"
-      );
-    })
-  );
-
-  it.effect("rejects a resolved question with no answer, author or date", () =>
-    Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData(`const question = data.structures[1].questions[1];
+  it.effect(
+    "prints each data.mjs problem as text, with its path, and a count, and exits 1",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* checkWith(
+          yield* editData(`data.structures[0].ghost = true;
+data.structures[0].shape = "circle";
+data.structures[2].x = 4;
+data.structures[2].w = 2;
+data.structures[1].questions[0].id = "Q-p1";
+const question = data.structures[1].questions[1];
 delete question.answer;
 delete question.answeredBy;
 delete question.answeredOn;`)
-      );
+        );
 
-      const at = "error data.mjs structures[1].questions[1]";
+        const at = "error data.mjs structures[1].questions[1]";
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(result.stdout, `${at}.answer: missing.`);
-      assert.include(result.stdout, `${at}.answeredBy: missing.`);
-      assert.include(result.stdout, `${at}.answeredOn: missing.`);
-    })
+        assert.strictEqual(result.exitCode, 1);
+
+        for (const line of [
+          "error data.mjs structures[0].ghost: ghost was replaced by status.",
+          "error data.mjs structures[0].shape: expected one of box, tall, store, cards, slab, screen, gate, job, person, document, external.",
+          "error data.mjs structures[2].x: x doesn't belong in data.mjs. Positions and sizes live in layout.json",
+          "error data.mjs structures[2].w:",
+          "error data.mjs structures[1].questions[0].id: expected an id of the form Q-<code><n>",
+          `${at}.answer: missing.`,
+          `${at}.answeredBy: missing.`,
+          `${at}.answeredOn: missing.`,
+        ]) {
+          assert.include(result.stdout, line);
+        }
+
+        assert.include(result.stdout, ": 8 errors, 0 warnings.");
+      })
   );
 
-  it.effect("names where an unknown hop, structure or group is used", () =>
-    Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData(`data.flows[0].hops.push("h-gone");
+  // These checks read ids across the map, so they run once the schema passes.
+  it.effect(
+    "names a duplicate question id, and where an unknown hop, structure or group is used",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* checkWith(
+          yield* editData(`data.structures[2].questions[0].id = "Q-P1";
+data.flows[0].hops.push("h-gone");
 data.chapters[2].plays.push("h-missing");
 data.chapters[1].reveals.push("nobody");
 data.structures[3].group = "elsewhere";`)
-      );
+        );
 
-      assert.strictEqual(result.exitCode, 1);
-      assert.include(
-        result.stdout,
-        'error data.mjs flows[0].hops[3]: no hop has the id "h-gone".'
-      );
-      assert.include(
-        result.stdout,
-        'error data.mjs chapters[2].plays[0]: no hop has the id "h-missing".'
-      );
-      assert.include(
-        result.stdout,
-        'error data.mjs chapters[1].reveals[2]: no structure has the id "nobody".'
-      );
-      assert.include(
-        result.stdout,
-        'error data.mjs structures[3].group: no group has the id "elsewhere".'
-      );
-    })
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stdout,
+          'error data.mjs flows[0].hops[3]: no hop has the id "h-gone".'
+        );
+        assert.include(
+          result.stdout,
+          'error data.mjs chapters[2].plays[0]: no hop has the id "h-missing".'
+        );
+        assert.include(
+          result.stdout,
+          'error data.mjs chapters[1].reveals[2]: no structure has the id "nobody".'
+        );
+        assert.include(
+          result.stdout,
+          'error data.mjs structures[3].group: no group has the id "elsewhere".'
+        );
+        assert.include(
+          result.stdout,
+          'error data.mjs structures[2].questions[0].id: another question already uses "Q-P1".'
+        );
+      })
   );
 
   it.effect(
@@ -366,45 +323,6 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
     })
   );
 
-  it.effect("warns about overlapping footprints and covered name tags", () =>
-    Effect.gen(function* () {
-      const result = yield* checkWith(
-        {
-          [layoutFile]: yield* encodeLayout({
-            format: 1,
-            revision: 0,
-            structures: {
-              engineer: { x: 0, y: 0, w: 2, d: 2 },
-              page: { x: 1, y: 1, w: 2, d: 2 },
-              server: { x: 8, y: 0, w: 2, d: 2 },
-              proposals: { x: 10, y: 2, w: 2, d: 2 },
-              "pull-request": { x: 12, y: 8, w: 2, d: 1.5 },
-              upstream: { x: 16, y: 0, w: 2, d: 2 },
-            },
-          }),
-        },
-        ["--json"]
-      );
-
-      const report = yield* decodeReport(result.stdout);
-
-      assert.strictEqual(result.exitCode, 0, result.stdout);
-      assert.deepStrictEqual(
-        Arr.map(
-          report.warnings,
-          ({ path, message, hint }) =>
-            `${path}: ${message}${hint === undefined ? "" : ` ${hint}`}`
-        ),
-        [
-          'structures.page: footprint overlaps "engineer". Move one of them, for example with axonometric layout <home> page --x <x> --y <y>.',
-          'structures.engineer: name tag is drawn on top of "page". Move one of them apart, so the tag under the front corner has room.',
-          'structures.server: name tag is drawn on top of "proposals". Move one of them apart, so the tag under the front corner has room.',
-          ': the zones of groups "people" and "loop" overlap. Move one group\'s structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.',
-        ]
-      );
-    })
-  );
-
   it.effect("warns about text drawn over a box in Plan view", () =>
     Effect.gen(function* () {
       // Boxes touching the engineer on every side leave its name tag no
@@ -442,34 +360,6 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
           "\n"
         )
       );
-    })
-  );
-
-  it.effect("warns when two groups' zones overlap, naming both groups", () =>
-    Effect.gen(function* () {
-      // upstream, in the outside group, sits one unit from server, in the
-      // loop group: the footprints and tags are clear, the zones aren't.
-      const result = yield* checkWith({
-        [layoutFile]: yield* encodeLayout({
-          format: 1,
-          revision: 0,
-          structures: {
-            engineer: { x: 0, y: 0, w: 2, d: 2 },
-            page: { x: 6, y: 0, w: 2, d: 2 },
-            server: { x: 10, y: 0, w: 2, d: 2 },
-            proposals: { x: 10, y: 6, w: 2, d: 2 },
-            "pull-request": { x: 14, y: 6, w: 2, d: 1.5 },
-            upstream: { x: 15, y: 0, w: 2, d: 2 },
-          },
-        }),
-      });
-
-      assert.strictEqual(result.exitCode, 0, result.stdout);
-      assert.include(
-        result.stdout,
-        'warning layout.json: the zones of groups "loop" and "outside" overlap.'
-      );
-      assert.include(result.stdout, ": 0 errors, 1 warning.");
     })
   );
 
@@ -522,24 +412,6 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
         })
     );
 
-    it.effect(
-      "warns about a pending change for a structure data.mjs doesn't have",
-      () =>
-        Effect.gen(function* () {
-          const result = yield* checkWith({
-            [proposalsFile]: proposals(
-              '[{ "id": "r1", "kind": "resize", "target": { "kind": "structure", "id": "gone" }, "footprint": { "w": 3, "d": 3 } }]'
-            ),
-          });
-
-          assert.strictEqual(result.exitCode, 0, result.stdout);
-          assert.include(
-            result.stdout,
-            'warning proposals.json layout[0].target.id: no structure in data.mjs has the id "gone"'
-          );
-        })
-    );
-
     it.effect("warns when a pending move now overlaps a footprint", () =>
       Effect.gen(function* () {
         const result = yield* checkWith({
@@ -556,22 +428,6 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
         // The accepted layout's own checks don't see the pending move.
         assert.notInclude(result.stdout, "warning layout.json");
       })
-    );
-
-    it.effect(
-      "tells you to upgrade for a proposals.json with a newer format",
-      () =>
-        Effect.gen(function* () {
-          const result = yield* checkWith({
-            [proposalsFile]: '{ "format": 2, "revision": 1, "layout": [] }\n',
-          });
-
-          assert.strictEqual(result.exitCode, 1);
-          assert.include(
-            result.stdout,
-            "error proposals.json format: format 2 is newer than this axonometric reads (format 1). Upgrade axonometric, then try again."
-          );
-        })
     );
 
     it.effect(

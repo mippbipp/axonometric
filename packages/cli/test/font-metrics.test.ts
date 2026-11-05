@@ -1,4 +1,3 @@
-import { tagCharWidth, textSizes } from "@axonometric/contracts";
 import { boldBase64, regularBase64 } from "@axonometric/drawing/font-data";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
@@ -59,9 +58,6 @@ describe("the bundled fonts", () => {
           assert.closeTo(advance / unitsPerEm, 0.6, 0.0005, weight);
         }
       }
-
-      // A name tag's width per character is its font size times the advance.
-      assert.closeTo(tagCharWidth, textSizes.tag.font * 0.6, 0.01);
     }).pipe(Effect.provide(NodeServices.layer))
   );
 

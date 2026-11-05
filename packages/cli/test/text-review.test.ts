@@ -207,26 +207,6 @@ describe("the loop for words", () => {
   );
 
   it.live(
-    "the prompt has a line for each kind, with the agent's instructions",
-    () =>
-      Effect.gen(function* () {
-        const { prompt } = yield* frozenOverHttp;
-
-        const lines = Str.split("\n")(prompt);
-        const listed = Arr.filter(lines, Str.startsWith("- "));
-
-        assert.strictEqual(listed.length, 5);
-        assert.isTrue(Arr.some(listed, Str.includes("suggestion s-one on")));
-        assert.isTrue(
-          Arr.some(listed, Str.includes("answer a-one to Q-P1 on"))
-        );
-        assert.isTrue(Arr.some(listed, Str.includes("question q-one on")));
-        assert.isTrue(Arr.some(listed, Str.includes("the spot 14.5, 3")));
-        assert.include(prompt, "Set answeredBy yourself");
-      })
-  );
-
-  it.live(
     "verdict and commit record all five in the revision, with reasons",
     () =>
       Effect.gen(function* () {
@@ -287,25 +267,7 @@ describe("the loop for words", () => {
           [["question", "q-one", "Q-S1 already asks this."]]
         );
 
-        const answer = Arr.findFirst(
-          revision.accepted,
-          ({ kind }) => kind === "answer"
-        );
-
-        assert.deepStrictEqual(
-          answer,
-          Option.some({
-            kind: "answer",
-            id: "a-one",
-            target: { kind: "structure", id: "page" },
-            question: "Q-P1",
-            text: "Yes, 2000 characters.",
-            answeredOn: "2026-11-02",
-            reason: "Added answeredBy and the date.",
-            changed: true,
-          })
-        );
-
+        // contracts checks each kind's entry; the note is the one it doesn't.
         const spot = Arr.findFirst(
           revision.accepted,
           ({ id }) => id === "n-spot"

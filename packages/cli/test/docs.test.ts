@@ -1,14 +1,10 @@
 import {
   Chapter,
-  chapterActions,
   Decision,
   DeepDive,
   Flow,
-  flowActions,
   Group,
   Hop,
-  hopActions,
-  kindTable,
   MapData,
   OpenQuestion,
   Overview,
@@ -18,9 +14,18 @@ import {
   Stat,
   Step,
   Structure,
-  structureActions,
 } from "@axonometric/contracts";
-import type { Batch, BatchItem, Proposals } from "@axonometric/contracts";
+import type {
+  Batch,
+  BatchItem,
+  ChapterChange,
+  FlowChange,
+  GroupChange,
+  HopChange,
+  LayoutChange,
+  Proposals,
+  StructureChange,
+} from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -131,6 +136,181 @@ const proposals: Proposals = {
 };
 
 const encodeProposals = Schema.encodeEffect(ProposalsFile);
+
+/** One item for each value of `K`, keyed by it, so a new one won't compile until it's here. */
+type EveryOf<K extends string, A> = Readonly<Record<K, A>>;
+
+const structureChanges: EveryOf<StructureChange["action"], StructureChange> = {
+  add: {
+    action: "add",
+    structure: {
+      id: "new-1",
+      name: "Build cache",
+      shape: "store",
+      group: "loop",
+      status: "planned",
+    },
+    at: { x: 12, y: 12, w: 2, d: 2 },
+  },
+  delete: { action: "delete", structure: "upstream" },
+  rename: { action: "rename", structure: "page", name: "Pager" },
+  shape: { action: "shape", structure: "page", shape: "slab" },
+  group: { action: "group", structure: "page", group: "people" },
+  status: { action: "status", structure: "page", status: "planned" },
+};
+
+const hopChanges: EveryOf<HopChange["action"], HopChange> = {
+  add: {
+    action: "add",
+    hop: { id: "new-hop", from: "engineer", to: "server", label: "asks" },
+  },
+  delete: { action: "delete", hop: "h-pr" },
+  relabel: { action: "relabel", hop: "h-note", label: "pins" },
+};
+
+const flowChanges: EveryOf<FlowChange["action"], FlowChange> = {
+  add: {
+    action: "add",
+    flow: { id: "new-flow", name: "Round trip" },
+    hops: ["h-note"],
+  },
+  rename: { action: "rename", flow: "f-note", name: "Notes" },
+  hops: { action: "hops", flow: "f-note", hops: ["h-note"] },
+  reorder: { action: "reorder", flows: ["f-note"] },
+};
+
+const groupChanges: EveryOf<GroupChange["action"], GroupChange> = {
+  add: { action: "add", group: { id: "data-1", title: "Data" } },
+  rename: { action: "rename", group: "outside", title: "Elsewhere" },
+};
+
+const chapterChanges: EveryOf<ChapterChange["action"], ChapterChange> = {
+  reveal: { action: "reveal", chapter: "c-page", structure: "server" },
+  hide: { action: "hide", chapter: "c-all", structure: "upstream" },
+  play: { action: "play", chapter: "c-save", hop: "h-pr" },
+  unplay: { action: "unplay", chapter: "c-page", hop: "h-note" },
+  order: {
+    action: "order",
+    chapter: "c-save",
+    plays: ["h-store", "h-save", "h-note"],
+  },
+};
+
+const layoutChanges: EveryOf<LayoutChange["kind"], LayoutChange> = {
+  move: {
+    id: "x-move",
+    kind: "move",
+    moves: [
+      {
+        target: { kind: "structure", id: "engineer" },
+        position: { x: 0, y: 4 },
+      },
+    ],
+  },
+  resize: {
+    id: "x-resize",
+    kind: "resize",
+    target: { kind: "structure", id: "page" },
+    footprint: { w: 3, d: 2 },
+  },
+  reroute: {
+    id: "x-reroute",
+    kind: "reroute",
+    target: { kind: "hop", id: "h-store" },
+    points: null,
+  },
+};
+
+/** `items`, which must hold every kind of item; a missing kind won't compile. */
+const satisfiesEveryKind = <const I extends readonly BatchItem[]>(
+  items: I &
+    ([BatchItem["kind"]] extends [I[number]["kind"]]
+      ? unknown
+      : "a kind of item is missing")
+): readonly BatchItem[] => items;
+
+const itemsOf = <A>(
+  kind: string,
+  changes: Readonly<Record<string, A>>,
+  item: (id: string, change: A) => BatchItem
+) =>
+  Arr.map(Rec.toEntries(changes), ([action, change]) =>
+    item(`x-${kind}-${action}`, change)
+  );
+
+/** A batch holding one item of every kind, and of every action each has. */
+const everyKind: Proposals = {
+  format: 1,
+  revision: 4,
+  layout: [],
+  batches: [
+    {
+      number: 1,
+      frozenAt: at,
+      verdicts: {},
+      items: satisfiesEveryKind([
+        ...Arr.map(Rec.values(layoutChanges), (change): BatchItem => ({
+          id: change.id,
+          kind: "layout",
+          change,
+        })),
+        {
+          id: "x-note",
+          kind: "note",
+          target: { kind: "structure", id: "server" },
+          text: "Why?",
+        },
+        {
+          id: "x-suggestion",
+          kind: "suggestion",
+          target: { kind: "structure", id: "page" },
+          field: "oneLiner",
+          before: "Shows the map and records notes.",
+          after: "Shows the map.",
+        },
+        {
+          id: "x-answer",
+          kind: "answer",
+          target: { kind: "structure", id: "page" },
+          question: "Q-P1",
+          text: "Yes.",
+          answeredOn: "2026-11-02",
+        },
+        {
+          id: "x-question",
+          kind: "question",
+          target: { kind: "structure", id: "server" },
+          text: "Does it retry?",
+        },
+        ...itemsOf("structure", structureChanges, (id, change) => ({
+          id,
+          kind: "structure",
+          change,
+        })),
+        ...itemsOf("hop", hopChanges, (id, change) => ({
+          id,
+          kind: "hop",
+          change,
+        })),
+        ...itemsOf("flow", flowChanges, (id, change) => ({
+          id,
+          kind: "flow",
+          change,
+        })),
+        ...itemsOf("group", groupChanges, (id, change) => ({
+          id,
+          kind: "group",
+          change,
+        })),
+        ...itemsOf("chapter", chapterChanges, (id, change) => ({
+          id,
+          kind: "chapter",
+          change,
+        })),
+      ]),
+    },
+  ],
+};
 
 /** The review fixture with a batch waiting, and its home folder. */
 const reviewHome = Effect.gen(function* () {
@@ -533,32 +713,39 @@ describe("axonometric docs", () => {
       const { texts } = yield* allDocs;
       const review = texts.review ?? "";
 
-      // The names `review` prints for each kind, from the contracts' tables.
-      const names = {
-        layout: ["move", "resize", "reroute"],
-        note: ["note"],
-        suggestion: ["suggestion"],
-        answer: ["answer"],
-        question: ["question"],
-        structure: Arr.map(Rec.values(structureActions), ({ label }) => label),
-        hop: Arr.map(Rec.values(hopActions), ({ label }) => label),
-        flow: Arr.map(Rec.values(flowActions), ({ label }) => label),
-        group: ["add group", "rename group"],
-        chapter: Arr.map(Rec.values(chapterActions), ({ label }) => label),
-      };
+      const home = yield* makeHome({
+        ...(yield* fullMap),
+        "review/map/proposals.json": yield* encodeProposals(everyKind),
+      });
 
-      // A new kind of item fails here until it is named above, and so
-      // documented below.
-      assert.sameMembers(Rec.keys(kindTable), Rec.keys(names));
+      const map = `${home}/review/map`;
 
-      for (const [kind, labels] of Rec.toEntries(names)) {
-        for (const label of labels) {
-          assert.include(
-            review,
-            `\`${label}\``,
-            `review.md never names the ${kind} item \`${label}\``
-          );
-        }
+      const result = yield* runCli(home, ["review", map]);
+
+      assert.strictEqual(result.exitCode, 0, result.stderr);
+
+      // review prints each item as `<id>  <kind>  <targets>`.
+      const kinds = new Map(
+        Arr.flatMap(Str.split("\n")(result.stdout), (line) => {
+          const found = /^(?<id>\S+) {2}(?<kind>.+?) {2}/u.exec(line);
+
+          return found === null
+            ? []
+            : [[groupOf(found, "id"), groupOf(found, "kind")] as const];
+        })
+      );
+
+      assert.sameMembers(
+        [...kinds.keys()],
+        Arr.map(everyKind.batches?.[0]?.items ?? [], ({ id }) => id)
+      );
+
+      for (const [id, kind] of kinds) {
+        assert.include(
+          review,
+          `\`${kind}\``,
+          `review.md never names the item \`${kind}\` (${id})`
+        );
       }
     })
   );

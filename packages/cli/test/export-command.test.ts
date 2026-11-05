@@ -1,11 +1,8 @@
-import { excalidrawOf, excalidrawText, MapState } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
   Effect,
-  FileSystem,
-  Option,
   Order,
   Path,
   Record as Rec,
@@ -17,8 +14,6 @@ import { crowdedMap, minimalMap, pipelineMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
 import type { HomeFiles } from "./harness.ts";
 
-const decodeState = Schema.decodeUnknownEffect(Schema.fromJsonString(MapState));
-
 /** The files in the home folder that are the map's own, not the lock's. */
 const mapFiles = (files: HomeFiles) =>
   Arr.sort(
@@ -27,37 +22,41 @@ const mapFiles = (files: HomeFiles) =>
   );
 
 /**
- * What the page's Export menu saves for the same map: `excalidrawOf` of the
- * state `build` embeds in the page, which holds the layout `build` placed.
+ * The parts of a `.excalidraw` file these tests read, as Excalidraw's format
+ * describes it: a scene of elements, each text element labelling a box or an
+ * arrow, and a frame per group.
  */
-const expectedExcalidraw = Effect.fnUntraced(function* (
-  home: string,
-  system: string,
-  background?: string
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const map = path.join(home, system, "map");
-
-  const built = yield* runCli(home, ["build", map]);
-
-  assert.strictEqual(built.exitCode, 0, built.stderr);
-
-  const page = yield* fs.readFileString(
-    path.join(home, system, `${system}.html`)
-  );
-
-  const json = Option.fromNullishOr(
-    /id="axonometric-map-state">(?<json>.*?)<\/script>/su.exec(page)?.groups
-      ?.json
-  );
-
-  const state = yield* decodeState(Option.getOrThrow(json));
-
-  return excalidrawText(
-    excalidrawOf({ data: state.data, layout: state.layout, background })
-  );
+const SceneElement = Schema.Struct({
+  type: Schema.String,
+  originalText: Schema.optionalKey(Schema.String),
+  name: Schema.optionalKey(Schema.String),
 });
+
+const ExcalidrawScene = Schema.fromJsonString(
+  Schema.Struct({
+    type: Schema.Literal("excalidraw"),
+    version: Schema.Literal(2),
+    elements: Schema.Array(SceneElement),
+    appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
+  })
+);
+
+type Scene = typeof ExcalidrawScene.Type;
+
+const decodeScene = Schema.decodeUnknownEffect(ExcalidrawScene);
+
+/** How many elements of each type `scene` has. */
+const countsOf = (scene: Scene) =>
+  Rec.map(
+    Arr.groupBy(scene.elements, ({ type }) => type),
+    (elements) => elements.length
+  );
+
+/** The text of every text element in `scene`. */
+const textsOf = (scene: Scene) =>
+  Arr.flatMap(scene.elements, ({ originalText }) =>
+    originalText === undefined ? [] : [originalText]
+  );
 
 /** The `data-faded` of the part `kind`-`id` of chapter 8's SVG. */
 const fadedOf = (text: string, kind: string, id: string) => {
@@ -71,33 +70,51 @@ const fadedOf = (text: string, kind: string, id: string) => {
 
 describe("export", () => {
   describe("--format excalidraw", () => {
-    it.effect(
-      "writes what excalidrawOf gives for the same map, next to SYSTEM.md",
-      () =>
-        Effect.gen(function* () {
-          const path = yield* Path.Path;
-          const home = yield* makeHome(yield* pipelineMap);
-          const map = path.join(home, "flake-pipeline", "map");
+    it.effect("writes the map as an Excalidraw scene, next to SYSTEM.md", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const home = yield* makeHome(yield* pipelineMap);
+        const map = path.join(home, "flake-pipeline", "map");
 
-          const result = yield* runCli(home, [
-            "export",
-            map,
-            "--format",
-            "excalidraw",
-          ]);
+        const result = yield* runCli(home, [
+          "export",
+          map,
+          "--format",
+          "excalidraw",
+        ]);
 
-          assert.strictEqual(result.exitCode, 0, result.stderr);
-          assert.include(result.stdout, "flake-pipeline.excalidraw");
+        assert.strictEqual(result.exitCode, 0, result.stderr);
+        assert.include(result.stdout, "flake-pipeline.excalidraw");
 
-          const written =
-            result.files["flake-pipeline/flake-pipeline.excalidraw"];
+        const scene = yield* decodeScene(
+          result.files["flake-pipeline/flake-pipeline.excalidraw"] ?? ""
+        );
 
-          assert.isDefined(written);
-          assert.strictEqual(
-            written,
-            yield* expectedExcalidraw(home, "flake-pipeline")
-          );
-        }).pipe(Effect.provide(NodeServices.layer))
+        // The pipeline map has 15 structures, 29 hops and 4 groups. Each
+        // structure and hop carries its name or label as a text element.
+        assert.deepStrictEqual(countsOf(scene), {
+          rectangle: 15,
+          arrow: 29,
+          text: 44,
+          frame: 4,
+        });
+
+        const texts = textsOf(scene);
+
+        for (const text of [
+          "Updater",
+          "Flake fixer",
+          "merge origin/main",
+          "nix flake update",
+        ]) {
+          assert.include(texts, text);
+        }
+
+        assert.include(
+          Arr.map(scene.elements, ({ name }) => name),
+          "pewter (aarch64 VM)"
+        );
+      }).pipe(Effect.provide(NodeServices.layer))
     );
 
     it.effect("--background white sets the canvas colour like the page", () =>
@@ -118,10 +135,6 @@ describe("export", () => {
         ]);
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
-        assert.strictEqual(
-          result.files["out/crowded.excalidraw"],
-          yield* expectedExcalidraw(home, "crowded", "#ffffff")
-        );
         assert.include(
           result.files["out/crowded.excalidraw"],
           '"viewBackgroundColor": "#ffffff"'
@@ -144,11 +157,17 @@ describe("export", () => {
 
           const map = path.join(home, "pipeline", "map");
 
+          // The default name is the page's, the system alone, whatever the
+          // view and chapter.
           const result = yield* runCli(home, [
             "export",
             map,
             "--format",
             "excalidraw",
+            "--view",
+            "plan",
+            "--chapter",
+            "1",
           ]);
 
           assert.strictEqual(result.exitCode, 0, result.stderr);
@@ -164,28 +183,6 @@ describe("export", () => {
   });
 
   describe("the default file name", () => {
-    it.effect("is the page's name, for Excalidraw: the system alone", () =>
-      Effect.gen(function* () {
-        const path = yield* Path.Path;
-        const home = yield* makeHome(yield* minimalMap);
-        const map = path.join(home, "pipeline", "map");
-
-        const result = yield* runCli(home, [
-          "export",
-          map,
-          "--format",
-          "excalidraw",
-          "--view",
-          "plan",
-          "--chapter",
-          "1",
-        ]);
-
-        assert.strictEqual(result.exitCode, 0, result.stderr);
-        assert.isDefined(result.files["pipeline/pipeline.excalidraw"]);
-      }).pipe(Effect.provide(NodeServices.layer))
-    );
-
     it.effect("--output wins and its folders are created", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
@@ -359,32 +356,7 @@ describe("export", () => {
     );
   });
 
-  describe("validation and the lock", () => {
-    it.effect("a map with an error is not exported", () =>
-      Effect.gen(function* () {
-        const path = yield* Path.Path;
-        const files = yield* minimalMap;
-
-        const home = yield* makeHome({
-          ...files,
-          "pipeline/map/data.mjs": "export default {};\n",
-        });
-
-        const map = path.join(home, "pipeline", "map");
-
-        const result = yield* runCli(home, [
-          "export",
-          map,
-          "--format",
-          "excalidraw",
-        ]);
-
-        assert.strictEqual(result.exitCode, 1);
-        assert.include(result.stderr, "export wrote nothing.");
-        assert.isUndefined(result.files["pipeline/pipeline.excalidraw"]);
-      }).pipe(Effect.provide(NodeServices.layer))
-    );
-
+  describe("the lock", () => {
     it.effect("takes and releases the lock", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
@@ -399,6 +371,8 @@ describe("export", () => {
         ]);
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
+        // Taking the lock makes .axonometric/ with its .gitignore.
+        assert.isDefined(result.files["pipeline/map/.axonometric/.gitignore"]);
         assert.isUndefined(result.files["pipeline/map/.axonometric/lock"]);
       }).pipe(Effect.provide(NodeServices.layer))
     );

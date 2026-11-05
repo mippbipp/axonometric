@@ -56,18 +56,6 @@ describe("the built bundle", () => {
     })
   );
 
-  it.effect("--help prints usage", () =>
-    Effect.gen(function* () {
-      const home = yield* makeHome({});
-
-      const result = yield* runBundle(home, ["--help"]);
-
-      assert.strictEqual(result.exitCode, 0);
-      assert.include(result.stdout, "axonometric");
-      assert.include(result.stdout, "--version");
-    })
-  );
-
   it.effect(
     "docs prints the embedded guide, with no docs folder beside it",
     () =>

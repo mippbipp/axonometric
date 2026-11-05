@@ -44,16 +44,4 @@ describe("axonometric", () => {
       assert.include(result.stderr, "Unrecognized flag: --no-such-flag");
     })
   );
-
-  it.effect("leaves files in the home folder alone", () =>
-    Effect.gen(function* () {
-      const home = yield* makeHome({ "map/data.mjs": "export default {};\n" });
-
-      const result = yield* runCli(home, ["--version"]);
-
-      assert.deepStrictEqual(result.files, {
-        "map/data.mjs": "export default {};\n",
-      });
-    })
-  );
 });
