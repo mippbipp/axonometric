@@ -147,7 +147,7 @@ const setProposal = ({
  *   names isn't there, a new group's id is already a group's, a new group is
  *   waiting in a batch, or another group has the title.
  */
-export const proposeGroup = ({
+const proposeGroup = ({
   proposals,
   id,
   change,

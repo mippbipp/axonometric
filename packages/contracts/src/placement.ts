@@ -14,7 +14,7 @@ export const defaultFootprint = { w: 2, d: 2 } as const;
 export const structureGap = 2;
 
 /** Clear ground left between two zones, for routes to run through. */
-export const zoneGap = 2;
+const zoneGap = 2;
 
 /** Clear ground between the footprints of two groups' structures. */
 export const groupGap = 2 * zonePadding + zoneGap;

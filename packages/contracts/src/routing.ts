@@ -52,7 +52,7 @@ export interface HopRoute {
  * ends' stubs must clear the shared edge; placement keeps a gap, and `check`
  * warns when a hand-placed layout makes such a route long.
  */
-export const routeCap = (distance: number) => 1.5 * distance + 1;
+const routeCap = (distance: number) => 1.5 * distance + 1;
 
 /** A route's length in grid units, and the distance between its ends. */
 export const routeLength = (points: readonly GridPoint[]) => {

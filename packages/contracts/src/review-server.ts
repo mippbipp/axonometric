@@ -115,7 +115,7 @@ export const FlowWrite = Schema.Struct({
 export type FlowWrite = typeof FlowWrite.Type;
 
 /** The most structures a new group takes in when it is made from a selection. */
-export const maxGroupMembers = 200;
+const maxGroupMembers = 200;
 
 const membersFix = `expected up to ${maxGroupMembers} structures to move into the group.`;
 

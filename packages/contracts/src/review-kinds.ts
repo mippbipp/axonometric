@@ -34,7 +34,7 @@ import { decorate, oneLine, quoteText } from "./review-quote.ts";
 import type { Facts } from "./review-report.ts";
 import type { AcceptedItem, RejectedItem } from "./revisions.ts";
 
-export { oneLine, quoteText } from "./review-quote.ts";
+export { quoteText } from "./review-quote.ts";
 
 export { plain, removedMark, touchesNothing } from "./review-kind-defaults.ts";
 
@@ -604,7 +604,7 @@ const noteKind: KindSpec<NoteItem> = {
  * The table: one entry for every `kind` of `BatchItem`. It is typed by that
  * union, so a kind added there without an entry here fails to compile.
  */
-export const kindTable = {
+const kindTable = {
   layout: layoutKind,
   note: noteKind,
   suggestion: suggestionKind,

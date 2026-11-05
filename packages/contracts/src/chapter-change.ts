@@ -173,7 +173,7 @@ type ChapterActions = {
   readonly [A in ChapterChange["action"]]: ChapterAction<A>;
 };
 
-export const chapterActions: ChapterActions = {
+const chapterActions: ChapterActions = {
   reveal: {
     label: "reveal structure",
     subject: ({ chapter, structure }) => `reveals ${chapter} ${structure}`,
