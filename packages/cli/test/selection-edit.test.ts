@@ -390,39 +390,66 @@ describe("moving a selection", () => {
     );
   }
 
-  it.live(
-    "refuses a group drop that puts any footprint on another, and writes nothing",
-    () =>
-      Effect.gen(function* () {
-        const { page, home } = yield* servedAll;
+  for (const { what, select, from, by, outlines } of [
+    {
+      what: "a multi-selection",
+      select: ["engineer", "page"],
+      from: '[data-structure="engineer"]',
+      // Eight units right puts engineer at 8,0, on server.
+      by: { x: 8, y: 0 },
+      outlines: 2,
+    },
+    {
+      what: "a group dragged by its zone title",
+      select: [],
+      from: '[data-zone-title-hit="people"]',
+      // The engineer sits at x 0–2. Moving it 4 along x lands on the page.
+      by: { x: 4, y: 0 },
+      outlines: 1,
+    },
+  ]) {
+    it.live(
+      `refuses a drop of ${what} that puts any footprint on another, and writes nothing`,
+      () =>
+        Effect.gen(function* () {
+          const { page, home } = yield* servedAll;
 
-        yield* toView(page, "plan");
-        yield* shiftClick(page, ["engineer", "page"]);
+          yield* toView(page, "plan");
+          yield* shiftClick(page, select);
 
-        const unit = yield* unitOnScreen(page, "plan");
-        const from = yield* centreOf(page, '[data-structure="engineer"]');
+          const unit = yield* unitOnScreen(page, "plan");
+          const start = yield* centreOf(page, from);
 
-        // Eight units right puts engineer at 8,0, on server.
-        yield* Effect.promise(() => page.mouse.move(from.x, from.y));
-        yield* Effect.promise(() => page.mouse.down());
-        yield* Effect.promise(() =>
-          page.mouse.move(from.x + unit * 8, from.y, { steps: 12 })
-        );
+          yield* Effect.promise(() => page.mouse.move(start.x, start.y));
+          yield* Effect.promise(() => page.mouse.down());
+          yield* Effect.promise(() =>
+            page.mouse.move(start.x + unit * by.x, start.y + unit * by.y, {
+              steps: 12,
+            })
+          );
 
-        assert.strictEqual(
-          yield* attribute(page, "[data-drag-outline]", "data-refused"),
-          "true"
-        );
-        assert.strictEqual(yield* count(page, "[data-drag-outline]"), 2);
+          assert.strictEqual(
+            yield* attribute(page, "[data-drag-outline]", "data-refused"),
+            "true"
+          );
+          assert.strictEqual(
+            yield* count(page, "[data-drag-outline]"),
+            outlines
+          );
 
-        yield* Effect.promise(() => page.mouse.up());
-        yield* waitGone(page, "[data-drag-outline]");
-        yield* Effect.sleep("500 millis");
+          yield* Effect.promise(() => page.mouse.up());
+          yield* waitGone(page, "[data-drag-outline]");
+          yield* Effect.sleep("500 millis");
 
-        assert.isTrue(Option.isNone(yield* proposalsIn(home)));
-      }),
-    60_000
-  );
+          assert.isTrue(Option.isNone(yield* proposalsIn(home)));
+          assert.strictEqual(
+            yield* count(page, '[data-structure][data-pending="true"]'),
+            0
+          );
+        }),
+      60_000
+    );
+  }
 });
 
 describe("nudging a selection", () => {
@@ -557,29 +584,21 @@ describe("aligning and distributing", () => {
   );
 
   const cases: readonly {
-    readonly name: string;
-    readonly view: View;
     readonly ids: readonly string[];
     readonly button: string;
     readonly expected: Readonly<Record<string, Point>>;
   }[] = [
     {
-      name: "align top",
-      view: "plan",
       ids: ["engineer", "page", "pull-request"],
       button: "[data-align='top']",
       expected: { "pull-request": { x: 12, y: 0 } },
     },
     {
-      name: "align bottom",
-      view: "iso",
       ids: ["engineer", "page", "pull-request"],
       button: "[data-align='bottom']",
       expected: { engineer: { x: 0, y: 5.5 }, page: { x: 4, y: 5.5 } },
     },
     {
-      name: "align centres on y",
-      view: "plan",
       ids: ["engineer", "page", "pull-request"],
       button: "[data-align='centre-y']",
       expected: {
@@ -589,59 +608,66 @@ describe("aligning and distributing", () => {
       },
     },
     {
-      name: "align left",
-      view: "iso",
       ids: ["page", "pull-request"],
       button: "[data-align='left']",
       expected: { "pull-request": { x: 4, y: 6 } },
     },
     {
-      name: "align right",
-      view: "plan",
       ids: ["server", "pull-request"],
       button: "[data-align='right']",
       expected: { server: { x: 12, y: 0 } },
     },
     {
-      name: "align centres on x",
-      view: "iso",
       ids: ["engineer", "pull-request"],
       button: "[data-align='centre-x']",
       expected: { engineer: { x: 6, y: 0 }, "pull-request": { x: 6, y: 6 } },
     },
     {
-      name: "distribute horizontally",
-      view: "plan",
       ids: ["engineer", "proposals", "upstream"],
       button: "[data-distribute='x']",
       expected: { proposals: { x: 9, y: 6 } },
     },
     {
-      name: "distribute vertically",
-      view: "iso",
       ids: ["engineer", "page", "proposals"],
       button: "[data-distribute='y']",
       expected: { page: { x: 4, y: 3 } },
     },
   ];
 
-  for (const { name, view, ids, button, expected } of cases) {
+  for (const view of views) {
     it.live(
-      `${name} is one change with the expected positions, in ${view}`,
+      `each align and distribute button is one change with the expected positions, and one undo takes it back, in ${view}`,
       () =>
         Effect.gen(function* () {
           const { page, home } = yield* servedAll;
 
           yield* toView(page, view);
-          yield* shiftClick(page, ids);
-          yield* waitFor(page, button);
-          yield* Effect.promise(() => page.locator(button).click());
 
-          const saved = yield* waitForRevision(home, 1);
+          let revision = 0;
 
-          assert.deepStrictEqual(movesOf(saved.layout), expected);
+          for (const { ids, button, expected } of cases) {
+            yield* shiftClick(page, ids);
+            yield* waitFor(page, button);
+            yield* Effect.promise(() => page.locator(button).click());
+
+            revision += 1;
+
+            const saved = yield* waitForRevision(home, revision);
+
+            assert.deepStrictEqual(movesOf(saved.layout), expected, button);
+
+            // One undo takes the whole change back.
+            yield* press(page, "Control+z");
+            revision += 1;
+            assert.deepStrictEqual(
+              (yield* waitForRevision(home, revision)).layout,
+              [],
+              button
+            );
+            yield* press(page, "Escape");
+          }
         }),
-      60_000
+      120_000
     );
   }
 
@@ -657,6 +683,12 @@ describe("aligning and distributing", () => {
           page.locator("[data-align='left']").click()
         );
         yield* waitFor(page, "[data-arrange-refused]");
+        assert.strictEqual(
+          yield* Effect.promise(() =>
+            page.locator("[data-arrange-refused]").textContent()
+          ),
+          'pull-request at x 8, y 6, w 2, d 1.5 would overlap "proposals" at x 8, y 6, w 2, d 2. Pick a free spot.'
+        );
         yield* Effect.sleep("300 millis");
 
         assert.isTrue(Option.isNone(yield* proposalsIn(home)));
@@ -739,24 +771,6 @@ describe("undo and redo", () => {
           (yield* waitForRevision(home, 5)).layout,
           moved.layout
         );
-      }),
-    60_000
-  );
-
-  it.live(
-    "undoes a whole align as one step",
-    () =>
-      Effect.gen(function* () {
-        const { page, home } = yield* servedAll;
-
-        yield* shiftClick(page, ["engineer", "page", "pull-request"]);
-        yield* Effect.promise(() =>
-          page.locator("[data-align='centre-y']").click()
-        );
-        yield* waitForRevision(home, 1);
-
-        yield* press(page, "Control+z");
-        assert.deepStrictEqual((yield* waitForRevision(home, 2)).layout, []);
       }),
     60_000
   );
@@ -1025,31 +1039,12 @@ describe("the toolbar", () => {
 
 describe("older news from the server", () => {
   it.live(
-    "a PendingUpdated event for an older file does not take the page back",
+    "an older proposals.json the server sends while the map has an error does not take the page back",
     () =>
       Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
         const { page, home } = yield* servedAll;
-
-        // Keep the page's event sources, so the test can deliver an event.
-        yield* Effect.promise(() =>
-          page.addInitScript(`(() => {
-            const Real = globalThis.EventSource;
-            globalThis.__sources = [];
-            globalThis.EventSource = class extends Real {
-              constructor(...args) {
-                super(...args);
-                globalThis.__sources.push(this);
-              }
-            };
-          })()`)
-        );
-        yield* Effect.promise(() => page.reload());
-        yield* waitFor(page, "[data-structure]");
-        yield* Effect.promise(() =>
-          page
-            .locator('[data-chapter-rail] button[data-chapter="c-all"]')
-            .click()
-        );
 
         yield* shiftClick(page, ["engineer", "page"]);
         yield* press(page, "ArrowDown");
@@ -1059,25 +1054,30 @@ describe("older news from the server", () => {
           '[data-structure="engineer"][data-pending="true"]'
         );
 
-        // The server said revision 0 with nothing pending, late.
-        yield* Effect.promise(() =>
-          page.evaluate(`(() => {
-            const data = JSON.stringify({
-              _tag: "PendingUpdated",
-              proposals: { format: 1, revision: 0, layout: [] },
-            });
-            for (const source of globalThis.__sources) {
-              source.dispatchEvent(new MessageEvent("message", { data }));
-            }
-          })()`)
+        // With data.mjs broken, serve keeps the last good map and sends
+        // only what's pending. Then proposals.json goes back to revision 0
+        // with nothing pending, as a late write from elsewhere would leave
+        // it.
+        yield* fs.writeFileString(
+          path.join(home, "data.mjs"),
+          "export default {"
         );
-        yield* Effect.sleep("400 millis");
+        yield* waitFor(page, "[data-map-error]");
+        yield* fs.writeFileString(
+          path.join(home, "proposals.json"),
+          yield* Schema.encodeEffect(Schema.fromJsonString(Proposals))({
+            format: 1,
+            revision: 0,
+            layout: [],
+          })
+        );
+        yield* Effect.sleep("800 millis");
 
         assert.strictEqual(
           yield* count(page, '[data-structure][data-pending="true"]'),
           2
         );
-      }),
+      }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
 });
