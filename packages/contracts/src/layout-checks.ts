@@ -431,7 +431,7 @@ const sharedSegments = (
  * those the older checks cover. `once` keys by the view as well as the
  * pair, so a pair that clashes in both views warns in both.
  */
-export const clashWarnings = ({
+const clashWarnings = ({
   clashes,
   where,
   once,

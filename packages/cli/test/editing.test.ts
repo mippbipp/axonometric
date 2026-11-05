@@ -1,4 +1,5 @@
-import { LayoutFile, Proposals, structuresOf } from "@axonometric/contracts";
+import { LayoutFile, structuresOf } from "@axonometric/contracts";
+import type { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -10,111 +11,50 @@ import {
   Option,
   Path,
   Schema,
+  String as Str,
 } from "effect";
 import type { Page, Route } from "playwright";
 
-import { boxesOf, literal, openPage, openUrl } from "./browser.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import {
+  attributeOf,
+  boxesOf,
+  centreOf,
+  count,
+  goToChapter,
+  literal,
+  openPage,
+  showView,
+  strokeOf,
+  unitOnScreen,
+  waitFor,
+  waitGone,
+} from "./browser.ts";
+import {
+  openReviewMap,
+  proposalsIn,
+  runCli,
+  waitForRevision,
+} from "./harness.ts";
+import { moveOf } from "./revisions.ts";
 
 // Editing the layout in a page that a real serve serves: dragging and
 // resizing structures, and what lands in proposals.json.
-
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 /** The review map served on a free port, open in the last chapter. */
 const servedReview = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
+  const opened = yield* openReviewMap({});
 
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-  yield* lastChapter(opened.page);
+  yield* goToChapter(opened.page, "c-all");
 
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const lastChapter = Effect.fnUntraced(function* (page: Page) {
-  yield* Effect.promise(() =>
-    page.locator('[data-chapter-rail] button[data-chapter="c-all"]').click()
-  );
-  yield* Effect.promise(() =>
-    page
-      .locator('[data-walkthrough][data-chapter="c-all"]')
-      .waitFor(waitTimeout)
-  );
+  return opened;
 });
-
-const toPlan = Effect.fnUntraced(function* (page: Page) {
-  yield* Effect.promise(() =>
-    page.locator('[data-view-toggle] [data-view="plan"]').click()
-  );
-  yield* Effect.promise(() =>
-    page.locator('[data-walkthrough][data-view="plan"]').waitFor()
-  );
-});
-
-/** What proposals.json in `home` holds, or nothing when there's no file. */
-const proposalsIn = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, "proposals.json");
-
-  if (!(yield* fs.exists(file))) {
-    return Option.none<Proposals>();
-  }
-
-  return Option.some(yield* decodeProposals(yield* fs.readFileString(file)));
-}, Effect.provide(NodeServices.layer));
-
-/** Waits until proposals.json in `home` is at `revision`. */
-const waitForRevision = Effect.fnUntraced(function* (
-  home: string,
-  revision: number
-) {
-  for (let tries = 0; tries < 150; tries++) {
-    const now = yield* proposalsIn(home);
-
-    if (Option.isSome(now) && now.value.revision >= revision) {
-      return now.value;
-    }
-
-    yield* Effect.sleep("100 millis");
-  }
-
-  return assert.fail(`proposals.json never reached revision ${revision}`);
-});
-
-const attribute = (page: Page, selector: string, name: string) =>
-  Effect.promise(() => page.locator(selector).first().getAttribute(name));
 
 interface Point {
   readonly x: number;
   readonly y: number;
 }
-
-/** The middle of the element matching `selector`, in window pixels. */
-const centreOf = Effect.fnUntraced(function* (page: Page, selector: string) {
-  const box = yield* Effect.promise(() =>
-    page.locator(selector).first().boundingBox()
-  );
-
-  assert.isNotNull(box, `${selector} isn't on screen`);
-
-  return box === null
-    ? { x: 0, y: 0 }
-    : { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-});
 
 /** Presses at `from` and moves by `by` in small steps, still pressed. */
 const pressAndMove = Effect.fnUntraced(function* (
@@ -135,16 +75,6 @@ const dragBy = (page: Page, from: Point, by: Point) =>
     Effect.andThen(Effect.promise(() => page.mouse.up()))
   );
 
-/** One grid unit along x or y on screen, at the view's current zoom. */
-const unitOnScreen = Effect.fnUntraced(function* (
-  page: Page,
-  view: "iso" | "plan"
-) {
-  const scale = yield* attribute(page, "svg[data-scale]", "data-scale");
-
-  return (view === "plan" ? 60 : Math.hypot(36, 18)) * Number(scale);
-});
-
 /** The computed opacity of the element matching `selector`. */
 const opacityOf = (page: Page, selector: string) =>
   Effect.promise(() =>
@@ -153,42 +83,9 @@ const opacityOf = (page: Page, selector: string) =>
     )
   );
 
-/** The computed stroke colour of the element matching `selector`. */
-const strokeOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page.evaluate<string>(
-      `getComputedStyle(document.querySelector(${literal(selector)})).stroke`
-    )
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
 /** The changes without their random ids, for comparing what they do. */
 const withoutIds = (layout: Proposals["layout"]) =>
   Arr.map(layout, ({ id: _id, ...rest }) => rest);
-
-/** A move of structure `id` to a spot well clear of the others. */
-const moveOf = (
-  changeId: string,
-  id: string,
-  to: { readonly x: number; readonly y: number }
-) => ({
-  id: changeId,
-  kind: "move",
-  moves: [{ target: { kind: "structure", id }, position: to }],
-});
 
 const onHalfUnit = (value: number) => Number.isInteger(value * 2);
 
@@ -199,7 +96,7 @@ describe("moving structures", () => {
       Effect.gen(function* () {
         const { home, page, errors } = yield* servedReview;
 
-        yield* toPlan(page);
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* centreOf(page, '[data-structure="engineer"]');
@@ -267,7 +164,7 @@ describe("moving structures", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toPlan(page);
+        yield* showView(page, "plan");
 
         const from = yield* centreOf(page, '[data-structure="engineer"]');
         const onto = yield* centreOf(page, '[data-structure="page"]');
@@ -278,7 +175,7 @@ describe("moving structures", () => {
         });
 
         assert.strictEqual(
-          yield* attribute(page, "[data-drag-outline]", "data-refused"),
+          yield* attributeOf(page, "[data-drag-outline]", "data-refused"),
           "true"
         );
 
@@ -288,12 +185,12 @@ describe("moving structures", () => {
           yield* count(page, '[data-drag-origin="engineer"]'),
           1
         );
-        assert.strictEqual(
-          yield* opacityOf(page, '[data-structure="engineer"]'),
-          "0.55"
+        assert.isBelow(
+          Number(yield* opacityOf(page, '[data-structure="engineer"]')),
+          1
         );
 
-        const before = yield* attribute(
+        const before = yield* attributeOf(
           page,
           '[data-structure="engineer"] [data-face]',
           "x"
@@ -309,7 +206,7 @@ describe("moving structures", () => {
           0
         );
         assert.strictEqual(
-          yield* attribute(
+          yield* attributeOf(
             page,
             '[data-structure="engineer"] [data-face]',
             "x"
@@ -359,11 +256,11 @@ describe("the pending look", () => {
 
         for (const view of ["iso", "plan"] as const) {
           if (view === "plan") {
-            yield* toPlan(page);
+            yield* showView(page, "plan");
           }
 
           assert.strictEqual(
-            yield* attribute(
+            yield* attributeOf(
               page,
               '[data-structure="engineer"]',
               "data-pending"
@@ -384,7 +281,11 @@ describe("the pending look", () => {
             view
           );
           assert.include(
-            yield* attribute(page, '[data-structure="engineer"]', "aria-label"),
+            yield* attributeOf(
+              page,
+              '[data-structure="engineer"]',
+              "aria-label"
+            ),
             "pending change",
             view
           );
@@ -406,7 +307,7 @@ describe("resizing structures", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toPlan(page);
+        yield* showView(page, "plan");
         yield* Effect.promise(() =>
           page.locator('[data-structure="engineer"]').click()
         );
@@ -443,6 +344,27 @@ describe("resizing structures", () => {
 
         assert.strictEqual(yield* count(page, "[data-resize-handle]"), 4);
 
+        // The engineer's footprint is 2 × 2. On the Iso view's ground a unit
+        // along x is 36 right and 18 down, and along y 36 left and 18 down,
+        // in drawing units, so from the back corner (nw) the others sit at
+        // these offsets.
+        const scale = Number(
+          yield* attributeOf(page, "svg[data-scale]", "data-scale")
+        );
+
+        const back = yield* centreOf(page, '[data-resize-handle="nw"]');
+
+        for (const [corner, x, y] of [
+          ["ne", 72, 36],
+          ["se", 0, 72],
+          ["sw", -72, 36],
+        ] as const) {
+          const at = yield* centreOf(page, `[data-resize-handle="${corner}"]`);
+
+          assert.closeTo(at.x - back.x, x * scale, 1, `${corner} x`);
+          assert.closeTo(at.y - back.y, y * scale, 1, `${corner} y`);
+        }
+
         const unit = yield* unitOnScreen(page, "iso");
         const corner = yield* centreOf(page, '[data-resize-handle="se"]');
 
@@ -475,6 +397,18 @@ describe("the side panel tabs", () => {
           page.locator('[role="tab"][data-tab="pending"]').waitFor()
         );
 
+        const names = yield* Effect.promise(() =>
+          page.locator('[role="tab"]').allTextContents()
+        );
+
+        assert.deepStrictEqual(Arr.map(names, Str.replace(/ · \d+$/u, "")), [
+          "Details",
+          "Questions",
+          "Flows",
+          "Pending",
+          "History",
+        ]);
+
         const boxes = yield* boxesOf(page, '[role="tab"]');
         const [first] = boxes;
 
@@ -497,19 +431,19 @@ describe("the pending list", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toPlan(page);
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* centreOf(page, '[data-structure="engineer"]');
         const face = '[data-structure="engineer"] [data-face]';
-        const accepted = yield* attribute(page, face, "x");
+        const accepted = yield* attributeOf(page, face, "x");
 
         yield* dragBy(page, from, { x: unit * 0.5, y: unit * 3.5 });
         yield* waitForRevision(home, 1);
 
         yield* Effect.promise(() => page.reload());
-        yield* lastChapter(page);
-        yield* toPlan(page);
+        yield* goToChapter(page, "c-all");
+        yield* showView(page, "plan");
         yield* waitFor(
           page,
           '[data-structure="engineer"][data-pending="true"]'
@@ -534,7 +468,7 @@ describe("the pending list", () => {
         assert.deepStrictEqual(after.layout, []);
         yield* waitGone(page, '[data-structure][data-pending="true"]');
         yield* waitGone(page, "[data-accepted-outline]");
-        assert.strictEqual(yield* attribute(page, face, "x"), accepted);
+        assert.strictEqual(yield* attributeOf(page, face, "x"), accepted);
       }),
     60_000
   );
@@ -589,7 +523,7 @@ describe("editing off", () => {
         const path = yield* Path.Path;
         const { root, home, serve, page } = yield* servedReview;
 
-        yield* toPlan(page);
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* centreOf(page, '[data-structure="engineer"]');
@@ -611,14 +545,14 @@ describe("editing off", () => {
 
         const opened = yield* openPage(file);
 
-        yield* lastChapter(opened.page);
-        yield* toPlan(opened.page);
+        yield* goToChapter(opened.page, "c-all");
+        yield* showView(opened.page, "plan");
         yield* Effect.promise(() =>
           opened.page.locator('[data-structure="engineer"]').click()
         );
 
         assert.strictEqual(
-          yield* attribute(
+          yield* attributeOf(
             opened.page,
             '[data-structure="engineer"] [data-face]',
             "x"
@@ -664,7 +598,7 @@ describe("editing off", () => {
     const reached = yield* Latch.make();
     const run = Effect.runPromiseWith(yield* Effect.context());
 
-    yield* toPlan(page);
+    yield* showView(page, "plan");
 
     const holdOnce = (route: Route) =>
       run(

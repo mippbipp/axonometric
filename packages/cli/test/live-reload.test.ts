@@ -3,64 +3,25 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path, String as Str } from "effect";
 import type { Page } from "playwright";
 
-import { boxesOf, literal, openUrl } from "./browser.ts";
-import { fullMap } from "./fixtures.ts";
+import {
+  attributeOf,
+  boxesOf,
+  count,
+  textOf,
+  waitFor,
+  waitGone,
+  waitTimeout,
+} from "./browser.ts";
 import { commitAll, git, initRepo, noGit } from "./git.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { openReviewMap, runCli, startServe } from "./harness.ts";
 
 // These tests run a real serve in-process on a free port, open its page in
 // Chromium, change the map files on disk and check what the page shows.
 
-const waitTimeout = { timeout: 15_000 };
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const attributeOf = (page: Page, selector: string, name: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .getAttribute(name)
-      .then((value) => value ?? "")
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
 const panelTitle = '[data-structure-panel="server"] h2';
 
 /** The review map served on a free port, open in Chromium at 1280 × 800. */
-const servedReview = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
-
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
+const servedReview = openReviewMap({});
 
 /** Rewrites `data.mjs` in `home` with `edit` applied to its text. */
 const editData = Effect.fnUntraced(function* (
@@ -183,7 +144,7 @@ describe("live reload", () => {
   );
 
   it.live(
-    "moves a structure in Plan view when layout.json changes, staying in Plan view",
+    "moves a structure in Plan view when the layout command changes layout.json, keeping the view, the chapter and the selection",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
@@ -224,43 +185,6 @@ describe("live reload", () => {
           yield* attributeOf(page, "[data-walkthrough]", "data-view"),
           "plan"
         );
-        assert.strictEqual(
-          yield* attributeOf(page, '[data-selected="true"]', "data-structure"),
-          "server"
-        );
-      }),
-    60_000
-  );
-
-  it.live(
-    "applies a change to layout.json, such as from the layout command, keeping the chapter",
-    () =>
-      Effect.gen(function* () {
-        const { home, page } = yield* servedReview;
-        const face = '[data-structure="server"] [data-face]';
-
-        yield* settle(page);
-
-        const before = yield* attributeOf(page, face, "points");
-
-        const moved = yield* runCli(home, [
-          "layout",
-          home,
-          "server",
-          "--x",
-          "10",
-        ]);
-
-        assert.strictEqual(moved.exitCode, 0, moved.stderr);
-
-        yield* Effect.promise(() =>
-          page.waitForFunction(
-            `document.querySelector('${face}')?.getAttribute("points") !== ${literal(before)}`,
-            undefined,
-            waitTimeout
-          )
-        );
-
         assert.strictEqual(
           yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
           "c-save"

@@ -41,7 +41,7 @@ const writtenCapitals = (text: string): readonly string[] =>
  * letters starts from the alphabet. The agent sets the real code when it
  * folds the structure into data.mjs.
  */
-export const codeOfName: {
+const codeOfName: {
   (taken: ReadonlySet<string>): (name: string) => string;
   (name: string, taken: ReadonlySet<string>): string;
 } = dual(2, (name: string, taken: ReadonlySet<string>): string => {
@@ -160,7 +160,7 @@ const fieldBefore = (
 const placementWords = ({ x, y }: Placement) => `${x}, ${y}`;
 
 /** The table: one entry for every action of a structure change. */
-export const structureActions = {
+const structureActions = {
   add: {
     label: "add structure",
     toData: ({ structure: made }, data) =>

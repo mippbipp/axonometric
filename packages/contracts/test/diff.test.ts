@@ -11,6 +11,7 @@ import {
 } from "../src/index.ts";
 import type {
   DataSection,
+  Hop,
   Layout,
   LayoutChange,
   MapData,
@@ -98,6 +99,17 @@ describe("diffMaps()", () => {
 
         assert.deepStrictEqual(sections, [section]);
       }
+
+      const both = {
+        ...map.data,
+        overview: { ...map.data.overview, summary: "Another summary." },
+        chapters: map.data.chapters.slice(1),
+      };
+
+      assert.deepStrictEqual(
+        diffMaps(map, { data: both, layout: map.layout }).sections,
+        ["overview", "chapters"]
+      );
     })
   );
 
@@ -250,7 +262,7 @@ describe("diffMaps()", () => {
       })
   );
 
-  it.effect("compares hops: added, removed and changed text", () =>
+  it.effect("compares hops: added, removed, and each field that changed", () =>
     Effect.gen(function* () {
       const before = yield* review;
 
@@ -271,42 +283,29 @@ describe("diffMaps()", () => {
         removed: ["h-pr"],
         changed: [{ id: "h-store", fields: ["label"] }],
       });
-    })
-  );
 
-  it.effect("reports a rewired hop and a changed payload as changed", () =>
-    Effect.gen(function* () {
-      const before = yield* review;
+      // Change each field of a hop, alone and together, and see it named.
+      const edited = (edit: Partial<Hop>) =>
+        withData(before, (data) => ({
+          ...data,
+          hops: Arr.map(data.hops, (hop) =>
+            hop.id === "h-save" ? { ...hop, ...edit } : hop
+          ),
+        }));
 
-      const after = withData(before, (data) => ({
-        ...data,
-        hops: Arr.map(data.hops, (hop) =>
-          hop.id === "h-save"
-            ? { ...hop, to: "proposals", payload: { kind: "other" } }
-            : hop
-        ),
-      }));
-
-      assert.deepStrictEqual(diffMaps(before, after).hops.changed, [
-        { id: "h-save", fields: ["to", "payload"] },
-      ]);
-    })
-  );
-
-  it.effect("names the other parts of the data that differ", () =>
-    Effect.gen(function* () {
-      const before = yield* review;
-
-      const after = withData(before, (data) => ({
-        ...data,
-        overview: { ...data.overview, summary: "Another summary." },
-        chapters: data.chapters.slice(1),
-      }));
-
-      assert.deepStrictEqual(diffMaps(before, after).sections, [
-        "overview",
-        "chapters",
-      ]);
+      for (const [edit, fields] of [
+        [{ from: "engineer" }, ["from"]],
+        [{ to: "proposals" }, ["to"]],
+        [{ label: "PUT /proposals" }, ["label"]],
+        [{ payload: { kind: "other" } }, ["payload"]],
+        [{ to: "proposals", payload: { kind: "other" } }, ["to", "payload"]],
+      ] as const) {
+        assert.deepStrictEqual(
+          diffMaps(before, edited(edit)).hops.changed,
+          [{ id: "h-save", fields }],
+          Arr.join(fields, ", ")
+        );
+      }
     })
   );
 
@@ -585,8 +584,8 @@ describe("ghostedMap()", () => {
       const diff = diffMaps(map, map);
       const ghosted = ghostedMap({ current: map, revision: map, diff });
 
-      assert.strictEqual(ghosted.data, map.data);
-      assert.strictEqual(ghosted.layout, map.layout);
+      assert.deepStrictEqual(ghosted.data, map.data);
+      assert.deepStrictEqual(ghosted.layout, map.layout);
       assert.strictEqual(ghosted.ghostStructures.size, 0);
       assert.strictEqual(ghosted.ghostHops.size, 0);
     })

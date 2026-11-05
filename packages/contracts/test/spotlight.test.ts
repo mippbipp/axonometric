@@ -2,16 +2,8 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Order } from "effect";
 import { vi } from "vitest";
 
-import {
-  chapterSpotlightOf,
-  defaultFlowChoice,
-  spotlightOf,
-} from "../src/index.ts";
-import type {
-  FlowChoice,
-  SpotlightChoice,
-  SpotlightTarget,
-} from "../src/index.ts";
+import { chapterSpotlightOf, defaultFlowChoice } from "../src/index.ts";
+import type { FlowChoice, SpotlightTarget } from "../src/index.ts";
 
 vi.setConfig({ testTimeout: 5000 });
 
@@ -28,6 +20,7 @@ const hop = (id: string, from: string, to: string) => ({
 // a → b → c → d, a second hop from a to b, and a hop to e, which isn't
 // revealed.
 const data = {
+  flows: [],
   hops: [
     hop("ab", "a", "b"),
     hop("ab2", "a", "b"),
@@ -39,10 +32,28 @@ const data = {
 
 const revealed = new Set(["a", "b", "c", "d", "f"]);
 
-const nothing: SpotlightChoice = { play: [], hovered: null, pinned: null };
+interface Choice {
+  /** The hops the chapter plays, or `"all"` for all flows. */
+  readonly play: readonly string[] | "all";
+  readonly hovered: SpotlightTarget | null;
+  readonly pinned: SpotlightTarget | null;
+  readonly drawing?: {
+    readonly from: string;
+    readonly over: string | null;
+  } | null;
+}
 
-const spotlight = (choice: Partial<SpotlightChoice>) => {
-  const result = spotlightOf({ data, revealed, ...nothing, ...choice });
+const nothing: Choice = { play: [], hovered: null, pinned: null };
+
+const spotlight = (picked: Partial<Choice>) => {
+  const { play, ...rest } = { ...nothing, ...picked };
+
+  const result = chapterSpotlightOf({
+    data,
+    stop: { revealed, plays: play === "all" ? [] : play },
+    choice: play === "all" ? { kind: "all" } : { kind: "chapter" },
+    ...rest,
+  });
 
   return result === null
     ? null
@@ -74,16 +85,11 @@ describe("the spotlight of a chapter's play", () => {
     });
   });
 
-  it("fades nothing when the chapter plays nothing", () => {
-    assert.isNull(spotlight({ play: [] }));
-  });
-
-  it("fades nothing for all flows", () => {
-    assert.isNull(spotlight({ play: "all" }));
-  });
-
-  it("fades nothing when none of the played hops is drawn", () => {
-    assert.isNull(spotlight({ play: ["de"] }));
+  it.each([
+    ["the chapter plays nothing", []],
+    ["none of the played hops is drawn", ["de"]],
+  ] as const)("fades nothing when %s", (_why, play) => {
+    assert.isNull(spotlight({ play }));
   });
 });
 

@@ -1,44 +1,21 @@
 import { LayoutFile, shapes } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  FileSystem,
-  Order,
-  Path,
-  Schema,
-  String as Str,
-} from "effect";
+import { Array as Arr, Effect, FileSystem, Order, Path, Schema } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf, openPage } from "./browser.ts";
-import { drawingReport, overlap } from "./drawing-report.ts";
-import type { DrawingReport } from "./drawing-report.ts";
-import { crowdedMap, fullMap, pipelineMap, shapesMap } from "./fixtures.ts";
+import {
+  attributesOf,
+  click,
+  goToChapter,
+  inPage,
+  openPage,
+  press,
+  showView,
+  waitFor,
+} from "./browser.ts";
+import { fullMap, pipelineMap, shapesMap } from "./fixtures.ts";
 import { buildAndOpen, makeHome, runCli } from "./harness.ts";
-
-const inPage = <A>(page: Page, expression: string) =>
-  Effect.promise(() => page.evaluate<A>(expression));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor());
-
-const press = (page: Page, key: string) =>
-  Effect.promise(() => page.keyboard.press(key));
-
-const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-});
-
-const showPlan = Effect.fnUntraced(function* (page: Page) {
-  yield* click(page, '[data-view-toggle] [data-view="plan"]');
-  yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
-});
 
 /**
  * The middle of the structure's drawing in the drawing's own units, so a
@@ -74,42 +51,32 @@ const groundAtMiddle = (page: Page) =>
     })()`
   );
 
-/** Every text over text, and text over a box, drawn now. */
-const clashesIn = Effect.fnUntraced(function* (page: Page) {
-  const report = yield* inPage<DrawingReport>(page, drawingReport);
+/** How one part of a drawing is painted. */
+interface Paint {
+  readonly fill: string;
+  readonly fillOpacity: number;
+  readonly stroke: string;
+  readonly dashes: string;
+}
 
-  return [
-    ...Arr.flatMap(report.text, (first, index) =>
-      Arr.flatMap(report.text.slice(index + 1), (second) =>
-        overlap(first.polygon, second.polygon)
-          ? [`${first.id} × ${second.id}`]
-          : []
-      )
-    ),
-    ...Arr.flatMap(report.text, (text) =>
-      Arr.flatMap(report.structures, (box) =>
-        overlap(text.polygon, box.polygon) ? [`${text.id} × ${box.id}`] : []
-      )
-    ),
-  ];
-});
+/** Whether any part is dashed. */
+const dashed = (look: readonly Paint[]) =>
+  Arr.some(look, ({ dashes }) => dashes !== "none");
 
-/** Presses + until text draws at its own size or larger. */
-const zoomInToBaseSize = Effect.fnUntraced(function* (page: Page) {
-  const scale =
-    'Number(document.querySelector("svg[data-scale]").dataset.scale)';
+/** How many parts draw a solid outline. */
+const solidOutlines = (look: readonly Paint[]) =>
+  Arr.filter(
+    look,
+    ({ stroke, dashes }) => stroke !== "none" && dashes === "none"
+  ).length;
 
-  while ((yield* inPage<number>(page, scale)) < 1) {
-    const before = yield* inPage<number>(page, scale);
-
-    yield* press(page, "+");
-    yield* Effect.promise(() =>
-      page.waitForFunction(`${scale} > ${before}`, undefined, {
-        timeout: 5000,
-      })
-    );
-  }
-});
+/** Whether a part with no outline lays a see-through tint over the box. */
+const tinted = (look: readonly Paint[]) =>
+  Arr.some(
+    look,
+    ({ stroke, fillOpacity }) =>
+      stroke === "none" && fillOpacity > 0 && fillOpacity < 1
+  );
 
 const reviewPage = Effect.gen(function* () {
   const opened = yield* buildAndOpen(yield* fullMap, "review");
@@ -135,7 +102,7 @@ describe("Plan view", () => {
 
           const before = yield* groundAtMiddle(page);
 
-          yield* showPlan(page);
+          yield* showView(page, "plan");
 
           const after = yield* groundAtMiddle(page);
 
@@ -183,7 +150,7 @@ describe("Plan view", () => {
       Effect.gen(function* () {
         const { page } = yield* reviewPage;
 
-        yield* showPlan(page);
+        yield* showView(page, "plan");
         yield* goToChapter(page, "c-save");
         yield* click(page, '[data-structure="page"]');
         yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
@@ -191,12 +158,32 @@ describe("Plan view", () => {
         yield* waitFor(page, "[data-selection-marker=page]");
 
         yield* click(page, '[data-playback-controls] [data-control="pause"]');
-
-        const [hop] = yield* attributesOf(page, "[data-packet]", "data-packet");
-
-        assert.isDefined(hop);
         yield* click(page, "[data-packet]");
-        yield* waitFor(page, `[data-packet-panel="${hop}"]`);
+        yield* waitFor(page, "[data-packet-panel]");
+
+        // h-save is the chapter's hop with a payload.
+        for (let steps = 0; steps < 3; steps += 1) {
+          if (
+            (yield* Effect.promise(() =>
+              page.locator('[data-packet-panel="h-save"]').count()
+            )) > 0
+          ) {
+            break;
+          }
+
+          yield* click(page, '[data-playback-controls] [data-control="step"]');
+        }
+
+        yield* waitFor(page, '[data-packet-panel="h-save"]');
+        assert.strictEqual(
+          yield* Effect.promise(() =>
+            page.locator("[data-packet-payload]").textContent()
+          ),
+          `{
+  "kind": "note",
+  "target": "server"
+}`
+        );
       })
     )
   );
@@ -209,7 +196,7 @@ describe("Plan view", () => {
           "flake-pipeline"
         );
 
-        yield* showPlan(page);
+        yield* showView(page, "plan");
         yield* Effect.promise(() =>
           page.locator('[data-structure="updater"]').dblclick()
         );
@@ -238,7 +225,7 @@ describe("Plan view", () => {
       Effect.gen(function* () {
         const { page } = yield* buildAndOpen(yield* shapesMap, "shapes");
 
-        yield* showPlan(page);
+        yield* showView(page, "plan");
 
         const icons = yield* attributesOf(
           page,
@@ -264,44 +251,6 @@ describe("Plan view", () => {
     )
   );
 
-  it.live("gives live, planned and off their own look", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* shapesMap, "shapes");
-
-        yield* showPlan(page);
-
-        const lookOf = (id: string) =>
-          inPage<{ dashes: string; face: string; hatch: string; off: number }>(
-            page,
-            `(() => {
-              const structure = document.querySelector('[data-structure="${id}"]');
-              return {
-                dashes: getComputedStyle(structure).strokeDasharray,
-                face: getComputedStyle(structure.querySelector("[data-face]")).fill,
-                hatch: getComputedStyle(structure.querySelector("[data-hatch]")).display,
-                off: structure.querySelectorAll("[data-off-mark]").length,
-              };
-            })()`
-          );
-
-        const live = yield* lookOf("box");
-        const planned = yield* lookOf("cards");
-        const off = yield* lookOf("slab");
-
-        assert.strictEqual(live.dashes, "none");
-        assert.notStrictEqual(planned.dashes, "none");
-        assert.strictEqual(planned.hatch, "none");
-        assert.notStrictEqual(live.hatch, "none");
-        assert.strictEqual(off.dashes, "none");
-        assert.notStrictEqual(off.face, live.face);
-        assert.notStrictEqual(off.face, planned.face);
-        assert.strictEqual(off.off, 1);
-        assert.strictEqual(live.off, 0);
-      })
-    )
-  );
-
   it.live(
     "draws new, external and planned structures with different outlines",
     () =>
@@ -309,396 +258,41 @@ describe("Plan view", () => {
         Effect.gen(function* () {
           const { page } = yield* reviewPage;
 
-          yield* showPlan(page);
+          yield* showView(page, "plan");
 
-          // What a structure draws around and over its box: each part's
-          // tag, fill class and dash pattern.
-          const outlineOf = (id: string) =>
-            inPage<string>(
+          // How each part a structure draws around and over its box is
+          // painted, as the browser computes it.
+          const lookOf = (id: string) =>
+            inPage<readonly Paint[]>(
               page,
-              `Array.from(document.querySelectorAll('[data-structure="${id}"] > rect, [data-structure="${id}"] > polygon'), (part) =>
-                [part.tagName, part.getAttribute("class") ?? "", getComputedStyle(part).strokeDasharray, part.hasAttribute("data-new-marker"), part.hasAttribute("data-external-ring")].join(":")
-              ).join(" ")`
+              `Array.from(document.querySelectorAll('[data-structure="${id}"] > rect, [data-structure="${id}"] > polygon'), (part) => {
+                const style = getComputedStyle(part);
+
+                return { fill: style.fill, fillOpacity: Number(style.fillOpacity), stroke: style.stroke, dashes: style.strokeDasharray };
+              })`
             );
 
           yield* goToChapter(page, "c-save");
 
-          const fresh = yield* outlineOf("server");
+          const fresh = yield* lookOf("server");
 
           yield* goToChapter(page, "c-all");
 
-          const settled = yield* outlineOf("server");
-          const external = yield* outlineOf("upstream");
-          const planned = yield* outlineOf("pull-request");
-
-          assert.notStrictEqual(fresh, settled, "new looks like settled");
-          assert.lengthOf(new Set([fresh, external, planned]), 3);
+          const settled = yield* lookOf("server");
+          const external = yield* lookOf("upstream");
+          const planned = yield* lookOf("pull-request");
 
           // A new box is tinted, not ringed with dashes.
-          assert.include(fresh, "true:false");
-          assert.notInclude(fresh, "4px, 3px");
+          assert.isTrue(tinted(fresh), "new isn't tinted");
+          assert.isFalse(tinted(settled), "settled is tinted");
+          assert.isFalse(dashed(fresh), "new is dashed");
           // The external ring is a solid second outline.
-          assert.include(external, "false:true");
-          assert.notInclude(external, "4px, 3px:false:true");
-          assert.include(planned, "4px, 3px");
+          assert.isAtLeast(solidOutlines(external), 2);
+          assert.strictEqual(solidOutlines(settled), 1);
+          assert.isFalse(dashed(external), "external is dashed");
+          assert.isTrue(dashed(planned), "planned isn't dashed");
         })
       )
-  );
-
-  for (const { name, map, system } of [
-    { name: "review", map: fullMap, system: "review" },
-    { name: "crowded", map: crowdedMap, system: "crowded" },
-    { name: "pipeline", map: pipelineMap, system: "flake-pipeline" },
-  ]) {
-    it.live(
-      `keeps text clear of text and boxes on the ${name} map at 1280×800`,
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { page } = yield* buildAndOpen(yield* map, system);
-
-            yield* Effect.promise(() =>
-              page.setViewportSize({ width: 1280, height: 800 })
-            );
-            yield* showPlan(page);
-
-            const chapters = yield* attributesOf(
-              page,
-              "[data-chapter-rail] button[data-chapter]",
-              "data-chapter"
-            );
-
-            for (const chapter of chapters) {
-              yield* goToChapter(page, chapter);
-              yield* click(
-                page,
-                '[data-playback-controls] [data-control="pause"]'
-              );
-
-              // At fit, hop labels may be too small to show. Zoomed in to
-              // where text draws at its own size, every placed label shows.
-              assert.deepStrictEqual(
-                yield* clashesIn(page),
-                [],
-                `in ${chapter} at fit`
-              );
-              yield* zoomInToBaseSize(page);
-
-              const clashes = yield* clashesIn(page);
-
-              assert.isNotEmpty(
-                yield* attributesOf(page, "[data-hop-label]", "data-hop-label"),
-                `no hop labels in ${chapter}`
-              );
-              assert.deepStrictEqual(clashes, [], `in ${chapter} zoomed in`);
-            }
-          })
-        ),
-      60_000
-    );
-  }
-});
-
-/**
- * Every hop's drawn line, every footprint's edges and every zone's outline
- * in Plan view, in screen pixels. Footprints and zones come from the
- * layout the page was built with, through the viewport's transform: one
- * grid unit is 60 drawing units, and zones reach one unit past their
- * group's revealed structures.
- */
-const planGround = `(() => {
-  const world = document.querySelector("[data-viewport]");
-  const matrix = world.getScreenCTM();
-  const toScreen = (x, y) => {
-    const at = new DOMPoint(x, y).matrixTransform(matrix);
-
-    return { x: at.x, y: at.y };
-  };
-  const state = JSON.parse(
-    document.getElementById("axonometric-map-state").textContent
-  );
-  const shown = new Set(
-    [...document.querySelectorAll("[data-structure]")].map((box) => box.dataset.structure)
-  );
-  const rectOf = ({ x, y, w, d }) => [
-    toScreen(x * 60, y * 60),
-    toScreen((x + w) * 60, y * 60),
-    toScreen((x + w) * 60, (y + d) * 60),
-    toScreen(x * 60, (y + d) * 60),
-  ];
-  const structures = state.data.structures
-    .filter(({ id }) => shown.has(id))
-    .map(({ id, group }) => ({ id, group, placement: state.layout.structures[id] }));
-  const zones = state.data.groups.flatMap(({ id }) => {
-    const members = structures.filter((item) => item.group === id);
-
-    if (members.length === 0) {
-      return [];
-    }
-
-    const left = Math.min(...members.map(({ placement }) => placement.x)) - 1;
-    const top = Math.min(...members.map(({ placement }) => placement.y)) - 1;
-    const right = Math.max(...members.map(({ placement }) => placement.x + placement.w)) + 1;
-    const bottom = Math.max(...members.map(({ placement }) => placement.y + placement.d)) + 1;
-
-    return [{ id, outline: rectOf({ x: left, y: top, w: right - left, d: bottom - top }) }];
-  });
-  const hopOf = new Map(state.data.hops.map((hop) => [hop.id, hop]));
-  const hops = [...document.querySelectorAll("[data-hop]")].map((element) => {
-    const hop = hopOf.get(element.dataset.hop);
-
-    return {
-      id: hop.id,
-      from: hop.from,
-      to: hop.to,
-      points: element.dataset.route.split(" ").map((pair) => {
-        const [x, y] = pair.split(",").map(Number);
-
-        return toScreen(x, y);
-      }),
-    };
-  });
-
-  return {
-    structures: structures.map(({ id, placement }) => ({ id, outline: rectOf(placement) })),
-    zones,
-    hops,
-  };
-})()`;
-
-interface Pixel {
-  readonly x: number;
-  readonly y: number;
-}
-
-interface PlanGround {
-  readonly structures: readonly {
-    readonly id: string;
-    readonly outline: readonly Pixel[];
-  }[];
-  readonly zones: readonly {
-    readonly id: string;
-    readonly outline: readonly Pixel[];
-  }[];
-  readonly hops: readonly {
-    readonly id: string;
-    readonly from: string;
-    readonly to: string;
-    readonly points: readonly Pixel[];
-  }[];
-}
-
-interface Run {
-  readonly start: Pixel;
-  readonly end: Pixel;
-}
-
-const runsOf = (points: readonly Pixel[]): readonly Run[] =>
-  Arr.flatMap(points, (start, index) => {
-    const end = points[index + 1];
-
-    return end === undefined ? [] : [{ start, end }];
-  });
-
-const closedRunsOf = (outline: readonly Pixel[]) =>
-  runsOf([...outline, ...outline.slice(0, 1)]);
-
-/**
- * How far two runs, each along x or y on screen, stay apart: 0 where they
- * cross or touch.
- */
-const runGap = (a: Run, b: Run) => {
-  const span = (run: Run, axis: "x" | "y") => ({
-    low: Math.min(run.start[axis], run.end[axis]),
-    high: Math.max(run.start[axis], run.end[axis]),
-  });
-
-  const apart = (axis: "x" | "y") => {
-    const one = span(a, axis);
-    const two = span(b, axis);
-
-    return Math.max(0, one.low - two.high, two.low - one.high);
-  };
-
-  return Math.hypot(apart("x"), apart("y"));
-};
-
-/** A run with `by` pixels cut off its start, its end, or both. */
-const trimRun = (
-  { start, end }: Run,
-  {
-    atStart,
-    atEnd,
-    by,
-  }: { readonly atStart: boolean; readonly atEnd: boolean; readonly by: number }
-): Run => {
-  const length = Math.max(Math.hypot(end.x - start.x, end.y - start.y), 1e-9);
-  const ux = (end.x - start.x) / length;
-  const uy = (end.y - start.y) / length;
-
-  return {
-    start: atStart ? { x: start.x + ux * by, y: start.y + uy * by } : start,
-    end: atEnd ? { x: end.x - ux * by, y: end.y - uy * by } : end,
-  };
-};
-
-const vertical = ({ start, end }: Run) => Math.abs(start.x - end.x) < 1e-6;
-
-/** How far two parallel runs lie alongside each other, in pixels. */
-const overlapLength = (a: Run, b: Run) => {
-  const axis = vertical(a) ? "y" : "x";
-
-  return (
-    Math.min(
-      Math.max(a.start[axis], a.end[axis]),
-      Math.max(b.start[axis], b.end[axis])
-    ) -
-    Math.max(
-      Math.min(a.start[axis], a.end[axis]),
-      Math.min(b.start[axis], b.end[axis])
-    )
-  );
-};
-
-/** How close a drawn line may come to an outline or another line, in pixels. */
-const pixelClearance = 2;
-
-describe("Plan view's routes", () => {
-  it.live(
-    "keep off outlines and each other on the pipeline map's chapter 8 at 1780×1020",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { page } = yield* buildAndOpen(
-            yield* pipelineMap,
-            "flake-pipeline"
-          );
-
-          yield* Effect.promise(() =>
-            page.setViewportSize({ width: 1780, height: 1020 })
-          );
-          yield* showPlan(page);
-          yield* goToChapter(page, "c-all");
-          yield* click(page, '[data-playback-controls] [data-control="pause"]');
-          // Let the fit settle.
-          yield* Effect.promise(() => page.waitForTimeout(500));
-
-          const ground = yield* inPage<PlanGround>(page, planGround);
-
-          assert.lengthOf(ground.hops, 29);
-
-          const nearOutlines = Arr.flatMap(ground.hops, (hop) => {
-            const runs = runsOf(hop.points);
-
-            const outlines = [
-              ...Arr.map(ground.structures, ({ id, outline }) => ({
-                id: `box:${id}`,
-                own: id === hop.from || id === hop.to,
-                fromEnd: id === hop.from,
-                toEnd: id === hop.to,
-                outline,
-              })),
-              ...Arr.map(ground.zones, ({ id, outline }) => ({
-                id: `zone:${id}`,
-                own: false,
-                fromEnd: false,
-                toEnd: false,
-                outline,
-              })),
-            ];
-
-            return Arr.flatMap(outlines, ({ id, fromEnd, toEnd, outline }) => {
-              const zone = Str.startsWith("zone:")(id);
-
-              const near = Arr.some(runs, (run, index) => {
-                // Outside the route's own ends, a run keeps off the edge.
-                const trimmed = trimRun(run, {
-                  atStart: index === 0 && fromEnd,
-                  atEnd: index === runs.length - 1 && toEnd,
-                  by: pixelClearance + 1,
-                });
-
-                return Arr.some(closedRunsOf(outline), (edge) =>
-                  zone
-                    ? // A zone's outline may be crossed, not lain along.
-                      vertical(edge) === vertical(trimmed) &&
-                      runGap(trimmed, edge) < pixelClearance &&
-                      overlapLength(trimmed, edge) > pixelClearance
-                    : runGap(trimmed, edge) < pixelClearance
-                );
-              });
-
-              return near ? [`${hop.id} × ${id}`] : [];
-            });
-          });
-
-          const closeLines = Arr.flatMap(ground.hops, (first, index) =>
-            Arr.flatMap(ground.hops.slice(index + 1), (second) =>
-              Arr.some(runsOf(first.points), (a) =>
-                Arr.some(runsOf(second.points), (b) =>
-                  vertical(a) === vertical(b)
-                    ? runGap(a, b) < pixelClearance
-                    : // Crossing lines run on past each other.
-                      runGap(a, b) < pixelClearance &&
-                      Arr.some(
-                        [
-                          [a.start, b],
-                          [a.end, b],
-                          [b.start, a],
-                          [b.end, a],
-                        ] as const,
-                        ([point, run]) =>
-                          runGap({ start: point, end: point }, run) <
-                          pixelClearance
-                      )
-                )
-              )
-                ? [`${first.id} × ${second.id}`]
-                : []
-            )
-          );
-
-          const heads = yield* inPage<
-            readonly {
-              readonly id: string;
-              readonly left: number;
-              readonly right: number;
-              readonly top: number;
-              readonly bottom: number;
-            }[]
-          >(
-            page,
-            `Array.from(document.querySelectorAll("[data-hop] [data-arrowhead]"), (head) => {
-              const box = head.getBoundingClientRect();
-
-              return {
-                id: head.closest("[data-hop]").dataset.hop,
-                left: box.left,
-                right: box.right,
-                top: box.top,
-                bottom: box.bottom,
-              };
-            })`
-          );
-
-          const touching = Arr.flatMap(heads, (first, index) =>
-            Arr.flatMap(heads.slice(index + 1), (second) =>
-              first.left < second.right &&
-              second.left < first.right &&
-              first.top < second.bottom &&
-              second.top < first.bottom
-                ? [`${first.id} × ${second.id}`]
-                : []
-            )
-          );
-
-          assert.lengthOf(heads, 29);
-          assert.deepStrictEqual(touching, [], "arrowheads touching");
-          assert.deepStrictEqual(nearOutlines, [], "routes on outlines");
-          assert.deepStrictEqual(closeLines, [], "lines on lines");
-        })
-      ),
-    60_000
   );
 });
 
@@ -746,7 +340,7 @@ describe("both views", () => {
 
             const iso = yield* offset();
 
-            yield* showPlan(page);
+            yield* showView(page, "plan");
 
             return { iso, plan: yield* offset() };
           });

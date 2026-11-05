@@ -1153,7 +1153,7 @@ export const fullNames = (names: PartialNames): Names => ({
 });
 
 /** One line that says what an item is. */
-export const summaryLine: {
+const summaryLine: {
   (names: PartialNames): (item: BatchItem) => string;
   (item: BatchItem, names: PartialNames): string;
 } = dual(2, (item: BatchItem, names: PartialNames): string =>

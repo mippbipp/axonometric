@@ -1,12 +1,10 @@
 import { Proposals } from "@axonometric/contracts";
 import type { Batch, BatchItem } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Path, Schema } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
+import { Array as Arr, Effect, Schema } from "effect";
 
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { proposalsText, serveReviewMap } from "./harness.ts";
+import { post } from "./revisions.ts";
 
 // Plain HTTP writes for hop labels and flow names, for the requests a page
 // would not send: a name with a line break in it. A refused write must leave
@@ -66,55 +64,10 @@ const file = `${JSON.stringify(
   2
 )}\n`;
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-
-  const root = yield* makeHome({
-    ...(yield* fullMap),
-    "review/map/proposals.json": file,
-  });
-
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-
-  return { home, url: serve.url };
-}).pipe(Effect.provide(NodeServices.layer));
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
-
-const post = (url: string, pathname: string, body: string) =>
-  HttpClient.HttpClient.use((client) =>
-    client.execute(
-      HttpClientRequest.post(new URL(pathname, url)).pipe(
-        HttpClientRequest.setHeaders({
-          origin: url,
-          "content-type": "application/json",
-        }),
-        HttpClientRequest.bodyText(body, "application/json")
-      )
-    )
-  ).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text): Sent => ({
-        status: response.status,
-        body: text,
-      }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
-  );
+const served = serveReviewMap({ "review/map/proposals.json": file }, []);
 
 const json = (value: Readonly<Record<string, Schema.Json>>) =>
   JSON.stringify(value);
-
-const proposalsText = (home: string) =>
-  runCli(home, ["--version"]).pipe(
-    Effect.map(({ files }) => files["proposals.json"] ?? "")
-  );
 
 const decodeProposals = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Proposals)

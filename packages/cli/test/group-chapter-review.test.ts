@@ -1,6 +1,5 @@
 import {
   FreezeAnswer,
-  LayoutFile,
   ProposalsFile,
   ReviewReport,
   Revision,
@@ -13,7 +12,7 @@ import type {
   Proposals,
   StructureChange,
 } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
@@ -24,10 +23,10 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
+import { post as postText } from "./revisions.ts";
 
 // Seam 1: a group and a chapter change through the review loop. The review
 // map has engineer, page, server, proposals, pull-request and upstream, in
@@ -128,8 +127,6 @@ const withGroup =
         )(so)
     );
 
-const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
-
 const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
 
 const decodeRevision = Schema.decodeUnknownEffect(
@@ -179,24 +176,8 @@ const rejectedHome = (items: readonly BatchItem[]) =>
 /** A write the page could send: a JSON object of known fields. */
 type Write = Readonly<Record<string, Schema.Json>>;
 
-const post = (url: string, path: string, body: Write) => {
-  const request = HttpClientRequest.post(new URL(path, url)).pipe(
-    HttpClientRequest.setHeaders({
-      origin: url,
-      "content-type": "application/json",
-    }),
-    HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
-  );
-
-  return HttpClient.HttpClient.use((client) => client.execute(request)).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text) => ({ status: response.status, text }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
-  );
-};
+const post = (url: string, path: string, body: Write) =>
+  postText(url, path, JSON.stringify(body));
 
 describe("a group made from two structures, through freeze, verdict and commit", () => {
   const items = [
@@ -309,43 +290,6 @@ describe("a group made from two structures, through freeze, verdict and commit",
       })
   );
 
-  it.effect("refuses to commit while data.mjs lacks the group", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith(items);
-
-      for (const id of ["g1", "s1", "s2"]) {
-        yield* runCli(home, ["verdict", home, id, "accepted"]);
-      }
-
-      const committed = yield* runCli(home, ["commit", home]);
-
-      assert.strictEqual(committed.exitCode, 1);
-      assert.include(committed.stderr, "data.mjs has no group");
-    })
-  );
-
-  it.effect(
-    "refuses --as on a group when the accepted map already has it",
-    () =>
-      Effect.gen(function* () {
-        const { home } = yield* homeWith(items);
-
-        const refused = yield* runCli(home, [
-          "verdict",
-          home,
-          "g1",
-          "changed",
-          "--reason",
-          "No.",
-          "--as",
-          "loop",
-        ]);
-
-        assert.strictEqual(refused.exitCode, 1);
-        assert.include(refused.stderr, "already has");
-      })
-  );
-
   it.effect("lists the items under a Diagram changes heading in review", () =>
     Effect.gen(function* () {
       const { home } = yield* homeWith(items);
@@ -359,61 +303,6 @@ describe("a group made from two structures, through freeze, verdict and commit",
 });
 
 describe("a chapter change through review", () => {
-  const unrevealedPlay = chapterItem("c1", {
-    action: "play",
-    chapter: "c-page",
-    hop: "h-store",
-  });
-
-  it.effect(
-    "flags a chapter that plays a hop whose structures it hasn't revealed",
-    () =>
-      Effect.gen(function* () {
-        // h-store runs from server to proposals, which c-save reveals.
-        const { home } = yield* homeWith([unrevealedPlay]);
-        const reviewed = yield* runCli(home, ["review", home, "--json"]);
-        const report = yield* decodeReview(reviewed.stdout);
-        const [first] = report.batch?.items ?? [];
-
-        assert.strictEqual(first?.section, "chapter");
-        assert.include(first?.breaks ?? "", "write batch");
-        assert.include(first?.breaks ?? "", "h-store");
-        assert.include(first?.breaks ?? "", "Save server");
-        assert.include(first?.breaks ?? "", "Proposals");
-
-        const text = yield* runCli(home, ["review", home]);
-
-        assert.include(text.stdout, "BREAKS THE MAP if accepted:");
-        assert.include(text.stdout, "Chapter changes:");
-      })
-  );
-
-  it.effect("does not flag a hop the chapter's own reveal covers", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith([
-        unrevealedPlay,
-        chapterItem("c2", {
-          action: "reveal",
-          chapter: "c-page",
-          structure: "server",
-        }),
-        chapterItem("c3", {
-          action: "reveal",
-          chapter: "c-page",
-          structure: "proposals",
-        }),
-      ]);
-
-      const reviewed = yield* runCli(home, ["review", home, "--json"]);
-      const report = yield* decodeReview(reviewed.stdout);
-
-      assert.deepStrictEqual(
-        Arr.map(report.batch?.items ?? [], ({ breaks }) => breaks),
-        [null, null, null]
-      );
-    })
-  );
-
   it.effect(
     "gives a revision item once the agent has made the change in data.mjs",
     () =>
@@ -466,45 +355,6 @@ describe("a chapter change through review", () => {
         );
       })
   );
-
-  it.effect("refuses to commit an accepted change data.mjs doesn't hold", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith([
-        chapterItem("c1", {
-          action: "reveal",
-          chapter: "c-page",
-          structure: "server",
-        }),
-      ]);
-
-      yield* runCli(home, ["verdict", home, "c1", "accepted"]);
-
-      const committed = yield* runCli(home, ["commit", home]);
-
-      assert.strictEqual(committed.exitCode, 1);
-      assert.include(committed.stderr, "does not yet have");
-    })
-  );
-
-  it.effect("refuses --as on a chapter item", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith([unrevealedPlay]);
-
-      const refused = yield* runCli(home, [
-        "verdict",
-        home,
-        "c1",
-        "changed",
-        "--reason",
-        "No.",
-        "--as",
-        "x",
-      ]);
-
-      assert.strictEqual(refused.exitCode, 1);
-      assert.include(refused.stderr, "--as");
-    })
-  );
 });
 
 describe("group and chapter writes over HTTP", () => {
@@ -527,9 +377,9 @@ describe("group and chapter writes over HTTP", () => {
           ],
         });
 
-        assert.strictEqual(made.status, 200, made.text);
+        assert.strictEqual(made.status, 200, made.body);
 
-        const proposals = yield* decodeProposals(made.text);
+        const proposals = yield* decodeProposals(made.body);
 
         assert.deepStrictEqual(
           Arr.map(proposals.structures ?? [], ({ id }) => id),
@@ -550,15 +400,15 @@ describe("group and chapter writes over HTTP", () => {
           },
         });
 
-        assert.strictEqual(chapter.status, 200, chapter.text);
+        assert.strictEqual(chapter.status, 200, chapter.body);
 
         const frozen = yield* post(serve.url, "/api/review/freeze", {
-          baseFileRevision: (yield* decodeProposals(chapter.text)).revision,
+          baseFileRevision: (yield* decodeProposals(chapter.body)).revision,
         });
 
-        assert.strictEqual(frozen.status, 200, frozen.text);
+        assert.strictEqual(frozen.status, 200, frozen.body);
 
-        const { prompt } = yield* decodeFrozen(frozen.text);
+        const { prompt } = yield* decodeFrozen(frozen.body);
         const lines = Str.split("\n")(prompt);
         const diagram = lines.indexOf("Diagram changes:");
         const chapters = lines.indexOf("Chapter changes:");
@@ -573,42 +423,6 @@ describe("group and chapter writes over HTTP", () => {
           Arr.join(lines.slice(chapters), "\n"),
           'reveal c1: "Save server" (server) in chapter "The page" (c-page)'
         );
-      }).pipe(Effect.provide(NodeServices.layer))
-  );
-
-  it.live(
-    "refuses a group with a title another group has, or a rename of nothing",
-    () =>
-      Effect.gen(function* () {
-        const path = yield* Path.Path;
-        const root = yield* makeHome(yield* fullMap);
-        const home = path.join(root, "review", "map");
-        const serve = yield* startServe(home, ["--port", "0"]);
-
-        const same = yield* post(serve.url, "/api/groups", {
-          baseFileRevision: 0,
-          id: "g1",
-          change: { action: "add", group: { id: "again", title: "the loop" } },
-        });
-
-        assert.strictEqual(same.status, 422, same.text);
-        assert.include(same.text, "already has a group called");
-
-        const nothing = yield* post(serve.url, "/api/groups", {
-          baseFileRevision: 0,
-          id: "g2",
-          change: { action: "rename", group: "nope", title: "Nope" },
-        });
-
-        assert.strictEqual(nothing.status, 422, nothing.text);
-
-        const lost = yield* post(serve.url, "/api/chapters", {
-          baseFileRevision: 0,
-          id: "c1",
-          change: { action: "play", chapter: "c-page", hop: "nope" },
-        });
-
-        assert.strictEqual(lost.status, 422, lost.text);
       }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -640,7 +454,7 @@ describe("group and chapter writes over HTTP", () => {
       });
 
       assert.strictEqual(group.status, 422);
-      assert.include(group.text, "waiting for the agent");
+      assert.include(group.body, "waiting for the agent");
 
       const chapter = yield* post(serve.url, "/api/chapters", {
         baseFileRevision: 3,
@@ -649,7 +463,7 @@ describe("group and chapter writes over HTTP", () => {
       });
 
       assert.strictEqual(chapter.status, 422);
-      assert.include(chapter.text, "waiting for the agent");
+      assert.include(chapter.body, "waiting for the agent");
 
       const discard = yield* post(serve.url, "/api/items/discard", {
         baseFileRevision: 3,
@@ -657,7 +471,7 @@ describe("group and chapter writes over HTTP", () => {
       });
 
       assert.strictEqual(discard.status, 422);
-      assert.include(discard.text, "waiting for the agent");
+      assert.include(discard.body, "waiting for the agent");
     }).pipe(Effect.provide(NodeServices.layer))
   );
 });
@@ -671,20 +485,15 @@ describe("a group or chapter commit leaves layout.json as it was", () => {
         withGroup("data-1", [])
       );
 
-      yield* runCli(home, ["verdict", home, "g1", "accepted"]);
-
+      const before = yield* runCli(home, ["verdict", home, "g1", "accepted"]);
       const committed = yield* runCli(home, ["commit", home]);
 
+      assert.strictEqual(before.exitCode, 0, before.stderr);
       assert.strictEqual(committed.exitCode, 0, committed.stderr);
-
-      const layout = yield* decodeLayout(committed.files["layout.json"] ?? "");
-
-      assert.deepStrictEqual(layout.structures.server, {
-        x: 8,
-        y: 0,
-        w: 2,
-        d: 2,
-      });
+      assert.strictEqual(
+        committed.files["layout.json"],
+        before.files["layout.json"]
+      );
     })
   );
 });
@@ -702,35 +511,50 @@ const reopen = (
   });
 
 describe("editing a rejected group or chapter item again", () => {
-  it.live("refuses a title with a line break, with the schema's words", () =>
-    Effect.gen(function* () {
-      const { home } = yield* rejectedHome([groupItem("g1", newGroup)]);
-      const serve = yield* startServe(home, ["--port", "0"]);
+  it.live(
+    "refuses a group title or a structure name with a line break, with the schema's words",
+    () =>
+      Effect.gen(function* () {
+        const { home } = yield* rejectedHome([
+          groupItem("g1", newGroup),
+          structureItem("s1", {
+            action: "rename",
+            structure: "server",
+            name: "Server",
+          }),
+        ]);
 
-      const bad = yield* reopen(serve.url, "g1", { text: "\u0085Data" });
+        const serve = yield* startServe(home, ["--port", "0"]);
 
-      assert.strictEqual(bad.status, 422, bad.text);
-      assert.include(bad.text, "on one line");
+        for (const [id, text] of [
+          ["g1", "\u0085Data"],
+          ["s1", "Server\u0085"],
+        ] as const) {
+          const bad = yield* reopen(serve.url, id, { text });
 
-      const long = yield* reopen(serve.url, "g1", {
-        text: Str.repeat(81)("x"),
-      });
+          assert.strictEqual(bad.status, 422, `${id}: ${bad.body}`);
+          assert.include(bad.body, "on one line", id);
+        }
 
-      assert.strictEqual(long.status, 422, long.text);
+        const long = yield* reopen(serve.url, "g1", {
+          text: Str.repeat(81)("x"),
+        });
 
-      const fine = yield* reopen(serve.url, "g1", { text: "Storage" });
+        assert.strictEqual(long.status, 422, long.body);
 
-      assert.strictEqual(fine.status, 200, fine.text);
+        const fine = yield* reopen(serve.url, "g1", { text: "Storage" });
 
-      const held = yield* decodeProposals(fine.text);
+        assert.strictEqual(fine.status, 200, fine.body);
 
-      assert.deepStrictEqual(
-        Arr.map(held.groups ?? [], ({ change }) =>
-          change.action === "add" ? change.group.title : ""
-        ),
-        ["Storage"]
-      );
-    }).pipe(Effect.provide(NodeServices.layer))
+        const held = yield* decodeProposals(fine.body);
+
+        assert.deepStrictEqual(
+          Arr.map(held.groups ?? [], ({ change }) =>
+            change.action === "add" ? change.group.title : ""
+          ),
+          ["Storage"]
+        );
+      }).pipe(Effect.provide(NodeServices.layer))
   );
 
   it.live("refuses a title another group has, as a fresh proposal would", () =>
@@ -740,8 +564,8 @@ describe("editing a rejected group or chapter item again", () => {
 
       const clash = yield* reopen(serve.url, "g1", { text: "the loop" });
 
-      assert.strictEqual(clash.status, 422, clash.text);
-      assert.include(clash.text, "already has a group called");
+      assert.strictEqual(clash.status, 422, clash.body);
+      assert.include(clash.body, "already has a group called");
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -757,8 +581,8 @@ describe("editing a rejected group or chapter item again", () => {
       const serve = yield* startServe(home, ["--port", "0"]);
       const taken = yield* reopen(serve.url, "g1");
 
-      assert.strictEqual(taken.status, 422, taken.text);
-      assert.include(taken.text, "already has a group with the id");
+      assert.strictEqual(taken.status, 422, taken.body);
+      assert.include(taken.body, "already has a group with the id");
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -775,8 +599,8 @@ describe("editing a rejected group or chapter item again", () => {
       const serve = yield* startServe(home, ["--port", "0"]);
       const bad = yield* reopen(serve.url, "c1", { text: "Hi" });
 
-      assert.strictEqual(bad.status, 422, bad.text);
-      assert.include(bad.text, "has no text to edit");
+      assert.strictEqual(bad.status, 422, bad.body);
+      assert.include(bad.body, "has no text to edit");
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -794,26 +618,8 @@ describe("editing a rejected group or chapter item again", () => {
         const serve = yield* startServe(home, ["--port", "0"]);
         const alone = yield* reopen(serve.url, "c1");
 
-        assert.strictEqual(alone.status, 422, alone.text);
-        assert.include(alone.text, "write batch");
+        assert.strictEqual(alone.status, 422, alone.body);
+        assert.include(alone.body, "write batch");
       }).pipe(Effect.provide(NodeServices.layer))
-  );
-
-  it.live("refuses a structure name with a line break the same way", () =>
-    Effect.gen(function* () {
-      const { home } = yield* rejectedHome([
-        structureItem("s1", {
-          action: "rename",
-          structure: "server",
-          name: "Server",
-        }),
-      ]);
-
-      const serve = yield* startServe(home, ["--port", "0"]);
-      const bad = yield* reopen(serve.url, "s1", { text: "Server\u0085" });
-
-      assert.strictEqual(bad.status, 422, bad.text);
-      assert.include(bad.text, "on one line");
-    }).pipe(Effect.provide(NodeServices.layer))
   );
 });

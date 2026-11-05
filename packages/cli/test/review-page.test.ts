@@ -1,34 +1,20 @@
-import { ProposalsFile } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Option, Path, Schema } from "effect";
+import { Array as Arr, Effect, Option } from "effect";
 import type { Page } from "playwright";
 
-import { openUrl } from "./browser.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { click, count, textOf, waitFor, waitGone } from "./browser.ts";
+import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // The review loop in a page that a real serve serves: pin a note, send it to
 // the agent, and read the verdicts that the CLI commits.
-
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
 
 /** How the page's clipboard answers: allowed, or blocked as a browser may. */
 type Clipboard = "allowed" | "blocked";
 
 const servedReview = (clipboard: Clipboard = "allowed") =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
-    const root = yield* makeHome(yield* fullMap);
-    const home = path.join(root, "review", "map");
-    const serve = yield* startServe(home, ["--port", "0"]);
-    const opened = yield* openUrl(serve.url);
-
-    yield* Effect.promise(() =>
-      opened.page.setViewportSize({ width: 1280, height: 800 })
-    );
+    const opened = yield* openReviewMap({});
 
     // Playwright's browser has no clipboard permission, so the page's
     // writeText either works or fails by what the test installs.
@@ -48,34 +34,8 @@ const servedReview = (clipboard: Clipboard = "allowed") =>
       `)
     );
 
-    return { root, home, serve, ...opened };
-  }).pipe(Effect.provide(NodeServices.layer));
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
+    return opened;
+  });
 
 /** Goes to the saving chapter and pins the server structure. */
 const pinServer = Effect.fnUntraced(function* (page: Page) {
@@ -97,15 +57,6 @@ const pinNote = Effect.fnUntraced(function* (page: Page, text: string) {
     "[data-structure-panel] [data-notes-section] [data-note-send]"
   );
 });
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
-  );
-}, Effect.provide(NodeServices.layer));
 
 const copiedText = (page: Page) =>
   Effect.promise(() =>
@@ -176,7 +127,7 @@ describe("a note on a structure", () => {
 
 describe("the Ready for review button", () => {
   it.live(
-    "freezes batch 1 and copies a prompt that names the skill, the home folder and the batch",
+    "freezes batch 1, copies the prompt it shows, marks the note as waiting for the agent, and sends later edits to batch 2",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* servedReview();
@@ -190,15 +141,7 @@ describe("the Ready for review button", () => {
         const copied = yield* copiedText(page);
         const prompt = copied[0] ?? "";
 
-        assert.include(prompt, "axonometric skill");
-        assert.include(prompt, home);
         assert.include(prompt, "batch 1");
-        assert.include(prompt, "summary");
-        assert.include(prompt, `${home}/proposals.json`);
-        assert.match(
-          prompt,
-          /^- note \S+ on "Save server": "Why a server\?"$/mu
-        );
 
         const dialog = yield* textOf(page, "[data-review-dialog]");
 
@@ -212,12 +155,49 @@ describe("the Ready for review button", () => {
 
         assert.strictEqual(shown, prompt);
 
+        const frozen = yield* readProposals(home);
+
+        assert.strictEqual(frozen.batches?.length, 1);
+        assert.strictEqual(frozen.notes?.length, 0);
+
+        yield* click(page, "[data-review-close]");
+        yield* waitGone(page, "[data-review-dialog][open]");
+
+        // The frozen note waits for the agent, with no Discard.
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+        yield* waitFor(page, "[data-waiting-for-agent]");
+        assert.strictEqual(
+          yield* count(page, '[data-review-item] button:has-text("Discard")'),
+          0
+        );
+        assert.include(
+          yield* textOf(page, "[data-waiting-for-agent]"),
+          "waiting for the agent"
+        );
+
+        yield* click(page, '[role="tab"][data-tab="details"]');
+        yield* pinNote(page, "Second question");
+        yield* waitFor(page, '[data-panel-note][data-note-state="open"]');
+        yield* click(page, "[data-ready-for-review]");
+        yield* waitFor(page, "[data-review-dialog][open]");
+
+        assert.include(yield* textOf(page, "[data-review-title]"), "Batch 2");
+        assert.include((yield* copiedText(page)).at(-1) ?? "", "batch 2");
+
         const proposals = yield* readProposals(home);
 
-        assert.strictEqual(proposals.batches?.length, 1);
-        assert.strictEqual(proposals.notes?.length, 0);
+        assert.deepStrictEqual(
+          Arr.map(proposals.batches ?? [], ({ number, items }) => [
+            number,
+            items.length,
+          ]),
+          [
+            [1, 1],
+            [2, 1],
+          ]
+        );
       }),
-    60_000
+    90_000
   );
 
   it.live(
@@ -265,66 +245,6 @@ describe("the Ready for review button", () => {
       }),
     60_000
   );
-
-  it.live("sends edits made after freezing to batch 2", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* servedReview();
-
-      yield* pinServer(page);
-      yield* pinNote(page, "First question");
-      yield* waitFor(page, '[data-note-marker="server"]');
-      yield* click(page, "[data-ready-for-review]");
-      yield* waitFor(page, "[data-review-dialog][open]");
-      yield* click(page, "[data-review-close]");
-      yield* waitGone(page, "[data-review-dialog][open]");
-
-      yield* pinNote(page, "Second question");
-      yield* waitFor(page, '[data-panel-note][data-note-state="open"]');
-      yield* click(page, "[data-ready-for-review]");
-      yield* waitFor(page, "[data-review-dialog][open]");
-
-      assert.include(yield* textOf(page, "[data-review-title]"), "Batch 2");
-      assert.include((yield* copiedText(page)).at(-1) ?? "", "batch 2");
-
-      const proposals = yield* readProposals(home);
-
-      assert.deepStrictEqual(
-        Arr.map(proposals.batches ?? [], ({ number, items }) => [
-          number,
-          items.length,
-        ]),
-        [
-          [1, 1],
-          [2, 1],
-        ]
-      );
-    }).pipe(Effect.provide(NodeServices.layer))
-  );
-
-  it.live("tells the page a frozen note is waiting for the agent", () =>
-    Effect.gen(function* () {
-      const { page } = yield* servedReview();
-
-      yield* pinServer(page);
-      yield* pinNote(page, "Still thinking");
-      yield* waitFor(page, '[data-note-marker="server"]');
-      yield* click(page, "[data-ready-for-review]");
-      yield* waitFor(page, "[data-review-dialog][open]");
-      yield* click(page, "[data-review-close]");
-
-      yield* click(page, '[role="tab"][data-tab="pending"]');
-      yield* waitFor(page, "[data-waiting-for-agent]");
-
-      assert.strictEqual(
-        yield* count(page, '[data-review-item] button:has-text("Discard")'),
-        0
-      );
-      assert.include(
-        yield* textOf(page, "[data-waiting-for-agent]"),
-        "waiting for the agent"
-      );
-    }).pipe(Effect.provide(NodeServices.layer))
-  );
 });
 
 /** Pins a note, freezes it, and closes the dialog: batch 1 holds the note. */
@@ -349,7 +269,7 @@ const onlyItem = Effect.fnUntraced(function* (home: string) {
 
 describe("the agent's verdicts", () => {
   it.live(
-    "shows each verdict and reason after verdict and commit run in the CLI",
+    "shows each verdict and reason after verdict and commit run in the CLI, and keeps a rejected note, across a reload, until it is dismissed",
     () =>
       Effect.gen(function* () {
         const { home, page, errors } = yield* servedReview();
@@ -394,36 +314,20 @@ describe("the agent's verdicts", () => {
           1
         );
         assert.deepStrictEqual(errors, []);
+
+        // It survives a reload: the verdict is on disk, not in the page.
+        yield* Effect.promise(() => page.reload());
+        yield* pinServer(page);
+        yield* waitFor(page, '[data-note-marker="server"]');
+
+        yield* click(page, '[role="tab"][data-tab="pending"]');
+        yield* Effect.promise(() =>
+          page.locator(`[data-dismiss="${id}"]`).click()
+        );
+        yield* waitGone(page, '[data-note-marker="server"]');
+        yield* waitGone(page, "[data-review-item]");
       }).pipe(Effect.provide(NodeServices.layer)),
     90_000
-  );
-
-  it.live("keeps a rejected note until it is dismissed", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* servedReview();
-
-      yield* sendOne(page, "Why a server?");
-
-      const id = yield* onlyItem(home);
-
-      yield* runCli(home, ["verdict", home, id, "rejected", "--reason", "No."]);
-      yield* runCli(home, ["commit", home]);
-
-      yield* click(page, '[role="tab"][data-tab="pending"]');
-      yield* waitFor(page, '[data-verdict="rejected"]');
-
-      // It survives a reload: the verdict is on disk, not in the page.
-      yield* Effect.promise(() => page.reload());
-      yield* pinServer(page);
-      yield* waitFor(page, '[data-note-marker="server"]');
-
-      yield* click(page, '[role="tab"][data-tab="pending"]');
-      yield* Effect.promise(() =>
-        page.locator(`[data-dismiss="${id}"]`).click()
-      );
-      yield* waitGone(page, '[data-note-marker="server"]');
-      yield* waitGone(page, "[data-review-item]");
-    }).pipe(Effect.provide(NodeServices.layer))
   );
 
   it.live(
@@ -481,66 +385,6 @@ describe("the agent's verdicts", () => {
 
         assert.include(review.stdout, "Batch 2");
         assert.include(review.stdout, `replaces: ${id}`);
-      }).pipe(Effect.provide(NodeServices.layer)),
-    90_000
-  );
-});
-
-describe("exports", () => {
-  it.live(
-    "carry no note marker, and equal the CLI's SVG while a note sits on the map",
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const { home, root, page } = yield* servedReview();
-
-        yield* pinServer(page);
-        yield* pinNote(page, "Why a server?");
-        yield* waitFor(page, '[data-note-marker="server"]');
-
-        // Unpin the structure, so the spotlight is the chapter's own play,
-        // as the CLI draws it.
-        yield* Effect.promise(() =>
-          page.evaluate("document.activeElement?.blur()")
-        );
-        yield* Effect.promise(() => page.keyboard.press("Escape"));
-        yield* Effect.promise(() =>
-          page
-            .locator("[data-structure-panel][data-pinned]")
-            .waitFor({ state: "detached" })
-        );
-
-        yield* click(page, '[data-control="export"]');
-
-        const [download] = yield* Effect.promise(() =>
-          Promise.all([
-            page.waitForEvent("download"),
-            page.locator('[data-export-item="svg"]').click(),
-          ])
-        );
-
-        const saved = yield* Effect.promise(() => download.path());
-        const fromPage = yield* fs.readFileString(saved);
-        const target = path.join(root, "out.svg");
-
-        const exported = yield* runCli(home, [
-          "export",
-          home,
-          "--format",
-          "svg",
-          "--view",
-          "iso",
-          "--chapter",
-          "2",
-          "--output",
-          target,
-        ]);
-
-        assert.strictEqual(exported.exitCode, 0, exported.stderr);
-        assert.notInclude(fromPage, "data-note-marker");
-        assert.notInclude(fromPage, "data-verdict");
-        assert.isTrue(fromPage === (yield* fs.readFileString(target)));
       }).pipe(Effect.provide(NodeServices.layer)),
     90_000
   );

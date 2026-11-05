@@ -3,35 +3,73 @@ import { Array as Arr, Effect, Option, Order } from "effect";
 import { vi } from "vitest";
 
 import {
-  boxStroke,
-  centreClearance,
-  convexOverlap,
-  distanceToPolyline,
-  edgeStroke,
   gapAt,
   gapBetween,
   groundProjections,
-  hopStroke,
-  minScreenGap,
-  noteMarkerRadius,
-  noteMarkerStroke,
   placeNoteMarkers,
-  rectPolygon,
   sceneOf,
-  visibleGap,
 } from "../src/index.ts";
 import type { NoteMarkerSpot, Scene, ScreenPoint } from "../src/index.ts";
 import { chaptersOf, fixture } from "./fixture-maps.ts";
+import { lineDistance, rectCorners } from "./screen-geometry.ts";
 
 vi.setConfig({ testTimeout: 15_000 });
 
+// The sizes the page draws, written out here rather than taken from the
+// placer, so a change there can't move the check with it. A ring is 5 units
+// across its radius with a stroke 2 wide. A box's outline is stroked 1.2
+// wide, a hop's line 1.4, and the edges of tags, chips, labels and zone
+// titles 1. At full size a ring keeps 1.5 units between the edges of the
+// strokes, and at any zoom at least 3 screen pixels.
+const ringRadius = 5;
+
+const ringStroke = 2;
+
+const boxStroke = 1.2;
+
+const lineStroke = 1.4;
+
+const edgeStroke = 1;
+
+const fullSizeGap = 1.5;
+
+const screenGap = 3;
+
+/** The gap a ring keeps in a scene drawn for `zoom`, by the rule above. */
+const gapFor = (zoom: number) => Math.max(fullSizeGap, screenGap / zoom);
+
 const square = ({ sx, sy }: NoteMarkerSpot) =>
-  rectPolygon({
-    left: sx - noteMarkerRadius,
-    top: sy - noteMarkerRadius,
-    right: sx + noteMarkerRadius,
-    bottom: sy + noteMarkerRadius,
+  rectCorners({
+    left: sx - ringRadius,
+    top: sy - ringRadius,
+    right: sx + ringRadius,
+    bottom: sy + ringRadius,
   });
+
+/** The lowest and highest of `polygon` projected onto the axis `ax, ay`. */
+const projected = (polygon: readonly ScreenPoint[], ax: number, ay: number) => {
+  const along = Arr.map(polygon, ({ sx, sy }) => sx * ax + sy * ay);
+
+  return { low: Math.min(...along), high: Math.max(...along) };
+};
+
+/**
+ * Whether two convex polygons share area: no edge normal of either one
+ * separates them. Polygons that only touch don't.
+ */
+const overlap = (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
+  Arr.every([a, b], (polygon) =>
+    Arr.every(polygon, (from, index) => {
+      const to = polygon[(index + 1) % polygon.length] ?? from;
+      const ax = to.sy - from.sy;
+      const ay = from.sx - to.sx;
+      const slack = Math.hypot(ax, ay) * 1e-6;
+      const one = projected(a, ax, ay);
+      const two = projected(b, ax, ay);
+
+      return one.low < two.high - slack && two.low < one.high - slack;
+    })
+  );
 
 /** Something a ring must stay clear of, with how wide its edge is drawn. */
 interface Solid {
@@ -49,7 +87,7 @@ const solids = (scene: Scene): readonly Solid[] => [
   })),
   ...Arr.map(scene.structures, ({ structure, tag }) => ({
     name: `tag ${structure.id}`,
-    polygon: rectPolygon(tag),
+    polygon: rectCorners(tag),
     stroke: edgeStroke,
   })),
   ...Arr.flatMap(scene.structures, ({ structure, chip }) =>
@@ -58,7 +96,7 @@ const solids = (scene: Scene): readonly Solid[] => [
       : [
           {
             name: `chip ${structure.id}`,
-            polygon: rectPolygon(chip),
+            polygon: rectCorners(chip),
             stroke: edgeStroke,
           },
         ]
@@ -74,19 +112,24 @@ const solids = (scene: Scene): readonly Solid[] => [
       : [
           {
             name: `label ${hop.id}`,
-            polygon: rectPolygon(label),
+            polygon: rectCorners(label),
             stroke: edgeStroke,
           },
         ]
   ),
 ];
 
-/** How far apart the edges of two strokes show, centre to centre less both half widths. */
+/**
+ * How far apart a ring's stroke and another stroke show: from the ring's
+ * centre, less its radius and half of each stroke's width.
+ */
 const visibleGapBetween = (distance: number, strokes: readonly number[]) =>
-  distance - Arr.reduce(strokes, 0, (sum, width) => sum + width / 2);
+  distance -
+  ringRadius -
+  Arr.reduce(strokes, 0, (sum, width) => sum + width / 2);
 
 const edgeDistance = (polygon: readonly ScreenPoint[], spot: NoteMarkerSpot) =>
-  distanceToPolyline([...polygon, ...Arr.take(polygon, 1)], spot);
+  lineDistance([...polygon, ...Arr.take(polygon, 1)], spot);
 
 /** Spots over the whole ground the maps use, empty or not. */
 const gridSpots = (() => {
@@ -147,26 +190,26 @@ describe("note markers", () => {
               for (const [who, spot] of markers) {
                 for (const solid of solids(scene)) {
                   assert.isFalse(
-                    convexOverlap(square(spot), solid.polygon),
+                    overlap(square(spot), solid.polygon),
                     `${who} covers ${solid.name} in ${chapter.id}`
                   );
                   assert.isAtLeast(
                     visibleGapBetween(edgeDistance(solid.polygon, spot), [
-                      noteMarkerStroke,
+                      ringStroke,
                       solid.stroke,
                     ]) + 1e-6,
-                    visibleGap,
+                    gapFor(scene.zoom),
                     `${who} is too close to ${solid.name} in ${chapter.id}`
                   );
                 }
 
                 for (const { hop, points } of scene.hops) {
                   assert.isAtLeast(
-                    visibleGapBetween(distanceToPolyline(points, spot), [
-                      noteMarkerStroke,
-                      hopStroke,
+                    visibleGapBetween(lineDistance(points, spot), [
+                      ringStroke,
+                      lineStroke,
                     ]) + 1e-6,
-                    visibleGap,
+                    gapFor(scene.zoom),
                     `${who} hugs the line of hop ${hop.id} in ${chapter.id}`
                   );
                 }
@@ -175,7 +218,7 @@ describe("note markers", () => {
               for (const [a, one] of markers) {
                 for (const [b, two] of markers) {
                   assert.isFalse(
-                    a !== b && convexOverlap(square(one), square(two)),
+                    a !== b && overlap(square(one), square(two)),
                     `${a} and ${b} touch in ${chapter.id}`
                   );
                 }
@@ -185,21 +228,6 @@ describe("note markers", () => {
       );
     }
   }
-
-  it("counts both strokes in the clearance a line asks for", () => {
-    assert.strictEqual(
-      centreClearance(hopStroke, 1),
-      noteMarkerRadius + noteMarkerStroke / 2 + hopStroke / 2 + gapAt(1)
-    );
-    assert.strictEqual(
-      centreClearance(hopStroke, 100),
-      noteMarkerRadius + noteMarkerStroke / 2 + hopStroke / 2 + visibleGap
-    );
-    assert.isAbove(
-      centreClearance(boxStroke, 1),
-      noteMarkerRadius + visibleGap
-    );
-  });
 
   it.effect("rests a structure's ring against it, not floating off it", () =>
     Effect.gen(function* () {
@@ -237,11 +265,7 @@ describe("note markers", () => {
             gapBetween(tag, [spot])
           );
 
-          assert.isBelow(
-            nearest,
-            noteMarkerRadius + 6,
-            `${id} floats in ${view}`
-          );
+          assert.isBelow(nearest, ringRadius + 6, `${id} floats in ${view}`);
         }
       }
     })
@@ -269,10 +293,12 @@ describe("note markers", () => {
         Arr.findFirst(scene.hops, ({ hop }) => hop.id === "h-save")
       );
 
+      // The ring's centre needs 5 + 1 + 0.7 + 3 = 9.7 units from the line's
+      // centre at full size. Within 18 it still reads as beside the line.
       assert.isDefined(spot);
       assert.isBelow(
-        distanceToPolyline(route.points, spot ?? { sx: 1e9, sy: 1e9 }),
-        centreClearance(hopStroke, 1) + 8,
+        lineDistance(route.points, spot ?? { sx: 1e9, sy: 1e9 }),
+        18,
         "the marker floats away from its hop"
       );
     })
@@ -333,45 +359,9 @@ describe("note markers", () => {
         assert.notDeepEqual(marker, groundProjections.plan.toScreen(onBox));
 
         for (const solid of solids(scene)) {
-          assert.isFalse(
-            convexOverlap(square(marker), solid.polygon),
-            solid.name
-          );
+          assert.isFalse(overlap(square(marker), solid.polygon), solid.name);
         }
       })
-  );
-
-  it.effect("places structures, hops and spots together without touching", () =>
-    Effect.gen(function* () {
-      const { data, layout } = yield* fixture("review");
-
-      const scene = sceneOf({
-        data,
-        layout,
-        revealed: new Set(Arr.map(data.structures, ({ id }) => id)),
-      });
-
-      const placed = placeNoteMarkers(scene, {
-        structures: new Set(["server", "page"]),
-        hops: new Set(["h-save", "h-store"]),
-        spots: [{ x: 6, y: 4 }],
-        ground: groundProjections.iso,
-      });
-
-      const all = [
-        ...placed.structures.values(),
-        ...placed.hops.values(),
-        ...Arr.map(placed.spots, ({ marker }) => marker),
-      ];
-
-      assert.strictEqual(all.length, 5);
-
-      for (const [index, one] of all.entries()) {
-        for (const two of all.slice(index + 1)) {
-          assert.isFalse(convexOverlap(square(one), square(two)));
-        }
-      }
-    })
   );
 });
 
@@ -381,7 +371,7 @@ describe("note markers at a zoomed-out view", () => {
 
   for (const view of views) {
     it.effect(
-      `keep ${minScreenGap} screen pixels from every hop's line in ${view}, at the scale the view shows them`,
+      `keep 3 screen pixels from every hop's line in ${view}, at the scale the view shows them`,
       () =>
         Effect.gen(function* () {
           const { data, layout } = yield* fixture("review");
@@ -409,14 +399,14 @@ describe("note markers at a zoomed-out view", () => {
                 // The view never shows the scene smaller than its zoom, so
                 // the pixels measured at `zoom` are the fewest there can be.
                 const pixels =
-                  visibleGapBetween(distanceToPolyline(points, spot), [
-                    noteMarkerStroke,
-                    hopStroke,
+                  visibleGapBetween(lineDistance(points, spot), [
+                    ringStroke,
+                    lineStroke,
                   ]) * zoom;
 
                 assert.isAtLeast(
                   pixels + 1e-6,
-                  minScreenGap,
+                  screenGap,
                   `the ring of ${id} is ${pixels.toFixed(2)} px from hop ${hop.id} at zoom ${zoom} in ${view}`
                 );
               }

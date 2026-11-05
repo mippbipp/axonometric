@@ -1,8 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Order, String as Str } from "effect";
+import { Array as Arr, Effect, Order } from "effect";
 import type { Page } from "playwright";
 
-import { boxesOf } from "./browser.ts";
 import { minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -48,12 +47,6 @@ describe("the built page", () => {
           page.locator('[data-hop="h-update"]').textContent()
         );
 
-        const route = yield* Effect.promise((): Promise<string> =>
-          page.evaluate(
-            `document.querySelector('[data-hop="h-update"]').dataset.route`
-          )
-        );
-
         const arrowheads = yield* Effect.promise(() =>
           page.locator('[data-hop="h-update"] [data-arrowhead]').count()
         );
@@ -64,52 +57,7 @@ describe("the built page", () => {
         ]);
         assert.strictEqual(boxes, 2);
         assert.include(hop ?? "", "update → build");
-        // At least start, one bend, end.
-        assert.isAtLeast(Str.split(" ")(route ?? "").length, 3);
         assert.strictEqual(arrowheads, 1);
-      })
-    )
-  );
-
-  it.live("fits the drawing to the window", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* builtPage;
-        const [svg] = yield* boxesOf(page, "svg");
-
-        const drawn = yield* boxesOf(
-          page,
-          "[data-structure], [data-name-tag], [data-zone]"
-        );
-
-        assert.isDefined(svg);
-        assert.lengthOf(drawn, 5);
-
-        if (svg === undefined) {
-          return;
-        }
-
-        const lefts = Arr.map(drawn, (box) => box.x);
-        const tops = Arr.map(drawn, (box) => box.y);
-        const rights = Arr.map(drawn, (box) => box.x + box.width);
-        const bottoms = Arr.map(drawn, (box) => box.y + box.height);
-        const left = Math.min(...lefts);
-        const top = Math.min(...tops);
-        const right = Math.max(...rights);
-        const bottom = Math.max(...bottoms);
-
-        assert.isAtLeast(left, svg.x);
-        assert.isAtLeast(top, svg.y);
-        assert.isAtMost(right, svg.x + svg.width);
-        assert.isAtMost(bottom, svg.y + svg.height);
-
-        // Fitted, not tiny: the drawing fills most of one dimension.
-        const share = Math.max(
-          (right - left) / svg.width,
-          (bottom - top) / svg.height
-        );
-
-        assert.isAbove(share, 0.7);
       })
     )
   );

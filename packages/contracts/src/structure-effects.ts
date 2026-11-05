@@ -2,7 +2,7 @@ import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
 import { changedProblems, footprintsOverlap } from "./layout-checks.ts";
-import type { Checkable, DraggedProblem } from "./layout-checks.ts";
+import type { Checkable } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { defaultFootprint, placeStructures } from "./placement.ts";
@@ -393,45 +393,3 @@ export const defaultSpotFor = ({
 
   return best ?? { spot: beside, added: addedAt(beside) };
 };
-
-/**
- * Everything `check` would report for the map as proposed with `changes`
- * added, each marked `added` when the map as proposed now didn't have it.
- * This is the check a drag runs, on the proposed map instead of the accepted
- * one, so a new structure, or a group change, that stretches a zone over
- * another group is reported the same way a drag that does it is.
- *
- * `moved` puts structures where a drop has just put them before the changes
- * apply, so a group change from a drop is judged at the structure's new
- * spot, in the zone it lands in. The map `before` is the one without them.
- */
-export const candidateProblems = ({
-  before,
-  changes,
-  moved = {},
-}: {
-  /** The map as proposed now. */
-  readonly before: Checkable;
-  /** The changes about to be proposed. */
-  readonly changes: readonly StructureChange[];
-  /** Structures a drop has just moved, by id. */
-  readonly moved?: Readonly<Record<string, Placement>>;
-}): readonly DraggedProblem[] => {
-  const from: Checkable = {
-    data: before.data,
-    layout: {
-      ...before.layout,
-      structures: { ...before.layout.structures, ...moved },
-    },
-  };
-
-  return changedProblems(Arr.reduce(changes, from, applyStructureChange), from);
-};
-
-const applyStructureChange = (
-  map: Checkable,
-  change: StructureChange
-): Checkable => ({
-  data: structureChangeToData(map.data, change),
-  layout: structureChangeToLayout(map.layout, change),
-});

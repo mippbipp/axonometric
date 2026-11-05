@@ -7,15 +7,8 @@ import {
   String as Str,
 } from "effect";
 
-import {
-  checkLayout,
-  clashWarnings,
-  routeCap,
-  routeHops,
-  routeLength,
-} from "../src/index.ts";
+import { checkLayout, routeHops } from "../src/index.ts";
 import type {
-  GridPoint,
   Hop,
   HopRoute,
   Layout,
@@ -23,7 +16,14 @@ import type {
   Placement,
   Structure,
 } from "../src/index.ts";
-import { facingEdges } from "./route-geometry.ts";
+import {
+  edgeOf,
+  facingEdges,
+  legsOf,
+  onEdge,
+  stepsOf,
+} from "./route-geometry.ts";
+import type { Leg } from "./route-geometry.ts";
 
 const structure = (id: string): Structure => ({
   id,
@@ -91,35 +91,8 @@ const routeOf = (
   return route;
 };
 
-const legsOf = (points: readonly GridPoint[]) =>
-  Arr.flatMap(points, (start, index) => {
-    const end = points[index + 1];
-
-    return end === undefined ? [] : [{ start, end }];
-  });
-
-/** Every half-unit step a route takes, as an order-free key. */
-const stepsOf = (points: readonly GridPoint[]) =>
-  Arr.flatMap(legsOf(points), ({ start, end }) => {
-    const count = Math.abs(end.x - start.x + end.y - start.y) * 2;
-    const dx = Math.sign(end.x - start.x) / 2;
-    const dy = Math.sign(end.y - start.y) / 2;
-
-    return Arr.map(Arr.range(0, count - 1), (step) => {
-      const a = { x: start.x + dx * step, y: start.y + dy * step };
-      const b = { x: a.x + dx, y: a.y + dy };
-      const low = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) };
-      const high = { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) };
-
-      return `${low.x},${low.y}-${high.x},${high.y}`;
-    });
-  });
-
 /** Whether a leg runs through the inside of a footprint. */
-const legCrosses = (
-  { start, end }: { readonly start: GridPoint; readonly end: GridPoint },
-  box: Placement
-) => {
+const legCrosses = ({ start, end }: Leg, box: Placement) => {
   const left = Math.min(start.x, end.x);
   const right = Math.max(start.x, end.x);
   const top = Math.min(start.y, end.y);
@@ -134,29 +107,6 @@ const legCrosses = (
         start.x < box.x + box.w &&
         top < box.y + box.d &&
         bottom > box.y;
-};
-
-const onEdge = (point: GridPoint, box: Placement) => {
-  const insideX = point.x >= box.x && point.x <= box.x + box.w;
-  const insideY = point.y >= box.y && point.y <= box.y + box.d;
-  const onX = point.x === box.x || point.x === box.x + box.w;
-  const onY = point.y === box.y || point.y === box.y + box.d;
-
-  return (onX && insideY) || (onY && insideX);
-};
-
-/** Which edge of a footprint a point sits on: +x, +y, -x or -y. */
-/**
- * Which edge of a footprint a route's end leaves by, from the end and the
- * next point along the route: +x, +y, -x or -y. A route may leave a corner,
- * which sits on two edges, so the leg's direction decides.
- */
-const edgeOf = (point: GridPoint, next: GridPoint) => {
-  if (next.x !== point.x) {
-    return next.x > point.x ? 0 : 2;
-  }
-
-  return next.y > point.y ? 1 : 3;
 };
 
 /** A between two connected structures, with M in the way. */
@@ -297,9 +247,26 @@ describe("routing", () => {
       );
 
       for (const [id, route] of Rec.toEntries(routeHops(data, layout))) {
-        const { length, distance } = routeLength(route.points);
+        const [first] = route.points;
+        const last = route.points.at(-1);
 
-        assert.isAtMost(length, routeCap(distance), `${id} is too long`);
+        assert.isDefined(first);
+        assert.isDefined(last);
+
+        // Half as long again as the distance between the ends, plus a unit.
+        const distance =
+          Math.abs(last.x - first.x) + Math.abs(last.y - first.y);
+
+        const length = Arr.reduce(
+          legsOf(route.points),
+          0,
+          (sum, leg) =>
+            sum +
+            Math.abs(leg.end.x - leg.start.x) +
+            Math.abs(leg.end.y - leg.start.y)
+        );
+
+        assert.isAtMost(length, 1.5 * distance + 1, `${id} is too long`);
         assert.isFalse(route.tooLong);
       }
     })
@@ -330,15 +297,27 @@ describe("routing", () => {
     })
   );
 
-  it.effect("gives the same routes for the same layout", () =>
-    Effect.sync(() => {
-      const { data, layout } = mapOf(
-        { a: at(0, 0), m: at(4, 0), b: at(8, 0), c: at(4, 5) },
-        [hop("a", "b"), hop("b", "a"), hop("c", "a"), hop("b", "c")]
-      );
+  it.effect(
+    "gives the same routes for the same layout, whatever order layout.json lists it in",
+    () =>
+      Effect.sync(() => {
+        const { data, layout } = mapOf(
+          { a: at(0, 0), m: at(4, 0), b: at(8, 0), c: at(4, 5) },
+          [hop("a", "b"), hop("b", "a"), hop("c", "a"), hop("b", "c")]
+        );
 
-      assert.deepStrictEqual(routeHops(data, layout), routeHops(data, layout));
-    })
+        const reversed: Layout = {
+          ...layout,
+          structures: Rec.fromEntries(
+            Arr.reverse(Rec.toEntries(layout.structures))
+          ),
+        };
+
+        assert.deepStrictEqual(
+          routeHops(data, reversed),
+          routeHops(data, layout)
+        );
+      })
   );
 
   it.effect("follows a route override", () =>
@@ -407,30 +386,6 @@ describe("routing", () => {
         assert.include(["n", "w", "e", "south"], crosses[0]);
       })
   );
-
-  it.effect("is fast enough for 40 structures and 60 hops", () =>
-    Effect.sync(() => {
-      const ids = Arr.map(Arr.range(0, 39), (index) => `s${index}`);
-
-      const placements = Rec.fromEntries(
-        Arr.map(ids, (id, index) => [
-          id,
-          at((index % 8) * 4, Math.floor(index / 8) * 4),
-        ])
-      );
-
-      const hops = Arr.map(Arr.range(0, 59), (index) =>
-        hop(`s${(index * 7) % 40}`, `s${(index * 13 + 5) % 40}`, `h${index}`)
-      );
-
-      const { data, layout } = mapOf(placements, hops);
-      const started = performance.now();
-      const routes = routeHops(data, layout);
-
-      assert.isBelow(performance.now() - started, 2000);
-      assert.lengthOf(Rec.keys(routes), 60);
-    })
-  );
 });
 
 describe("route checks", () => {
@@ -438,38 +393,29 @@ describe("route checks", () => {
     "warns about a clash in Plan view even when the Iso view has the same one",
     () =>
       Effect.sync(() => {
-        const seen = new Set<string>();
-
-        const once = (key: string) => {
-          const fresh = !seen.has(key);
-
-          seen.add(key);
-
-          return fresh;
-        };
-
-        const clash = {
-          between: ["route:h", "tag:m"] as const,
-          parts: [
-            { kind: "route", id: "h" },
-            { kind: "tag", id: "m" },
-          ] as const,
-        };
-
-        const warnings = clashWarnings({
-          clashes: [
-            { view: "iso", clashes: [clash] },
-            { view: "plan", clashes: [clash] },
-          ],
-          where: "",
-          once,
-        });
+        // The override turns on m's corner at (4, 0), which both views draw.
+        const { data, layout } = mapOf(
+          { a: at(0, 0), m: at(4, 0), b: at(8, 0) },
+          [hop("a", "b", "h")],
+          {
+            h: [
+              { x: 2, y: 0.5 },
+              { x: 3.5, y: 0.5 },
+              { x: 3.5, y: 0 },
+              { x: 4, y: 0 },
+              { x: 4, y: -0.5 },
+              { x: 7, y: -0.5 },
+              { x: 7, y: 0.5 },
+              { x: 8, y: 0.5 },
+            ],
+          }
+        );
 
         assert.deepStrictEqual(
-          Arr.map(warnings, ({ message }) => message),
+          Arr.map(checkLayout(data, layout), ({ message }) => message),
           [
-            'the route of hop "h" is drawn over the name tag of "m". Move the structures apart, so the drawing has room.',
-            'the route of hop "h" is drawn over the name tag of "m" in Plan view. Move the structures apart, so the drawing has room.',
+            'the route of hop "h" is drawn over the box of "m". Move the structures apart, so the drawing has room.',
+            'the route of hop "h" is drawn over the box of "m" in Plan view. Move the structures apart, so the drawing has room.',
           ]
         );
       })

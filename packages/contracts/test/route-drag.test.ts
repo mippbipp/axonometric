@@ -4,6 +4,7 @@ import { vi } from "vitest";
 
 import { dragSegment, routeVertices, segmentGuides } from "../src/index.ts";
 import type { GridPoint, Placement } from "../src/index.ts";
+import { onEdge } from "./route-geometry.ts";
 
 vi.setConfig({ testTimeout: 5000 });
 
@@ -41,16 +42,6 @@ const allDrags: readonly (readonly [number, number])[] = Arr.flatMap(
       (offset) => [segment, offset] as const
     )
 );
-
-/** Whether `point` is on the outline of `box`, corners included. */
-const onEdge = (point: GridPoint | undefined, box: Placement) =>
-  point !== undefined &&
-  ((Arr.contains([box.x, box.x + box.w], point.x) &&
-    point.y >= box.y &&
-    point.y <= box.y + box.d) ||
-    (Arr.contains([box.y, box.y + box.d], point.y) &&
-      point.x >= box.x &&
-      point.x <= box.x + box.w));
 
 const straight = (before: GridPoint | undefined, point: GridPoint) =>
   before !== undefined && (before.x === point.x || before.y === point.y);
@@ -174,28 +165,21 @@ describe("dragging a segment", () => {
     assert.deepStrictEqual(drag(detour, -1, 1), routeVertices(detour));
   });
 
-  it.each(allDrags)(
-    "keeps both ends on their footprints when segment %i is dragged by %f",
-    (segment, offset) => {
+  it("keeps both ends on their footprints and every leg along x or y, whichever segment is dragged how far", () => {
+    for (const [segment, offset] of allDrags) {
       const result = drag(detour, segment, offset);
+      const where = `segment ${segment} dragged by ${offset}`;
 
-      assert.isTrue(onEdge(result[0], from));
-      assert.isTrue(onEdge(result.at(-1), to));
-    }
-  );
-
-  it.each(allDrags)(
-    "keeps every leg along x or y when segment %i is dragged by %f",
-    (segment, offset) => {
-      const result = drag(detour, segment, offset);
-
+      assert.isTrue(onEdge(result[0], from), `${where}: start off A`);
+      assert.isTrue(onEdge(result.at(-1), to), `${where}: end off B`);
       assert.isTrue(
         Arr.every(result.slice(1), (point, index) =>
           straight(result[index], point)
-        )
+        ),
+        `${where}: a leg runs diagonally`
       );
     }
-  );
+  });
 });
 
 describe("the guides for dragging segments", () => {

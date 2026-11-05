@@ -1,4 +1,3 @@
-import { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -6,70 +5,78 @@ import {
   Effect,
   FileSystem,
   Path,
-  Schema,
+  Schedule,
   String as Str,
 } from "effect";
 import type { Page } from "playwright";
 
-import { literal, openUrl } from "./browser.ts";
-import { crosses, drawingReport, overlap } from "./drawing-report.ts";
+import {
+  click,
+  count,
+  goToChapterPaused,
+  inPage,
+  showViewFitted,
+  strokeOf,
+  waitFor,
+  waitTimeout,
+} from "./browser.ts";
+import { crosses, drawingReport, nameTagClashes } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // Seam 2: structure proposals in a page that a real serve serves. The review
 // map's chapters reveal engineer and page, then server and proposals, then
 // the rest, so a proposed structure is revealed in each of them.
 
-const waitTimeout = { timeout: 15_000 };
+const served = openReviewMap({});
 
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
+/**
+ * The structure proposals in proposals.json once there are `expected` of them.
+ * The page draws a proposal as pending before the server has written it.
+ */
+const savedStructures = (home: string, expected: number) =>
+  readProposals(home).pipe(
+    Effect.map((proposals) => proposals.structures ?? []),
+    Effect.filterOrFail(
+      (saved) => saved.length === expected,
+      () => `proposals.json never held ${expected} structure proposals`
+    ),
+    Effect.retry({ times: 100, schedule: Schedule.spaced("100 millis") }),
+    Effect.orDie
+  );
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
+const rightClick = (page: Page, id: string) =>
+  Effect.promise(() =>
+    page.locator(`[data-structure="${id}"]`).click({ button: "right" })
+  );
+
+/** Closes the context menu, which stays open after a pick from a submenu. */
+const closeMenu = Effect.fnUntraced(function* (page: Page) {
+  const menu = page.locator("[data-structure-menu]");
+
+  // The first Escape closes the submenu, the next the menu.
+  for (
+    let tries = 0;
+    tries < 3 && (yield* Effect.promise(() => menu.count())) > 0;
+    tries++
+  ) {
+    yield* Effect.promise(() => page.keyboard.press("Escape"));
+    yield* Effect.promise(() => page.waitForTimeout(100));
+  }
 
   yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
+    menu.waitFor({ state: "detached", ...waitTimeout })
   );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const chapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-  yield* click(page, '[data-playback-controls] [data-control="pause"]');
 });
 
-const view = Effect.fnUntraced(function* (page: Page, which: "iso" | "plan") {
-  yield* click(page, `[data-view-toggle] [data-view="${which}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-view="${which}"]`);
-  yield* Effect.promise(() => page.keyboard.press("0"));
-});
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
+const pendingOn = (page: Page, id: string) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `document.querySelector('[data-structure="${id}"][data-pending="true"]') !== null`,
+      undefined,
+      waitTimeout
+    )
   );
-}, Effect.provide(NodeServices.layer));
 
 /** Opens the form, names the structure and clicks the map at (x, y) in the page. */
 const addStructure = Effect.fnUntraced(function* (
@@ -95,14 +102,6 @@ const addStructure = Effect.fnUntraced(function* (
   );
   yield* click(page, '[data-add="submit"]');
 });
-
-/** The computed stroke of the element matching `selector`, read in the page. */
-const strokeOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page.evaluate<string>(
-      `getComputedStyle(document.querySelector(${literal(selector)})).stroke`
-    )
-  );
 
 /** The pieces of the cross that run over a code chip or a name tag. */
 const strikesOverText = (report: DrawingReport): readonly string[] => {
@@ -136,34 +135,9 @@ const strikesOverText = (report: DrawingReport): readonly string[] => {
   );
 };
 
-const clashes = Effect.fnUntraced(function* (page: Page) {
-  const report = yield* Effect.promise(() =>
-    page.evaluate<DrawingReport>(drawingReport)
-  );
-
-  const tags = Arr.filter(report.text, ({ id }) => Str.startsWith("tag:")(id));
-
-  const withText = Arr.flatMap(tags, (tag) =>
-    Arr.flatMap(
-      Arr.filter(report.text, ({ id }) => id !== tag.id),
-      (other: DrawingReport["text"][number]) =>
-        overlap(tag.polygon, other.polygon) ? [`${tag.id} × ${other.id}`] : []
-    )
-  );
-
-  const withBoxes = Arr.flatMap(tags, (tag) =>
-    Arr.flatMap(
-      Arr.filter(
-        report.structures,
-        ({ id }) => id !== `box:${Str.slice(4)(tag.id)}`
-      ),
-      (box: DrawingReport["structures"][number]) =>
-        overlap(tag.polygon, box.polygon) ? [`${tag.id} × ${box.id}`] : []
-    )
-  );
-
-  return [...new Set([...withText, ...withBoxes])];
-});
+/** Every name tag drawn now over other text or a box other than its own. */
+const clashes = (page: Page) =>
+  inPage<DrawingReport>(page, drawingReport).pipe(Effect.map(nameTagClashes));
 
 describe("adding a structure from the toolbar", () => {
   it.live(
@@ -172,7 +146,7 @@ describe("adding a structure from the toolbar", () => {
       Effect.gen(function* () {
         const { home, page, errors } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-control="add-structure"]');
         yield* waitFor(page, "[data-add-structure]");
 
@@ -242,7 +216,7 @@ describe("adding a structure from the toolbar", () => {
     Effect.gen(function* () {
       const { home, page } = yield* served;
 
-      yield* chapter(page, "c-all");
+      yield* goToChapterPaused(page, "c-all");
       yield* click(page, '[data-control="add-structure"]');
       yield* click(page, '[data-add="pick"]');
 
@@ -302,14 +276,14 @@ describe.each(["iso", "plan"] as const)(
         Effect.gen(function* () {
           const { page } = yield* served;
 
-          yield* chapter(page, "c-all");
+          yield* goToChapterPaused(page, "c-all");
           yield* addStructure(page, { name: "Build cache", x: 12, y: 12 });
           yield* waitFor(page, '[data-structure][data-pending="true"]');
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
 
           for (const id of ["c-page", "c-save", "c-all"]) {
-            yield* chapter(page, id);
-            yield* view(page, which);
+            yield* goToChapterPaused(page, id);
+            yield* showViewFitted(page, which);
 
             const proposed = page.locator(
               '[data-structure][data-pending="true"]'
@@ -352,14 +326,14 @@ describe("deleting a structure", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-structure="upstream"]');
         yield* waitFor(page, '[data-structure-panel="upstream"]');
         yield* click(page, '[data-change="delete"]');
         yield* waitFor(page, '[data-removed-mark="upstream"]');
 
         for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
 
           const mark = page.locator('[data-removed-mark="upstream"]');
 
@@ -392,19 +366,36 @@ describe("deleting a structure", () => {
   );
 
   it.live(
-    "is not in the exported SVG, which equals the CLI's",
+    "is not in the exported SVG, which equals the CLI's, with a note and an added structure pending too",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         yield* addStructure(page, { name: "Build cache", x: 12, y: 12 });
         yield* waitFor(page, '[data-structure][data-pending="true"]');
+        yield* click(page, '[data-structure="server"]');
+        yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
+        yield* Effect.promise(() =>
+          page
+            .locator(
+              "[data-structure-panel] [data-notes-section] [data-note-text]"
+            )
+            .fill("Why a server?")
+        );
+        yield* click(
+          page,
+          "[data-structure-panel] [data-notes-section] [data-note-send]"
+        );
+        yield* waitFor(page, '[data-note-marker="server"]');
         yield* click(page, '[data-structure="upstream"]');
         yield* click(page, '[data-change="delete"]');
         yield* waitFor(page, '[data-removed-mark="upstream"]');
         // A pinned structure puts the spotlight on it, which the CLI has no
         // way to match. Unpin it so both draw the chapter's spotlight.
+        yield* Effect.promise(() =>
+          page.evaluate("document.activeElement?.blur()")
+        );
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* Effect.promise(() =>
           page.waitForFunction(
@@ -415,7 +406,7 @@ describe("deleting a structure", () => {
         );
 
         for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
           yield* click(page, '[data-control="export"]');
 
           const [download] = yield* Effect.promise(() =>
@@ -436,6 +427,8 @@ describe("deleting a structure", () => {
           assert.notInclude(fromPage, "Build cache");
           assert.notInclude(fromPage, "removed");
           assert.notInclude(fromPage, "strike");
+          assert.notInclude(fromPage, "data-note-marker");
+          assert.notInclude(fromPage, "data-verdict");
 
           const target = path.join(home, "..", "out", `${which}.svg`);
 
@@ -464,15 +457,15 @@ describe("deleting a structure", () => {
 
 describe("the context menu on a structure", () => {
   it.live(
-    "proposes a rename, a shape, a group, a status and a deletion, in both views",
+    "offers a rename, a shape, a group, a status and a deletion in both views, and proposes each",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
-        yield* chapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
 
         for (const which of ["iso", "plan"] as const) {
-          yield* view(page, which);
+          yield* showViewFitted(page, which);
           yield* Effect.promise(() =>
             page.locator('[data-structure="server"]').click({ button: "right" })
           );
@@ -492,27 +485,57 @@ describe("the context menu on a structure", () => {
           yield* Effect.promise(() => page.keyboard.press("Escape"));
         }
 
-        yield* Effect.promise(() =>
-          page.locator('[data-structure="server"]').click({ button: "right" })
-        );
+        yield* rightClick(page, "server");
         yield* click(page, '[data-menu="status"]');
         yield* click(page, '[data-menu-status="off"]');
+        yield* pendingOn(page, "server");
+        yield* closeMenu(page);
 
+        yield* rightClick(page, "proposals");
+        yield* click(page, '[data-menu="group"]');
+        yield* click(page, '[data-menu-group="outside"]');
+        yield* pendingOn(page, "proposals");
+        yield* closeMenu(page);
+
+        yield* rightClick(page, "engineer");
+        yield* click(page, '[data-menu="shape"]');
+        yield* click(page, '[data-menu-shape="box"]');
+        yield* pendingOn(page, "engineer");
+        yield* closeMenu(page);
+
+        // Rename puts the typing in the panel's name field.
+        yield* rightClick(page, "page");
+        yield* click(page, '[data-menu="rename"]');
         yield* Effect.promise(() =>
           page.waitForFunction(
-            `document.querySelector('[data-structure="server"][data-pending="true"]') !== null`,
+            `document.activeElement?.getAttribute("data-change") === "name"`,
             undefined,
             waitTimeout
           )
         );
+        yield* Effect.promise(() => page.keyboard.type("Map view"));
+        yield* Effect.promise(() => page.keyboard.press("Enter"));
+        yield* pendingOn(page, "page");
 
-        const [saved] = (yield* readProposals(home)).structures ?? [];
+        yield* rightClick(page, "upstream");
+        yield* click(page, '[data-menu="delete"]');
+        yield* waitFor(page, '[data-removed-mark="upstream"]');
 
-        assert.deepStrictEqual(saved?.change, {
-          action: "status",
-          structure: "server",
-          status: "off",
-        });
+        const changes = Arr.map(
+          yield* savedStructures(home, 5),
+          ({ change }) => change
+        );
+
+        assert.sameDeepMembers(
+          [...changes],
+          [
+            { action: "status", structure: "server", status: "off" },
+            { action: "group", structure: "proposals", group: "outside" },
+            { action: "shape", structure: "engineer", shape: "box" },
+            { action: "rename", structure: "page", name: "Map view" },
+            { action: "delete", structure: "upstream" },
+          ]
+        );
       }),
     90_000
   );

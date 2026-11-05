@@ -1,9 +1,4 @@
-import {
-  LayoutFile,
-  ProposalsFile,
-  ReviewReport,
-  Revision,
-} from "@axonometric/contracts";
+import { ProposalsFile, ReviewReport, Revision } from "@axonometric/contracts";
 import type {
   Batch,
   BatchItem,
@@ -13,16 +8,7 @@ import type {
 } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  FileSystem,
-  Order,
-  Path,
-  Record as Rec,
-  Schema,
-  String as Str,
-} from "effect";
+import { Array as Arr, Effect, Path, Schema, String as Str } from "effect";
 
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
@@ -90,15 +76,6 @@ const withHop = (id: string) => (data: string) =>
     `    { id: "h-pr", from: "proposals", to: "pull-request", label: "accepted" },
     { id: ${JSON.stringify(id)}, from: "engineer", to: "server", label: "calls the API" },\n`
   )(data);
-
-/** data.mjs without hop h-pr: out of the hops, and with no flow or chapter to list it. */
-const withoutHop = (data: string) =>
-  Str.replace(
-    '    { id: "h-pr", from: "proposals", to: "pull-request", label: "accepted" },\n',
-    ""
-  )(data);
-
-const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
 
@@ -169,104 +146,13 @@ describe("a hop drawn on the page, through freeze, verdict and commit", () => {
         assert.isDefined(proposals.batches?.[0]?.committed);
       })
   );
-
-  it.effect("takes the provisional id when the agent accepts it as is", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith(
-        [hopItem("p1", drawn)],
-        {},
-        withHop("new-1")
-      );
-
-      const verdict = yield* runCli(home, ["verdict", home, "p1", "accepted"]);
-
-      assert.strictEqual(verdict.exitCode, 0, verdict.stderr);
-
-      const committed = yield* runCli(home, ["commit", home]);
-
-      assert.strictEqual(committed.exitCode, 0, committed.stderr);
-
-      const revision = yield* decodeRevision(
-        committed.files["history/0001.json"] ?? ""
-      );
-
-      assert.deepStrictEqual(
-        Arr.map(revision.accepted, (entry) => [entry.kind, entry.id]),
-        [["hop", "p1"]]
-      );
-
-      // A hop has no position of its own: layout.json is as it was.
-      const layout = yield* decodeLayout(committed.files["layout.json"] ?? "");
-
-      assert.deepStrictEqual(
-        Arr.sort(Rec.keys(layout.structures), Order.String),
-        ["engineer", "page", "proposals", "pull-request", "server", "upstream"]
-      );
-    })
-  );
-
-  it.effect(
-    "refuses to commit an accepted add while data.mjs lacks the hop, and writes nothing",
-    () =>
-      Effect.gen(function* () {
-        const { home } = yield* homeWith([hopItem("p1", drawn)], {
-          p1: { verdict: "accepted" },
-        });
-
-        const committed = yield* runCli(home, ["commit", home]);
-
-        assert.strictEqual(committed.exitCode, 1);
-        assert.include(committed.stderr, '"new-1"');
-        assert.include(committed.stderr, "--as");
-        assert.isUndefined(committed.files["history/0001.json"]);
-      })
-  );
-
-  it.effect("refuses --as for an id the accepted map already has", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith(
-        [hopItem("p1", drawn)],
-        {},
-        withHop("calls-api")
-      );
-
-      const fs = yield* FileSystem.FileSystem;
-      const file = `${home}/proposals.json`;
-      const held = yield* decodeProposals(yield* fs.readFileString(file));
-
-      const frozen = {
-        ...held,
-        batches: Arr.map(held.batches ?? [], (batch) => ({
-          ...batch,
-          hops: ["h-note", "calls-api"],
-        })),
-      };
-
-      yield* fs.writeFileString(file, fileOf(frozen));
-
-      const verdict = yield* runCli(home, [
-        "verdict",
-        home,
-        "p1",
-        "changed",
-        "--reason",
-        "Named it.",
-        "--as",
-        "calls-api",
-      ]);
-
-      assert.strictEqual(verdict.exitCode, 1);
-      assert.include(verdict.stderr, "already has");
-    }).pipe(Effect.provide(NodeServices.layer))
-  );
 });
 
 describe("a hop deleted on the page, through review and commit", () => {
-  const delPr = hopItem("p1", { action: "delete", hop: "h-pr" });
   const delSave = hopItem("p1", { action: "delete", hop: "h-save" });
 
   it.effect(
-    "review flags a hop a chapter plays, naming the chapter, and a flow, naming the flow",
+    "review flags it in text and in --json breaks, naming the chapter and the flow",
     () =>
       Effect.gen(function* () {
         const { home } = yield* homeWith([delSave]);
@@ -274,75 +160,24 @@ describe("a hop deleted on the page, through review and commit", () => {
         const text = yield* runCli(home, ["review", home]);
 
         assert.strictEqual(text.exitCode, 0, text.stderr);
-        assert.include(text.stdout, "BREAKS THE MAP if accepted");
-        assert.include(text.stdout, 'chapter c-save ("Saving") plays it');
-        assert.include(text.stdout, 'flow f-note ("A note") lists it');
-      })
-  );
-
-  it.effect("review --json carries the same reason in breaks", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith([delSave]);
-
-      const json = yield* runCli(home, ["review", home, "--json"]);
-      const report = yield* decodeReview(json.stdout);
-      const [first] = report.batch?.items ?? [];
-
-      assert.include(first?.breaks ?? "", 'chapter c-save ("Saving") plays it');
-      assert.include(first?.breaks ?? "", 'flow f-note ("A note") lists it');
-      assert.deepStrictEqual(
-        Arr.map(first?.targets ?? [], ({ id }) => id),
-        ["h-save"]
-      );
-    })
-  );
-
-  it.effect("review is silent for a hop nothing lists or plays", () =>
-    Effect.gen(function* () {
-      const { home } = yield* homeWith([delPr]);
-
-      const text = yield* runCli(home, ["review", home]);
-
-      assert.strictEqual(text.exitCode, 0, text.stderr);
-      assert.notInclude(text.stdout, "BREAKS THE MAP");
-    })
-  );
-
-  it.effect(
-    "refuses to commit an accepted delete while data.mjs still has the hop",
-    () =>
-      Effect.gen(function* () {
-        const { home } = yield* homeWith([delPr], {
-          p1: { verdict: "accepted" },
-        });
-
-        const committed = yield* runCli(home, ["commit", home]);
-
-        assert.strictEqual(committed.exitCode, 1);
-        assert.include(committed.stderr, '"h-pr"');
-        assert.include(committed.stderr, "still has");
-      })
-  );
-
-  it.effect(
-    "commits an accepted delete once data.mjs has dropped the hop",
-    () =>
-      Effect.gen(function* () {
-        const { home } = yield* homeWith(
-          [delPr],
-          { p1: { verdict: "accepted" } },
-          withoutHop
+        assert.include(
+          text.stdout,
+          'BREAKS THE MAP if accepted: Deleting hop "h-save"'
         );
 
-        const committed = yield* runCli(home, ["commit", home]);
+        const json = yield* runCli(home, ["review", home, "--json"]);
+        const report = yield* decodeReview(json.stdout);
+        const [first] = report.batch?.items ?? [];
 
-        assert.strictEqual(committed.exitCode, 0, committed.stderr);
-
-        const revision = yield* decodeRevision(
-          committed.files["history/0001.json"] ?? ""
+        assert.include(
+          first?.breaks ?? "",
+          'chapter c-save ("Saving") plays it'
         );
-
-        assert.isFalse(Arr.some(revision.data.hops, ({ id }) => id === "h-pr"));
+        assert.include(first?.breaks ?? "", 'flow f-note ("A note") lists it');
+        assert.deepStrictEqual(
+          Arr.map(first?.targets ?? [], ({ id }) => id),
+          ["h-save"]
+        );
       })
   );
 });

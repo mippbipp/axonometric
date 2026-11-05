@@ -9,7 +9,7 @@ export type SpotlightTarget =
   | { readonly kind: "structure"; readonly id: string };
 
 /** What the spotlight is worked out from. */
-export interface SpotlightChoice {
+interface SpotlightChoice {
   /**
    * The ids of the hops the chapter plays, or the picked flow's. `"all"` is
    * every flow, which fades nothing, as does playing no hops.
@@ -68,7 +68,7 @@ const spotlightOfHops = (
  * only those are drawn, so a hovered or pinned item that isn't drawn, or a
  * play with no drawn hop, gives way to the next.
  */
-export const spotlightOf = ({
+const spotlightOf = ({
   data,
   revealed,
   play,

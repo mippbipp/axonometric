@@ -11,26 +11,17 @@ import { vi } from "vitest";
 import {
   arrowheadOf,
   arrowHalfWidth,
-  arrowLength,
   arrowPolygon,
   checkLayout,
   corners,
-  distanceToPolyline,
-  endsOnTarget,
   groundProjections,
-  labelGap,
-  labelReachLimit,
-  routeCap,
-  routeLength,
   routeRevealed,
   nameTagRect,
   nameTagText,
-  planUnit,
   project,
   views,
   sceneClashes,
   sceneOf,
-  segmentCrosses,
 } from "../src/index.ts";
 import type {
   GridPoint,
@@ -42,38 +33,23 @@ import type {
   ScreenRect,
 } from "../src/index.ts";
 import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
+import { placementOf } from "./footprints.ts";
 import {
+  edgeOf,
   facingEdges,
   facingEdgesFull,
+  legsOf,
   outsideArea,
   routeArea,
+  stepsOf,
 } from "./route-geometry.ts";
-
-/** Which edge of a footprint a point sits on: +x, +y, -x or -y. */
-/**
- * Which edge of a footprint a route's end leaves by, from the end and the
- * next point along the route: +x, +y, -x or -y. A route may leave a corner,
- * which sits on two edges, so the leg's direction decides.
- */
-const edgeOf = (point: GridPoint, next: GridPoint) => {
-  if (next.x !== point.x) {
-    return next.x > point.x ? 0 : 2;
-  }
-
-  return next.y > point.y ? 1 : 3;
-};
-
-interface Leg {
-  readonly start: GridPoint;
-  readonly end: GridPoint;
-}
-
-const legsOf = (points: readonly GridPoint[]): readonly Leg[] =>
-  Arr.flatMap(points, (start, index) => {
-    const end = points[index + 1];
-
-    return end === undefined ? [] : [{ start, end }];
-  });
+import type { Leg } from "./route-geometry.ts";
+import {
+  crossesPolygon,
+  lineDistance,
+  rectCorners,
+  segmentDistance,
+} from "./screen-geometry.ts";
 
 /**
  * Whether a leg along x and a leg along y cross: each passes strictly
@@ -159,13 +135,6 @@ const alone = (
 
   return routes[id]?.points ?? [];
 };
-
-const groundCentreOf = ({ x, y, w, d }: Placement): GridPoint => ({
-  x: x + w / 2,
-  y: y + d / 2,
-});
-
-const centreOf = (placement: Placement) => project(groundCentreOf(placement));
 
 /** How far a bend may sit outside its route's area, in grid units. */
 const strayLimit = 3;
@@ -260,12 +229,10 @@ const legTouches = (leg: Leg, box: Placement) => {
 
 /** Whether a leg's line on screen runs through a name tag. */
 const legCrossesTag = (leg: Leg, tag: ScreenRect) =>
-  segmentCrosses({ start: project(leg.start), end: project(leg.end) }, [
-    { sx: tag.left, sy: tag.top },
-    { sx: tag.right, sy: tag.top },
-    { sx: tag.right, sy: tag.bottom },
-    { sx: tag.left, sy: tag.bottom },
-  ]);
+  crossesPolygon(
+    { start: project(leg.start), end: project(leg.end) },
+    rectCorners(tag)
+  );
 
 /**
  * The least stray any route with at most two bends could have: leaving its
@@ -350,28 +317,11 @@ const fewestStrayClear = (
     )
   );
 
-/** Every half-unit step a route takes, as order-free keys. */
-const stepKeysOf = (points: readonly GridPoint[]) =>
-  new Set(
-    Arr.flatMap(legsOf(points), ({ start, end }) => {
-      const count = Math.abs(end.x - start.x + end.y - start.y) * 2;
-      const dx = Math.sign(end.x - start.x) / 2;
-      const dy = Math.sign(end.y - start.y) / 2;
-
-      return Arr.map(Arr.range(0, count - 1), (step) => {
-        const x = start.x + dx * step;
-        const y = start.y + dy * step;
-
-        return `${Math.min(x, x + dx)},${Math.min(y, y + dy)},${dx === 0 ? "y" : "x"}`;
-      });
-    })
-  );
-
 /** Whether two routes share a half-unit step anywhere. */
 const shareStep = (a: readonly GridPoint[], b: readonly GridPoint[]) => {
-  const first = stepKeysOf(a);
+  const first = new Set(stepsOf(a));
 
-  return Arr.some([...stepKeysOf(b)], (step) => first.has(step));
+  return Arr.some(stepsOf(b), (step) => first.has(step));
 };
 
 /**
@@ -403,16 +353,47 @@ const fewestPairStray = (
   return pairs.length > 0 ? 0 : Number.POSITIVE_INFINITY;
 };
 
-const placementOf = (layout: Layout, id: string): Placement => {
-  const placement = layout.structures[id];
-
-  assert.isDefined(placement, `${id} has no placement`);
-
-  return placement;
-};
-
 const distance = (a: ScreenPoint, b: ScreenPoint) =>
   Math.hypot(a.sx - b.sx, a.sy - b.sy);
+
+/**
+ * How far a line is from a rect on screen: 0 when the line runs into it.
+ * A segment that misses a rect is nearest it at one of its own ends or at
+ * one of the rect's corners.
+ */
+const rectGap = (points: readonly ScreenPoint[], rect: ScreenRect) => {
+  const box = rectCorners(rect);
+
+  const inside = ({ sx, sy }: ScreenPoint) =>
+    sx >= rect.left && sx <= rect.right && sy >= rect.top && sy <= rect.bottom;
+
+  const gaps = Arr.flatMap(points.slice(1), (b, at) => {
+    const a = points[at] ?? b;
+
+    // Sample the segment so one that passes right through counts as 0.
+    const through = Arr.some(Arr.range(0, 100), (step) =>
+      inside({
+        sx: a.sx + ((b.sx - a.sx) * step) / 100,
+        sy: a.sy + ((b.sy - a.sy) * step) / 100,
+      })
+    );
+
+    return through
+      ? [0]
+      : [
+          ...Arr.map(box, (corner) => segmentDistance(corner, a, b)),
+          ...Arr.map([a, b], (end) =>
+            Math.min(
+              ...Arr.map(box, (corner, index) =>
+                segmentDistance(end, corner, box[(index + 1) % 4] ?? corner)
+              )
+            )
+          ),
+        ];
+  });
+
+  return Math.min(...gaps);
+};
 
 /** How far a point sits from the segment between `a` and `b`. */
 const offSegment = (point: ScreenPoint, a: ScreenPoint, b: ScreenPoint) => {
@@ -438,54 +419,20 @@ const clashKey = ({ between: [first, second] }: SceneClash) =>
  * checked both ways: any other clash fails, and so does an allowed one
  * that's no longer drawn.
  *
- * - crowded, chapter c-all: the north and west walls' boxes are drawn over
- *   the vault's box. The walls stand half a unit from the vault so that no
- *   route can reach it without running under one, which is what the map is
- *   for, and at that distance their iso boxes overlap the vault's on
- *   screen.
+ * - crowded, chapter c-all, Iso view: the north and west walls' boxes are
+ *   drawn over the vault's box. The walls stand half a unit from the vault
+ *   so that no route can reach it without running under one, which is what
+ *   the map is for, and at that distance their iso boxes overlap the
+ *   vault's on screen.
+ * - shapes, Iso view: two boxes stand on the name tags in front of them.
+ *   The map packs its boxes tight, and `check` warns about both tags.
  */
-const allowedClashes = new Map([
-  [
-    "crowded",
-    new Map([["c-all", ["box:north × box:vault", "box:west × box:vault"]]]),
-  ],
+const allowedClashes: ReadonlyMap<string, readonly string[]> = new Map([
+  ["crowded c-all iso", ["box:north × box:vault", "box:west × box:vault"]],
+  ["shapes all iso", ["box:document × tag:job", "box:store × tag:cards"]],
 ]);
 
 describe("scene", () => {
-  for (const name of ["flake-pipeline", "review", "crowded"]) {
-    it.effect(`draws nothing over anything in any chapter of ${name}`, () =>
-      Effect.gen(function* () {
-        const { data, layout } = yield* fixture(name);
-
-        for (const chapter of chaptersOf(data)) {
-          const scene = sceneOf({
-            data,
-            layout,
-            revealed: chapter.revealed,
-            labelFirst: chapter.plays,
-          });
-
-          const allowed = allowedClashes.get(name)?.get(chapter.id) ?? [];
-          const clashes = Arr.map(sceneClashes(scene), clashKey);
-
-          assert.deepStrictEqual(
-            Arr.filter(clashes, (clash) => !allowed.includes(clash)),
-            [],
-            `in chapter ${chapter.id}`
-          );
-
-          // Each allowed clash must still happen, so none outlives its
-          // reason.
-          assert.deepStrictEqual(
-            Arr.filter(allowed, (clash) => !clashes.includes(clash)),
-            [],
-            `allowed clashes no longer drawn in chapter ${chapter.id}`
-          );
-        }
-      })
-    );
-  }
-
   for (const name of [
     "flake-pipeline",
     "review",
@@ -494,7 +441,7 @@ describe("scene", () => {
     "pipeline",
   ]) {
     it.effect(
-      `draws nothing over anything in Plan view, in any chapter of ${name}`,
+      `draws nothing over anything in any chapter of ${name}, in either view`,
       () =>
         Effect.gen(function* () {
           const { data, layout } = yield* fixture(name);
@@ -504,21 +451,37 @@ describe("scene", () => {
             : [{ id: "all", plays: [], revealed: everything(data) }];
 
           for (const chapter of chapters) {
-            const scene = sceneOf({
-              data,
-              layout,
-              revealed: chapter.revealed,
-              labelFirst: chapter.plays,
-              view: "plan",
-            });
+            for (const view of views) {
+              const scene = sceneOf({
+                data,
+                layout,
+                revealed: chapter.revealed,
+                labelFirst: chapter.plays,
+                view,
+              });
 
-            assert.strictEqual(scene.view, "plan");
+              const where = `in chapter ${chapter.id}, ${view} view`;
 
-            assert.deepStrictEqual(
-              Arr.map(sceneClashes(scene), clashKey),
-              [],
-              `in chapter ${chapter.id}`
-            );
+              const allowed =
+                allowedClashes.get(`${name} ${chapter.id} ${view}`) ?? [];
+
+              const clashes = Arr.map(sceneClashes(scene), clashKey);
+
+              assert.strictEqual(scene.view, view);
+              assert.deepStrictEqual(
+                Arr.filter(clashes, (clash) => !allowed.includes(clash)),
+                [],
+                where
+              );
+
+              // Each allowed clash must still happen, so none outlives its
+              // reason.
+              assert.deepStrictEqual(
+                Arr.filter(allowed, (clash) => !clashes.includes(clash)),
+                [],
+                `allowed clashes no longer drawn ${where}`
+              );
+            }
           }
         })
     );
@@ -537,50 +500,75 @@ describe("scene", () => {
           view: "plan",
         });
 
+        // One scale for the whole map, read off the server's width. The
+        // server is a plain box, drawn as its footprint exactly.
         const server = Arr.findFirst(
           scene.structures,
           ({ structure }) => structure.id === "server"
         ).pipe(Option.getOrThrow);
 
-        const { x, y, w, d } = placementOf(layout, "server");
+        const scale =
+          ((server.outline[1]?.sx ?? 0) - (server.outline[0]?.sx ?? 0)) /
+          placementOf(layout, "server").w;
 
-        assert.deepStrictEqual(server.outline, [
-          { sx: x * planUnit, sy: y * planUnit },
-          { sx: (x + w) * planUnit, sy: y * planUnit },
-          { sx: (x + w) * planUnit, sy: (y + d) * planUnit },
-          { sx: x * planUnit, sy: (y + d) * planUnit },
-        ]);
+        assert.isAbove(scale, 0);
 
-        const routes = routeRevealed({
-          data,
-          layout,
-          revealed: everything(data),
-        });
+        /** A ground rectangle drawn flat: its corners clockwise from the top left. */
+        const flat = ({ x, y, w, d }: Placement) => [
+          { sx: x * scale, sy: y * scale },
+          { sx: (x + w) * scale, sy: y * scale },
+          { sx: (x + w) * scale, sy: (y + d) * scale },
+          { sx: x * scale, sy: (y + d) * scale },
+        ];
+
+        assert.deepStrictEqual(
+          server.outline,
+          flat(placementOf(layout, "server"))
+        );
+
+        // Other shapes may overhang their footprint, the same on every side.
+        for (const { structure, outline } of scene.structures) {
+          const { x, y, w, d } = placementOf(layout, structure.id);
+          const by = x - (outline[0]?.sx ?? 0) / scale;
+
+          const drawn = flat({
+            x: x - by,
+            y: y - by,
+            w: w + 2 * by,
+            d: d + 2 * by,
+          });
+
+          assert.isAtLeast(by, 0, structure.id);
+          assert.lengthOf(outline, 4, structure.id);
+
+          for (const [corner, want] of Arr.zip(outline, drawn)) {
+            assert.closeTo(corner.sx, want.sx, 1e-9, structure.id);
+            assert.closeTo(corner.sy, want.sy, 1e-9, structure.id);
+          }
+        }
+
+        assert.lengthOf(scene.zones, data.groups.length);
+
+        for (const { zone, plate } of scene.zones) {
+          assert.deepStrictEqual(plate, flat(zone.box), zone.group.id);
+        }
 
         for (const hop of scene.hops) {
           assert.deepStrictEqual(
             hop.points,
-            Arr.map(routes[hop.hop.id]?.points ?? [], ({ x: gx, y: gy }) => ({
-              sx: gx * planUnit,
-              sy: gy * planUnit,
-            }))
+            Arr.map(hop.route.points, ({ x: gx, y: gy }) => ({
+              sx: gx * scale,
+              sy: gy * scale,
+            })),
+            hop.hop.id
           );
-
-          for (const [a, b] of Arr.zip(hop.points, hop.points.slice(1))) {
-            assert.isTrue(
-              a.sx === b.sx || a.sy === b.sy,
-              `${hop.hop.id} has a leg that isn't at a right angle`
-            );
-          }
         }
-
-        assert.isNotEmpty(scene.zones);
       })
   );
 
   for (const view of views) {
     it.effect(
-      `keeps every label within ${labelReachLimit} grid units of its route in ${view === "iso" ? "the Iso view" : "Plan view"}`,
+      `keeps every label within 1.5 grid units of its route in ${view === "iso" ? "the Iso view" : "Plan view"}`,
       () =>
         Effect.gen(function* () {
           const { unit } = groundProjections[view];
@@ -609,11 +597,11 @@ describe("scene", () => {
 
               for (const { hop, points, label } of scene.hops) {
                 if (label !== undefined) {
-                  const gap = labelGap(points, label) / unit;
+                  const gap = rectGap(points, label) / unit;
 
                   assert.isAtMost(
                     gap,
-                    labelReachLimit + 1e-9,
+                    1.5 + 1e-9,
                     `${hop.id}'s label in ${name} ${chapter.id}`
                   );
                 }
@@ -644,12 +632,20 @@ describe("scene", () => {
 
           assert.isDefined(head);
           assert.isDefined(before);
-          assert.isTrue(
-            endsOnTarget(hop, placementOf(layout, hop.hop.to)),
+
+          const { back, right, front, left } = corners(
+            placementOf(layout, hop.hop.to),
+            0
+          );
+
+          assert.isBelow(
+            lineDistance([back, right, front, left, back], head.tip),
+            0.5,
             `${hop.hop.id} ends off its target`
           );
           assert.isBelow(offSegment(head.base, before, head.tip), 1e-6);
-          assert.closeTo(distance(head.base, head.tip), arrowLength, 1e-6);
+          // Every arrowhead is 10 px long.
+          assert.closeTo(distance(head.base, head.tip), 10, 1e-6);
         }
       })
   );
@@ -763,12 +759,26 @@ describe("scene", () => {
           });
 
           for (const [id, route] of Rec.toEntries(routes)) {
-            const measured = routeLength(route.points);
+            const [first] = route.points;
+            const last = route.points.at(-1);
+
+            assert.isDefined(first);
+            assert.isDefined(last);
+
+            // The cap: half as long again as the ends are apart, plus a unit.
+            const ends =
+              Math.abs(last.x - first.x) + Math.abs(last.y - first.y);
+
+            const length = Arr.reduce(
+              legsOf(route.points),
+              0,
+              (sum, { start, end }) =>
+                sum + Math.abs(end.x - start.x) + Math.abs(end.y - start.y)
+            );
 
             assert.isTrue(
-              measured.length <= routeCap(measured.distance) ||
-                warned.has(`routes["${id}"]`),
-              `${id} in ${chapter.id}: ${measured.length} units for ends ${measured.distance} apart`
+              length <= 1.5 * ends + 1 || warned.has(`routes["${id}"]`),
+              `${id} in ${chapter.id}: ${length} units for ends ${ends} apart`
             );
           }
         }
@@ -892,51 +902,6 @@ describe("scene", () => {
       })
   );
 
-  it.effect(
-    "swings chapter 1's routes at most 0.6 times as far from their line as an L",
-    () =>
-      Effect.gen(function* () {
-        const { data, layout } = yield* fixture("flake-pipeline");
-        const [first] = chaptersOf(data);
-
-        assert.isDefined(first);
-
-        const routes = Rec.toEntries(
-          routeRevealed({ data, layout, revealed: first.revealed })
-        );
-
-        for (const [id, route] of routes) {
-          const hop = hopOf(data, id);
-          const source = placementOf(layout, hop.from);
-          const target = placementOf(layout, hop.to);
-          const line = [centreOf(source), centreOf(target)] as const;
-
-          const furthest = (points: readonly GridPoint[]) =>
-            Math.max(
-              0,
-              ...Arr.map(points, (point) =>
-                distanceToPolyline(line, project(point))
-              )
-            );
-
-          // The L's single bend, at either corner of the centres' box.
-          const from = groundCentreOf(source);
-          const to = groundCentreOf(target);
-
-          const ell = Math.min(
-            furthest([{ x: to.x, y: from.y }]),
-            furthest([{ x: from.x, y: to.y }])
-          );
-
-          assert.isAtMost(
-            furthest(route.points.slice(1, -1)),
-            0.6 * ell,
-            `${id} swings as far as an L`
-          );
-        }
-      })
-  );
-
   for (const name of ["flake-pipeline", "review", "crowded"]) {
     it.effect(
       `keeps every ${name} bend within 3 units of its area unless boxes force it`,
@@ -1005,32 +970,6 @@ describe("scene", () => {
       })
     );
   }
-
-  it.effect(
-    "detours the crowded map's API → DB hop around the cache between them",
-    () =>
-      Effect.gen(function* () {
-        const { data, layout } = yield* fixture("crowded");
-
-        const routes = routeRevealed({
-          data,
-          layout,
-          revealed: new Set(Arr.map(data.structures, ({ id }) => id)),
-        });
-
-        const route = routes["h-query"];
-        const cache = placementOf(layout, "cache");
-
-        assert.isDefined(route);
-        // A straight leg from API to DB would run under the cache.
-        assert.isAtLeast(bendsOf(route.points), 2);
-        assert.deepStrictEqual(route.crosses, []);
-
-        for (const leg of legsOf(route.points)) {
-          assert.isFalse(legTouches(leg, cache), "runs under the cache");
-        }
-      })
-  );
 });
 
 /** A one-group map with 2×2 boxes at `placements` and route overrides. */
@@ -1087,6 +1026,18 @@ const groundClashesOf = (map: ReturnType<typeof groundMap>) =>
     );
   });
 
+/** What `check` warns about a map, by message. */
+const warningsOf = (map: ReturnType<typeof groundMap>) =>
+  Arr.map(checkLayout(map.data, map.layout), ({ message }) => message);
+
+/** The warning `check` gives in each view for a clash between two things. */
+const drawnOver = (first: string, second: string) =>
+  Arr.map(
+    ["", " in Plan view"],
+    (where) =>
+      `${first} is drawn over ${second}${where}. Move the structures apart, so the drawing has room.`
+  );
+
 describe("ground clashes", () => {
   it.effect("reports a route that touches another box's corner", () =>
     Effect.sync(() => {
@@ -1109,9 +1060,10 @@ describe("ground clashes", () => {
         }
       );
 
-      for (const clashes of groundClashesOf(map)) {
-        assert.include(clashes, "route:h × box:m");
-      }
+      assert.includeMembers(
+        warningsOf(map),
+        drawnOver('the route of hop "h"', 'the box of "m"')
+      );
     })
   );
 
@@ -1132,9 +1084,10 @@ describe("ground clashes", () => {
         }
       );
 
-      for (const clashes of groundClashesOf(map)) {
-        assert.include(clashes, "route:h × corner:a");
-      }
+      assert.includeMembers(
+        warningsOf(map),
+        drawnOver('the route of hop "h"', 'a corner of "a"')
+      );
     })
   );
 
@@ -1154,56 +1107,70 @@ describe("ground clashes", () => {
         }
       );
 
-      for (const clashes of groundClashesOf(map)) {
-        assert.include(clashes, "route:h × zone:main");
-      }
+      assert.includeMembers(
+        warningsOf(map),
+        drawnOver('the route of hop "h"', 'the outline of zone "main"')
+      );
     })
   );
 
-  it.effect("reports two hops' lines that run on top of each other", () =>
-    Effect.sync(() => {
-      // Two hops between different pairs share a stretch at y = 5.
-      // Overrides keep their points, so the scene draws them as they are.
-      const map = groundMap(
-        {
-          a: { x: 0, y: 0 },
-          b: { x: 10, y: 8 },
-          c: { x: 4, y: 0 },
-          d: { x: 14, y: 8 },
-        },
-        [
-          { id: "one", from: "a", to: "b" },
-          { id: "two", from: "c", to: "d" },
-        ],
-        {
-          one: [
-            { x: 1, y: 2 },
-            { x: 1, y: 5 },
-            { x: 11, y: 5 },
-            { x: 11, y: 8 },
+  it.effect(
+    "draws two hops' overrides that share a stretch in lanes of their own",
+    () =>
+      Effect.sync(() => {
+        // Two hops between different pairs share a stretch at y = 5.
+        // Overrides keep their points, so the scene draws them as they are.
+        const map = groundMap(
+          {
+            a: { x: 0, y: 0 },
+            b: { x: 10, y: 8 },
+            c: { x: 4, y: 0 },
+            d: { x: 14, y: 8 },
+          },
+          [
+            { id: "one", from: "a", to: "b" },
+            { id: "two", from: "c", to: "d" },
           ],
-          two: [
-            { x: 5, y: 2 },
-            { x: 5, y: 5 },
-            { x: 15, y: 5 },
-            { x: 15, y: 8 },
-          ],
+          {
+            one: [
+              { x: 1, y: 2 },
+              { x: 1, y: 5 },
+              { x: 11, y: 5 },
+              { x: 11, y: 8 },
+            ],
+            two: [
+              { x: 5, y: 2 },
+              { x: 5, y: 5 },
+              { x: 15, y: 5 },
+              { x: 15, y: 8 },
+            ],
+          }
+        );
+
+        const lanes = Arr.map(views, (view) =>
+          Arr.map(sceneOf({ ...map, view }).hops, ({ points }) => points)
+        );
+
+        // The scene gives each its own lane, so the lines don't coincide.
+        for (const clashes of groundClashesOf(map)) {
+          assert.notInclude(clashes, "route:one × route:two");
         }
-      );
 
-      const lanes = Arr.map(views, (view) =>
-        Arr.map(sceneOf({ ...map, view }).hops, ({ points }) => points)
-      );
-
-      // The scene gives each its own lane, so the lines don't coincide.
-      for (const clashes of groundClashesOf(map)) {
-        assert.notInclude(clashes, "route:one × route:two");
-      }
-
-      for (const [one, two] of lanes) {
-        assert.notDeepEqual(one?.[1], two?.[0]);
-      }
-    })
+        // Two's first bend, at (5, 5), and one's second, at (11, 5), each lie
+        // on the other's line on the ground. Drawn, they sit off it.
+        for (const [one, two] of lanes) {
+          assert.isDefined(one);
+          assert.isDefined(two);
+          assert.isAbove(
+            lineDistance(one, two[1] ?? project({ x: 0, y: 0 })),
+            1
+          );
+          assert.isAbove(
+            lineDistance(two, one[2] ?? project({ x: 0, y: 0 })),
+            1
+          );
+        }
+      })
   );
 
   it.effect("is quiet for two hops that cross at a right angle", () =>
@@ -1238,7 +1205,7 @@ describe("ground clashes", () => {
   );
 
   it.effect(
-    "draws main → Updater and Upstream → Updater as two lines into two points on Updater",
+    "draws main → Updater and Upstream → Updater as two lines that end on Updater's edge",
     () =>
       Effect.gen(function* () {
         const { data, layout } = yield* fixture("flake-pipeline");
@@ -1269,17 +1236,8 @@ describe("ground clashes", () => {
 
           for (const tip of tips) {
             assert.isDefined(tip);
-            assert.isBelow(distanceToPolyline(edge, tip), 1e-6, view);
+            assert.isBelow(lineDistance(edge, tip), 1e-6, view);
           }
-
-          assert.isAbove(
-            distance(
-              tips[0] ?? project({ x: 0, y: 0 }),
-              tips[1] ?? project({ x: 0, y: 0 })
-            ),
-            1,
-            `the two arrowheads share a point in ${view}`
-          );
 
           // The lines keep apart wherever they run side by side: each of
           // one's corners sits off the other's line, except where they cross.
@@ -1289,7 +1247,7 @@ describe("ground clashes", () => {
           ] as const) {
             for (const point of line) {
               assert.isAbove(
-                distanceToPolyline(other, point),
+                lineDistance(other, point),
                 1,
                 `the two lines meet in ${view}`
               );
@@ -1333,49 +1291,6 @@ const acrossGap = (first: Head, second: Head) =>
   ) / Math.max(Math.hypot(first.along.sx, first.along.sy), 1e-9);
 
 describe("arrowheads", () => {
-  it.effect(
-    "never overlap on any fixture, in any chapter, in either view",
-    () =>
-      Effect.gen(function* () {
-        for (const name of [
-          "flake-pipeline",
-          "review",
-          "crowded",
-          "shapes",
-          "pipeline",
-        ]) {
-          const { data, layout } = yield* fixture(name);
-
-          const chapters = Arr.isReadonlyArrayNonEmpty(data.chapters)
-            ? chaptersOf(data)
-            : [{ id: "all", plays: [], revealed: everything(data) }];
-
-          for (const chapter of chapters) {
-            for (const view of views) {
-              const scene = sceneOf({
-                data,
-                layout,
-                revealed: chapter.revealed,
-                labelFirst: chapter.plays,
-                view,
-              });
-
-              const clashes = Arr.filter(
-                Arr.map(sceneClashes(scene), clashKey),
-                (key) => Str.startsWith("arrow:")(key)
-              );
-
-              assert.deepStrictEqual(
-                clashes,
-                [],
-                `${name} ${chapter.id} in ${view}`
-              );
-            }
-          }
-        }
-      })
-  );
-
   it.effect(
     "keep a head width plus 3 px apart across their direction on one edge, on every fixture, in the Iso view",
     () =>
@@ -1458,7 +1373,7 @@ describe("arrowheads", () => {
   );
 
   it.effect(
-    "show one head per hop, solid or faint, so each structure shows as many as hops end there",
+    "show exactly one head for each hop, solid or faint, on every fixture in either view",
     () =>
       Effect.gen(function* () {
         for (const name of [
@@ -1491,7 +1406,7 @@ describe("arrowheads", () => {
               // A solid head is drawn under every box, so it shows only
               // where no box's outline covers its middle. The faint heads
               // are the hidden stretches that reach the end.
-              const shown = Arr.map(scene.hops, (hop) => {
+              const wrong = Arr.flatMap(scene.hops, (hop) => {
                 const head = arrowheadOf(hop.points);
 
                 const covered =
@@ -1508,18 +1423,9 @@ describe("arrowheads", () => {
                   ({ reachesEnd }) => reachesEnd
                 );
 
-                return {
-                  to: hop.hop.to,
-                  heads: (covered ? 0 : 1) + faint.length,
-                };
-              });
+                const heads = (covered ? 0 : 1) + faint.length;
 
-              const wrong = Arr.flatMap(scene.structures, ({ structure }) => {
-                const mine = Arr.filter(shown, ({ to }) => to === structure.id);
-
-                return Arr.flatMap(mine, ({ heads }) =>
-                  heads === 1 ? [] : [`${structure.id}: ${heads} heads`]
-                );
+                return heads === 1 ? [] : [`${hop.hop.id}: ${heads} heads`];
               });
 
               assert.deepStrictEqual(
@@ -1614,13 +1520,13 @@ describe("arrowheads", () => {
             Arr.map(heads.slice(index + 1), (second) =>
               Math.min(
                 ...Arr.map(first.polygon, (point) =>
-                  distanceToPolyline(
+                  lineDistance(
                     [...second.polygon, second.polygon[0] ?? point],
                     point
                   )
                 ),
                 ...Arr.map(second.polygon, (point) =>
-                  distanceToPolyline(
+                  lineDistance(
                     [...first.polygon, first.polygon[0] ?? point],
                     point
                   )

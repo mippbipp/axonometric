@@ -5,7 +5,6 @@ import {
   checkLayout,
   footprintsOverlap,
   placeStructures,
-  zonePadding,
   zonesOf,
 } from "../src/index.ts";
 import type {
@@ -15,6 +14,7 @@ import type {
   Placement,
   Structure,
 } from "../src/index.ts";
+import { grow } from "./footprints.ts";
 
 type MapParts = Pick<MapData, "groups" | "structures">;
 
@@ -69,13 +69,6 @@ const layout = layoutOf({
   cache: at(6, 4),
 });
 
-const pad = (box: Placement, by: number): Placement => ({
-  x: box.x - by,
-  y: box.y - by,
-  w: box.w + 2 * by,
-  d: box.d + 2 * by,
-});
-
 const zoneWarnings = (problems: readonly MapProblem[]) =>
   Arr.filter(problems, ({ message }) => Str.includes("zones of")(message));
 
@@ -101,19 +94,19 @@ const assertSeparate = (parts: MapParts, placed: Layout) => {
 
 describe("zones", () => {
   it.effect(
-    "fits each group's placed structures plus padding, in groups order",
+    "fits each group's placed structures plus one unit, in groups order",
     () =>
       Effect.sync(() => {
         assert.deepStrictEqual(zonesOf({ data, layout }), [
           {
             group: { id: "front", title: "Front" },
             members: ["web"],
-            box: pad(at(0, 0), zonePadding),
+            box: grow(at(0, 0), 1),
           },
           {
             group: { id: "back", title: "Back end" },
             members: ["api", "db", "cache"],
-            box: pad({ x: 6, y: 0, w: 7, d: 6 }, zonePadding),
+            box: grow({ x: 6, y: 0, w: 7, d: 6 }, 1),
           },
         ]);
       })
@@ -124,7 +117,7 @@ describe("zones", () => {
       const moved = layoutOf({ ...layout.structures, web: at(-4, 2.5) });
       const [front] = zonesOf({ data, layout: moved });
 
-      assert.deepStrictEqual(front?.box, pad(at(-4, 2.5), zonePadding));
+      assert.deepStrictEqual(front?.box, grow(at(-4, 2.5), 1));
     })
   );
 
@@ -146,7 +139,7 @@ describe("zones", () => {
           {
             group: "back",
             members: ["api", "cache"],
-            box: pad({ x: 6, y: 0, w: 2, d: 6 }, zonePadding),
+            box: grow({ x: 6, y: 0, w: 2, d: 6 }, 1),
           },
         ]
       );
@@ -265,7 +258,7 @@ describe("placement and zones", () => {
           // Next to its zone means within one slot of the zone's edge.
           if (Option.isSome(own)) {
             assert.isTrue(
-              footprintsOverlap(pad(own.value.box, 4), spot),
+              footprintsOverlap(grow(own.value.box, 4), spot),
               `${added.id} is far from ${added.group}'s zone`
             );
           }
@@ -291,6 +284,11 @@ describe("placement and zones", () => {
         layoutOf({ a1: at(0, 0), b1: at(6, 0) })
       );
 
+      const { a2 } = placed.structures;
+
+      assert.isDefined(a2);
+      // b1 sits to the right of a1, so a2 goes anywhere but further right.
+      assert.isAtMost(a2.x + a2.w, 2, "a2 grows a's zone towards b1");
       assertSeparate(parts, placed);
     })
   );

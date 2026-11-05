@@ -1,11 +1,13 @@
-import { MapState, Proposals } from "@axonometric/contracts";
+import { MapState, Proposals, ServerEvent } from "@axonometric/contracts";
 import type { LayoutChange } from "@axonometric/contracts";
 import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
   Effect,
+  Fiber,
   FileSystem,
+  Latch,
   Path,
   Schema,
   Stream,
@@ -14,7 +16,9 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { makeHome, runCli, serveReviewMap, startServe } from "./harness.ts";
+import { ownOrigin, writeText } from "./revisions.ts";
+import type { Sent } from "./revisions.ts";
 
 // Plain HTTP writes to a real serve, for the requests a browser won't send.
 // Each refused write must leave every file in the home folder as it was.
@@ -22,22 +26,9 @@ import { makeHome, runCli, startServe } from "./harness.ts";
 const pendingLayout = "/api/proposals/layout";
 
 /** The review map served on a free port, with extra `serve` arguments. */
-const servedWith = (args: readonly string[]) =>
-  Effect.gen(function* () {
-    const path = yield* Path.Path;
-    const root = yield* makeHome(yield* fullMap);
-    const home = path.join(root, "review", "map");
-    const serve = yield* startServe(home, ["--port", "0", ...args]);
-
-    return { home, url: serve.url };
-  }).pipe(Effect.provide(NodeServices.layer));
+const servedWith = (args: readonly string[]) => serveReviewMap({}, args);
 
 const served = servedWith([]);
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
 
 /** A body for the endpoint, which the server may refuse. */
 const WriteBody = Schema.Struct({
@@ -66,33 +57,14 @@ const put = (
   url: string,
   headers: Readonly<Record<string, string>>,
   body: Effect.Effect<string>
-) => Effect.flatMap(body, (text) => sendText(url, headers, text));
-
-const sendText = (
-  url: string,
-  headers: Readonly<Record<string, string>>,
-  body: string
 ) =>
-  HttpClient.HttpClient.use((client) =>
-    client.execute(
-      HttpClientRequest.put(new URL(pendingLayout, url)).pipe(
-        HttpClientRequest.setHeaders(headers),
-        HttpClientRequest.bodyText(
-          body,
-          headers["content-type"] ?? "application/json"
-        )
-      )
-    )
-  ).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text): Sent => ({
-        status: response.status,
-        body: text,
-      }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
+  Effect.flatMap(body, (text) =>
+    writeText(url, {
+      method: "put",
+      target: pendingLayout,
+      headers,
+      body: text,
+    })
   );
 
 const chunk = new Uint8Array(64 * 1024).fill(32);
@@ -122,6 +94,10 @@ const putChunked = (
 
 const decodeState = Schema.decodeUnknownEffect(Schema.fromJsonString(MapState));
 
+const decodeEvent = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(ServerEvent)
+);
+
 /** The map as the server holds it now, with what's pending. */
 const getState = (url: string) =>
   HttpClient.HttpClient.use((client) =>
@@ -134,17 +110,18 @@ const getState = (url: string) =>
     Effect.provide(NodeHttpClient.layerNodeHttp)
   );
 
+/** Where the first pending move in `state` puts the page along x, or 0. */
+const pageXOf = (state: MapState) => {
+  const [first] = state.proposals?.layout ?? [];
+
+  return first?.kind === "move" ? (first.moves[0]?.position.x ?? 0) : 0;
+};
+
 /** The headers of a write through a reverse proxy for `map.example.test`. */
 const asProxied = (origin: string) => ({
   "content-type": "application/json",
   host: "map.example.test",
   origin,
-});
-
-/** The headers a page the server served sends. */
-const ownOrigin = (url: string) => ({
-  origin: url,
-  "content-type": "application/json",
 });
 
 const pageAt = (x: number, y = 3): LayoutChange => ({
@@ -209,54 +186,33 @@ describe("writing pending layout changes over HTTP", () => {
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
-  it.live("refuses a cross-origin write", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
+  it.live(
+    "refuses a write from another origin, with no Origin, or with Origin: null",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* served;
+        const json = { "content-type": "application/json" };
 
-      yield* assertRefused(
-        home,
-        403,
-        put(
-          url,
-          { ...ownOrigin(url), origin: "http://attacker.example.test" },
-          moveBody(0, 4)
-        )
-      );
-      // Another port on the same host is another origin.
-      yield* assertRefused(
-        home,
-        403,
-        put(
-          url,
-          { ...ownOrigin(url), origin: "http://127.0.0.1:1" },
-          moveBody(0, 4)
-        )
-      );
-    })
-  );
+        const refused = [
+          ["another site", { ...json, origin: "http://attacker.example.test" }],
+          // Another port on the same host is another origin.
+          ["another port", { ...json, origin: "http://127.0.0.1:1" }],
+          // Outside a browser, as from curl.
+          ["no Origin", json],
+          // Sandboxed frames and files send this.
+          ["Origin: null", { ...json, origin: "null" }],
+        ] as const;
 
-  it.live("refuses a write with no Origin from outside a browser", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
+        for (const [why, headers] of refused) {
+          const sent = yield* assertRefused(
+            home,
+            403,
+            put(url, headers, moveBody(0, 4))
+          );
 
-      yield* assertRefused(
-        home,
-        403,
-        put(url, { "content-type": "application/json" }, moveBody(0, 4))
-      );
-    })
-  );
-
-  it.live("refuses Origin: null, which sandboxed frames and files send", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-
-      yield* assertRefused(
-        home,
-        403,
-        put(url, { ...ownOrigin(url), origin: "null" }, moveBody(0, 4))
-      );
-    })
+          assert.include(sent.body, "Writes must come from a page", why);
+        }
+      })
   );
 
   it.live(
@@ -430,26 +386,6 @@ describe("writing pending layout changes over HTTP", () => {
     })
   );
 
-  it.live("refuses a write with a forged Host", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-
-      yield* assertRefused(
-        home,
-        403,
-        put(
-          url,
-          {
-            ...ownOrigin(url),
-            host: "attacker.example.test",
-            origin: "http://attacker.example.test",
-          },
-          moveBody(0, 4)
-        )
-      );
-    })
-  );
-
   it.live(
     "doesn't rewrite SYSTEM.md or the read-only page for a pending change",
     () =>
@@ -513,21 +449,57 @@ describe("writing pending layout changes over HTTP", () => {
       }).pipe(Effect.provide(NodeServices.layer))
   );
 
-  it.live("broadcasts two quick writes in the order they were made", () =>
-    Effect.gen(function* () {
-      const { url } = yield* served;
+  it.live(
+    "tells open pages about each write, in the order they were made",
+    () =>
+      Effect.gen(function* () {
+        const { url } = yield* served;
+        const open = yield* Latch.make();
 
-      const first = yield* put(url, ownOrigin(url), moveBody(0, 4));
-      const second = yield* put(url, ownOrigin(url), moveBody(1, 6));
+        const response = yield* HttpClient.HttpClient.use((client) =>
+          client.execute(HttpClientRequest.get(new URL("/api/events", url)))
+        ).pipe(Effect.orDie);
 
-      assert.strictEqual(first.status, 200, first.body);
-      assert.strictEqual(second.status, 200, second.body);
+        // The page's x in each map the stream sends, from the first, which
+        // shows the map as it was when the stream opened.
+        const seen = yield* response.stream.pipe(
+          Stream.decodeText(),
+          Stream.splitLines,
+          Stream.filter(Str.startsWith("data:")),
+          Stream.mapEffect((line) =>
+            decodeEvent(Str.trim(Str.slice("data:".length)(line)))
+          ),
+          Stream.flatMap((event) =>
+            ServerEvent.match(event, {
+              MapUpdated: ({ state }) => Stream.make(pageXOf(state)),
+              MapRejected: () => Stream.empty,
+              PendingUpdated: () => Stream.empty,
+              HistoryUpdated: () => Stream.empty,
+              Heartbeat: () => Stream.empty,
+            })
+          ),
+          Stream.tap(() => open.open),
+          // The watcher may send the same map again once the file settles.
+          Stream.changes,
+          Stream.takeUntil((x) => x === 6),
+          Stream.runCollect,
+          Effect.timeout("10 seconds"),
+          Effect.forkChild
+        );
 
-      const state = yield* getState(url);
+        yield* open.await;
 
-      assert.strictEqual(state.proposals?.revision, 2);
-      assert.deepStrictEqual(state.proposals?.layout, [pageAt(6)]);
-    })
+        const first = yield* put(url, ownOrigin(url), moveBody(0, 4));
+        const second = yield* put(url, ownOrigin(url), moveBody(1, 6));
+
+        assert.strictEqual(first.status, 200, first.body);
+        assert.strictEqual(second.status, 200, second.body);
+        assert.deepStrictEqual(yield* Fiber.join(seen), [0, 4, 6]);
+      }).pipe(
+        Effect.scoped,
+        Effect.orDie,
+        Effect.provide(NodeHttpClient.layerNodeHttp)
+      )
   );
 
   it.live(

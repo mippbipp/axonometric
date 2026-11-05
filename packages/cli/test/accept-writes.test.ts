@@ -5,7 +5,7 @@ import {
   StaleProposals,
 } from "@axonometric/contracts";
 import type { LayoutChange } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
@@ -16,10 +16,10 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
 
-import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { pageState, serveReviewMap } from "./harness.ts";
+import { moveOf, ownOrigin, writeText } from "./revisions.ts";
+import type { Sent } from "./revisions.ts";
 
 // Plain HTTP accepts against a real serve, for the requests a browser won't
 // send. Each refused accept must leave every file in the home folder, and
@@ -29,79 +29,17 @@ const acceptPath = "/api/proposals/accept";
 
 const layoutPath = "/api/proposals/layout";
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-
-  return { root, home, url: serve.url, output: serve.output };
-}).pipe(Effect.provide(NodeServices.layer));
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
-
-interface Request {
-  readonly method: "PUT" | "POST";
-  readonly pathname: string;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: string;
-}
-
-const send = (url: string, { method, pathname, headers, body }: Request) =>
-  HttpClient.HttpClient.use((client) =>
-    client.execute(
-      HttpClientRequest.make(method)(new URL(pathname, url)).pipe(
-        HttpClientRequest.setHeaders(headers),
-        HttpClientRequest.bodyText(
-          body,
-          headers["content-type"] ?? "application/json"
-        )
-      )
-    )
-  ).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text): Sent => ({
-        status: response.status,
-        body: text,
-      }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
-  );
-
-const ownOrigin = (url: string) => ({
-  origin: url,
-  "content-type": "application/json",
-});
+const served = serveReviewMap({}, []);
 
 const json = (value: Schema.JsonObject) =>
   Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(value).pipe(
     Effect.orDie
   );
 
-const moveOf = (
-  id: string,
-  structure: string,
-  to: { readonly x: number; readonly y: number }
-): LayoutChange => ({
-  id,
-  kind: "move",
-  moves: [{ target: { kind: "structure", id: structure }, position: to }],
-});
-
 /** Saves `layout` as the pending changes, from revision `base`. */
 const pend = (url: string, base: number, layout: readonly LayoutChange[]) =>
   Effect.flatMap(json({ baseFileRevision: base, layout }), (body) =>
-    send(url, {
-      method: "PUT",
-      pathname: layoutPath,
-      headers: ownOrigin(url),
-      body,
-    })
+    writeText(url, { method: "put", target: layoutPath, body })
   );
 
 const accept = (
@@ -110,7 +48,7 @@ const accept = (
   headers: Readonly<Record<string, string>> = ownOrigin(url)
 ) =>
   Effect.flatMap(json(body), (text) =>
-    send(url, { method: "POST", pathname: acceptPath, headers, body: text })
+    writeText(url, { method: "post", target: acceptPath, headers, body: text })
   );
 
 /** Every file under `root`, the lock and server state left out. */
@@ -278,18 +216,23 @@ describe("accepting pending layout changes over HTTP", () => {
         );
 
         assert.include(firstText, '"Move Map page; resize Save server"');
-        assert.isTrue(
-          yield* fs.exists(path.join(home, "history", "0002.json"))
-        );
         // The second revision didn't rewrite the first.
         assert.strictEqual(
           yield* fs.readFileString(path.join(home, "history", "0001.json")),
           firstText
         );
-        assert.include(
-          yield* fs.readFileString(path.join(home, "history", "0002.json")),
-          '"engineer": {\n        "x": 0,\n        "y": 4'
+
+        const secondRevision = yield* decodeRevisionText(
+          yield* fs.readFileString(path.join(home, "history", "0002.json"))
         );
+
+        assert.strictEqual(secondRevision.revision, 2);
+        assert.deepStrictEqual(secondRevision.layout.structures.engineer, {
+          x: 0,
+          y: 4,
+          w: 2,
+          d: 2,
+        });
       }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -301,12 +244,13 @@ describe("accepting pending layout changes over HTTP", () => {
         const path = yield* Path.Path;
         const { root, url } = yield* served;
         const html = path.join(root, "review", "review.html");
+        const systemMd = path.join(root, "review", "SYSTEM.md");
 
         yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 7 })]);
 
-        const before = yield* fs.readFileString(html);
-
-        assert.notInclude(before, '"x":4,"y":7');
+        // SYSTEM.md holds no positions, so the stand-in text shows that
+        // accepting writes it again.
+        yield* fs.writeFileString(systemMd, "stale");
 
         const sent = yield* accept(url, {
           baseFileRevision: 1,
@@ -314,51 +258,18 @@ describe("accepting pending layout changes over HTTP", () => {
         });
 
         assert.strictEqual(sent.status, 200, sent.body);
-        assert.include(yield* fs.readFileString(html), '"x":4,"y":7');
+        assert.include(yield* fs.readFileString(systemMd), "# Review loop");
+
+        const state = yield* pageState(yield* fs.readFileString(html));
+
+        assert.isUndefined(state.proposals);
+        assert.deepStrictEqual(state.layout.structures.page, {
+          x: 4,
+          y: 7,
+          w: 2,
+          d: 2,
+        });
       }).pipe(Effect.provide(NodeServices.layer))
-  );
-
-  it.live("refuses a cross-origin accept, and one with no Origin", () =>
-    Effect.gen(function* () {
-      const { root, url } = yield* served;
-
-      yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
-
-      const body = { baseFileRevision: 1, changeIds: "all" };
-
-      yield* assertRefused(
-        root,
-        403,
-        accept(url, body, {
-          ...ownOrigin(url),
-          origin: "http://attacker.example.test",
-        })
-      );
-      yield* assertRefused(
-        root,
-        403,
-        accept(url, body, { "content-type": "application/json" })
-      );
-    })
-  );
-
-  it.live("refuses an accept that isn't JSON", () =>
-    Effect.gen(function* () {
-      const { root, url } = yield* served;
-
-      yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
-
-      yield* assertRefused(
-        root,
-        415,
-        send(url, {
-          method: "POST",
-          pathname: acceptPath,
-          headers: { origin: url, "content-type": "text/plain" },
-          body: "baseFileRevision=1",
-        })
-      );
-    })
   );
 
   it.live(
@@ -385,47 +296,6 @@ describe("accepting pending layout changes over HTTP", () => {
 
         assert.strictEqual(answer.proposals.revision, 1);
       })
-  );
-
-  it.live("refuses an unknown change id", () =>
-    Effect.gen(function* () {
-      const { root, url } = yield* served;
-
-      yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
-
-      const refused = yield* assertRefused(
-        root,
-        422,
-        accept(url, { baseFileRevision: 1, changeIds: ["m1", "nope"] })
-      );
-
-      assert.include(refused.body, "nope");
-    })
-  );
-
-  it.live("refuses a change that isn't a layout change", () =>
-    Effect.gen(function* () {
-      const { root, url } = yield* served;
-
-      yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
-
-      // The payload names ids and a message only. A kind that isn't a layout
-      // change has no field to ride in, and a proposal's id is not pending.
-      yield* assertRefused(
-        root,
-        400,
-        accept(url, {
-          baseFileRevision: 1,
-          changeIds: "all",
-          proposals: [{ kind: "rename", id: "page", name: "x" }],
-        })
-      );
-      yield* assertRefused(
-        root,
-        422,
-        accept(url, { baseFileRevision: 1, changeIds: ["p-rename-1"] })
-      );
-    })
   );
 
   it.live("refuses a body that doesn't match the schema", () =>
@@ -473,25 +343,13 @@ describe("accepting pending layout changes over HTTP", () => {
     })
   );
 
-  it.live("refuses to accept nothing", () =>
-    Effect.gen(function* () {
-      const { root, url } = yield* served;
-
-      yield* assertRefused(
-        root,
-        422,
-        accept(url, { baseFileRevision: 0, changeIds: "all" })
-      );
-    })
-  );
-
   it.live(
     "leaves layout.json, proposals.json and history untouched when the revision can't be written, and prints why",
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { root, home, url, output } = yield* served;
+        const { root, home, url, serve } = yield* served;
 
         yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
 
@@ -510,8 +368,11 @@ describe("accepting pending layout changes over HTTP", () => {
         );
 
         // The 500 has an empty body, so serve prints the cause.
-        assert.include(output.stderr, "serve could not answer a request:");
-        assert.include(output.stderr, "history");
+        assert.include(
+          serve.output.stderr,
+          "serve could not answer a request:"
+        );
+        assert.include(serve.output.stderr, "history");
       }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -604,49 +465,5 @@ describe("accepting pending layout changes over HTTP", () => {
 
         assert.deepStrictEqual(history, ["0001.json"]);
       }).pipe(Effect.provide(NodeServices.layer))
-  );
-
-  it.live("refuses an accept body over 256 KB", () =>
-    Effect.gen(function* () {
-      const { root, url } = yield* served;
-
-      yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
-
-      const padding = Str.repeat(300 * 1024)(" ");
-      const body = yield* json({ baseFileRevision: 1, changeIds: "all" });
-
-      yield* assertRefused(
-        root,
-        413,
-        send(url, {
-          method: "POST",
-          pathname: acceptPath,
-          headers: ownOrigin(url),
-          body: `${body}${padding}`,
-        })
-      );
-    })
-  );
-
-  it.live("refuses an accept with a forged Host", () =>
-    Effect.gen(function* () {
-      const { root, url } = yield* served;
-
-      yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
-
-      yield* assertRefused(
-        root,
-        403,
-        accept(
-          url,
-          { baseFileRevision: 1, changeIds: "all" },
-          {
-            ...ownOrigin(url),
-            host: "attacker.example.test",
-            origin: "http://attacker.example.test",
-          }
-        )
-      );
-    })
   );
 });

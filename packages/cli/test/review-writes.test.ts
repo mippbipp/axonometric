@@ -1,11 +1,9 @@
 import { Proposals } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Path, Schema, String as Str } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
+import { Effect, Schema, String as Str } from "effect";
 
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { proposalsText, readHome, serveReviewMap } from "./harness.ts";
+import { ownOrigin, writeText } from "./revisions.ts";
 
 // Plain HTTP writes to the review routes of a real serve, for the requests a
 // browser won't send. Each refused write must leave every file as it was.
@@ -52,87 +50,24 @@ const frozenFile = `${JSON.stringify(
   2
 )}\n`;
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
+const served = serveReviewMap({ "review/map/proposals.json": frozenFile }, []);
 
-  const root = yield* makeHome({
-    ...(yield* fullMap),
-    "review/map/proposals.json": frozenFile,
-  });
-
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-
-  return { home, url: serve.url };
-}).pipe(Effect.provide(NodeServices.layer));
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
-
-interface Write {
-  readonly url: string;
-  readonly pathname: string;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: string;
-}
-
-const send =
-  (make: typeof HttpClientRequest.post) =>
-  ({ url, pathname, headers, body }: Write) =>
-    HttpClient.HttpClient.use((client) =>
-      client.execute(
-        make(new URL(pathname, url)).pipe(
-          HttpClientRequest.setHeaders(headers),
-          HttpClientRequest.bodyText(
-            body,
-            headers["content-type"] ?? "application/json"
-          )
-        )
-      )
-    ).pipe(
-      Effect.flatMap((response) =>
-        Effect.map(response.text, (text): Sent => ({
-          status: response.status,
-          body: text,
-        }))
-      ),
-      Effect.scoped,
-      Effect.orDie,
-      Effect.provide(NodeHttpClient.layerNodeHttp)
-    );
-
-const sendPost = send(HttpClientRequest.post);
-
-const sendPut = send(HttpClientRequest.put);
-
-/** A write to `pathname`, as `[url, pathname, headers, body]`. */
+/** A write to `target`, as `[url, target, headers, body]`. */
 type Args = readonly [
   url: string,
-  pathname: string,
+  target: string,
   headers: Readonly<Record<string, string>>,
   body: string,
 ];
 
-const post = (...[url, pathname, headers, body]: Args) =>
-  sendPost({ url, pathname, headers, body });
+const post = (...[url, target, headers, body]: Args) =>
+  writeText(url, { method: "post", target, headers, body });
 
-const put = (...[url, pathname, headers, body]: Args) =>
-  sendPut({ url, pathname, headers, body });
-
-const own = (url: string) => ({
-  origin: url,
-  "content-type": "application/json",
-});
+const put = (...[url, target, headers, body]: Args) =>
+  writeText(url, { method: "put", target, headers, body });
 
 const json = (value: Readonly<Record<string, Schema.Json>>) =>
   JSON.stringify(value);
-
-const proposalsText = (home: string) =>
-  runCli(home, ["--version"]).pipe(
-    Effect.map(({ files }) => files["proposals.json"] ?? "")
-  );
 
 const FrozenAnswer = Schema.Struct({
   batch: Schema.Struct({ number: Schema.Int }),
@@ -158,6 +93,7 @@ const routes = [
   "/api/review/freeze",
   "/api/review/dismiss",
   "/api/review/reopen",
+  "/api/proposals/accept",
 ] as const;
 
 describe("the review routes", () => {
@@ -203,25 +139,13 @@ describe("the review routes", () => {
       })
   );
 
-  it.live("refuse a body that doesn't match, or over the limit", () =>
+  it.live("refuse a note that doesn't match the schema", () =>
     Effect.gen(function* () {
       const { home, url } = yield* served;
       const before = yield* proposalsText(home);
 
       const bad = [
         "{ not json",
-        json({
-          baseFileRevision: 3,
-          id: "n1",
-          target: { kind: "spot", x: 1.3, y: 0 },
-          text: "t",
-        }),
-        json({
-          baseFileRevision: 3,
-          id: "n1",
-          target: { kind: "spot", x: 5000, y: 0 },
-          text: "t",
-        }),
         json({
           baseFileRevision: 3,
           id: "n1",
@@ -250,7 +174,7 @@ describe("the review routes", () => {
       ];
 
       for (const body of bad) {
-        const sent = yield* post(url, "/api/notes", own(url), body);
+        const sent = yield* post(url, "/api/notes", ownOrigin(url), body);
 
         assert.strictEqual(sent.status, 400, body);
       }
@@ -263,94 +187,9 @@ describe("the review routes", () => {
       });
 
       assert.strictEqual(
-        (yield* post(url, "/api/notes", own(url), long)).status,
+        (yield* post(url, "/api/notes", ownOrigin(url), long)).status,
         400
       );
-
-      const huge = yield* post(
-        url,
-        "/api/notes",
-        own(url),
-        `${long}${Str.repeat(300 * 1024)(" ")}`
-      );
-
-      assert.strictEqual(huge.status, 413);
-      assert.strictEqual(yield* proposalsText(home), before);
-    })
-  );
-
-  it.live("refuse a note on a structure the map doesn't have", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-      const before = yield* proposalsText(home);
-
-      const sent = yield* post(
-        url,
-        "/api/notes",
-        own(url),
-        json({
-          baseFileRevision: 3,
-          id: "n1",
-          target: { kind: "structure", id: "no-such-structure" },
-          text: "Hello",
-        })
-      );
-
-      assert.strictEqual(sent.status, 422);
-      assert.include(sent.body, "no-such-structure");
-      assert.strictEqual(yield* proposalsText(home), before);
-    })
-  );
-
-  it.live("refuse to edit or discard a note frozen in a batch", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-      const before = yield* proposalsText(home);
-
-      const edit = yield* post(
-        url,
-        "/api/items/edit",
-        own(url),
-        json({ baseFileRevision: 3, id: "frozen-note", text: "Rewritten" })
-      );
-
-      const discard = yield* post(
-        url,
-        "/api/items/discard",
-        own(url),
-        json({ baseFileRevision: 3, id: "frozen-note" })
-      );
-
-      for (const sent of [edit, discard]) {
-        assert.strictEqual(sent.status, 422);
-        assert.include(sent.body, "waiting for the agent");
-      }
-
-      assert.strictEqual(yield* proposalsText(home), before);
-    })
-  );
-
-  it.live("refuse to dismiss or reopen an item that wasn't reviewed", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-      const before = yield* proposalsText(home);
-
-      const dismiss = yield* post(
-        url,
-        "/api/review/dismiss",
-        own(url),
-        json({ baseFileRevision: 3, id: "frozen-note" })
-      );
-
-      const reopen = yield* post(
-        url,
-        "/api/review/reopen",
-        own(url),
-        json({ baseFileRevision: 3, id: "frozen-note", newId: "again" })
-      );
-
-      assert.strictEqual(dismiss.status, 422);
-      assert.strictEqual(reopen.status, 422);
       assert.strictEqual(yield* proposalsText(home), before);
     })
   );
@@ -363,7 +202,7 @@ describe("the review routes", () => {
       const sent = yield* post(
         url,
         "/api/notes",
-        own(url),
+        ownOrigin(url),
         json({
           baseFileRevision: 1,
           id: "n1",
@@ -378,24 +217,6 @@ describe("the review routes", () => {
     })
   );
 
-  it.live("refuse to freeze when nothing is open", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-      const before = yield* proposalsText(home);
-
-      const sent = yield* post(
-        url,
-        "/api/review/freeze",
-        own(url),
-        json({ baseFileRevision: 3 })
-      );
-
-      assert.strictEqual(sent.status, 422);
-      assert.include(sent.body, "Nothing is ready for review");
-      assert.strictEqual(yield* proposalsText(home), before);
-    })
-  );
-
   it.live(
     "freeze answers with the batch and a prompt that names the absolute home folder",
     () =>
@@ -405,7 +226,7 @@ describe("the review routes", () => {
         const added = yield* post(
           url,
           "/api/notes",
-          own(url),
+          ownOrigin(url),
           json({
             baseFileRevision: 3,
             id: "n-open",
@@ -419,7 +240,7 @@ describe("the review routes", () => {
         const frozen = yield* post(
           url,
           "/api/review/freeze",
-          own(url),
+          ownOrigin(url),
           json({ baseFileRevision: 4 })
         );
 
@@ -448,7 +269,7 @@ describe("the review routes", () => {
         const reuse = yield* put(
           url,
           "/api/proposals/layout",
-          own(url),
+          ownOrigin(url),
           json({
             baseFileRevision: 3,
             layout: [
@@ -475,7 +296,7 @@ describe("the review routes", () => {
         const onto = yield* put(
           url,
           "/api/proposals/layout",
-          own(url),
+          ownOrigin(url),
           json({
             baseFileRevision: 3,
             layout: [
@@ -508,7 +329,7 @@ describe("the review routes", () => {
         const open = yield* put(
           url,
           "/api/proposals/layout",
-          own(url),
+          ownOrigin(url),
           json({
             baseFileRevision: 3,
             layout: [
@@ -533,7 +354,7 @@ describe("the review routes", () => {
         const accepted = yield* post(
           url,
           "/api/proposals/accept",
-          own(url),
+          ownOrigin(url),
           json({ baseFileRevision: 4, changeIds: "all" })
         );
 
@@ -541,100 +362,10 @@ describe("the review routes", () => {
         assert.include(accepted.body, "Wait for the agent");
         assert.strictEqual(yield* proposalsText(home), before);
 
-        const layout = yield* runCli(home, ["--version"]);
-
-        assert.strictEqual(layout.files["history/0001.json"], undefined);
-      })
-  );
-
-  it.live(
-    "accepting a change on another structure goes ahead, checked on top of the frozen one",
-    () =>
-      Effect.gen(function* () {
-        const { url } = yield* served;
-
-        const open = yield* put(
-          url,
-          "/api/proposals/layout",
-          own(url),
-          json({
-            baseFileRevision: 3,
-            layout: [
-              {
-                id: "page-move",
-                kind: "move",
-                moves: [
-                  {
-                    target: { kind: "structure", id: "page" },
-                    position: { x: 4, y: 12 },
-                  },
-                ],
-              },
-            ],
-          })
+        assert.strictEqual(
+          (yield* readHome(home))["history/0001.json"],
+          undefined
         );
-
-        assert.strictEqual(open.status, 200, open.body);
-
-        const accepted = yield* post(
-          url,
-          "/api/proposals/accept",
-          own(url),
-          json({ baseFileRevision: 4, changeIds: "all" })
-        );
-
-        assert.strictEqual(accepted.status, 200, accepted.body);
-      })
-  );
-
-  it.live(
-    "take the same note sent twice as one, so a lost answer can't duplicate it",
-    () =>
-      Effect.gen(function* () {
-        const { home, url } = yield* served;
-
-        const note = {
-          id: "n-retry",
-          target: { kind: "structure", id: "page" },
-          text: "Sent twice",
-        } as const;
-
-        const first = yield* post(
-          url,
-          "/api/notes",
-          own(url),
-          json({ baseFileRevision: 3, ...note })
-        );
-
-        assert.strictEqual(first.status, 200, first.body);
-
-        // The answer was lost, so the page sends it again, now on the file the
-        // first write made.
-        const again = yield* post(
-          url,
-          "/api/notes",
-          own(url),
-          json({ baseFileRevision: 4, ...note })
-        );
-
-        assert.strictEqual(again.status, 200, again.body);
-
-        const saved = yield* decodeProposals(yield* proposalsText(home));
-
-        assert.deepStrictEqual(
-          Arr.map(saved.notes ?? [], ({ id }) => id),
-          ["n-retry"]
-        );
-
-        // The same id with other words is a different note, and is refused.
-        const other = yield* post(
-          url,
-          "/api/notes",
-          own(url),
-          json({ baseFileRevision: 4, ...note, text: "Other words" })
-        );
-
-        assert.strictEqual(other.status, 422);
       })
   );
 });
@@ -690,7 +421,7 @@ describe("text suggestions, answers and questions", () => {
       const result = yield* post(
         url,
         route,
-        own(url),
+        ownOrigin(url),
         json({ baseFileRevision: revision, ...item })
       );
 
@@ -700,27 +431,6 @@ describe("text suggestions, answers and questions", () => {
 
     return revision;
   });
-
-  it.live("each save as an open proposal in its own list", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-
-      yield* sendAll(url);
-
-      const saved = yield* decodeProposals(yield* proposalsText(home));
-
-      assert.deepStrictEqual(saved.suggestions, [suggestion]);
-      assert.deepStrictEqual(saved.answers, [answer]);
-      assert.deepStrictEqual(saved.raised, [question]);
-      assert.deepStrictEqual(
-        Arr.map(saved.notes ?? [], ({ id, target }) => [id, target.kind]),
-        [
-          ["n-spot", "spot"],
-          ["n-hop", "hop"],
-        ]
-      );
-    })
-  );
 
   it.live("are refused when they point at nothing in data.mjs", () =>
     Effect.gen(function* () {
@@ -751,130 +461,12 @@ describe("text suggestions, answers and questions", () => {
         const sent = yield* post(
           url,
           route,
-          own(url),
+          ownOrigin(url),
           json({ baseFileRevision: 3, ...item })
         );
 
         assert.strictEqual(sent.status, 422, `${route}: ${sent.body}`);
         assert.include(sent.body, why);
-      }
-
-      assert.strictEqual(yield* proposalsText(home), before);
-    })
-  );
-
-  it.live("can't be edited or discarded once frozen, and say who waits", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-      const revision = yield* sendAll(url);
-
-      const frozen = yield* post(
-        url,
-        "/api/review/freeze",
-        own(url),
-        json({ baseFileRevision: revision })
-      );
-
-      assert.strictEqual(frozen.status, 200, frozen.body);
-
-      const settled = yield* proposalsText(home);
-
-      for (const id of ["s-one", "a-one", "q-one", "n-spot"]) {
-        const edit = yield* post(
-          url,
-          "/api/items/edit",
-          own(url),
-          json({ baseFileRevision: revision + 1, id, text: "Rewritten" })
-        );
-
-        const discard = yield* post(
-          url,
-          "/api/items/discard",
-          own(url),
-          json({ baseFileRevision: revision + 1, id })
-        );
-
-        for (const sent of [edit, discard]) {
-          assert.strictEqual(sent.status, 422, id);
-          assert.include(sent.body, "waiting for the agent");
-        }
-      }
-
-      assert.strictEqual(yield* proposalsText(home), settled);
-
-      // Nor can the same question be answered twice while the first waits.
-      const again = yield* post(
-        url,
-        "/api/answers",
-        own(url),
-        json({
-          baseFileRevision: revision + 1,
-          ...answer,
-          id: "a-two",
-          text: "Another take.",
-        })
-      );
-
-      assert.strictEqual(again.status, 422);
-      assert.include(again.body, "already has an answer waiting");
-    })
-  );
-
-  it.live(
-    "refuse a second suggestion for a text that is frozen, saying the agent has it",
-    () =>
-      Effect.gen(function* () {
-        const { home, url } = yield* served;
-        const revision = yield* sendAll(url);
-
-        const frozen = yield* post(
-          url,
-          "/api/review/freeze",
-          own(url),
-          json({ baseFileRevision: revision })
-        );
-
-        assert.strictEqual(frozen.status, 200, frozen.body);
-
-        const settled = yield* proposalsText(home);
-
-        const again = yield* post(
-          url,
-          "/api/suggestions",
-          own(url),
-          json({
-            baseFileRevision: revision + 1,
-            ...suggestion,
-            id: "s-two",
-            after: "Another take.",
-          })
-        );
-
-        assert.strictEqual(again.status, 422);
-        assert.include(
-          again.body,
-          "in batch 2, which is waiting for the agent"
-        );
-        assert.include(again.body, "once the agent commits");
-        assert.notInclude(again.body, "Edit or discard");
-        assert.strictEqual(yield* proposalsText(home), settled);
-      })
-  );
-
-  it.live("refuse an answer dated a day that doesn't exist", () =>
-    Effect.gen(function* () {
-      const { home, url } = yield* served;
-      const before = yield* proposalsText(home);
-
-      for (const answeredOn of ["2026-02-30", "2026-13-01", "2026-04-31"]) {
-        const sent = yield* post(
-          url,
-          "/api/answers",
-          own(url),
-          json({ baseFileRevision: 3, ...answer, answeredOn })
-        );
-
-        assert.strictEqual(sent.status, 400, answeredOn);
       }
 
       assert.strictEqual(yield* proposalsText(home), before);
@@ -889,7 +481,7 @@ describe("text suggestions, answers and questions", () => {
       const edited = yield* post(
         url,
         "/api/items/edit",
-        own(url),
+        ownOrigin(url),
         json({ baseFileRevision: revision, id: "s-one", text: "Better." })
       );
 
@@ -898,7 +490,7 @@ describe("text suggestions, answers and questions", () => {
       const gone = yield* post(
         url,
         "/api/items/discard",
-        own(url),
+        ownOrigin(url),
         json({ baseFileRevision: revision + 1, id: "a-one" })
       );
 

@@ -1,70 +1,22 @@
-import { ProposalsFile } from "@axonometric/contracts";
-import { NodeServices } from "@effect/platform-node";
+import { ReviewReport } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  FileSystem,
-  Path,
-  Schema,
-  String as Str,
-} from "effect";
-import type { Page } from "playwright";
+import { Array as Arr, Effect, Schema } from "effect";
+import type { Locator, Page } from "playwright";
 
-import { literal, openUrl } from "./browser.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { click, count, textOf, waitFor, waitTimeout } from "./browser.ts";
+import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // Words on the page, against a real serve: a text suggestion shown beside the
 // original, an answer, a raised question, and notes on a hop and an empty spot.
 
-const wait = { timeout: 15_000 };
+const decodeReview = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(ReviewReport)
+);
 
-const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
-
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
-
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(wait));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
+const served = openReviewMap({});
 
 const fill = (page: Page, selector: string, text: string) =>
   Effect.promise(() => page.locator(selector).first().fill(text));
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
-  );
-}, Effect.provide(NodeServices.layer));
 
 /** Opens the saving chapter and pins the structure `id`. */
 const pin = Effect.fnUntraced(function* (page: Page, id: string) {
@@ -139,7 +91,7 @@ describe("a text suggestion", () => {
   );
 
   it.live(
-    "can be made on both parts of a step with a single Edit, which names the step",
+    "can be made on one part of a step, or both with a single Edit, which names the step",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
@@ -147,6 +99,28 @@ describe("a text suggestion", () => {
         yield* click(page, '[data-chapter-rail] button[data-chapter="c-page"]');
         yield* click(page, '[data-structure="page"]');
         yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
+
+        // Changing only one part of a step suggests only that part.
+        yield* Effect.promise(() =>
+          page.getByRole("button", { name: "Edit: step 1" }).click()
+        );
+        yield* fill(
+          page,
+          `${panel} [data-step-text="steps.0.detail"]`,
+          "The engineer pins a note to a structure, hop or spot."
+        );
+        yield* click(page, `${panel} [data-step-send]`);
+        yield* waitFor(
+          page,
+          `${panel} [data-suggestable="steps.0.detail"] [data-suggested]`
+        );
+        assert.deepStrictEqual(
+          Arr.map(
+            (yield* readProposals(home)).suggestions ?? [],
+            ({ field }) => field
+          ),
+          ["steps.0.detail"]
+        );
 
         // One Edit for each step, not two.
         assert.strictEqual(
@@ -194,6 +168,11 @@ describe("a text suggestion", () => {
             after,
           ]),
           [
+            [
+              "steps.0.detail",
+              "The engineer pins a note to a structure.",
+              "The engineer pins a note to a structure, hop or spot.",
+            ],
             ["steps.1.name", "Save", "Save it"],
             [
               "steps.1.detail",
@@ -215,37 +194,6 @@ describe("a text suggestion", () => {
           1
         );
       })
-  );
-
-  it.live("changing only one part of a step suggests only that part", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* served;
-
-      yield* click(page, '[data-chapter-rail] button[data-chapter="c-page"]');
-      yield* click(page, '[data-structure="page"]');
-      yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
-      yield* Effect.promise(() =>
-        page.getByRole("button", { name: "Edit: step 1" }).click()
-      );
-      yield* fill(
-        page,
-        `${panel} [data-step-text="steps.0.detail"]`,
-        "The engineer pins a note to a structure, hop or spot."
-      );
-      yield* click(page, `${panel} [data-step-send]`);
-      yield* waitFor(
-        page,
-        `${panel} [data-suggestable="steps.0.detail"] [data-suggested]`
-      );
-
-      assert.deepStrictEqual(
-        Arr.map(
-          (yield* readProposals(home)).suggestions ?? [],
-          ({ field }) => field
-        ),
-        ["steps.0.detail"]
-      );
-    })
   );
 
   it.live("can be edited again and discarded while open", () =>
@@ -295,7 +243,7 @@ describe("a text suggestion", () => {
       yield* Effect.promise(() =>
         page
           .locator(`${panel} [data-suggestable="whatItDoes"] [data-suggested]`)
-          .waitFor({ state: "detached", ...wait })
+          .waitFor({ state: "detached", ...waitTimeout })
       );
 
       assert.deepStrictEqual((yield* readProposals(home)).suggestions, []);
@@ -348,70 +296,8 @@ describe("a question", () => {
     60_000
   );
 
-  it.live("is answered from the structure's panel too", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* served;
-
-      yield* pin(page, "server");
-      yield* click(
-        page,
-        `${panel} [data-panel-question="Q-S1"] [data-answer-open]`
-      );
-      yield* fill(
-        page,
-        `${panel} [data-panel-question="Q-S1"] [data-note-text]`,
-        "Port 5178."
-      );
-      yield* click(
-        page,
-        `${panel} [data-panel-question="Q-S1"] [data-note-send]`
-      );
-      yield* waitFor(
-        page,
-        `${panel} [data-panel-question="Q-S1"] [data-answer]`
-      );
-
-      assert.strictEqual(
-        (yield* readProposals(home)).answers?.[0]?.text,
-        "Port 5178."
-      );
-    })
-  );
-
-  it.live("is raised on a structure, with no id of its own", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* served;
-
-      yield* pin(page, "server");
-      yield* fill(
-        page,
-        `${panel} [data-raised-section] [data-note-text]`,
-        "Should writes retry?"
-      );
-      yield* click(page, `${panel} [data-raised-section] [data-note-send]`);
-      yield* waitFor(page, `${panel} [data-raised-question]`);
-
-      const proposals = yield* readProposals(home);
-
-      assert.deepStrictEqual(
-        Arr.map(proposals.raised ?? [], ({ target, text }) => [
-          target.id,
-          text,
-        ]),
-        [["server", "Should writes retry?"]]
-      );
-      // The agent assigns a question's id, so the proposal holds only the
-      // item's own id: no field carries a Q- id.
-      assert.isFalse(
-        Arr.some(proposals.raised ?? [], (item) => Str.includes("Q-")(item.id))
-      );
-    })
-  );
-});
-
-describe("the Pending tab", () => {
   it.live(
-    "lists words with a Discard, counts them, and the button freezes them",
+    "is raised on a structure, listed in Pending with a Discard and counted, and the button freezes it as a new question with no id",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
@@ -424,12 +310,27 @@ describe("the Pending tab", () => {
         );
         yield* click(page, `${panel} [data-raised-section] [data-note-send]`);
         yield* waitFor(page, `${panel} [data-raised-question]`);
+
+        assert.deepStrictEqual(
+          Arr.map(
+            (yield* readProposals(home)).raised ?? [],
+            ({ target, text }) => [target.id, text]
+          ),
+          [["server", "Should writes retry?"]]
+        );
+
+        const row = '[data-review-item][data-review-kind="question"]';
+
         yield* click(page, '[role="tab"][data-tab="pending"]');
-        yield* waitFor(page, '[data-review-item][data-review-kind="question"]');
+        yield* waitFor(page, row);
 
         assert.include(
-          yield* textOf(page, '[data-review-kind="question"]'),
+          yield* textOf(page, row),
           "New question on Save server: Should writes retry?"
+        );
+        assert.strictEqual(
+          yield* count(page, `${row} button:has-text("Discard")`),
+          1
         );
         assert.include(
           yield* textOf(page, '[role="tab"][data-tab="pending"]'),
@@ -444,7 +345,30 @@ describe("the Pending tab", () => {
 
         assert.strictEqual(proposals.batches?.[0]?.items[0]?.kind, "question");
         assert.deepStrictEqual(proposals.raised, []);
-      })
+
+        // The agent sees a new question with only its words: the page gave
+        // it no question id.
+        const reviewed = yield* runCli(home, ["review", home, "--json"]);
+        const report = yield* decodeReview(reviewed.stdout);
+
+        assert.notInclude(reviewed.stdout, '"Q-');
+
+        assert.deepStrictEqual(
+          Arr.map(report.batch?.items ?? [], ({ kind, before, after }) => ({
+            kind,
+            before,
+            after,
+          })),
+          [
+            {
+              kind: "question",
+              before: null,
+              after: { text: "Should writes retry?" },
+            },
+          ]
+        );
+      }),
+    60_000
   );
 });
 
@@ -492,10 +416,10 @@ describe("the Pending tab with proposals", () => {
   );
 
   it.live(
-    "lists a suggestion, an answer and a question under the same heading",
+    "lists a suggestion, an answer from the panel and a raised question under one heading, and each button names what it acts on",
     () =>
       Effect.gen(function* () {
-        const { page } = yield* served;
+        const { home, page } = yield* served;
 
         yield* pin(page, "server");
         yield* click(page, `${panel} [data-suggest="oneLiner"]`);
@@ -526,19 +450,54 @@ describe("the Pending tab with proposals", () => {
           page,
           `${panel} [data-panel-question="Q-S1"] [data-answer]`
         );
+        yield* fill(
+          page,
+          `${panel} [data-raised-section] [data-note-text]`,
+          "Should writes retry?"
+        );
+        yield* click(page, `${panel} [data-raised-section] [data-note-send]`);
+        yield* waitFor(page, `${panel} [data-raised-question]`);
+
+        assert.strictEqual(
+          (yield* readProposals(home)).answers?.[0]?.text,
+          "Port 5178."
+        );
+
+        const names = yield* Effect.promise(() =>
+          page.evaluate<string[]>(
+            "[...document.querySelectorAll('[data-structure-panel] button[aria-label]')].map((button) => button.ariaLabel)"
+          )
+        );
+
+        for (const name of [
+          "Edit suggestion: one-liner",
+          "Discard suggestion: one-liner",
+          "Discard answer: Q-S1",
+          "Edit: what it does",
+          "Edit: how it's built",
+        ]) {
+          assert.include(names, name);
+        }
+
         yield* click(page, '[role="tab"][data-tab="pending"]');
-        yield* waitFor(page, '[data-review-kind="answer"]');
+        yield* waitFor(page, '[data-review-kind="question"]');
 
         assert.strictEqual(yield* count(page, "[data-pending-empty]"), 0);
-        assert.deepStrictEqual(
+        assert.strictEqual(yield* count(page, "[data-review-list]"), 1);
+        assert.include(
+          yield* textOf(page, "[data-review-list] h3"),
+          "Diagram changes"
+        );
+        assert.sameMembers(
           yield* Effect.promise(() =>
             page.evaluate<string[]>(
-              "[...document.querySelectorAll('[data-review-item]')].map((item) => item.dataset.reviewKind)"
+              "[...document.querySelectorAll('[data-review-list] [data-review-item]')].map((item) => item.dataset.reviewKind)"
             )
           ),
-          ["suggestion", "answer"]
+          ["suggestion", "answer", "question"]
         );
-      })
+      }),
+    60_000
   );
 });
 
@@ -627,59 +586,11 @@ describe("a frozen suggestion", () => {
   );
 });
 
-describe("buttons", () => {
-  it.live("name the field or question they act on", () =>
-    Effect.gen(function* () {
-      const { page } = yield* served;
-
-      yield* pin(page, "server");
-      yield* click(page, `${panel} [data-suggest="oneLiner"]`);
-      yield* fill(
-        page,
-        `${panel} [data-suggestable="oneLiner"] [data-note-text]`,
-        "Saves edits and tells every open page."
-      );
-      yield* click(
-        page,
-        `${panel} [data-suggestable="oneLiner"] [data-note-send]`
-      );
-      yield* waitFor(page, `${panel} [data-suggested]`);
-      yield* click(
-        page,
-        `${panel} [data-panel-question="Q-S1"] [data-answer-open]`
-      );
-      yield* fill(
-        page,
-        `${panel} [data-panel-question="Q-S1"] [data-note-text]`,
-        "Port 5178."
-      );
-      yield* click(
-        page,
-        `${panel} [data-panel-question="Q-S1"] [data-note-send]`
-      );
-      yield* waitFor(
-        page,
-        `${panel} [data-panel-question="Q-S1"] [data-answer]`
-      );
-
-      const names = yield* Effect.promise(() =>
-        page.evaluate<string[]>(
-          "[...document.querySelectorAll('[data-structure-panel] button[aria-label]')].map((button) => button.ariaLabel)"
-        )
-      );
-
-      for (const name of [
-        "Edit suggestion: one-liner",
-        "Discard suggestion: one-liner",
-        "Discard answer: Q-S1",
-        "Edit: what it does",
-        "Edit: how it's built",
-      ]) {
-        assert.include(names, name);
-      }
-    })
+/** The on-screen box of the first element `locator` matches. */
+const boxOf = (locator: Locator) =>
+  Effect.promise(() => locator.first().boundingBox()).pipe(
+    Effect.map((box) => box ?? { x: 0, y: 0, width: 0, height: 0 })
   );
-});
 
 /** Each button's height and font size in pixels, by its accessible name. */
 const sizesOf = (page: Page) =>
@@ -734,63 +645,45 @@ describe("the panel's buttons and headings", () => {
           "Edit: step 2",
           "Edit suggestion: step 2 detail",
           "Discard suggestion: step 2 detail",
-          "Pin note",
         ];
 
-        for (const name of wanted) {
-          assert.isDefined(sizes[name], `${name} is not in the panel`);
-        }
-
-        // Every button is the size of the panel's other buttons.
+        // Every button is the size of the panel's Pin note.
         const reference = sizes["Pin note"];
 
+        assert.isDefined(reference, "Pin note is not in the panel");
+
         for (const name of wanted) {
-          assert.strictEqual(sizes[name]?.font, reference?.font, name);
-          assert.isAtLeast(
-            sizes[name]?.height ?? 0,
-            (reference?.height ?? 0) - 1,
+          assert.deepStrictEqual(sizes[name], reference, name);
+        }
+
+        const step = page.locator(`${panel} [data-suggestable-step="1"]`);
+
+        const edit = yield* boxOf(
+          page.getByRole("button", { name: "Edit: step 2" })
+        );
+
+        const heading = yield* boxOf(step.getByText("Save", { exact: true }));
+
+        const block = yield* boxOf(
+          step.locator('[data-suggestable="steps.1.detail"] [data-suggested]')
+        );
+
+        // The step's Edit is on its heading's row, above the suggestion.
+        assert.isBelow(edit.y, heading.y + heading.height);
+        assert.isBelow(heading.y, edit.y + edit.height);
+        assert.isAtMost(edit.y + edit.height, block.y);
+
+        // The suggestion's own Edit and Discard sit inside its block.
+        for (const name of wanted.slice(1)) {
+          const button = yield* boxOf(page.getByRole("button", { name }));
+
+          assert.isAtLeast(button.y, block.y, name);
+          assert.isAtMost(
+            button.y + button.height,
+            block.y + block.height,
             name
           );
         }
-
-        assert.isAtLeast(reference?.font ?? 0, 11);
-
-        // The step's Edit is in the step's heading row, above its blocks.
-        const where = yield* Effect.promise(() =>
-          page.evaluate<{
-            editTop: number;
-            headTop: number;
-            blockTop: number;
-          }>(`(() => {
-          const step = document.querySelector('[data-suggestable-step="1"]');
-          const top = (element) => element.getBoundingClientRect().top;
-
-          return {
-            editTop: top(step.querySelector('[data-suggest]')),
-            headTop: top(step.firstElementChild),
-            blockTop: top(step.querySelector('[data-suggested]')),
-          };
-        })()`)
-        );
-
-        assert.isBelow(Math.abs(where.editTop - where.headTop), 12);
-        assert.isBelow(where.editTop, where.blockTop);
-
-        // The suggestion's own Edit and Discard sit together in its block.
-        assert.strictEqual(
-          yield* count(
-            page,
-            `${panel} [data-suggestable="steps.1.detail"] [data-suggested] button`
-          ),
-          2
-        );
-        assert.strictEqual(
-          yield* count(
-            page,
-            `${panel} [data-suggestable="steps.1.detail"] [data-suggested] [data-suggest]`
-          ),
-          0
-        );
       }),
     60_000
   );
@@ -803,32 +696,38 @@ describe("the panel's buttons and headings", () => {
 
         yield* pin(page, "server");
 
-        const headed = (heading: string, label: string) =>
-          Effect.promise(() =>
-            page.evaluate<{ shown: number; named: boolean }>(`(() => {
-            const section = [...document.querySelectorAll("[data-structure-panel] section")]
-              .find((candidate) => candidate.querySelector("h3")?.textContent === ${literal(heading)});
-            const area = section.querySelector("textarea");
-
-            return {
-              shown: [...section.querySelectorAll("label")].filter((label) => getComputedStyle(label).position !== "absolute").length,
-              named: document.querySelector('label[for="' + area.id + '"]').textContent === ${literal(label)},
-            };
-          })()`)
-          );
-
-        for (const [heading, label] of [
+        for (const [heading, name] of [
           ["Raise a question", "A new question about this"],
           ["Notes", "Pin a note"],
         ] as const) {
-          const found = yield* headed(heading, label);
+          const section = page
+            .locator(`${panel} section`)
+            .filter({ has: page.getByRole("heading", { name: heading }) });
 
-          // The heading is shown once; the box's label is not shown again.
-          assert.strictEqual(found.shown, 0, heading);
-          assert.isTrue(found.named, heading);
+          assert.strictEqual(
+            yield* Effect.promise(() => section.count()),
+            1,
+            heading
+          );
+
+          // The box's label takes no room on screen: the heading says it.
+          const labels = yield* Effect.promise(() =>
+            section.locator("label").all()
+          );
+
+          const boxes = yield* Effect.forEach(labels, (label) =>
+            Effect.promise(() => label.boundingBox())
+          );
+
+          const shown = Arr.filter(
+            boxes,
+            (box) => box !== null && box.width > 1 && box.height > 1
+          ).length;
+
+          assert.strictEqual(shown, 0, heading);
           assert.strictEqual(
             yield* Effect.promise(() =>
-              page.getByRole("textbox", { name: label }).count()
+              section.getByRole("textbox", { name }).count()
             ),
             1,
             heading

@@ -92,7 +92,7 @@ const refusal = (pending: readonly LayoutChange[], ids: "all" | string[]) => {
 };
 
 describe("accepting layout changes", () => {
-  it("writes the chosen change into the layout and leaves the others pending", () => {
+  it("writes the chosen change into the layout, goes up one file revision and leaves the others pending", () => {
     const first = move("m1", "a", [0, 6]);
     const second = resize("r1", "c", [3, 3]);
     const result = accepted([first, second], ["m1"]);
@@ -106,6 +106,7 @@ describe("accepting layout changes", () => {
       d: 2,
     });
     assert.deepStrictEqual(result.layout.structures.c, layout.structures.c);
+    assert.strictEqual(result.layout.revision, 4);
   });
 
   it("takes every pending change for all, and leaves nothing pending", () => {
@@ -120,13 +121,6 @@ describe("accepting layout changes", () => {
       w: 3,
       d: 3,
     });
-  });
-
-  it("goes up one file revision on the layout", () => {
-    assert.strictEqual(
-      accepted([move("m1", "a", [0, 6])], "all").layout.revision,
-      4
-    );
   });
 
   it("keeps the order of the pending list in what it accepts", () => {
@@ -333,18 +327,22 @@ describe("the message for an acceptance", () => {
     );
   });
 
-  it("lists all four structures before it starts counting", () => {
+  it("lists four structures, and names three and counts the rest past four", () => {
+    const moves = [
+      move("m1", "a", [0, 6]),
+      move("m2", "b", [4, 6]),
+      move("m3", "c", [8, 6]),
+      move("m4", "d", [12, 6]),
+      move("m5", "e", [16, 6]),
+    ];
+
     assert.strictEqual(
-      acceptanceMessage(
-        [
-          move("m1", "a", [0, 6]),
-          move("m2", "b", [4, 6]),
-          move("m3", "c", [8, 6]),
-          move("m4", "d", [12, 6]),
-        ],
-        nameOf
-      ),
+      acceptanceMessage(moves.slice(0, 4), nameOf),
       "Move Save server, Map page, Proposals and Engineer"
+    );
+    assert.strictEqual(
+      acceptanceMessage(moves, nameOf),
+      "Move Save server, Map page, Proposals and 2 more"
     );
   });
 
@@ -364,22 +362,6 @@ describe("the message for an acceptance", () => {
     assert.strictEqual(
       acceptanceMessage([groupMove("g1")], nameOf),
       "Move Save server and Map page"
-    );
-  });
-
-  it("counts the structures past the third", () => {
-    assert.strictEqual(
-      acceptanceMessage(
-        [
-          move("m1", "a", [0, 6]),
-          move("m2", "b", [4, 6]),
-          move("m3", "c", [8, 6]),
-          move("m4", "d", [12, 6]),
-          move("m5", "e", [16, 6]),
-        ],
-        nameOf
-      ),
-      "Move Save server, Map page, Proposals and 2 more"
     );
   });
 
@@ -492,7 +474,10 @@ describe("accepting reroutes", () => {
       hops,
     });
 
-    assert.isTrue(Result.isFailure(result));
+    assert.include(
+      Result.getOrThrow(Result.flip(result)),
+      'the route of hop "h-ab" starting off the edge of "a"'
+    );
   });
 
   it("names a reroute and a reset in the message", () => {

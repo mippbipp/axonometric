@@ -1116,7 +1116,7 @@ const roomNeeded = (leg: Leg, { width, height }: TagSize) =>
  * How far a label's box sits from its route, in screen units: from the
  * nearest point on the box's edge, 0 when the route runs through it.
  */
-export const labelGap: {
+const labelGap: {
   (label: ScreenRect): (points: readonly ScreenPoint[]) => number;
   (points: readonly ScreenPoint[], label: ScreenRect): number;
 } = dual(2, (points: readonly ScreenPoint[], label: ScreenRect): number => {
@@ -1146,7 +1146,7 @@ export const labelGap: {
  * The farthest a label's box may sit from its own route, in grid units.
  * A label with no clear spot that close shows only on hover.
  */
-export const labelReachLimit = 1.5;
+const labelReachLimit = 1.5;
 
 /** Where a hop's label goes, and whether it fits there. */
 interface LabelPlacement {
@@ -2213,29 +2213,3 @@ export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
     ...arrowClashes(scene),
   ];
 };
-
-/** How far a point may sit from where it should be, in screen units. */
-const onTolerance = 0.5;
-
-/** Whether a route's last point sits on its target's ground outline. */
-export const endsOnTarget: {
-  (target: Placement): (hop: SceneHop) => boolean;
-  (hop: SceneHop, target: Placement): boolean;
-} = dual(2, (hop: SceneHop, target: Placement) => {
-  const { back, right, front, left } = corners(target, 0);
-  const tip = hop.points.at(-1);
-
-  return (
-    tip !== undefined &&
-    distanceToPolyline([back, right, front, left, back], tip) <= onTolerance
-  );
-});
-
-/** A label's centre and how far it sits from its own route. */
-export const labelReach = (hop: SceneHop) =>
-  hop.label === undefined
-    ? undefined
-    : distanceToPolyline(hop.points, {
-        sx: (hop.label.left + hop.label.right) / 2,
-        sy: (hop.label.top + hop.label.bottom) / 2,
-      });

@@ -16,7 +16,7 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { makeHome, serveReviewMap, startServe } from "./harness.ts";
 import type { RunningServe } from "./harness.ts";
 import { acceptChanges, get, moveOf } from "./revisions.ts";
 
@@ -54,10 +54,7 @@ const acceptMove = (serve: RunningServe, move: Move) =>
 
 /** The review map served on a free port, with two revisions saved. */
 const servedWithTwo = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
+  const { root, home, serve } = yield* serveReviewMap({}, []);
 
   yield* acceptMove(serve, {
     base: 0,
@@ -185,12 +182,36 @@ describe("gET /api/history/:n", () => {
   );
 
   it.live(
-    "refuses a path-traversal attempt, and reads nothing outside history/",
+    "refuses a number that is not a whole number from 1, and a path-traversal attempt",
     () =>
       Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
         const { root, url } = yield* servedWithTwo;
 
-        const attempts = [
+        // Written where a traversal would land, so a leak would show it.
+        yield* fs.writeFileString(
+          path.join(root, "review", "data.json"),
+          '{"secret":true}'
+        );
+
+        const refused = [
+          "abc",
+          "1.5",
+          "1e2",
+          "0x10",
+          "0",
+          "-1",
+          "+1",
+          "01",
+          "0001",
+          "%201",
+          "1%20",
+          "1,2",
+          "NaN",
+          "Infinity",
+          "9007199254740993",
+          "1234567890",
           "..%2F..%2Fdata",
           "..%2F..%2Fdata.mjs",
           "%2e%2e%2f%2e%2e%2fdata",
@@ -202,63 +223,19 @@ describe("gET /api/history/:n", () => {
           "1%00",
         ];
 
-        for (const attempt of attempts) {
-          const sent = yield* get(url, `/api/history/${attempt}`);
+        for (const n of refused) {
+          const sent = yield* get(url, `/api/history/${n}`);
 
-          assert.include([400, 404], sent.status, `${attempt}: ${sent.status}`);
-          assert.notInclude(sent.body, "Review loop", attempt);
-          assert.notInclude(sent.body, "export default", attempt);
+          assert.strictEqual(
+            sent.status,
+            400,
+            `${n}: ${sent.status} ${sent.body}`
+          );
+          assert.notInclude(sent.body, "Review loop", n);
+          assert.notInclude(sent.body, "export default", n);
+          assert.notInclude(sent.body, "secret", n);
         }
-
-        // The same names pointing at real files, written where a traversal
-        // would land, are not served either.
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-
-        yield* fs.writeFileString(
-          path.join(root, "review", "data.json"),
-          '{"secret":true}'
-        );
-
-        const sent = yield* get(url, "/api/history/..%2F..%2Fdata");
-
-        assert.notInclude(sent.body, "secret");
       }).pipe(Effect.provide(NodeServices.layer))
-  );
-
-  it.live("refuses a number that is not a whole number from 1", () =>
-    Effect.gen(function* () {
-      const { url } = yield* servedWithTwo;
-
-      const refused = [
-        "abc",
-        "1.5",
-        "1e2",
-        "0x10",
-        "0",
-        "-1",
-        "+1",
-        "01",
-        "0001",
-        "%201",
-        "1%20",
-        "1,2",
-        "NaN",
-        "Infinity",
-        "9007199254740993",
-        "1234567890",
-      ];
-
-      for (const n of refused) {
-        const sent = yield* get(url, `/api/history/${n}`);
-
-        assert.strictEqual(
-          sent.status,
-          400,
-          `${n}: ${sent.status} ${sent.body}`
-        );
-      }
-    })
   );
 });
 

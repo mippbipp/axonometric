@@ -15,11 +15,9 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { HttpClientRequest } from "effect/http";
 
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
-import { send } from "./revisions.ts";
+import { proposalsText, runCli, serveReviewMap } from "./harness.ts";
+import { post } from "./revisions.ts";
 
 // Text suggestions, answers and raised questions through the whole loop on a
 // real serve: the page's writes, freeze, review, verdict, commit, and the
@@ -86,27 +84,12 @@ const decodeFrozen = Schema.decodeUnknownEffect(
   Schema.fromJsonString(FreezeAnswer)
 );
 
-/** A write to `route`, whose body is already JSON text. */
-const post = (url: string, route: string, body: string) =>
-  send(
-    HttpClientRequest.post(new URL(route, url)).pipe(
-      HttpClientRequest.setHeaders({
-        origin: url,
-        "content-type": "application/json",
-      }),
-      HttpClientRequest.bodyText(body, "application/json")
-    )
-  );
-
 const bodyOf = (value: Readonly<Record<string, Schema.Json>>) =>
   JSON.stringify(value);
 
 /** The review map served, with every item sent and frozen into batch 1. */
 const frozenOverHttp = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
+  const { root, home, serve } = yield* serveReviewMap({}, []);
 
   let revision = 0;
 
@@ -139,9 +122,7 @@ describe("the loop for words", () => {
       Effect.gen(function* () {
         const { home } = yield* frozenOverHttp;
 
-        const proposals = yield* decodeProposals(
-          (yield* runCli(home, ["--version"])).files["proposals.json"] ?? ""
-        );
+        const proposals = yield* decodeProposals(yield* proposalsText(home));
 
         assert.deepStrictEqual(
           Arr.map(proposals.batches?.[0]?.items ?? [], ({ kind }) => kind),
@@ -207,26 +188,6 @@ describe("the loop for words", () => {
   );
 
   it.live(
-    "the prompt has a line for each kind, with the agent's instructions",
-    () =>
-      Effect.gen(function* () {
-        const { prompt } = yield* frozenOverHttp;
-
-        const lines = Str.split("\n")(prompt);
-        const listed = Arr.filter(lines, Str.startsWith("- "));
-
-        assert.strictEqual(listed.length, 5);
-        assert.isTrue(Arr.some(listed, Str.includes("suggestion s-one on")));
-        assert.isTrue(
-          Arr.some(listed, Str.includes("answer a-one to Q-P1 on"))
-        );
-        assert.isTrue(Arr.some(listed, Str.includes("question q-one on")));
-        assert.isTrue(Arr.some(listed, Str.includes("the spot 14.5, 3")));
-        assert.include(prompt, "Set answeredBy yourself");
-      })
-  );
-
-  it.live(
     "verdict and commit record all five in the revision, with reasons",
     () =>
       Effect.gen(function* () {
@@ -287,25 +248,7 @@ describe("the loop for words", () => {
           [["question", "q-one", "Q-S1 already asks this."]]
         );
 
-        const answer = Arr.findFirst(
-          revision.accepted,
-          ({ kind }) => kind === "answer"
-        );
-
-        assert.deepStrictEqual(
-          answer,
-          Option.some({
-            kind: "answer",
-            id: "a-one",
-            target: { kind: "structure", id: "page" },
-            question: "Q-P1",
-            text: "Yes, 2000 characters.",
-            answeredOn: "2026-11-02",
-            reason: "Added answeredBy and the date.",
-            changed: true,
-          })
-        );
-
+        // contracts checks each kind's entry; the note is the one it doesn't.
         const spot = Arr.findFirst(
           revision.accepted,
           ({ id }) => id === "n-spot"

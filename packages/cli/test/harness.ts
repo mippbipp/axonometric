@@ -1,4 +1,10 @@
-import { ServerState } from "@axonometric/contracts";
+import {
+  emptyProposals,
+  MapState,
+  ProposalsFile,
+  ServerState,
+} from "@axonometric/contracts";
+import type { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert } from "@effect/vitest";
 import {
@@ -23,8 +29,8 @@ import {
 import { TerminalCapabilities } from "effect/cli";
 
 import { run } from "../src/cli.ts";
-import { serverStateFile } from "../src/server-state.ts";
-import { openPage } from "./browser.ts";
+import { openPage, openUrl } from "./browser.ts";
+import { fullMap } from "./fixtures.ts";
 
 /** Files keyed by their `/`-separated path relative to the home folder. */
 export type HomeFiles = Readonly<Partial<Record<string, string>>>;
@@ -89,6 +95,21 @@ const readFiles = Effect.fnUntraced(function* (home: string) {
 
   return files;
 });
+
+/**
+ * Every file in the home folder `home`, keyed as `runCli` returns them,
+ * without running the CLI.
+ */
+export const readHome = (home: string) =>
+  readFiles(home).pipe(Effect.provide(NodeServices.layer));
+
+/** The text of `file` in `root`, relative to it. */
+export const readIn = Effect.fnUntraced(function* (root: string, file: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+
+  return yield* fs.readFileString(path.join(root, file));
+}, Effect.provide(NodeServices.layer));
 
 /**
  * Creates a temporary home folder holding `files`, removed when the test's
@@ -158,6 +179,12 @@ export const runCli = Effect.fnUntraced(function* (
     files,
   } satisfies CliResult;
 }, Effect.provide(NodeServices.layer));
+
+/** Where `serve` records itself for the map in `home`. */
+const serverStateFile = (home: string) =>
+  Path.Path.use((path) =>
+    Effect.succeed(path.join(home, ".axonometric", "server.json"))
+  );
 
 const decodeServerState = Schema.decodeUnknownOption(
   Schema.fromJsonString(ServerState)
@@ -260,3 +287,103 @@ export const buildAndOpen = Effect.fnUntraced(function* (
 
   return yield* openPage(path.join(home, system, `${system}.html`));
 }, Effect.provide(NodeServices.layer));
+
+/** The text of proposals.json in `home`, or "" when there's no file. */
+export const proposalsText = (home: string) =>
+  readHome(home).pipe(Effect.map((files) => files["proposals.json"] ?? ""));
+
+/**
+ * The review map in `fullMap`, with `files` added, served on a free port
+ * with `args` added to `serve`'s. `root` is the temporary folder and `home`
+ * the map's home folder in it.
+ */
+export const serveReviewMap = Effect.fnUntraced(function* (
+  files: HomeFiles,
+  args: readonly string[]
+) {
+  const path = yield* Path.Path;
+  const root = yield* makeHome({ ...(yield* fullMap), ...files });
+  const home = path.join(root, "review", "map");
+  const serve = yield* startServe(home, ["--port", "0", ...args]);
+
+  return { root, home, serve, url: serve.url };
+}, Effect.provide(NodeServices.layer));
+
+/**
+ * The review map in `fullMap`, with `files` added, served on a free port and
+ * open in Chromium at 1280 × 800.
+ */
+export const openReviewMap = Effect.fnUntraced(function* (files: HomeFiles) {
+  const served = yield* serveReviewMap(files, []);
+  const opened = yield* openUrl(served.url);
+
+  yield* Effect.promise(() =>
+    opened.page.setViewportSize({ width: 1280, height: 800 })
+  );
+
+  return { ...served, ...opened };
+});
+
+const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
+
+/** What proposals.json in `home` holds, or nothing when there's no file. */
+export const proposalsIn = Effect.fnUntraced(function* (home: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const file = path.join(home, "proposals.json");
+
+  return (yield* fs.exists(file))
+    ? Option.some(yield* decodeProposals(yield* fs.readFileString(file)))
+    : Option.none<Proposals>();
+}, Effect.provide(NodeServices.layer));
+
+/**
+ * What proposals.json in `home` holds, or no proposals when there's no file:
+ * nothing is written until the first proposal.
+ */
+export const proposalsOrEmpty = (home: string) =>
+  proposalsIn(home).pipe(Effect.map(Option.getOrElse(() => emptyProposals)));
+
+/** What proposals.json in `home` holds. Fails the test when there's no file. */
+export const readProposals = Effect.fnUntraced(function* (home: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+
+  return yield* decodeProposals(
+    yield* fs.readFileString(path.join(home, "proposals.json"))
+  );
+}, Effect.provide(NodeServices.layer));
+
+/**
+ * Waits until proposals.json in `home` reaches `revision`, and returns it.
+ * Fails if the file went past `revision`: each write the page makes adds
+ * one, so a test that waits for the revision its last action makes finds
+ * out when the page wrote more than it should.
+ */
+export const waitForRevision = Effect.fnUntraced(function* (
+  home: string,
+  revision: number
+) {
+  for (let tries = 0; tries < 150; tries++) {
+    const now = yield* proposalsIn(home);
+
+    if (Option.isSome(now) && now.value.revision >= revision) {
+      assert.strictEqual(now.value.revision, revision);
+
+      return now.value;
+    }
+
+    yield* Effect.sleep("100 millis");
+  }
+
+  return assert.fail(`proposals.json never reached revision ${revision}`);
+});
+
+const decodeState = Schema.decodeUnknownEffect(Schema.fromJsonString(MapState));
+
+/** The map state the HTML page `page` embeds. */
+export const pageState = (page: string) =>
+  decodeState(
+    /id="axonometric-map-state">(?<json>.*?)<\/script>/su.exec(page)?.groups
+      ?.json ?? ""
+  );

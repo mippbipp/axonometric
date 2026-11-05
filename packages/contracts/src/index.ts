@@ -75,13 +75,11 @@ export {
   changedProblems,
   checkChapter,
   checkLayout,
-  clashWarnings,
   draggedProblems,
   footprintsOverlap,
   offEndFindings,
   onOutline,
   placedStructures,
-  tagCovers,
 } from "./layout-checks.ts";
 
 export type {
@@ -94,14 +92,7 @@ export type {
 
 export { isoHeights } from "./iso-heights.ts";
 
-export {
-  groundProjections,
-  planRect,
-  planTagSpots,
-  planUnit,
-  projectPlan,
-  views,
-} from "./plan.ts";
+export { groundProjections, planTagSpots, projectPlan, views } from "./plan.ts";
 
 export type { GroundProjection, View } from "./plan.ts";
 
@@ -123,19 +114,15 @@ export {
   groupGap,
   placeStructures,
   structureGap,
-  zoneGap,
 } from "./placement.ts";
 
 export type { PlacedLayout } from "./placement.ts";
 
 export {
   boundsOfPoints,
-  convexOverlap,
-  distanceToPolyline,
   gapBetween,
   growRect,
   rectPolygon,
-  segmentCrosses,
   segmentsOf,
 } from "./geometry.ts";
 
@@ -151,31 +138,20 @@ export {
   chapterSpotlightOf,
   defaultFlowChoice,
   playedHopsOf,
-  spotlightOf,
 } from "./spotlight.ts";
 
-export type {
-  FlowChoice,
-  Spotlight,
-  SpotlightChoice,
-  SpotlightTarget,
-} from "./spotlight.ts";
+export type { FlowChoice, Spotlight, SpotlightTarget } from "./spotlight.ts";
 
-export { routeCap, routeHops, routeLength, routeRevealed } from "./routing.ts";
+export { routeHops, routeRevealed } from "./routing.ts";
 
 export {
   arrowheadOf,
   arrowLength,
   arrowPolygon,
-  endsOnTarget,
-  labelGap,
-  labelReach,
-  labelReachLimit,
   planZoneRadius,
   sceneClashes,
   placeMovingNameTags,
   placeNameTags,
-  tagScene,
   sceneOf,
   silhouette,
 } from "./scene.ts";
@@ -200,7 +176,7 @@ export type {
 
 export type { HopRoute } from "./routing.ts";
 
-export { groupMembers, zonePadding, zonesOf } from "./zones.ts";
+export { groupMembers, zonesOf } from "./zones.ts";
 
 export type { Zone, ZoneSource } from "./zones.ts";
 
@@ -283,7 +259,6 @@ export {
   Footprint,
   hopsOf,
   HopTarget,
-  idOfTargetKey,
   LayoutChange,
   layoutChangeKey,
   LayoutChanges,
@@ -298,13 +273,11 @@ export {
   ResizeChange,
   sameLayoutChanges,
   shiftedRoutes,
-  sharedTarget,
   StructureMove,
   StructureTarget,
   structuresOf,
   Target,
   targetIdsOf,
-  targetKeysOf,
 } from "./proposals.ts";
 
 export type { Clash, Placing, PlacingRoute } from "./proposals.ts";
@@ -417,7 +390,6 @@ export {
   changedLayoutNotice,
   engineerTextNotice,
   kindNotices,
-  summaryLine,
   fullNames,
   bySection,
   inSections,
@@ -448,22 +420,18 @@ export {
   HopWrite,
   ChapterWrite,
   GroupWrite,
-  maxGroupMembers,
   StructureWrite,
   SuggestionAdd,
 } from "./review-server.ts";
 
 export {
   boxStroke,
-  centreClearance,
   edgeStroke,
   gapAt,
-  hopStroke,
   minScreenGap,
   noteMarkerRadius,
   noteMarkerStroke,
   placeNoteMarkers,
-  visibleGap,
 } from "./note-markers.ts";
 
 export type {
@@ -476,10 +444,8 @@ export type {
 export {
   allKinds,
   applyOrder,
-  kindTable,
   sections,
   sectionTitles,
-  oneLine,
   quoteText,
   removedMark,
   specOf,
@@ -521,28 +487,23 @@ export {
   maxStructureNameLength,
   NewStructure,
   ProposedPlacement,
-  provisionalIdOf,
   ProvisionalId,
   sameStructureChange,
   StructureChange,
   StructureId,
-  StructureName,
   structureOf,
 } from "./structure-change.ts";
 
 export {
   actionOf,
-  codeOfName,
   proposedDetails,
   proposedOneLiner,
-  structureActions,
   structureOfNew,
 } from "./structure-actions.ts";
 
 export type { DescribeNames, StructureAction } from "./structure-actions.ts";
 
 export {
-  candidateProblems,
   defaultSpotFor,
   describePlacement,
   droppedIntoGroup,
@@ -572,7 +533,6 @@ export {
   GroupChange,
   GroupId,
   groupOf,
-  GroupTitle,
   maxGroupTitleLength,
   NewGroup,
   provisionalGroupIdOf,
@@ -583,7 +543,6 @@ export {
 
 export {
   newProvisionalGroupId,
-  proposeGroup,
   proposeGroupWithMembers,
 } from "./group-proposals.ts";
 
@@ -593,7 +552,6 @@ export { groupMark } from "./review-kinds-group.ts";
 
 export {
   applyChapterChange,
-  chapterActions,
   chapterBreakage,
   ChapterChange,
   ChapterId,
@@ -693,7 +651,6 @@ export {
   frozenHopChanges,
   openFlowChanges,
   openHopChanges,
-  withoutOpenHop,
 } from "./connection-held.ts";
 
 export {
@@ -717,7 +674,6 @@ export {
   noKnownIds,
   noRenames,
   provisionalOf,
-  renamesOf,
 } from "./provisional-ids.ts";
 
 export type {
@@ -732,6 +688,6 @@ export { lineBreak, oneLineText } from "./text-schemas.ts";
 
 export { hopActionOf, hopActions } from "./hop-actions.ts";
 
-export { flowActionOf, flowActions, hopsWith } from "./flow-actions.ts";
+export { flowActionOf, hopsWith } from "./flow-actions.ts";
 
 export { moveItem } from "./reorder.ts";

@@ -2,7 +2,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, String as Str } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf } from "./browser.ts";
+import {
+  attributeOf,
+  attributesOf,
+  click,
+  goToChapter,
+  waitFor,
+} from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -33,22 +39,8 @@ const reviewPage = Effect.gen(function* () {
   return yield* buildAndOpen(yield* fullMap, "review");
 });
 
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor());
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).click());
-
-const attribute = (page: Page, selector: string, name: string) =>
-  Effect.promise(() => page.locator(selector).first().getAttribute(name));
-
 const packetIds = (page: Page) =>
   attributesOf(page, "[data-packet]", "data-packet");
-
-const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-});
 
 /** Steps and waits until the packet panel shows `hop`. */
 const stepTo = Effect.fnUntraced(function* (page: Page, hop: string) {
@@ -134,101 +126,79 @@ describe("packets", () => {
     )
   );
 
-  it.live("pause when clicked and show the hop's label and payload", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+  it.live(
+    "pause when clicked, show the hop's label and payload, step through the hops in order and play again",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page, errors } = yield* reviewPage;
 
-        yield* goToChapter(page, "c-save");
-        yield* waitFor(page, '[data-packets][data-playing="true"]');
+          yield* goToChapter(page, "c-save");
+          yield* waitFor(page, '[data-packets][data-playing="true"]');
 
-        // The packet is moving, so dispatch the click on it rather than
-        // aiming the mouse at where it was.
-        yield* Effect.promise(() =>
-          page.locator("[data-packet]").dispatchEvent("click")
-        );
+          // The packet is moving, so dispatch the click on it rather than
+          // aiming the mouse at where it was.
+          yield* Effect.promise(() =>
+            page.locator("[data-packet]").dispatchEvent("click")
+          );
 
-        yield* waitFor(page, '[data-packets][data-playing="false"]');
-        yield* waitFor(page, "[data-packet-panel]");
+          yield* waitFor(page, '[data-packets][data-playing="false"]');
+          yield* waitFor(page, "[data-packet-panel]");
 
-        const clicked = yield* attribute(page, "[data-packet]", "data-packet");
+          const clicked = yield* attributeOf(
+            page,
+            "[data-packet]",
+            "data-packet"
+          );
 
-        const panel = yield* attribute(
-          page,
-          "[data-packet-panel]",
-          "data-packet-panel"
-        );
+          const panel = yield* attributeOf(
+            page,
+            "[data-packet-panel]",
+            "data-packet-panel"
+          );
 
-        assert.strictEqual(panel, clicked);
+          assert.strictEqual(panel, clicked);
 
-        // Step on to the hop with a payload, h-save.
-        const order = ["h-note", "h-save", "h-store"];
-        const at = order.indexOf(clicked ?? "");
+          // Step on to the hop with a payload, h-save.
+          const order = ["h-note", "h-save", "h-store"];
+          const at = order.indexOf(clicked ?? "");
 
-        assert.isAtLeast(at, 0);
+          assert.isAtLeast(at, 0);
 
-        for (let offset = 1; offset <= (1 - at + 3) % 3; offset++) {
-          yield* stepTo(page, order[(at + offset) % 3] ?? "");
-        }
+          for (let offset = 1; offset <= (1 - at + 3) % 3; offset++) {
+            yield* stepTo(page, order[(at + offset) % 3] ?? "");
+          }
 
-        yield* waitFor(page, '[data-packet-panel="h-save"]');
+          yield* waitFor(page, '[data-packet-panel="h-save"]');
 
-        const label = yield* Effect.promise(() =>
-          page.locator("[data-packet-label]").textContent()
-        );
+          const label = yield* Effect.promise(() =>
+            page.locator("[data-packet-label]").textContent()
+          );
 
-        const payload = yield* Effect.promise(() =>
-          page.locator("[data-packet-payload]").textContent()
-        );
+          const payload = yield* Effect.promise(() =>
+            page.locator("[data-packet-payload]").textContent()
+          );
 
-        assert.strictEqual(label, "POST /proposals");
-        assert.strictEqual(
-          payload,
-          `{
+          assert.strictEqual(label, "POST /proposals");
+          assert.strictEqual(
+            payload,
+            `{
   "kind": "note",
   "target": "server"
 }`
-        );
+          );
 
-        yield* click(page, '[data-playback-controls] [data-control="play"]');
-        yield* waitFor(page, '[data-packets][data-playing="true"]');
-        yield* waitFor(page, "[data-chapter-story]");
-        assert.deepStrictEqual(errors, []);
-      })
-    )
-  );
+          // Stepping on goes round the chapter's hops in order, back to h-save.
+          for (const hop of ["h-store", "h-note", "h-save"]) {
+            yield* stepTo(page, hop);
+          }
 
-  it.live("pause, step through the hops in order and play again", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* reviewPage;
-
-        yield* goToChapter(page, "c-save");
-        yield* click(page, '[data-playback-controls] [data-control="pause"]');
-        yield* waitFor(page, '[data-packets][data-playing="false"]');
-
-        // Paused, the packet can be clicked like anything else.
-        yield* click(page, "[data-packet]");
-
-        const first = yield* attribute(
-          page,
-          "[data-packet-panel]",
-          "data-packet-panel"
-        );
-
-        const order = ["h-note", "h-save", "h-store"];
-        const at = order.indexOf(first ?? "");
-
-        assert.isAtLeast(at, 0);
-
-        for (const offset of [1, 2, 3]) {
-          yield* stepTo(page, order[(at + offset) % order.length] ?? "");
-        }
-
-        yield* click(page, '[data-playback-controls] [data-control="play"]');
-        yield* waitFor(page, '[data-packets][data-playing="true"]');
-      })
-    )
+          yield* click(page, '[data-playback-controls] [data-control="play"]');
+          yield* waitFor(page, '[data-packets][data-playing="true"]');
+          yield* waitFor(page, "[data-chapter-story]");
+          assert.deepStrictEqual(errors, []);
+        })
+      )
   );
 
   it.live("stay still when the user prefers reduced motion", () =>
@@ -255,7 +225,7 @@ describe("packets", () => {
             .isDisabled()
         );
 
-        const playTitle = yield* attribute(
+        const playTitle = yield* attributeOf(
           page,
           '[data-playback-controls] [data-control="play"]',
           "title"
@@ -307,7 +277,7 @@ describe("the flow picker", () => {
         // The last chapter plays no hops of its own, so it starts on all
         // flows: one packet each.
         assert.strictEqual(
-          yield* attribute(
+          yield* attributeOf(
             page,
             '[data-flow-picker] [data-flow="all"]',
             "aria-pressed"
@@ -327,7 +297,7 @@ describe("the flow picker", () => {
         yield* click(page, '[data-playback-controls] [data-control="pause"]');
         yield* click(page, "[data-packet]");
 
-        const first = yield* attribute(
+        const first = yield* attributeOf(
           page,
           "[data-packet-panel]",
           "data-packet-panel"

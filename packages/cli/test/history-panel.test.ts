@@ -12,66 +12,34 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf, boxesOf, literal, openUrl } from "./browser.ts";
-import { drawingReport, overlap } from "./drawing-report.ts";
+import {
+  attributeOf,
+  attributesOf,
+  boxesOf,
+  centreOf,
+  click,
+  count,
+  literal,
+  openUrl,
+  textOf,
+  waitFor,
+  waitGone,
+  waitTimeout,
+} from "./browser.ts";
+import { drawingReport, textClashes } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { makeHome, readIn, serveReviewMap, startServe } from "./harness.ts";
 import { acceptChanges, moveOf, resizeOf } from "./revisions.ts";
 
 // The History panel in a page that a real serve serves: two revisions made
 // through the API, then opened, compared and restored in Chromium.
-
-const waitTimeout = { timeout: 15_000 };
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 const decodeProposals = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Proposals)
 );
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
-const attributeOf = (page: Page, selector: string, name: string) =>
-  Effect.promise(() => page.locator(selector).first().getAttribute(name));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-/** Where the page's drawing puts structure `id`: its centre on screen. */
-const centreOf = Effect.fnUntraced(function* (page: Page, id: string) {
-  const box = yield* Effect.promise(() =>
-    page.locator(`[data-structure="${id}"]`).first().boundingBox()
-  );
-
-  assert.isNotNull(box);
-
-  return {
-    x: (box?.x ?? 0) + (box?.width ?? 0) / 2,
-    y: (box?.y ?? 0) + (box?.height ?? 0) / 2,
-  };
-});
 
 /**
  * The review map, served on a free port with two revisions saved:
@@ -84,10 +52,7 @@ const centreOf = Effect.fnUntraced(function* (page: Page, id: string) {
  * the page 2 × 2, and the server at (8, 0).
  */
 const servedWithTwo = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
+  const { root, home, serve } = yield* serveReviewMap({}, []);
 
   yield* acceptChanges(serve, {
     base: 0,
@@ -135,19 +100,7 @@ const assertReadable = Effect.fnUntraced(function* (page: Page, where: string) {
     page.evaluate(drawingReport)
   );
 
-  const textClashes = Arr.flatMap(report.text, (first, index) =>
-    Arr.flatMap(Arr.drop(report.text, index + 1), (second) =>
-      overlap(first.polygon, second.polygon)
-        ? [`${first.id} × ${second.id}`]
-        : []
-    )
-  );
-
-  const underBoxes = Arr.flatMap(report.text, (text) =>
-    Arr.flatMap(report.structures, (box) =>
-      overlap(text.polygon, box.polygon) ? [`${text.id} × ${box.id}`] : []
-    )
-  );
+  const clashes = textClashes(report);
 
   const sizes = yield* Effect.promise(() =>
     page.evaluate<
@@ -169,8 +122,7 @@ const assertReadable = Effect.fnUntraced(function* (page: Page, where: string) {
   );
 
   assert.isNotEmpty(report.text, where);
-  assert.deepStrictEqual(textClashes, [], `text over text in ${where}`);
-  assert.deepStrictEqual(underBoxes, [], `text under boxes in ${where}`);
+  assert.deepStrictEqual(clashes, [], `text over text or a box in ${where}`);
   assert.deepStrictEqual(
     stray,
     [],
@@ -226,12 +178,25 @@ const openRevision = Effect.fnUntraced(function* (page: Page, n: number) {
   yield* waitFor(page, `[data-past-revision="${n}"]`);
 });
 
-const readIn = Effect.fnUntraced(function* (root: string, file: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
+/** Waits until proposals.json in `root` holds `wanted` pending layout changes. */
+const waitForPendingCount = Effect.fnUntraced(function* (
+  root: string,
+  wanted: number
+) {
+  for (let tries = 0; tries < 150; tries += 1) {
+    const proposals = yield* decodeProposals(
+      yield* readIn(root, "review/map/proposals.json")
+    );
 
-  return yield* fs.readFileString(path.join(root, file));
-}, Effect.provide(NodeServices.layer));
+    if (proposals.layout.length === wanted) {
+      return proposals;
+    }
+
+    yield* Effect.sleep("100 millis");
+  }
+
+  return assert.fail(`proposals.json never held ${wanted} layout changes`);
+});
 
 describe("the History panel", () => {
   it.live(
@@ -310,7 +275,10 @@ describe("the History panel", () => {
       Effect.gen(function* () {
         const { page, errors } = yield* servedWithTwo;
 
-        const nowEngineer = yield* centreOf(page, "engineer");
+        const nowEngineer = yield* centreOf(
+          page,
+          '[data-structure="engineer"]'
+        );
 
         yield* openHistory(page);
 
@@ -332,7 +300,10 @@ describe("the History panel", () => {
         );
 
         // Revision 1 has the engineer at (0, 0), above where revision 2 put it.
-        const thenEngineer = yield* centreOf(page, "engineer");
+        const thenEngineer = yield* centreOf(
+          page,
+          '[data-structure="engineer"]'
+        );
 
         assert.isBelow(thenEngineer.y, nowEngineer.y - 20);
 
@@ -366,7 +337,7 @@ describe("the History panel", () => {
         yield* click(page, '[data-structure="engineer"]');
         assert.strictEqual(yield* count(page, "[data-resize-handle]"), 0);
 
-        const before = yield* centreOf(page, "engineer");
+        const before = yield* centreOf(page, '[data-structure="engineer"]');
 
         yield* Effect.promise(() => page.mouse.move(before.x, before.y));
         yield* Effect.promise(() => page.mouse.down());
@@ -391,7 +362,7 @@ describe("the History panel", () => {
           null
         );
 
-        const back = yield* centreOf(page, "engineer");
+        const back = yield* centreOf(page, '[data-structure="engineer"]');
 
         assert.closeTo(back.y, nowEngineer.y, 2);
         assert.deepStrictEqual(errors, []);
@@ -622,7 +593,7 @@ describe("the History panel", () => {
     "restores a layout difference as pending changes the Pending tab lists, and writes proposals.json",
     () =>
       Effect.gen(function* () {
-        const { root, page, errors } = yield* servedWithTwo;
+        const { root, serve, page, errors } = yield* servedWithTwo;
 
         yield* openHistory(page);
         yield* openRevision(page, 1);
@@ -710,38 +681,20 @@ describe("the History panel", () => {
         // The restore is one undo step like any other edit.
         yield* click(page, '[data-control="undo"]');
         yield* waitGone(page, "[data-pending-change]");
-        assert.deepStrictEqual(errors, []);
-      }),
-    60_000
-  );
 
-  it.live(
-    "words the restore dialog for one layout difference in the singular",
-    () =>
-      Effect.gen(function* () {
-        const path = yield* Path.Path;
-        const root = yield* makeHome(yield* fullMap);
-        const home = path.join(root, "review", "map");
-        const serve = yield* startServe(home, ["--port", "0"]);
+        // A third revision moves the engineer back to where revision 2 has it
+        // not, so restoring revision 2 differs in that one place, and the
+        // dialog says so in the singular.
+        const { revision: base } = yield* waitForPendingCount(root, 0);
 
         yield* acceptChanges(serve, {
-          base: 0,
-          changes: [moveOf("a", "page", { x: 4, y: 4 })],
-          message: "First",
+          base,
+          changes: [moveOf("engineer-home", "engineer", { x: 0, y: 0 })],
+          message: "Engineer home",
         });
-        yield* acceptChanges(serve, {
-          base: 2,
-          changes: [moveOf("b", "engineer", { x: 0, y: 4 })],
-          message: "Second",
-        });
-
-        const { page, errors } = yield* openUrl(serve.url);
-
-        yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1280, height: 800 })
-        );
         yield* openHistory(page);
-        yield* openRevision(page, 1);
+        yield* waitFor(page, '[data-history-list] [data-revision="3"]');
+        yield* openRevision(page, 2);
         yield* click(page, '[data-control="restore"]');
         yield* waitFor(page, "[data-restore-dialog]");
         assert.include(
@@ -749,8 +702,8 @@ describe("the History panel", () => {
           "1 layout difference is now a pending change. Review it in the Pending tab, or undo it."
         );
         assert.deepStrictEqual(errors, []);
-      }).pipe(Effect.provide(NodeServices.layer)),
-    60_000
+      }).pipe(Effect.scoped),
+    90_000
   );
 
   it.live(

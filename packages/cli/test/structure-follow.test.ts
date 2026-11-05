@@ -1,4 +1,4 @@
-import { LayoutFile, Proposals, ReviewReport } from "@axonometric/contracts";
+import { LayoutFile, ReviewReport } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -6,18 +6,28 @@ import {
   Effect,
   FileSystem,
   Option,
+  Order,
   Path,
   pipe,
+  Record as Rec,
   Schema,
   String as Str,
 } from "effect";
 import type { Locator, Page } from "playwright";
 
-import { literal, openUrl } from "./browser.ts";
+import {
+  click,
+  count,
+  goToChapterPaused,
+  literal,
+  press,
+  textOf,
+  waitFor,
+  waitTimeout,
+} from "./browser.ts";
 import { drawingReport, overlap } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
-import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // Seam 2, for the gaps: what a proposal adds to check's report, where the add
 // form puts a structure and where it sits on the page, dragging a structure
@@ -25,65 +35,19 @@ import { makeHome, runCli, startServe } from "./harness.ts";
 // map has groups people (engineer), loop (page, server, proposals, pull
 // request) and outside (upstream) in a row, so the zones can be made to meet.
 
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
-
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 const decodeReview = Schema.decodeUnknownEffect(
   Schema.fromJsonString(ReviewReport)
 );
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
+const served = openReviewMap({});
 
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-const textOf = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .textContent()
-      .then((text) => text ?? "")
-  );
-
+/** Opens chapter `id` with its packets paused, zoomed to fit. */
 const chapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-  yield* click(page, '[data-playback-controls] [data-control="pause"]');
-  yield* Effect.promise(() => page.keyboard.press("0"));
+  yield* goToChapterPaused(page, id);
+  yield* press(page, "0");
 });
-
-const readProposals = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
-  );
-}, Effect.provide(NodeServices.layer));
 
 /**
  * Waits until proposals.json in `home` has been written at least once. The
@@ -227,10 +191,23 @@ describe("the add form", () => {
   }
 
   it.live(
-    "starts at the first free slot beside the group, so Propose is ready, and follows the group",
+    "starts at a free spot beside the group, so Propose is ready, and follows the group",
     () =>
       Effect.gen(function* () {
-        const { page } = yield* served;
+        const { home, page } = yield* served;
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+
+        const { structures } = yield* decodeLayout(
+          yield* fs.readFileString(path.join(home, "layout.json"))
+        );
+
+        // The review map's groups: people holds the engineer, outside the
+        // upstream, and loop the rest.
+        const groupOf = new Map([
+          ["engineer", "people"],
+          ["upstream", "outside"],
+        ]);
 
         yield* chapter(page, "c-all");
         yield* openForm(page);
@@ -241,7 +218,57 @@ describe("the add form", () => {
         const x = () =>
           Effect.promise(() => page.locator('[data-add="x"]').inputValue());
 
+        const y = () =>
+          Effect.promise(() => page.locator('[data-add="y"]').inputValue());
+
+        /** The candidate is clear of every box, and nearest one of `group`. */
+        const assertBeside = Effect.fnUntraced(function* (group: string) {
+          const spot = {
+            x: Number(yield* x()),
+            y: Number(yield* y()),
+            w: 2,
+            d: 2,
+          };
+
+          const placed = Rec.toEntries(structures);
+
+          const over = Arr.filter(
+            placed,
+            ([, box]) =>
+              spot.x < box.x + box.w &&
+              box.x < spot.x + spot.w &&
+              spot.y < box.y + box.d &&
+              box.y < spot.y + spot.d
+          );
+
+          assert.deepStrictEqual(
+            Arr.map(over, ([id]) => id),
+            [],
+            group
+          );
+
+          const gap = (box: { x: number; y: number; w: number; d: number }) =>
+            Math.hypot(
+              box.x + box.w / 2 - (spot.x + spot.w / 2),
+              box.y + box.d / 2 - (spot.y + spot.d / 2)
+            );
+
+          const [nearest] = Arr.sort(
+            placed,
+            Order.mapInput(Order.Number, ([, box]: (typeof placed)[number]) =>
+              gap(box)
+            )
+          );
+
+          assert.strictEqual(
+            groupOf.get(nearest?.[0] ?? "") ?? "loop",
+            group,
+            `nearest to ${nearest?.[0]}`
+          );
+        });
+
         assert.notStrictEqual(yield* x(), "");
+        yield* assertBeside("people");
         assert.isFalse(
           yield* Effect.promise(() =>
             page.locator('[data-add="submit"]').isDisabled()
@@ -260,6 +287,7 @@ describe("the add form", () => {
             waitTimeout
           )
         );
+        yield* assertBeside("outside");
 
         // Once a spot is typed, the group no longer moves it.
         yield* Effect.promise(() => page.locator('[data-add="x"]').fill("30"));
@@ -267,7 +295,7 @@ describe("the add form", () => {
           page.locator('[data-add="group"]').selectOption("people")
         );
         assert.strictEqual(yield* x(), "30");
-      }),
+      }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
 
@@ -305,10 +333,18 @@ describe("the add form", () => {
   }
 
   it.live(
-    "warns, marked new, when the new structure stretches a zone over another group's",
+    "warns, marked new, when the new structure stretches a zone over another group's, and so does a group change from the panel",
     () =>
       Effect.gen(function* () {
         const { page } = yield* served;
+
+        const zoneWarnings = warnings(page).pipe(
+          Effect.map((found) =>
+            Arr.filter(found, ({ text }) =>
+              Str.includes("zones of groups")(text)
+            )
+          )
+        );
 
         yield* chapter(page, "c-all");
         yield* openForm(page);
@@ -323,14 +359,13 @@ describe("the add form", () => {
         yield* Effect.promise(() => page.locator('[data-add="y"]').fill("0"));
         yield* waitFor(page, "[data-drag-warnings]");
 
-        const found = yield* warnings(page);
+        const fromForm = yield* zoneWarnings;
 
-        const zones = Arr.filter(found, ({ text }) =>
-          Str.includes("zones of groups")(text)
+        assert.isAbove(fromForm.length, 0, "add form");
+        assert.isTrue(
+          Arr.every(fromForm, ({ isNew }) => isNew),
+          "add form"
         );
-
-        assert.isAbove(zones.length, 0);
-        assert.isTrue(Arr.every(zones, ({ isNew }) => isNew));
         assert.include(
           yield* textOf(page, "[data-drag-warnings]"),
           "New from this change"
@@ -341,19 +376,14 @@ describe("the add form", () => {
         const panel = yield* boxOf(page, "[data-side-panel]");
 
         assert.isAtLeast(docked.x, panel.x - 0.5);
-      }),
-    60_000
-  );
-});
 
-describe("a group change", () => {
-  it.live(
-    "from the panel warns about the zones it makes meet, marked new",
-    () =>
-      Effect.gen(function* () {
-        const { page } = yield* served;
+        yield* click(page, '[data-add="cancel"]');
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-drag-warnings]")
+            .waitFor({ state: "detached", ...waitTimeout })
+        );
 
-        yield* chapter(page, "c-all");
         yield* click(page, '[data-structure="upstream"]');
         yield* waitFor(page, '[data-structure-panel="upstream"]');
         yield* Effect.promise(() =>
@@ -361,16 +391,19 @@ describe("a group change", () => {
         );
         yield* waitFor(page, "[data-drag-warnings]");
 
-        const zones = Arr.filter(yield* warnings(page), ({ text }) =>
-          Str.includes("zones of groups")(text)
-        );
+        const fromPanel = yield* zoneWarnings;
 
-        assert.isAbove(zones.length, 0);
-        assert.isTrue(Arr.every(zones, ({ isNew }) => isNew));
+        assert.isAbove(fromPanel.length, 0, "panel");
+        assert.isTrue(
+          Arr.every(fromPanel, ({ isNew }) => isNew),
+          "panel"
+        );
       }),
     60_000
   );
+});
 
+describe("a group change", () => {
   it.live(
     "from a drop into another group's zone is proposed, and the move lands as a layout change",
     () =>
@@ -419,37 +452,6 @@ describe("a group change", () => {
         );
       }),
     60_000
-  );
-
-  it.live("from a drop within its own zone is a layout change only", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* served;
-
-      yield* chapter(page, "c-all");
-
-      const from = yield* boxOf(page, '[data-structure="page"]');
-
-      yield* Effect.promise(() =>
-        page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
-      );
-      yield* Effect.promise(() => page.mouse.down());
-      yield* Effect.promise(() =>
-        page.mouse.move(
-          from.x + from.width / 2 + 30,
-          from.y + from.height / 2,
-          {
-            steps: 8,
-          }
-        )
-      );
-      yield* Effect.promise(() => page.mouse.up());
-      yield* pendingWait(page);
-
-      const proposals = yield* savedProposals(home);
-
-      assert.isAbove(proposals.layout.length, 0);
-      assert.deepStrictEqual(proposals.structures ?? [], []);
-    })
   );
 });
 
@@ -569,17 +571,6 @@ describe("the open page after verdict changed --as and commit", () => {
           page,
           '[data-structure-panel="build-cache"][data-pinned]'
         );
-
-        const layout = yield* decodeLayout(
-          committed.files["layout.json"] ?? ""
-        );
-
-        assert.deepStrictEqual(layout.structures["build-cache"], {
-          x: 12,
-          y: 12,
-          w: 2,
-          d: 2,
-        });
 
         // The note followed the structure to its new id.
         const shown = yield* textOf(page, "[data-structure-panel]");

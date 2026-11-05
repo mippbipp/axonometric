@@ -1,14 +1,14 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Option, Record as Rec, Result, Schema } from "effect";
+import { Array as Arr, Option, Result, Schema } from "effect";
 import { vi } from "vitest";
 
 import {
+  acceptRefusal,
   applyLayoutChanges,
   checkProposals,
   discardChange,
   groupMembers,
   hopLabelOf,
-  idOfTargetKey,
   layoutRefusal,
   maxRoutePoints,
   maxRouteReach,
@@ -16,10 +16,14 @@ import {
   placeStructure,
   Proposals,
   shiftedRoutes,
-  sharedTarget,
-  targetKeysOf,
 } from "../src/index.ts";
-import type { Layout, LayoutChange, MapData, Structure } from "../src/index.ts";
+import type {
+  Layout,
+  LayoutChange,
+  MapData,
+  Proposals as P,
+  Structure,
+} from "../src/index.ts";
 
 vi.setConfig({ testTimeout: 5000 });
 
@@ -76,6 +80,15 @@ const structure = (id: string): Structure => ({
 
 const hops = [{ id: "h-ab", from: "a", to: "b" }];
 
+/** Ids the layout doesn't place: one it lacks, and prototype keys. */
+const unplacedIds = [
+  "gone",
+  "__proto__",
+  "constructor",
+  "toString",
+  "hasOwnProperty",
+];
+
 const decode = Schema.decodeUnknownResult(Proposals, {
   onExcessProperty: "error",
 });
@@ -94,9 +107,8 @@ const file = (layout: readonly LayoutChange[], format = 1) => ({
 });
 
 /** Whether a file holding `layout`, any JSON, decodes. */
-const decodesRaw = (
-  layout: readonly Readonly<Record<string, string | readonly never[]>>[]
-) => Result.isSuccess(decode({ format: 1, revision: 0, layout }));
+const decodesRaw = (layout: readonly object[]) =>
+  Result.isSuccess(decode({ format: 1, revision: 0, layout }));
 
 const decodes = (layout: readonly LayoutChange[]) =>
   Result.isSuccess(decode(file(layout)));
@@ -133,11 +145,14 @@ describe("applying pending layout changes", () => {
     assert.strictEqual(applyLayoutChanges(accepted, []), accepted);
   });
 
-  it("skips a change for a structure the layout doesn't place", () => {
-    const shown = applyLayoutChanges(accepted, [move("m1", "gone", [9, 9])]);
+  it.each(unplacedIds)(
+    "skips a change for %s, which the layout doesn't place",
+    (id) => {
+      const shown = applyLayoutChanges(accepted, [move("m1", id, [9, 9])]);
 
-    assert.deepStrictEqual(shown.structures, accepted.structures);
-  });
+      assert.deepStrictEqual(shown.structures, accepted.structures);
+    }
+  );
 
   it("applies changes in list order, so a later one wins", () => {
     const group: LayoutChange = {
@@ -159,15 +174,6 @@ describe("applying pending layout changes", () => {
     assert.deepStrictEqual(later.structures.a, { x: 1, y: 1, w: 2, d: 2 });
     assert.deepStrictEqual(later.structures.b, { x: 4, y: 10, w: 2, d: 2 });
     assert.deepStrictEqual(earlier.structures.a, { x: 0, y: 10, w: 2, d: 2 });
-  });
-
-  it("ignores a change whose structure id is a prototype key", () => {
-    const shown = applyLayoutChanges(accepted, [
-      move("m1", "__proto__", [9, 9]),
-      move("m2", "constructor", [9, 9]),
-    ]);
-
-    assert.deepStrictEqual(shown.structures, accepted.structures);
   });
 });
 
@@ -230,7 +236,13 @@ describe("rerouting", () => {
 
     const shown = applyLayoutChanges(routed, [reroute("r1", via)]);
 
-    assert.deepStrictEqual(Rec.keys({ ...shown.routes }), ["h-other", "h-ab"]);
+    assert.deepStrictEqual(shown.routes, {
+      "h-other": [
+        { x: 0, y: 0 },
+        { x: 0, y: 5 },
+      ],
+      "h-ab": via,
+    });
   });
 
   it("decodes a reroute with points or null, and rejects a bent leg", () => {
@@ -522,26 +534,60 @@ const groupMoveTo = (to: readonly [number, number]): LayoutChange => ({
   ],
 });
 
-/** A move of a structure called x, and a reroute of a hop called x. */
-const structureX = move("m", "x", [0, 6]);
+/**
+ * A frozen batch of `frozen`, with `open` waiting to be accepted. Hop "a"
+ * shares its id with structure "a".
+ */
+const waitingOn = (frozen: LayoutChange, open: LayoutChange): P => ({
+  format: 1,
+  revision: 1,
+  layout: [open],
+  batches: [
+    {
+      number: 1,
+      frozenAt: "2026-11-01T09:00:00.000Z",
+      items: [{ id: frozen.id, kind: "layout", change: frozen }],
+      verdicts: {},
+    },
+  ],
+});
 
-const hopX: LayoutChange = {
-  id: "r",
+const hopA = [{ id: "a", from: "a", to: "b" }];
+
+const rerouteA = (id: string): LayoutChange => ({
+  id,
   kind: "reroute",
-  target: { kind: "hop", id: "x" },
+  target: { kind: "hop", id: "a" },
   points: via,
-};
+});
 
-describe("targets by kind", () => {
+describe("accepting next to a frozen change of the same id", () => {
   it("tells a structure and a hop with the same id apart", () => {
-    assert.deepStrictEqual(targetKeysOf(structureX), ["structure:x"]);
-    assert.deepStrictEqual(targetKeysOf(hopX), ["hop:x"]);
-    assert.isTrue(Option.isNone(sharedTarget([structureX], [hopX])));
+    // The frozen move keeps a's +x edge under the route's start at (2, 1).
+    const refusal = acceptRefusal({
+      proposals: waitingOn(move("m", "a", [0, 0.5]), rerouteA("r")),
+      layout: accepted,
+      ids: "all",
+      hops: hopA,
+    });
+
+    assert.deepStrictEqual(refusal, Option.none());
   });
 
-  it("finds a target two lists share, by kind and id", () => {
-    assert.deepStrictEqual(sharedTarget([hopX], [hopX]), Option.some("hop:x"));
-    assert.strictEqual(idOfTargetKey("hop:x"), "x");
+  it("waits for a frozen change of the same hop, and names the hop", () => {
+    const refusal = acceptRefusal({
+      proposals: waitingOn(rerouteA("r1"), rerouteA("r2")),
+      layout: accepted,
+      ids: "all",
+      hops: hopA,
+    });
+
+    assert.deepStrictEqual(
+      refusal,
+      Option.some(
+        '"a" has a change waiting in a batch for the agent. Wait for the agent\'s commit, then accept this change.'
+      )
+    );
   });
 });
 
@@ -625,12 +671,8 @@ describe("placing a structure", () => {
     });
   });
 
-  it("ignores an id the layout doesn't place, or a prototype key", () => {
-    assert.deepStrictEqual(place([], "gone", { x: 0, y: 0, w: 1, d: 1 }), []);
-    assert.deepStrictEqual(
-      place([], "constructor", { x: 0, y: 0, w: 1, d: 1 }),
-      []
-    );
+  it.each(unplacedIds)("ignores %s, which the layout doesn't place", (id) => {
+    assert.deepStrictEqual(place([], id, { x: 0, y: 0, w: 1, d: 1 }), []);
   });
 
   it("discards a change by id", () => {
@@ -728,21 +770,13 @@ describe("refusing layout changes", () => {
     );
   });
 
-  it("refuses a change for a structure the layout doesn't place", () => {
-    assert.isTrue(refused([], [move("m1", "gone", [9, 9])]));
-  });
-
-  it("refuses prototype keys as structure ids", () => {
-    for (const id of [
-      "__proto__",
-      "constructor",
-      "toString",
-      "hasOwnProperty",
-    ]) {
-      assert.isTrue(refused([], [move("m1", id, [9, 9])]), id);
-      assert.isTrue(refused([], [resize("r1", id, [3, 3])]), id);
+  it.each(unplacedIds)(
+    "refuses a move or resize of %s, which the layout doesn't place",
+    (id) => {
+      assert.isTrue(refused([], [move("m1", id, [9, 9])]));
+      assert.isTrue(refused([], [resize("r1", id, [3, 3])]));
     }
-  });
+  );
 });
 
 describe("the proposals.json schema", () => {
@@ -778,7 +812,16 @@ describe("the proposals.json schema", () => {
   });
 
   it("refuses a change with no id", () => {
-    assert.isFalse(decodesRaw([{ kind: "move", moves: [] }]));
+    assert.isFalse(
+      decodesRaw([
+        {
+          kind: "move",
+          moves: [
+            { target: { kind: "structure", id: "a" }, position: at(0, 6) },
+          ],
+        },
+      ])
+    );
   });
 
   it("refuses an id with odd characters", () => {

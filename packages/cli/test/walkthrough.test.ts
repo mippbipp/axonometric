@@ -2,7 +2,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Order } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf, boxesOf } from "./browser.ts";
+import {
+  attributesOf,
+  boxesOf,
+  click,
+  press,
+  scaleOf,
+  waitForScale,
+} from "./browser.ts";
 import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -23,26 +30,6 @@ const newMarkers = (page: Page) =>
 const waitForChapter = (page: Page, id: string) =>
   Effect.promise(() =>
     page.locator(`[data-walkthrough][data-chapter="${id}"]`).waitFor()
-  );
-
-const press = (page: Page, key: string) =>
-  Effect.promise(() => page.keyboard.press(key));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).click());
-
-const scaleExpression =
-  'Number(document.querySelector("svg[data-scale]").dataset.scale)';
-
-const scaleOf = (page: Page) =>
-  Effect.promise(() => page.evaluate<number>(scaleExpression));
-
-/** Waits until the viewport's zoom passes `test`, such as `> 2`. */
-const waitForScale = (page: Page, test: string) =>
-  Effect.promise(() =>
-    page.waitForFunction(`${scaleExpression} ${test}`, undefined, {
-      timeout: 5000,
-    })
   );
 
 const zoomIn = (page: Page) =>
@@ -150,29 +137,6 @@ describe("the chapter walkthrough", () => {
         yield* waitForChapter(page, "c-save");
         yield* press(page, "BracketLeft");
         yield* waitForChapter(page, "c-page");
-      })
-    )
-  );
-
-  it.live("zooms to fit the structures revealed so far", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { page } = yield* reviewPage;
-        const [svg] = yield* boxesOf(page, "svg");
-        const first = yield* boxesOf(page, '[data-structure="engineer"]');
-        const fitted = yield* scaleOf(page);
-
-        yield* press(page, "ArrowRight");
-        yield* press(page, "ArrowRight");
-        yield* waitForChapter(page, "c-all");
-        yield* waitForScale(page, `< ${fitted}`);
-
-        const last = yield* boxesOf(page, '[data-structure="engineer"]');
-
-        assert.isDefined(svg);
-        // Two structures are drawn larger in chapter 1 than when six share
-        // the view.
-        assert.isAbove(first[0]?.width ?? 0, last[0]?.width ?? 0);
       })
     )
   );

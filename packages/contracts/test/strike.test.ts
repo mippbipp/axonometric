@@ -4,10 +4,10 @@ import { Array as Arr } from "effect";
 import {
   groundOutline,
   groundProjections,
-  segmentCrosses,
   strikeSegments,
 } from "../src/index.ts";
 import type { View } from "../src/index.ts";
+import { crossesPolygon, rectCorners } from "./screen-geometry.ts";
 
 const placement = { x: 0, y: 0, w: 2, d: 2 };
 
@@ -28,33 +28,25 @@ const crossingChip = (view: View) => {
     text: [chip],
   });
 
-  const box = [
-    { sx: chip.left, sy: chip.top },
-    { sx: chip.right, sy: chip.top },
-    { sx: chip.right, sy: chip.bottom },
-    { sx: chip.left, sy: chip.bottom },
-  ];
-
   return {
     count: pieces.length,
-    crossing: Arr.filter(pieces, (piece) => segmentCrosses(piece, box)),
+    crossing: Arr.filter(pieces, (piece) =>
+      crossesPolygon(piece, rectCorners(chip))
+    ),
   };
 };
 
 describe("the cross through a deleted structure", () => {
-  it("keeps clear of a chip on a corner of the iso footprint", () => {
-    const { count, crossing } = crossingChip("iso");
+  it.each(["iso", "plan"] as const)(
+    "keeps clear of a chip on a corner of the %s footprint",
+    (view) => {
+      const { count, crossing } = crossingChip(view);
 
-    assert.isAtLeast(count, 2);
-    assert.deepStrictEqual(crossing, []);
-  }, 5000);
-
-  it("keeps clear of a chip on a corner of the plan footprint", () => {
-    const { count, crossing } = crossingChip("plan");
-
-    assert.isAtLeast(count, 2);
-    assert.deepStrictEqual(crossing, []);
-  }, 5000);
+      assert.isAtLeast(count, 2);
+      assert.deepStrictEqual(crossing, []);
+    },
+    5000
+  );
 
   it("is the two whole diagonals when there is no text", () => {
     const pieces = strikeSegments({
@@ -63,6 +55,15 @@ describe("the cross through a deleted structure", () => {
       text: [undefined],
     });
 
-    assert.strictEqual(pieces.length, 2);
+    const [a, b, c, d] = groundOutline(placement, groundProjections.plan);
+
+    // Each piece runs from one corner to the opposite one.
+    assert.sameDeepMembers(
+      Arr.map(pieces, ({ start, end }) => [start, end]),
+      [
+        [a, c],
+        [b, d],
+      ]
+    );
   }, 5000);
 });

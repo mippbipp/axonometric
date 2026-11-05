@@ -1,13 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Option, String as Str } from "effect";
+import { Array as Arr, Effect, Option } from "effect";
 
 import {
+  checkLayout,
   gapBetween,
   fitFloorOf,
   routeRevealed,
   sceneClashes,
   sceneOf,
-  tagScene,
   textZoomOf,
 } from "../src/index.ts";
 import type { Scene, SceneSource, SceneStructure } from "../src/index.ts";
@@ -59,10 +59,6 @@ const nearestBoxOf = (scene: Scene, id: string) =>
       ).structure.id;
     }
   );
-
-/** The clashes a scene has, as keys. */
-const clashKeys = (scene: Scene) =>
-  Arr.map(sceneClashes(scene), ({ between }) => Arr.join(between, " × "));
 
 describe("text placed at the size it's drawn", () => {
   for (const name of names) {
@@ -165,29 +161,46 @@ describe("route ends", () => {
 
 describe("name tags at full size", () => {
   // The exemption in `fitFloorOf` for clashes that exist at full size is
-  // safe only if `check` warns about them. Of every fixture, only the shapes
-  // map's Iso view has any, and `check` warns about both.
-  it.effect("clash only where `check` already warns", () =>
-    Effect.gen(function* () {
-      for (const name of names) {
-        for (const view of ["iso", "plan"] as const) {
-          const found = clashKeys(sceneOf(yield* sourceOf(name, view)));
+  // safe only if `check` warns about them.
+  it.effect(
+    "clash only where `check` already warns",
+    () =>
+      Effect.gen(function* () {
+        for (const name of names) {
+          const { data, layout } = yield* fixture(name);
 
-          const clashes = Arr.filter(
-            found,
-            (clash) =>
-              Str.includes("tag:")(clash) && !Str.includes("route:")(clash)
+          const warned = new Set(
+            Arr.map(
+              checkLayout(data, layout),
+              ({ path, message }) => `${path}: ${message}`
+            )
           );
 
-          const expected =
-            name === "shapes" && view === "iso"
-              ? ["box:store × tag:cards", "box:document × tag:job"]
-              : [];
+          for (const view of ["iso", "plan"] as const) {
+            const scene = sceneOf(yield* sourceOf(name, view));
 
-          assert.sameMembers([...clashes], expected, `${name} ${view}`);
+            for (const { between, parts } of sceneClashes(scene)) {
+              const kinds = Arr.map(parts, ({ kind }) => kind);
+              const tag = Arr.findFirst(parts, ({ kind }) => kind === "tag");
+              const box = Arr.findFirst(parts, ({ kind }) => kind === "box");
+              const where = `${name} ${view}: ${Arr.join(between, " × ")}`;
+
+              if (Option.isSome(tag) && !kinds.includes("route")) {
+                // `check` warns only about a tag on a box.
+                assert.isTrue(Option.isSome(box), where);
+                assert.isTrue(
+                  Option.isSome(box) &&
+                    warned.has(
+                      `structures.${tag.value.id}: name tag is drawn on top of "${box.value.id}". Move one of them apart, so the tag under the front corner has room.`
+                    ),
+                  `${where}, with no warning`
+                );
+              }
+            }
+          }
         }
-      }
-    })
+      }),
+    60_000
   );
 });
 
@@ -202,26 +215,27 @@ describe("the fit floor", () => {
     })
   );
 
-  it.effect("stops zoom to fit where grown name tags would overlap a box", () =>
-    Effect.gen(function* () {
-      const source = yield* sourceOf("flake-pipeline", "iso");
-      const floor = fitFloorOf(source, 0.2);
+  it.effect(
+    "stops zoom to fit at the smallest zoom where grown name tags overlap no box",
+    () =>
+      Effect.gen(function* () {
+        const source = yield* sourceOf("flake-pipeline", "iso");
+        const floor = fitFloorOf(source, 0.2);
 
-      // Measured: at 0.2 Iso tags land on boxes, and from about 0.39 up
-      // they don't.
-      assert.isAbove(floor, 0.3);
-      assert.isBelow(floor, 0.6);
+        const tagsOn = (zoom: number) =>
+          Arr.filter(
+            sceneClashes(sceneOf({ ...source, zoom })),
+            ({ parts }) =>
+              Arr.some(parts, ({ kind }) => kind === "tag") &&
+              !Arr.some(parts, ({ kind }) => kind === "route")
+          );
 
-      const tagsOn = (zoom: number) =>
-        Arr.filter(
-          sceneClashes(tagScene({ ...source, zoom })),
-          ({ parts }) =>
-            Arr.some(parts, ({ kind }) => kind === "tag") &&
-            !Arr.some(parts, ({ kind }) => kind === "route")
-        );
-
-      assert.isNotEmpty(tagsOn(textZoomOf(0.2)));
-      assert.isEmpty(tagsOn(textZoomOf(floor)));
-    })
+        assert.isAbove(floor, 0.2);
+        assert.isNotEmpty(tagsOn(textZoomOf(0.2)));
+        assert.isEmpty(tagsOn(textZoomOf(floor)));
+        // One text size step below the floor, the tags land on boxes.
+        assert.isNotEmpty(tagsOn(textZoomOf(floor / 1.1)));
+      }),
+    60_000
   );
 });

@@ -5,19 +5,10 @@ import {
   NodeSocket,
 } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Effect,
-  FileSystem,
-  Path,
-  Predicate,
-  Schema,
-  String as Str,
-} from "effect";
+import { Effect, Option, Path, Predicate, Schema, String as Str } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { stateFolder } from "../src/lock.ts";
-import { serverStateFile } from "../src/server-state.ts";
 import { minimalMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
 
@@ -29,26 +20,24 @@ const minimalHome = Effect.gen(function* () {
   return path.join(root, "pipeline", "map");
 }).pipe(Effect.provide(NodeServices.layer));
 
-const stateFileOf = (home: string) =>
-  serverStateFile(home).pipe(Effect.provide(NodeServices.layer));
-
 const encodeServerState = Schema.encodeEffect(
   Schema.fromJsonString(ServerState)
 );
 
-/** A state file as a running `serve` would write it. */
-const writeStateFile = Effect.fnUntraced(function* (home: string, pid: number) {
-  const fs = yield* FileSystem.FileSystem;
+/** A home with the minimal map and a state file naming `pid`, as a running `serve` would write it. */
+const homeWithStateFile = Effect.fnUntraced(function* (pid: number) {
+  const path = yield* Path.Path;
 
-  yield* stateFolder(home);
-  yield* fs.writeFileString(
-    yield* stateFileOf(home),
-    yield* encodeServerState({
+  const root = yield* makeHome({
+    ...(yield* minimalMap),
+    "pipeline/map/.axonometric/server.json": yield* encodeServerState({
       url: "http://127.0.0.1:5999",
       pid,
       since: "2026-11-01T09:00:00.000Z",
-    })
-  );
+    }),
+  });
+
+  return path.join(root, "pipeline", "map");
 }, Effect.provide(NodeServices.layer));
 
 /** The PID of a child process that idles until the scope closes. */
@@ -151,10 +140,8 @@ describe("status", () => {
 
   it.live("prints the URL and PID from a live server's state file", () =>
     Effect.gen(function* () {
-      const home = yield* minimalHome;
       const pid = yield* liveProcess;
-
-      yield* writeStateFile(home, pid);
+      const home = yield* homeWithStateFile(pid);
 
       const text = yield* runCli(home, ["status", home]);
       const json = yield* runCli(home, ["status", home, "--json"]);
@@ -176,9 +163,7 @@ describe("status", () => {
 
   it.live("ignores a state file whose process has exited", () =>
     Effect.gen(function* () {
-      const home = yield* minimalHome;
-
-      yield* writeStateFile(home, yield* deadPid);
+      const home = yield* homeWithStateFile(yield* deadPid);
 
       const text = yield* runCli(home, ["status", home]);
       const json = yield* runCli(home, ["status", home, "--json"]);
@@ -200,7 +185,6 @@ describe("serve", () => {
     "prints its URL, records it for status, and removes the record when stopped",
     () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
         const home = yield* minimalHome;
 
         const serve = yield* startServe(home, ["--port", "0"]);
@@ -215,10 +199,14 @@ describe("serve", () => {
           ...serve.state,
         });
 
+        assert.isDefined(status.files[".axonometric/server.json"]);
+
         yield* serve.stop;
 
-        assert.isFalse(yield* fs.exists(yield* stateFileOf(home)));
-      }).pipe(Effect.provide(NodeServices.layer))
+        const after = yield* runCli(home, ["status", home]);
+
+        assert.isUndefined(after.files[".axonometric/server.json"]);
+      })
   );
 
   it.live("refuses to start while another serve runs on the map", () =>
@@ -238,9 +226,7 @@ describe("serve", () => {
 
   it.live("starts over a state file left by a dead process", () =>
     Effect.gen(function* () {
-      const home = yield* minimalHome;
-
-      yield* writeStateFile(home, yield* deadPid);
+      const home = yield* homeWithStateFile(yield* deadPid);
 
       const serve = yield* startServe(home, ["--port", "0"]);
 
@@ -268,13 +254,30 @@ describe("serve", () => {
   it.live("uses port 5178, or the next free port when it's busy", () =>
     Effect.gen(function* () {
       const home = yield* minimalHome;
-
-      // The first server takes 5178, unless something else on this machine
-      // has it, so the second always finds it busy.
       const first = yield* startServe(yield* minimalHome, []);
       const second = yield* startServe(home, []);
       const firstPort = portOf(first.url);
       const secondPort = portOf(second.url);
+
+      // Something else on this machine may hold 5178, and the ports after
+      // it. Each port serve passed over must be in use: asking for it fails,
+      // where a serve that started on it would mean it was free.
+      for (let port = 5178; port < firstPort; port++) {
+        const probe = yield* minimalHome;
+
+        const asked = yield* runCli(probe, [
+          "serve",
+          probe,
+          "--port",
+          `${port}`,
+        ]).pipe(Effect.timeoutOption("5 seconds"));
+
+        assert.include(
+          Option.getOrUndefined(asked)?.stderr ?? "it started",
+          `Port ${port} on 127.0.0.1 is in use`,
+          `serve took ${firstPort} while ${port} was free`
+        );
+      }
 
       assert.isAtLeast(firstPort, 5178);
       assert.isAbove(secondPort, firstPort);

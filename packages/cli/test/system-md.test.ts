@@ -4,14 +4,20 @@ import { Array as Arr, Effect, Option, String as Str } from "effect";
 import { fullMap, minimalMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
 
-const builtSystemMd = Effect.gen(function* () {
-  const home = yield* makeHome(yield* fullMap);
-  const result = yield* runCli(home, ["build", `${home}/review/map`]);
+/** The full map's SYSTEM.md, built once by the first test that asks for it. */
+// oxlint-disable-next-line node/no-sync -- Effect.cached only makes the memo, which every test then shares
+const builtSystemMd = Effect.runSync(
+  Effect.cached(
+    Effect.gen(function* () {
+      const home = yield* makeHome(yield* fullMap);
+      const result = yield* runCli(home, ["build", `${home}/review/map`]);
 
-  assert.strictEqual(result.exitCode, 0, result.stderr);
+      assert.strictEqual(result.exitCode, 0, result.stderr);
 
-  return result.files["review/SYSTEM.md"] ?? "";
-});
+      return result.files["review/SYSTEM.md"] ?? "";
+    })
+  )
+);
 
 /** The lines from `heading` up to the next heading of the same level. */
 const sectionOf = (markdown: string, heading: string) => {

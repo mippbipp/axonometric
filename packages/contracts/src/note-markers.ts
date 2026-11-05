@@ -14,7 +14,7 @@ export const noteMarkerRadius = 5;
 export const noteMarkerStroke = 2;
 
 /** The width of a hop's line, as the drawing strokes it. */
-export const hopStroke = 1.4;
+const hopStroke = 1.4;
 
 /** The width of a box's outline, as the drawing strokes it. */
 export const boxStroke = 1.2;
@@ -28,7 +28,7 @@ export const edgeStroke = 1;
  * thing gets the same one, so a ring sits as far from a hop's line as from
  * a box. This is the gap in drawing units at full size.
  */
-export const visibleGap = 1.5;
+const visibleGap = 1.5;
 
 /**
  * The fewest screen pixels between the edge of a ring and the edge of what
@@ -50,7 +50,7 @@ export const gapAt = (zoom: number): number =>
  * How far a ring's centre must be from the middle of a stroke `stroke` wide
  * so that the gap between the two strokes' edges is `gapAt(zoom)`.
  */
-export const centreClearance: {
+const centreClearance: {
   (zoom: number): (stroke: number) => number;
   (stroke: number, zoom: number): number;
 } = dual(

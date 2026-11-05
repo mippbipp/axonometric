@@ -11,10 +11,7 @@ import { vi } from "vitest";
 
 import {
   breakageOf,
-  GroupTitle,
   GroupWrite,
-  maxGroupMembers,
-  StructureName,
   bySection,
   commitBatch,
   freezeOpen,
@@ -23,12 +20,9 @@ import {
   marked,
   proposedMap,
   proposeChapter,
-  proposeGroup,
   proposeGroupWithMembers,
   recordVerdict,
-  reviewPrompt,
   specOf,
-  summaryLine,
 } from "../src/index.ts";
 import type {
   AcceptedItem,
@@ -41,6 +35,7 @@ import type {
   Proposals,
   Verdict,
 } from "../src/index.ts";
+import { promptLine, promptLines, unwrap } from "./review-helpers.ts";
 
 // Seam 3: the pure functions behind group and chapter proposals, with plain
 // data.
@@ -113,12 +108,6 @@ const layout: Layout = {
 const state: MapState = { system: "t", data, layout };
 
 const empty: Proposals = { format: 1, revision: 0, layout: [] };
-
-const unwrap = <A>(result: Result.Result<A, string>): A => {
-  assert.isTrue(Result.isSuccess(result), String(Result.merge(result)));
-
-  return Result.getOrThrow(result);
-};
 
 const withGroups = (
   ...groups: readonly (readonly [string, GroupChange])[]
@@ -215,13 +204,6 @@ const lineAt = (held: readonly string[], position: number) =>
 /** Whether `line` starts with `start`. */
 const startsWith = (line: string, start: string) => Str.startsWith(start)(line);
 
-/** The prompt's lines for a batch of `proposals`. */
-const promptLines = (proposals: Proposals) => {
-  const { batch } = unwrap(freezeOpen({ proposals, at }));
-
-  return Str.split("\n")(reviewPrompt({ home: "/maps/t", batch, names }));
-};
-
 /** The change a chapter item holds, for a test that builds the proposal from it. */
 const changeOf = (item: BatchItem): ChapterChange =>
   Match.value(item).pipe(
@@ -267,6 +249,27 @@ const frozenWith = (...items: readonly (readonly [string, BatchItem])[]) => {
   return unwrap(freezeOpen({ proposals, at, known: { group: ["g1", "g2"] } }))
     .proposals;
 };
+
+/** Proposes group change `change` the way the page does, with no members. */
+const proposeEmptyGroup = ({
+  proposals,
+  id,
+  change: proposed,
+  world,
+}: {
+  readonly proposals: Proposals;
+  readonly id: string;
+  readonly change: GroupChange;
+  readonly world: { readonly data: MapData; readonly base: MapData };
+}) =>
+  proposeGroupWithMembers({
+    proposals,
+    id,
+    change: proposed,
+    members: [],
+    world,
+    structures: { data: world.data, layout },
+  });
 
 const verdicted = (proposals: Proposals, id: string, verdict: Verdict) =>
   unwrap(recordVerdict({ proposals, id, verdict }));
@@ -386,7 +389,7 @@ describe("proposing a group", () => {
   });
 
   it("refuses a group with the title another group has", () => {
-    const refused = proposeGroup({
+    const refused = proposeEmptyGroup({
       proposals: empty,
       id: "g-1",
       change: { action: "add", group: { id: "again", title: "two" } },
@@ -398,19 +401,22 @@ describe("proposing a group", () => {
   });
 
   it("refuses to rename a group the map lacks", () => {
-    const refused = proposeGroup({
+    const refused = proposeEmptyGroup({
       proposals: empty,
       id: "g-1",
       change: { action: "rename", group: "nope", title: "Nope" },
       world: { data, base: data },
     });
 
-    assert.isTrue(Result.isFailure(refused));
+    assert.include(
+      Result.merge(refused),
+      'No group in the map has the id "nope"'
+    );
   });
 
   it("edits the add when a group that is only proposed is renamed", () => {
     const first = unwrap(
-      proposeGroup({
+      proposeEmptyGroup({
         proposals: empty,
         id: "g-1",
         change: addGroup,
@@ -424,7 +430,7 @@ describe("proposing a group", () => {
     };
 
     const renamed = unwrap(
-      proposeGroup({
+      proposeEmptyGroup({
         proposals: first,
         id: "g-2",
         change: { action: "rename", group: "data-1", title: "Storage" },
@@ -441,7 +447,7 @@ describe("proposing a group", () => {
 
   it("takes the open rename away when the title goes back to what the map has", () => {
     const renamed = unwrap(
-      proposeGroup({
+      proposeEmptyGroup({
         proposals: empty,
         id: "g-1",
         change: renameGroup,
@@ -450,7 +456,7 @@ describe("proposing a group", () => {
     );
 
     const undone = unwrap(
-      proposeGroup({
+      proposeEmptyGroup({
         proposals: renamed,
         id: "g-2",
         change: { action: "rename", group: "g1", title: "One" },
@@ -671,9 +677,15 @@ describe("proposing a chapter change", () => {
       world,
     });
 
-    assert.isTrue(Result.isFailure(noChapter));
-    assert.isTrue(Result.isFailure(noStructure));
-    assert.isTrue(Result.isFailure(noHop));
+    assert.include(
+      Result.merge(noChapter),
+      'No chapter in the map has the id "nope"'
+    );
+    assert.include(
+      Result.merge(noStructure),
+      'No structure in the map has the id "nope"'
+    );
+    assert.include(Result.merge(noHop), 'No hop in the map has the id "nope"');
   });
 
   it("lets the engineer propose a hop before the structures it needs", () => {
@@ -774,10 +786,21 @@ describe("review's breakage for a chapter that plays an unrevealed hop", () => {
   });
 
   it("flags a chapter or a hop that data.mjs no longer has", () => {
-    const gone = change({ action: "play", chapter: "gone", hop: "h-ab" });
-    const lost = chapterItem("c1", gone);
+    const lostChapter = chapterItem(
+      "c1",
+      change({ action: "play", chapter: "gone", hop: "h-ab" })
+    );
 
-    assert.include(Option.getOrThrow(breakage(lost)), "No chapter");
+    const lostHop = chapterItem(
+      "c1",
+      change({ action: "play", chapter: "ch1", hop: "gone" })
+    );
+
+    assert.include(Option.getOrThrow(breakage(lostChapter)), "No chapter");
+    assert.include(
+      Option.getOrThrow(breakage(lostHop)),
+      'No hop in data.mjs has the id "gone"'
+    );
   });
 });
 
@@ -910,7 +933,7 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
       verdict: { verdict: "changed", reason: "No.", as: "x" },
     });
 
-    assert.isTrue(Result.isFailure(refused));
+    assert.include(Result.merge(refused), "adds no structure");
   });
 
   it("a chapter item is accepted once data.mjs holds the change", () => {
@@ -995,11 +1018,14 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
   });
 
   it("the prompt has a heading for each section, and each item under its own", () => {
-    const lines = promptLines({
-      ...empty,
-      groups: [{ id: "g-1", change: addGroup }],
-      chapters: [{ id: "c-1", change: changeOf(play) }],
-    });
+    const lines = promptLines(
+      {
+        ...empty,
+        groups: [{ id: "g-1", change: addGroup }],
+        chapters: [{ id: "c-1", change: changeOf(play) }],
+      },
+      names
+    );
 
     const diagram = lines.indexOf("Diagram changes:");
     const chapters = lines.indexOf("Chapter changes:");
@@ -1020,17 +1046,23 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
   });
 
   it("a batch with only diagram changes has no chapter heading", () => {
-    const lines = promptLines({
-      ...empty,
-      groups: [{ id: "g-1", change: addGroup }],
-    });
+    const lines = promptLines(
+      {
+        ...empty,
+        groups: [{ id: "g-1", change: addGroup }],
+      },
+      names
+    );
 
     assert.include(lines, "Diagram changes:");
     assert.notInclude(lines, "Chapter changes:");
   });
 
   it("names the chapter by its title and the hop by its label", () => {
-    const line = summaryLine(play, names);
+    const line = promptLine(
+      { ...empty, chapters: [{ id: "c-1", change: changeOf(play) }] },
+      names
+    );
 
     assert.include(line, '"a to b"');
     assert.include(line, '"Second"');
@@ -1045,17 +1077,17 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
   });
 });
 
-const decodeTitle = Schema.decodeUnknownResult(GroupTitle);
-
-const decodeName = Schema.decodeUnknownResult(StructureName);
-
 const decodeWrite = Schema.decodeUnknownResult(GroupWrite);
 
-/** Whether `text` is refused as a group title. */
-const titleRefused = (text: string) => Result.isFailure(decodeTitle(text));
-
-/** Whether `text` is refused as a structure name. */
-const nameRefused = (text: string) => Result.isFailure(decodeName(text));
+/** Whether a group write that renames g1 to `title` is refused. */
+const titleRefused = (title: string) =>
+  Result.isFailure(
+    decodeWrite({
+      baseFileRevision: 0,
+      id: "g",
+      change: { action: "rename", group: "g1", title },
+    })
+  );
 
 /** Whether a group write with `members` is refused. */
 const writeRefused = (members: readonly unknown[]) =>
@@ -1072,24 +1104,14 @@ const writeRefused = (members: readonly unknown[]) =>
 const membersOf = (count: number) =>
   Arr.map(Arr.range(1, count), (n) => ({ id: `s-${n}`, structure: `a${n}` }));
 
-const longTitle = Str.repeat(81)("x");
-
-describe("the text of a group title and a structure name", () => {
-  it("refuses U+0085 and the other line breaks at either end, in both", () => {
-    for (const bad of ["\u0085Data", "Data\u0085", "Data\u2028", "\nData"]) {
-      assert.isTrue(titleRefused(bad), bad);
-      assert.isTrue(nameRefused(bad), bad);
-    }
-  });
-
-  it("takes one trimmed line, and refuses a longer one", () => {
+describe("a group write", () => {
+  it("takes a title of one trimmed line of up to 80 characters", () => {
     assert.isFalse(titleRefused("Data layer"));
-    assert.isTrue(titleRefused(longTitle));
+    assert.isFalse(titleRefused(Str.repeat(80)("x")));
+    assert.isTrue(titleRefused(Str.repeat(81)("x")));
     assert.isTrue(titleRefused(" Data"));
   });
-});
 
-describe("a group write", () => {
   it("refuses a rename or a new group whose title carries a line break", () => {
     const rename = { action: "rename", group: "g1", title: "Front\u0085" };
 
@@ -1105,6 +1127,10 @@ describe("a group write", () => {
         )
       );
     }
+
+    for (const bad of ["\u0085Data", "Data\u2028", "\nData"]) {
+      assert.isTrue(titleRefused(bad), JSON.stringify(bad));
+    }
   });
 
   it("takes a structure id with no line break", () => {
@@ -1112,8 +1138,8 @@ describe("a group write", () => {
     assert.isTrue(writeRefused([{ id: "s-1", structure: "a\nb" }]));
   });
 
-  it("caps the members", () => {
-    assert.isFalse(writeRefused(membersOf(maxGroupMembers)));
-    assert.isTrue(writeRefused(membersOf(maxGroupMembers + 1)));
+  it("caps the members at 200", () => {
+    assert.isFalse(writeRefused(membersOf(200)));
+    assert.isTrue(writeRefused(membersOf(201)));
   });
 });

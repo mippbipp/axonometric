@@ -85,7 +85,7 @@ export interface FlowAction<A extends Action> {
 }
 
 /** The table: one entry for every action of a flow change. */
-export const flowActions = {
+const flowActions = {
   add: {
     label: "add flow",
     toData: ({ flow, hops }, data) =>
