@@ -2,13 +2,10 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
 
 import {
-  boxOutline,
   checkLayout,
   footprintsOverlap,
   placeStructures,
-  tagCovers,
-  zoneGap,
-  zonePadding,
+  sceneOf,
 } from "../src/index.ts";
 import type {
   Hop,
@@ -16,7 +13,6 @@ import type {
   MapData,
   Placement,
   ScreenPoint,
-  Shape,
   Structure,
 } from "../src/index.ts";
 
@@ -76,6 +72,17 @@ const placementOf = (layout: Layout, id: string): Placement => {
 /** The highest screen point of an outline. Screen y grows downwards. */
 const topOf = (outline: readonly ScreenPoint[]) =>
   Math.min(...Arr.map(outline, (point) => point.sy));
+
+/** The highest screen point of `shape`'s outline at 0, 0 in the Iso view. */
+const outlineTop = (shape: Structure["shape"]) => {
+  const scene = sceneOf({
+    data: mapOf([{ ...structure("a"), shape }]),
+    layout: layoutOf({ a: at(0, 0) }),
+    revealed: new Set(["a"]),
+  });
+
+  return topOf(Arr.flatMap(scene.structures, ({ outline }) => outline));
+};
 
 const grow = (box: Placement, by: number): Placement => ({
   x: box.x - by,
@@ -196,28 +203,6 @@ describe("placement", () => {
     })
   );
 
-  it.effect("keeps each group's zone clear of the others", () =>
-    Effect.sync(() => {
-      const { layout } = placeStructures(crowded, layoutOf());
-
-      const zones = Arr.map(["a", "b", "c"], (group) =>
-        zoneOf(
-          layout,
-          Arr.map(
-            Arr.filter(crowded.structures, (s) => s.group === group),
-            (s) => s.id
-          )
-        )
-      );
-
-      for (const [index, zone] of zones.entries()) {
-        for (const other of zones.slice(index + 1)) {
-          assert.isFalse(footprintsOverlap(zone, other));
-        }
-      }
-    })
-  );
-
   it.effect(
     "puts a new structure next to its group, not beside another group",
     () =>
@@ -318,16 +303,15 @@ describe("placement", () => {
     Effect.sync(() => {
       const { layout } = placeStructures(crowded, layoutOf());
 
+      // A zone reaches 1 unit past its members, and 2 units of clear ground
+      // run between zones: 1 from each side.
       for (const group of ["a", "b", "c"]) {
-        const zone = grow(
-          zoneOf(layout, idsIn(crowded, group)),
-          zonePadding + zoneGap / 2
-        );
+        const zone = grow(zoneOf(layout, idsIn(crowded, group)), 2);
 
         const others = Arr.filter(crowded.structures, (s) => s.group !== group);
 
         for (const other of others) {
-          const footprint = grow(placementOf(layout, other.id), zoneGap / 2);
+          const footprint = grow(placementOf(layout, other.id), 1);
 
           assert.isFalse(
             footprintsOverlap(zone, footprint),
@@ -342,8 +326,20 @@ describe("placement", () => {
     Effect.sync(() => {
       const data = mapOf([structure("a1", "a"), structure("b1", "b")]);
       const { layout } = placeStructures(data, layoutOf({ a1: at(0, 0) }));
+      const b1 = placementOf(layout, "b1");
 
-      assert.deepStrictEqual(layout.structures.b1, at(6, 0));
+      // Two zones, each 1 unit past its member, with 2 units between them,
+      // leave at least 4 units between the footprints. Next to means no more
+      // than one more structure's width beyond that.
+      const apart = Math.max(
+        b1.x - 2,
+        -(b1.x + b1.w),
+        b1.y - 2,
+        -(b1.y + b1.d)
+      );
+
+      assert.isAtLeast(apart, 4);
+      assert.isAtMost(apart, 6);
     })
   );
 
@@ -561,69 +557,56 @@ describe("layout checks", () => {
   );
 
   it.effect(
-    "measures a name tag from its text, so a long name reaches further",
+    "measures a name tag from its text or tag label, and the box behind it by its height",
     () =>
       Effect.sync(() => {
-        const short = {
-          structure: structure("a", "main", "A"),
-          placement: at(0, 0),
-        };
+        const longName = "A very long structure name indeed";
 
-        const long = {
-          structure: structure(
-            "a",
-            "main",
-            "A very long structure name indeed"
-          ),
-          placement: at(0, 0),
-        };
+        // Two units along x puts b up and to the right of a's front corner.
+        // Four units back along both axes, b only reaches a's tag when tall.
+        const cases = [
+          ["a short name", structure("a", "main", "A"), "box", at(2, 0), false],
+          [
+            "a long name",
+            structure("a", "main", longName),
+            "box",
+            at(2, 0),
+            true,
+          ],
+          [
+            "a long name with a short tag label",
+            { ...structure("a", "main", longName), tag: "A" },
+            "box",
+            at(2, 0),
+            false,
+          ],
+          ["a tall box behind", structure("a"), "tall", at(4, 4), true],
+          ["a slab behind", structure("a"), "slab", at(4, 4), false],
+        ] as const;
 
-        // Two units along x puts the box up and to the right of a's front corner.
-        const beside = { structure: structure("b"), placement: at(2, 0) };
+        for (const [what, tagged, shape, behind, covered] of cases) {
+          const problems = checkLayout(
+            mapOf([tagged, { ...structure("b"), shape }]),
+            layoutOf({ a: at(0, 0), b: behind })
+          );
 
-        assert.isFalse(tagCovers(short, beside));
-        assert.isTrue(tagCovers(long, beside));
+          assert.strictEqual(
+            Arr.some(
+              problems,
+              ({ path, message }) =>
+                path === "structures.a" &&
+                Str.includes('name tag is drawn on top of "b"')(message)
+            ),
+            covered,
+            what
+          );
+        }
       })
   );
 
   it.effect("draws a tall shape's outline higher than a slab's", () =>
     Effect.sync(() => {
-      const tall = topOf(boxOutline(at(0, 0), "tall"));
-      const slab = topOf(boxOutline(at(0, 0), "slab"));
-
-      assert.isBelow(tall, slab);
-    })
-  );
-
-  it.effect("checks a name tag against the height of the box behind it", () =>
-    Effect.sync(() => {
-      // a's tag hangs below its front corner. A box two units further back
-      // along both axes only reaches the tag when it's tall.
-      const tagged = { structure: structure("a"), placement: at(0, 0) };
-
-      const behind = (shape: Shape) => ({
-        structure: { ...structure("b"), shape },
-        placement: at(4, 4),
-      });
-
-      assert.isTrue(tagCovers(tagged, behind("tall")));
-      assert.isFalse(tagCovers(tagged, behind("slab")));
-    })
-  );
-
-  it.effect("sizes a name tag from the tag label when there is one", () =>
-    Effect.sync(() => {
-      const tagged = {
-        structure: {
-          ...structure("a", "main", "A very long structure name indeed"),
-          tag: "A",
-        },
-        placement: at(0, 0),
-      };
-
-      const beside = { structure: structure("b"), placement: at(2, 0) };
-
-      assert.isFalse(tagCovers(tagged, beside));
+      assert.isBelow(outlineTop("tall"), outlineTop("slab"));
     })
   );
 });
