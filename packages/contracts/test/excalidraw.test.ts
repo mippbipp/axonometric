@@ -1,48 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  Record as Rec,
-  Schema,
-  String as Str,
-} from "effect";
+import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
 
-import {
-  excalidrawOf,
-  Layout,
-  MapData,
-  planRect,
-  zonesOf,
-} from "../src/index.ts";
+import { excalidrawOf } from "../src/index.ts";
 import type { ExcalidrawElement } from "../src/index.ts";
-
-/** A fixture map from the CLI's test fixtures, decoded. */
-const fixture = (name: string) =>
-  Effect.gen(function* () {
-    const folder = new URL(
-      `../../cli/test/fixtures/${name}/map/`,
-      import.meta.url
-    );
-
-    const module: unknown = yield* Effect.promise(
-      () => import(new URL("data.mjs", folder).href)
-    );
-
-    const layoutModule: unknown = yield* Effect.promise(
-      () =>
-        import(new URL("layout.json", folder).href, { with: { type: "json" } })
-    );
-
-    const data = yield* Schema.decodeUnknownEffect(
-      Schema.Struct({ default: MapData })
-    )(module);
-
-    const layout = yield* Schema.decodeUnknownEffect(
-      Schema.Struct({ default: Layout })
-    )(layoutModule);
-
-    return { data: data.default, layout: layout.default };
-  }).pipe(Effect.orDie);
+import { fixture } from "./fixture-maps.ts";
 
 const ofType = <T extends ExcalidrawElement["type"]>(
   elements: readonly ExcalidrawElement[],
@@ -72,10 +33,7 @@ describe("excalidraw export", () => {
           ofType(file.elements, "arrow").length,
           data.hops.length
         );
-        assert.strictEqual(
-          ofType(file.elements, "frame").length,
-          zonesOf({ data, layout }).length
-        );
+        assert.strictEqual(ofType(file.elements, "frame").length, 4);
       })
   );
 
@@ -137,22 +95,14 @@ describe("excalidraw export", () => {
           Arr.map(elements, (element) => [element.id, element])
         );
 
-        const gate = byId.get("structure:gate");
-        const placement = layout.structures.gate;
-
-        assert.isDefined(placement);
-
-        if (placement !== undefined) {
-          const rect = planRect(placement);
-
-          assert.deepInclude(gate, {
-            x: rect.left,
-            y: rect.top,
-            width: rect.right - rect.left,
-            height: rect.bottom - rect.top,
-            frameId: "group:pipeline",
-          });
-        }
+        // gate sits at x 4, y 0 with a 2 by 1.5 footprint, at 60 px a unit.
+        assert.deepInclude(byId.get("structure:gate"), {
+          x: 240,
+          y: 0,
+          width: 120,
+          height: 90,
+          frameId: "group:pipeline",
+        });
 
         assert.deepInclude(byId.get("structure-name:gate"), {
           text: "Build gate",
