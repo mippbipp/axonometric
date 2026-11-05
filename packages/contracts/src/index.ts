@@ -120,12 +120,9 @@ export type { PlacedLayout } from "./placement.ts";
 
 export {
   boundsOfPoints,
-  convexOverlap,
-  distanceToPolyline,
   gapBetween,
   growRect,
   rectPolygon,
-  segmentCrosses,
   segmentsOf,
 } from "./geometry.ts";
 
