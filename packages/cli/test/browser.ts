@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 
 import { assert } from "@effect/vitest";
-import { Array as Arr, Effect, String as Str } from "effect";
+import { Array as Arr, Effect, Record, String as Str } from "effect";
 import { chromium } from "playwright";
 import type { Browser, Page } from "playwright";
 
@@ -155,6 +155,32 @@ export const textOf = (page: Page, selector: string) =>
 /** The attribute `name` of the first element matching `selector`. */
 export const attributeOf = (page: Page, selector: string, name: string) =>
   Effect.promise(() => page.locator(selector).first().getAttribute(name));
+
+/**
+ * Waits until the first element matching `selector` has every attribute in
+ * `attributes` set to its value, and fails the test if it never does. The
+ * page applies a pointer move or hover in a later task than the event, so
+ * reading an attribute straight after one can come too early.
+ */
+export const waitForAttributes = (
+  page: Page,
+  selector: string,
+  attributes: Record.ReadonlyRecord<string, string>
+) => {
+  const checks = Arr.map(
+    Record.toEntries(attributes),
+    ([name, value]) =>
+      `element.getAttribute(${literal(name)}) === ${literal(value)}`
+  );
+
+  return Effect.promise(() =>
+    page.waitForFunction(
+      `((element) => element !== null && ${Arr.join(checks, " && ")})(document.querySelector(${literal(selector)}))`,
+      undefined,
+      waitTimeout
+    )
+  );
+};
 
 /** The computed stroke colour of the element matching `selector`. */
 export const strokeOf = (page: Page, selector: string) =>

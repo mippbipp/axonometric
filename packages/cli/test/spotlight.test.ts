@@ -3,7 +3,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path } from "effect";
 import type { Page } from "playwright";
 
-import { attributeOf, literal, openUrl, showView } from "./browser.ts";
+import {
+  attributeOf,
+  literal,
+  openUrl,
+  showView,
+  waitForAttributes,
+} from "./browser.ts";
 import { pipelineMap } from "./fixtures.ts";
 import { buildAndOpen, makeHome, startServe } from "./harness.ts";
 
@@ -33,23 +39,12 @@ const openChapter = Effect.fnUntraced(function* (page: Page, id: string) {
   );
 });
 
-/**
- * Waits for the page to mark `selector` with `data-faded="<expected>"`. The
- * page applies a hover in a later task than the pointer event, so reading
- * the mark straight after the event can come too early.
- */
+/** Waits for the page to mark `selector` with `data-faded="<expected>"`. */
 const waitForFaded = (
   page: Page,
   selector: string,
   expected: "true" | "false"
-) =>
-  Effect.promise(() =>
-    page.waitForFunction(
-      `document.querySelector(${literal(selector)})?.getAttribute("data-faded") === "${expected}"`,
-      undefined,
-      { timeout: 5000 }
-    )
-  );
+) => waitForAttributes(page, selector, { "data-faded": expected });
 
 /** Waits out the opacity transition, then returns the computed opacity. */
 const opacityOf = Effect.fnUntraced(function* (
