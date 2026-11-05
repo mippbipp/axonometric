@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";
 import type { Page } from "playwright";
 
+import { inPage } from "./browser.ts";
 import { pipelineMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -11,9 +12,6 @@ import { buildAndOpen } from "./harness.ts";
 // only DejaVu Sans, which is proportional, and a Linux box with no monospace
 // fonts is the same; without the embedded Liberation Mono these widths would
 // be DejaVu's.
-
-const inPage = <A>(page: Page, expression: string) =>
-  Effect.promise(() => page.evaluate<A>(expression));
 
 interface TagWidth {
   readonly id: string;

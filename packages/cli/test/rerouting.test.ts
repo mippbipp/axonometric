@@ -14,9 +14,27 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
-import { literal, openUrl } from "./browser.ts";
+import {
+  attributeOf,
+  count,
+  goToChapter,
+  literal,
+  openUrl,
+  showView,
+  unitOnScreen,
+  waitFor,
+  waitGone,
+} from "./browser.ts";
+import type { View } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import {
+  makeHome,
+  openReviewMap,
+  proposalsIn,
+  runCli,
+  startServe,
+  waitForRevision,
+} from "./harness.ts";
 
 // Rerouting arrows and moving groups in a page that a real serve serves. The
 // review map has engineer, page, server, proposals, pull-request and
@@ -25,15 +43,7 @@ import { makeHome, runCli, startServe } from "./harness.ts";
 // Groups: people holds the engineer, loop holds page, server, proposals and
 // the pull request, and outside holds upstream.
 
-const waitTimeout = { timeout: 15_000 };
-
-const decodeProposals = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Proposals)
-);
-
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
-
-type View = "iso" | "plan";
 
 interface Point {
   readonly x: number;
@@ -42,89 +52,11 @@ interface Point {
 
 /** The review map served on a free port, open in its last chapter. */
 const servedReview = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const opened = yield* openUrl(serve.url);
+  const opened = yield* openReviewMap({});
 
-  yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
-  );
-  yield* Effect.promise(() =>
-    opened.page
-      .locator('[data-chapter-rail] button[data-chapter="c-all"]')
-      .click()
-  );
-  yield* Effect.promise(() =>
-    opened.page
-      .locator('[data-walkthrough][data-chapter="c-all"]')
-      .waitFor(waitTimeout)
-  );
+  yield* goToChapter(opened.page, "c-all");
 
-  return { root, home, serve, ...opened };
-}).pipe(Effect.provide(NodeServices.layer));
-
-const toView = Effect.fnUntraced(function* (page: Page, view: View) {
-  yield* Effect.promise(() =>
-    page.locator(`[data-view-toggle] [data-view="${view}"]`).click()
-  );
-  yield* Effect.promise(() =>
-    page.locator(`[data-walkthrough][data-view="${view}"]`).waitFor()
-  );
-});
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
-
-const waitGone = (page: Page, selector: string) =>
-  Effect.promise(() =>
-    page
-      .locator(selector)
-      .first()
-      .waitFor({ state: "detached", ...waitTimeout })
-  );
-
-const attribute = (page: Page, selector: string, name: string) =>
-  Effect.promise(() => page.locator(selector).first().getAttribute(name));
-
-const count = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).count());
-
-/** What proposals.json in `home` holds. */
-const proposalsIn = Effect.fnUntraced(function* (home: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, "proposals.json");
-
-  return (yield* fs.exists(file))
-    ? Option.some(yield* decodeProposals(yield* fs.readFileString(file)))
-    : Option.none<Proposals>();
-}, Effect.provide(NodeServices.layer));
-
-/** Waits until proposals.json in `home` is at `revision`. */
-const waitForRevision = Effect.fnUntraced(function* (
-  home: string,
-  revision: number
-) {
-  for (let tries = 0; tries < 150; tries++) {
-    const now = yield* proposalsIn(home);
-
-    if (Option.isSome(now) && now.value.revision >= revision) {
-      return now.value;
-    }
-
-    yield* Effect.sleep("100 millis");
-  }
-
-  return assert.fail(`proposals.json never reached revision ${revision}`);
-});
-
-/** One grid unit along an axis on screen, at the view's current zoom. */
-const unitOnScreen = Effect.fnUntraced(function* (page: Page, view: View) {
-  const scale = yield* attribute(page, "svg[data-scale]", "data-scale");
-
-  return (view === "plan" ? 60 : Math.hypot(36, 18)) * Number(scale);
+  return opened;
 });
 
 /**
@@ -192,7 +124,7 @@ const drawnRoute = Effect.fnUntraced(function* (
   hop: string,
   view: View
 ) {
-  const text = yield* attribute(page, `[data-hop="${hop}"]`, "data-route");
+  const text = yield* attributeOf(page, `[data-hop="${hop}"]`, "data-route");
 
   return Arr.map(Str.split(text ?? "", " "), (pair) => {
     const [sx, sy] = Arr.map(Str.split(pair, ","), Number);
@@ -293,7 +225,7 @@ describe("rerouting a hop by dragging a segment", () => {
         Effect.gen(function* () {
           const { home, page, errors } = yield* servedReview;
 
-          yield* toView(page, view);
+          yield* showView(page, view);
 
           const unit = yield* unitOnScreen(page, view);
           const segments = yield* segmentsOf(page, "h-store");
@@ -343,7 +275,7 @@ describe("rerouting a hop by dragging a segment", () => {
           const other = view === "plan" ? "iso" : "plan";
           const inThisView = yield* drawnRoute(page, "h-store", view);
 
-          yield* toView(page, other);
+          yield* showView(page, other);
           yield* waitFor(page, '[data-hop-pending="h-store"]');
 
           const inOther = yield* drawnRoute(page, "h-store", other);
@@ -363,7 +295,7 @@ describe("rerouting a hop by dragging a segment", () => {
         const { page } = yield* servedReview;
 
         for (const view of ["plan", "iso"] as const) {
-          yield* toView(page, view);
+          yield* showView(page, view);
 
           const cursors = yield* Effect.promise(() =>
             page.evaluate<readonly { cursor: string; axis: string }[]>(
@@ -386,13 +318,13 @@ describe("rerouting a hop by dragging a segment", () => {
 
         // h-store's leg runs straight down in Plan view. A press 3.5 drawing
         // units beside it is off the drawn line, and still drags it.
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const middle = yield* middleOf(page, segmentSelector("h-store", 0));
         const unit = yield* unitOnScreen(page, "plan");
 
         const scale = Number(
-          yield* attribute(page, "svg[data-scale]", "data-scale")
+          yield* attributeOf(page, "svg[data-scale]", "data-scale")
         );
 
         yield* pressAndMove(
@@ -412,7 +344,7 @@ describe("rerouting a hop by dragging a segment", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -468,7 +400,7 @@ describe("rerouting a hop by dragging a segment", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -504,7 +436,7 @@ describe("a reroute in the review loop", () => {
     const opened = yield* servedReview;
     const { home, page } = opened;
 
-    yield* toView(page, "plan");
+    yield* showView(page, "plan");
 
     const unit = yield* unitOnScreen(page, "plan");
     const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -541,7 +473,7 @@ describe("a reroute in the review loop", () => {
           screenDelta("plan", unit, { x: 1, y: 0 })
         );
         assert.strictEqual(
-          yield* attribute(
+          yield* attributeOf(
             page,
             '[data-route-preview="h-store"]',
             "data-refused"
@@ -671,7 +603,7 @@ describe("moving a group by its zone title", () => {
         Effect.gen(function* () {
           const { home, page, errors } = yield* servedReview;
 
-          yield* toView(page, view);
+          yield* showView(page, view);
 
           const unit = yield* unitOnScreen(page, view);
           const title = '[data-zone-title-hit="loop"]';
@@ -776,7 +708,7 @@ describe("text while dragging", () => {
               yield* waitForRevision(home, revision - 1);
             }
 
-            yield* toView(page, view);
+            yield* showView(page, view);
 
             const unit = yield* unitOnScreen(page, view);
             const from = yield* middleOf(page, spot.selector);
@@ -809,7 +741,7 @@ describe("text while dragging", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
         yield* Effect.promise(() =>
           page.locator('[data-structure="proposals"]').click()
         );
@@ -915,7 +847,7 @@ describe("the warnings panel", () => {
             .locator('[data-chapter-rail] button[data-chapter="c-all"]')
             .click()
         );
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -1030,10 +962,11 @@ describe("a rerouted hop's label", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const old =
-          (yield* attribute(page, '[data-hop="h-store"]', "data-route")) ?? "";
+          (yield* attributeOf(page, '[data-hop="h-store"]', "data-route")) ??
+          "";
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -1045,7 +978,8 @@ describe("a rerouted hop's label", () => {
         yield* waitFor(page, '[data-hop-label="h-store"]');
 
         const rerouted =
-          (yield* attribute(page, '[data-hop="h-store"]', "data-route")) ?? "";
+          (yield* attributeOf(page, '[data-hop="h-store"]', "data-route")) ??
+          "";
 
         assert.notStrictEqual(rerouted, old);
 
@@ -1077,7 +1011,7 @@ describe("the panel for what a drag would leave", () => {
           yield* fs.readFileString(layoutPath)
         );
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
 
@@ -1211,7 +1145,7 @@ describe("the panel for what a drag would leave", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -1260,7 +1194,7 @@ describe("the panel for what a drag would leave", () => {
       Effect.gen(function* () {
         const { page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -1303,7 +1237,7 @@ describe("a group drag's hops", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, '[data-zone-title-hit="loop"]');
@@ -1361,7 +1295,7 @@ describe("the warnings while dragging", () => {
         const path = yield* Path.Path;
         const { home, page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -1382,7 +1316,7 @@ describe("the warnings while dragging", () => {
 
         const shown = yield* warningsOf(page);
 
-        const dropped = yield* attribute(
+        const dropped = yield* attributeOf(
           page,
           '[data-route-preview="h-store"]',
           "data-refused"
@@ -1449,7 +1383,7 @@ describe("the warnings while dragging", () => {
       Effect.gen(function* () {
         const { page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, segmentSelector("h-store", 0));
@@ -1472,7 +1406,7 @@ describe("the warnings while dragging", () => {
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
 
-        yield* toView(page, "plan");
+        yield* showView(page, "plan");
 
         const unit = yield* unitOnScreen(page, "plan");
         const from = yield* middleOf(page, '[data-zone-title-hit="loop"]');

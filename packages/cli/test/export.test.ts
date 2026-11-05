@@ -8,21 +8,9 @@ import {
 } from "effect";
 import type { Page } from "playwright";
 
+import { click, inPage, literal, press } from "./browser.ts";
 import { minimalMap, pipelineMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
-
-/** `value` as a JavaScript string literal, newlines and all. */
-// oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- a JSON string is a JavaScript string literal
-const jsString = (value: string) => JSON.stringify(value);
-
-const inPage = <A>(page: Page, expression: string) =>
-  Effect.promise(() => page.evaluate<A>(expression));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const press = (page: Page, key: string) =>
-  Effect.promise(() => page.keyboard.press(key));
 
 const focusedControl = (page: Page) =>
   inPage<string | null>(
@@ -90,7 +78,7 @@ const svgReport = (page: Page, text: string) =>
   inPage<SvgReport>(
     page,
     `(() => {
-      const doc = new DOMParser().parseFromString(${jsString(text)}, "image/svg+xml");
+      const doc = new DOMParser().parseFromString(${literal(text)}, "image/svg+xml");
       const root = doc.documentElement;
       if (root.localName !== "svg" || doc.querySelector("parsererror")) {
         throw new Error("The SVG doesn't parse.");
@@ -154,7 +142,7 @@ const relativeCentres = (page: Page, selector: (id: string) => string) =>
     page,
     `(() => {
       const ids = ["updater", "build", "maintainer", "ruleset", "watchdog"];
-      const selector = (id) => ${jsString(selector("@"))}.replace("@", id);
+      const selector = (id) => ${literal(selector("@"))}.replace("@", id);
       const centre = (id) => {
         const box = document.querySelector(selector(id)).getBBox();
         return { x: box.x + box.width / 2, y: box.y + box.height / 2 };

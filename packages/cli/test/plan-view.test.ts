@@ -4,31 +4,18 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, FileSystem, Order, Path, Schema } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf, openPage } from "./browser.ts";
+import {
+  attributesOf,
+  click,
+  goToChapter,
+  inPage,
+  openPage,
+  press,
+  showView,
+  waitFor,
+} from "./browser.ts";
 import { fullMap, pipelineMap, shapesMap } from "./fixtures.ts";
 import { buildAndOpen, makeHome, runCli } from "./harness.ts";
-
-const inPage = <A>(page: Page, expression: string) =>
-  Effect.promise(() => page.evaluate<A>(expression));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor());
-
-const press = (page: Page, key: string) =>
-  Effect.promise(() => page.keyboard.press(key));
-
-const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-});
-
-const showPlan = Effect.fnUntraced(function* (page: Page) {
-  yield* click(page, '[data-view-toggle] [data-view="plan"]');
-  yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
-});
 
 /**
  * The middle of the structure's drawing in the drawing's own units, so a
@@ -115,7 +102,7 @@ describe("Plan view", () => {
 
           const before = yield* groundAtMiddle(page);
 
-          yield* showPlan(page);
+          yield* showView(page, "plan");
 
           const after = yield* groundAtMiddle(page);
 
@@ -163,7 +150,7 @@ describe("Plan view", () => {
       Effect.gen(function* () {
         const { page } = yield* reviewPage;
 
-        yield* showPlan(page);
+        yield* showView(page, "plan");
         yield* goToChapter(page, "c-save");
         yield* click(page, '[data-structure="page"]');
         yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
@@ -209,7 +196,7 @@ describe("Plan view", () => {
           "flake-pipeline"
         );
 
-        yield* showPlan(page);
+        yield* showView(page, "plan");
         yield* Effect.promise(() =>
           page.locator('[data-structure="updater"]').dblclick()
         );
@@ -238,7 +225,7 @@ describe("Plan view", () => {
       Effect.gen(function* () {
         const { page } = yield* buildAndOpen(yield* shapesMap, "shapes");
 
-        yield* showPlan(page);
+        yield* showView(page, "plan");
 
         const icons = yield* attributesOf(
           page,
@@ -271,7 +258,7 @@ describe("Plan view", () => {
         Effect.gen(function* () {
           const { page } = yield* reviewPage;
 
-          yield* showPlan(page);
+          yield* showView(page, "plan");
 
           // How each part a structure draws around and over its box is
           // painted, as the browser computes it.
@@ -353,7 +340,7 @@ describe("both views", () => {
 
             const iso = yield* offset();
 
-            yield* showPlan(page);
+            yield* showView(page, "plan");
 
             return { iso, plan: yield* offset() };
           });

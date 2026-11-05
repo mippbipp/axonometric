@@ -2,31 +2,19 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";
 import type { Page } from "playwright";
 
-import { boxesOf, literal } from "./browser.ts";
+import {
+  boxesOf,
+  literal,
+  scaleExpression,
+  scaleOf,
+  waitForScale,
+} from "./browser.ts";
 import { shapesMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const builtPage = Effect.gen(function* () {
   return yield* buildAndOpen(yield* shapesMap, "shapes");
 });
-
-const scaleExpression =
-  'Number(document.querySelector("svg[data-scale]").dataset.scale)';
-
-/** The viewport's current zoom, as the `data-scale` on the canvas. */
-const scaleOf = (page: Page) =>
-  Effect.promise(() => page.evaluate<number>(scaleExpression));
-
-/**
- * Waits until the zoom passes `test`, such as `> 2`. Input reaches the page
- * asynchronously, so a test waits for the new state instead of reading once.
- */
-const waitForScale = (page: Page, test: string) =>
-  Effect.promise(() =>
-    page.waitForFunction(`${scaleExpression} ${test}`, undefined, {
-      timeout: 5000,
-    })
-  );
 
 const transformExpression =
   'document.querySelector("[data-viewport]").getAttribute("transform")';

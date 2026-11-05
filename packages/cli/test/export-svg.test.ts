@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path } from "effect";
 import type { Page } from "playwright";
 
-import { openPage } from "./browser.ts";
+import { click, openPage } from "./browser.ts";
 import { crowdedMap, pipelineMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
 import { decodePng } from "./png.ts";
@@ -17,9 +17,6 @@ import { decodePng } from "./png.ts";
 // routes-drawn. The tests open the built page in Chromium.
 
 const decoder = new TextDecoder();
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
 
 /** Opens the Export menu, picks `item`, and returns the file it saved. */
 const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {

@@ -12,7 +12,7 @@ import type {
   Proposals,
   StructureChange,
 } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
@@ -23,10 +23,10 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
 import { makeHome, runCli, startServe } from "./harness.ts";
+import { post as postText } from "./revisions.ts";
 
 // Seam 1: a group and a chapter change through the review loop. The review
 // map has engineer, page, server, proposals, pull-request and upstream, in
@@ -176,24 +176,8 @@ const rejectedHome = (items: readonly BatchItem[]) =>
 /** A write the page could send: a JSON object of known fields. */
 type Write = Readonly<Record<string, Schema.Json>>;
 
-const post = (url: string, path: string, body: Write) => {
-  const request = HttpClientRequest.post(new URL(path, url)).pipe(
-    HttpClientRequest.setHeaders({
-      origin: url,
-      "content-type": "application/json",
-    }),
-    HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
-  );
-
-  return HttpClient.HttpClient.use((client) => client.execute(request)).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text) => ({ status: response.status, text }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
-  );
-};
+const post = (url: string, path: string, body: Write) =>
+  postText(url, path, JSON.stringify(body));
 
 describe("a group made from two structures, through freeze, verdict and commit", () => {
   const items = [
@@ -393,9 +377,9 @@ describe("group and chapter writes over HTTP", () => {
           ],
         });
 
-        assert.strictEqual(made.status, 200, made.text);
+        assert.strictEqual(made.status, 200, made.body);
 
-        const proposals = yield* decodeProposals(made.text);
+        const proposals = yield* decodeProposals(made.body);
 
         assert.deepStrictEqual(
           Arr.map(proposals.structures ?? [], ({ id }) => id),
@@ -416,15 +400,15 @@ describe("group and chapter writes over HTTP", () => {
           },
         });
 
-        assert.strictEqual(chapter.status, 200, chapter.text);
+        assert.strictEqual(chapter.status, 200, chapter.body);
 
         const frozen = yield* post(serve.url, "/api/review/freeze", {
-          baseFileRevision: (yield* decodeProposals(chapter.text)).revision,
+          baseFileRevision: (yield* decodeProposals(chapter.body)).revision,
         });
 
-        assert.strictEqual(frozen.status, 200, frozen.text);
+        assert.strictEqual(frozen.status, 200, frozen.body);
 
-        const { prompt } = yield* decodeFrozen(frozen.text);
+        const { prompt } = yield* decodeFrozen(frozen.body);
         const lines = Str.split("\n")(prompt);
         const diagram = lines.indexOf("Diagram changes:");
         const chapters = lines.indexOf("Chapter changes:");
@@ -470,7 +454,7 @@ describe("group and chapter writes over HTTP", () => {
       });
 
       assert.strictEqual(group.status, 422);
-      assert.include(group.text, "waiting for the agent");
+      assert.include(group.body, "waiting for the agent");
 
       const chapter = yield* post(serve.url, "/api/chapters", {
         baseFileRevision: 3,
@@ -479,7 +463,7 @@ describe("group and chapter writes over HTTP", () => {
       });
 
       assert.strictEqual(chapter.status, 422);
-      assert.include(chapter.text, "waiting for the agent");
+      assert.include(chapter.body, "waiting for the agent");
 
       const discard = yield* post(serve.url, "/api/items/discard", {
         baseFileRevision: 3,
@@ -487,7 +471,7 @@ describe("group and chapter writes over HTTP", () => {
       });
 
       assert.strictEqual(discard.status, 422);
-      assert.include(discard.text, "waiting for the agent");
+      assert.include(discard.body, "waiting for the agent");
     }).pipe(Effect.provide(NodeServices.layer))
   );
 });
@@ -548,21 +532,21 @@ describe("editing a rejected group or chapter item again", () => {
         ] as const) {
           const bad = yield* reopen(serve.url, id, { text });
 
-          assert.strictEqual(bad.status, 422, `${id}: ${bad.text}`);
-          assert.include(bad.text, "on one line", id);
+          assert.strictEqual(bad.status, 422, `${id}: ${bad.body}`);
+          assert.include(bad.body, "on one line", id);
         }
 
         const long = yield* reopen(serve.url, "g1", {
           text: Str.repeat(81)("x"),
         });
 
-        assert.strictEqual(long.status, 422, long.text);
+        assert.strictEqual(long.status, 422, long.body);
 
         const fine = yield* reopen(serve.url, "g1", { text: "Storage" });
 
-        assert.strictEqual(fine.status, 200, fine.text);
+        assert.strictEqual(fine.status, 200, fine.body);
 
-        const held = yield* decodeProposals(fine.text);
+        const held = yield* decodeProposals(fine.body);
 
         assert.deepStrictEqual(
           Arr.map(held.groups ?? [], ({ change }) =>
@@ -580,8 +564,8 @@ describe("editing a rejected group or chapter item again", () => {
 
       const clash = yield* reopen(serve.url, "g1", { text: "the loop" });
 
-      assert.strictEqual(clash.status, 422, clash.text);
-      assert.include(clash.text, "already has a group called");
+      assert.strictEqual(clash.status, 422, clash.body);
+      assert.include(clash.body, "already has a group called");
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -597,8 +581,8 @@ describe("editing a rejected group or chapter item again", () => {
       const serve = yield* startServe(home, ["--port", "0"]);
       const taken = yield* reopen(serve.url, "g1");
 
-      assert.strictEqual(taken.status, 422, taken.text);
-      assert.include(taken.text, "already has a group with the id");
+      assert.strictEqual(taken.status, 422, taken.body);
+      assert.include(taken.body, "already has a group with the id");
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -615,8 +599,8 @@ describe("editing a rejected group or chapter item again", () => {
       const serve = yield* startServe(home, ["--port", "0"]);
       const bad = yield* reopen(serve.url, "c1", { text: "Hi" });
 
-      assert.strictEqual(bad.status, 422, bad.text);
-      assert.include(bad.text, "has no text to edit");
+      assert.strictEqual(bad.status, 422, bad.body);
+      assert.include(bad.body, "has no text to edit");
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -634,8 +618,8 @@ describe("editing a rejected group or chapter item again", () => {
         const serve = yield* startServe(home, ["--port", "0"]);
         const alone = yield* reopen(serve.url, "c1");
 
-        assert.strictEqual(alone.status, 422, alone.text);
-        assert.include(alone.text, "write batch");
+        assert.strictEqual(alone.status, 422, alone.body);
+        assert.include(alone.body, "write batch");
       }).pipe(Effect.provide(NodeServices.layer))
   );
 });

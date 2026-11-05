@@ -1,12 +1,11 @@
 import {
   Accepted,
   LayoutFile,
-  MapState,
   Revision,
   StaleProposals,
 } from "@axonometric/contracts";
 import type { LayoutChange } from "@axonometric/contracts";
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
   Array as Arr,
@@ -17,10 +16,10 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/http";
 
-import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { pageState, serveReviewMap } from "./harness.ts";
+import { ownOrigin, writeText } from "./revisions.ts";
+import type { Sent } from "./revisions.ts";
 
 // Plain HTTP accepts against a real serve, for the requests a browser won't
 // send. Each refused accept must leave every file in the home folder, and
@@ -30,54 +29,7 @@ const acceptPath = "/api/proposals/accept";
 
 const layoutPath = "/api/proposals/layout";
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-
-  return { root, home, url: serve.url, output: serve.output };
-}).pipe(Effect.provide(NodeServices.layer));
-
-interface Sent {
-  readonly status: number;
-  readonly body: string;
-}
-
-interface Request {
-  readonly method: "PUT" | "POST";
-  readonly pathname: string;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly body: string;
-}
-
-const send = (url: string, { method, pathname, headers, body }: Request) =>
-  HttpClient.HttpClient.use((client) =>
-    client.execute(
-      HttpClientRequest.make(method)(new URL(pathname, url)).pipe(
-        HttpClientRequest.setHeaders(headers),
-        HttpClientRequest.bodyText(
-          body,
-          headers["content-type"] ?? "application/json"
-        )
-      )
-    )
-  ).pipe(
-    Effect.flatMap((response) =>
-      Effect.map(response.text, (text): Sent => ({
-        status: response.status,
-        body: text,
-      }))
-    ),
-    Effect.scoped,
-    Effect.orDie,
-    Effect.provide(NodeHttpClient.layerNodeHttp)
-  );
-
-const ownOrigin = (url: string) => ({
-  origin: url,
-  "content-type": "application/json",
-});
+const served = serveReviewMap({}, []);
 
 const json = (value: Schema.JsonObject) =>
   Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(value).pipe(
@@ -97,12 +49,7 @@ const moveOf = (
 /** Saves `layout` as the pending changes, from revision `base`. */
 const pend = (url: string, base: number, layout: readonly LayoutChange[]) =>
   Effect.flatMap(json({ baseFileRevision: base, layout }), (body) =>
-    send(url, {
-      method: "PUT",
-      pathname: layoutPath,
-      headers: ownOrigin(url),
-      body,
-    })
+    writeText(url, { method: "put", target: layoutPath, body })
   );
 
 const accept = (
@@ -111,7 +58,7 @@ const accept = (
   headers: Readonly<Record<string, string>> = ownOrigin(url)
 ) =>
   Effect.flatMap(json(body), (text) =>
-    send(url, { method: "POST", pathname: acceptPath, headers, body: text })
+    writeText(url, { method: "post", target: acceptPath, headers, body: text })
   );
 
 /** Every file under `root`, the lock and server state left out. */
@@ -162,15 +109,6 @@ const decodeRevisionText = Schema.decodeUnknownEffect(
 );
 
 const decodeLayoutFile = Schema.decodeUnknownEffect(LayoutFile);
-
-const decodeState = Schema.decodeUnknownEffect(Schema.fromJsonString(MapState));
-
-/** The map state a page embeds. */
-const pageState = (page: string) =>
-  decodeState(
-    /id="axonometric-map-state">(?<json>.*?)<\/script>/su.exec(page)?.groups
-      ?.json ?? ""
-  );
 
 describe("accepting pending layout changes over HTTP", () => {
   it.live("accepts one change, and writes the files together", () =>
@@ -421,7 +359,7 @@ describe("accepting pending layout changes over HTTP", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { root, home, url, output } = yield* served;
+        const { root, home, url, serve } = yield* served;
 
         yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
 
@@ -440,8 +378,11 @@ describe("accepting pending layout changes over HTTP", () => {
         );
 
         // The 500 has an empty body, so serve prints the cause.
-        assert.include(output.stderr, "serve could not answer a request:");
-        assert.include(output.stderr, "history");
+        assert.include(
+          serve.output.stderr,
+          "serve could not answer a request:"
+        );
+        assert.include(serve.output.stderr, "history");
       }).pipe(Effect.provide(NodeServices.layer))
   );
 

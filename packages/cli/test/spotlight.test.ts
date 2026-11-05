@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path } from "effect";
 import type { Page } from "playwright";
 
-import { literal, openUrl } from "./browser.ts";
+import { attributeOf, literal, openUrl, showView } from "./browser.ts";
 import { pipelineMap } from "./fixtures.ts";
 import { buildAndOpen, makeHome, startServe } from "./harness.ts";
 
@@ -32,21 +32,6 @@ const openChapter = Effect.fnUntraced(function* (page: Page, id: string) {
     page.locator('[data-playback-controls] [data-control="pause"]').click()
   );
 });
-
-const showView = Effect.fnUntraced(function* (
-  page: Page,
-  view: (typeof views)[number]
-) {
-  yield* Effect.promise(() =>
-    page.locator(`[data-view-toggle] [data-view="${view}"]`).click()
-  );
-  yield* Effect.promise(() =>
-    page.locator(`[data-walkthrough][data-view="${view}"]`).waitFor()
-  );
-});
-
-const attribute = (page: Page, selector: string, name: string) =>
-  Effect.promise(() => page.locator(selector).first().getAttribute(name));
 
 /**
  * Waits for the page to mark `selector` with `data-faded="<expected>"`. The
@@ -465,7 +450,7 @@ describe("the spotlight of a pinned item", () => {
                 .click()
             );
 
-            const pinned = yield* attribute(
+            const pinned = yield* attributeOf(
               page,
               "[data-packet-panel]",
               "data-packet-panel"
@@ -522,7 +507,7 @@ describe("faded parts", () => {
             yield* assertStructureInside(page, "main");
 
             assert.strictEqual(
-              yield* attribute(page, structure("main"), "data-selected"),
+              yield* attributeOf(page, structure("main"), "data-selected"),
               "true"
             );
             yield* assertOutside(page, "h-updater-pr");

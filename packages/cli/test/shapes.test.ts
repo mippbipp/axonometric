@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Order } from "effect";
 import type { Page } from "playwright";
 
+import { inPage } from "./browser.ts";
 import { shapesMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -12,9 +13,6 @@ const builtPage = Effect.gen(function* () {
 
 // Code that runs in the page is written as expression strings, because this
 // package has no DOM types.
-
-const inPage = <A>(page: Page, expression: string) =>
-  Effect.promise(() => page.evaluate<A>(expression));
 
 const attributeOfAll = (page: Page, selector: string, name: string) =>
   inPage<string[]>(

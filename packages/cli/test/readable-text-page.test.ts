@@ -2,23 +2,23 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf } from "./browser.ts";
-import { crosses, drawingReport, overlap } from "./drawing-report.ts";
-import type { DrawingReport } from "./drawing-report.ts";
+import {
+  attributesOf,
+  goToChapterPaused,
+  inPage,
+  scaleExpression,
+  showViewFitted,
+  waitFor,
+} from "./browser.ts";
+import {
+  crosses,
+  drawingReport,
+  firstLegsReport,
+  textClashes,
+} from "./drawing-report.ts";
+import type { DrawingReport, FirstLeg } from "./drawing-report.ts";
 import { crowdedMap, fullMap, pipelineMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
-
-const inPage = <A>(page: Page, expression: string) =>
-  Effect.promise(() => page.evaluate<A>(expression));
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().click());
-
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor());
-
-const scaleExpression =
-  'Number(document.querySelector("svg[data-scale]").dataset.scale)';
 
 /**
  * How tall each piece of text matching `selector` draws on screen, in
@@ -54,23 +54,6 @@ const openAt1280 = Effect.fnUntraced(function* (
   return page;
 });
 
-const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-  // Pause, so a packet's selection doesn't bring a hidden label in.
-  yield* click(page, '[data-playback-controls] [data-control="pause"]');
-});
-
-const showView = Effect.fnUntraced(function* (
-  page: Page,
-  view: "iso" | "plan"
-) {
-  yield* click(page, `[data-view-toggle] [data-view="${view}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-view="${view}"]`);
-  // A switch keeps the zoom; 0 fits the chapter in this view.
-  yield* Effect.promise(() => page.keyboard.press("0"));
-});
-
 const zoomIn = Effect.fnUntraced(function* (page: Page) {
   const before = yield* inPage<number>(page, scaleExpression);
 
@@ -94,8 +77,8 @@ describe("text on the pipeline map at 1280×800", () => {
               "flake-pipeline"
             );
 
-            yield* goToChapter(page, "c-all");
-            yield* showView(page, view);
+            yield* goToChapterPaused(page, "c-all");
+            yield* showViewFitted(page, view);
 
             const tags = yield* sizesOf(page, "[data-name-tag] text");
 
@@ -132,7 +115,7 @@ describe("text on the pipeline map at 1280×800", () => {
       Effect.gen(function* () {
         const page = yield* openAt1280(yield* pipelineMap, "flake-pipeline");
 
-        yield* goToChapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
         yield* Effect.promise(() =>
           page.locator('[data-structure="fixer"]').dblclick()
         );
@@ -190,7 +173,7 @@ describe("text on the pipeline map at 1280×800", () => {
  * every first leg through its own source's name tag. Text includes name
  * tags, shown hop labels and zone titles.
  */
-const textClashes = Effect.fnUntraced(function* (page: Page) {
+const clashesNow = Effect.fnUntraced(function* (page: Page) {
   const report = yield* inPage<DrawingReport>(page, drawingReport);
 
   const view = yield* inPage<string>(
@@ -198,29 +181,21 @@ const textClashes = Effect.fnUntraced(function* (page: Page) {
     'document.querySelector("[data-walkthrough]").dataset.view'
   );
 
+  const firstLegs =
+    view === "iso"
+      ? yield* inPage<readonly FirstLeg[]>(page, firstLegsReport)
+      : [];
+
   return [
-    ...Arr.flatMap(report.text, (first, index) =>
-      Arr.flatMap(report.text.slice(index + 1), (second) =>
-        overlap(first.polygon, second.polygon)
-          ? [`${first.id} × ${second.id}`]
-          : []
+    ...textClashes(report),
+    ...Arr.flatMap(firstLegs, ({ hop, from, leg }) =>
+      Arr.some(
+        report.text,
+        (tag) => tag.id === `tag:${from}` && crosses(leg, tag.polygon)
       )
+        ? [`first leg of ${hop} × tag:${from}`]
+        : []
     ),
-    ...Arr.flatMap(report.text, (text) =>
-      Arr.flatMap(report.structures, (box) =>
-        overlap(text.polygon, box.polygon) ? [`${text.id} × ${box.id}`] : []
-      )
-    ),
-    ...(view === "iso"
-      ? Arr.flatMap(report.firstLegs, ({ hop, from, leg }) =>
-          Arr.some(
-            report.text,
-            (tag) => tag.id === `tag:${from}` && crosses(leg, tag.polygon)
-          )
-            ? [`first leg of ${hop} × tag:${from}`]
-            : []
-        )
-      : []),
   ];
 });
 
@@ -288,15 +263,15 @@ describe("grown text at 1280×800", () => {
             // Plan view is checked in every chapter, at fit and zoomed in to
             // where text draws at its own size; the Iso view at fit.
             for (const view of ["iso", "plan"] as const) {
-              yield* showView(page, view);
+              yield* showViewFitted(page, view);
 
               for (const chapter of view === "plan" ? chapters : isoChapters) {
-                yield* goToChapter(page, chapter);
+                yield* goToChapterPaused(page, chapter);
 
                 const where = `${chapter} in the ${view} view`;
 
                 assert.deepStrictEqual(
-                  yield* textClashes(page),
+                  yield* clashesNow(page),
                   [],
                   `${where} at fit`
                 );
@@ -318,7 +293,7 @@ describe("grown text at 1280×800", () => {
                     `no hop labels in ${where}`
                   );
                   assert.deepStrictEqual(
-                    yield* textClashes(page),
+                    yield* clashesNow(page),
                     [],
                     `${where} zoomed in`
                   );
@@ -346,8 +321,8 @@ describe("grown text at 1280×800", () => {
           );
 
           for (const chapter of ["c-monday", "c-pr", "c-all"]) {
-            yield* goToChapter(page, chapter);
-            assert.deepStrictEqual(yield* textClashes(page), [], chapter);
+            yield* goToChapterPaused(page, chapter);
+            assert.deepStrictEqual(yield* clashesNow(page), [], chapter);
           }
         })
       ),
@@ -362,8 +337,8 @@ describe("grown text at 1280×800", () => {
           Effect.gen(function* () {
             const page = yield* openAt1280(yield* fullMap, "review");
 
-            yield* goToChapter(page, "c-all");
-            yield* showView(page, view);
+            yield* goToChapterPaused(page, "c-all");
+            yield* showViewFitted(page, view);
 
             const sizes = yield* sizesOf(page, "[data-hop-label]");
 
@@ -411,7 +386,7 @@ describe("hidden hop labels on the pipeline map at fit", () => {
       Effect.gen(function* () {
         const page = yield* openAt1280(yield* pipelineMap, "flake-pipeline");
 
-        yield* goToChapter(page, "c-all");
+        yield* goToChapterPaused(page, "c-all");
 
         // A packet on a hop whose label the scene hid, and that hop's label
         // from the map state.

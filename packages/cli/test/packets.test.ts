@@ -2,7 +2,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, String as Str } from "effect";
 import type { Page } from "playwright";
 
-import { attributesOf } from "./browser.ts";
+import {
+  attributeOf,
+  attributesOf,
+  click,
+  goToChapter,
+  waitFor,
+} from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -33,22 +39,8 @@ const reviewPage = Effect.gen(function* () {
   return yield* buildAndOpen(yield* fullMap, "review");
 });
 
-const waitFor = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).first().waitFor());
-
-const click = (page: Page, selector: string) =>
-  Effect.promise(() => page.locator(selector).click());
-
-const attribute = (page: Page, selector: string, name: string) =>
-  Effect.promise(() => page.locator(selector).first().getAttribute(name));
-
 const packetIds = (page: Page) =>
   attributesOf(page, "[data-packet]", "data-packet");
-
-const goToChapter = Effect.fnUntraced(function* (page: Page, id: string) {
-  yield* click(page, `[data-chapter-rail] button[data-chapter="${id}"]`);
-  yield* waitFor(page, `[data-walkthrough][data-chapter="${id}"]`);
-});
 
 /** Steps and waits until the packet panel shows `hop`. */
 const stepTo = Effect.fnUntraced(function* (page: Page, hop: string) {
@@ -153,13 +145,13 @@ describe("packets", () => {
           yield* waitFor(page, '[data-packets][data-playing="false"]');
           yield* waitFor(page, "[data-packet-panel]");
 
-          const clicked = yield* attribute(
+          const clicked = yield* attributeOf(
             page,
             "[data-packet]",
             "data-packet"
           );
 
-          const panel = yield* attribute(
+          const panel = yield* attributeOf(
             page,
             "[data-packet-panel]",
             "data-packet-panel"
@@ -233,7 +225,7 @@ describe("packets", () => {
             .isDisabled()
         );
 
-        const playTitle = yield* attribute(
+        const playTitle = yield* attributeOf(
           page,
           '[data-playback-controls] [data-control="play"]',
           "title"
@@ -285,7 +277,7 @@ describe("the flow picker", () => {
         // The last chapter plays no hops of its own, so it starts on all
         // flows: one packet each.
         assert.strictEqual(
-          yield* attribute(
+          yield* attributeOf(
             page,
             '[data-flow-picker] [data-flow="all"]',
             "aria-pressed"
@@ -305,7 +297,7 @@ describe("the flow picker", () => {
         yield* click(page, '[data-playback-controls] [data-control="pause"]');
         yield* click(page, "[data-packet]");
 
-        const first = yield* attribute(
+        const first = yield* attributeOf(
           page,
           "[data-packet-panel]",
           "data-packet-panel"

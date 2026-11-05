@@ -16,7 +16,7 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { makeHome, serveReviewMap, startServe } from "./harness.ts";
 import type { RunningServe } from "./harness.ts";
 import { acceptChanges, get, moveOf } from "./revisions.ts";
 
@@ -54,10 +54,7 @@ const acceptMove = (serve: RunningServe, move: Move) =>
 
 /** The review map served on a free port, with two revisions saved. */
 const servedWithTwo = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const root = yield* makeHome(yield* fullMap);
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
+  const { root, home, serve } = yield* serveReviewMap({}, []);
 
   yield* acceptMove(serve, {
     base: 0,
