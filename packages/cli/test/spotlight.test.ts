@@ -49,31 +49,22 @@ const attribute = (page: Page, selector: string, name: string) =>
   Effect.promise(() => page.locator(selector).first().getAttribute(name));
 
 /**
- * Asserts that the page marks `selector` with `data-faded="<expected>"`. The
- * page applies a hover in a later task than the pointer event, so it waits
- * up to 5 s for the mark first, then asserts on what's there.
+ * Waits for the page to mark `selector` with `data-faded="<expected>"`. The
+ * page applies a hover in a later task than the pointer event, so reading
+ * the mark straight after the event can come too early.
  */
-const assertFaded = Effect.fnUntraced(function* (
+const waitForFaded = (
   page: Page,
   selector: string,
   expected: "true" | "false"
-) {
-  yield* Effect.ignore(
-    Effect.tryPromise(() =>
-      page.waitForFunction(
-        `document.querySelector(${literal(selector)})?.getAttribute("data-faded") === ${literal(expected)}`,
-        undefined,
-        { timeout: 5000 }
-      )
+) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `document.querySelector(${literal(selector)})?.getAttribute("data-faded") === "${expected}"`,
+      undefined,
+      { timeout: 5000 }
     )
   );
-
-  assert.strictEqual(
-    yield* attribute(page, selector, "data-faded"),
-    expected,
-    selector
-  );
-});
 
 /** Waits out the opacity transition, then returns the computed opacity. */
 const opacityOf = Effect.fnUntraced(function* (
@@ -109,13 +100,13 @@ const styleOf = (page: Page, selector: string, property: string) =>
 
 /** The hop is inside the spotlight, at full strength. */
 const assertInside = Effect.fnUntraced(function* (page: Page, hopId: string) {
-  yield* assertFaded(page, hop(hopId), "false");
+  yield* waitForFaded(page, hop(hopId), "false");
   assert.strictEqual(yield* opacityOf(page, hop(hopId), "1"), "1", hopId);
 });
 
 /** The hop is outside the spotlight, at the faded strength. */
 const assertOutside = Effect.fnUntraced(function* (page: Page, hopId: string) {
-  yield* assertFaded(page, hop(hopId), "true");
+  yield* waitForFaded(page, hop(hopId), "true");
   assert.strictEqual(
     yield* opacityOf(page, hop(hopId), faded.line),
     faded.line,
@@ -127,7 +118,7 @@ const assertStructureInside = Effect.fnUntraced(function* (
   page: Page,
   id: string
 ) {
-  yield* assertFaded(page, structure(id), "false");
+  yield* waitForFaded(page, structure(id), "false");
   assert.strictEqual(yield* opacityOf(page, structure(id), "1"), "1", id);
 });
 
@@ -135,7 +126,7 @@ const assertStructureOutside = Effect.fnUntraced(function* (
   page: Page,
   id: string
 ) {
-  yield* assertFaded(page, structure(id), "true");
+  yield* waitForFaded(page, structure(id), "true");
   assert.strictEqual(
     yield* opacityOf(page, structure(id), faded.structure),
     faded.structure,
@@ -209,8 +200,8 @@ describe("the spotlight of a chapter", () => {
             );
             assert.strictEqual(yield* styleOf(page, tag, "opacity"), "1");
 
-            yield* assertFaded(page, '[data-name-tag="main"]', "true");
-            yield* assertFaded(page, '[data-name-tag="pr"]', "false");
+            yield* waitForFaded(page, '[data-name-tag="main"]', "true");
+            yield* waitForFaded(page, '[data-name-tag="pr"]', "false");
           }
 
           assert.deepStrictEqual(errors, []);
@@ -514,12 +505,12 @@ describe("faded parts", () => {
               page.locator(structure("main")).click()
             );
             yield* pointAway(page);
+            yield* assertStructureInside(page, "main");
 
             assert.strictEqual(
               yield* attribute(page, structure("main"), "data-selected"),
               "true"
             );
-            yield* assertStructureInside(page, "main");
             yield* assertOutside(page, "h-updater-pr");
 
             yield* Effect.promise(() => page.keyboard.press("Escape"));
