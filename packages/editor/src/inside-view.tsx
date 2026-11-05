@@ -337,6 +337,7 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
           className="text-ink block size-full"
           viewBox={`${box.minX} ${box.minY} ${box.width} ${box.height}`}
           preserveAspectRatio="xMidYMid meet"
+          textRendering="geometricPrecision"
         >
           <title id={`${idPrefix}title`}>{`Inside ${structure.name}`}</title>
           <defs>
