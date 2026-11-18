@@ -4,10 +4,12 @@ A whole system at once is hard to parse. Split the walkthrough into chapters tha
 
 ## The rules
 
-1. Each chapter reveals at most three new structures.
-2. Each chapter plays a small flow, and every hop it plays touches only revealed structures. `check` reports a hop with an unrevealed end as an error.
+1. Each chapter reveals at most three new structures. `check` warns when a chapter other than the last reveals more.
+2. Each chapter plays a small flow of at most five hops, and every hop it plays touches only revealed structures. `check` reports a hop with an unrevealed end as an error, and warns when a chapter other than the last plays more than five hops. Split a chapter that needs more, so each half plays its own small flow.
 3. Reveals are cumulative. A structure revealed in chapter 2 stays on the map in chapter 3 and after. List only the new structures in `reveals`.
 4. The last chapter shows the whole system. By its end every structure is revealed, and `check` reports one that never is. The last chapter has the flow picker, which replays any flow.
+
+In a map with many hops, a chapter can't play them all. The chapters teach the system in pieces, and the flows in the last chapter tell the whole stories, such as one green week from the timer to the merge.
 
 A chapter's `plays` lists hop ids, so a hop is written once in `hops` and named by id everywhere else. Put a hop in the chapter where its second end is revealed. List the hops in the order they should play.
 
@@ -28,7 +30,7 @@ Start from this arc and change the nouns. Keep its shape.
 9. Later: the structures with status `planned`.
 10. The whole system: the last chapter, with the flow picker.
 
-A small system needs 4 to 6 chapters. A 15-structure update pipeline fits in 8: the timer, one branch and one PR, the build gate, scope and merge, when the gate is red, telling a person, the watchdog, and the whole pipeline.
+A small system needs 4 to 6 chapters. A 15-structure update pipeline fits in 8: the timer, one branch and one PR, the build gate, scope and merge, when the gate is red, telling a person, the watchdog, and the whole pipeline. If "when the gate is red" needs nine hops, make it two chapters, such as the repair round and the report back.
 
 ## Writing a chapter
 
@@ -36,7 +38,7 @@ A small system needs 4 to 6 chapters. A 15-structure update pipeline fits in 8: 
 - `lede` is one sentence.
 - `story` is two or three sentences with one idea the reader should notice. Write it from the engineer's side.
 - `reveals` has at most three new ids.
-- `plays` lists the hops of one small flow.
+- `plays` lists the hops of one small flow, at most five.
 
 The side panel shows the story, the new structures as chips and the hops the chapter plays. It starts with a summary, and each structure's detail unfolds on demand.
 

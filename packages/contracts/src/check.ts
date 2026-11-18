@@ -1,4 +1,4 @@
-import { Array as Arr } from "effect";
+import { Array as Arr, Option, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import { checkLayout } from "./layout-checks.ts";
@@ -281,6 +281,98 @@ const emptyGroups = (data: MapData) => {
   );
 };
 
+/** The most new structures a chapter other than the last reveals. */
+const maxReveals = 3;
+
+/** The most hops a chapter other than the last plays. */
+const maxPlays = 5;
+
+/**
+ * A chapter other than the last is a small stop: a few new structures and a
+ * small flow. The last chapter reveals what's left and replays the flows.
+ */
+const chapterSize = (data: MapData): readonly MapProblem[] =>
+  Arr.flatMap(data.chapters.slice(0, -1), (chapter, index) => [
+    ...(chapter.reveals.length > maxReveals
+      ? [
+          warning(
+            ["chapters", index, "reveals"],
+            `chapter "${chapter.id}" reveals ${chapter.reveals.length} structures, and a chapter other than the last should reveal at most ${maxReveals}. Split it into two chapters, each with a small flow.`
+          ),
+        ]
+      : []),
+    ...(chapter.plays.length > maxPlays
+      ? [
+          warning(
+            ["chapters", index, "plays"],
+            `chapter "${chapter.id}" plays ${chapter.plays.length} hops, and a chapter other than the last should play at most ${maxPlays}. Split it into two chapters, each with a small flow, and leave the full story to a flow in the last chapter.`
+          ),
+        ]
+      : []),
+  ]);
+
+/** The letters and digits of `text`, lowercased, with spaces and punctuation gone. */
+const lettersOf = (text: string) =>
+  Str.replaceAll(/[^\p{L}\p{N}]/gu, "")(Str.toLowerCase(text));
+
+/** Whether the letters of `short` appear in `long` in order, not necessarily next to each other. */
+const isSubsequence = (short: string, long: string) =>
+  Option.isSome(
+    Arr.reduce(Arr.fromIterable(short), Option.some(0), (from, letter) =>
+      Option.flatMap(from, (start) =>
+        Option.map(
+          Str.indexOf(letter)(Str.slice(start)(long)),
+          (found) => start + found + 1
+        )
+      )
+    )
+  );
+
+/**
+ * Whether `tag` could be a shortened `name`: each word of the tag is a
+ * prefix, an abbreviation or an initialism of the name, so its letters
+ * appear in the name's letters in order. "DB" for "Database" and "PR" for
+ * "Pull request" pass, and "flake-updater" for "Updater" does not.
+ */
+const shortensName = (tag: string, name: string) => {
+  const letters = lettersOf(name);
+
+  const words = Arr.filter(
+    Arr.map(Str.split(/[^\p{L}\p{N}]+/u)(tag), lettersOf),
+    (word) => word !== ""
+  );
+
+  return Arr.every(words, (word) => isSubsequence(word, letters));
+};
+
+/** A tag only shortens the name, so it is shorter and made from the name. */
+const tagShortensName = (data: MapData): readonly MapProblem[] =>
+  Arr.flatMap(data.structures, (structure, index) => {
+    const { tag, name } = structure;
+
+    if (tag === undefined) {
+      return [];
+    }
+
+    if (tag.length >= name.length) {
+      return [
+        warning(
+          ["structures", index, "tag"],
+          `tag "${tag}" is not shorter than the name "${name}". A tag only shortens a long name. Remove it, or shorten the name's own words. A resource's real identifier, such as a unit or file name, goes in howItsBuilt.`
+        ),
+      ];
+    }
+
+    return shortensName(tag, name)
+      ? []
+      : [
+          warning(
+            ["structures", index, "tag"],
+            `tag "${tag}" doesn't read as a shortened form of the name "${name}". A tag is not a second name. Shorten the name's own words, or remove the tag and put a resource's real identifier, such as a unit or file name, in howItsBuilt.`
+          ),
+        ];
+  });
+
 export interface CheckOptions {
   /**
    * Whether a relative link, such as `../adr/0001-runtime.md#context`,
@@ -325,6 +417,8 @@ export const checkMap: {
     ...repeatedSources(data),
     ...checkLayout(data, layout),
     ...emptyGroups(data),
+    ...chapterSize(data),
+    ...tagShortensName(data),
   ]
 );
 
