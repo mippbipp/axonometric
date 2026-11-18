@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -83,7 +83,7 @@ jobs:
   # npm trusted publishing needs no token, so no workflow may pass one. The
   # pattern is split so this file doesn't match itself.
   no-npm-token:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
@@ -101,7 +101,7 @@ jobs:
       matrix:
         # x86_64-linux and aarch64-darwin. aarch64-linux is the maintainer's
         # machine.
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -120,7 +120,7 @@ jobs:
       - run: nix run . -- --version
 
   react-doctor:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v7
