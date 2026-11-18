@@ -222,7 +222,7 @@ export const Structure = Schema.Struct({
   ),
   name: requiredText("Give every structure a name."),
   tag: optionalText(
-    "tag is the short label on the structure's name tag. Leave it out to show the name."
+    "tag is a shortened name for the name tag, for a long name. Leave it out to show the name. Put a resource's real identifier in howItsBuilt."
   ),
   shape: Shape,
   group: requiredText("Set group to the id of one of the map's groups."),
@@ -360,9 +360,11 @@ export const Overview = Schema.Struct({
     "Write the file layout as an indented tree, one path per line."
   ),
   platformProvides: optionalText(
-    "Say what the platform or framework provides."
+    "Say what the platform or framework provides, as one string."
   ),
-  weOwn: optionalText("Say what this system has to build itself."),
+  weOwn: optionalText(
+    "Say what this system has to build itself, as one string."
+  ),
   costModel: optionalText("Write the cost assumptions as Markdown."),
   deepDives: optionalList(
     DeepDive,

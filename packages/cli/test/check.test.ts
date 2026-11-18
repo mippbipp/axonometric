@@ -363,6 +363,133 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
     })
   );
 
+  describe("name tags", () => {
+    /** The warnings on `structures[1].tag` when its name and tag are set. */
+    const tagWarnings = Effect.fnUntraced(function* (
+      name: string,
+      tag: string
+    ) {
+      const result = yield* checkWith(
+        yield* editData(
+          `data.structures[1].name = "${name}";
+data.structures[1].tag = "${tag}";`
+        ),
+        ["--json"]
+      );
+
+      const report = yield* decodeReport(result.stdout);
+
+      assert.strictEqual(result.exitCode, 0, result.stdout);
+
+      return Arr.filter(
+        report.warnings,
+        ({ path }) => path === "structures[1].tag"
+      );
+    });
+
+    it.effect("warns when a tag is not shorter than the name", () =>
+      Effect.gen(function* () {
+        for (const [name, tag] of [
+          ["Attic cache", "Attic cache"],
+          ["Updater", "flake-updater"],
+          ["Watchdog", "update-watchdog"],
+        ] as const) {
+          const warnings = yield* tagWarnings(name, tag);
+
+          assert.deepStrictEqual(
+            Arr.map(warnings, ({ message }) => message),
+            [
+              `tag "${tag}" is not shorter than the name "${name}". A tag only shortens a long name, so remove it. A resource's real identifier, such as a unit or file name, goes in howItsBuilt.`,
+            ]
+          );
+        }
+      })
+    );
+
+    it.effect("warns when a shorter tag is a second name", () =>
+      Effect.gen(function* () {
+        for (const [name, tag] of [
+          ["Maintainer", "you"],
+          ["Merge ruleset", "main rules"],
+          ["Flake inputs", "upstream"],
+        ] as const) {
+          const warnings = yield* tagWarnings(name, tag);
+
+          assert.deepStrictEqual(
+            Arr.map(warnings, ({ message }) => message),
+            [
+              `tag "${tag}" doesn't read as a shortened form of the name "${name}". A tag is not a second name. Shorten the name's own words, or remove the tag and put a resource's real identifier, such as a unit or file name, in howItsBuilt.`,
+            ]
+          );
+        }
+      })
+    );
+
+    it.effect("accepts a tag that shortens the name", () =>
+      Effect.gen(function* () {
+        for (const [name, tag] of [
+          ["Database", "DB"],
+          ["Build gate build jobs", "Build jobs"],
+          ["Pull request", "PR"],
+          ["Flake update branch and PR", "Update PR"],
+          ["Authentication service", "Auth"],
+        ] as const) {
+          assert.deepStrictEqual(yield* tagWarnings(name, tag), []);
+        }
+      })
+    );
+  });
+
+  describe("chapter size", () => {
+    it.effect(
+      "warns when a chapter other than the last plays more than five hops or reveals more than three structures",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* checkWith(
+            yield* editData(
+              `data.chapters[1].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];
+data.chapters[1].reveals = ["server", "proposals", "pull-request", "upstream"];
+data.chapters[2].reveals = [];
+data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`
+            ),
+            ["--json"]
+          );
+
+          const report = yield* decodeReport(result.stdout);
+
+          assert.strictEqual(result.exitCode, 0, result.stdout);
+          assert.deepStrictEqual(
+            Arr.map(report.warnings, ({ path, message }) => [path, message]),
+            [
+              [
+                "chapters[1].reveals",
+                'chapter "c-save" reveals 4 structures, and a chapter other than the last should reveal at most 3. Split it into two chapters, each with a small flow.',
+              ],
+              [
+                "chapters[1].plays",
+                'chapter "c-save" plays 6 hops, and a chapter other than the last should play at most 5. Split it into two chapters, each with a small flow, and leave the full story to a flow in the last chapter.',
+              ],
+            ]
+          );
+        })
+    );
+
+    it.effect("lets the last chapter play every hop", () =>
+      Effect.gen(function* () {
+        const result = yield* checkWith(
+          yield* editData(
+            `data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`
+          ),
+          ["--json"]
+        );
+
+        const report = yield* decodeReport(result.stdout);
+
+        assert.deepStrictEqual(report.warnings, []);
+      })
+    );
+  });
+
   it.effect("stops build on the same errors", () =>
     Effect.gen(function* () {
       const files = yield* editData('data.chapters[0].plays.push("h-save");');

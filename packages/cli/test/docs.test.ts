@@ -32,6 +32,7 @@ import {
   Array as Arr,
   Effect,
   FileSystem,
+  Option,
   Order,
   Path,
   Record as Rec,
@@ -658,6 +659,46 @@ describe("axonometric docs", () => {
 
       for (const name of rows) {
         assert.include(Rec.keys(Structure.fields), name);
+      }
+    })
+  );
+
+  it.effect("data says which overview fields are one string", () =>
+    Effect.gen(function* () {
+      const { texts } = yield* allDocs;
+      const data = texts.data ?? "";
+
+      for (const field of [
+        "platformProvides",
+        "weOwn",
+        "fileLayout",
+        "costModel",
+      ]) {
+        const line = Arr.findFirst(
+          Str.split("\n")(data),
+          (text) =>
+            Str.startsWith("- `")(text) && Str.includes(`\`${field}\``)(text)
+        );
+
+        assert.isTrue(
+          Option.isSome(line) && Str.includes("one string")(line.value),
+          `data says ${field} is one string`
+        );
+      }
+    })
+  );
+
+  it.effect("data and design say a tag only shortens the name", () =>
+    Effect.gen(function* () {
+      const { texts } = yield* allDocs;
+
+      for (const topic of ["data", "design"]) {
+        assert.match(
+          texts[topic] ?? "",
+          /shortened[^.]*`name`|`name`[^.]*shortened/u,
+          `${topic} describes tag as a shortened name`
+        );
+        assert.include(texts[topic] ?? "", "howItsBuilt");
       }
     })
   );
