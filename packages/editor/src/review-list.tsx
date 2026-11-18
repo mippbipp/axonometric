@@ -105,6 +105,14 @@ const actionOf = (item: BatchItem): string | undefined =>
 const failureOf = <A,>(outcome: Result.Result<A, string>) =>
   Option.getOrUndefined(Result.getFailure(outcome));
 
+/**
+ * Whether the open item can be discarded here. An answer is part of reading,
+ * so it can be with Edit off; the other kinds, and layout changes, which the
+ * list above discards, need Edit.
+ */
+const canDiscard = (item: BatchItem, editOn: boolean): boolean =>
+  item.kind !== "layout" && (editOn || item.kind === "answer");
+
 /** One item with its status and the buttons that fit it. */
 function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
   const review = useReview();
@@ -197,9 +205,7 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
         />
       ) : (
         <span className="flex flex-wrap gap-1.5">
-          {(editOn || item.kind === "answer") &&
-          status.state === "open" &&
-          item.kind !== "layout" ? (
+          {status.state === "open" && canDiscard(item, editOn) ? (
             <button
               type="button"
               className={controlClass}
