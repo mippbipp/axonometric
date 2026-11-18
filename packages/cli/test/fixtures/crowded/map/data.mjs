@@ -10,7 +10,7 @@ const structure = (fields) => ({
 });
 
 const guard = (id, name) =>
-  structure({ id, code: `G${name}`, name, tag: name, shape: "slab", group: "vault" });
+  structure({ id, code: `G${name}`, name, shape: "slab", group: "vault" });
 
 export default {
   format: 1,

@@ -101,7 +101,7 @@ The same layout drawn straight from above.
 _Avoid_: 2D view, flat view
 
 **Name tag**:
-The label that names a structure on the map: its tag, or its name when it has no tag. In the Iso view it sits under the structure's front corner; in Plan view, inside the box or beside it.
+The label that names a structure on the map: its tag, or its name when it has no tag. A tag only shortens a long name and isn't a second name. In the Iso view it sits under the structure's front corner; in Plan view, inside the box or beside it.
 _Avoid_: label, caption
 
 **Code chip**:

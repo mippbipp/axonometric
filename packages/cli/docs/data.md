@@ -14,12 +14,14 @@ The default export has exactly these fields: `format`, `revision`, `overview`, `
 
 `title` and `summary` are required. The summary is one paragraph a newcomer reads in 30 seconds. The rest is optional, and `SYSTEM.md` leaves out what you omit.
 
-- `stats`: a list of `{ label, value }`. Both are text.
-- `decisions`: a list of `{ topic, decision, adr }`. State the decision and why in one line. `adr` links the ADR with a path relative to `SYSTEM.md`, or a full URL. `SYSTEM.md` sits in the home folder's parent, so an ADR at `docs/adr/0003-runtime.md` is `../adr/0003-runtime.md` from `docs/pipeline/SYSTEM.md`. A link that doesn't resolve to a file is an error. A `#fragment` is fine.
-- `platformProvides` and `weOwn`: what the platform or framework gives you, and what this system builds itself.
-- `fileLayout`: an indented tree, one path per line.
-- `costModel`: the cost assumptions as Markdown. State each price with its source and the date you fetched it.
-- `deepDives`: a list of `{ title, summary, link }`. `link` is a path relative to `SYSTEM.md`, or a URL.
+- `stats`: a list of `{ label, value }`. `label` and `value` are each one string.
+- `decisions`: a list of `{ topic, decision, adr }`. All three are one string. `adr` is optional. State the decision and why in one line. `adr` links the ADR with a path relative to `SYSTEM.md`, or a full URL. `SYSTEM.md` sits in the home folder's parent, so an ADR at `docs/adr/0003-runtime.md` is `../adr/0003-runtime.md` from `docs/pipeline/SYSTEM.md`. A link that doesn't resolve to a file is an error. A `#fragment` is fine.
+- `platformProvides` and `weOwn`: what the platform or framework gives you, and what this system builds itself. Each is one string of plain text, not a list. Write a few sentences or short lines.
+- `fileLayout`: one string holding an indented tree, one path per line. Use a template string.
+- `costModel`: one string of Markdown with the cost assumptions. State each price with its source and the date you fetched it.
+- `deepDives`: a list of `{ title, summary, link }`. `title` and `summary` are each one string. `link` is optional: a path relative to `SYSTEM.md`, or a URL.
+
+Every optional field is left out when you have nothing to put in it. A wrong shape, such as a list where a field wants a string, is an error that says "expected a string".
 
 The "How it's built" page and the matching sections of `SYSTEM.md` are generated from these fields, so write each thing once. Don't repeat the summary in a chapter or a structure.
 
@@ -34,7 +36,7 @@ A list of `{ id, title }`. Each group gets a zone drawn around its structures. A
 | `id` | Permanent. Hops, chapters and `layout.json` refer to it. |
 | `code` | 1 to 3 capital letters, unique. Question ids are built from it. Shown on the box. |
 | `name` | The structure's name, a noun. |
-| `tag` | Optional. The short text on the name tag, in place of the name. |
+| `tag` | Optional. A shortened form of `name`, for the name tag. Use it only when the name is long. It is not a second name. |
 | `shape` | How it is drawn. See `design`. |
 | `group` | The id of one of the groups. |
 | `status` | `live` runs today, `planned` is designed but not running, `off` exists and is switched off. |
@@ -46,6 +48,8 @@ A list of `{ id, title }`. Each group gets a zone drawn around its structures. A
 | `sources` | Optional. The files behind it, as `{ path, commit }`. |
 
 A `sources` path runs from the root of the git repo that holds the home folder, with `/` between folders, such as `src/server.ts`. `commit` is optional, 7 to 64 hex digits: the commit the structure's text describes. With it, `check` warns when the file has changed since, so you know to reread it, update the text, and pin the source to the current commit (`git rev-parse --short HEAD`). Without it, `check` only needs the path to be a file git tracks at HEAD. A path that isn't, or a commit that isn't in the local history, is an error. Listing the same file twice is a warning. `check` skips the source checks when the home folder isn't in a git repo, and says so.
+
+A structure has one name. The side index shows `name` and the name tag shows `tag`, so a tag that says something else makes the two disagree. If the real identifier of a resource differs from its name, such as a unit, a file or a branch, put that in `howItsBuilt`. `check` warns when a `tag` is not shorter than its `name`, or doesn't read as a shortened form of it.
 
 Give a structure `steps` when it does several things in order. The inside view walks them with one packet. Skip them for a plain box.
 
