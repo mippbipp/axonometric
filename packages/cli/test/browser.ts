@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 
+import { editStorage } from "@axonometric/contracts";
 import { assert } from "@effect/vitest";
 import { Array as Arr, Effect, Record, String as Str } from "effect";
 import { chromium } from "playwright";
@@ -38,10 +39,34 @@ const openContext = Effect.acquireRelease(
   (context) => Effect.promise(() => context.close())
 );
 
-/** Opens `url` and records page errors and every request off the disk. */
-export const openUrl = Effect.fnUntraced(function* (url: string) {
+/**
+ * Opens `url` and records page errors and every request off the disk. A
+ * served page has Edit off until someone turns it on, so the page opens with
+ * it on, which most tests need. Pass `edit: false` to open it as a first visit
+ * would find it. The choice is stored once per tab, so a test can turn Edit
+ * off and reload to see it kept.
+ */
+export const openUrl = Effect.fnUntraced(function* (
+  url: string,
+  options?: { readonly edit?: boolean }
+) {
   const context = yield* openContext;
   const page = yield* Effect.promise(() => context.newPage());
+
+  if (options?.edit !== false) {
+    yield* Effect.promise(() =>
+      page.addInitScript((storage) => {
+        try {
+          if (sessionStorage.getItem("seeded-edit") === null) {
+            sessionStorage.setItem("seeded-edit", "1");
+            localStorage.setItem(storage.key, storage.on);
+          }
+        } catch {
+          // A file:// page may not use storage, and has no Edit to turn on.
+        }
+      }, editStorage)
+    );
+  }
 
   const requests: string[] = [];
   const errors: string[] = [];

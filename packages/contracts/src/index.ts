@@ -26,6 +26,8 @@ export type {
   ExcalidrawText,
 } from "./excalidraw.ts";
 
+export { editStorage } from "./edit-storage.ts";
+
 export { exportName, pngScale } from "./export-name.ts";
 
 export { groundOutline, toPoints } from "./ground-outline.ts";

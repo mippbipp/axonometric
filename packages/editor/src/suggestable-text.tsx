@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
 import { useReview } from "./review-context.ts";
@@ -275,8 +276,10 @@ export function SuggestableText({
   readonly className?: string;
 }) {
   const review = useReview();
+  const editOn = useEditOn();
   const found = Option.getOrUndefined(useSuggestionFor(structure, field));
-  const [editing, setEditing] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const editing = opened && editOn;
 
   if (review === null) {
     return <p className={className}>{text}</p>;
@@ -285,7 +288,7 @@ export function SuggestableText({
   const open = openOf(found);
 
   const start = () => {
-    setEditing(true);
+    setOpened(true);
   };
 
   return (
@@ -303,13 +306,13 @@ export function SuggestableText({
             text={text}
             open={open}
             onDone={() => {
-              setEditing(false);
+              setOpened(false);
             }}
           />
         </>
       ) : (
         <TextAndSuggestion found={found} text={text} className={className}>
-          {open === undefined ? null : (
+          {open === undefined || !editOn ? null : (
             <>
               <EditSuggestion entry={open} onEdit={start} />
               <DiscardSuggestion entry={open} />
@@ -317,7 +320,8 @@ export function SuggestableText({
           )}
         </TextAndSuggestion>
       )}
-      {review.canWrite &&
+      {editOn &&
+      review.canWrite &&
       !editing &&
       open === undefined &&
       canSuggest(found) ? (

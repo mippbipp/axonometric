@@ -313,9 +313,12 @@ export const serveReviewMap = Effect.fnUntraced(function* (
  * The review map in `fullMap`, with `files` added, served on a free port and
  * open in Chromium at 1280 × 800.
  */
-export const openReviewMap = Effect.fnUntraced(function* (files: HomeFiles) {
+export const openReviewMap = Effect.fnUntraced(function* (
+  files: HomeFiles,
+  options?: { readonly edit?: boolean }
+) {
   const served = yield* serveReviewMap(files, []);
-  const opened = yield* openUrl(served.url);
+  const opened = yield* openUrl(served.url, options);
 
   yield* Effect.promise(() =>
     opened.page.setViewportSize({ width: 1280, height: 800 })

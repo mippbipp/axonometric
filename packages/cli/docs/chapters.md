@@ -54,4 +54,4 @@ axonometric check <home>
 
 Done when `check` has no errors, and each chapter, read alone, adds something the reader can say in one sentence. If a chapter needs a long story, split it.
 
-The engineer can propose changes to one chapter's `reveals` or `plays` in the browser. See `review` for how to fold them in.
+The engineer can propose changes to one chapter's `reveals` or `plays` in the browser, once they press Edit. See `review` for how to fold them in.

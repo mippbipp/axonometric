@@ -16,10 +16,11 @@ import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
-import { useEditing } from "./editing-context.ts";
+import { useEditOn } from "./edit-context.ts";
+import { useEditingIgnoringEdit } from "./editing-context.ts";
 import { useExportState } from "./export-state-context.ts";
 import { NoteForm } from "./note-form.tsx";
-import { useProposed } from "./proposed-context.ts";
+import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
 import { listedEntries, useReview } from "./review-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -62,8 +63,8 @@ export function VerdictBadge({
 
 /** What an item is, in a few words. */
 const useItemDescription = () => {
-  const editing = useEditing();
-  const proposed = useProposed();
+  const editing = useEditingIgnoringEdit();
+  const proposed = useProposedMapIgnoringEdit();
   const { state } = useWalkthrough();
   const exported = useExportState();
 
@@ -71,7 +72,7 @@ const useItemDescription = () => {
   // the group as the accepted map has it now, so both are told apart. A
   // structure that is only proposed is named from the proposed map.
   const called = namesOf({
-    shown: proposed?.proposed.state.data ?? state.data,
+    shown: proposed?.state.data ?? state.data,
     accepted: (exported ?? state).data,
   });
 
@@ -104,9 +105,18 @@ const actionOf = (item: BatchItem): string | undefined =>
 const failureOf = <A,>(outcome: Result.Result<A, string>) =>
   Option.getOrUndefined(Result.getFailure(outcome));
 
+/**
+ * Whether the open item can be discarded here. An answer is part of reading,
+ * so it can be with Edit off; the other kinds, and layout changes, which the
+ * list above discards, need Edit.
+ */
+const canDiscard = (item: BatchItem, editOn: boolean): boolean =>
+  item.kind !== "layout" && (editOn || item.kind === "answer");
+
 /** One item with its status and the buttons that fit it. */
 function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
   const review = useReview();
+  const editOn = useEditOn();
   const describe = useItemDescription();
   const [editing, setEditing] = useState(false);
   const [failure, setFailure] = useState<string | undefined>();
@@ -195,7 +205,7 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
         />
       ) : (
         <span className="flex flex-wrap gap-1.5">
-          {status.state === "open" && item.kind !== "layout" ? (
+          {status.state === "open" && canDiscard(item, editOn) ? (
             <button
               type="button"
               className={controlClass}
@@ -209,7 +219,7 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
               Discard
             </button>
           ) : null}
-          {isRejected ? (
+          {editOn && isRejected ? (
             <button
               type="button"
               data-reopen={item.id}
@@ -220,7 +230,7 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
               Edit again
             </button>
           ) : null}
-          {status.state === "reviewed" ? (
+          {editOn && status.state === "reviewed" ? (
             <button
               type="button"
               data-dismiss={item.id}

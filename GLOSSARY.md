@@ -138,6 +138,10 @@ _Avoid_: issues list
 
 ## Editing and review
 
+**Edit**:
+The served page's switch for editing, a button in the header and the `e` key. It is off until the engineer turns it on, and the browser remembers it. With it off, the page hides every control that moves, proposes or pins something, and keeps answering questions. The read-only file has no Edit.
+_Avoid_: edit mode, editor
+
 **Layout change**:
 A move, resize or reroute.
 
