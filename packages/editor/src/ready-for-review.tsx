@@ -3,8 +3,7 @@ import { Result } from "effect";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { useEditOn } from "./edit-mode-context.ts";
-import { useEditingState } from "./editing-context.ts";
+import { useEditingIgnoringEdit } from "./editing-context.ts";
 import { useReview } from "./review-context.ts";
 
 /** What the dialog shows once a batch is frozen. */
@@ -96,8 +95,7 @@ function PromptBox({
  */
 export function ReadyForReview() {
   const review = useReview();
-  const editing = useEditingState();
-  const editOn = useEditOn();
+  const editing = useEditingIgnoringEdit();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [sent, setSent] = useState<Sent | null>(null);
@@ -157,8 +155,9 @@ export function ReadyForReview() {
     }
   };
 
-  // Reading shows the button only when something waits to be sent.
-  const showButton = editOn || open > 0 || busy;
+  // With nothing waiting there is nothing to send, so no button. It stays
+  // while a press is saving, which empties the count.
+  const showButton = open > 0 || busy;
 
   return (
     <>

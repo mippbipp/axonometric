@@ -6,7 +6,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { useEditOn } from "./edit-mode-context.ts";
+import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
 import { useReview } from "./review-context.ts";

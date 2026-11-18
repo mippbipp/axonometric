@@ -9,8 +9,8 @@ import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { DragWarnings } from "./drag-preview.tsx";
 import { DrawHopForm } from "./draw-hop-form.tsx";
-import { useEditOn } from "./edit-mode-context.ts";
-import { useEditingState } from "./editing-context.ts";
+import { useEditOn } from "./edit-context.ts";
+import { useEditingIgnoringEdit } from "./editing-context.ts";
 import { FlowsTab } from "./flows-tab.tsx";
 import { GroupPanel } from "./group-panel.tsx";
 import { useHistory } from "./history-context.ts";
@@ -234,7 +234,7 @@ const tabsOf = ({
   hasFlows,
   flowsOff,
 }: {
-  /** Whether the page can propose changes to flows, which gives it a Flows tab. */
+  /** Whether the page shows the Flows tab: it can propose changes to flows and Edit is on, or a past revision is open. */
   readonly hasFlows: boolean;
   /** Whether the Flows tab is shown but can't be used, as while a past revision is open. */
   readonly flowsOff: boolean;
@@ -432,7 +432,7 @@ export function SidePanel() {
   const openCount = openQuestionCount(open);
 
   const idPrefix = useId();
-  const editing = useEditingState();
+  const editing = useEditingIgnoringEdit();
   const editOn = useEditOn();
   const history = useHistory();
   const waiting = useWaitingCount();

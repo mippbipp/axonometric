@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
 
 import { isTyping } from "./chapter-keys.ts";
-import { useEditMode } from "./edit-mode-context.ts";
+import { useEditSwitch } from "./edit-context.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
 import { useNewGroupForm } from "./new-group-context.ts";
 import { useNoteTool } from "./note-tool-context.ts";
@@ -17,7 +17,7 @@ export const editKey = "e";
  * multi-selection, so none of them is left without its controls.
  */
 export const useSwitchEdit = () => {
-  const mode = useEditMode();
+  const edit = useEditSwitch();
   const placing = usePlacing();
   const newGroup = useNewGroupForm();
   const drafting = useHopDraft();
@@ -34,7 +34,7 @@ export const useSwitchEdit = () => {
       clearMultiSelection();
     }
 
-    mode?.set(on);
+    edit?.set(on);
   };
 };
 
@@ -43,12 +43,12 @@ export const useSwitchEdit = () => {
  * modifier, are left alone.
  */
 export const useEditToggleKey = () => {
-  const mode = useEditMode();
+  const edit = useEditSwitch();
   const switchEdit = useSwitchEdit();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (
-      mode === null ||
+      edit === null ||
       event.defaultPrevented ||
       event.altKey ||
       event.ctrlKey ||
@@ -60,7 +60,7 @@ export const useEditToggleKey = () => {
     }
 
     event.preventDefault();
-    switchEdit(!mode.on);
+    switchEdit(!edit.on);
   });
 
   useEffect(() => {

@@ -10,7 +10,7 @@ import type {
 import { Array as Arr } from "effect";
 import { createContext, use } from "react";
 
-import { useEditOn } from "./edit-mode-context.ts";
+import { useWhileEditOn } from "./edit-context.ts";
 import type { Arrangement } from "./served-store.ts";
 
 /**
@@ -84,19 +84,15 @@ export const EditingContext = createContext<Editing | null>(null);
  * The editing state, or `null` on a page that can't edit or while Edit is
  * off. Controls and handlers read this one.
  */
-export const useEditing = (): Editing | null => {
-  const on = useEditOn();
-  const editing = use(EditingContext);
-
-  return on ? editing : null;
-};
+export const useEditing = (): Editing | null =>
+  useWhileEditOn(use(EditingContext));
 
 /**
  * The editing state whether or not Edit is on, for what the page shows of
  * pending changes: their look, their list and their count. It gives no
  * reason to draw a control.
  */
-export const useEditingState = (): Editing | null => use(EditingContext);
+export const useEditingIgnoringEdit = (): Editing | null => use(EditingContext);
 
 /** The ids of the structures the pending and frozen layout changes act on. */
 export const pendingStructures = (

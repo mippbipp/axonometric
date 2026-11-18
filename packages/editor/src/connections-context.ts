@@ -7,7 +7,7 @@ import type {
 } from "@axonometric/contracts";
 import { createContext, use } from "react";
 
-import { useEditOn } from "./edit-mode-context.ts";
+import { useWhileEditOn } from "./edit-context.ts";
 import type { ReviewDone } from "./served-store.ts";
 
 /**
@@ -42,16 +42,12 @@ export const ConnectionsContext = createContext<Connections | null>(null);
  * The hop and flow proposals, or `null` on a page that can't propose or
  * while Edit is off. Controls read this one.
  */
-export const useConnections = (): Connections | null => {
-  const on = useEditOn();
-  const connections = use(ConnectionsContext);
-
-  return on ? connections : null;
-};
+export const useConnections = (): Connections | null =>
+  useWhileEditOn(use(ConnectionsContext));
 
 /**
  * The map as proposed, whether or not Edit is on, for the marks the page
  * draws on proposed hops. It gives no reason to draw a control.
  */
-export const useProposedHops = (): ProposedMap | undefined =>
+export const useProposedHopsIgnoringEdit = (): ProposedMap | undefined =>
   use(ConnectionsContext)?.proposed;

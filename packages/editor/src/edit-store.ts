@@ -1,7 +1,5 @@
+import { editStorage } from "@axonometric/contracts";
 import { useSyncExternalStore } from "react";
-
-/** The `localStorage` key that remembers Edit, as the theme's key does. */
-const storageKey = "axonometric-edit";
 
 /** Kept for the page's life when `localStorage` can't be used. */
 const remembered = { on: false };
@@ -19,7 +17,7 @@ const subscribe = (listener: () => void) => {
 /** `localStorage` can throw: a browser may block it for the page. */
 const read = (): boolean => {
   try {
-    return localStorage.getItem(storageKey) === "on";
+    return localStorage.getItem(editStorage.key) === editStorage.on;
   } catch {
     return remembered.on;
   }
@@ -30,9 +28,9 @@ const write = (on: boolean) => {
 
   try {
     if (on) {
-      localStorage.setItem(storageKey, "on");
+      localStorage.setItem(editStorage.key, editStorage.on);
     } else {
-      localStorage.removeItem(storageKey);
+      localStorage.removeItem(editStorage.key);
     }
   } catch {
     // The choice lasts until the page closes.

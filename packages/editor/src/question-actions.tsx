@@ -3,7 +3,7 @@ import { Array as Arr, Option, Result } from "effect";
 import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { useEditOn } from "./edit-mode-context.ts";
+import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
 import { entriesOfKind, useReview } from "./review-context.ts";

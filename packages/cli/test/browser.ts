@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 
+import { editStorage } from "@axonometric/contracts";
 import { assert } from "@effect/vitest";
 import { Array as Arr, Effect, Record, String as Str } from "effect";
 import { chromium } from "playwright";
@@ -37,9 +38,6 @@ const openContext = Effect.acquireRelease(
   }),
   (context) => Effect.promise(() => context.close())
 );
-
-/** The `localStorage` key and value that turn Edit on, as the page keeps them. */
-const editStorage = { key: "axonometric-edit", on: "on" } as const;
 
 /**
  * Opens `url` and records page errors and every request off the disk. A

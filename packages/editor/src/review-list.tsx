@@ -16,11 +16,11 @@ import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
-import { useEditOn } from "./edit-mode-context.ts";
-import { useEditingState } from "./editing-context.ts";
+import { useEditOn } from "./edit-context.ts";
+import { useEditingIgnoringEdit } from "./editing-context.ts";
 import { useExportState } from "./export-state-context.ts";
 import { NoteForm } from "./note-form.tsx";
-import { useProposedMap } from "./proposed-context.ts";
+import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
 import { listedEntries, useReview } from "./review-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -63,8 +63,8 @@ export function VerdictBadge({
 
 /** What an item is, in a few words. */
 const useItemDescription = () => {
-  const editing = useEditingState();
-  const proposed = useProposedMap();
+  const editing = useEditingIgnoringEdit();
+  const proposed = useProposedMapIgnoringEdit();
   const { state } = useWalkthrough();
   const exported = useExportState();
 
@@ -197,7 +197,9 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
         />
       ) : (
         <span className="flex flex-wrap gap-1.5">
-          {editOn && status.state === "open" && item.kind !== "layout" ? (
+          {(editOn || item.kind === "answer") &&
+          status.state === "open" &&
+          item.kind !== "layout" ? (
             <button
               type="button"
               className={controlClass}

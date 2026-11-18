@@ -6,7 +6,7 @@ import type { DragEvent } from "react";
 import { ChapterLegend } from "./chapter-legend.tsx";
 import { useAcceptedPlays, useChapterMarks } from "./chapter-marks-context.ts";
 import { controlClass } from "./control-class.ts";
-import { useEditOn } from "./edit-mode-context.ts";
+import { useEditOn } from "./edit-context.ts";
 import { fieldClass } from "./field-class.ts";
 import { useChapterPropose } from "./use-chapter-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";

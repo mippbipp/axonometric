@@ -8,8 +8,8 @@ import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
 import { DragPreviewProvider } from "./drag-preview.tsx";
+import { useEditSwitch } from "./edit-context.ts";
 import { useArrowOwner, useEditKeys } from "./edit-keys.ts";
-import { useEditMode } from "./edit-mode-context.ts";
 import { useEditToggleKey } from "./edit-toggle-key.ts";
 import { EditToggle } from "./edit-toggle.tsx";
 import { EditToolbar } from "./edit-toolbar.tsx";
@@ -74,6 +74,8 @@ const hintsOf = ({
   /** How many structures are in the multi-selection. */
   readonly multiSelected: number;
 }) => {
+  const editHint = editable ? [editing ? "e stops editing" : "e edits"] : [];
+
   if (overviewOpen) {
     return ["Esc closes this page"];
   }
@@ -98,7 +100,7 @@ const hintsOf = ({
         "← or Esc unpin",
         "] next chapter",
         "[ back",
-        ...(editable ? [editing ? "e stops editing" : "e edits"] : []),
+        ...editHint,
         "+ and − zoom, 0 zooms to fit",
         "v switches view",
         "click empty space to unpin",
@@ -106,7 +108,7 @@ const hintsOf = ({
     : [
         "→ or ] next chapter",
         "← or [ back",
-        ...(editable ? [editing ? "e stops editing" : "e edits"] : []),
+        ...editHint,
         "hover to read",
         "click to pin",
         "double-click to go inside",
@@ -130,7 +132,7 @@ function WalkthroughPage({ notices }: Notices) {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
   const { selected, inside, multiSelection } = useSelection();
   const editing = useEditing();
-  const editable = useEditMode() !== null;
+  const editable = useEditSwitch() !== null;
   const { open: overviewOpen } = useOverviewPage();
   const byId = useStructuresById();
   const insideStructure = inside === null ? undefined : byId.get(inside);

@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import type { Page } from "playwright";
 
 import {
+  attributesOf,
   boxesOf,
   centreOf,
   click,
@@ -136,6 +137,13 @@ describe("edit, off by default", () => {
         yield* textOf(page, "[data-ready-for-review]"),
         "Ready for review · 1"
       );
+
+      // The answer is reading, so it can be discarded from Pending too, while
+      // a note or a suggestion could not be.
+      yield* click(page, '[role="tab"][data-tab="pending"]');
+      yield* click(page, "[data-review-item] button:has-text('Discard')");
+      yield* waitGone(page, "[data-review-item]");
+      assert.strictEqual(yield* count(page, "[data-ready-for-review]"), 0);
     })
   );
 });
@@ -150,10 +158,9 @@ describe("turning Edit on", () => {
         yield* click(page, editButton);
         yield* waitFor(page, toolbar);
         assert.strictEqual(yield* pressed(page), "true");
-        assert.include(
-          yield* textOf(page, "[data-ready-for-review]"),
-          "Ready for review"
-        );
+
+        // Nothing waits, so there is nothing to send, with Edit on or off.
+        assert.strictEqual(yield* count(page, "[data-ready-for-review]"), 0);
 
         yield* Effect.promise(() => page.reload());
         yield* waitFor(page, toolbar);
@@ -204,7 +211,15 @@ describe("turning Edit on", () => {
     Effect.gen(function* () {
       const { page } = yield* openReviewMap({});
 
-      for (const chapter of ["c-all"]) {
+      const chapters = yield* attributesOf(
+        page,
+        "[data-chapter-rail] button[data-chapter]",
+        "data-chapter"
+      );
+
+      assert.isAbove(chapters.length, 1);
+
+      for (const chapter of chapters) {
         yield* goToChapter(page, chapter);
 
         for (const view of ["iso", "plan"] as const) {

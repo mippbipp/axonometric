@@ -8,7 +8,7 @@ import { Array as Arr, Option, Record as Rec, Result } from "effect";
 import { useId, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { useEditOn } from "./edit-mode-context.ts";
+import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { useReview } from "./review-context.ts";
 import {

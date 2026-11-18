@@ -22,9 +22,9 @@ import { App } from "./app.tsx";
 import { CompareContext } from "./compare-context.ts";
 import { ConnectionsContext } from "./connections-context.ts";
 import type { Connections } from "./connections-context.ts";
-import { EditModeContext } from "./edit-mode-context.ts";
-import type { EditMode } from "./edit-mode-context.ts";
-import { useStoredEdit } from "./edit-mode-store.ts";
+import { EditContext } from "./edit-context.ts";
+import type { EditSwitch } from "./edit-context.ts";
+import { useStoredEdit } from "./edit-store.ts";
 import { EditingContext } from "./editing-context.ts";
 import type { Editing } from "./editing-context.ts";
 import { ExportStateContext } from "./export-state-context.ts";
@@ -191,8 +191,8 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
 
   const [editOn, setEditOn] = useStoredEdit();
 
-  const editMode = useMemo(
-    (): EditMode => ({ on: editOn, set: setEditOn }),
+  const editSwitch = useMemo(
+    (): EditSwitch => ({ on: editOn, set: setEditOn }),
     [editOn, setEditOn]
   );
 
@@ -324,7 +324,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
   }, [proposals, view.stopped, store]);
 
   return (
-    <EditModeContext value={editMode}>
+    <EditContext value={editSwitch}>
       <EditingContext value={editing}>
         <AcceptingContext value={accepting}>
           <ReviewContext value={review}>
@@ -367,6 +367,6 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
           </ReviewContext>
         </AcceptingContext>
       </EditingContext>
-    </EditModeContext>
+    </EditContext>
   );
 }

@@ -12,8 +12,8 @@ import { useId, useState } from "react";
 import { useAccepting } from "./accepting-context.ts";
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
-import { useEditOn } from "./edit-mode-context.ts";
-import { useEditingState } from "./editing-context.ts";
+import { useEditOn } from "./edit-context.ts";
+import { useEditingIgnoringEdit } from "./editing-context.ts";
 import { listedEntries, useReview } from "./review-context.ts";
 import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
@@ -27,7 +27,7 @@ import { useWalkthrough } from "./walkthrough-context.ts";
  * while the page can't edit, and while Edit is off.
  */
 export function PendingTab() {
-  const editing = useEditingState();
+  const editing = useEditingIgnoringEdit();
   const editOn = useEditOn();
   const review = useReview();
   const accepting = useAccepting();
@@ -97,7 +97,7 @@ export function PendingTab() {
       {nothingAtAll ? (
         <p data-pending-empty className="text-sm">
           {editOn
-            ? "Nothing is pending. Drag a structure to move it, drag a corner of the selected one to resize it, drag a segment of an arrow to reroute it, or drag a zone title to move its group. Pin a note, suggest new text or answer a question from a structure’s panel."
+            ? "Nothing is pending. Drag a structure to move it, drag a corner of the selected one to resize it, drag a segment of an arrow to reroute it, or drag a zone title to move its group. Pin a note, suggest new text or answer a question from a structure's panel."
             : "Nothing is pending. Press Edit to move structures, propose changes or pin notes."}
         </p>
       ) : null}

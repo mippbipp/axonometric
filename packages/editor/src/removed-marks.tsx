@@ -9,7 +9,7 @@ import {
 import type { SceneStructure, View } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
-import { useProposedMap } from "./proposed-context.ts";
+import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
 
 /**
  * A structure proposed for deletion, crossed out until the agent has reviewed
@@ -29,7 +29,7 @@ export function RemovedMarks({
   readonly structures: readonly SceneStructure[];
   readonly view: View;
 }) {
-  const proposed = useProposedMap();
+  const proposed = useProposedMapIgnoringEdit();
 
   const removes =
     proposed === undefined ? undefined : marked(proposed, removedMark);

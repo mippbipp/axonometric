@@ -24,7 +24,7 @@ import type { ReactNode } from "react";
 import { ChapterPendingLook } from "./chapter-pending-look.tsx";
 import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
-import { useProposedHops } from "./connections-context.ts";
+import { useProposedHopsIgnoringEdit } from "./connections-context.ts";
 import { useDraftSpot } from "./draft-spot.ts";
 import { DragOutlines } from "./drop-outline.tsx";
 import { stableFactsOf } from "./edge-handle-spots.ts";
@@ -135,7 +135,7 @@ export function MapView({
   // The zoom the text is sized for, which the viewport reports as it zooms.
   const [textZoom, setTextZoom] = useState(1);
 
-  const proposedHops = useProposedHops();
+  const proposedHops = useProposedHopsIgnoringEdit();
 
   // How the page marks the hops its proposals draw, relabel or delete. A
   // file's drawing passes none.

@@ -8,9 +8,9 @@ import { spokenMarks, useCompare } from "./compare-context.ts";
 import {
   pendingStructures,
   useEditing,
-  useEditingState,
+  useEditingIgnoringEdit,
 } from "./editing-context.ts";
-import { useProposedMap } from "./proposed-context.ts";
+import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useTooltipActions } from "./tooltip-context.ts";
@@ -42,10 +42,10 @@ export function StructureTarget({
   const name = useStructuresById().get(id)?.name ?? id;
   const isSelected = selected === id;
   const editing = useEditing();
-  const pendingEditing = useEditingState();
+  const editingIgnoringEdit = useEditingIgnoringEdit();
   const isMultiSelected = multiSelection.has(id);
 
-  const proposed = useProposedMap();
+  const proposed = useProposedMapIgnoringEdit();
 
   const isRemoved =
     proposed !== undefined && marksOf(proposed, removedMark).has(id);
@@ -54,7 +54,7 @@ export function StructureTarget({
   const chapterPending = useChapterPendingStructures().has(id);
 
   const isPending =
-    pendingStructures(pendingEditing).has(id) ||
+    pendingStructures(editingIgnoringEdit).has(id) ||
     proposed?.structures.has(id) === true ||
     chapterPending;
 

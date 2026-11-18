@@ -1,7 +1,7 @@
 import type { NoteTarget } from "@axonometric/contracts";
 import { Array as Arr, Option, Result } from "effect";
 
-import { useEditOn } from "./edit-mode-context.ts";
+import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
 import { noteTargetKey } from "./note-target.ts";
