@@ -87,7 +87,7 @@ hosts/pewter/
     {
       id: "updater",
       code: "U",
-      name: "Updater",
+      name: "Flake updater",
       shape: "tall",
       group: "pewter",
       status: "live",
@@ -277,7 +277,7 @@ hosts/pewter/
       id: "build",
       code: "B",
       name: "Build gate build jobs",
-      tag: "Build jobs",
+      tag: "Build gate jobs",
       shape: "job",
       group: "actions",
       status: "live",
@@ -342,7 +342,7 @@ hosts/pewter/
     {
       id: "watchdog",
       code: "WD",
-      name: "Watchdog",
+      name: "Update watchdog",
       shape: "job",
       group: "actions",
       status: "live",

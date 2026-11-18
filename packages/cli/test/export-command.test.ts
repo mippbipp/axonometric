@@ -102,7 +102,7 @@ describe("export", () => {
         const texts = textsOf(scene);
 
         for (const text of [
-          "Updater",
+          "Flake updater",
           "Flake fixer",
           "merge origin/main",
           "nix flake update",

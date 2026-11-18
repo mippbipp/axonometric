@@ -391,7 +391,7 @@ data.structures[1].tag = "${tag}";`
       Effect.gen(function* () {
         for (const [name, tag] of [
           ["Attic cache", "Attic cache"],
-          ["Updater", "flake-updater"],
+          ["Flake updater", "flake-updater-service"],
           ["Watchdog", "update-watchdog"],
         ] as const) {
           const warnings = yield* tagWarnings(name, tag);
