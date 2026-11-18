@@ -263,11 +263,23 @@ describe("build places structures", () => {
         assert.lengthOf(Rec.keys(layout.structures), 15);
 
         // check warns about overlapping footprints, covered tags, crowded
-        // zones and hops with no clear route.
+        // zones and hops with no clear route. The auto-placed layout leaves
+        // a few hops between boxes with no room for their labels in Plan
+        // view, which check says.
         const checked = yield* runCli(home, ["check", `${home}/${pipeline}`]);
 
         assert.strictEqual(checked.exitCode, 0, checked.stdout);
-        assert.include(checked.stdout, ": 0 errors, 0 warnings.");
+        assert.include(checked.stdout, ": 0 errors, 3 warnings.");
+
+        assert.lengthOf(
+          Arr.filter(
+            Str.split("\n")(checked.stdout),
+            (line) =>
+              Str.startsWith("warning ")(line) &&
+              Str.includes("has no clear spot beside its route")(line)
+          ),
+          3
+        );
       }),
     // build and check route and lay out every chapter of a 29-hop map.
     30_000

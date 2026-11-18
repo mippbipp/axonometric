@@ -1038,8 +1038,8 @@ interface Leg extends Segment {
 /**
  * The spots a label of `width` may take at a point `share` of the way along
  * a leg: beside it, its centre on the leg's perpendicular with its nearest
- * edge one of `labelGaps` from the line, on either side; or on the line itself,
- * centred on it, where its paper backing breaks the line.
+ * edge one of `labelGaps` from the line, on either side; and, for the hover
+ * fallback, on the line itself, centred on it.
  */
 const spotsAt = (leg: Leg, share: number, { width, height: tall }: TagSize) => {
   const at = lerp({ from: leg.start, to: leg.end, t: share });
@@ -1157,9 +1157,10 @@ interface LabelPlacement {
 }
 
 /**
- * The first clear spot for a hop's label at one of its legs. Legs long
+ * The first clear spot for a hop's label beside one of its legs. Legs long
  * enough for it come first, longest first; on each, spots nearest the
- * middle first, beside the line before on it.
+ * middle first, nearest the line first. A spot keeps off every route, its
+ * own included, and prefers one nearer its own route than any other.
  */
 const labelSpot = ({
   points,
@@ -1196,19 +1197,36 @@ const labelSpot = ({
   const sorted = Arr.sort(legs, order);
 
   const candidates = Arr.flatMap(sorted, (leg: Leg) =>
-    Arr.flatMap(labelShares, (share) => {
-      const { beside, on } = spotsAt(leg, share, size);
-
-      return [...beside, on];
-    })
+    Arr.flatMap(labelShares, (share) => spotsAt(leg, share, size).beside)
   );
 
+  const own = Arr.map(segmentsOf(points), lineObstacle);
+  const shapesOnly = { shapes: avoid.shapes, lines: [] };
+
+  // A spot keeps off every route, its own included, and clear of the shapes.
+  const clear = (rect: ScreenRect) =>
+    labelGap(points, rect) <= reach &&
+    clearOf(rectPolygon(rect), { shapes: [], lines: own }) &&
+    clearOf(rectPolygon(growRect(rect, labelClearance)), shapesOnly) &&
+    clearOf(rectPolygon(growRect(rect, labelClearance)), {
+      shapes: [],
+      lines: avoid.lines,
+    });
+
+  // The best spot sits nearer its own route than any other, so the reader
+  // can tell whose it is.
+  const nearest = (rect: ScreenRect) => {
+    const gap = labelGap(points, rect);
+
+    return Arr.every(
+      avoid.lines,
+      (line) => labelGap([line.start, line.end], rect) > gap
+    );
+  };
+
   const spot = Option.getOrUndefined(
-    Arr.findFirst(
-      candidates,
-      (rect) =>
-        labelGap(points, rect) <= reach &&
-        clearOf(rectPolygon(growRect(rect, labelClearance)), avoid)
+    Arr.findFirst(candidates, (rect) => clear(rect) && nearest(rect)).pipe(
+      Option.orElse(() => Arr.findFirst(candidates, clear))
     )
   );
 
@@ -2125,7 +2143,7 @@ const clashOf = (first: ClashPart, second: ClashPart): SceneClash => ({
  * Every pair of things in a scene drawn over each other, by the overlap
  * rule: no two of the name tags, hop labels, zone titles, code chips and
  * box outlines overlap (a chip sits on its own box), and no route runs
- * through a name tag, a zone title or a label other than its own. A
+ * through a name tag, a zone title or a label, its own included. A
  * route may run through the tag of a structure it starts or ends at only
  * where it can't avoid it, so that counts too. On the ground, no route
  * touches a box's outline other than at its own ends, lies along a zone's
@@ -2196,7 +2214,6 @@ export const sceneClashes = (scene: Scene): readonly SceneClash[] => {
 
   const crossings = Arr.flatMap(scene.hops, ({ hop, points }) =>
     Arr.flatMap(text, (shape) =>
-      (shape.kind === "label" && shape.id === hop.id) ||
       shape.kind === "chip" ||
       !Arr.some(segmentsOf(points), (segment) =>
         segmentCrosses(segment, shape.polygon)

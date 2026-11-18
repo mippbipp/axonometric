@@ -502,16 +502,43 @@ const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
         : Arr.filter(routeWarnings(hop, route), ({ message }) => once(message));
     });
 
-    const clashes = clashWarnings({
-      clashes: Arr.map(views, (view) => ({
+    const scenes = Arr.map(views, (view) => ({
+      view,
+      scene: sceneOf({
+        data,
+        layout,
+        revealed,
+        routes,
+        labelFirst: plays,
         view,
-        clashes: sceneClashes(
-          sceneOf({ data, layout, revealed, routes, labelFirst: plays, view })
-        ),
+      }),
+    }));
+
+    const clashes = clashWarnings({
+      clashes: Arr.map(scenes, ({ view, scene }) => ({
+        view,
+        clashes: sceneClashes(scene),
       })),
       where,
       once,
     });
+
+    const unlabelled = Arr.flatMap(scenes, ({ view, scene }) =>
+      Arr.flatMap(scene.hops, ({ hop, label }) =>
+        view === "iso" ||
+        label !== undefined ||
+        !plays.includes(hop.id) ||
+        !once(`label ${view} ${hop.id}`)
+          ? []
+          : [
+              mapWarning({
+                file: "layout.json",
+                path: ["structures"],
+                message: `the label of hop "${hop.id}" has no clear spot beside its route${where}${viewNames[view]}, so it shows only on hover. Move the structures apart, so the route has room for its label.`,
+              }),
+            ]
+      )
+    );
 
     const shared = Arr.filter(sharedSegments(data, routes), ({ message }) =>
       once(message)
@@ -528,7 +555,7 @@ const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
             ({ message }) => once(message)
           );
 
-    return [...routing, ...shared, ...zones, ...clashes];
+    return [...routing, ...shared, ...zones, ...clashes, ...unlabelled];
   });
 };
 
