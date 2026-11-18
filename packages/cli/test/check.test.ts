@@ -399,7 +399,7 @@ data.structures[1].tag = "${tag}";`
           assert.deepStrictEqual(
             Arr.map(warnings, ({ message }) => message),
             [
-              `tag "${tag}" is not shorter than the name "${name}". A tag only shortens a long name, so remove it. A resource's real identifier, such as a unit or file name, goes in howItsBuilt.`,
+              `tag "${tag}" is not shorter than the name "${name}". A tag only shortens a long name. Remove it, or shorten the name's own words. A resource's real identifier, such as a unit or file name, goes in howItsBuilt.`,
             ]
           );
         }
@@ -412,6 +412,7 @@ data.structures[1].tag = "${tag}";`
           ["Maintainer", "you"],
           ["Merge ruleset", "main rules"],
           ["Flake inputs", "upstream"],
+          ["Simple Storage Service", "S3"],
         ] as const) {
           const warnings = yield* tagWarnings(name, tag);
 
@@ -433,6 +434,7 @@ data.structures[1].tag = "${tag}";`
           ["Pull request", "PR"],
           ["Flake update branch and PR", "Update PR"],
           ["Authentication service", "Auth"],
+          ["Amazon S3 bucket", "S3"],
         ] as const) {
           assert.deepStrictEqual(yield* tagWarnings(name, tag), []);
         }

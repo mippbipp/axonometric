@@ -311,9 +311,9 @@ const chapterSize = (data: MapData): readonly MapProblem[] =>
       : []),
   ]);
 
-/** The letters of `text`, lowercased, with spaces, digits and punctuation gone. */
+/** The letters and digits of `text`, lowercased, with spaces and punctuation gone. */
 const lettersOf = (text: string) =>
-  Str.replaceAll(/[^\p{L}]/gu, "")(Str.toLowerCase(text));
+  Str.replaceAll(/[^\p{L}\p{N}]/gu, "")(Str.toLowerCase(text));
 
 /** Whether the letters of `short` appear in `long` in order, not necessarily next to each other. */
 const isSubsequence = (short: string, long: string) =>
@@ -346,7 +346,7 @@ const shortensName = (tag: string, name: string) => {
 };
 
 /** A tag only shortens the name, so it is shorter and made from the name. */
-const tags = (data: MapData): readonly MapProblem[] =>
+const tagShortensName = (data: MapData): readonly MapProblem[] =>
   Arr.flatMap(data.structures, (structure, index) => {
     const { tag, name } = structure;
 
@@ -358,7 +358,7 @@ const tags = (data: MapData): readonly MapProblem[] =>
       return [
         warning(
           ["structures", index, "tag"],
-          `tag "${tag}" is not shorter than the name "${name}". A tag only shortens a long name, so remove it. A resource's real identifier, such as a unit or file name, goes in howItsBuilt.`
+          `tag "${tag}" is not shorter than the name "${name}". A tag only shortens a long name. Remove it, or shorten the name's own words. A resource's real identifier, such as a unit or file name, goes in howItsBuilt.`
         ),
       ];
     }
@@ -418,7 +418,7 @@ export const checkMap: {
     ...checkLayout(data, layout),
     ...emptyGroups(data),
     ...chapterSize(data),
-    ...tags(data),
+    ...tagShortensName(data),
   ]
 );
 

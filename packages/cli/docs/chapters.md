@@ -9,7 +9,7 @@ A whole system at once is hard to parse. Split the walkthrough into chapters tha
 3. Reveals are cumulative. A structure revealed in chapter 2 stays on the map in chapter 3 and after. List only the new structures in `reveals`.
 4. The last chapter shows the whole system. By its end every structure is revealed, and `check` reports one that never is. The last chapter has the flow picker, which replays any flow.
 
-Five hops are about what the reader can follow in one stop. In a map with many hops, a chapter can't play them all. The chapters teach the system in pieces, and the flows in the last chapter tell the whole stories, such as one green week from the timer to the merge. Don't stretch a chapter to carry a whole flow.
+In a map with many hops, a chapter can't play them all. The chapters teach the system in pieces, and the flows in the last chapter tell the whole stories, such as one green week from the timer to the merge.
 
 A chapter's `plays` lists hop ids, so a hop is written once in `hops` and named by id everywhere else. Put a hop in the chapter where its second end is revealed. List the hops in the order they should play.
 

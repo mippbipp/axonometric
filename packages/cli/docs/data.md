@@ -49,7 +49,7 @@ A list of `{ id, title }`. Each group gets a zone drawn around its structures. A
 
 A `sources` path runs from the root of the git repo that holds the home folder, with `/` between folders, such as `src/server.ts`. `commit` is optional, 7 to 64 hex digits: the commit the structure's text describes. With it, `check` warns when the file has changed since, so you know to reread it, update the text, and pin the source to the current commit (`git rev-parse --short HEAD`). Without it, `check` only needs the path to be a file git tracks at HEAD. A path that isn't, or a commit that isn't in the local history, is an error. Listing the same file twice is a warning. `check` skips the source checks when the home folder isn't in a git repo, and says so.
 
-A structure has one name. The side index shows `name` and the map shows `tag`, so a tag that says something else makes the two disagree. If the real identifier of a resource differs from its name, such as a unit, a file or a branch, put that in `howItsBuilt`. `check` warns when a `tag` is not shorter than its `name`, or doesn't read as a shortened form of it.
+A structure has one name. The side index shows `name` and the name tag shows `tag`, so a tag that says something else makes the two disagree. If the real identifier of a resource differs from its name, such as a unit, a file or a branch, put that in `howItsBuilt`. `check` warns when a `tag` is not shorter than its `name`, or doesn't read as a shortened form of it.
 
 Give a structure `steps` when it does several things in order. The inside view walks them with one packet. Skip them for a plain box.
 
