@@ -388,7 +388,7 @@ describe("resizing structures", () => {
 
 describe("the side panel tabs", () => {
   it.live(
-    "fit on one line each at 1280 wide, with Flows, Pending and History listed",
+    "stay readable at 1280 wide, never overlap and stay inside the panel, with Flows, Pending and History listed",
     () =>
       Effect.gen(function* () {
         const { page } = yield* servedReview;
@@ -410,15 +410,38 @@ describe("the side panel tabs", () => {
         ]);
 
         const boxes = yield* boxesOf(page, '[role="tab"]');
-        const [first] = boxes;
+        const [panel] = yield* boxesOf(page, "[data-side-panel]");
 
         assert.strictEqual(boxes.length, 5);
-        assert.isDefined(first);
+        assert.isDefined(panel);
 
-        for (const box of boxes) {
-          // One line of 12px text, with padding, is well under two lines.
+        const sizes = yield* Effect.promise(() =>
+          page.evaluate<string[]>(
+            `[...document.querySelectorAll('[role="tab"]')].map((tab) => getComputedStyle(tab).fontSize)`
+          )
+        );
+
+        // The same 12px as the panel's other controls, not the old 10px.
+        assert.deepStrictEqual(sizes, ["12px", "12px", "12px", "12px", "12px"]);
+
+        for (const [index, box] of boxes.entries()) {
+          // Each label is one line, and every tab sits inside the panel.
           assert.isBelow(box.height, 30);
-          assert.strictEqual(box.y, first?.y);
+          assert.isAtLeast(box.x, panel?.x ?? 0);
+          assert.isAtMost(
+            box.x + box.width,
+            (panel?.x ?? 0) + (panel?.width ?? 0)
+          );
+
+          for (const other of boxes.slice(index + 1)) {
+            const apart =
+              box.x + box.width <= other.x ||
+              other.x + other.width <= box.x ||
+              box.y + box.height <= other.y ||
+              other.y + other.height <= box.y;
+
+            assert.isTrue(apart);
+          }
         }
       })
   );

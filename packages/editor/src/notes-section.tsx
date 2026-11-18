@@ -1,6 +1,7 @@
 import type { NoteTarget } from "@axonometric/contracts";
 import { Array as Arr, Option, Result } from "effect";
 
+import { useEditOn } from "./edit-mode-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
 import { noteTargetKey } from "./note-target.ts";
@@ -13,6 +14,7 @@ import { entriesOfKind, useReview } from "./review-context.ts";
  */
 export function NotesSection({ target }: { readonly target: NoteTarget }) {
   const review = useReview();
+  const editOn = useEditOn();
 
   if (review === null) {
     return null;
@@ -24,6 +26,10 @@ export function NotesSection({ target }: { readonly target: NoteTarget }) {
     entriesOfKind(review.entries, "note"),
     ({ item }) => noteTargetKey(item.target) === here
   );
+
+  if (!editOn && notes.length === 0) {
+    return null;
+  }
 
   return (
     <section data-notes-section className="flex flex-col gap-2">
@@ -43,7 +49,7 @@ export function NotesSection({ target }: { readonly target: NoteTarget }) {
           ))}
         </ul>
       )}
-      {review.canWrite ? (
+      {editOn && review.canWrite ? (
         <NoteForm
           label="Pin a note"
           hideLabel

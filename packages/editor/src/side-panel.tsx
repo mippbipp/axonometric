@@ -9,7 +9,8 @@ import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { DragWarnings } from "./drag-preview.tsx";
 import { DrawHopForm } from "./draw-hop-form.tsx";
-import { useEditing } from "./editing-context.ts";
+import { useEditOn } from "./edit-mode-context.ts";
+import { useEditingState } from "./editing-context.ts";
 import { FlowsTab } from "./flows-tab.tsx";
 import { GroupPanel } from "./group-panel.tsx";
 import { useHistory } from "./history-context.ts";
@@ -222,7 +223,7 @@ const renderContent = Match.type<PanelContent>().pipe(
 type Tab = "details" | "questions" | "flows" | "pending" | "history";
 
 const tabClass =
-  "focus-visible:outline-ink -mb-px cursor-pointer border border-transparent disabled:cursor-default disabled:opacity-40 px-1 py-1 text-2xs tracking-normal whitespace-nowrap uppercase focus-visible:outline-2 focus-visible:-outline-offset-2 aria-selected:border-ink aria-selected:border-b-paper aria-selected:bg-paper";
+  "focus-visible:outline-ink cursor-pointer border border-transparent px-2 py-0.5 text-xs whitespace-nowrap uppercase hover:border-ink focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-40 disabled:hover:border-transparent aria-selected:border-ink aria-selected:bg-ink aria-selected:text-paper";
 
 /** The tabs to show: Pending only while the page can edit, History only when served. */
 const tabsOf = ({
@@ -431,7 +432,8 @@ export function SidePanel() {
   const openCount = openQuestionCount(open);
 
   const idPrefix = useId();
-  const editing = useEditing();
+  const editing = useEditingState();
+  const editOn = useEditOn();
   const history = useHistory();
   const waiting = useWaitingCount();
   const connections = useConnections();
@@ -457,7 +459,7 @@ export function SidePanel() {
     pendingCount,
     hasHistory: history !== null,
     pendingOff: editing === null,
-    hasFlows: connections !== null || history !== null,
+    hasFlows: editOn && (connections !== null || history !== null),
     flowsOff: connections === null,
   });
 
@@ -503,7 +505,7 @@ export function SidePanel() {
         tabIndex={0}
         role="tablist"
         aria-label="Side panel"
-        className="border-ink flex min-w-0 gap-0 overflow-x-auto border-b px-1 pt-2"
+        className="border-ink flex min-w-0 flex-wrap gap-1 border-b px-3 py-2"
         onKeyDown={onTabKeyDown}
       >
         {Arr.map(tabs, ({ id, label, disabled }) => (

@@ -4,7 +4,7 @@ import { Array as Arr } from "effect";
 import { useMemo } from "react";
 
 import { OutlineLines } from "./outline-paths.tsx";
-import { useProposed } from "./proposed-context.ts";
+import { useProposedMap } from "./proposed-context.ts";
 
 /**
  * A zone of a group the engineer has proposed or renamed, in the pending look:
@@ -17,7 +17,7 @@ import { useProposed } from "./proposed-context.ts";
  * This is an editing layer: a file's drawing never includes it.
  */
 export function PendingZones({ scene }: { readonly scene: Scene }) {
-  const proposed = useProposed()?.proposed;
+  const proposed = useProposedMap();
   const text = useMemo(() => textBoxesOf(scene), [scene]);
 
   const pending =

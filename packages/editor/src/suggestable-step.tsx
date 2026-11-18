@@ -8,6 +8,7 @@ import { Array as Arr, Option, Record as Rec, Result } from "effect";
 import { useId, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { useEditOn } from "./edit-mode-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { useReview } from "./review-context.ts";
 import {
@@ -259,6 +260,7 @@ export function SuggestableStep({
   readonly step: Step;
 }) {
   const review = useReview();
+  const editOn = useEditOn();
 
   const nameFound = Option.getOrUndefined(
     useSuggestionFor(structure, stepNameField(index))
@@ -268,7 +270,8 @@ export function SuggestableStep({
     useSuggestionFor(structure, stepDetailField(index))
   );
 
-  const [editing, setEditing] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const editing = opened && editOn;
 
   const parts: readonly Part[] = [
     {
@@ -294,7 +297,7 @@ export function SuggestableStep({
   }
 
   const start = () => {
-    setEditing(true);
+    setOpened(true);
   };
 
   const editable = Arr.some(parts, ({ found }) => canSuggest(found));
@@ -312,7 +315,7 @@ export function SuggestableStep({
         <span className="opacity-70">{index + 1}</span>{" "}
         <b className="font-medium">{step.name}</b>
       </span>
-      {review.canWrite && !editing && editable ? (
+      {editOn && review.canWrite && !editing && editable ? (
         <StartButton
           field={stepNameField(index)}
           what={stepNumber}
@@ -335,7 +338,7 @@ export function SuggestableStep({
           parts={parts}
           index={index}
           onDone={() => {
-            setEditing(false);
+            setOpened(false);
           }}
         />
       ) : (
@@ -361,7 +364,7 @@ export function SuggestableStep({
                     field === parts[0]?.field ? "font-medium" : undefined
                   }
                 >
-                  {suggestionButtons(found, start)}
+                  {editOn ? suggestionButtons(found, start) : null}
                 </TextAndSuggestion>
               )}
             </span>

@@ -3,7 +3,8 @@ import { Result } from "effect";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { useEditing } from "./editing-context.ts";
+import { useEditOn } from "./edit-mode-context.ts";
+import { useEditingState } from "./editing-context.ts";
 import { useReview } from "./review-context.ts";
 
 /** What the dialog shows once a batch is frozen. */
@@ -95,7 +96,8 @@ function PromptBox({
  */
 export function ReadyForReview() {
   const review = useReview();
-  const editing = useEditing();
+  const editing = useEditingState();
+  const editOn = useEditOn();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [sent, setSent] = useState<Sent | null>(null);
@@ -155,22 +157,27 @@ export function ReadyForReview() {
     }
   };
 
+  // Reading shows the button only when something waits to be sent.
+  const showButton = editOn || open > 0 || busy;
+
   return (
     <>
-      <button
-        type="button"
-        data-ready-for-review
-        className={controlClass}
-        disabled={!review.canWrite || busy || open === 0}
-        title={
-          open === 0
-            ? "Add a note, a suggestion or an answer, or move a structure first"
-            : "Freeze these into a batch and copy a prompt for your agent"
-        }
-        onClick={press}
-      >
-        {busy ? "Saving…" : `Ready for review · ${open}`}
-      </button>
+      {showButton ? (
+        <button
+          type="button"
+          data-ready-for-review
+          className={controlClass}
+          disabled={!review.canWrite || busy || open === 0}
+          title={
+            open === 0
+              ? "Add a note, a suggestion or an answer, or move a structure first"
+              : "Freeze these into a batch and copy a prompt for your agent"
+          }
+          onClick={press}
+        >
+          {busy ? "Saving…" : `Ready for review · ${open}`}
+        </button>
+      ) : null}
       {failure === undefined ? null : (
         <output
           data-review-failure

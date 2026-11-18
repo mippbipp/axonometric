@@ -9,6 +9,9 @@ import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
 import { DragPreviewProvider } from "./drag-preview.tsx";
 import { useArrowOwner, useEditKeys } from "./edit-keys.ts";
+import { useEditMode } from "./edit-mode-context.ts";
+import { useEditToggleKey } from "./edit-toggle-key.ts";
+import { EditToggle } from "./edit-toggle.tsx";
 import { EditToolbar } from "./edit-toolbar.tsx";
 import { useEditing } from "./editing-context.ts";
 import { ExportMenu } from "./export-menu.tsx";
@@ -55,6 +58,7 @@ const hintsOf = ({
   inside,
   canGoInside,
   editing,
+  editable,
   multiSelected,
 }: {
   /** Whether the How it's built page is open. */
@@ -63,8 +67,10 @@ const hintsOf = ({
   readonly inside: boolean;
   /** Whether the selected structure has steps. */
   readonly canGoInside: boolean;
-  /** Whether the page can edit the layout. */
+  /** Whether Edit is on, so the page can edit the layout. */
   readonly editing: boolean;
+  /** Whether the page has an Edit button, which `e` presses. */
+  readonly editable: boolean;
   /** How many structures are in the multi-selection. */
   readonly multiSelected: number;
 }) => {
@@ -92,18 +98,20 @@ const hintsOf = ({
         "← or Esc unpin",
         "] next chapter",
         "[ back",
-        "+ and − zoom, 0 fits",
+        ...(editable ? [editing ? "e stops editing" : "e edits"] : []),
+        "+ and − zoom, 0 zooms to fit",
         "v switches view",
         "click empty space to unpin",
       ]
     : [
         "→ or ] next chapter",
         "← or [ back",
+        ...(editable ? [editing ? "e stops editing" : "e edits"] : []),
         "hover to read",
         "click to pin",
         "double-click to go inside",
         "click a packet to read its payload",
-        "+ and − zoom, 0 fits",
+        "+ and − zoom, 0 zooms to fit",
         "v switches view",
         ...(editing ? ["Shift-click or Shift-drag selects several"] : []),
       ];
@@ -122,6 +130,7 @@ function WalkthroughPage({ notices }: Notices) {
   const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
   const { selected, inside, multiSelection } = useSelection();
   const editing = useEditing();
+  const editable = useEditMode() !== null;
   const { open: overviewOpen } = useOverviewPage();
   const byId = useStructuresById();
   const insideStructure = inside === null ? undefined : byId.get(inside);
@@ -147,6 +156,8 @@ function WalkthroughPage({ notices }: Notices) {
   ];
 
   const [switchBlocked] = blockedBy;
+
+  useEditToggleKey();
 
   useViewKey(() => {
     if (switchBlocked === undefined) {
@@ -184,6 +195,7 @@ function WalkthroughPage({ notices }: Notices) {
             choose={setView}
             disabledBecause={switchBlocked}
           />
+          <EditToggle />
           <OverviewButton />
           <ExportMenu view={view} />
           <ThemeToggle />
@@ -215,14 +227,18 @@ function WalkthroughPage({ notices }: Notices) {
               <PacketLayer routeOf={routeOf} />
             </MapView>
             <div className="pointer-events-none absolute inset-x-3 top-3 bottom-2/3 flex flex-col items-start gap-2">
-              <ChapterRail className="pointer-events-auto shrink-0" />
+              {/* The toolbar shares the rail's row and wraps below it when
+                  both don't fit, so it never covers the chapter title. */}
+              <div className="flex w-full flex-wrap items-start gap-x-3 gap-y-2">
+                <ChapterRail className="pointer-events-auto min-w-0 flex-1 basis-80" />
+                <EditToolbar
+                  view={view}
+                  className="pointer-events-auto ml-auto shrink-0"
+                />
+              </div>
               {/* The inside view shows the notices instead, while it's open. */}
               {insideStructure === undefined ? notices : null}
             </div>
-            <EditToolbar
-              view={view}
-              className="pointer-events-auto absolute top-3 right-3"
-            />
             {/* Stops short of the zoom controls at the bottom right, and wraps
                 upward when the flows don't fit on one line. */}
             <div
@@ -271,6 +287,7 @@ function WalkthroughPage({ notices }: Notices) {
               inside: insideStructure !== undefined,
               canGoInside: hasSteps(selectedStructure),
               editing: editing?.canEdit === true,
+              editable,
               multiSelected: arrowOwner === "nudge" ? multiSelection.size : 0,
             }),
             (hint) => (

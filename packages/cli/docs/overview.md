@@ -1,6 +1,6 @@
 # axonometric
 
-axonometric draws a system's architecture as an interactive map. You write what the system is in `data.mjs`. The CLI places it, draws it and serves it. The engineer walks through the map chapter by chapter, presents it as one diagram, and edits it in the browser. Their edits come back to you as proposals that you accept or argue against.
+axonometric draws a system's architecture as an interactive map. You write what the system is in `data.mjs`. The CLI places it, draws it and serves it. The engineer walks through the map chapter by chapter, presents it as one diagram, and edits it in the browser after pressing Edit. Their edits come back to you as proposals that you accept or argue against.
 
 These docs ship inside the CLI, so they match the version you are running. Read the topic for the job at hand before you act on it.
 

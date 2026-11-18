@@ -1,9 +1,9 @@
 import { Array as Arr, Option, Record as Rec } from "effect";
 import { useState } from "react";
 
-import { useConnections } from "./connections-context.ts";
+import { useProposedHops } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
-import { pendingHops, useEditing } from "./editing-context.ts";
+import { pendingHops, useEditing, useEditingState } from "./editing-context.ts";
 import { HopEdit } from "./hop-edit.tsx";
 import { useHopProposals } from "./hop-proposals.ts";
 import { NotesSection } from "./notes-section.tsx";
@@ -22,11 +22,12 @@ export function HopPanel({ id }: { readonly id: string }) {
   const { selectHop } = useSelection();
   const byId = useStructuresById();
   const editing = useEditing();
-  const connections = useConnections();
+  const pendingEditing = useEditingState();
+  const proposedHops = useProposedHops();
   const proposals = useHopProposals(id);
   const [refusal, setRefusal] = useState<string | undefined>();
 
-  const hops = connections?.proposed.state.data.hops ?? state.data.hops;
+  const hops = proposedHops?.state.data.hops ?? state.data.hops;
 
   const hop = Arr.findFirst(hops, (item) => item.id === id).pipe(
     Option.getOrUndefined
@@ -40,7 +41,7 @@ export function HopPanel({ id }: { readonly id: string }) {
   const nameOf = (structure: string) => byId.get(structure)?.name ?? structure;
   const overridden = Rec.has(state.layout.routes ?? {}, id);
   const removed = proposals?.deleted === true;
-  const pending = pendingHops(editing).has(id);
+  const pending = pendingHops(pendingEditing).has(id);
 
   return (
     <section data-hop-panel={id} className="flex flex-col gap-3">

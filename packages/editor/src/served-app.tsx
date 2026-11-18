@@ -22,6 +22,9 @@ import { App } from "./app.tsx";
 import { CompareContext } from "./compare-context.ts";
 import { ConnectionsContext } from "./connections-context.ts";
 import type { Connections } from "./connections-context.ts";
+import { EditModeContext } from "./edit-mode-context.ts";
+import type { EditMode } from "./edit-mode-context.ts";
+import { useStoredEdit } from "./edit-mode-store.ts";
 import { EditingContext } from "./editing-context.ts";
 import type { Editing } from "./editing-context.ts";
 import { ExportStateContext } from "./export-state-context.ts";
@@ -126,6 +129,10 @@ const none: readonly string[] = [];
  * the accepted layout with the pending changes applied, and edits them
  * while the server is up.
  *
+ * Editing is off until the engineer turns Edit on, and the browser remembers
+ * the choice. With it off the page hides every editing control and keeps
+ * what it draws, such as pending changes and proposals.
+ *
  * Opening a revision from the History tab swaps the map for that revision's
  * and takes editing away, under the same providers, so the chapter, the
  * selection, the view and the zoom stay. `useHistoryView` holds that, the
@@ -181,6 +188,13 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
   );
 
   const history = useHistoryView({ store, view, shown });
+
+  const [editOn, setEditOn] = useStoredEdit();
+
+  const editMode = useMemo(
+    (): EditMode => ({ on: editOn, set: setEditOn }),
+    [editOn, setEditOn]
+  );
 
   const editing = useMemo(
     (): Editing | null =>
@@ -310,47 +324,49 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
   }, [proposals, view.stopped, store]);
 
   return (
-    <EditingContext value={editing}>
-      <AcceptingContext value={accepting}>
-        <ReviewContext value={review}>
-          <ProposedContext value={history.past ? null : proposing}>
-            <ConnectionsContext value={history.past ? null : connecting}>
-              <ProposalOpsContext value={history.past ? null : proposalOps}>
-                <RenamesContext value={renames}>
-                  <ExportStateContext value={history.past ? null : exported}>
-                    <ProposedAddsContext value={history.past ? none : adds}>
-                      <HistoryContext value={history.panel}>
-                        <CompareContext value={history.marks}>
-                          <App
-                            state={history.drawn}
-                            notices={
-                              <>
-                                {history.banner}
-                                <ServedNotices
-                                  rejection={view.rejection}
-                                  stopped={view.stopped}
-                                  notice={view.notice}
-                                  saved={view.saved}
-                                />
-                              </>
-                            }
-                          />
-                          {history.report === null ? null : (
-                            <RestoreDialog
-                              report={history.report}
-                              onClose={history.handleCloseReport}
+    <EditModeContext value={editMode}>
+      <EditingContext value={editing}>
+        <AcceptingContext value={accepting}>
+          <ReviewContext value={review}>
+            <ProposedContext value={history.past ? null : proposing}>
+              <ConnectionsContext value={history.past ? null : connecting}>
+                <ProposalOpsContext value={history.past ? null : proposalOps}>
+                  <RenamesContext value={renames}>
+                    <ExportStateContext value={history.past ? null : exported}>
+                      <ProposedAddsContext value={history.past ? none : adds}>
+                        <HistoryContext value={history.panel}>
+                          <CompareContext value={history.marks}>
+                            <App
+                              state={history.drawn}
+                              notices={
+                                <>
+                                  {history.banner}
+                                  <ServedNotices
+                                    rejection={view.rejection}
+                                    stopped={view.stopped}
+                                    notice={view.notice}
+                                    saved={view.saved}
+                                  />
+                                </>
+                              }
                             />
-                          )}
-                        </CompareContext>
-                      </HistoryContext>
-                    </ProposedAddsContext>
-                  </ExportStateContext>
-                </RenamesContext>
-              </ProposalOpsContext>
-            </ConnectionsContext>
-          </ProposedContext>
-        </ReviewContext>
-      </AcceptingContext>
-    </EditingContext>
+                            {history.report === null ? null : (
+                              <RestoreDialog
+                                report={history.report}
+                                onClose={history.handleCloseReport}
+                              />
+                            )}
+                          </CompareContext>
+                        </HistoryContext>
+                      </ProposedAddsContext>
+                    </ExportStateContext>
+                  </RenamesContext>
+                </ProposalOpsContext>
+              </ConnectionsContext>
+            </ProposedContext>
+          </ReviewContext>
+        </AcceptingContext>
+      </EditingContext>
+    </EditModeContext>
   );
 }

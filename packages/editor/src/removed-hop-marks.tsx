@@ -3,7 +3,7 @@ import type { SceneHop, ScreenPoint } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { use } from "react";
 
-import { useConnections } from "./connections-context.ts";
+import { useProposedHops } from "./connections-context.ts";
 import { EditorSceneContext } from "./editor-view.ts";
 import { strikeOnRoute } from "./hop-strike.ts";
 
@@ -20,7 +20,7 @@ export function RemovedHopMarks({
   readonly hops: readonly SceneHop[];
 }) {
   const { texts, outlines } = use(EditorSceneContext);
-  const proposed = useConnections()?.proposed;
+  const proposed = useProposedHops();
 
   const removes =
     proposed === undefined ? undefined : marked(proposed, removedHopMark);

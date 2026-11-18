@@ -2,7 +2,7 @@ import { chapterMarkName, marked } from "@axonometric/contracts";
 import type { ChapterChange } from "@axonometric/contracts";
 import { useMemo } from "react";
 
-import { useProposalOps } from "./proposal-ops-context.ts";
+import { useProposedChapters } from "./proposal-ops-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 const nothing: ReadonlySet<string> = new Set();
@@ -20,7 +20,7 @@ export const useChapterMarks = (
   chapter: string,
   action: ChapterChange["action"]
 ): ReadonlySet<string> => {
-  const shown = useProposalOps()?.proposed;
+  const shown = useProposedChapters()?.proposed;
 
   return shown === undefined
     ? nothing
@@ -34,8 +34,8 @@ export const useChapterMarks = (
  * two.
  */
 export const useAcceptedPlays = (chapter: string): readonly string[] =>
-  useProposalOps()?.acceptedChapters.find(({ id }) => id === chapter)?.plays ??
-  noPlays;
+  useProposedChapters()?.acceptedChapters.find(({ id }) => id === chapter)
+    ?.plays ?? noPlays;
 
 /** The structures a proposal reveals or hides in the chapter the page shows. */
 export const useChapterPendingStructures = (): ReadonlySet<string> => {

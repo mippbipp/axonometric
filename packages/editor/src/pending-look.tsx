@@ -2,7 +2,7 @@ import { groundProjections } from "@axonometric/contracts";
 import type { SceneStructure, View } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
-import { pendingStructures, useEditing } from "./editing-context.ts";
+import { pendingStructures, useEditingState } from "./editing-context.ts";
 import { groundOutline, toPoints } from "./projection.ts";
 
 /**
@@ -16,7 +16,7 @@ export function AcceptedOutlines({
   readonly structures: readonly SceneStructure[];
   readonly view: View;
 }) {
-  const editing = useEditing();
+  const editing = useEditingState();
 
   if (editing === null) {
     return null;

@@ -10,6 +10,7 @@ import type {
 } from "@axonometric/contracts";
 import { createContext, use } from "react";
 
+import { useEditOn } from "./edit-mode-context.ts";
 import type { ReviewDone } from "./served-store.ts";
 
 /**
@@ -67,6 +68,21 @@ export interface ProposedStructures {
 
 export const ProposedContext = createContext<ProposedStructures | null>(null);
 
-/** The structure proposals, or `null` on a page that can't propose. */
-export const useProposed = (): ProposedStructures | null =>
-  use(ProposedContext);
+/**
+ * The structure proposals, or `null` on a page that can't propose or while
+ * Edit is off. Controls read this one.
+ */
+export const useProposed = (): ProposedStructures | null => {
+  const on = useEditOn();
+  const proposing = use(ProposedContext);
+
+  return on ? proposing : null;
+};
+
+/**
+ * The map as proposed, whether or not Edit is on, for the marks the page
+ * draws on proposed structures and groups. It gives no reason to draw a
+ * control.
+ */
+export const useProposedMap = (): ProposedMap | undefined =>
+  use(ProposedContext)?.proposed;

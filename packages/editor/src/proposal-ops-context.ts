@@ -9,6 +9,7 @@ import type {
 } from "@axonometric/contracts";
 import { createContext, use } from "react";
 
+import { useEditOn } from "./edit-mode-context.ts";
 import type { ReviewDone } from "./served-store.ts";
 
 /** A structure that moves into a new group, with the id of its group change. */
@@ -66,8 +67,23 @@ export interface ProposalOps {
 
 export const ProposalOpsContext = createContext<ProposalOps | null>(null);
 
-/** The group and chapter proposals, or `null` on a page that can't propose. */
-export const useProposalOps = (): ProposalOps | null => use(ProposalOpsContext);
+/**
+ * The group and chapter proposals, or `null` on a page that can't propose or
+ * while Edit is off. Controls read this one.
+ */
+export const useProposalOps = (): ProposalOps | null => {
+  const on = useEditOn();
+  const ops = use(ProposalOpsContext);
+
+  return on ? ops : null;
+};
+
+/**
+ * The chapter proposals' marks and the accepted chapters, whether or not
+ * Edit is on, for the pending look. It gives no reason to draw a control.
+ */
+export const useProposedChapters = (): ProposalOps | null =>
+  use(ProposalOpsContext);
 
 /** The group proposals, or `null` on a page that can't propose. */
 export const useGroupOps = (): (GroupOps & { canPropose: boolean }) | null => {
