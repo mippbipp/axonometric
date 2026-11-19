@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Option } from "effect";
+import { Array as Arr, Effect, Option, String as Str } from "effect";
 
 import {
   checkLayout,
@@ -21,7 +21,7 @@ import {
 // the tests keep apart from the scene's own.
 
 /** The farthest a label's box may sit from its own route, in grid units. */
-const reach = 1.5;
+const reach: Readonly<Record<View, number>> = { iso: 1.5, plan: 2.5 };
 
 /** How far a rect is from a route: its nearest corner or edge midpoint. */
 const gapTo = (
@@ -86,8 +86,18 @@ const labelProblems = (scene: Scene) =>
     );
 
     const far =
-      own > reach * groundProjections[scene.view].unit
+      own > reach[scene.view] * groundProjections[scene.view].unit
         ? [`${hop.id}: its label is ${own.toFixed(1)} from its route`]
+        : [];
+
+    // Plan view never puts a label nearer another route than its own.
+    const nearer =
+      scene.view === "plan"
+        ? Arr.flatMap(others, (other) =>
+            gapTo(other.points, label) < own
+              ? [`${hop.id}: its label is nearer ${other.hop.id}'s route`]
+              : []
+          )
         : [];
 
     const over = Arr.flatMap(others, (other) =>
@@ -98,7 +108,7 @@ const labelProblems = (scene: Scene) =>
         : []
     );
 
-    return [...onOwn, ...onOther, ...far, ...over];
+    return [...onOwn, ...onOther, ...far, ...nearer, ...over];
   });
 
 const chaptersFor = (data: MapData) =>
@@ -133,6 +143,45 @@ const sceneIn = ({
 
 /** Plan view at full size, and zoomed out so the map fits a 1280 × 800 page. */
 const zooms = [1, 0.6, 0.4241];
+
+/** A map of two structures and the hop `h` between them, with `chapters`. */
+const mapWith = (chapters: MapData["chapters"]): MapData => ({
+  format: 1,
+  revision: 0,
+  overview: { title: "Map", summary: "A map." },
+  groups: [{ id: "main", title: "Main" }],
+  structures: Arr.map(["a", "b"], (id) => ({
+    id,
+    code: "S",
+    name: id,
+    shape: "box" as const,
+    group: "main",
+    status: "live" as const,
+    oneLiner: "One line.",
+    whatItDoes: "Does.",
+    howItsBuilt: "Built.",
+  })),
+  hops: [
+    {
+      id: "h",
+      from: "a",
+      to: "b",
+      label: "a label too wide for the gap",
+      payload: {},
+    },
+  ],
+  flows: [],
+  chapters,
+});
+
+const chapterOf = (id: string, plays: readonly string[]) => ({
+  id,
+  title: id,
+  lede: "Lede.",
+  story: "Story.",
+  reveals: ["a", "b"],
+  plays,
+});
 
 describe("hop labels", () => {
   for (const name of [
@@ -191,11 +240,13 @@ describe("hop labels", () => {
         Arr.findFirst(scene.hops, ({ label }) => label !== undefined)
       );
 
-      const [start, end] = first.points;
+      const [start, end] = Option.getOrThrow(
+        Option.all([Arr.head(first.points), Arr.get(first.points, 1)])
+      );
 
       const at = {
-        sx: ((start?.sx ?? 0) + (end?.sx ?? 0)) / 2,
-        sy: ((start?.sy ?? 0) + (end?.sy ?? 0)) / 2,
+        sx: (start.sx + end.sx) / 2,
+        sy: (start.sy + end.sy) / 2,
       };
 
       const moved = {
@@ -222,74 +273,57 @@ describe("hop labels", () => {
     })
   );
 
-  it.effect("are warned about by check when a played hop has no spot", () =>
-    Effect.sync(() => {
-      // The boxes are tall and half a unit apart, so no spot beside the
-      // route is within reach of it and clear of both boxes.
-      const data: MapData = {
-        format: 1,
-        revision: 0,
-        overview: { title: "Map", summary: "A map." },
-        groups: [{ id: "main", title: "Main" }],
-        structures: Arr.map(["a", "b"], (id) => ({
-          id,
-          code: "S",
-          name: id,
-          shape: "box" as const,
-          group: "main",
-          status: "live" as const,
-          oneLiner: "One line.",
-          whatItDoes: "Does.",
-          howItsBuilt: "Built.",
-        })),
-        hops: [
-          {
-            id: "h",
-            from: "a",
-            to: "b",
-            label: "a label too wide for the gap",
-            payload: {},
-          },
-        ],
-        flows: [],
-        chapters: [
-          {
-            id: "c",
-            title: "C",
-            lede: "Lede.",
-            story: "Story.",
-            reveals: ["a", "b"],
-            plays: ["h"],
-          },
-        ],
-      };
+  describe("with no room beside the route", () => {
+    // The boxes are tall and half a unit apart, so no spot beside the route
+    // is within reach of it and clear of both boxes.
+    const layout: Layout = {
+      format: 1,
+      revision: 0,
+      structures: {
+        a: { x: 0, y: 0, w: 2, d: 6 },
+        b: { x: 2.5, y: 0, w: 2, d: 6 },
+      },
+      routes: {},
+    };
 
-      const layout: Layout = {
-        format: 1,
-        revision: 0,
-        structures: {
-          a: { x: 0, y: 0, w: 2, d: 6 },
-          b: { x: 2.5, y: 0, w: 2, d: 6 },
-        },
-        routes: {},
-      };
-
-      const scene = sceneOf({
-        data,
-        layout,
-        revealed: everything(data),
-        labelFirst: ["h"],
-        view: "plan",
-      });
-
-      assert.isUndefined(scene.hops[0]?.label);
-
-      assert.deepStrictEqual(
+    const hiddenLabelWarnings = (data: MapData) =>
+      Arr.filter(
         Arr.map(checkLayout(data, layout), ({ message }) => message),
-        [
-          'the label of hop "h" has no clear spot beside its route in chapter "c" in Plan view, so it shows only on hover. Move the structures apart, so the route has room for its label.',
-        ]
+        Str.includes("has no clear spot beside its route")
       );
-    })
-  );
+
+    it.effect(
+      "warns once per hop in Plan view, whether a chapter plays it",
+      () =>
+        Effect.sync(() => {
+          // The first chapter plays the hop and the second plays nothing but
+          // shows it again; the warning comes once, at the first.
+          const data = mapWith([chapterOf("c1", ["h"]), chapterOf("c2", [])]);
+
+          assert.deepStrictEqual(hiddenLabelWarnings(data), [
+            'the label of hop "h" has no clear spot beside its route in chapter "c1" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.',
+          ]);
+        })
+    );
+
+    it.effect("warns about a hop only a chapter that plays nothing shows", () =>
+      Effect.sync(() => {
+        const data = mapWith([chapterOf("c-all", [])]);
+
+        assert.deepStrictEqual(hiddenLabelWarnings(data), [
+          'the label of hop "h" has no clear spot beside its route in chapter "c-all" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.',
+        ]);
+      })
+    );
+
+    it.effect("warns about a map with no chapters, which draws all of it", () =>
+      Effect.sync(() => {
+        const data = mapWith([]);
+
+        assert.deepStrictEqual(hiddenLabelWarnings(data), [
+          'the label of hop "h" has no clear spot beside its route in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.',
+        ]);
+      })
+    );
+  });
 });

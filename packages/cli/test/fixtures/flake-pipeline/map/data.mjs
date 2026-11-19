@@ -488,7 +488,7 @@ hosts/pewter/
       id: "h-main-updater",
       from: "main",
       to: "updater",
-      label: "merge origin/main",
+      label: "merge main",
       payload: {
         mode: "continued",
         log: "continuing the open PR with main merged in",
@@ -537,7 +537,7 @@ hosts/pewter/
       id: "h-build-attic",
       from: "build",
       to: "attic",
-      label: "attic push closures",
+      label: "push closures",
       payload: {
         command: "attic push cache:fleet result-pewter",
         when: "same-repo PR",
@@ -557,7 +557,7 @@ hosts/pewter/
       id: "h-pr-scope",
       from: "pr",
       to: "scope",
-      label: "pull_request_target",
+      label: "PR target",
       payload: {
         head: "flake-update",
         files: ["flake.lock", "modules/system/boot.nix"],
@@ -567,7 +567,7 @@ hosts/pewter/
       id: "h-blocked-scope",
       from: "blocked",
       to: "scope",
-      label: "main's copy via API",
+      label: "main's copy",
       payload: {
         prefixes: [".github/", "secrets/", "hosts/pewter/flake-updater/"],
         files: [".sops.yaml", "checks.nix"],
@@ -599,14 +599,14 @@ hosts/pewter/
       id: "h-ruleset-main",
       from: "ruleset",
       to: "main",
-      label: "squash auto-merge",
+      label: "auto-merge",
       payload: { pr: 241, method: "squash", requiredChecks: "5 of 5 passed" },
     },
     {
       id: "h-ruleset-updater",
       from: "ruleset",
       to: "updater",
-      label: "gate verdict",
+      label: "verdict",
       payload: {
         required: [
           "checks aarch64-linux",
@@ -637,7 +637,7 @@ hosts/pewter/
       id: "h-updater-fixer",
       from: "updater",
       to: "fixer",
-      label: "prompt: trimmed errors",
+      label: "errors",
       payload: {
         session: "flake-update #241",
         round: 1,
@@ -679,7 +679,7 @@ hosts/pewter/
       id: "h-workspace-updater",
       from: "workspace",
       to: "updater",
-      label: "import tree",
+      label: "tree",
       payload: {
         index: ".git/flake-fixer-index",
         files: ["flake.lock", "modules/system/boot.nix"],
@@ -697,7 +697,7 @@ hosts/pewter/
       id: "h-updater-pr-fix",
       from: "updater",
       to: "pr",
-      label: "push fixer commit",
+      label: "fixer commit",
       payload:
         "flake-fixer: drop boot.initrd.verbose, removed in nixpkgs\n\nFlake-Fixer-Round: 1\nFlake-Fixer-Session: ses_abc123\nFlake-Fixer-Review: required",
     },
@@ -733,21 +733,21 @@ hosts/pewter/
       id: "h-maintainer-pr",
       from: "maintainer",
       to: "pr",
-      label: "review, merge by hand",
+      label: "merge by hand",
       payload: { action: "squash merge once 5 checks pass" },
     },
     {
       id: "h-maintainer-fixer",
       from: "maintainer",
       to: "fixer",
-      label: "read session on :8444",
+      label: "read session",
       payload: { url: "https://pewter.<tailnet>:8444", user: "opencode" },
     },
     {
       id: "h-main-watchdog",
       from: "main",
       to: "watchdog",
-      label: "flake.lock commit age",
+      label: "lock age",
       payload: { command: "git log -1 --format=%ct -- flake.lock", ageDays: 34 },
     },
     {

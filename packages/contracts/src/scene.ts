@@ -652,6 +652,15 @@ const withShapes = (
   shapes: [...avoid.shapes, ...Arr.map(polygons, obstacle)],
 });
 
+/** A spot a label may take, and what it offers. */
+interface AssessedSpot {
+  readonly rect: ScreenRect;
+  /** The most clearance it keeps from other text, boxes and routes. */
+  readonly clearance: number;
+  /** How much nearer it sits to its own route than to any other. */
+  readonly margin: number;
+}
+
 /** What differs between the Iso view and Plan view. */
 interface ViewGeometry {
   readonly project: (point: GridPosition) => ScreenPoint;
@@ -1018,15 +1027,62 @@ const hiddenStretches = ({
 /** How far a label's nearest edge may sit from its leg, in screen units. */
 const labelGaps = [3, 10, 18] as const;
 
+/**
+ * Every gap a label of `height` may keep from its leg within `reach`: the
+ * `labelGaps`, then one label height further at a time.
+ */
+const gapsWithin = (reach: number, height: number) => {
+  const [first, ...rest] = labelGaps;
+  const last = Math.max(first, ...rest);
+
+  return [
+    ...labelGaps,
+    ...Arr.makeBy(
+      Math.max(Math.floor((reach - last) / height), 0),
+      (step) => last + (step + 1) * height
+    ),
+  ];
+};
+
 /** Clear space a label keeps from everything but its own line. */
 const labelClearance = 3;
+
+/**
+ * The clear space a label keeps, tried in turn: a label with no spot at one
+ * keeps less, down to touching, before it hides.
+ */
+const labelClearances: readonly [number, ...number[]] = [labelClearance, 1, 0];
+
+/**
+ * How much nearer a label's box sits to its own route than to any other,
+ * tried in turn so the reader can tell whose it is: a label's height, then
+ * `labelClearance`, then no farther.
+ */
+const labelOwnMargins = (height: number) => [height, labelClearance, 0];
+
+/**
+ * Whether a view lets a label with no spot nearer its own route than any
+ * other take one that isn't, clear of every box, text and route. The Iso
+ * view does, as it always has: its crowded maps would hide many more labels
+ * otherwise, and the label sits within `labelReachLimit` of its route.
+ * Plan view never does, because there the reader would have to guess whose
+ * label it is.
+ */
+const labelMayBeNearerAnother: Readonly<Record<View, boolean>> = {
+  iso: true,
+  plan: false,
+};
 
 /** Clear space a name tag in Plan view keeps from everything else. */
 const tagClearance = 2;
 
-/** Where along a leg a label may sit, most preferred first: the middle. */
+/**
+ * Where along a leg a label may sit, most preferred first: the middle, then
+ * outwards, and past either end of the leg, where the label sits beside the
+ * route's next leg or the end of its line.
+ */
 const labelShares = Arr.sort(
-  Arr.map(Arr.range(2, 18), (step) => step / 20),
+  Arr.map(Arr.range(-10, 30), (step) => step / 20),
   Order.mapInput(Order.Number, (share: number) => Math.abs(share - 0.5))
 );
 
@@ -1041,7 +1097,11 @@ interface Leg extends Segment {
  * edge one of `labelGaps` from the line, on either side; and, for the hover
  * fallback, on the line itself, centred on it.
  */
-const spotsAt = (leg: Leg, share: number, { width, height: tall }: TagSize) => {
+const spotsAt = (
+  { leg, share }: { readonly leg: Leg; readonly share: number },
+  { width, height: tall }: TagSize,
+  gaps: readonly number[] = labelGaps
+) => {
   const at = lerp({ from: leg.start, to: leg.end, t: share });
   const unit = Math.max(leg.length, tiny);
 
@@ -1050,7 +1110,7 @@ const spotsAt = (leg: Leg, share: number, { width, height: tall }: TagSize) => {
     sy: (leg.end.sx - leg.start.sx) / unit,
   };
 
-  const reach =
+  const halfDepth =
     (Math.abs(normal.sx) * width) / 2 + (Math.abs(normal.sy) * tall) / 2;
 
   const rectAround = (centre: ScreenPoint) => ({
@@ -1091,15 +1151,15 @@ const spotsAt = (leg: Leg, share: number, { width, height: tall }: TagSize) => {
 
   return {
     beside: [
-      ...Arr.flatMap(labelGaps, (gap) => [
-        rectAt(-(reach + gap)),
-        rectAt(reach + gap),
+      ...Arr.flatMap(gaps, (gap) => [
+        rectAt(-(halfDepth + gap)),
+        rectAt(halfDepth + gap),
       ]),
       // A vertical leg, which only Plan view draws, has no spots straight
       // above and below it; the spots beside it sit level with it.
       ...(leg.end.sx === leg.start.sx
         ? []
-        : Arr.flatMap(labelGaps, (gap) => [upright(gap, -1), upright(gap, 1)])),
+        : Arr.flatMap(gaps, (gap) => [upright(gap, -1), upright(gap, 1)])),
     ],
     on: rectAt(0),
     lean,
@@ -1143,10 +1203,16 @@ const labelGap: {
 });
 
 /**
- * The farthest a label's box may sit from its own route, in grid units.
- * A label with no clear spot that close shows only on hover.
+ * The farthest a label's box may sit from its own route, in grid units. A
+ * label with no clear spot that close shows only on hover. Plan view looks
+ * further: there a label only takes a spot nearer its own route than any
+ * other, so it still reads as that route's. The Iso view keeps to 1.5,
+ * where a farther spot would sit nearer another route.
  */
-const labelReachLimit = 1.5;
+const labelReachLimit: Readonly<Record<View, number>> = {
+  iso: 1.5,
+  plan: 2.5,
+};
 
 /** Where a hop's label goes, and whether it fits there. */
 interface LabelPlacement {
@@ -1157,10 +1223,16 @@ interface LabelPlacement {
 }
 
 /**
- * The first clear spot for a hop's label beside one of its legs. Legs long
- * enough for it come first, longest first; on each, spots nearest the
- * middle first, nearest the line first. A spot keeps off every route, its
- * own included, and prefers one nearer its own route than any other.
+ * The first clear spot for a hop's label, or none. A spot sits beside the
+ * route, within `reach` of it, off every route including its own, and clear
+ * of `avoid`. Spots nearer the route come first; at each distance, legs
+ * long enough for the label before the rest, longer legs first, and on each
+ * leg spots nearest the middle first.
+ *
+ * A spot keeps `labelClearances` from `avoid` and sits nearer its own route
+ * than any other by `labelOwnMargins`, so the reader can tell whose it is.
+ * Those are tried most first, and `mayBeNearerAnother` lets a label with no
+ * such spot take any clear one.
  */
 const labelSpot = ({
   points,
@@ -1168,6 +1240,7 @@ const labelSpot = ({
   avoid,
   reach,
   grow,
+  mayBeNearerAnother,
 }: {
   readonly points: readonly ScreenPoint[];
   readonly text: string;
@@ -1176,6 +1249,8 @@ const labelSpot = ({
   readonly reach: number;
   /** How much the label's text is grown. */
   readonly grow: number;
+  /** Whether the label may sit nearer another route than its own. */
+  readonly mayBeNearerAnother: boolean;
 }): LabelPlacement => {
   const size = { width: labelWidth(text, grow), height: labelHeight * grow };
 
@@ -1196,46 +1271,127 @@ const labelSpot = ({
 
   const sorted = Arr.sort(legs, order);
 
-  const candidates = Arr.flatMap(sorted, (leg: Leg) =>
-    Arr.flatMap(labelShares, (share) => spotsAt(leg, share, size).beside)
-  );
-
-  const own = Arr.map(segmentsOf(points), lineObstacle);
-  const shapesOnly = { shapes: avoid.shapes, lines: [] };
-
-  // A spot keeps off every route, its own included, and clear of the shapes.
-  const clear = (rect: ScreenRect) =>
-    labelGap(points, rect) <= reach &&
-    clearOf(rectPolygon(rect), { shapes: [], lines: own }) &&
-    clearOf(rectPolygon(growRect(rect, labelClearance)), shapesOnly) &&
-    clearOf(rectPolygon(growRect(rect, labelClearance)), {
-      shapes: [],
-      lines: avoid.lines,
-    });
-
-  // The best spot sits nearer its own route than any other, so the reader
-  // can tell whose it is.
-  const nearest = (rect: ScreenRect) => {
-    const gap = labelGap(points, rect);
-
-    return Arr.every(
-      avoid.lines,
-      (line) => labelGap([line.start, line.end], rect) > gap
-    );
+  const ownRoute: Obstacles = {
+    shapes: [],
+    lines: Arr.map(legs, lineObstacle),
   };
 
-  const spot = Option.getOrUndefined(
-    Arr.findFirst(candidates, (rect) => clear(rect) && nearest(rect)).pipe(
-      Option.orElse(() => Arr.findFirst(candidates, clear))
-    )
+  const otherShapes: Obstacles = { shapes: avoid.shapes, lines: [] };
+  const otherRoutes: Obstacles = { shapes: [], lines: avoid.lines };
+
+  const isClear = (clearance: number) => (rect: ScreenRect) => {
+    const grown = rectPolygon(growRect(rect, clearance));
+
+    return clearOf(grown, otherShapes) && clearOf(grown, otherRoutes);
+  };
+
+  // Every rect the label may take, in the order the search prefers them.
+  const rects = function* () {
+    for (const gap of gapsWithin(reach, size.height)) {
+      for (const leg of sorted) {
+        for (const share of labelShares) {
+          yield* spotsAt({ leg, share }, size, [gap]).beside;
+        }
+      }
+    }
+  };
+
+  const leastClearance = Arr.lastNonEmpty(labelClearances);
+
+  // A rect's worth, worked out once: the most clearance it keeps, and how
+  // much nearer it sits to its own route than to any other route.
+  const assess = (rect: ScreenRect) => {
+    const away = labelGap(points, rect);
+
+    if (
+      away > reach ||
+      !clearOf(rectPolygon(rect), ownRoute) ||
+      !isClear(leastClearance)(rect)
+    ) {
+      return Option.none();
+    }
+
+    const clearance = Option.getOrElse(
+      Arr.findFirst(labelClearances, (by) => isClear(by)(rect)),
+      () => leastClearance
+    );
+
+    const reachOfNearer = growRect(rect, away + size.height);
+
+    const nearestOther = Arr.reduce(
+      avoid.lines,
+      Number.POSITIVE_INFINITY,
+      (nearest, line) =>
+        boundsMeet(reachOfNearer, line.bounds)
+          ? Math.min(nearest, labelGap([line.start, line.end], rect))
+          : nearest
+    );
+
+    return Option.some({ rect, clearance, margin: nearestOther - away });
+  };
+
+  // Rects are assessed as the search reaches them, so a label that finds
+  // room near its route never looks further.
+  const source = rects();
+  const assessed: AssessedSpot[] = [];
+
+  const assessedAt = (index: number): Option.Option<AssessedSpot> => {
+    while (assessed.length <= index) {
+      const next = source.next();
+
+      if (next.done === true) {
+        return Option.none();
+      }
+
+      const found = assess(next.value);
+
+      if (Option.isSome(found)) {
+        assessed.push(found.value);
+      }
+    }
+
+    return Option.fromNullishOr(assessed[index]);
+  };
+
+  const firstSpot = (wanted: Pick<AssessedSpot, "clearance" | "margin">) => {
+    for (let index = 0; ; index += 1) {
+      const next = assessedAt(index);
+
+      if (Option.isNone(next)) {
+        return Option.none<ScreenRect>();
+      }
+
+      const { rect, clearance, margin } = next.value;
+
+      if (clearance >= wanted.clearance && margin >= wanted.margin) {
+        return Option.some(rect);
+      }
+    }
+  };
+
+  const margins = mayBeNearerAnother
+    ? [...labelOwnMargins(size.height), Number.NEGATIVE_INFINITY]
+    : labelOwnMargins(size.height);
+
+  const spot = Arr.reduce(
+    labelClearances,
+    Option.none<ScreenRect>(),
+    (found, clearance) =>
+      Arr.reduce(margins, found, (earlier, margin) =>
+        Option.orElse(earlier, () => firstSpot({ clearance, margin }))
+      )
   );
 
   const [longest] = sorted;
 
   const fallback =
-    longest === undefined ? undefined : spotsAt(longest, 0.5, size).on;
+    longest === undefined
+      ? undefined
+      : spotsAt({ leg: longest, share: 0.5 }, size).on;
 
-  return { spot, fallback: spot ?? fallback };
+  const found = Option.getOrUndefined(spot);
+
+  return { spot: found, fallback: found ?? fallback };
 };
 
 /** Whether a name tag at a spot keeps clear of `around`. */
@@ -1705,8 +1861,9 @@ export const sceneOf = (source: SceneSource): Scene => {
             id === item.hop.id ? [] : segments
           ),
         },
-        reach: labelReachLimit * groundUnit[view],
+        reach: labelReachLimit[view] * groundUnit[view],
         grow: growth.label,
+        mayBeNearerAnother: labelMayBeNearerAnother[view],
       });
 
       return [

@@ -299,7 +299,7 @@ export default {
       "id": "h-rules",
       "from": "ruleset",
       "to": "updater",
-      "label": "required checks",
+      "label": "checks",
       "payload": {}
     },
     {
@@ -313,7 +313,7 @@ export default {
       "id": "h-prompt",
       "from": "updater",
       "to": "fixer",
-      "label": "prompt with errors",
+      "label": "prompt",
       "payload": {}
     },
     {
@@ -362,7 +362,7 @@ export default {
       "id": "h-review",
       "from": "me",
       "to": "pr",
-      "label": "review, merge by hand",
+      "label": "review",
       "payload": {}
     },
     {

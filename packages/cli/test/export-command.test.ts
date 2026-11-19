@@ -104,7 +104,7 @@ describe("export", () => {
         for (const text of [
           "Updater",
           "Flake fixer",
-          "merge origin/main",
+          "merge main",
           "nix flake update",
         ]) {
           assert.include(texts, text);

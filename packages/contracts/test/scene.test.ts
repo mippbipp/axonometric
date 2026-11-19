@@ -566,9 +566,16 @@ describe("scene", () => {
       })
   );
 
+  // Plan view looks further for room, as it never puts a label nearer
+  // another route than its own.
+  const labelReach: Readonly<Record<(typeof views)[number], number>> = {
+    iso: 1.5,
+    plan: 2.5,
+  };
+
   for (const view of views) {
     it.effect(
-      `keeps every label within 1.5 grid units of its route in ${view === "iso" ? "the Iso view" : "Plan view"}`,
+      `keeps every label within ${labelReach[view]} grid units of its route in ${view === "iso" ? "the Iso view" : "Plan view"}`,
       () =>
         Effect.gen(function* () {
           const { unit } = groundProjections[view];
@@ -601,7 +608,7 @@ describe("scene", () => {
 
                   assert.isAtMost(
                     gap,
-                    1.5 + 1e-9,
+                    labelReach[view] + 1e-9,
                     `${hop.id}'s label in ${name} ${chapter.id}`
                   );
                 }
