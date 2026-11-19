@@ -87,6 +87,22 @@ jobs:
         if: runner.os == 'Linux'
         run: bun run --cwd packages/cli pack:npm "$RUNNER_TEMP/axonometric.tgz"
 
+      # The bundle keeps its node shebang, so `--bun` makes Bun run it
+      # instead. Installs the tarball the way a Bun user does.
+      - name: Run the npm tarball under Bun
+        if: runner.os == 'Linux'
+        run: |
+          mkdir "$RUNNER_TEMP/bun-install"
+          cp -r packages/cli/test/fixtures/pipeline "$RUNNER_TEMP/pipeline"
+          cd "$RUNNER_TEMP/bun-install"
+          bun init -y
+          bun add "$RUNNER_TEMP/axonometric.tgz"
+          bunx --bun axonometric --version
+          bunx --bun axonometric --help
+          bunx --bun axonometric build "$RUNNER_TEMP/pipeline/map"
+          test -s "$RUNNER_TEMP/pipeline/SYSTEM.md"
+          test -s "$RUNNER_TEMP/pipeline/pipeline.html"
+
   # npm trusted publishing needs no token, so no workflow may pass one. The
   # pattern is split so this file doesn't match itself.
   no-npm-token:

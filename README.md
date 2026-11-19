@@ -21,7 +21,7 @@ npm install -g axonometric
 npx skills add mippbipp/axonometric
 ```
 
-The npm package needs Node 24.22.1 or newer. Without Node, install a standalone binary, which has Node built in. On Linux and macOS, this installs to `~/.local/bin`:
+The npm package needs Node 24.22.1 or newer, or Bun 1.4.4 or newer. On a machine with Bun and no Node, run `bunx --bun axonometric`. Without `--bun`, the CLI's `node` shebang runs it under Node. Without either, install a standalone binary, which has Node built in. On Linux and macOS, this installs to `~/.local/bin`:
 
 ```sh
 curl -fsSL https://github.com/mippbipp/axonometric/releases/latest/download/install.sh | sh
