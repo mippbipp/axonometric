@@ -158,6 +158,8 @@ export {
   silhouette,
 } from "./scene.ts";
 
+export { detourAllowance, detourOf, isDetour } from "./detours.ts";
+
 export { fitFloorOf, textZoomOf } from "./fit-floor.ts";
 
 export { textGrowthAt, textSizes } from "./text-size.ts";

@@ -72,3 +72,11 @@ export const pipelineMap: Effect.Effect<HomeFiles> = readFixtures([
   "flake-pipeline/adr/0009-flake-update-pipeline.md",
   "flake-pipeline/adr/0018-per-arch-build-gate.md",
 ]);
+
+/**
+ * The same pipeline as drawn later, at `update-pipeline/map/`: 14 structures
+ * in 5 groups and 27 hops, with no layout.json, so `build` places it.
+ */
+export const updatePipelineMap: Effect.Effect<HomeFiles> = readFixtures([
+  "update-pipeline/map/data.mjs",
+]);
