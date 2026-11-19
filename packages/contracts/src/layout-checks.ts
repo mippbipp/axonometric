@@ -1,4 +1,4 @@
-import { Array as Arr, Record as Rec, String as Str } from "effect";
+import { Array as Arr, Order, Record as Rec, String as Str } from "effect";
 import { dual } from "effect/Function";
 
 import { boxOutline, nameTagRect, nameTagText, tagCoversBox } from "./iso.ts";
@@ -283,13 +283,14 @@ const staleRoutes = (data: MapData, layout: Layout) => {
  * What each chapter reveals, with every earlier chapter's reveals, and the
  * hops it plays. A map with no chapters shows everything at once.
  */
-interface ChapterView {
+export interface ChapterView {
   readonly id: string | undefined;
   readonly revealed: ReadonlySet<string>;
   readonly plays: readonly string[];
 }
 
-const chapterViews = (data: MapData): readonly ChapterView[] => {
+/** The chapters `check` draws, in order: one for the whole map when it has none. */
+export const chapterViews = (data: MapData): readonly ChapterView[] => {
   if (!Arr.isReadonlyArrayNonEmpty(data.chapters)) {
     return [
       {
@@ -394,39 +395,34 @@ const stepKeysOf = (points: readonly GridPoint[]) =>
   );
 
 /**
- * A warning for each hop whose label the scene leaves out in a view `check`
- * holds to the label rule, once per hop and view across chapters.
+ * A finding for each hop whose label the scene leaves out in a view `check`
+ * holds to the label rule, keyed so it is reported once per hop and view
+ * across chapters.
  */
-const hiddenLabelWarnings = ({
+const hiddenLabelFindings = ({
   view,
   scene,
   where,
-  once,
 }: {
   readonly view: View;
   readonly scene: Scene;
   /** Where the scene is, such as ` in chapter "c-all"`. */
   readonly where: string;
-  /** Whether a key is seen for the first time, across chapters. */
-  readonly once: (key: string) => boolean;
-}): readonly MapProblem[] => {
+}): readonly ChapterFinding[] => {
   if (!labelsChecked[view]) {
     return [];
   }
 
   const hidden = Arr.filter(scene.hops, ({ label }) => label === undefined);
 
-  const fresh = Arr.filter(hidden, ({ hop }) =>
-    once(`label ${view} ${hop.id}`)
-  );
-
-  return Arr.map(fresh, ({ hop }) =>
-    mapWarning({
+  return Arr.map(hidden, ({ hop }) => ({
+    key: `label ${view} ${hop.id}`,
+    problem: mapWarning({
       file: "layout.json",
       path: ["structures"],
       message: `the label of hop "${hop.id}" has no clear spot beside its route${where}${viewNames[view]}, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`,
-    })
-  );
+    }),
+  }));
 };
 
 /**
@@ -474,14 +470,13 @@ const sharedSegments = (
 };
 
 /**
- * A warning for each clash in each view's scene of one chapter, except
- * those the older checks cover. `once` keys by the view as well as the
- * pair, so a pair that clashes in both views warns in both.
+ * A finding for each clash in each view's scene of one chapter, except
+ * those the older checks cover. The key holds the view as well as the pair,
+ * so a pair that clashes in both views warns in both.
  */
-const clashWarnings = ({
+const clashFindings = ({
   clashes,
   where,
-  once,
 }: {
   readonly clashes: readonly {
     readonly view: View;
@@ -489,20 +484,20 @@ const clashWarnings = ({
   }[];
   /** Where the clashes are, such as ` in chapter "c-all"`. */
   readonly where: string;
-  /** Whether a key is seen for the first time, across chapters. */
-  readonly once: (key: string) => boolean;
-}): readonly MapProblem[] =>
+}): readonly ChapterFinding[] =>
   Arr.flatMap(clashes, ({ view, clashes: drawn }) =>
     Arr.flatMap(drawn, ({ between: [first, second] }) =>
-      coveredElsewhere(view, first, second) ||
-      !once(`${view} ${first} ${second}`)
+      coveredElsewhere(view, first, second)
         ? []
         : [
-            mapWarning({
-              file: "layout.json",
-              path: ["structures"],
-              message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}${viewNames[view]}. Move the structures apart, so the drawing has room.`,
-            }),
+            {
+              key: `${view} ${first} ${second}`,
+              problem: mapWarning({
+                file: "layout.json",
+                path: ["structures"],
+                message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}${viewNames[view]}. Move the structures apart, so the drawing has room.`,
+              }),
+            },
           ]
     )
   );
@@ -521,77 +516,214 @@ type Scope =
 
 const everyChapter: Scope = { of: "all" };
 
-const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
+/**
+ * A warning about one chapter's drawing, and the key `check` reports it once
+ * by. A warning another chapter already gave, under the same key, is left out
+ * of the later chapter's report.
+ */
+export interface ChapterFinding {
+  readonly key: string;
+  readonly problem: MapProblem;
+}
+
+const keyedBy =
+  (key: (problem: MapProblem) => string) =>
+  (problems: readonly MapProblem[]): readonly ChapterFinding[] =>
+    Arr.map(problems, (problem) => ({ key: key(problem), problem }));
+
+const byMessage = keyedBy(({ message }) => message);
+
+/**
+ * Every warning about one chapter's drawing, each with its key, before
+ * warnings repeated from earlier chapters are dropped.
+ */
+const findingsOf = (
+  { data, layout }: Checkable,
+  { id, revealed, plays }: ChapterView,
+  scope: Scope
+): readonly ChapterFinding[] => {
+  const routes = routeRevealed({ data, layout, revealed });
+  const where = id === undefined ? "" : ` in chapter "${id}"`;
+
+  const routing = byMessage(
+    Arr.flatMap(data.hops, (hop) => {
+      const route = routes[hop.id];
+
+      return route === undefined ? [] : routeWarnings(hop, route);
+    })
+  );
+
+  const scenes = Arr.map(views, (view) => ({
+    view,
+    scene: sceneOf({
+      data,
+      layout,
+      revealed,
+      routes,
+      labelFirst: plays,
+      view,
+    }),
+  }));
+
+  const clashes = clashFindings({
+    clashes: Arr.map(scenes, ({ view, scene }) => ({
+      view,
+      clashes: sceneClashes(scene),
+    })),
+    where,
+  });
+
+  const unlabelled = Arr.flatMap(scenes, ({ view, scene }) =>
+    hiddenLabelFindings({ view, scene, where })
+  );
+
+  const shared = byMessage(sharedSegments(data, routes));
+
+  // A zone fits the structures revealed so far. `check` leaves this to the
+  // whole map's zones; a proposal to a chapter is judged by the zones that
+  // chapter draws.
+  const zones =
+    scope.of === "all"
+      ? []
+      : byMessage(overlappingZones({ data, layout, revealed, where }));
+
+  return [...routing, ...shared, ...zones, ...clashes, ...unlabelled];
+};
+
+/**
+ * The chapters' findings as `check` reports them: in chapter order, each
+ * warning once, at the first chapter it shows in.
+ */
+export const firstShown = (
+  chapters: readonly (readonly ChapterFinding[])[]
+): readonly MapProblem[] => {
   const seen = new Set<string>();
 
-  const once = (key: string) => {
-    const fresh = !seen.has(key);
+  return Arr.flatMap(chapters, (findings) =>
+    Arr.flatMap(findings, ({ key, problem }) => {
+      if (seen.has(key)) {
+        return [];
+      }
 
-    seen.add(key);
+      seen.add(key);
 
-    return fresh;
-  };
+      return [problem];
+    })
+  );
+};
 
+const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
   const shown = Arr.filter(
     chapterViews(data),
     ({ id }) => scope.of === "all" || id === scope.chapter
   );
 
-  return Arr.flatMap(shown, ({ id, revealed, plays }) => {
-    const routes = routeRevealed({ data, layout, revealed });
-    const where = id === undefined ? "" : ` in chapter "${id}"`;
-
-    const routing = Arr.flatMap(data.hops, (hop) => {
-      const route = routes[hop.id];
-
-      return route === undefined
-        ? []
-        : Arr.filter(routeWarnings(hop, route), ({ message }) => once(message));
-    });
-
-    const scenes = Arr.map(views, (view) => ({
-      view,
-      scene: sceneOf({
-        data,
-        layout,
-        revealed,
-        routes,
-        labelFirst: plays,
-        view,
-      }),
-    }));
-
-    const clashes = clashWarnings({
-      clashes: Arr.map(scenes, ({ view, scene }) => ({
-        view,
-        clashes: sceneClashes(scene),
-      })),
-      where,
-      once,
-    });
-
-    const unlabelled = Arr.flatMap(scenes, ({ view, scene }) =>
-      hiddenLabelWarnings({ view, scene, where, once })
-    );
-
-    const shared = Arr.filter(sharedSegments(data, routes), ({ message }) =>
-      once(message)
-    );
-
-    // A zone fits the structures revealed so far. `check` leaves this to the
-    // whole map's zones; a proposal to a chapter is judged by the zones that
-    // chapter draws.
-    const zones =
-      scope.of === "all"
-        ? []
-        : Arr.filter(
-            overlappingZones({ data, layout, revealed, where }),
-            ({ message }) => once(message)
-          );
-
-    return [...routing, ...shared, ...zones, ...clashes, ...unlabelled];
-  });
+  return firstShown(
+    Arr.map(shown, (view) => findingsOf({ data, layout }, view, scope))
+  );
 };
+
+/**
+ * The checks of `checkLayout` that look at the whole layout, not at any one
+ * chapter's drawing. They don't route or draw, so they are quick.
+ */
+export const layoutWideProblems: {
+  (layout: Layout): (data: MapData) => readonly MapProblem[];
+  (data: MapData, layout: Layout): readonly MapProblem[];
+} = dual(2, (data: MapData, layout: Layout): readonly MapProblem[] => {
+  const placed = placedStructures(data, layout);
+
+  return [
+    ...staleEntries(data, layout),
+    ...staleRoutes(data, layout),
+    ...offEndOverrides(data.hops, layout),
+    ...overlaps(placed),
+    ...coveredTags(placed),
+    ...overlappingZones({ data, layout }),
+  ];
+});
+
+/**
+ * What one chapter's drawing depends on in the layout: the placements of the
+ * structures it reveals, and every route override, since the router keeps
+ * clear of all of them. Two layouts with the same key draw that chapter the
+ * same, so its findings carry over.
+ */
+const drawnKeyOf = (layout: Layout, { revealed }: ChapterView) =>
+  // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- a cache key, never decoded
+  JSON.stringify([
+    Arr.map(Arr.sort([...revealed], Order.String), (id) => [
+      id,
+      layout.structures[id] ?? null,
+    ]),
+    Arr.sort(Rec.toEntries(layout.routes ?? {}), byHop),
+  ]);
+
+const byHop = Order.mapInput(
+  Order.String,
+  ([hop]: readonly [string, unknown]) => hop
+);
+
+/** How many chapter drawings `chapterFindings` remembers for one map's data. */
+const findingsKept = 256;
+
+const findingsCache = new WeakMap<
+  MapData,
+  Map<string, readonly ChapterFinding[]>
+>();
+
+const findingsFor = (data: MapData) => {
+  const found = findingsCache.get(data);
+
+  if (found !== undefined) {
+    return found;
+  }
+
+  const made = new Map<string, readonly ChapterFinding[]>();
+
+  findingsCache.set(data, made);
+
+  return made;
+};
+
+/**
+ * `findingsOf` for one chapter as `check` covers it, remembered by what the
+ * chapter draws. A drag that moves one structure leaves the chapters that
+ * don't reveal it alone, so they aren't routed or drawn again.
+ */
+export const chapterFindings: {
+  (view: ChapterView): (map: Checkable) => readonly ChapterFinding[];
+  (map: Checkable, view: ChapterView): readonly ChapterFinding[];
+} = dual(
+  2,
+  (
+    { data, layout }: Checkable,
+    view: ChapterView
+  ): readonly ChapterFinding[] => {
+    const cache = findingsFor(data);
+    const key = `${view.id ?? ""}\n${drawnKeyOf(layout, view)}`;
+    const cached = cache.get(key);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const found = findingsOf({ data, layout }, view, everyChapter);
+
+    // The oldest drawing goes first, so a long drag doesn't keep every spot.
+    if (cache.size >= findingsKept) {
+      const [oldest] = cache.keys();
+
+      if (oldest !== undefined) {
+        cache.delete(oldest);
+      }
+    }
+
+    cache.set(key, found);
+
+    return found;
+  }
+);
 
 /**
  * Problems with how the layout reads. Errors for route overrides whose ends
@@ -606,19 +738,14 @@ const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
 export const checkLayout: {
   (layout: Layout): (data: MapData) => readonly MapProblem[];
   (data: MapData, layout: Layout): readonly MapProblem[];
-} = dual(2, (data: MapData, layout: Layout): readonly MapProblem[] => {
-  const placed = placedStructures(data, layout);
-
-  return [
-    ...staleEntries(data, layout),
-    ...staleRoutes(data, layout),
-    ...offEndOverrides(data.hops, layout),
-    ...overlaps(placed),
-    ...coveredTags(placed),
-    ...overlappingZones({ data, layout }),
-    ...chapterWarnings(data, layout, everyChapter),
-  ];
-});
+} = dual(2, (data: MapData, layout: Layout): readonly MapProblem[] => [
+  ...layoutWideProblems(data, layout),
+  ...firstShown(
+    Arr.map(chapterViews(data), (view) =>
+      chapterFindings({ data, layout }, view)
+    )
+  ),
+]);
 
 /**
  * `checkLayout`, for the drawing of one chapter alone: the footprint, tag and
@@ -725,6 +852,50 @@ export const changedChapterProblems = ({
   const known = new Set(Arr.map(checkChapter(before, chapter), lineOf));
 
   return Arr.map(checkChapter(after, chapter), (problem) => ({
+    problem,
+    added: !known.has(lineOf(problem)),
+  }));
+};
+
+/**
+ * `draggedProblems`, from the chapters checked so far: the whole-layout
+ * checks, and the drawing checks of `chapters` alone, in `check`'s order
+ * whatever order they were checked in. A problem is marked added when the
+ * layout before doesn't have it in the same chapters. With every chapter,
+ * this is `draggedProblems`.
+ *
+ * `check` names a drawing warning by the first chapter it shows in, so until
+ * every chapter before one is checked, a warning may name that chapter where
+ * `check` would name an earlier one. The page says it is still checking until
+ * then.
+ *
+ * It lets the page check the chapter on screen first and the rest one at a
+ * time, without holding up a drag for the whole map.
+ */
+export const draggedProblemsIn = ({
+  data,
+  before,
+  after,
+  chapters,
+}: {
+  readonly data: MapData;
+  readonly before: Layout;
+  readonly after: Layout;
+  /** Which of `chapterViews(data)` to draw, by id. */
+  readonly chapters: ReadonlySet<string | undefined>;
+}): readonly DraggedProblem[] => {
+  const shown = Arr.filter(chapterViews(data), ({ id }) => chapters.has(id));
+
+  const problemsOf = (layout: Layout) => [
+    ...layoutWideProblems(data, layout),
+    ...firstShown(
+      Arr.map(shown, (view) => chapterFindings({ data, layout }, view))
+    ),
+  ];
+
+  const known = new Set(Arr.map(problemsOf(before), lineOf));
+
+  return Arr.map(problemsOf(after), (problem) => ({
     problem,
     added: !known.has(lineOf(problem)),
   }));

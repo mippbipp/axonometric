@@ -75,9 +75,11 @@ export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 export {
   changedChapterProblems,
   changedProblems,
+  chapterViews,
   checkChapter,
   checkLayout,
   draggedProblems,
+  draggedProblemsIn,
   footprintsOverlap,
   offEndFindings,
   onOutline,
@@ -85,6 +87,7 @@ export {
 } from "./layout-checks.ts";
 
 export type {
+  ChapterView,
   Checkable,
   DraggedProblem,
   HopEnds,

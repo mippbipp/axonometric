@@ -1,17 +1,16 @@
-import {
-  applyLayoutChanges,
-  draggedProblems,
-  shiftedRoutes,
-} from "@axonometric/contracts";
+import { applyLayoutChanges, shiftedRoutes } from "@axonometric/contracts";
 import type {
   DraggedProblem,
   LayoutChange,
   MapState,
 } from "@axonometric/contracts";
-import { Array as Arr, Duration, Effect, Fiber } from "effect";
-import { useEffect, useMemo, useState } from "react";
+import { Array as Arr, Duration, Effect, Fiber, Result, Schema } from "effect";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { CheckAnswer, dragChecker } from "./drag-check.ts";
+import type { CheckMap, CheckStep } from "./drag-check.ts";
+import DragCheckWorker from "./drag-check.worker.ts?worker&inline";
 import {
   ChangePreviewContext,
   nothingReported,
@@ -26,18 +25,21 @@ import type {
   DragPreviewInput,
   DragReport,
 } from "./drag-preview-context.ts";
+import { useEditing } from "./editing-context.ts";
 import { DropOutlinesContext } from "./outlines-context.ts";
 import type { DropOutlines } from "./outlines-context.ts";
+import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** How long a drag rests before its warnings are worked out. */
 const settle = Duration.millis(120);
 
 const none: readonly LayoutChange[] = [];
 
-const problemsOf = (
+/** The layout a drag's changes would leave, with route overrides carried along. */
+const draggedLayout = (
   { data, layout }: MapState,
   changes: readonly LayoutChange[]
-): readonly DraggedProblem[] => {
+) => {
   // A move carries a route override along when both its ends move
   // together, as saving the move does.
   const carried = Arr.flatMap(changes, (change) =>
@@ -51,20 +53,98 @@ const problemsOf = (
       : []
   );
 
-  return draggedProblems(
-    data,
-    layout,
-    applyLayoutChanges(layout, [...changes, ...carried])
-  );
+  return applyLayoutChanges(layout, [...changes, ...carried]);
+};
+
+/**
+ * What the drag's check has found so far for one step: the problems, and
+ * whether every chapter is in yet.
+ */
+interface Checked {
+  readonly step: number;
+  readonly problems: readonly DraggedProblem[];
+  readonly complete: boolean;
+}
+
+const unchecked: Checked = { step: -1, problems: [], complete: true };
+
+const decodeAnswer = Schema.decodeUnknownResult(CheckAnswer);
+
+/**
+ * A number for each map state the page holds, so the checker can tell a step
+ * on the map it has from a step on one it hasn't heard of yet.
+ */
+const mapIds = { next: 0, of: new WeakMap<MapState, number>() };
+
+const mapIdOf = (state: MapState) => {
+  const known = mapIds.of.get(state);
+
+  if (known !== undefined) {
+    return known;
+  }
+
+  mapIds.next += 1;
+  mapIds.of.set(state, mapIds.next);
+
+  return mapIds.next;
+};
+
+/**
+ * Runs the drag check in a worker, off the page's main thread. `map` sends
+ * the map a drag is on, once per map; `step` asks about a step on it, and
+ * `answer` hears what the chapters checked so far find. Where the browser
+ * has no workers the check runs on the page instead, a chapter at a time.
+ */
+interface DragChecker {
+  readonly map: (map: CheckMap) => void;
+  readonly step: (step: CheckStep) => void;
+  readonly close: () => void;
+}
+
+const startChecker = (answer: (found: CheckAnswer) => void): DragChecker => {
+  if (!("Worker" in globalThis)) {
+    return dragChecker(answer);
+  }
+
+  const worker = new DragCheckWorker({ name: "drag check" });
+
+  worker.addEventListener("message", (event: MessageEvent<unknown>) => {
+    const decoded = decodeAnswer(event.data);
+
+    if (Result.isSuccess(decoded)) {
+      answer(decoded.success);
+    }
+  });
+
+  // A dedicated worker's postMessage takes no target origin.
+  const send = (message: CheckMap | CheckStep) => {
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a Worker, not a window
+    worker.postMessage(message);
+  };
+
+  return {
+    map: send,
+    step: send,
+    close: () => {
+      worker.terminate();
+    },
+  };
 };
 
 /**
  * Holds what the drag in progress would leave. A refused drop is reported at
  * once, with its reason. Otherwise the check is the one `check` runs
  * (`draggedProblems`), on the layout the page shows with the drag's changes
- * applied. It runs once the pointer has rested for a moment, so a big map
- * isn't checked on every step. It lists every problem `check` would report,
- * and marks the ones the drag adds.
+ * applied.
+ *
+ * The check routes and draws every chapter, which takes seconds on a big map,
+ * so it runs in a worker and the drag keeps up with the pointer. It starts
+ * once the pointer has rested for a moment, draws the chapter on screen
+ * first, and the panel grows as each other chapter comes in. A new step of
+ * the drag starts again from its chapter on screen, and the worker drops the
+ * old one. Chapters a drag doesn't change are remembered, not drawn again.
+ * Once every chapter is in, the list is every problem `check` would report,
+ * with the ones the drag adds marked.
  */
 export function DragPreviewProvider({
   state,
@@ -74,25 +154,79 @@ export function DragPreviewProvider({
   readonly children: ReactNode;
 }) {
   const [drag, setDrag] = useState<DragPreviewInput | undefined>();
-  const [settled, setSettled] = useState(none);
+  const [checked, setChecked] = useState(unchecked);
+  // The step the panel waits on, so an answer to an older one is dropped.
+  const [waitingOn, setWaitingOn] = useState(0);
+  const { stop } = useWalkthrough();
+  const checker = useRef<DragChecker | undefined>(undefined);
+  const steps = useRef(0);
+  // Only a page that can edit drags, so only it starts the worker. The
+  // read-only file loads nothing.
+  const live = useEditing()?.canEdit === true;
+
+  useEffect(() => {
+    const started = live
+      ? startChecker((found) => {
+          if (found.step === steps.current) {
+            setChecked(found);
+          }
+        })
+      : undefined;
+
+    checker.current = started;
+
+    return () => {
+      checker.current = undefined;
+      started?.close();
+    };
+  }, [live]);
+
+  // The checker gets the map whenever it changes, such as after a drop is
+  // saved, and draws its chapters while nothing is dragged. A checker that
+  // starts when Edit turns on hears it too.
+  useEffect(() => {
+    if (!live) {
+      return;
+    }
+
+    checker.current?.map({
+      kind: "map",
+      id: mapIdOf(state),
+      data: state.data,
+      before: state.layout,
+    });
+  }, [state, live]);
 
   const changes = drag?.changes ?? none;
+  const refused = drag?.refusal !== undefined;
 
-  // The check runs once the pointer has rested, so a drag over a big map
-  // isn't checked on every step. The last answer stays up meanwhile.
   useEffect(() => {
-    const settleOn = Effect.sync(() => {
-      setSettled(changes);
+    steps.current += 1;
+
+    const step = steps.current;
+
+    setWaitingOn(step);
+
+    const send = Effect.sync(() => {
+      checker.current?.step({
+        kind: "step",
+        step,
+        map: mapIdOf(state),
+        after: draggedLayout(state, changes),
+        onScreen: stop.id,
+      });
     });
 
     const fiber = Effect.runFork(
-      Effect.sleep(settle).pipe(Effect.andThen(settleOn))
+      changes.length === 0 || refused
+        ? Effect.void
+        : Effect.sleep(settle).pipe(Effect.andThen(send))
     );
 
     return () => {
       Effect.runFork(Fiber.interrupt(fiber));
     };
-  }, [changes]);
+  }, [changes, refused, state, stop.id]);
 
   const [change, setChange] = useState<ChangePreviewInput | undefined>();
 
@@ -112,12 +246,14 @@ export function DragPreviewProvider({
       return { refusal: drag.refusal, problems: [], source: "drag" };
     }
 
+    // The last step's answer stays up while this step is checked.
     return {
       refusal: undefined,
-      problems: settled.length === 0 ? [] : problemsOf(state, settled),
+      problems: checked.problems,
       source: "drag",
+      complete: checked.complete && checked.step === waitingOn,
     };
-  }, [drag, settled, state, change]);
+  }, [drag, checked, change, waitingOn]);
 
   const changePreview = useMemo(
     (): ChangePreview => ({
@@ -134,7 +270,7 @@ export function DragPreviewProvider({
       show: setDrag,
       clear: () => {
         setDrag(undefined);
-        setSettled(none);
+        setChecked(unchecked);
       },
     }),
     []
@@ -170,7 +306,7 @@ export function DragPreviewProvider({
  * Nothing shows when there is nothing to say.
  */
 export function DragWarnings({ className }: { readonly className?: string }) {
-  const { refusal, problems, source } = useDragReport();
+  const { refusal, problems, source, complete = true } = useDragReport();
 
   if (refusal === undefined && problems.length === 0) {
     return null;
@@ -189,12 +325,14 @@ export function DragWarnings({ className }: { readonly className?: string }) {
         <>
           <h2
             data-drag-warnings-heading=""
+            data-checking={complete ? undefined : ""}
             className="shrink-0 px-3 pt-2 pb-1 tracking-widest uppercase opacity-70"
           >
             {problems.length === 1
               ? "check would report 1 warning"
               : `check would report ${problems.length} warnings`}
             {added === 0 ? "" : `, ${added} new`}
+            {complete ? "" : ", checking other chapters"}
           </h2>
           <ul
             data-drag-warnings-list=""

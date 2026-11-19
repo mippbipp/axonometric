@@ -23,6 +23,7 @@ import {
   showView,
   unitOnScreen,
   waitFor,
+  waitForAllWarnings,
   waitGone,
 } from "./browser.ts";
 import type { View } from "./browser.ts";
@@ -857,7 +858,7 @@ describe("the warnings panel", () => {
           from,
           screenDelta("plan", unit, { x: 0.5, y: 0 })
         );
-        yield* waitFor(page, "[data-drag-warning]");
+        yield* waitForAllWarnings(page);
 
         const measure = () =>
           Effect.promise(() =>
@@ -1024,7 +1025,7 @@ describe("the panel for what a drag would leave", () => {
           store,
           screenDelta("plan", unit, { x: 0, y: -2.5 })
         );
-        yield* waitFor(page, "[data-drag-warning]");
+        yield* waitForAllWarnings(page);
 
         const whileMoving = yield* warningsOf(page);
 
@@ -1049,7 +1050,7 @@ describe("the panel for what a drag would leave", () => {
           corner,
           screenDelta("plan", unit, { x: 0.5, y: 3.5 })
         );
-        yield* waitFor(page, "[data-drag-warning]");
+        yield* waitForAllWarnings(page);
 
         const whileResizing = yield* warningsOf(page);
 
@@ -1312,7 +1313,7 @@ describe("the warnings while dragging", () => {
           from,
           screenDelta("plan", unit, { x: 4, y: 0 })
         );
-        yield* waitFor(page, "[data-drag-warning]");
+        yield* waitForAllWarnings(page);
 
         const shown = yield* warningsOf(page);
 
