@@ -10,37 +10,35 @@ import type { TestSpecification } from "vitest/node";
 
 /**
  * Seconds a test file takes on a CI runner, averaged over Linux, macOS and
- * Windows, from CI runs 44582101536 and 44635861872.
+ * Windows, from two sharded CI runs, 44635861872 and 44637425745.
  * Files not listed take `defaultSeconds`.
  * A file that grows or a new slow one only skews the split until someone
  * updates this table, and `shard-sequencer.test.ts` fails when a shard
  * holds more than 60% of the weight.
  */
 export const fileSeconds = {
-  "connection-page.test.ts": 90,
-  "spotlight.test.ts": 85,
+  "connection-page.test.ts": 75,
   "readable-text-page.test.ts": 73,
-  "selection-edit.test.ts": 72,
-  "rerouting.test.ts": 63,
-  "export-svg.test.ts": 56,
-  "export.test.ts": 47,
-  "export-command.test.ts": 30,
-  "editing.test.ts": 28,
-  "group-chapter-page.test.ts": 27,
+  "selection-edit.test.ts": 56,
+  "rerouting.test.ts": 50,
+  "export.test.ts": 49,
+  "export-svg.test.ts": 48,
+  "editing.test.ts": 29,
+  "export-command.test.ts": 27,
   "structure-follow.test.ts": 24,
-  "text-page.test.ts": 22,
-  "structure-page.test.ts": 21,
-  "note-targets-page.test.ts": 20,
+  "group-chapter-page.test.ts": 23,
+  "structure-page.test.ts": 20,
   "structures.test.ts": 19,
-  "history-panel.test.ts": 17,
+  "text-page.test.ts": 19,
+  "note-targets-page.test.ts": 17,
   "live-reload.test.ts": 16,
-  "drag-warnings-big-map.test.ts": 14,
-  "review-page.test.ts": 14,
-  "sources.test.ts": 14,
-  "font-width.test.ts": 13,
-  "plan-view.test.ts": 11,
+  "history-panel.test.ts": 15,
+  "font-width.test.ts": 12,
+  "review-page.test.ts": 12,
+  "drag-warnings-big-map.test.ts": 11,
   "viewport.test.ts": 11,
-  "edit-toggle.test.ts": 9,
+  "plan-view.test.ts": 9,
+  "edit-toggle.test.ts": 8,
 } as const satisfies Readonly<Record<string, number>>;
 
 export const defaultSeconds = 2.5;
