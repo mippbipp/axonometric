@@ -16,6 +16,8 @@ Don't repeat CI locally. CI on a draft pull request runs the full suite on all t
 
 CI runs on the pull request merged with main, not on your branch alone. Merge `origin/main` into your branch and resolve any conflicts before you open or update a pull request. If the merge touches nothing your change touches, don't rerun the full suite. CI tests the merge. If CI fails but your local tests pass, first check whether your branch is behind main.
 
+CI runs the CLI tests as 2 shards on each OS, split by how long each file takes. `packages/cli/test/shard-sequencer.ts` holds the per-file times. After you add a slow CLI test file, add its time there so the shards stay even. `shard-sequencer.test.ts` fails when a shard holds over 60% of the time.
+
 ### Choosing local tests
 
 Don't pick test files by name. Grep `packages/cli/test` for the things your change touches: the `data-*` hooks, selectors, request checks and message text. For example, after changing a message or a hook:
