@@ -182,10 +182,8 @@ describe("the viewport", () => {
                     undefined,
                     { timeout: 1000 }
                   )
-                  .then(
-                    () => true,
-                    () => false
-                  )
+                  .then(() => true)
+                  .catch(() => false)
               );
 
               const now = yield* scaleOf(page);

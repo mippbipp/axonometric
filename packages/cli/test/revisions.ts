@@ -85,7 +85,6 @@ export const write = (
   writeText(url, {
     method: request.method,
     target: request.target,
-    // oxlint-disable-next-line effecttsgo/global-json -- the bodies are plain JSON objects
     body: JSON.stringify(request.body),
   });
 

@@ -61,6 +61,7 @@
   "devDependencies": {
     "@axonometric/config": "workspace:*",
     "@effect/tsgo": "catalog:",
+    "@nkzw/oxlint-config": "3.0.0",
     "@oxlint/plugins": "catalog:",
     "@shadcn/lint": "catalog:",
     "@types/node": "catalog:",

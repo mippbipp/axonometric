@@ -5,7 +5,7 @@ import { fullMap, minimalMap } from "./fixtures.ts";
 import { makeHome, runCli } from "./harness.ts";
 
 /** The full map's SYSTEM.md, built once by the first test that asks for it. */
-// oxlint-disable-next-line node/no-sync -- Effect.cached only makes the memo, which every test then shares
+// oxlint-disable-next-line node/no-sync, eslint/no-restricted-properties -- Effect.cached only makes the memo, which every test then shares, and a module-level memo has no test scope to run in
 const builtSystemMd = Effect.runSync(
   Effect.cached(
     Effect.gen(function* () {

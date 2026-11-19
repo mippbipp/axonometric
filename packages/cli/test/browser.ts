@@ -113,7 +113,6 @@ export const boxesOf = Effect.fnUntraced(function* (
  * `value` as a JavaScript literal, for building the expression strings that
  * `page.evaluate` and `page.waitForFunction` run in the page.
  */
-// oxlint-disable-next-line effecttsgo/global-json -- a JSON string is a JavaScript string literal
 export const literal = (value: string | null) => JSON.stringify(value);
 
 /** The `name` attribute of every element matching `selector`, in order. */

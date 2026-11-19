@@ -147,8 +147,8 @@ const loadData = Effect.fnUntraced(function* (
     ]);
   }
 
-  return Result.mapError(decodeData(module.success.default), (error) =>
-    problemsFromIssue("data.mjs", error.issue)
+  return Result.mapError(decodeData(module.success.default), (failure) =>
+    problemsFromIssue("data.mjs", failure.issue)
   );
 });
 
@@ -184,8 +184,8 @@ const loadJson = Effect.fnUntraced(function* <A>(
     ]);
   }
 
-  return Result.mapError(decode(text.success), (error) =>
-    problemsFromIssue(name, error.issue)
+  return Result.mapError(decode(text.success), (failure) =>
+    problemsFromIssue(name, failure.issue)
   );
 });
 

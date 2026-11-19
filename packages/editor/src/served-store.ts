@@ -1104,7 +1104,6 @@ export const connectServed = ({
     Effect.runFork(
       writeTurn
         .withPermit(send(queued, turn))
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
         .pipe(Effect.provide(FetchHttpClient.layer))
     );
   };
@@ -1469,7 +1468,6 @@ export const connectServed = ({
             done(outcome);
           })
         ),
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
         Effect.provide(FetchHttpClient.layer)
       )
     );
@@ -1836,7 +1834,6 @@ export const connectServed = ({
       Effect.runFork(
         writeTurn
           .withPermit(sendAccept(ids, message))
-          // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
           .pipe(Effect.provide(FetchHttpClient.layer))
       );
     },

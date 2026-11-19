@@ -148,7 +148,6 @@ export const svgFileOf = ({
         viewBox={`${x} ${y} ${width} ${height}`}
         width={width}
         height={height}
-        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- an <svg> has no <img> form; role="img" is how a standalone SVG is named for assistive technology.
         role="img"
         aria-labelledby={`${prefix}title ${prefix}desc`}
         fontFamily={exportFontStack}
