@@ -135,7 +135,8 @@ describe("the review routes", () => {
           assert.strictEqual(asText.status, 415, route);
         }
 
-        assert.strictEqual(yield* proposalsText(home), before);
+        const value_1 = yield* proposalsText(home);
+        assert.strictEqual(value_1, before);
       })
   );
 
@@ -190,7 +191,8 @@ describe("the review routes", () => {
         (yield* post(url, "/api/notes", ownOrigin(url), long)).status,
         400
       );
-      assert.strictEqual(yield* proposalsText(home), before);
+      const value_1 = yield* proposalsText(home);
+      assert.strictEqual(value_1, before);
     })
   );
 
@@ -213,7 +215,8 @@ describe("the review routes", () => {
 
       assert.strictEqual(sent.status, 409);
       assert.include(sent.body, "StaleProposals");
-      assert.strictEqual(yield* proposalsText(home), before);
+      const value_1 = yield* proposalsText(home);
+      assert.strictEqual(value_1, before);
     })
   );
 
@@ -253,7 +256,8 @@ describe("the review routes", () => {
         assert.include(answer.prompt, "batch 2");
         assert.include(answer.prompt, "summary");
 
-        const saved = yield* decodeProposals(yield* proposalsText(home));
+        const value_1 = yield* proposalsText(home);
+        const saved = yield* decodeProposals(value_1);
 
         assert.deepStrictEqual(saved, answer.proposals);
       })
@@ -289,7 +293,8 @@ describe("the review routes", () => {
 
         assert.strictEqual(reuse.status, 422);
         assert.include(reuse.body, "frozen-move");
-        assert.strictEqual(yield* proposalsText(home), before);
+        const value_1 = yield* proposalsText(home);
+        assert.strictEqual(value_1, before);
 
         // An open move that lands on a frozen one's spot is refused as an
         // overlap: frozen changes still count.
@@ -315,7 +320,8 @@ describe("the review routes", () => {
         );
 
         assert.strictEqual(onto.status, 422);
-        assert.strictEqual(yield* proposalsText(home), before);
+        const value_2 = yield* proposalsText(home);
+        assert.strictEqual(value_2, before);
       })
   );
 
@@ -360,7 +366,8 @@ describe("the review routes", () => {
 
         assert.strictEqual(accepted.status, 422, accepted.body);
         assert.include(accepted.body, "Wait for the agent");
-        assert.strictEqual(yield* proposalsText(home), before);
+        const value_1 = yield* proposalsText(home);
+        assert.strictEqual(value_1, before);
 
         assert.strictEqual(
           (yield* readHome(home))["history/0001.json"],
@@ -469,7 +476,8 @@ describe("text suggestions, answers and questions", () => {
         assert.include(sent.body, why);
       }
 
-      assert.strictEqual(yield* proposalsText(home), before);
+      const value_1 = yield* proposalsText(home);
+      assert.strictEqual(value_1, before);
     })
   );
 
@@ -496,7 +504,8 @@ describe("text suggestions, answers and questions", () => {
 
       assert.strictEqual(gone.status, 200, gone.body);
 
-      const saved = yield* decodeProposals(yield* proposalsText(home));
+      const value_1 = yield* proposalsText(home);
+      const saved = yield* decodeProposals(value_1);
 
       assert.strictEqual(saved.suggestions?.[0]?.after, "Better.");
       assert.strictEqual(saved.suggestions?.[0]?.before, suggestion.before);

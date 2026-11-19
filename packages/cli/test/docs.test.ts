@@ -340,7 +340,7 @@ export const printed = Effect.fnUntraced(function* (topic?: string) {
 export const allDocs = Effect.gen(function* () {
   const overview = yield* printed();
   const topics = listedTopics(overview);
-  const texts = yield* Effect.forEach(topics, printed);
+  const texts = yield* Effect.forEach(topics, printed, { concurrency: 1 });
 
   return {
     overview,
@@ -437,7 +437,10 @@ describe("axonometric docs", () => {
       const overview = yield* printed();
       const listed = listedTopics(overview);
 
-      const texts = yield* Effect.forEach([undefined, ...listed], printed);
+      const texts = yield* Effect.forEach([undefined, ...listed], printed, {
+        concurrency: 1,
+      });
+
       const everything = Arr.join(texts, "\n");
 
       const subcommands = subcommandsIn(help.stdout);
@@ -458,8 +461,12 @@ describe("axonometric docs", () => {
     Effect.gen(function* () {
       const home = yield* makeHome({});
       const help = yield* runCli(home, ["--help"]);
-      const listed = listedTopics(yield* printed());
-      const texts = yield* Effect.forEach([undefined, ...listed], printed);
+      const value_1 = yield* printed();
+      const listed = listedTopics(value_1);
+
+      const texts = yield* Effect.forEach([undefined, ...listed], printed, {
+        concurrency: 1,
+      });
 
       const known = new Set(subcommandsIn(help.stdout));
 
@@ -487,7 +494,9 @@ describe("axonometric docs", () => {
       const shown: string[] = [];
 
       for (const topic of topics) {
-        for (const line of commandsIn(yield* printed(topic))) {
+        const printedTopic = yield* printed(topic);
+
+        for (const line of commandsIn(printedTopic)) {
           const { root, home } = yield* reviewHome;
           const path = yield* Path.Path;
           const fresh = path.join(root, "fresh", "map");
@@ -578,8 +587,10 @@ describe("axonometric docs", () => {
       const root = yield* runCli(home, ["--help"]);
       const { texts } = yield* allDocs;
 
-      const helps = yield* Effect.forEach(subcommandsIn(root.stdout), (name) =>
-        runCli(home, [name, "--help"])
+      const helps = yield* Effect.forEach(
+        subcommandsIn(root.stdout),
+        (name) => runCli(home, [name, "--help"]),
+        { concurrency: 1 }
       );
 
       const known = new Set(

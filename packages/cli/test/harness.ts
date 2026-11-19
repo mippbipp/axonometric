@@ -169,7 +169,8 @@ export const runCli = Effect.fnUntraced(function* (
   args: readonly string[]
 ) {
   const { exit, output } = runCaptured(args);
-  const exitCode = exitCodeOf(yield* exit);
+  const exit_1 = yield* exit;
+  const exitCode = exitCodeOf(exit_1);
   const files = yield* readFiles(home);
 
   return {
@@ -335,9 +336,14 @@ export const proposalsIn = Effect.fnUntraced(function* (home: string) {
   const path = yield* Path.Path;
   const file = path.join(home, "proposals.json");
 
-  return (yield* fs.exists(file))
-    ? Option.some(yield* decodeProposals(yield* fs.readFileString(file)))
-    : Option.none<Proposals>();
+  if (!(yield* fs.exists(file))) {
+    return Option.none<Proposals>();
+  }
+
+  const text = yield* fs.readFileString(file);
+  const proposals = yield* decodeProposals(text);
+
+  return Option.some(proposals);
 }, Effect.provide(NodeServices.layer));
 
 /**
@@ -352,9 +358,9 @@ export const readProposals = Effect.fnUntraced(function* (home: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
-  );
+  const value_1 = yield* fs.readFileString(path.join(home, "proposals.json"));
+
+  return yield* decodeProposals(value_1);
 }, Effect.provide(NodeServices.layer));
 
 /**

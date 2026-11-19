@@ -61,7 +61,8 @@ describe("export --format svg", () => {
         Effect.gen(function* () {
           const path = yield* Path.Path;
           const fs = yield* FileSystem.FileSystem;
-          const home = yield* makeHome(yield* pipelineMap);
+          const pipelineMap_1 = yield* pipelineMap;
+          const home = yield* makeHome(pipelineMap_1);
           const map = path.join(home, "flake-pipeline", "map");
           const built = yield* runCli(home, ["build", map]);
 
@@ -108,7 +109,8 @@ describe("export --format svg", () => {
 
               assert.strictEqual(exported.exitCode, 0, exported.stderr);
 
-              const fromPage = decoder.decode(yield* exportFile(page, "svg"));
+              const value_1 = yield* exportFile(page, "svg");
+              const fromPage = decoder.decode(value_1);
               const fromCli = yield* fs.readFileString(target);
 
               assert.isTrue(
@@ -133,7 +135,8 @@ describe("export --format svg", () => {
         Effect.gen(function* () {
           const path = yield* Path.Path;
           const fs = yield* FileSystem.FileSystem;
-          const home = yield* makeHome(yield* pipelineMap);
+          const pipelineMap_1 = yield* pipelineMap;
+          const home = yield* makeHome(pipelineMap_1);
           const map = path.join(home, "flake-pipeline", "map");
 
           const target = path.join(home, "faded.svg");
@@ -206,7 +209,8 @@ describe("export --format svg", () => {
         Effect.gen(function* () {
           const path = yield* Path.Path;
           const fs = yield* FileSystem.FileSystem;
-          const home = yield* makeHome(yield* crowdedMap);
+          const crowdedMap_1 = yield* crowdedMap;
+          const home = yield* makeHome(crowdedMap_1);
           const map = path.join(home, "crowded", "map");
 
           assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
@@ -234,7 +238,8 @@ describe("export --format svg", () => {
             target,
           ]);
 
-          const fromPage = decoder.decode(yield* exportFile(page, "svg"));
+          const value_1 = yield* exportFile(page, "svg");
+          const fromPage = decoder.decode(value_1);
 
           // The page opens on chapter 1, so compare the same chapter.
           yield* click(
@@ -242,7 +247,8 @@ describe("export --format svg", () => {
             '[data-chapter-rail] button[data-chapter="c-all"]'
           );
 
-          const lastFromPage = decoder.decode(yield* exportFile(page, "svg"));
+          const value_2 = yield* exportFile(page, "svg");
+          const lastFromPage = decoder.decode(value_2);
           const fromCli = yield* fs.readFileString(target);
 
           assert.isFalse(fromPage === fromCli);
@@ -287,7 +293,8 @@ describe("export --format png", () => {
         Effect.gen(function* () {
           const path = yield* Path.Path;
           const fs = yield* FileSystem.FileSystem;
-          const home = yield* makeHome(yield* pipelineMap);
+          const pipelineMap_1 = yield* pipelineMap;
+          const home = yield* makeHome(pipelineMap_1);
           const map = path.join(home, "flake-pipeline", "map");
 
           assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
@@ -315,10 +322,12 @@ describe("export --format png", () => {
 
           assert.strictEqual(exported.exitCode, 0, exported.stderr);
 
+          const value_1 = yield* exportFile(page, "png");
           // The page's PNG is the browser drawing the same SVG, with the
           // embedded font; the CLI's is resvg drawing it with the TTF.
-          const fromPage = yield* decodePng(yield* exportFile(page, "png"));
-          const fromCli = yield* decodePng(yield* fs.readFile(target));
+          const fromPage = yield* decodePng(value_1);
+          const value_3 = yield* fs.readFile(target);
+          const fromCli = yield* decodePng(value_3);
 
           assert.deepStrictEqual(
             { width: fromPage.width, height: fromPage.height },
@@ -343,7 +352,8 @@ describe("export --format png", () => {
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const fs = yield* FileSystem.FileSystem;
-        const home = yield* makeHome(yield* crowdedMap);
+        const crowdedMap_1 = yield* crowdedMap;
+        const home = yield* makeHome(crowdedMap_1);
         const map = path.join(home, "crowded", "map");
 
         const corner = Effect.fnUntraced(function* (background: string) {
@@ -378,8 +388,10 @@ describe("export --format png", () => {
           assert.strictEqual(drawn.exitCode, 0, drawn.stderr);
           assert.strictEqual(rasterised.exitCode, 0, rasterised.stderr);
 
-          const size = sizeOf(yield* fs.readFileString(svg));
-          const image = yield* decodePng(yield* fs.readFile(png));
+          const value_1 = yield* fs.readFileString(svg);
+          const size = sizeOf(value_1);
+          const value_5 = yield* fs.readFile(png);
+          const image = yield* decodePng(value_5);
 
           assert.deepStrictEqual(
             { width: image.width, height: image.height },
@@ -389,8 +401,10 @@ describe("export --format png", () => {
           return image.pixel(2, 2);
         });
 
-        assert.deepStrictEqual(yield* corner("paper"), [230, 223, 190, 255]);
-        assert.deepStrictEqual(yield* corner("white"), [255, 255, 255, 255]);
+        const value_1 = yield* corner("paper");
+        assert.deepStrictEqual(value_1, [230, 223, 190, 255]);
+        const value_4 = yield* corner("white");
+        assert.deepStrictEqual(value_4, [255, 255, 255, 255]);
       }).pipe(Effect.provide(NodeServices.layer)),
     120_000
   );

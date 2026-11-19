@@ -88,14 +88,10 @@ describe("a note on a structure", () => {
 
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-item][data-review-state="open"]');
-        assert.include(
-          yield* textOf(page, "[data-review-list]"),
-          "Why a server, not a file watcher?"
-        );
-        assert.include(
-          yield* textOf(page, '[role="tab"][data-tab="pending"]'),
-          "Pending · 1"
-        );
+        const value_1 = yield* textOf(page, "[data-review-list]");
+        assert.include(value_1, "Why a server, not a file watcher?");
+        const value_2 = yield* textOf(page, '[role="tab"][data-tab="pending"]');
+        assert.include(value_2, "Pending · 1");
         assert.deepStrictEqual(errors, []);
       }),
     60_000
@@ -166,14 +162,15 @@ describe("the Ready for review button", () => {
         // The frozen note waits for the agent, with no Discard.
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, "[data-waiting-for-agent]");
-        assert.strictEqual(
-          yield* count(page, '[data-review-item] button:has-text("Discard")'),
-          0
+
+        const value_1 = yield* count(
+          page,
+          '[data-review-item] button:has-text("Discard")'
         );
-        assert.include(
-          yield* textOf(page, "[data-waiting-for-agent]"),
-          "waiting for the agent"
-        );
+
+        assert.strictEqual(value_1, 0);
+        const value_3 = yield* textOf(page, "[data-waiting-for-agent]");
+        assert.include(value_3, "waiting for the agent");
 
         yield* click(page, '[role="tab"][data-tab="details"]');
         yield* pinNote(page, "Second question");
@@ -181,7 +178,8 @@ describe("the Ready for review button", () => {
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
 
-        assert.include(yield* textOf(page, "[data-review-title]"), "Batch 2");
+        const value_4 = yield* textOf(page, "[data-review-title]");
+        assert.include(value_4, "Batch 2");
         assert.include((yield* copiedText(page)).at(-1) ?? "", "batch 2");
 
         const proposals = yield* readProposals(home);
@@ -212,10 +210,8 @@ describe("the Ready for review button", () => {
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
 
-        assert.include(
-          yield* textOf(page, "[data-review-dialog]"),
-          "Your browser blocked the clipboard"
-        );
+        const value_1 = yield* textOf(page, "[data-review-dialog]");
+        assert.include(value_1, "Your browser blocked the clipboard");
 
         const box = page.locator("[data-review-prompt]");
 
@@ -302,17 +298,15 @@ describe("the agent's verdicts", () => {
 
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-verdict="rejected"]');
-        assert.include(
-          yield* textOf(page, "[data-review-list]"),
-          "The page already polls nothing."
+        const value_1 = yield* textOf(page, "[data-review-list]");
+        assert.include(value_1, "The page already polls nothing.");
+
+        const value_5 = yield* count(
+          page,
+          '[data-note-marker="server"][data-note-rejected="true"]'
         );
-        assert.strictEqual(
-          yield* count(
-            page,
-            '[data-note-marker="server"][data-note-rejected="true"]'
-          ),
-          1
-        );
+
+        assert.strictEqual(value_5, 1);
         assert.deepStrictEqual(errors, []);
 
         // It survives a reload: the verdict is on disk, not in the page.

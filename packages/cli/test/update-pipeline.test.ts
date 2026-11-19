@@ -9,7 +9,8 @@ describe("the update pipeline map", () => {
     "is placed by build, and check finds no errors in that layout",
     () =>
       Effect.gen(function* () {
-        const home = yield* makeHome(yield* updatePipelineMap);
+        const updatePipelineMap_1 = yield* updatePipelineMap;
+        const home = yield* makeHome(updatePipelineMap_1);
         const map = `${home}/update-pipeline/map`;
 
         const built = yield* runCli(home, ["build", map]);

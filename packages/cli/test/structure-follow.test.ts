@@ -121,10 +121,13 @@ const attributeOf = (item: Locator, name: string) =>
   Effect.promise(() => item.getAttribute(name));
 
 const warningOf = (item: Locator) =>
-  Effect.all({
-    text: Effect.promise(() => item.textContent()),
-    isNew: attributeOf(item, "data-warning-new"),
-  }).pipe(
+  Effect.all(
+    {
+      text: Effect.promise(() => item.textContent()),
+      isNew: attributeOf(item, "data-warning-new"),
+    },
+    { concurrency: 1 }
+  ).pipe(
     Effect.map(({ text, isNew }): Warning => ({
       text: text ?? "",
       isNew: isNew === "true",
@@ -137,7 +140,7 @@ const warnings = Effect.fnUntraced(function* (page: Page) {
     page.locator("[data-drag-warning]").all()
   );
 
-  return yield* Effect.forEach(items, warningOf);
+  return yield* Effect.forEach(items, warningOf, { concurrency: 1 });
 });
 
 /** Whether the candidate footprint's outline is inside the drawing canvas. */
@@ -178,12 +181,15 @@ describe("the add form", () => {
             yield* Effect.promise(() => page.waitForTimeout(600));
             yield* waitFor(page, "[data-spot-outline]");
 
-            assert.isTrue(yield* outlineOnCanvas(page), `${view} ${group}`);
-            assert.strictEqual(
-              yield* count(page, "[data-drag-warning][data-warning-new=true]"),
-              0,
-              `${view} ${group}`
+            const value = yield* outlineOnCanvas(page);
+            assert.isTrue(value, `${view} ${group}`);
+
+            const value_1 = yield* count(
+              page,
+              "[data-drag-warning][data-warning-new=true]"
             );
+
+            assert.strictEqual(value_1, 0, `${view} ${group}`);
           }
         }),
       90_000
@@ -198,9 +204,8 @@ describe("the add form", () => {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
 
-        const { structures } = yield* decodeLayout(
-          yield* fs.readFileString(path.join(home, "layout.json"))
-        );
+        const value = yield* fs.readFileString(path.join(home, "layout.json"));
+        const { structures } = yield* decodeLayout(value);
 
         // The review map's groups: people holds the engineer, outside the
         // upstream, and loop the rest.
@@ -223,9 +228,12 @@ describe("the add form", () => {
 
         /** The candidate is clear of every box, and nearest one of `group`. */
         const assertBeside = Effect.fnUntraced(function* (group: string) {
+          const spotX = yield* x();
+          const spotY = yield* y();
+
           const spot = {
-            x: Number(yield* x()),
-            y: Number(yield* y()),
+            x: Number(spotX),
+            y: Number(spotY),
             w: 2,
             d: 2,
           };
@@ -267,13 +275,15 @@ describe("the add form", () => {
           );
         });
 
-        assert.notStrictEqual(yield* x(), "");
+        const value_2 = yield* x();
+        assert.notStrictEqual(value_2, "");
         yield* assertBeside("people");
-        assert.isFalse(
-          yield* Effect.promise(() =>
-            page.locator('[data-add="submit"]').isDisabled()
-          )
+
+        const value_3 = yield* Effect.promise(() =>
+          page.locator('[data-add="submit"]').isDisabled()
         );
+
+        assert.isFalse(value_3);
 
         const first = yield* x();
 
@@ -294,7 +304,8 @@ describe("the add form", () => {
         yield* Effect.promise(() =>
           page.locator('[data-add="group"]').selectOption("people")
         );
-        assert.strictEqual(yield* x(), "30");
+        const value_4 = yield* x();
+        assert.strictEqual(value_4, "30");
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
@@ -366,10 +377,8 @@ describe("the add form", () => {
           Arr.every(fromForm, ({ isNew }) => isNew),
           "add form"
         );
-        assert.include(
-          yield* textOf(page, "[data-drag-warnings]"),
-          "New from this change"
-        );
+        const value = yield* textOf(page, "[data-drag-warnings]");
+        assert.include(value, "New from this change");
 
         // The warnings are in the side panel, not over the drawing.
         const docked = yield* boxOf(page, "[data-drag-warnings]");
@@ -563,10 +572,8 @@ describe("the open page after verdict changed --as and commit", () => {
             .first()
             .waitFor({ ...waitTimeout, state: "detached" })
         );
-        assert.strictEqual(
-          yield* count(page, `[data-structure="${provisional}"]`),
-          0
-        );
+        const value = yield* count(page, `[data-structure="${provisional}"]`);
+        assert.strictEqual(value, 0);
         yield* waitFor(
           page,
           '[data-structure-panel="build-cache"][data-pinned]'

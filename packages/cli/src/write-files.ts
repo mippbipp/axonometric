@@ -95,7 +95,7 @@ export const writeAll = Effect.fnUntraced(function* (
   const removeTemporaries = Effect.forEach(
     staged,
     ({ temporary }) => fs.remove(temporary).pipe(Effect.ignore),
-    { discard: true }
+    { discard: true, concurrency: 1 }
   );
 
   yield* Effect.gen(function* () {
@@ -111,11 +111,13 @@ export const writeAll = Effect.fnUntraced(function* (
                 : fs.writeFile(temporary, content)
             )
           ),
-      { discard: true }
+      { discard: true, concurrency: 1 }
     );
 
-    const before = yield* Effect.forEach(staged, ({ file }) =>
-      currentContent(file)
+    const before = yield* Effect.forEach(
+      staged,
+      ({ file }) => currentContent(file),
+      { concurrency: 1 }
     );
 
     const taken = Arr.findFirst(
@@ -150,7 +152,7 @@ export const writeAll = Effect.fnUntraced(function* (
                     ),
               }).pipe(Effect.ignore);
         },
-        { discard: true }
+        { discard: true, concurrency: 1 }
       )
     );
 
@@ -160,7 +162,7 @@ export const writeAll = Effect.fnUntraced(function* (
         renameInto(temporary, file).pipe(
           Effect.tap(() => Effect.sync(() => renamed.push(index)))
         ),
-      { discard: true }
+      { discard: true, concurrency: 1 }
     ).pipe(Effect.onError(() => putBack));
   }).pipe(Effect.onError(() => removeTemporaries));
 });

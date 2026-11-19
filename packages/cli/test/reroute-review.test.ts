@@ -240,17 +240,18 @@ describe("committing a reroute", () => {
 
         const fs = yield* FileSystem.FileSystem;
 
-        const saved = yield* decodeLayout(
-          yield* fs.readFileString(`${root}/review/map/layout.json`)
+        const value = yield* fs.readFileString(
+          `${root}/review/map/layout.json`
         );
 
-        yield* fs.writeFileString(
-          `${root}/review/map/layout.json`,
-          yield* Schema.encodeEffect(LayoutFile)({
-            ...saved,
-            routes: { "h-store": agents },
-          })
-        );
+        const saved = yield* decodeLayout(value);
+
+        const rerouted = yield* Schema.encodeEffect(LayoutFile)({
+          ...saved,
+          routes: { "h-store": agents },
+        });
+
+        yield* fs.writeFileString(`${root}/review/map/layout.json`, rerouted);
 
         const verdict = yield* runCli(home, [
           "verdict",

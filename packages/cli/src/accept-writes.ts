@@ -140,10 +140,13 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
   const number = yield* nextRevision(home);
   const revisionFile = path.join(home, historyFolder, revisionFileName(number));
 
+  const now = yield* DateTime.now;
+  const savedAt = DateTime.formatIso(now);
+
   const revision: Revision = {
     format: 1,
     revision: number,
-    savedAt: DateTime.formatIso(yield* DateTime.now),
+    savedAt,
     message,
     accepted: Arr.map(accepted, (change) => ({
       kind: "layout",

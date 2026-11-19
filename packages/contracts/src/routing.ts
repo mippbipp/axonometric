@@ -861,8 +861,12 @@ interface Usage {
   }[];
 }
 
-const pairKey = (a: string, b: string) =>
-  a < b ? JSON.stringify([a, b]) : JSON.stringify([b, a]);
+const pairKey = (a: string, b: string) => {
+  const [first, second] = a < b ? [a, b] : [b, a];
+
+  // oxlint-disable-next-line effecttsgo/global-json -- a map key of two strings, never decoded
+  return JSON.stringify([first, second]);
+};
 
 const pairUsage = (usage: Usage, key: string) => {
   const existing = usage.pairs.get(key);

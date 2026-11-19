@@ -324,9 +324,8 @@ describe("rerouting a hop by dragging a segment", () => {
         const middle = yield* middleOf(page, segmentSelector("h-store", 0));
         const unit = yield* unitOnScreen(page, "plan");
 
-        const scale = Number(
-          yield* attributeOf(page, "svg[data-scale]", "data-scale")
-        );
+        const value = yield* attributeOf(page, "svg[data-scale]", "data-scale");
+        const scale = Number(value);
 
         yield* pressAndMove(
           page,
@@ -473,14 +472,14 @@ describe("a reroute in the review loop", () => {
           from,
           screenDelta("plan", unit, { x: 1, y: 0 })
         );
-        assert.strictEqual(
-          yield* attributeOf(
-            page,
-            '[data-route-preview="h-store"]',
-            "data-refused"
-          ),
-          "true"
+
+        const value = yield* attributeOf(
+          page,
+          '[data-route-preview="h-store"]',
+          "data-refused"
         );
+
+        assert.strictEqual(value, "true");
         assert.include(
           (yield* Effect.promise(() =>
             page.locator("[data-route-preview] title").first().textContent()
@@ -505,8 +504,9 @@ describe("a reroute in the review loop", () => {
           "waiting for the agent"
         );
 
+        const value_1 = yield* proposalsIn(home);
         // Nothing but the freeze was written.
-        const saved = Option.getOrThrow(yield* proposalsIn(home));
+        const saved = Option.getOrThrow(value_1);
 
         assert.deepStrictEqual(saved.layout, []);
         assert.strictEqual(saved.batches?.length, 1);
@@ -544,8 +544,9 @@ describe("a reroute in the review loop", () => {
 
         yield* Effect.promise(() => page.mouse.up());
 
+        const value = yield* proposalsIn(home);
         // The drop wrote nothing but the freeze.
-        const saved = Option.getOrThrow(yield* proposalsIn(home));
+        const saved = Option.getOrThrow(value);
 
         assert.deepStrictEqual(saved.layout, []);
       }),
@@ -557,7 +558,8 @@ describe("a reroute in the review loop", () => {
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* frozenReroute;
-        const batch = Option.getOrThrow(yield* proposalsIn(home)).batches?.[0];
+        const value = yield* proposalsIn(home);
+        const batch = Option.getOrThrow(value).batches?.[0];
         const itemId = batch?.items[0]?.id ?? "";
 
         for (const args of [
@@ -717,19 +719,22 @@ describe("text while dragging", () => {
             yield* pressAndMove(page, from, screenDelta(view, unit, spot.by));
             yield* Effect.sleep("300 millis");
 
-            assert.deepStrictEqual(yield* added, [], `${view} view`);
+            const added_1 = yield* added;
+            assert.deepStrictEqual(added_1, [], `${view} view`);
+
+            const value = yield* count(
+              page,
+              "[data-hop-label][data-drag-hidden]"
+            );
 
             // Labels of hops with an end on what moves are hidden.
-            assert.isAbove(
-              yield* count(page, "[data-hop-label][data-drag-hidden]"),
-              0,
-              `${view} view`
-            );
+            assert.isAbove(value, 0, `${view} view`);
 
             yield* Effect.promise(() => page.mouse.up());
             yield* waitForRevision(home, revision);
             yield* waitGone(page, "[data-drag-hidden]");
-            assert.deepStrictEqual(yield* added, [], `${view} view, dropped`);
+            const added_2 = yield* added;
+            assert.deepStrictEqual(added_2, [], `${view} view, dropped`);
           }
         }),
       120_000
@@ -1008,9 +1013,8 @@ describe("the panel for what a drag would leave", () => {
         const { home, page } = yield* servedReview;
         const layoutPath = path.join(home, "layout.json");
 
-        const accepted = yield* decodeLayout(
-          yield* fs.readFileString(layoutPath)
-        );
+        const value = yield* fs.readFileString(layoutPath);
+        const accepted = yield* decodeLayout(value);
 
         yield* showView(page, "plan");
 
@@ -1094,21 +1098,22 @@ describe("the panel for what a drag would leave", () => {
         const checkedAfter = Effect.fnUntraced(function* (
           changes: Proposals["layout"]
         ) {
-          yield* fs.writeFileString(
-            layoutPath,
-            yield* Schema.encodeEffect(LayoutFile)({
-              ...accepted,
-              structures: placedAfter(changes),
-            })
-          );
-          yield* fs.writeFileString(
-            path.join(home, "proposals.json"),
-            yield* Schema.encodeEffect(Schema.fromJsonString(Proposals))({
-              format: 1,
-              revision: resized.revision + 1,
-              layout: [],
-            })
-          );
+          const encoded = yield* Schema.encodeEffect(LayoutFile)({
+            ...accepted,
+            structures: placedAfter(changes),
+          });
+
+          yield* fs.writeFileString(layoutPath, encoded);
+
+          const emptied = yield* Schema.encodeEffect(
+            Schema.fromJsonString(Proposals)
+          )({
+            format: 1,
+            revision: resized.revision + 1,
+            layout: [],
+          });
+
+          yield* fs.writeFileString(path.join(home, "proposals.json"), emptied);
 
           const printed = yield* runCli(home, ["check", "--json", home]);
 
@@ -1128,14 +1133,10 @@ describe("the panel for what a drag would leave", () => {
 
         assert.isNotEmpty(whileMoving);
         assert.isNotEmpty(whileResizing);
-        assert.deepStrictEqual(
-          asShown(whileMoving),
-          yield* checkedAfter(moved.layout)
-        );
-        assert.deepStrictEqual(
-          asShown(whileResizing),
-          yield* checkedAfter(resized.layout)
-        );
+        const checkedMoved = yield* checkedAfter(moved.layout);
+        const checkedResized = yield* checkedAfter(resized.layout);
+        assert.deepStrictEqual(asShown(whileMoving), checkedMoved);
+        assert.deepStrictEqual(asShown(whileResizing), checkedResized);
       }).pipe(Effect.provide(NodeServices.layer)),
     120_000
   );
@@ -1180,9 +1181,10 @@ describe("the panel for what a drag would leave", () => {
         assert.include(reason, 'Reset the route of hop "h-store" first');
         assert.include(reason, "check reports as an error");
 
+        const value = yield* count(page, "[data-drag-warning]");
         // The panel says it in the open, not in a tooltip, and nothing is
         // listed as a warning meanwhile.
-        assert.strictEqual(yield* count(page, "[data-drag-warning]"), 0);
+        assert.strictEqual(value, 0);
         yield* Effect.promise(() => page.mouse.up());
         yield* waitGone(page, "[data-drag-warnings]");
       }),
@@ -1211,8 +1213,10 @@ describe("the panel for what a drag would leave", () => {
 
         assert.isNotNull(panel);
 
+        const value = yield* drawingBoxes(page);
+
         const covered = Arr.filter(
-          yield* drawingBoxes(page),
+          value,
           (box) =>
             panel !== null &&
             box.left < panel.x + panel.width &&
@@ -1258,30 +1262,27 @@ describe("a group drag's hops", () => {
             )
           );
 
+        const value = yield* painted("[data-hop]");
         // Every hop has an end in the loop group, so no hop line or head
         // paints while it moves: h-note ends at the page.
-        assert.deepStrictEqual(yield* painted("[data-hop]"), []);
-        assert.deepStrictEqual(
-          yield* painted("[data-hop] [data-arrowhead]"),
-          []
-        );
+        assert.deepStrictEqual(value, []);
+        const value_2 = yield* painted("[data-hop] [data-arrowhead]");
+        assert.deepStrictEqual(value_2, []);
 
         // A packet walks the old route, so it goes with its hop. It moves
         // from hop to hop as its run goes on, so look at a few moments of
         // the drag, not one.
         for (let look = 0; look < 3; look++) {
-          assert.deepStrictEqual(
-            yield* painted("[data-packet]"),
-            [],
-            `look ${look}`
-          );
+          const moving = yield* painted("[data-packet]");
+          assert.deepStrictEqual(moving, [], `look ${look}`);
           yield* Effect.sleep("350 millis");
         }
 
         yield* Effect.promise(() => page.mouse.up());
         yield* waitForRevision(home, 1);
         yield* waitGone(page, "[data-drag-hidden]");
-        assert.lengthOf(yield* painted("[data-hop]"), 4);
+        const value_3 = yield* painted("[data-hop]");
+        assert.lengthOf(value_3, 4);
       }),
     120_000
   );
@@ -1331,19 +1332,17 @@ describe("the warnings while dragging", () => {
         const saved = yield* waitForRevision(home, 1);
         const [change] = reroutesIn(saved);
 
+        const value = yield* fs.readFileString(path.join(home, "layout.json"));
         // Write that route into layout.json, as accepting it would, and run
         // check on the result.
-        const layout = yield* decodeLayout(
-          yield* fs.readFileString(path.join(home, "layout.json"))
-        );
+        const layout = yield* decodeLayout(value);
 
-        yield* fs.writeFileString(
-          path.join(home, "layout.json"),
-          yield* Schema.encodeEffect(LayoutFile)({
-            ...layout,
-            routes: { "h-store": change?.points ?? [] },
-          })
-        );
+        const rerouted = yield* Schema.encodeEffect(LayoutFile)({
+          ...layout,
+          routes: { "h-store": change?.points ?? [] },
+        });
+
+        yield* fs.writeFileString(path.join(home, "layout.json"), rerouted);
 
         const printed = yield* runCli(home, ["check", "--json", home]);
 
@@ -1396,7 +1395,8 @@ describe("the warnings while dragging", () => {
         );
         yield* Effect.sleep("600 millis");
 
-        assert.strictEqual(yield* count(page, "[data-drag-warnings]"), 0);
+        const value = yield* count(page, "[data-drag-warnings]");
+        assert.strictEqual(value, 0);
         yield* Effect.promise(() => page.mouse.up());
       })
   );

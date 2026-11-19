@@ -178,20 +178,18 @@ describe("selecting several structures", () => {
 
           yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
-          assert.deepStrictEqual(yield* multiSelectedIds(page), [
-            "engineer",
-            "page",
-          ]);
-          assert.strictEqual(
-            yield* count(page, "[data-multi-selection-marker]"),
-            2
-          );
+          const value_1 = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(value_1, ["engineer", "page"]);
+          const value_2 = yield* count(page, "[data-multi-selection-marker]");
+          assert.strictEqual(value_2, 2);
 
           yield* shiftClick(page, ["engineer"]);
-          assert.deepStrictEqual(yield* multiSelectedIds(page), ["page"]);
+          const value_3 = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(value_3, ["page"]);
 
           yield* press(page, "Escape");
-          assert.deepStrictEqual(yield* multiSelectedIds(page), []);
+          const value_4 = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(value_4, []);
           assert.deepStrictEqual(errors, []);
         }),
       60_000
@@ -216,23 +214,18 @@ describe("selecting several structures", () => {
           });
 
           yield* waitFor(page, "[data-selection-box]");
-          assert.deepStrictEqual(yield* multiSelectedIds(page), [
-            "engineer",
-            "page",
-            "server",
-          ]);
+          const value_1 = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(value_1, ["engineer", "page", "server"]);
 
           yield* Effect.promise(() => page.mouse.up());
           yield* Effect.promise(() => page.keyboard.up("Shift"));
           yield* waitGone(page, "[data-selection-box]");
 
-          assert.deepStrictEqual(yield* multiSelectedIds(page), [
-            "engineer",
-            "page",
-            "server",
-          ]);
+          const value_5 = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(value_5, ["engineer", "page", "server"]);
+          const value_6 = yield* proposalsIn(home);
           // Selecting writes nothing.
-          assert.isTrue(Option.isNone(yield* proposalsIn(home)));
+          assert.isTrue(Option.isNone(value_6));
         }),
       60_000
     );
@@ -249,11 +242,10 @@ describe("selecting several structures", () => {
 
       yield* dragBy(page, start, { x: 30, y: 20 });
 
-      assert.notStrictEqual(
-        yield* attributeOf(page, "[data-viewport]", "transform"),
-        before
-      );
-      assert.deepStrictEqual(yield* multiSelectedIds(page), []);
+      const value_1 = yield* attributeOf(page, "[data-viewport]", "transform");
+      assert.notStrictEqual(value_1, before);
+      const value_7 = yield* multiSelectedIds(page);
+      assert.deepStrictEqual(value_7, []);
     })
   );
 });
@@ -334,24 +326,29 @@ describe("moving a selection", () => {
             })
           );
 
-          assert.strictEqual(
-            yield* attributeOf(page, "[data-drag-outline]", "data-refused"),
-            "true"
+          const value_1 = yield* attributeOf(
+            page,
+            "[data-drag-outline]",
+            "data-refused"
           );
-          assert.strictEqual(
-            yield* count(page, "[data-drag-outline]"),
-            outlines
-          );
+
+          assert.strictEqual(value_1, "true");
+          const value_8 = yield* count(page, "[data-drag-outline]");
+          assert.strictEqual(value_8, outlines);
 
           yield* Effect.promise(() => page.mouse.up());
           yield* waitGone(page, "[data-drag-outline]");
           yield* Effect.sleep("500 millis");
 
-          assert.isTrue(Option.isNone(yield* proposalsIn(home)));
-          assert.strictEqual(
-            yield* count(page, '[data-structure][data-pending="true"]'),
-            0
+          const value_9 = yield* proposalsIn(home);
+          assert.isTrue(Option.isNone(value_9));
+
+          const value_10 = yield* count(
+            page,
+            '[data-structure][data-pending="true"]'
           );
+
+          assert.strictEqual(value_10, 0);
         }),
       60_000
     );
@@ -397,10 +394,14 @@ describe("nudging a selection", () => {
               },
             ],
           });
-          assert.strictEqual(
-            yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
-            "c-page"
+
+          const value_1 = yield* attributeOf(
+            page,
+            "[data-walkthrough]",
+            "data-chapter"
           );
+
+          assert.strictEqual(value_1, "c-page");
         }),
       60_000
     );
@@ -417,10 +418,14 @@ describe("nudging a selection", () => {
       yield* shiftClick(page, ["server"]);
       yield* press(page, "ArrowRight");
       yield* waitForRevision(home, 1);
-      assert.strictEqual(
-        yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
-        "c-save"
+
+      const value_1 = yield* attributeOf(
+        page,
+        "[data-walkthrough]",
+        "data-chapter"
       );
+
+      assert.strictEqual(value_1, "c-save");
 
       // Escape empties the set, and the arrows change chapter again.
       yield* press(page, "Escape");
@@ -468,24 +473,26 @@ describe("aligning and distributing", () => {
       const { page } = yield* servedAll;
 
       yield* shiftClick(page, ["engineer"]);
-      assert.strictEqual(yield* count(page, toolbar), 0);
+      const value_1 = yield* count(page, toolbar);
+      assert.strictEqual(value_1, 0);
 
       yield* shiftClick(page, ["page"]);
       yield* waitFor(page, toolbar);
 
-      // Distribute needs three.
-      assert.isTrue(
-        yield* Effect.promise(() =>
-          page.locator("[data-distribute='x']").isDisabled()
-        )
+      const value_11 = yield* Effect.promise(() =>
+        page.locator("[data-distribute='x']").isDisabled()
       );
 
+      // Distribute needs three.
+      assert.isTrue(value_11);
+
       yield* shiftClick(page, ["server"]);
-      assert.isFalse(
-        yield* Effect.promise(() =>
-          page.locator("[data-distribute='x']").isDisabled()
-        )
+
+      const value_12 = yield* Effect.promise(() =>
+        page.locator("[data-distribute='x']").isDisabled()
       );
+
+      assert.isFalse(value_12);
     })
   );
 
@@ -589,15 +596,19 @@ describe("aligning and distributing", () => {
           page.locator("[data-align='left']").click()
         );
         yield* waitFor(page, "[data-arrange-refused]");
+
+        const value_1 = yield* Effect.promise(() =>
+          page.locator("[data-arrange-refused]").textContent()
+        );
+
         assert.strictEqual(
-          yield* Effect.promise(() =>
-            page.locator("[data-arrange-refused]").textContent()
-          ),
+          value_1,
           'pull-request at x 8, y 6, w 2, d 1.5 would overlap "proposals" at x 8, y 6, w 2, d 2. Pick a free spot.'
         );
         yield* Effect.sleep("300 millis");
 
-        assert.isTrue(Option.isNone(yield* proposalsIn(home)));
+        const value_13 = yield* proposalsIn(home);
+        assert.isTrue(Option.isNone(value_13));
       }),
     60_000
   );
@@ -622,9 +633,12 @@ describe("undo and redo", () => {
         const { page, home } = yield* servedAll;
 
         yield* showView(page, "plan");
-        assert.isTrue(
-          yield* Effect.promise(() => page.locator(undoButton).isDisabled())
+
+        const value_1 = yield* Effect.promise(() =>
+          page.locator(undoButton).isDisabled()
         );
+
+        assert.isTrue(value_1);
 
         yield* dragEngineer(page);
         const moved = yield* waitForRevision(home, 1);
@@ -634,9 +648,12 @@ describe("undo and redo", () => {
         yield* Effect.promise(() => page.locator(undoButton).click());
         assert.deepStrictEqual((yield* waitForRevision(home, 2)).layout, []);
         yield* waitGone(page, "[data-structure][data-pending='true']");
-        assert.isTrue(
-          yield* Effect.promise(() => page.locator(undoButton).isDisabled())
+
+        const value_14 = yield* Effect.promise(() =>
+          page.locator(undoButton).isDisabled()
         );
+
+        assert.isTrue(value_14);
 
         yield* Effect.promise(() => page.locator(redoButton).click());
         assert.deepStrictEqual(
@@ -644,9 +661,12 @@ describe("undo and redo", () => {
           moved.layout
         );
         yield* waitFor(page, "[data-structure][data-pending='true']");
-        assert.isTrue(
-          yield* Effect.promise(() => page.locator(redoButton).isDisabled())
+
+        const value_15 = yield* Effect.promise(() =>
+          page.locator(redoButton).isDisabled()
         );
+
+        assert.isTrue(value_15);
       }),
     60_000
   );
@@ -697,9 +717,11 @@ describe("undo and redo", () => {
         yield* press(page, "ArrowRight");
         yield* waitForRevision(home, 3);
 
-        assert.isTrue(
-          yield* Effect.promise(() => page.locator(redoButton).isDisabled())
+        const value_1 = yield* Effect.promise(() =>
+          page.locator(redoButton).isDisabled()
         );
+
+        assert.isTrue(value_1);
       }),
     60_000
   );
@@ -775,9 +797,12 @@ describe("undo and redo", () => {
             ],
           ]
         );
-        assert.isFalse(
-          yield* Effect.promise(() => page.locator(undoButton).isDisabled())
+
+        const value_1 = yield* Effect.promise(() =>
+          page.locator(undoButton).isDisabled()
         );
+
+        assert.isFalse(value_1);
       }),
     60_000
   );
@@ -887,32 +912,43 @@ describe("the toolbar", () => {
             page.locator("[data-toolbar-hint]").first().textContent()
           );
 
-        assert.strictEqual(yield* hint(), "Select three or more to distribute");
+        const value_1 = yield* hint();
+        assert.strictEqual(value_1, "Select three or more to distribute");
 
         yield* Effect.promise(() => page.locator("[data-align='top']").focus());
-        assert.include(yield* hint(), "Align top edges");
+        const value_16 = yield* hint();
+        assert.include(value_16, "Align top edges");
 
         yield* Effect.promise(() => page.locator("[data-align='top']").blur());
         yield* Effect.promise(() =>
           page.locator("[data-align='left']").hover()
         );
-        assert.include(yield* hint(), "Align left edges");
+        const value_17 = yield* hint();
+        assert.include(value_17, "Align left edges");
 
         yield* Effect.promise(() => page.mouse.move(5, 5));
         yield* Effect.promise(() =>
           page.locator("[data-align='left']").focus()
         );
-        assert.include(yield* hint(), "Align left edges");
+        const value_18 = yield* hint();
+        assert.include(value_18, "Align left edges");
+
+        const value_19 = yield* attributeOf(
+          page,
+          "[data-control='undo']",
+          "aria-label"
+        );
 
         // Undo and Redo are named without their arrows.
-        assert.strictEqual(
-          yield* attributeOf(page, "[data-control='undo']", "aria-label"),
-          "Undo"
+        assert.strictEqual(value_19, "Undo");
+
+        const value_20 = yield* attributeOf(
+          page,
+          "[data-control='redo']",
+          "aria-label"
         );
-        assert.strictEqual(
-          yield* attributeOf(page, "[data-control='redo']", "aria-label"),
-          "Redo"
-        );
+
+        assert.strictEqual(value_20, "Redo");
       }),
     60_000
   );
@@ -935,10 +971,14 @@ describe("the toolbar", () => {
       );
 
       yield* showView(page, "plan");
-      assert.strictEqual(
-        yield* attributeOf(page, "[data-align='left']", "aria-label"),
-        "Align left edges"
+
+      const value_1 = yield* attributeOf(
+        page,
+        "[data-align='left']",
+        "aria-label"
       );
+
+      assert.strictEqual(value_1, "Align left edges");
     })
   );
 });
@@ -969,20 +1009,24 @@ describe("older news from the server", () => {
           "export default {"
         );
         yield* waitFor(page, "[data-map-error]");
-        yield* fs.writeFileString(
-          path.join(home, "proposals.json"),
-          yield* Schema.encodeEffect(Schema.fromJsonString(Proposals))({
-            format: 1,
-            revision: 0,
-            layout: [],
-          })
-        );
+
+        const emptied = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Proposals)
+        )({
+          format: 1,
+          revision: 0,
+          layout: [],
+        });
+
+        yield* fs.writeFileString(path.join(home, "proposals.json"), emptied);
         yield* Effect.sleep("800 millis");
 
-        assert.strictEqual(
-          yield* count(page, '[data-structure][data-pending="true"]'),
-          2
+        const value_1 = yield* count(
+          page,
+          '[data-structure][data-pending="true"]'
         );
+
+        assert.strictEqual(value_1, 2);
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
@@ -1007,17 +1051,18 @@ describe("accepting a change", () => {
         );
         yield* Effect.promise(() => page.locator("[data-accept-all]").click());
         yield* waitFor(page, "[data-edit-notice='info']");
-        assert.include(
-          yield* Effect.promise(() =>
-            page.locator("[data-edit-notice='info']").textContent()
-          ),
-          "can't be undone"
+
+        const value_1 = yield* Effect.promise(() =>
+          page.locator("[data-edit-notice='info']").textContent()
         );
-        assert.isTrue(
-          yield* Effect.promise(() =>
-            page.locator("[data-control='undo']").isDisabled()
-          )
+
+        assert.include(value_1, "can't be undone");
+
+        const value_21 = yield* Effect.promise(() =>
+          page.locator("[data-control='undo']").isDisabled()
         );
+
+        assert.isTrue(value_21);
       }),
     60_000
   );
@@ -1036,12 +1081,15 @@ describe("editing off", () => {
         yield* serve.stop;
         yield* waitFor(page, "[data-server-stopped]");
 
-        assert.strictEqual(yield* count(page, "[data-edit-toolbar]"), 0);
-        assert.strictEqual(yield* count(page, "[data-arrange-toolbar]"), 0);
+        const value_1 = yield* count(page, "[data-edit-toolbar]");
+        assert.strictEqual(value_1, 0);
+        const value_22 = yield* count(page, "[data-arrange-toolbar]");
+        assert.strictEqual(value_22, 0);
 
         // Undo does nothing while editing is off.
         yield* press(page, "Control+z");
-        assert.isTrue(Option.isNone(yield* proposalsIn(home)));
+        const value_23 = yield* proposalsIn(home);
+        assert.isTrue(Option.isNone(value_23));
       }),
     60_000
   );
@@ -1070,16 +1118,19 @@ describe("editing off", () => {
         );
         yield* shiftClick(page, ["engineer", "page"]);
 
-        assert.strictEqual(yield* count(page, "[data-edit-toolbar]"), 0);
-        assert.strictEqual(
-          yield* count(page, "[data-multi-selection-marker]"),
-          0
+        const value_1 = yield* count(page, "[data-edit-toolbar]");
+        assert.strictEqual(value_1, 0);
+        const value_24 = yield* count(page, "[data-multi-selection-marker]");
+        assert.strictEqual(value_24, 0);
+        const value_25 = yield* multiSelectedIds(page);
+        assert.deepStrictEqual(value_25, []);
+
+        const value_26 = yield* count(
+          page,
+          '[data-structure][data-selected="true"]'
         );
-        assert.deepStrictEqual(yield* multiSelectedIds(page), []);
-        assert.strictEqual(
-          yield* count(page, '[data-structure][data-selected="true"]'),
-          1
-        );
+
+        assert.strictEqual(value_26, 1);
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );

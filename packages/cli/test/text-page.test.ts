@@ -50,22 +50,14 @@ describe("a text suggestion", () => {
 
         const field = `${panel} [data-suggestable="oneLiner"]`;
 
-        assert.include(
-          yield* textOf(page, `${field} [data-current]`),
-          "Saves edits and pushes changes to pages."
-        );
-        assert.include(
-          yield* textOf(page, `${field} [data-current]`),
-          "Current"
-        );
-        assert.include(
-          yield* textOf(page, `${field} [data-suggested]`),
-          "Saves edits and tells every open page."
-        );
-        assert.include(
-          yield* textOf(page, `${field} [data-suggested]`),
-          "goes in the next batch"
-        );
+        const value = yield* textOf(page, `${field} [data-current]`);
+        assert.include(value, "Saves edits and pushes changes to pages.");
+        const value_1 = yield* textOf(page, `${field} [data-current]`);
+        assert.include(value_1, "Current");
+        const value_2 = yield* textOf(page, `${field} [data-suggested]`);
+        assert.include(value_2, "Saves edits and tells every open page.");
+        const value_3 = yield* textOf(page, `${field} [data-suggested]`);
+        assert.include(value_3, "goes in the next batch");
 
         const proposals = yield* readProposals(home);
 
@@ -122,22 +114,20 @@ describe("a text suggestion", () => {
           ["steps.0.detail"]
         );
 
+        const value = yield* count(
+          page,
+          `${panel} [data-suggestable-step="1"] [data-suggest]`
+        );
+
         // One Edit for each step, not two.
-        assert.strictEqual(
-          yield* count(
-            page,
-            `${panel} [data-suggestable-step="1"] [data-suggest]`
-          ),
-          1
-        );
-        assert.strictEqual(
-          yield* count(page, `${panel} [data-suggest^="steps."]`),
-          2
-        );
+        assert.strictEqual(value, 1);
+        const value_4 = yield* count(page, `${panel} [data-suggest^="steps."]`);
+        assert.strictEqual(value_4, 2);
 
         const edit = page.getByRole("button", { name: "Edit: step 2" });
 
-        assert.strictEqual(yield* Effect.promise(() => edit.count()), 1);
+        const value_5 = yield* Effect.promise(() => edit.count());
+        assert.strictEqual(value_5, 1);
         yield* Effect.promise(() => edit.click());
         yield* fill(
           page,
@@ -182,17 +172,16 @@ describe("a text suggestion", () => {
           ]
         );
 
-        // Each open suggestion has a Discard that names its field.
-        assert.isAtLeast(
-          yield* Effect.promise(() =>
-            page
-              .getByRole("button", {
-                name: "Discard suggestion: step 2 detail",
-              })
-              .count()
-          ),
-          1
+        const value_6 = yield* Effect.promise(() =>
+          page
+            .getByRole("button", {
+              name: "Discard suggestion: step 2 detail",
+            })
+            .count()
         );
+
+        // Each open suggestion has a Discard that names its field.
+        assert.isAtLeast(value_6, 1);
       })
   );
 
@@ -283,14 +272,20 @@ describe("a question", () => {
         assert.strictEqual(saved?.target.id, "server");
         assert.strictEqual(saved?.text, "5178 first, then the next free one.");
         assert.strictEqual(saved?.answeredOn, today);
-        assert.include(
-          yield* textOf(page, '[data-question="Q-S1"] [data-answer]'),
-          `Answered ${today}`
+
+        const value = yield* textOf(
+          page,
+          '[data-question="Q-S1"] [data-answer]'
         );
-        assert.strictEqual(
-          yield* count(page, '[data-question="Q-S1"] [data-answer-open]'),
-          0
+
+        assert.include(value, `Answered ${today}`);
+
+        const value_7 = yield* count(
+          page,
+          '[data-question="Q-S1"] [data-answer-open]'
         );
+
+        assert.strictEqual(value_7, 0);
         assert.deepStrictEqual(errors, []);
       }),
     60_000
@@ -324,19 +319,17 @@ describe("a question", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, row);
 
+        const value = yield* textOf(page, row);
         assert.include(
-          yield* textOf(page, row),
+          value,
           "New question on Save server: Should writes retry?"
         );
-        assert.strictEqual(
-          yield* count(page, `${row} button:has-text("Discard")`),
-          1
-        );
-        assert.include(
-          yield* textOf(page, '[role="tab"][data-tab="pending"]'),
-          "Pending · 1"
-        );
-        assert.include(yield* textOf(page, "[data-ready-for-review]"), "· 1");
+        const value_8 = yield* count(page, `${row} button:has-text("Discard")`);
+        assert.strictEqual(value_8, 1);
+        const value_9 = yield* textOf(page, '[role="tab"][data-tab="pending"]');
+        assert.include(value_9, "Pending · 1");
+        const value_10 = yield* textOf(page, "[data-ready-for-review]");
+        assert.include(value_10, "· 1");
 
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
@@ -396,21 +389,23 @@ describe("the Pending tab with proposals", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-item][data-review-kind="note"]');
 
-        assert.strictEqual(yield* count(page, "[data-pending-empty]"), 0);
-        assert.include(
-          yield* textOf(page, '[role="tab"][data-tab="pending"]'),
-          "Pending · 1"
+        const value = yield* count(page, "[data-pending-empty]");
+        assert.strictEqual(value, 0);
+
+        const value_11 = yield* textOf(
+          page,
+          '[role="tab"][data-tab="pending"]'
         );
+
+        assert.include(value_11, "Pending · 1");
 
         const intro = yield* textOf(page, "[data-pending-intro]");
 
         assert.include(intro, "Layout changes");
         assert.include(intro, "Proposals");
         assert.include(intro, "agent");
-        assert.include(
-          yield* textOf(page, "[data-review-list] h3"),
-          "Diagram changes"
-        );
+        const value_12 = yield* textOf(page, "[data-review-list] h3");
+        assert.include(value_12, "Diagram changes");
       }),
     60_000
   );
@@ -482,20 +477,20 @@ describe("the Pending tab with proposals", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-kind="question"]');
 
-        assert.strictEqual(yield* count(page, "[data-pending-empty]"), 0);
-        assert.strictEqual(yield* count(page, "[data-review-list]"), 1);
-        assert.include(
-          yield* textOf(page, "[data-review-list] h3"),
-          "Diagram changes"
+        const value = yield* count(page, "[data-pending-empty]");
+        assert.strictEqual(value, 0);
+        const value_13 = yield* count(page, "[data-review-list]");
+        assert.strictEqual(value_13, 1);
+        const value_14 = yield* textOf(page, "[data-review-list] h3");
+        assert.include(value_14, "Diagram changes");
+
+        const value_15 = yield* Effect.promise(() =>
+          page.evaluate<string[]>(
+            "[...document.querySelectorAll('[data-review-list] [data-review-item]')].map((item) => item.dataset.reviewKind)"
+          )
         );
-        assert.sameMembers(
-          yield* Effect.promise(() =>
-            page.evaluate<string[]>(
-              "[...document.querySelectorAll('[data-review-list] [data-review-item]')].map((item) => item.dataset.reviewKind)"
-            )
-          ),
-          ["suggestion", "answer", "question"]
-        );
+
+        assert.sameMembers(value_15, ["suggestion", "answer", "question"]);
       }),
     60_000
   );
@@ -535,12 +530,12 @@ describe("a frozen suggestion", () => {
 
         yield* waitFor(page, `${field}[data-suggestion-state="frozen"]`);
 
-        assert.include(
-          yield* textOf(page, `${field} [data-suggested]`),
-          "In batch 1, waiting for the agent"
-        );
-        assert.strictEqual(yield* count(page, `${field} button`), 0);
-        assert.strictEqual(yield* count(page, `${field} [data-suggest]`), 0);
+        const value = yield* textOf(page, `${field} [data-suggested]`);
+        assert.include(value, "In batch 1, waiting for the agent");
+        const value_16 = yield* count(page, `${field} button`);
+        assert.strictEqual(value_16, 0);
+        const value_17 = yield* count(page, `${field} [data-suggest]`);
+        assert.strictEqual(value_17, 0);
 
         // The server still refuses a write the page can't make.
         const proposals = yield* readProposals(home);
@@ -577,10 +572,8 @@ describe("a frozen suggestion", () => {
         yield* waitFor(page, `${field}[data-suggestion-state="reviewed"]`);
         yield* waitFor(page, `${field} [data-suggest]`);
 
-        assert.include(
-          yield* textOf(page, `${field} [data-suggest]`),
-          "Suggest again"
-        );
+        const value = yield* textOf(page, `${field} [data-suggest]`);
+        assert.include(value, "Suggest again");
       }),
     90_000
   );
@@ -704,19 +697,18 @@ describe("the panel's buttons and headings", () => {
             .locator(`${panel} section`)
             .filter({ has: page.getByRole("heading", { name: heading }) });
 
-          assert.strictEqual(
-            yield* Effect.promise(() => section.count()),
-            1,
-            heading
-          );
+          const value = yield* Effect.promise(() => section.count());
+          assert.strictEqual(value, 1, heading);
 
           // The box's label takes no room on screen: the heading says it.
           const labels = yield* Effect.promise(() =>
             section.locator("label").all()
           );
 
-          const boxes = yield* Effect.forEach(labels, (label) =>
-            Effect.promise(() => label.boundingBox())
+          const boxes = yield* Effect.forEach(
+            labels,
+            (label) => Effect.promise(() => label.boundingBox()),
+            { concurrency: 1 }
           );
 
           const shown = Arr.filter(
@@ -725,13 +717,12 @@ describe("the panel's buttons and headings", () => {
           ).length;
 
           assert.strictEqual(shown, 0, heading);
-          assert.strictEqual(
-            yield* Effect.promise(() =>
-              section.getByRole("textbox", { name }).count()
-            ),
-            1,
-            heading
+
+          const value_18 = yield* Effect.promise(() =>
+            section.getByRole("textbox", { name }).count()
           );
+
+          assert.strictEqual(value_18, 1, heading);
         }
       })
   );

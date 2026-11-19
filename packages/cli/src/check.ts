@@ -43,15 +43,15 @@ const check = Effect.fn("check")(function* (home: string, json: boolean) {
   const { errors, warnings } = splitProblems(problems);
 
   if (json) {
-    yield* Console.log(
-      yield* encodeReport({
-        home,
-        ok: errors.length === 0,
-        errors,
-        warnings,
-        sourcesSkipped: Option.getOrNull(sourcesSkipped),
-      })
-    );
+    const value = yield* encodeReport({
+      home,
+      ok: errors.length === 0,
+      errors,
+      warnings,
+      sourcesSkipped: Option.getOrNull(sourcesSkipped),
+    });
+
+    yield* Console.log(value);
   } else {
     yield* Option.match(sourcesSkipped, {
       onNone: () => Effect.void,
@@ -61,7 +61,7 @@ const check = Effect.fn("check")(function* (home: string, json: boolean) {
     yield* Effect.forEach(
       problems,
       (problem) => Console.log(formatProblem(problem)),
-      { discard: true }
+      { discard: true, concurrency: 1 }
     );
 
     yield* Console.log(

@@ -76,7 +76,8 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
   const map = yield* loadReviewMap(home, "commit");
 
   const number = yield* nextRevision(home);
-  const at = DateTime.formatIso(yield* DateTime.now);
+  const now_1 = yield* DateTime.now;
+  const at = DateTime.formatIso(now_1);
 
   const committing = commitBatch({
     proposals: map.proposals,

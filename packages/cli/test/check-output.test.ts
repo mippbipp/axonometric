@@ -9,7 +9,8 @@ describe("check", () => {
     "warns about covered name tags and overlapping zones on the shapes map",
     () =>
       Effect.gen(function* () {
-        const home = yield* makeHome(yield* shapesMap);
+        const shapesMap_1 = yield* shapesMap;
+        const home = yield* makeHome(shapesMap_1);
         const map = `${home}/shapes/map`;
         const result = yield* runCli(home, ["check", map]);
 

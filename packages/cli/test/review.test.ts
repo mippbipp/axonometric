@@ -417,10 +417,12 @@ describe("commit", () => {
       const result = yield* runCli(home, ["commit", home]);
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
-      assert.include(yield* readIn(root, "review/SYSTEM.md"), "# Review loop");
+      const value = yield* readIn(root, "review/SYSTEM.md");
+      assert.include(value, "# Review loop");
 
+      const value_1 = yield* readIn(root, "review/review.html");
       // The accepted move puts the engineer at y 4.
-      const state = yield* pageState(yield* readIn(root, "review/review.html"));
+      const state = yield* pageState(value_1);
 
       assert.deepStrictEqual(state.layout.structures.engineer, {
         x: 0,

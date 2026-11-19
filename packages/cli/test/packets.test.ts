@@ -36,7 +36,9 @@ export default data;
 });
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMap_1 = yield* fullMap;
+
+  return yield* buildAndOpen(fullMap_1, "review");
 });
 
 const packetIds = (page: Page) =>
@@ -99,7 +101,8 @@ describe("packets", () => {
         // both across and down, so a new cy means the dot has moved.
         yield* waitFor(page, `[data-packet] circle:not([cy="${start.cy}"])`);
 
-        assert.deepStrictEqual(yield* packetIds(page), ["h-note"]);
+        const value = yield* packetIds(page);
+        assert.deepStrictEqual(value, ["h-note"]);
       })
     )
   );
@@ -235,11 +238,13 @@ describe("packets", () => {
         assert.isTrue(playDisabled);
         assert.include(playTitle ?? "", "reduced motion");
         assert.include(playTitle ?? "", "Step");
+        const value = yield* packetIds(page);
         // At rest, the packet waits on the chapter's first hop.
-        assert.deepStrictEqual(yield* packetIds(page), ["h-note"]);
+        assert.deepStrictEqual(value, ["h-note"]);
 
         yield* stepTo(page, "h-save");
-        assert.deepStrictEqual(yield* packetIds(page), ["h-save"]);
+        const value_1 = yield* packetIds(page);
+        assert.deepStrictEqual(value_1, ["h-save"]);
       })
     )
   );
@@ -274,16 +279,15 @@ describe("the flow picker", () => {
 
         yield* goToChapter(page, "c-all");
 
+        const value = yield* attributeOf(
+          page,
+          '[data-flow-picker] [data-flow="all"]',
+          "aria-pressed"
+        );
+
         // The last chapter plays no hops of its own, so it starts on all
         // flows: one packet each.
-        assert.strictEqual(
-          yield* attributeOf(
-            page,
-            '[data-flow-picker] [data-flow="all"]',
-            "aria-pressed"
-          ),
-          "true"
-        );
+        assert.strictEqual(value, "true");
         yield* waitFor(page, '[data-packet][data-run="f-note"]');
         yield* waitFor(page, '[data-packet][data-run="f-accept"]');
 

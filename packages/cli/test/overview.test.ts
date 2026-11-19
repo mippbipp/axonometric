@@ -10,11 +10,15 @@ import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMap_1 = yield* fullMap;
+
+  return yield* buildAndOpen(fullMap_1, "review");
 });
 
 const pipelinePage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* minimalMap, "pipeline");
+  const minimalMap_1 = yield* minimalMap;
+
+  return yield* buildAndOpen(minimalMap_1, "pipeline");
 });
 
 const overviewButton = "header [data-control='overview']";
@@ -152,14 +156,16 @@ describe("the How it's built page", () => {
 
         assert.lengthOf(adrs, 2);
         assert.match(adr, /^file:.*\/review\/adr\/0001-local-server\.md$/u);
-        assert.isTrue(yield* fileExists(adr), adr);
+        const value = yield* fileExists(adr);
+        assert.isTrue(value, adr);
         assert.strictEqual(url, "https://example.com/adr/harness");
         assert.lengthOf(deepDives, 1);
         assert.match(
           research,
           /^file:.*\/review\/research\/clipboard\.md#findings$/u
         );
-        assert.isTrue(yield* fileExists(research), research);
+        const value_1 = yield* fileExists(research);
+        assert.isTrue(value_1, research);
       })
     )
   );
@@ -205,19 +211,21 @@ describe("the How it's built page", () => {
         );
 
         assert.strictEqual(expanded, "true");
-        assert.isTrue(yield* inPage<boolean>(page, focusInside));
-        assert.deepStrictEqual(yield* texts(page, "[data-hint]"), [
-          "Esc closes this page",
-        ]);
+        const value = yield* inPage<boolean>(page, focusInside);
+        assert.isTrue(value);
+        const value_2 = yield* texts(page, "[data-hint]");
+        assert.deepStrictEqual(value_2, ["Esc closes this page"]);
 
         yield* press(page, "Escape");
         yield* waitGone(page, overviewPage);
-        assert.isTrue(yield* inPage<boolean>(page, focusOnButton));
+        const value_3 = yield* inPage<boolean>(page, focusOnButton);
+        assert.isTrue(value_3);
 
         yield* openOverview(page);
         yield* click(page, overviewButton);
         yield* waitGone(page, overviewPage);
-        assert.isTrue(yield* inPage<boolean>(page, focusOnButton));
+        const value_4 = yield* inPage<boolean>(page, focusOnButton);
+        assert.isTrue(value_4);
       })
     )
   );
@@ -254,10 +262,10 @@ describe("the How it's built page", () => {
 
         assert.strictEqual(chapter, "c-save");
         assert.strictEqual(pinned, 1);
-        assert.strictEqual(yield* inPage<string>(page, scale), zoomed);
-        assert.isTrue(
-          Arr.isArrayNonEmpty(yield* texts(page, "[data-structure]"))
-        );
+        const value = yield* inPage<string>(page, scale);
+        assert.strictEqual(value, zoomed);
+        const value_5 = yield* texts(page, "[data-structure]");
+        assert.isTrue(Arr.isArrayNonEmpty(value_5));
       })
     )
   );

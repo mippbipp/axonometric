@@ -14,7 +14,9 @@ interface Box {
 }
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMap_1 = yield* fullMap;
+
+  return yield* buildAndOpen(fullMap_1, "review");
 });
 
 const goToLastChapter = Effect.fnUntraced(function* (page: Page) {
@@ -48,7 +50,8 @@ const zoomControlsBox = Effect.fnUntraced(function* (page: Page) {
     (name) =>
       Effect.promise(() =>
         page.getByRole("button", { name, exact: true }).boundingBox()
-      )
+      ),
+    { concurrency: 1 }
   );
 
   const boxes = Arr.filter(buttons, (box) => box !== null);
@@ -71,19 +74,22 @@ describe("the playback bar", () => {
             page.locator(`[data-playback-bar] ${selector}`).count()
           );
 
+        const value = yield* inBar(
+          '[data-control="play"], [data-control="pause"]'
+        );
+
         // The last chapter starts playing, so Pause stands in for Play.
-        assert.strictEqual(
-          yield* inBar('[data-control="play"], [data-control="pause"]'),
-          1
+        assert.strictEqual(value, 1);
+        const value_1 = yield* inBar('[data-control="step"]');
+        assert.strictEqual(value_1, 1);
+        const value_2 = yield* inBar("[data-flow-picker] [data-flow]");
+        assert.isAbove(value_2, 0);
+
+        const value_3 = yield* Effect.promise(() =>
+          page.locator("header [data-playback-controls]").count()
         );
-        assert.strictEqual(yield* inBar('[data-control="step"]'), 1);
-        assert.isAbove(yield* inBar("[data-flow-picker] [data-flow]"), 0);
-        assert.strictEqual(
-          yield* Effect.promise(() =>
-            page.locator("header [data-playback-controls]").count()
-          ),
-          0
-        );
+
+        assert.strictEqual(value_3, 0);
         assert.deepStrictEqual(errors, []);
       })
     )

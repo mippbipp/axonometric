@@ -23,7 +23,9 @@ import { buildAndOpen } from "./harness.ts";
 // while they click, which redraws the view every frame.
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMap_1 = yield* fullMap;
+
+  return yield* buildAndOpen(fullMap_1, "review");
 });
 
 /** The review page at 1280 × 800, wide enough to show the side index. */
@@ -190,16 +192,16 @@ describe("clicking a structure", () => {
         const panel = yield* textOf(page, "[data-structure-panel]");
 
         assert.include(panel, "Pinned");
-        // The code chip's letter heads the panel, beside "Pinned".
-        assert.strictEqual(
-          yield* Effect.promise(() =>
-            page
-              .locator("[data-structure-panel]")
-              .getByText(/^P · Pinned\b/u)
-              .count()
-          ),
-          1
+
+        const value = yield* Effect.promise(() =>
+          page
+            .locator("[data-structure-panel]")
+            .getByText(/^P · Pinned\b/u)
+            .count()
         );
+
+        // The code chip's letter heads the panel, beside "Pinned".
+        assert.strictEqual(value, 1);
         assert.include(panel, "Map page");
         assert.include(panel, "Live");
         assert.include(panel, "Shows the map and records notes.");
@@ -214,17 +216,24 @@ describe("clicking a structure", () => {
         assert.include(panel, "mippbipp");
         assert.include(panel, "2026-10-30");
 
-        assert.deepStrictEqual(
-          yield* attributesOf(page, '[data-selected="true"]', "data-structure"),
-          ["page"]
+        const value_1 = yield* attributesOf(
+          page,
+          '[data-selected="true"]',
+          "data-structure"
         );
+
+        assert.deepStrictEqual(value_1, ["page"]);
 
         // Clicking another structure moves the pin.
         yield* pin(page, "engineer");
-        assert.deepStrictEqual(
-          yield* attributesOf(page, '[data-selected="true"]', "data-structure"),
-          ["engineer"]
+
+        const value_2 = yield* attributesOf(
+          page,
+          '[data-selected="true"]',
+          "data-structure"
         );
+
+        assert.deepStrictEqual(value_2, ["engineer"]);
         assert.deepStrictEqual(errors, []);
       })
     )
@@ -240,14 +249,16 @@ describe("clicking a structure", () => {
         yield* waitGone(page, "[data-structure-panel]");
         yield* waitFor(page, "[data-chapter-story]");
 
-        assert.strictEqual(yield* count(page, '[data-selected="true"]'), 0);
+        const value = yield* count(page, '[data-selected="true"]');
+        assert.strictEqual(value, 0);
 
         yield* pin(page, "page");
         yield* press(page, "Escape");
         yield* waitGone(page, "[data-structure-panel]");
         yield* waitFor(page, "[data-chapter-story]");
 
-        assert.strictEqual(yield* count(page, '[data-selected="true"]'), 0);
+        const value_3 = yield* count(page, '[data-selected="true"]');
+        assert.strictEqual(value_3, 0);
       })
     )
   );
@@ -283,14 +294,19 @@ describe("clicking a structure", () => {
           )
         );
 
-        assert.strictEqual(
-          yield* count(page, '[data-structure-panel="page"][data-pinned]'),
-          1
+        const value = yield* count(
+          page,
+          '[data-structure-panel="page"][data-pinned]'
         );
-        assert.strictEqual(
-          yield* count(page, '[data-structure="page"][data-selected="true"]'),
-          1
+
+        assert.strictEqual(value, 1);
+
+        const value_4 = yield* count(
+          page,
+          '[data-structure="page"][data-selected="true"]'
         );
+
+        assert.strictEqual(value_4, 1);
       })
     )
   );
@@ -324,7 +340,8 @@ describe("clicking a structure", () => {
         const [after] = yield* boxesOf(page, "svg[data-scale]");
 
         assert.deepStrictEqual(after, before);
-        assert.strictEqual(yield* scale(), zoomed);
+        const value = yield* scale();
+        assert.strictEqual(value, zoomed);
       })
     )
   );
@@ -341,11 +358,13 @@ describe("clicking a structure", () => {
         yield* click(page, "[data-packet]");
         yield* waitFor(page, "[data-packet-panel]");
 
-        // The pin stays while the packet shows.
-        assert.strictEqual(
-          yield* count(page, '[data-structure="server"][data-selected="true"]'),
-          1
+        const value = yield* count(
+          page,
+          '[data-structure="server"][data-selected="true"]'
         );
+
+        // The pin stays while the packet shows.
+        assert.strictEqual(value, 1);
 
         yield* click(page, '[data-packet-panel] [data-control="close"]');
         yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
@@ -373,11 +392,12 @@ describe("the inside view", () => {
 
     assert.lengthOf(steps, 2);
     assert.include(breadcrumb, "Map page");
-    assert.isFalse(
-      yield* Effect.promise(() =>
-        page.locator("[data-chapter-rail]").isVisible()
-      )
+
+    const value = yield* Effect.promise(() =>
+      page.locator("[data-chapter-rail]").isVisible()
     );
+
+    assert.isFalse(value);
 
     const panel = yield* textOf(page, "[data-inside-panel]");
 
@@ -409,19 +429,23 @@ describe("the inside view", () => {
         yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
         yield* press(page, "ArrowRight");
         yield* waitFor(page, '[data-inside-view="page"]');
-        assert.strictEqual(yield* focusedOn(page), "come-out");
+        const value = yield* focusedOn(page);
+        assert.strictEqual(value, "come-out");
 
         yield* press(page, "ArrowLeft");
         yield* waitGone(page, "[data-inside-view]");
-        assert.strictEqual(yield* focusedOn(page), "page");
+        const value_5 = yield* focusedOn(page);
+        assert.strictEqual(value_5, "page");
 
         // The button way round lands in the same places.
         yield* click(page, '[data-control="go-inside"]');
         yield* waitFor(page, '[data-inside-view="page"]');
-        assert.strictEqual(yield* focusedOn(page), "come-out");
+        const value_6 = yield* focusedOn(page);
+        assert.strictEqual(value_6, "come-out");
         yield* press(page, "Enter");
         yield* waitGone(page, "[data-inside-view]");
-        assert.strictEqual(yield* focusedOn(page), "page");
+        const value_7 = yield* focusedOn(page);
+        assert.strictEqual(value_7, "page");
       })
     )
   );
@@ -453,7 +477,8 @@ describe("the inside view", () => {
         yield* click(page, '[data-breadcrumb] [data-control="come-out"]');
         yield* waitGone(page, "[data-inside-view]");
 
-        assert.closeTo(yield* scale(), zoomed, 1e-6);
+        const value = yield* scale();
+        assert.closeTo(value, zoomed, 1e-6);
       })
     )
   );
@@ -514,12 +539,14 @@ describe("the inside view", () => {
         const { page } = yield* reviewPage;
 
         yield* pin(page, "engineer");
-        assert.strictEqual(yield* count(page, '[data-control="go-inside"]'), 0);
+        const value = yield* count(page, '[data-control="go-inside"]');
+        assert.strictEqual(value, 0);
 
         // → stays on the structure rather than moving on a chapter.
         yield* press(page, "ArrowRight");
         yield* waitFor(page, '[data-walkthrough][data-chapter="c-page"]');
-        assert.strictEqual(yield* count(page, "[data-inside-view]"), 0);
+        const value_8 = yield* count(page, "[data-inside-view]");
+        assert.strictEqual(value_8, 0);
       })
     )
   );
@@ -533,11 +560,14 @@ describe("the Open questions tab", () => {
 
         yield* click(page, '[role="tab"][data-tab="questions"]');
 
-        // Chapter 1 reveals only the page's questions.
-        assert.deepStrictEqual(
-          yield* attributesOf(page, "[data-question]", "data-question"),
-          ["Q-P1", "Q-P2"]
+        const value = yield* attributesOf(
+          page,
+          "[data-question]",
+          "data-question"
         );
+
+        // Chapter 1 reveals only the page's questions.
+        assert.deepStrictEqual(value, ["Q-P1", "Q-P2"]);
 
         yield* goToChapter(page, "c-save");
         yield* click(page, '[role="tab"][data-tab="questions"]');
@@ -626,8 +656,10 @@ describe("the side index", () => {
           "upstream",
         ]);
         assert.deepStrictEqual(later, ["2", "2", "3", "3"]);
-        assert.include(yield* textOf(page, indexItem("page")), "P");
-        assert.include(yield* textOf(page, indexItem("page")), "Map page");
+        const value = yield* textOf(page, indexItem("page"));
+        assert.include(value, "P");
+        const value_9 = yield* textOf(page, indexItem("page"));
+        assert.include(value_9, "Map page");
 
         // "ch 2" jumps to the chapter that reveals the structure.
         yield* click(page, '[data-side-index] [data-revealed-in="2"] >> nth=0');

@@ -122,7 +122,8 @@ describe("the loop for words", () => {
       Effect.gen(function* () {
         const { home } = yield* frozenOverHttp;
 
-        const proposals = yield* decodeProposals(yield* proposalsText(home));
+        const value_1 = yield* proposalsText(home);
+        const proposals = yield* decodeProposals(value_1);
 
         assert.deepStrictEqual(
           Arr.map(proposals.batches?.[0]?.items ?? [], ({ kind }) => kind),

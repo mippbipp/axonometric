@@ -30,8 +30,10 @@ describe("writing outputs", () => {
 
         yield* writeAll([{ file, content: "new" }]);
 
-        assert.strictEqual(yield* fs.readFileString(file), "new");
-        assert.isFalse(yield* fs.exists(`${file}.${process.pid}.tmp`));
+        const value = yield* fs.readFileString(file);
+        assert.strictEqual(value, "new");
+        const value_1 = yield* fs.exists(`${file}.${process.pid}.tmp`);
+        assert.isFalse(value_1);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     10_000
   );
@@ -69,10 +71,14 @@ describe("writing outputs", () => {
         );
 
         assert.isTrue(Exit.isFailure(exit));
-        assert.strictEqual(yield* fs.readFileString(one), "old one");
-        assert.isFalse(yield* fs.exists(two));
-        assert.isFalse(yield* fs.exists(three));
-        assert.sameMembers(yield* fs.readDirectory(home), ["one.json"]);
+        const value = yield* fs.readFileString(one);
+        assert.strictEqual(value, "old one");
+        const value_2 = yield* fs.exists(two);
+        assert.isFalse(value_2);
+        const value_3 = yield* fs.exists(three);
+        assert.isFalse(value_3);
+        const value_4 = yield* fs.readDirectory(home);
+        assert.sameMembers(value_4, ["one.json"]);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
   );
 
@@ -90,9 +96,12 @@ describe("writing outputs", () => {
       ]).pipe(Effect.exit);
 
       assert.isTrue(Exit.isFailure(exit));
-      assert.strictEqual(yield* fs.readFileString(a), "old a");
-      assert.strictEqual(yield* fs.readFileString(b), "old b");
-      assert.sameMembers(yield* fs.readDirectory(home), ["a.json", "b.json"]);
+      const value = yield* fs.readFileString(a);
+      assert.strictEqual(value, "old a");
+      const value_5 = yield* fs.readFileString(b);
+      assert.strictEqual(value_5, "old b");
+      const value_6 = yield* fs.readDirectory(home);
+      assert.sameMembers(value_6, ["a.json", "b.json"]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
   );
 });

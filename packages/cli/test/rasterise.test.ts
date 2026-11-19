@@ -10,7 +10,8 @@ const textual = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="20">
 describe("the rasteriser", () => {
   it.effect("draws text in the bundled font, not the OS's", () =>
     Effect.gen(function* () {
-      const image = yield* decodePng(yield* rasterise(textual, 1));
+      const value = yield* rasterise(textual, 1);
+      const image = yield* decodePng(value);
 
       const dark = Arr.filter(
         Arr.makeBy(image.width * image.height, (at) => at),

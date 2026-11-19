@@ -156,9 +156,11 @@ const staged = Effect.fnUntraced(function* (
     yield* fs.copyFile(path.join(repoDir, file), path.join(stage, file));
   }
 
-  const manifest = yield* decodeJsonObject(
-    yield* fs.readFileString(path.join(packageDir, "package.json"))
-  ).pipe(
+  const value_1 = yield* fs.readFileString(
+    path.join(packageDir, "package.json")
+  );
+
+  const manifest = yield* decodeJsonObject(value_1).pipe(
     Effect.mapError((error) =>
       PackCheckFailed.make({
         message: `Can't read package.json:\n${error.message}`,

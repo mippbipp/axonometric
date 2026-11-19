@@ -84,7 +84,7 @@ const writeMap = Effect.fnUntraced(function* (
   yield* Effect.forEach(
     Rec.toEntries(files),
     ([file, content]) => writeFile(home, file, content),
-    { discard: true }
+    { discard: true, concurrency: 1 }
   );
 });
 

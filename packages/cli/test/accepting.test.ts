@@ -77,10 +77,12 @@ describe("accepting layout changes in the page", () => {
       Effect.gen(function* () {
         const { root, page, errors } = yield* servedWithPending;
 
-        assert.strictEqual(
-          yield* count(page, '[data-structure][data-pending="true"]'),
-          2
+        const value = yield* count(
+          page,
+          '[data-structure][data-pending="true"]'
         );
+
+        assert.strictEqual(value, 2);
 
         yield* Effect.promise(() =>
           page
@@ -89,10 +91,8 @@ describe("accepting layout changes in the page", () => {
         );
 
         yield* waitFor(page, '[data-saved-revision="1"]');
-        assert.include(
-          yield* textOf(page, "[data-saved-revision]"),
-          "Saved revision 1: Move Engineer"
-        );
+        const value_1 = yield* textOf(page, "[data-saved-revision]");
+        assert.include(value_1, "Saved revision 1: Move Engineer");
 
         yield* waitGone(
           page,
@@ -101,19 +101,20 @@ describe("accepting layout changes in the page", () => {
         yield* waitGone(page, '[data-accepted-outline="engineer"]');
         yield* waitGone(page, '[data-pending-change="move"]');
 
-        // The other change is still pending.
-        assert.strictEqual(
-          yield* count(page, '[data-structure="page"][data-pending="true"]'),
-          1
+        const value_2 = yield* count(
+          page,
+          '[data-structure="page"][data-pending="true"]'
         );
-        assert.strictEqual(yield* count(page, "[data-pending-change]"), 1);
 
+        // The other change is still pending.
+        assert.strictEqual(value_2, 1);
+        const value_3 = yield* count(page, "[data-pending-change]");
+        assert.strictEqual(value_3, 1);
+
+        const value_4 = yield* exists(root, "review/map/history/0001.json");
         // What the accept writes is accept-writes.test.ts's to check. The
         // page's accept reaches the history.
-        assert.isTrue(
-          yield* exists(root, "review/map/history/0001.json"),
-          "history/0001.json"
-        );
+        assert.isTrue(value_4, "history/0001.json");
         assert.deepStrictEqual(errors, []);
       }),
     60_000
@@ -135,21 +136,20 @@ describe("accepting layout changes in the page", () => {
         yield* waitFor(page, '[data-saved-revision="1"]');
         yield* waitGone(page, '[data-structure][data-pending="true"]');
         yield* waitGone(page, "[data-accepted-outline]");
-        assert.strictEqual(yield* count(page, "[data-pending-change]"), 0);
+        const value = yield* count(page, "[data-pending-change]");
+        assert.strictEqual(value, 0);
 
-        const revision = yield* decodeRevision(
-          yield* readIn(root, "review/map/history/0001.json")
-        );
+        const value_5 = yield* readIn(root, "review/map/history/0001.json");
+        const revision = yield* decodeRevision(value_5);
 
         assert.strictEqual(revision.message, "Tidy the loop");
 
         // The Pending tab says what is left: nothing, and no Accept all.
         yield* waitFor(page, "[data-pending-list]");
-        assert.include(
-          yield* textOf(page, "[data-pending-list]"),
-          "Nothing is pending"
-        );
-        assert.strictEqual(yield* count(page, "[data-accept-all]"), 0);
+        const value_6 = yield* textOf(page, "[data-pending-list]");
+        assert.include(value_6, "Nothing is pending");
+        const value_7 = yield* count(page, "[data-accept-all]");
+        assert.strictEqual(value_7, 0);
 
         // What accept rebuilt is what `build` writes for the same files.
         const systemMd = yield* readIn(root, "review/SYSTEM.md");
@@ -170,7 +170,8 @@ describe("accepting layout changes in the page", () => {
     () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const root = yield* makeHome(yield* fullMap);
+        const fullMap_1 = yield* fullMap;
+        const root = yield* makeHome(fullMap_1);
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
         const { page } = yield* openUrl(serve.url);
@@ -216,22 +217,19 @@ describe("accepting layout changes in the page", () => {
         );
         yield* waitFor(page, '[data-saved-revision="2"]');
 
-        const first = yield* decodeRevision(
-          yield* readIn(root, "review/map/history/0001.json")
-        );
+        const value = yield* readIn(root, "review/map/history/0001.json");
+        const first = yield* decodeRevision(value);
 
-        const second = yield* decodeRevision(
-          yield* readIn(root, "review/map/history/0002.json")
-        );
+        const value_8 = yield* readIn(root, "review/map/history/0002.json");
+        const second = yield* decodeRevision(value_8);
 
         assert.strictEqual(first.revision, 1);
         assert.strictEqual(second.revision, 2);
         assert.notStrictEqual(first.layout.revision, second.layout.revision);
         assert.notDeepEqual(first.layout.structures, second.layout.structures);
-        assert.deepStrictEqual(
-          yield* decodeLayout(yield* readIn(root, "review/map/layout.json")),
-          second.layout
-        );
+        const value_9 = yield* readIn(root, "review/map/layout.json");
+        const decodedLayout = yield* decodeLayout(value_9);
+        assert.deepStrictEqual(decodedLayout, second.layout);
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );

@@ -100,8 +100,10 @@ export const boxesOf = Effect.fnUntraced(function* (
 ) {
   const elements = yield* Effect.promise(() => page.locator(selector).all());
 
-  const boxes = yield* Effect.forEach(elements, (element) =>
-    Effect.promise(() => element.boundingBox())
+  const boxes = yield* Effect.forEach(
+    elements,
+    (element) => Effect.promise(() => element.boundingBox()),
+    { concurrency: 1 }
   );
 
   return Arr.filter(boxes, (box) => box !== null);
@@ -111,7 +113,7 @@ export const boxesOf = Effect.fnUntraced(function* (
  * `value` as a JavaScript literal, for building the expression strings that
  * `page.evaluate` and `page.waitForFunction` run in the page.
  */
-// oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- a JSON string is a JavaScript string literal
+// oxlint-disable-next-line effecttsgo/global-json -- a JSON string is a JavaScript string literal
 export const literal = (value: string | null) => JSON.stringify(value);
 
 /** The `name` attribute of every element matching `selector`, in order. */
@@ -122,8 +124,10 @@ export const attributesOf = Effect.fnUntraced(function* (
 ) {
   const elements = yield* Effect.promise(() => page.locator(selector).all());
 
-  const values = yield* Effect.forEach(elements, (element) =>
-    Effect.promise(() => element.getAttribute(name))
+  const values = yield* Effect.forEach(
+    elements,
+    (element) => Effect.promise(() => element.getAttribute(name)),
+    { concurrency: 1 }
   );
 
   return Arr.filter(values, (value) => value !== null);

@@ -161,7 +161,8 @@ const assertRefused = Effect.fnUntraced(function* (
   const sent = yield* send;
 
   assert.strictEqual(sent.status, status, sent.body);
-  assert.deepStrictEqual(yield* snapshot(home), before);
+  const value_1 = yield* snapshot(home);
+  assert.deepStrictEqual(value_1, before);
 
   return sent;
 });
@@ -178,7 +179,8 @@ describe("writing pending layout changes over HTTP", () => {
       assert.strictEqual(sent.status, 200, sent.body);
       const saved = yield* fs.readFileString(path.join(home, "proposals.json"));
 
-      assert.deepStrictEqual(yield* decodeProposals(saved), {
+      const value_1 = yield* decodeProposals(saved);
+      assert.deepStrictEqual(value_1, {
         format: 1,
         revision: 1,
         layout: [pageAt(4)],
@@ -398,8 +400,10 @@ describe("writing pending layout changes over HTTP", () => {
           path.join(path.dirname(home), name)
         );
 
-        const before = yield* Effect.forEach(outputs, (file) =>
-          fs.stat(file).pipe(Effect.map((info) => info.mtime))
+        const before = yield* Effect.forEach(
+          outputs,
+          (file) => fs.stat(file).pipe(Effect.map((info) => info.mtime)),
+          { concurrency: 1 }
         );
 
         const sent = yield* put(url, ownOrigin(url), moveBody(0, 4));
@@ -408,8 +412,10 @@ describe("writing pending layout changes over HTTP", () => {
         // Long enough for the watcher to settle and a rebuild to run, if one will.
         yield* Effect.sleep("1 second");
 
-        const after = yield* Effect.forEach(outputs, (file) =>
-          fs.stat(file).pipe(Effect.map((info) => info.mtime))
+        const after = yield* Effect.forEach(
+          outputs,
+          (file) => fs.stat(file).pipe(Effect.map((info) => info.mtime)),
+          { concurrency: 1 }
         );
 
         assert.deepStrictEqual(after, before);
@@ -494,7 +500,8 @@ describe("writing pending layout changes over HTTP", () => {
 
         assert.strictEqual(first.status, 200, first.body);
         assert.strictEqual(second.status, 200, second.body);
-        assert.deepStrictEqual(yield* Fiber.join(seen), [0, 4, 6]);
+        const value_1 = yield* Fiber.join(seen);
+        assert.deepStrictEqual(value_1, [0, 4, 6]);
       }).pipe(
         Effect.scoped,
         Effect.orDie,
@@ -530,10 +537,12 @@ describe("writing pending layout changes over HTTP", () => {
         );
 
         assert.strictEqual(sent.status, 409, sent.body);
-        assert.strictEqual(
-          yield* fs.readFileString(path.join(home, "proposals.json")),
-          "{ not json"
+
+        const value_1 = yield* fs.readFileString(
+          path.join(home, "proposals.json")
         );
+
+        assert.strictEqual(value_1, "{ not json");
       }).pipe(Effect.provide(NodeServices.layer))
   );
 });

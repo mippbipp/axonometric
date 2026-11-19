@@ -103,7 +103,8 @@ describe("gET /api/history", () => {
   it.live("lists nothing for a map with no revisions", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
-      const root = yield* makeHome(yield* fullMap);
+      const fullMap_1 = yield* fullMap;
+      const root = yield* makeHome(fullMap_1);
 
       const serve = yield* startServe(path.join(root, "review", "map"), [
         "--port",
@@ -113,7 +114,8 @@ describe("gET /api/history", () => {
       const sent = yield* get(serve.url, "/api/history");
 
       assert.strictEqual(sent.status, 200, sent.body);
-      assert.deepStrictEqual(yield* decodeList(sent.body), []);
+      const value = yield* decodeList(sent.body);
+      assert.deepStrictEqual(value, []);
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -155,9 +157,11 @@ describe("gET /api/history/:n", () => {
 
       const revision = yield* decodeRevision(sent.body);
 
-      const onDisk = yield* decodeRevision(
-        yield* fs.readFileString(path.join(home, "history", "0001.json"))
+      const value = yield* fs.readFileString(
+        path.join(home, "history", "0001.json")
       );
+
+      const onDisk = yield* decodeRevision(value);
 
       assert.deepStrictEqual(revision, onDisk);
       assert.strictEqual(revision.layout.structures.page?.y, 4);
@@ -282,7 +286,8 @@ describe("the events stream", () => {
           message: "Third",
         });
 
-        assert.deepStrictEqual(yield* Fiber.join(seen), [
+        const value = yield* Fiber.join(seen);
+        assert.deepStrictEqual(value, [
           [2, 1],
           [3, 2, 1],
         ]);

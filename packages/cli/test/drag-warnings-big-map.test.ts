@@ -14,7 +14,8 @@ import { makeHome, startServe } from "./harness.ts";
 
 const served = Effect.gen(function* () {
   const path = yield* Path.Path;
-  const root = yield* makeHome(yield* pipelineMap);
+  const pipelineMap_1 = yield* pipelineMap;
+  const root = yield* makeHome(pipelineMap_1);
   const home = path.join(root, "flake-pipeline", "map");
   const serve = yield* startServe(home, ["--port", "0"]);
   const { page, errors } = yield* openUrl(serve.url);

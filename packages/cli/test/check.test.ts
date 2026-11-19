@@ -120,11 +120,11 @@ describe("check", () => {
 
   it.effect("prints errors and warnings as JSON", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(
+      const value =
         yield* editData(`data.groups.push({ id: "spare", title: "Spare" });
-data.structures[1].status = "retired";`),
-        ["--json"]
-      );
+data.structures[1].status = "retired";`);
+
+      const result = yield* checkWith(value, ["--json"]);
 
       const report = yield* decodeReport(result.stdout);
 
@@ -173,8 +173,7 @@ data.structures[1].status = "retired";`),
     "prints each data.mjs problem as text, with its path, and a count, and exits 1",
     () =>
       Effect.gen(function* () {
-        const result = yield* checkWith(
-          yield* editData(`data.structures[0].ghost = true;
+        const value = yield* editData(`data.structures[0].ghost = true;
 data.structures[0].shape = "circle";
 data.structures[2].x = 4;
 data.structures[2].w = 2;
@@ -182,8 +181,9 @@ data.structures[1].questions[0].id = "Q-p1";
 const question = data.structures[1].questions[1];
 delete question.answer;
 delete question.answeredBy;
-delete question.answeredOn;`)
-        );
+delete question.answeredOn;`);
+
+        const result = yield* checkWith(value);
 
         const at = "error data.mjs structures[1].questions[1]";
 
@@ -211,13 +211,14 @@ delete question.answeredOn;`)
     "names a duplicate question id, and where an unknown hop, structure or group is used",
     () =>
       Effect.gen(function* () {
-        const result = yield* checkWith(
+        const value =
           yield* editData(`data.structures[2].questions[0].id = "Q-P1";
 data.flows[0].hops.push("h-gone");
 data.chapters[2].plays.push("h-missing");
 data.chapters[1].reveals.push("nobody");
-data.structures[3].group = "elsewhere";`)
-        );
+data.structures[3].group = "elsewhere";`);
+
+        const result = yield* checkWith(value);
 
         assert.strictEqual(result.exitCode, 1);
         assert.include(
@@ -247,9 +248,8 @@ data.structures[3].group = "elsewhere";`)
     "rejects a chapter that plays a hop to a structure not yet revealed",
     () =>
       Effect.gen(function* () {
-        const result = yield* checkWith(
-          yield* editData('data.chapters[0].plays.push("h-save");')
-        );
+        const value = yield* editData('data.chapters[0].plays.push("h-save");');
+        const result = yield* checkWith(value);
 
         assert.strictEqual(result.exitCode, 1);
         assert.include(
@@ -261,9 +261,11 @@ data.structures[3].group = "elsewhere";`)
 
   it.effect("counts structures revealed by earlier chapters", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData('data.chapters[2].plays.push("h-note", "h-pr");')
+      const value = yield* editData(
+        'data.chapters[2].plays.push("h-note", "h-pr");'
       );
+
+      const result = yield* checkWith(value);
 
       assert.strictEqual(result.exitCode, 0, result.stdout);
     })
@@ -271,9 +273,8 @@ data.structures[3].group = "elsewhere";`)
 
   it.effect("rejects a walkthrough that never reveals some structures", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData("data.chapters[2].reveals = [];")
-      );
+      const value = yield* editData("data.chapters[2].reveals = [];");
+      const result = yield* checkWith(value);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(
@@ -285,7 +286,8 @@ data.structures[3].group = "elsewhere";`)
 
   it.effect("accepts a map with no chapters", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(yield* editData("data.chapters = [];"));
+      const value = yield* editData("data.chapters = [];");
+      const result = yield* checkWith(value);
 
       assert.strictEqual(result.exitCode, 0, result.stdout);
     })
@@ -293,10 +295,11 @@ data.structures[3].group = "elsewhere";`)
 
   it.effect("reports ADR and deep dive links that don't resolve", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(
+      const value =
         yield* editData(`data.overview.decisions[0].adr = "docs/adr/0001-local-server.md";
-data.overview.deepDives[0].link = "research/missing.md#top";`)
-      );
+data.overview.deepDives[0].link = "research/missing.md#top";`);
+
+      const result = yield* checkWith(value);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(
@@ -369,13 +372,10 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
       name: string,
       tag: string
     ) {
-      const result = yield* checkWith(
-        yield* editData(
-          `data.structures[1].name = "${name}";
-data.structures[1].tag = "${tag}";`
-        ),
-        ["--json"]
-      );
+      const value = yield* editData(`data.structures[1].name = "${name}";
+data.structures[1].tag = "${tag}";`);
+
+      const result = yield* checkWith(value, ["--json"]);
 
       const report = yield* decodeReport(result.stdout);
 
@@ -436,7 +436,8 @@ data.structures[1].tag = "${tag}";`
           ["Authentication service", "Auth"],
           ["Amazon S3 bucket", "S3"],
         ] as const) {
-          assert.deepStrictEqual(yield* tagWarnings(name, tag), []);
+          const value = yield* tagWarnings(name, tag);
+          assert.deepStrictEqual(value, []);
         }
       })
     );
@@ -447,15 +448,13 @@ data.structures[1].tag = "${tag}";`
       "warns when a chapter other than the last plays more than five hops or reveals more than three structures",
       () =>
         Effect.gen(function* () {
-          const result = yield* checkWith(
-            yield* editData(
-              `data.chapters[1].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];
+          const value =
+            yield* editData(`data.chapters[1].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];
 data.chapters[1].reveals = ["server", "proposals", "pull-request", "upstream"];
 data.chapters[2].reveals = [];
-data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`
-            ),
-            ["--json"]
-          );
+data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`);
+
+          const result = yield* checkWith(value, ["--json"]);
 
           const report = yield* decodeReport(result.stdout);
 
@@ -478,12 +477,11 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
 
     it.effect("lets the last chapter play every hop", () =>
       Effect.gen(function* () {
-        const result = yield* checkWith(
-          yield* editData(
-            `data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`
-          ),
-          ["--json"]
+        const value = yield* editData(
+          `data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`
         );
+
+        const result = yield* checkWith(value, ["--json"]);
 
         const report = yield* decodeReport(result.stdout);
 

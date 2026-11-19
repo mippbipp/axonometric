@@ -13,7 +13,9 @@ import { shapesMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const builtPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* shapesMap, "shapes");
+  const shapesMap_1 = yield* shapesMap;
+
+  return yield* buildAndOpen(shapesMap_1, "shapes");
 });
 
 const transformExpression =
@@ -266,8 +268,10 @@ describe("the viewport", () => {
         yield* Effect.promise(() => page.mouse.move(x, y, { steps: 4 }));
         yield* Effect.promise(() => page.mouse.up());
 
-        assert.deepStrictEqual(yield* drawingOf(page), before);
-        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
+        const value = yield* drawingOf(page);
+        assert.deepStrictEqual(value, before);
+        const value_1 = yield* clickedOf(page);
+        assert.deepStrictEqual(value_1, ["box"]);
       })
     )
   );
@@ -328,7 +332,8 @@ describe("the viewport", () => {
         );
 
         assert.closeTo(after.left - before.left, -100, 1);
-        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
+        const value = yield* clickedOf(page);
+        assert.deepStrictEqual(value, ["box"]);
       })
     )
   );
@@ -363,8 +368,9 @@ describe("the viewport", () => {
           page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
         );
 
+        const value = yield* clickedOf(page);
         // The drag's own click is swallowed; the real one lands.
-        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
+        assert.deepStrictEqual(value, ["box"]);
       })
     )
   );
@@ -382,7 +388,8 @@ describe("the viewport", () => {
         );
         yield* waitForScale(page, `=== ${fitted}`);
 
-        assert.closeTo(yield* scaleOf(page), fitted, 1e-6);
+        const value = yield* scaleOf(page);
+        assert.closeTo(value, fitted, 1e-6);
         yield* assertFitted(page);
       })
     )

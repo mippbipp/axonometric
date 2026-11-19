@@ -666,7 +666,7 @@ export const layoutWideProblems: {
  * same, so its findings carry over.
  */
 const drawnKeyOf = (layout: Layout, { revealed }: ChapterView) =>
-  // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- a cache key, never decoded
+  // oxlint-disable-next-line effecttsgo/global-json -- a cache key, never decoded
   JSON.stringify([
     Arr.map(Arr.sort([...revealed], Order.String), (id) => [
       id,

@@ -208,6 +208,14 @@ export default defineConfig({
       },
     },
     {
+      // The bundler config embeds data in generated modules as JSON literals at
+      // build time; a throw fails the build.
+      files: ["packages/cli/tsdown.config.ts"],
+      rules: {
+        "effecttsgo/global-json": "off",
+      },
+    },
+    {
       // An ambient module declaration has no imports or exports.
       files: ["**/*.d.ts"],
       rules: {
@@ -249,6 +257,8 @@ export default defineConfig({
         // Effect-integrated assert replaces expect.hasAssertions.
         "vitest/prefer-expect-assertions": "off",
         "effecttsgo/strict-effect-provide": "off",
+        // Fixtures are written and compared as plain JSON; a throw fails the test.
+        "effecttsgo/global-json": "off",
         // shared test helpers are plain data functions, so a data-last overload
         // has nothing to dualize
         "effecttsgo/missing-pipeable-signature": "off",

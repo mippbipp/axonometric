@@ -43,9 +43,11 @@ describe("the bundled fonts", () => {
       const fonts = path.join(import.meta.dirname, "..", "assets", "fonts");
 
       for (const weight of ["Regular", "Bold"]) {
-        const { unitsPerEm, advances } = advancesOf(
-          yield* fs.readFile(path.join(fonts, `LiberationMono-${weight}.ttf`))
+        const value = yield* fs.readFile(
+          path.join(fonts, `LiberationMono-${weight}.ttf`)
         );
+
+        const { unitsPerEm, advances } = advancesOf(value);
 
         // hmtx lists a metric for each glyph up to the last whose advance
         // differs, and every glyph after it shares the last one. A monospace
