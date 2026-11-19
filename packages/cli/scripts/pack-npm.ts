@@ -5,8 +5,7 @@
 //
 // `expectedFiles` is the one list of what the tarball may hold. The editor's
 // HTML is embedded in dist/bin.mjs as a string (see tsdown.config.ts), so it
-// has no file of its own. dist/sea.cjs is only for the single-executable
-// binaries.
+// has no file of its own.
 //
 // The pack runs in a temporary folder that holds only those files: the
 // bundle, the repo's README.md and LICENSE, and package.json without the
