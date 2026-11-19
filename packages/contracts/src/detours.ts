@@ -4,8 +4,9 @@ import type { GridPoint } from "./layout.ts";
 
 /**
  * How far past the ground between its ends a route may run, in grid units,
- * before it reads as a loop. Leaving and entering by a face stub, and
- * stepping into a lane beside another route, stay within it.
+ * before it is a detour. A route's short first and last legs off the
+ * footprints' faces, and its step aside to run beside another route, stay
+ * within it.
  */
 export const detourAllowance = 2;
 

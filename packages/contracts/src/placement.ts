@@ -1,10 +1,10 @@
-import { Array as Arr, Option, Order, Record as Rec } from "effect";
+import { Array as Arr, Option, Order, Record as Rec, Result } from "effect";
 import { dual } from "effect/Function";
 
 import { isDetour } from "./detours.ts";
 import { boxOutline, nameTagRect, nameTagText, tagCoversBox } from "./iso.ts";
 import type { ScreenPoint, ScreenRect } from "./iso.ts";
-import { footprintsOverlap, tagCovers } from "./layout-checks.ts";
+import { footprintsOverlap, spanOf, tagCovers } from "./layout-checks.ts";
 import type { PlacedStructure } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
@@ -231,15 +231,7 @@ const inTheWay = (
   a: Placement,
   b: Placement
 ) => {
-  const left = Math.min(a.x, b.x);
-  const top = Math.min(a.y, b.y);
-
-  const between: Placement = {
-    x: left,
-    y: top,
-    w: Math.max(a.x + a.w, b.x + b.w) - left,
-    d: Math.max(a.y + a.d, b.y + b.d) - top,
-  };
+  const between = spanOf(a, b);
 
   return Arr.reduce(placed, 0, (count, { placement }) =>
     placement !== a && placement !== b && footprintsOverlap(placement, between)
@@ -248,13 +240,16 @@ const inTheWay = (
   );
 };
 
-/** The most of a lone structure's best slots placement draws to compare. */
+/**
+ * The most slots placement draws to compare for the structure of a
+ * one-member group.
+ */
 const drawnCandidates = 6;
 
 /**
- * How many slots placement draws in all, shared between the lone
- * structures, so a map with many keeps `build` quick. Each drawing routes
- * and lays out part of a chapter, a few tens of milliseconds.
+ * How many slots placement draws in all, shared between the one-member
+ * groups, so a map with many keeps `build` quick. Each drawing routes and
+ * lays out part of a chapter, a few tens of milliseconds.
  */
 const drawingBudget = 12;
 
@@ -312,12 +307,13 @@ const drawnAround = (
 };
 
 /**
- * What goes wrong in the drawing near the structure at `spot`: routes that
- * run round the map, and what `check` warns about, things drawn over each
+ * How many problems the drawing near the structure at `spot` has: the
+ * detours, and the drawing warnings `check` gives, things drawn over each
  * other in either view and Plan labels with no spot. It draws the chapter
- * that reveals the structure (see `drawnAround`).
+ * that reveals the structure (see `drawnAround`). Detours aren't problems
+ * `check` reports, but placement counts them with the rest.
  */
-const drawnFaults = (placing: Placing, spot: Placement) => {
+const drawnProblems = (placing: Placing, spot: Placement) => {
   const { data, placed, structure } = placing;
 
   const structures = Rec.fromEntries([
@@ -347,10 +343,10 @@ const drawnFaults = (placing: Placing, spot: Placement) => {
 };
 
 /**
- * The slot of `best`, in its order, that draws the fewest faults near the
- * structure. It stops at the first that draws none.
+ * The slot of `best`, in its order, whose drawing has the fewest problems
+ * near the structure. It stops at the first with none.
  */
-const leastFaulty = (
+const fewestProblems = (
   placing: Placing,
   best: Arr.NonEmptyReadonlyArray<Placement>
 ) => {
@@ -358,11 +354,11 @@ const leastFaulty = (
   let fewest = Number.POSITIVE_INFINITY;
 
   for (const spot of best) {
-    const faults = drawnFaults(placing, spot);
+    const problems = drawnProblems(placing, spot);
 
-    if (faults < fewest) {
+    if (problems < fewest) {
       chosen = spot;
-      fewest = faults;
+      fewest = problems;
     }
 
     if (fewest === 0) {
@@ -379,9 +375,9 @@ const leastFaulty = (
  * first placed mate (or else its first placed neighbour). With nothing to be
  * near, it starts a new zone to the right of everything placed.
  *
- * With `drawn` above 1, as for the only member of a new group, it compares
- * that many of its best slots by what they draw (see `drawnFaults`) and
- * takes the one with the fewest faults.
+ * With `drawn` above 1, as for the structure of a one-member group, it
+ * compares that many of its best slots by what they draw (see
+ * `drawnProblems`) and takes the one with the fewest problems.
  */
 const choose = (placing: Placing, drawn: number): Placement => {
   const { data, placed, structure } = placing;
@@ -443,7 +439,7 @@ const choose = (placing: Placing, drawn: number): Placement => {
   const best = Arr.take(ranked, drawn);
 
   return best.length > 1 && Arr.isReadonlyArrayNonEmpty(best)
-    ? leastFaulty(placing, best)
+    ? fewestProblems(placing, best)
     : ranked[0];
 };
 
@@ -1296,9 +1292,6 @@ const arrangeBlocks = (
   return layBlocks(faced, offsets);
 };
 
-/** The most members a group placed beside its neighbours, not as a block, has. */
-const smallGroup = 1;
-
 /** What placement did to a layout. */
 export interface PlacedLayout {
   /** Every structure's placement, in data.mjs order. */
@@ -1365,27 +1358,24 @@ export const placeStructures: {
   const membersOfGroup = (group: string) =>
     Arr.filter(unplaced, (structure) => structure.group === group);
 
-  // A group of one has no block to arrange. Its structure is placed
-  // after the blocks, beside the structures its hops connect to.
-  const fresh = Arr.filter(
+  const newGroups = Arr.filter(
     Arr.dedupe(Arr.map(unplaced, ({ group }) => group)),
-    (group) =>
-      !placedGroups.has(group) && membersOfGroup(group).length > smallGroup
+    (group) => !placedGroups.has(group)
   );
 
-  const newGroups = Arr.dedupe(Arr.map(unplaced, ({ group }) => group));
-
-  const loneGroups = new Set(
-    Arr.filter(
-      newGroups,
-      (group) =>
-        !placedGroups.has(group) && membersOfGroup(group).length <= smallGroup
-    )
+  // A one-member group has no block to arrange. Its structure is placed
+  // after the blocks, beside the structures its hops connect to.
+  const [oneMember, fresh] = Arr.partition(newGroups, (group) =>
+    membersOfGroup(group).length === 1
+      ? Result.succeed(group)
+      : Result.fail(group)
   );
+
+  const oneMemberGroups = new Set(oneMember);
 
   const drawnEach = Math.min(
     drawnCandidates,
-    Math.floor(drawingBudget / Math.max(loneGroups.size, 1))
+    Math.floor(drawingBudget / Math.max(oneMemberGroups.size, 1))
   );
 
   const blocks = arrangeBlocks(
@@ -1423,7 +1413,7 @@ export const placeStructures: {
     const spot = Option.getOrElse(planned, () =>
       choose(
         { data, placed: sofar, structure },
-        loneGroups.has(structure.group) ? drawnEach : 1
+        oneMemberGroups.has(structure.group) ? drawnEach : 1
       )
     );
 

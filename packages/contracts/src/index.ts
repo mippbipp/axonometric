@@ -82,6 +82,7 @@ export {
   offEndFindings,
   onOutline,
   placedStructures,
+  spanOf,
 } from "./layout-checks.ts";
 
 export type {

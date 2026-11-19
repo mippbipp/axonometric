@@ -6,6 +6,7 @@ import {
   footprintsOverlap,
   placeStructures,
   sceneOf,
+  spanOf,
 } from "../src/index.ts";
 import type {
   Hop,
@@ -17,6 +18,10 @@ import type {
 } from "../src/index.ts";
 import { placedFixture } from "./fixture-maps.ts";
 import { grow, placementOf } from "./footprints.ts";
+
+/** What `check` says of a hop whose Plan label has no spot in a chapter. */
+const hiddenLabel = (id: string, chapter: string) =>
+  `the label of hop "${id}" has no clear spot beside its route in chapter "${chapter}" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`;
 
 const structure = (id: string, group = "main", name = id): Structure => ({
   id,
@@ -185,7 +190,7 @@ describe("placement", () => {
   );
 
   it.effect(
-    "places 40 structures, each the only member of its group, in under 1.5 s",
+    "places 40 one-member groups in under 750 ms",
     () =>
       Effect.sync(() => {
         const ids = Arr.map(Arr.range(0, 39), (index) => `s${index}`);
@@ -199,43 +204,29 @@ describe("placement", () => {
         );
 
         // Each one-member group draws a few of its slots to compare them.
-        // Locally this takes about 0.4 s; the limit leaves room for slower
-        // CI runners.
+        // Locally this takes about 0.4 s.
         const started = performance.now();
         const { layout } = placeStructures(data, layoutOf());
 
-        assert.isBelow(performance.now() - started, 1500);
+        assert.isBelow(performance.now() - started, 750);
         assert.lengthOf(Rec.keys(layout.structures), 40);
       }),
     30_000
   );
 
   it.effect(
-    "gives the update pipeline no layout warning that main's placement didn't",
+    "gives the update pipeline only these layout warnings, placed by build",
     () =>
       Effect.gen(function* () {
         const { data, layout } = yield* placedFixture("update-pipeline");
 
-        // What check said of the layout main's placement gave this map,
-        // without the chapter each was in. A warning may go, not come.
-        const main = new Set([
-          'label of hop "h-bg-checks"',
-          'label of hop "h-prompt"',
-          'route of hop "h-rollup" is drawn over the name tag of "updater"',
-          'route of hop "h-prompt" is drawn over the name tag of "updater"',
-          'route of hop "h-report" is drawn over the name tag of "updater"',
-          'label of hop "h-merge"',
-          'label of hop "h-review"',
-          'label of hop "h-wd-read"',
-        ]);
-
-        const fresh = Arr.filter(
+        assert.deepStrictEqual(
           Arr.map(checkLayout(data, layout), ({ message }) => message),
-          (message) =>
-            !Arr.some([...main], (seen) => Str.includes(seen)(message))
+          [
+            hiddenLabel("h-bg-checks", "c-scope"),
+            hiddenLabel("h-merge", "c-watchdog"),
+          ]
         );
-
-        assert.deepStrictEqual(fresh, []);
       }),
     30_000
   );
@@ -556,7 +547,7 @@ describe("placement", () => {
   );
 
   it.effect(
-    "puts a one-member zone next to the zone it has the most hops with",
+    "puts a one-member group next to the zone it has the most hops with",
     () =>
       Effect.sync(() => {
         // lone has one hop to a and three to d, which groups lists last.
@@ -596,16 +587,7 @@ describe("placement", () => {
 
         assert.strictEqual(nearest?.group, "d");
 
-        const between = {
-          x: Math.min(lone.x, busiest.x),
-          y: Math.min(lone.y, busiest.y),
-          w:
-            Math.max(lone.x + lone.w, busiest.x + busiest.w) -
-            Math.min(lone.x, busiest.x),
-          d:
-            Math.max(lone.y + lone.d, busiest.y + busiest.d) -
-            Math.min(lone.y, busiest.y),
-        };
+        const between = spanOf(lone, busiest);
 
         for (const other of data.structures) {
           if (other.group !== "d" && other.id !== "lone") {
@@ -621,7 +603,7 @@ describe("placement", () => {
   );
 
   it.effect(
-    "counts every hop to a structure, when a one-member zone picks its side",
+    "counts every hop to a structure, when a one-member group picks its side",
     () =>
       Effect.sync(() => {
         // lone has three hops to d1 and one each to a2 and a3, so d is the

@@ -127,7 +127,6 @@ describe("detours", () => {
       Effect.gen(function* () {
         const { data, layout } = yield* placedFixture("update-pipeline");
 
-        // Main placed this map with 5 detours, across 5 chapters.
         assert.deepStrictEqual(detoursIn(data, layout), []);
       }),
     60_000

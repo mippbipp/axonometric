@@ -44,6 +44,9 @@ _Avoid_: edge, link, connection
 The right-angle path a hop's arrow takes on the ground grid, from the edge of one footprint to the edge of the other. The router computes it from the layout, around other footprints when it can.
 _Avoid_: path, wire, edge
 
+**Detour**:
+A route with a point more than 2 grid units outside the rectangle its two ends span. Placement avoids them, and `check` doesn't report them.
+
 **Bundle**:
 Hops from one structure whose routes share a stretch, drawn as separate parallel lines with their own arrowheads.
 _Avoid_: trunk, lane, group (a group is a set of structures)
