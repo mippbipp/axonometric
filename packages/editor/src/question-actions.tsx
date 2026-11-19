@@ -3,6 +3,7 @@ import { Array as Arr, Option, Result } from "effect";
 import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
 import { entriesOfKind, useReview } from "./review-context.ts";
@@ -135,6 +136,7 @@ export function RaisedQuestions({
   readonly structure: string;
 }) {
   const review = useReview();
+  const editOn = useEditOn();
 
   if (review === null) {
     return null;
@@ -144,6 +146,10 @@ export function RaisedQuestions({
     entriesOfKind(review.entries, "question"),
     ({ item }) => item.target.id === structure
   );
+
+  if (!editOn && raised.length === 0) {
+    return null;
+  }
 
   return (
     <section data-raised-section className="flex flex-col gap-2">
@@ -165,7 +171,7 @@ export function RaisedQuestions({
           ))}
         </ul>
       )}
-      {review.canWrite ? (
+      {editOn && review.canWrite ? (
         <NoteForm
           label="A new question about this"
           hideLabel

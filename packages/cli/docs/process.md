@@ -110,4 +110,6 @@ axonometric serve <home>
 
 `serve` runs in the foreground until Ctrl-C, so start it in the background. It prints the page's URL, and `axonometric status <home>` prints it again with the process ID. Pass `--port` to insist on one port (it fails if the port is busy), `--open` to open the engineer's browser, and `--allow-host <name>` behind a reverse proxy.
 
+The served page opens for reading, with every editing control hidden. Tell the engineer to press Edit in the header, or the `e` key, to move structures or propose changes. The browser remembers the choice. Answering a question works without Edit. The built `<system>.html` file has no Edit and no editing at all.
+
 The server rebuilds and updates open pages whenever `data.mjs` or `layout.json` changes. If `data.mjs` fails validation, the page keeps the last good map and shows the error. Run `check` to see it. The engineer's proposals reach you through `review`.

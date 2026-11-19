@@ -5,8 +5,12 @@ import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
 
 import { useChapterPendingStructures } from "./chapter-marks-context.ts";
 import { spokenMarks, useCompare } from "./compare-context.ts";
-import { pendingStructures, useEditing } from "./editing-context.ts";
-import { useProposed } from "./proposed-context.ts";
+import {
+  pendingStructures,
+  useEditing,
+  useEditingIgnoringEdit,
+} from "./editing-context.ts";
+import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useTooltipActions } from "./tooltip-context.ts";
@@ -38,9 +42,10 @@ export function StructureTarget({
   const name = useStructuresById().get(id)?.name ?? id;
   const isSelected = selected === id;
   const editing = useEditing();
+  const editingIgnoringEdit = useEditingIgnoringEdit();
   const isMultiSelected = multiSelection.has(id);
 
-  const proposed = useProposed()?.proposed;
+  const proposed = useProposedMapIgnoringEdit();
 
   const isRemoved =
     proposed !== undefined && marksOf(proposed, removedMark).has(id);
@@ -49,7 +54,7 @@ export function StructureTarget({
   const chapterPending = useChapterPendingStructures().has(id);
 
   const isPending =
-    pendingStructures(editing).has(id) ||
+    pendingStructures(editingIgnoringEdit).has(id) ||
     proposed?.structures.has(id) === true ||
     chapterPending;
 

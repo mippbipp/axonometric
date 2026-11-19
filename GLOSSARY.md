@@ -101,7 +101,7 @@ The same layout drawn straight from above.
 _Avoid_: 2D view, flat view
 
 **Name tag**:
-The label that names a structure on the map: its tag, or its name when it has no tag. In the Iso view it sits under the structure's front corner; in Plan view, inside the box or beside it.
+The label that names a structure on the map: its tag, or its name when it has no tag. A tag only shortens a long name and isn't a second name. In the Iso view it sits under the structure's front corner; in Plan view, inside the box or beside it.
 _Avoid_: label, caption
 
 **Code chip**:
@@ -137,6 +137,10 @@ The side panel tab that lists every question revealed so far, open ones first.
 _Avoid_: issues list
 
 ## Editing and review
+
+**Edit**:
+The served page's switch for editing, a button in the header and the `e` key. It is off until the engineer turns it on, and the browser remembers it. With it off, the page hides every control that moves, proposes or pins something, and keeps answering questions. The read-only file has no Edit.
+_Avoid_: edit mode, editor
 
 **Layout change**:
 A move, resize or reroute.

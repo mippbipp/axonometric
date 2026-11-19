@@ -1,6 +1,6 @@
 # The review loop
 
-The engineer edits the map in the browser. Layout changes (moves, resizes, reroutes) apply right away and show as pending. Every other edit becomes a proposal. When they press "Ready for review", the page freezes the pending proposals as batch N and copies a prompt for you.
+The engineer edits the map in the browser, after pressing Edit in the header (or the `e` key). The served page opens with editing off. Layout changes (moves, resizes, reroutes) apply right away and show as pending. Every other edit becomes a proposal. When they press "Ready for review", the page freezes the pending proposals as batch N and copies a prompt for you.
 
 The prompt names the home folder and the batch, says its list is a summary, and tells you to run `review`, give every item a verdict, then run `commit`. It has a few lines of advice, then one line per item. The advice comes before the list, so read it first and follow it. The full details are in `<home>/proposals.json`.
 

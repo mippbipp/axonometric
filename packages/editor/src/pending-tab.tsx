@@ -12,7 +12,8 @@ import { useId, useState } from "react";
 import { useAccepting } from "./accepting-context.ts";
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
-import { useEditing } from "./editing-context.ts";
+import { useEditOn } from "./edit-context.ts";
+import { useEditingIgnoringEdit } from "./editing-context.ts";
 import { listedEntries, useReview } from "./review-context.ts";
 import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
@@ -23,10 +24,11 @@ import { useWalkthrough } from "./walkthrough-context.ts";
  * into layout.json and discard it, which puts the structure back where the
  * accepted layout has it. "Accept all" takes every change. The optional
  * message names the revision that an accept saves. The buttons are hidden
- * while the page can't edit.
+ * while the page can't edit, and while Edit is off.
  */
 export function PendingTab() {
-  const editing = useEditing();
+  const editing = useEditingIgnoringEdit();
+  const editOn = useEditOn();
   const review = useReview();
   const accepting = useAccepting();
   const byId = useStructuresById();
@@ -39,7 +41,8 @@ export function PendingTab() {
     return null;
   }
 
-  const { pending, accepted, canEdit, discard } = editing;
+  const { pending, accepted, discard } = editing;
+  const canEdit = editing.canEdit && editOn;
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
   const hopName = hopLabelOf(state.data.hops);
 
@@ -93,10 +96,9 @@ export function PendingTab() {
       )}
       {nothingAtAll ? (
         <p data-pending-empty className="text-sm">
-          Nothing is pending. Drag a structure to move it, drag a corner of the
-          selected one to resize it, drag a segment of an arrow to reroute it,
-          or drag a zone title to move its group. Pin a note, suggest new text
-          or answer a question from a structure&rsquo;s panel.
+          {editOn
+            ? "Nothing is pending. Drag a structure to move it, drag a corner of the selected one to resize it, drag a segment of an arrow to reroute it, or drag a zone title to move its group. Pin a note, suggest new text or answer a question from a structure's panel."
+            : "Nothing is pending. Press Edit to move structures, propose changes or pin notes."}
         </p>
       ) : null}
       {pending.length === 0 ? null : (

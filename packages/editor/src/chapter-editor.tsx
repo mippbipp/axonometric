@@ -6,6 +6,7 @@ import type { DragEvent } from "react";
 import { ChapterLegend } from "./chapter-legend.tsx";
 import { useAcceptedPlays, useChapterMarks } from "./chapter-marks-context.ts";
 import { controlClass } from "./control-class.ts";
+import { useEditOn } from "./edit-context.ts";
 import { fieldClass } from "./field-class.ts";
 import { useChapterPropose } from "./use-chapter-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -47,6 +48,7 @@ const proposedWords = {
 export function ChapterEditor() {
   const { state, stop, revealed } = useWalkthrough();
   const { send, failure, canPropose, sending } = useChapterPropose();
+  const editOn = useEditOn();
   const adding = useChapterMarks(stop.id, "play");
   const removing = useChapterMarks(stop.id, "unplay");
   const revealing = useChapterMarks(stop.id, "reveal");
@@ -142,7 +144,7 @@ export function ChapterEditor() {
                   data-play={hop}
                   data-play-pending={pending}
                   data-play-over={over === index && dragging !== index}
-                  draggable={canPropose && plays.length > 1}
+                  draggable={editOn && canPropose && plays.length > 1}
                   className="border-ink data-[play-pending=order]:border-pending data-[play-pending=play]:border-pending data-[play-pending=unplay]:border-refused flex items-center gap-1.5 border px-1.5 py-1 text-xs data-[play-over=true]:border-dashed data-[play-pending=unplay]:border-dashed"
                   onDragStart={(event: DragEvent<HTMLLIElement>) => {
                     event.dataTransfer.effectAllowed = "move";
@@ -164,9 +166,11 @@ export function ChapterEditor() {
                     setOver(undefined);
                   }}
                 >
-                  <span aria-hidden="true" className="cursor-grab opacity-60">
-                    ⠿
-                  </span>
+                  {editOn ? (
+                    <span aria-hidden="true" className="cursor-grab opacity-60">
+                      ⠿
+                    </span>
+                  ) : null}
                   <span className="w-4 shrink-0 opacity-70">{index + 1}</span>
                   <span className="min-w-0 flex-1 break-words">
                     <b className="font-medium">{labelOf(hop)}</b>
@@ -187,56 +191,60 @@ export function ChapterEditor() {
                       </span>
                     )}
                   </span>
-                  <button
-                    type="button"
-                    data-play-up={hop}
-                    className={controlClass}
-                    disabled={!canPropose || index === 0}
-                    aria-label={`Move ${labelOf(hop)} up`}
-                    onClick={() => {
-                      order(moved(plays, index, index - 1));
-                    }}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    data-play-down={hop}
-                    className={controlClass}
-                    disabled={!canPropose || index === plays.length - 1}
-                    aria-label={`Move ${labelOf(hop)} down`}
-                    onClick={() => {
-                      order(moved(plays, index, index + 1));
-                    }}
-                  >
-                    ↓
-                  </button>
-                  <button
-                    type="button"
-                    data-play-toggle={hop}
-                    className={controlClass}
-                    disabled={!canPropose}
-                    aria-label={
-                      pending === "unplay"
-                        ? `Keep ${labelOf(hop)} in this chapter`
-                        : `Remove ${labelOf(hop)} from this chapter`
-                    }
-                    onClick={() => {
-                      send({
-                        action: pending === "unplay" ? "play" : "unplay",
-                        chapter: stop.id,
-                        hop,
-                      });
-                    }}
-                  >
-                    {pending === "unplay" ? "Keep" : "Remove"}
-                  </button>
+                  {editOn ? (
+                    <>
+                      <button
+                        type="button"
+                        data-play-up={hop}
+                        className={controlClass}
+                        disabled={!canPropose || index === 0}
+                        aria-label={`Move ${labelOf(hop)} up`}
+                        onClick={() => {
+                          order(moved(plays, index, index - 1));
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        data-play-down={hop}
+                        className={controlClass}
+                        disabled={!canPropose || index === plays.length - 1}
+                        aria-label={`Move ${labelOf(hop)} down`}
+                        onClick={() => {
+                          order(moved(plays, index, index + 1));
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        data-play-toggle={hop}
+                        className={controlClass}
+                        disabled={!canPropose}
+                        aria-label={
+                          pending === "unplay"
+                            ? `Keep ${labelOf(hop)} in this chapter`
+                            : `Remove ${labelOf(hop)} from this chapter`
+                        }
+                        onClick={() => {
+                          send({
+                            action: pending === "unplay" ? "play" : "unplay",
+                            chapter: stop.id,
+                            hop,
+                          });
+                        }}
+                      >
+                        {pending === "unplay" ? "Keep" : "Remove"}
+                      </button>
+                    </>
+                  ) : null}
                 </li>
               );
             })}
           </ol>
         )}
-        {playable.length === 0 ? null : (
+        {!editOn || playable.length === 0 ? null : (
           <form
             data-add-play
             className="flex gap-1.5"
@@ -281,7 +289,7 @@ export function ChapterEditor() {
           </form>
         )}
       </div>
-      {unrevealed.length === 0 ? null : (
+      {!editOn || unrevealed.length === 0 ? null : (
         <div className="flex flex-col gap-1.5">
           <h3 className="text-xs tracking-widest uppercase opacity-70">
             Not revealed yet
