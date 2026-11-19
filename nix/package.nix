@@ -29,7 +29,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   # root's dev tools, such as oxlint, lefthook and react-doctor.
   #
   # A fixed-output derivation can reach the network, so it runs the
-  # install and keeps node_modules. `--os` and `--cpu` fetch every
+  # install and keeps node_modules. `--os`, `--cpu` and `--libc` fetch every
   # platform's optional packages, so one hash holds on every system. Install
   # scripts are skipped because the result is only used to build. Changes
   # whenever bun.lock changes. See CONTRIBUTING.md.
@@ -55,6 +55,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
         --filter axonometric \
         --os '*' \
         --cpu '*' \
+        --libc '*' \
         --ignore-scripts \
         --backend copyfile \
         --no-progress
@@ -74,7 +75,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-1Gdzo9B9r69YuiN4gbI+cJTnvKlOOJdTF2Y5AcxeCXQ=";
+    outputHash = "sha256-0t/tXHWs9/xwUsrTzABliHVTOsB+ef9jX2bSGowUsD0=";
   };
 
   nativeBuildInputs = [
