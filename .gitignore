@@ -23,5 +23,5 @@ coverage
 *.swp
 .DS_Store
 
-# Single-executable binaries (packages/cli/scripts/build-sea.ts)
+# Standalone binaries (packages/cli/scripts/build-binary.ts)
 /packages/cli/release

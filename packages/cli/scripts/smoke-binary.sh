@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke-tests a single-executable binary: checks --version, then builds the
+# Smoke-tests a standalone binary: checks --version, then builds the
 # fixture map in a temporary folder. The binary runs with an empty PATH, so it
 # can't reach a system Node. The checks don't depend on what the fixture map
 # contains, only on build writing its outputs.
