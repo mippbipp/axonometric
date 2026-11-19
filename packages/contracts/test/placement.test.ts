@@ -6,6 +6,7 @@ import {
   footprintsOverlap,
   placeStructures,
   sceneOf,
+  spanOf,
 } from "../src/index.ts";
 import type {
   Hop,
@@ -15,7 +16,12 @@ import type {
   ScreenPoint,
   Structure,
 } from "../src/index.ts";
+import { placedFixture } from "./fixture-maps.ts";
 import { grow, placementOf } from "./footprints.ts";
+
+/** What `check` says of a hop whose Plan label has no spot in a chapter. */
+const hiddenLabel = (id: string, chapter: string) =>
+  `the label of hop "${id}" has no clear spot beside its route in chapter "${chapter}" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`;
 
 const structure = (id: string, group = "main", name = id): Structure => ({
   id,
@@ -169,6 +175,60 @@ describe("placement", () => {
         placeStructures(crowded, layoutOf())
       );
     })
+  );
+
+  it.effect(
+    "gives the update pipeline the same layout each time",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* placedFixture("update-pipeline");
+        const second = yield* placedFixture("update-pipeline");
+
+        assert.deepStrictEqual(first.layout, second.layout);
+      }),
+    30_000
+  );
+
+  it.effect(
+    "places 40 one-member groups in under 750 ms",
+    () =>
+      Effect.sync(() => {
+        const ids = Arr.map(Arr.range(0, 39), (index) => `s${index}`);
+
+        const data = mapOf(
+          Arr.map(ids, (id) => structure(id, `g-${id}`)),
+          Arr.map(Arr.range(0, 59), (index) => ({
+            ...hop(`s${(index * 7) % 40}`, `s${(index * 13 + 5) % 40}`),
+            id: `h${index}`,
+          }))
+        );
+
+        // Each one-member group draws a few of its slots to compare them.
+        // Locally this takes about 0.4 s.
+        const started = performance.now();
+        const { layout } = placeStructures(data, layoutOf());
+
+        assert.isBelow(performance.now() - started, 750);
+        assert.lengthOf(Rec.keys(layout.structures), 40);
+      }),
+    30_000
+  );
+
+  it.effect(
+    "gives the update pipeline only these layout warnings, placed by build",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* placedFixture("update-pipeline");
+
+        assert.deepStrictEqual(
+          Arr.map(checkLayout(data, layout), ({ message }) => message),
+          [
+            hiddenLabel("h-bg-checks", "c-scope"),
+            hiddenLabel("h-merge", "c-watchdog"),
+          ]
+        );
+      }),
+    30_000
   );
 
   it.effect("never moves a placed structure, and keeps the revision", () =>
@@ -440,6 +500,143 @@ describe("placement", () => {
 
       assertTidy(data, layout);
     })
+  );
+
+  it.effect(
+    "puts a structure whose only hops go to the other of two zones on the side facing it",
+    () =>
+      Effect.sync(() => {
+        // a5 is listed last, so a block in data.mjs order puts it on the
+        // far side of a's block from b.
+        const data = mapOf(
+          [
+            ...Arr.map(["a1", "a2", "a3", "a4", "a5"], (id) =>
+              structure(id, "a")
+            ),
+            ...Arr.map(["b1", "b2"], (id) => structure(id, "b")),
+          ],
+          [
+            hop("a1", "a2"),
+            hop("a2", "a3"),
+            hop("a3", "a4"),
+            hop("a5", "b1"),
+            hop("b1", "a5"),
+            hop("b2", "a5"),
+          ]
+        );
+
+        const { layout } = placeStructures(data, layoutOf());
+        const own = zoneOf(layout, idsIn(data, "a"));
+        const other = zoneOf(layout, idsIn(data, "b"));
+        const spot = placementOf(layout, "a5");
+
+        // The side facing b is the row or column of a's zone nearest it.
+        const facing = Arr.filter(
+          [
+            other.x >= own.x + own.w && spot.x + spot.w === own.x + own.w,
+            other.x + other.w <= own.x && spot.x === own.x,
+            other.y >= own.y + own.d && spot.y + spot.d === own.y + own.d,
+            other.y + other.d <= own.y && spot.y === own.y,
+          ],
+          Boolean
+        );
+
+        assert.isNotEmpty(facing, "a5 isn't on the side of a facing b");
+        assertTidy(data, layout);
+      })
+  );
+
+  it.effect(
+    "puts a one-member group next to the zone it has the most hops with",
+    () =>
+      Effect.sync(() => {
+        // lone has one hop to a and three to d, which groups lists last.
+        const data = mapOf(
+          [
+            ...Arr.map(["a1", "a2", "a3"], (id) => structure(id, "a")),
+            ...Arr.map(["b1", "b2", "b3"], (id) => structure(id, "b")),
+            ...Arr.map(["c1", "c2", "c3"], (id) => structure(id, "c")),
+            structure("lone", "l"),
+            ...Arr.map(["d1", "d2", "d3"], (id) => structure(id, "d")),
+          ],
+          [
+            hop("a1", "b1"),
+            hop("b2", "c1"),
+            hop("c2", "d1"),
+            hop("lone", "a3"),
+            hop("lone", "d1"),
+            hop("d2", "lone"),
+            hop("d3", "lone"),
+          ]
+        );
+
+        const { layout } = placeStructures(data, layoutOf());
+        const lone = placementOf(layout, "lone");
+        const busiest = zoneOf(layout, idsIn(data, "d"));
+
+        // Next to: no other zone nearer, and no structure of another group
+        // in the ground between the two.
+        const zones = Arr.map(["a", "b", "c", "d"], (group) => ({
+          group,
+          gap: gap(lone, zoneOf(layout, idsIn(data, group))),
+        }));
+
+        const nearest = Arr.reduce(zones, zones[0], (best, zone) =>
+          best === undefined || zone.gap < best.gap ? zone : best
+        );
+
+        assert.strictEqual(nearest?.group, "d");
+
+        const between = spanOf(lone, busiest);
+
+        for (const other of data.structures) {
+          if (other.group !== "d" && other.id !== "lone") {
+            assert.isFalse(
+              footprintsOverlap(between, placementOf(layout, other.id)),
+              `${other.id} sits between lone and d`
+            );
+          }
+        }
+
+        assertTidy(data, layout);
+      })
+  );
+
+  it.effect(
+    "counts every hop to a structure, when a one-member group picks its side",
+    () =>
+      Effect.sync(() => {
+        // lone has three hops to d1 and one each to a2 and a3, so d is the
+        // zone it has the most hops with, though a has more structures.
+        const data = mapOf(
+          [
+            ...Arr.map(["a1", "a2", "a3"], (id) => structure(id, "a")),
+            structure("lone", "l"),
+            ...Arr.map(["d1", "d2", "d3"], (id) => structure(id, "d")),
+          ],
+          [
+            hop("a1", "a2"),
+            hop("a2", "a3"),
+            hop("d1", "d2"),
+            hop("d2", "d3"),
+            hop("a3", "d3"),
+            hop("lone", "a2"),
+            hop("lone", "a3"),
+            hop("lone", "d1"),
+            { ...hop("d1", "lone"), id: "d1-lone-reply" },
+            { ...hop("lone", "d1"), id: "lone-d1-retry" },
+          ]
+        );
+
+        const { layout } = placeStructures(data, layoutOf());
+        const lone = placementOf(layout, "lone");
+        const busiest = zoneOf(layout, idsIn(data, "d"));
+        const biggest = zoneOf(layout, idsIn(data, "a"));
+
+        assert.isBelow(gap(lone, busiest), gap(lone, biggest));
+
+        assertTidy(data, layout);
+      })
   );
 });
 
