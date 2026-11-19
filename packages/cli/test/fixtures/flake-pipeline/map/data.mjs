@@ -502,7 +502,7 @@ hosts/pewter/
       id: "h-updater-pr",
       from: "updater",
       to: "pr",
-      label: "push, write PR body",
+      label: "push PR",
       payload: {
         branch: "flake-update",
         push: "fast-forward",
@@ -600,7 +600,7 @@ hosts/pewter/
       id: "h-ruleset-updater",
       from: "ruleset",
       to: "updater",
-      label: "verdict",
+      label: "ok",
       payload: {
         required: [
           "checks aarch64-linux",
@@ -621,7 +621,7 @@ hosts/pewter/
       id: "h-updater-workspace",
       from: "updater",
       to: "workspace",
-      label: "export tree, main's lock",
+      label: "export tree",
       payload: {
         work: "/var/lib/flake-fixer/work",
         context: "/var/lib/flake-fixer/context/flake.lock",

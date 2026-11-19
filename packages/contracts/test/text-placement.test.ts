@@ -139,22 +139,26 @@ describe("route ends", () => {
   // A paused packet may sit over a tag, but no route may start or end on
   // one. Bends may pass under a tag, which has a paper fill.
   for (const name of names) {
-    it.effect(`stay off name tags on the ${name} fixture`, () =>
-      Effect.gen(function* () {
-        for (const view of ["iso", "plan"] as const) {
-          const source = yield* sourceOf(name, view);
+    it.effect(
+      `stay off name tags on the ${name} fixture`,
+      () =>
+        Effect.gen(function* () {
+          for (const view of ["iso", "plan"] as const) {
+            const source = yield* sourceOf(name, view);
 
-          for (const zoom of [1, 0.6, 0.39]) {
-            const scene = sceneOf({ ...source, zoom: textZoomOf(zoom) });
+            for (const zoom of [1, 0.6, 0.39]) {
+              const scene = sceneOf({ ...source, zoom: textZoomOf(zoom) });
 
-            assert.deepStrictEqual(
-              endsOnTags(scene),
-              [],
-              `${view} view at ${zoom}`
-            );
+              assert.deepStrictEqual(
+                endsOnTags(scene),
+                [],
+                `${view} view at ${zoom}`
+              );
+            }
           }
-        }
-      })
+        }),
+      // Six scenes of a 29-hop map, each placing every hop's label.
+      30_000
     );
   }
 });

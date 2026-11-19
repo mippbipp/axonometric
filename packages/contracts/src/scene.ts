@@ -619,6 +619,13 @@ const lineObstacle = (segment: Segment): LineObstacle => ({
   bounds: boundsOfPoints([segment.start, segment.end]),
 });
 
+/** Whether `rect` lies inside `bounds`. */
+const isInside = (rect: ScreenRect, bounds: ScreenRect) =>
+  rect.left >= bounds.left &&
+  rect.right <= bounds.right &&
+  rect.top >= bounds.top &&
+  rect.bottom <= bounds.bottom;
+
 /** Whether two bounds share area or touch. */
 const boundsMeet = (a: ScreenRect, b: ScreenRect) =>
   a.left <= b.right &&
@@ -1078,13 +1085,22 @@ const tagClearance = 2;
 
 /**
  * Where along a leg a label may sit, most preferred first: the middle, then
- * outwards, and past either end of the leg, where the label sits beside the
- * route's next leg or the end of its line.
+ * outwards. Past a leg's end the label sits beside the route's next leg or
+ * the previous one, so it reaches that far only where another leg
+ * continues there; past the route's own ends it would sit in line with the
+ * arrow.
  */
-const labelShares = Arr.sort(
-  Arr.map(Arr.range(-10, 30), (step) => step / 20),
-  Order.mapInput(Order.Number, (share: number) => Math.abs(share - 0.5))
-);
+const labelShares = ({
+  first,
+  last,
+}: {
+  readonly first: boolean;
+  readonly last: boolean;
+}) =>
+  Arr.sort(
+    Arr.map(Arr.range(first ? 2 : -10, last ? 18 : 30), (step) => step / 20),
+    Order.mapInput(Order.Number, (share: number) => Math.abs(share - 0.5))
+  );
 
 interface Leg extends Segment {
   readonly index: number;
@@ -1205,13 +1221,23 @@ const labelGap: {
 /**
  * The farthest a label's box may sit from its own route, in grid units. A
  * label with no clear spot that close shows only on hover. Plan view looks
- * further: there a label only takes a spot nearer its own route than any
- * other, so it still reads as that route's. The Iso view keeps to 1.5,
- * where a farther spot would sit nearer another route.
+ * further, as a label there only takes a spot nearer its own route than any
+ * other. The Iso view stays within `labelGaps`: a label farther out
+ * stretches the drawing, so the page fits it at a smaller zoom.
  */
 const labelReachLimit: Readonly<Record<View, number>> = {
-  iso: 1.5,
+  iso: (Math.max(...labelGaps) + 2 * labelHeight) / gridOnScreen,
   plan: 2.5,
+};
+
+/**
+ * Whether a view lets a label sit past either end of a leg, beside the
+ * route's next or previous leg. Plan view does. In the Iso view such a label
+ * stretches the drawing, so the page fits it at a smaller zoom.
+ */
+const labelMayOverhang: Readonly<Record<View, boolean>> = {
+  iso: false,
+  plan: true,
 };
 
 /** Where a hop's label goes, and whether it fits there. */
@@ -1241,6 +1267,8 @@ const labelSpot = ({
   reach,
   grow,
   mayBeNearerAnother,
+  mayOverhang,
+  within,
 }: {
   readonly points: readonly ScreenPoint[];
   readonly text: string;
@@ -1251,6 +1279,13 @@ const labelSpot = ({
   readonly grow: number;
   /** Whether the label may sit nearer another route than its own. */
   readonly mayBeNearerAnother: boolean;
+  /** Whether the label may sit past either end of a leg. */
+  readonly mayOverhang: boolean;
+  /**
+   * The rect the label stays inside: the extent of everything but labels, so
+   * a label never makes the drawing larger and the page fits it as before.
+   */
+  readonly within: ScreenRect;
 }): LabelPlacement => {
   const size = { width: labelWidth(text, grow), height: labelHeight * grow };
 
@@ -1289,12 +1324,20 @@ const labelSpot = ({
   const rects = function* () {
     for (const gap of gapsWithin(reach, size.height)) {
       for (const leg of sorted) {
-        for (const share of labelShares) {
+        for (const share of sharesOf(leg)) {
           yield* spotsAt({ leg, share }, size, [gap]).beside;
         }
       }
     }
   };
+
+  const lastIndex = Math.max(...Arr.map(legs, (leg) => leg.index));
+
+  const sharesOf = (leg: Leg) =>
+    labelShares({
+      first: !mayOverhang || leg.index === 0,
+      last: !mayOverhang || leg.index === lastIndex,
+    });
 
   const leastClearance = Arr.lastNonEmpty(labelClearances);
 
@@ -1305,6 +1348,7 @@ const labelSpot = ({
 
     if (
       away > reach ||
+      !isInside(rect, within) ||
       !clearOf(rectPolygon(rect), ownRoute) ||
       !isClear(leastClearance)(rect)
     ) {
@@ -1832,6 +1876,16 @@ export const sceneOf = (source: SceneSource): Scene => {
     }));
   };
 
+  const drawnExtent = boundsOfPoints([
+    ...Arr.flatMap(structures, ({ outline, tag }) => [
+      ...outline,
+      ...rectPolygon(tag),
+    ]),
+    ...chips.flat(),
+    ...Arr.flatMap(zones, ({ plate, title }) => [...plate, ...(title ?? [])]),
+    ...Arr.flatMap(routed, ({ points }) => points),
+  ]);
+
   const rank = new Map(Arr.map(labelFirst, (id, index) => [id, index]));
 
   const labelOrder = Arr.sort(
@@ -1862,6 +1916,8 @@ export const sceneOf = (source: SceneSource): Scene => {
           ),
         },
         reach: labelReachLimit[view] * groundUnit[view],
+        mayOverhang: labelMayOverhang[view],
+        within: drawnExtent,
         grow: growth.label,
         mayBeNearerAnother: labelMayBeNearerAnother[view],
       });
