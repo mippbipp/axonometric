@@ -10,6 +10,9 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
+    # Only for Bun. The stable channel's Bun is older than the 1.4.4 in
+    # `packageManager`, and can't read bun.lock.
+    nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     # Not following our nixpkgs, so agent-browser comes from numtide's cache.
     llm-agents.url = "github:numtide/llm-agents.nix";
@@ -18,6 +21,7 @@
   outputs =
     {
       nixpkgs,
+      nixpkgs-unstable,
       flake-utils,
       llm-agents,
       ...
@@ -27,7 +31,8 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        axonometric = pkgs.callPackage ./nix/package.nix { };
+        inherit (nixpkgs-unstable.legacyPackages.${system}) bun;
+        axonometric = pkgs.callPackage ./nix/package.nix { inherit bun; };
       in
       {
         packages.default = axonometric;
@@ -44,6 +49,7 @@
       let
         pkgs = import nixpkgs { inherit system; };
         inherit (pkgs) lib stdenv;
+        inherit (nixpkgs-unstable.legacyPackages.${system}) bun;
         browsers = pkgs.playwright-driver.browsers;
         # nixpkgs only packages Playwright's browsers for Linux.
         chromiumRevision = pkgs.playwright-driver.browsersJSON.chromium.revision;
@@ -53,7 +59,7 @@
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
             pkgs.nodejs_24
-            pkgs.pnpm_12
+            bun
             llm-agents.packages.${system}.agent-browser
           ];
 
@@ -66,7 +72,7 @@
                 export AGENT_BROWSER_EXECUTABLE_PATH="$chrome"
               done
             ''}
-            echo "axonometric dev shell: node $(node --version), pnpm $(pnpm --version)"
+            echo "axonometric dev shell: node $(node --version), bun $(bun --version)"
           '';
         };
       }

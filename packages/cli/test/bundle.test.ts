@@ -9,7 +9,7 @@ import { makeHome } from "./harness.ts";
 
 // Copies the built bundle into the temporary home folder and runs the copy
 // there. The home folder sits outside the repo, so no node_modules is in
-// reach and the run fails unless the bundle is self-contained. `pnpm test`
+// reach and the run fails unless the bundle is self-contained. `bun run test`
 // builds the bundle first.
 const runBundle = Effect.fnUntraced(function* (
   home: string,
