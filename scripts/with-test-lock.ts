@@ -8,6 +8,7 @@
 // command and start time. A run that finds it held waits and says who holds it.
 // A lock whose process is gone is taken over. `CI=true` skips the lock.
 import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import {
   linkSync,
   readFileSync,
@@ -16,7 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { Option, Schema } from "effect";
@@ -162,20 +163,20 @@ const release = (lockPath: string, me: Holder): void => {
   }
 };
 
+/** The command this run started, once it has started one. */
+let running: ChildProcess | null = null;
+
 const run = (command: string, args: readonly string[]): Promise<number> =>
   new Promise((resolve) => {
-    // On Windows, bun's script PATH finds `turbo` only as a .cmd file.
+    // On Windows a bare name like `turbo` can resolve to a .cmd file, which
+    // only a shell runs. A path goes straight to the OS, since a shell would
+    // split it at spaces.
     const child = spawn(command, args, {
       stdio: "inherit",
-      shell: process.platform === "win32",
+      shell: process.platform === "win32" && basename(command) === command,
     });
 
-    const forward = (signal: NodeJS.Signals): void => {
-      child.kill(signal);
-    };
-
-    process.on("SIGINT", forward);
-    process.on("SIGTERM", forward);
+    running = child;
     child.on("error", (error) => {
       process.stderr.write(`${error.message}\n`);
       resolve(127);
@@ -208,30 +209,33 @@ const main = async (): Promise<number> => {
     return 2;
   }
 
-  if (skipsLock()) {
-    return run(command, args);
-  }
-
   const me: Holder = {
     pid: process.pid,
     command: [command, ...args].join(" "),
     startedAt: new Date().toISOString(),
   };
 
-  const stop = (): void => {
-    release(lockPath, me);
-    process.exit(130);
+  // One handler from start to finish, so no signal falls between waiting and
+  // running. While waiting, a signal frees the lock and exits. Once the command
+  // runs, it goes to the command, and its exit ends this run.
+  const onSignal = (signal: NodeJS.Signals): void => {
+    if (running === null) {
+      release(lockPath, me);
+      process.exit(128 + (signal === "SIGINT" ? 2 : 15));
+    }
+
+    running.kill(signal);
   };
 
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
   process.on("exit", () => {
     release(lockPath, me);
   });
 
-  await acquire(lockPath, me);
-  process.removeListener("SIGINT", stop);
-  process.removeListener("SIGTERM", stop);
+  if (!skipsLock()) {
+    await acquire(lockPath, me);
+  }
 
   return run(command, args);
 };
