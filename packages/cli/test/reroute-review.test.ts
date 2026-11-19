@@ -240,11 +240,11 @@ describe("committing a reroute", () => {
 
         const fs = yield* FileSystem.FileSystem;
 
-        const value = yield* fs.readFileString(
+        const layoutText = yield* fs.readFileString(
           `${root}/review/map/layout.json`
         );
 
-        const saved = yield* decodeLayout(value);
+        const saved = yield* decodeLayout(layoutText);
 
         const rerouted = yield* Schema.encodeEffect(LayoutFile)({
           ...saved,

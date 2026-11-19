@@ -73,8 +73,8 @@ describe("export", () => {
     it.effect("writes the map as an Excalidraw scene, next to SYSTEM.md", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const pipelineMap_1 = yield* pipelineMap;
-        const home = yield* makeHome(pipelineMap_1);
+        const pipelineMapFiles = yield* pipelineMap;
+        const home = yield* makeHome(pipelineMapFiles);
         const map = path.join(home, "flake-pipeline", "map");
 
         const result = yield* runCli(home, [
@@ -121,8 +121,8 @@ describe("export", () => {
     it.effect("--background white sets the canvas colour like the page", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const crowdedMap_1 = yield* crowdedMap;
-        const home = yield* makeHome(crowdedMap_1);
+        const crowdedMapFiles = yield* crowdedMap;
+        const home = yield* makeHome(crowdedMapFiles);
         const map = path.join(home, "crowded", "map");
 
         const result = yield* runCli(home, [
@@ -188,8 +188,8 @@ describe("export", () => {
     it.effect("--output wins and its folders are created", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const minimalMap_1 = yield* minimalMap;
-        const home = yield* makeHome(minimalMap_1);
+        const minimalMapFiles = yield* minimalMap;
+        const home = yield* makeHome(minimalMapFiles);
         const map = path.join(home, "pipeline", "map");
 
         const result = yield* runCli(home, [
@@ -218,8 +218,8 @@ describe("export", () => {
       ([flag, value, valid]) =>
         Effect.gen(function* () {
           const path = yield* Path.Path;
-          const minimalMap_1 = yield* minimalMap;
-          const home = yield* makeHome(minimalMap_1);
+          const minimalMapFiles = yield* minimalMap;
+          const home = yield* makeHome(minimalMapFiles);
           const map = path.join(home, "pipeline", "map");
 
           const result = yield* runCli(home, ["export", map, flag, value]);
@@ -244,8 +244,8 @@ describe("export", () => {
     it.effect("an unknown chapter lists the chapters, by number and id", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const crowdedMap_1 = yield* crowdedMap;
-        const home = yield* makeHome(crowdedMap_1);
+        const crowdedMapFiles = yield* crowdedMap;
+        const home = yield* makeHome(crowdedMapFiles);
         const map = path.join(home, "crowded", "map");
 
         for (const chapter of ["c-nope", "0", "3"]) {
@@ -274,8 +274,8 @@ describe("export", () => {
       () =>
         Effect.gen(function* () {
           const path = yield* Path.Path;
-          const pipelineMap_1 = yield* pipelineMap;
-          const home = yield* makeHome(pipelineMap_1);
+          const pipelineMapFiles = yield* pipelineMap;
+          const home = yield* makeHome(pipelineMapFiles);
           const map = path.join(home, "flake-pipeline", "map");
           const file = "flake-pipeline/flake-pipeline-iso-chapter-8.svg";
 
@@ -315,8 +315,8 @@ describe("export", () => {
     it.effect("--flow names a flow of the map, in the last chapter", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const pipelineMap_1 = yield* pipelineMap;
-        const home = yield* makeHome(pipelineMap_1);
+        const pipelineMapFiles = yield* pipelineMap;
+        const home = yield* makeHome(pipelineMapFiles);
         const map = path.join(home, "flake-pipeline", "map");
 
         const unknown = yield* runCli(home, [
@@ -352,8 +352,8 @@ describe("export", () => {
     it.effect("finds a chapter by id or by number before drawing", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const crowdedMap_1 = yield* crowdedMap;
-        const home = yield* makeHome(crowdedMap_1);
+        const crowdedMapFiles = yield* crowdedMap;
+        const home = yield* makeHome(crowdedMapFiles);
         const map = path.join(home, "crowded", "map");
 
         for (const chapter of ["c-edge", "1"]) {
@@ -377,8 +377,8 @@ describe("export", () => {
     it.effect("takes and releases the lock", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const minimalMap_1 = yield* minimalMap;
-        const home = yield* makeHome(minimalMap_1);
+        const minimalMapFiles = yield* minimalMap;
+        const home = yield* makeHome(minimalMapFiles);
         const map = path.join(home, "pipeline", "map");
 
         const result = yield* runCli(home, [

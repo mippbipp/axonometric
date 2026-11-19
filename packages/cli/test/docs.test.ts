@@ -461,8 +461,8 @@ describe("axonometric docs", () => {
     Effect.gen(function* () {
       const home = yield* makeHome({});
       const help = yield* runCli(home, ["--help"]);
-      const value_1 = yield* printed();
-      const listed = listedTopics(value_1);
+      const printedHelp = yield* printed();
+      const listed = listedTopics(printedHelp);
 
       const texts = yield* Effect.forEach([undefined, ...listed], printed, {
         concurrency: 1,

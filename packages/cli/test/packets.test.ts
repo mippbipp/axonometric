@@ -3,6 +3,7 @@ import { Effect, String as Str } from "effect";
 import type { Page } from "playwright";
 
 import {
+  assertAttribute,
   attributeOf,
   attributesOf,
   click,
@@ -36,9 +37,9 @@ export default data;
 });
 
 const reviewPage = Effect.gen(function* () {
-  const fullMap_1 = yield* fullMap;
+  const fullMapFiles = yield* fullMap;
 
-  return yield* buildAndOpen(fullMap_1, "review");
+  return yield* buildAndOpen(fullMapFiles, "review");
 });
 
 const packetIds = (page: Page) =>
@@ -101,8 +102,8 @@ describe("packets", () => {
         // both across and down, so a new cy means the dot has moved.
         yield* waitFor(page, `[data-packet] circle:not([cy="${start.cy}"])`);
 
-        const value = yield* packetIds(page);
-        assert.deepStrictEqual(value, ["h-note"]);
+        const movedPacketIds = yield* packetIds(page);
+        assert.deepStrictEqual(movedPacketIds, ["h-note"]);
       })
     )
   );
@@ -238,13 +239,13 @@ describe("packets", () => {
         assert.isTrue(playDisabled);
         assert.include(playTitle ?? "", "reduced motion");
         assert.include(playTitle ?? "", "Step");
-        const value = yield* packetIds(page);
+        const restingPacketIds = yield* packetIds(page);
         // At rest, the packet waits on the chapter's first hop.
-        assert.deepStrictEqual(value, ["h-note"]);
+        assert.deepStrictEqual(restingPacketIds, ["h-note"]);
 
         yield* stepTo(page, "h-save");
-        const value_1 = yield* packetIds(page);
-        assert.deepStrictEqual(value_1, ["h-save"]);
+        const steppedPacketIds = yield* packetIds(page);
+        assert.deepStrictEqual(steppedPacketIds, ["h-save"]);
       })
     )
   );
@@ -279,15 +280,16 @@ describe("the flow picker", () => {
 
         yield* goToChapter(page, "c-all");
 
-        const value = yield* attributeOf(
-          page,
-          '[data-flow-picker] [data-flow="all"]',
-          "aria-pressed"
-        );
-
         // The last chapter plays no hops of its own, so it starts on all
         // flows: one packet each.
-        assert.strictEqual(value, "true");
+        yield* assertAttribute(
+          page,
+          {
+            selector: '[data-flow-picker] [data-flow="all"]',
+            name: "aria-pressed",
+          },
+          "true"
+        );
         yield* waitFor(page, '[data-packet][data-run="f-note"]');
         yield* waitFor(page, '[data-packet][data-run="f-accept"]');
 

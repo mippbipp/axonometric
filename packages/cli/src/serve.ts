@@ -673,8 +673,8 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
     const { history } = yield* SubscriptionRef.get(held);
 
-    const value_1 = yield* reloadHistory(home, history);
-    yield* SubscriptionRef.update(held, value_1);
+    const reloadedHistory = yield* reloadHistory(home, history);
+    yield* SubscriptionRef.update(held, reloadedHistory);
   }).pipe(
     Effect.scoped,
     Effect.catchCause((cause) =>

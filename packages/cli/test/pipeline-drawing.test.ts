@@ -9,8 +9,8 @@ describe("check on the pipeline map", () => {
     "reports only the Plan label of the gate verdict, which has no clear spot",
     () =>
       Effect.gen(function* () {
-        const pipelineMap_1 = yield* pipelineMap;
-        const home = yield* makeHome(pipelineMap_1);
+        const pipelineMapFiles = yield* pipelineMap;
+        const home = yield* makeHome(pipelineMapFiles);
 
         const result = yield* runCli(home, [
           "check",

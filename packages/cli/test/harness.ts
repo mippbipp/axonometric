@@ -169,8 +169,8 @@ export const runCli = Effect.fnUntraced(function* (
   args: readonly string[]
 ) {
   const { exit, output } = runCaptured(args);
-  const exit_1 = yield* exit;
-  const exitCode = exitCodeOf(exit_1);
+  const exitResult = yield* exit;
+  const exitCode = exitCodeOf(exitResult);
   const files = yield* readFiles(home);
 
   return {
@@ -358,9 +358,11 @@ export const readProposals = Effect.fnUntraced(function* (home: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  const value_1 = yield* fs.readFileString(path.join(home, "proposals.json"));
+  const proposalsJson = yield* fs.readFileString(
+    path.join(home, "proposals.json")
+  );
 
-  return yield* decodeProposals(value_1);
+  return yield* decodeProposals(proposalsJson);
 }, Effect.provide(NodeServices.layer));
 
 /**

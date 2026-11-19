@@ -85,8 +85,8 @@ describe.skipIf(noGit)("a structure's sources", () => {
 
         const links = '[data-structure-panel="page"] [data-source] a';
 
-        const value = yield* attributesOf(page, links, "href");
-        assert.deepStrictEqual(value, [pinnedUrl, branchUrl]);
+        const linkHrefs = yield* attributesOf(page, links, "href");
+        assert.deepStrictEqual(linkHrefs, [pinnedUrl, branchUrl]);
 
         const text = yield* Effect.promise(() =>
           page.locator('[data-structure-panel="page"]').textContent()

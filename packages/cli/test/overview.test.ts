@@ -10,15 +10,15 @@ import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const reviewPage = Effect.gen(function* () {
-  const fullMap_1 = yield* fullMap;
+  const fullMapFiles = yield* fullMap;
 
-  return yield* buildAndOpen(fullMap_1, "review");
+  return yield* buildAndOpen(fullMapFiles, "review");
 });
 
 const pipelinePage = Effect.gen(function* () {
-  const minimalMap_1 = yield* minimalMap;
+  const minimalMapFiles = yield* minimalMap;
 
-  return yield* buildAndOpen(minimalMap_1, "pipeline");
+  return yield* buildAndOpen(minimalMapFiles, "pipeline");
 });
 
 const overviewButton = "header [data-control='overview']";
@@ -156,16 +156,16 @@ describe("the How it's built page", () => {
 
         assert.lengthOf(adrs, 2);
         assert.match(adr, /^file:.*\/review\/adr\/0001-local-server\.md$/u);
-        const value = yield* fileExists(adr);
-        assert.isTrue(value, adr);
+        const adrExists = yield* fileExists(adr);
+        assert.isTrue(adrExists, adr);
         assert.strictEqual(url, "https://example.com/adr/harness");
         assert.lengthOf(deepDives, 1);
         assert.match(
           research,
           /^file:.*\/review\/research\/clipboard\.md#findings$/u
         );
-        const value_1 = yield* fileExists(research);
-        assert.isTrue(value_1, research);
+        const researchExists = yield* fileExists(research);
+        assert.isTrue(researchExists, research);
       })
     )
   );
@@ -211,21 +211,21 @@ describe("the How it's built page", () => {
         );
 
         assert.strictEqual(expanded, "true");
-        const value = yield* inPage<boolean>(page, focusInside);
-        assert.isTrue(value);
-        const value_2 = yield* texts(page, "[data-hint]");
-        assert.deepStrictEqual(value_2, ["Esc closes this page"]);
+        const focusInOverview = yield* inPage<boolean>(page, focusInside);
+        assert.isTrue(focusInOverview);
+        const hints = yield* texts(page, "[data-hint]");
+        assert.deepStrictEqual(hints, ["Esc closes this page"]);
 
         yield* press(page, "Escape");
         yield* waitGone(page, overviewPage);
-        const value_3 = yield* inPage<boolean>(page, focusOnButton);
-        assert.isTrue(value_3);
+        const focusAfterEscape = yield* inPage<boolean>(page, focusOnButton);
+        assert.isTrue(focusAfterEscape);
 
         yield* openOverview(page);
         yield* click(page, overviewButton);
         yield* waitGone(page, overviewPage);
-        const value_4 = yield* inPage<boolean>(page, focusOnButton);
-        assert.isTrue(value_4);
+        const focusAfterToggle = yield* inPage<boolean>(page, focusOnButton);
+        assert.isTrue(focusAfterToggle);
       })
     )
   );
@@ -262,10 +262,10 @@ describe("the How it's built page", () => {
 
         assert.strictEqual(chapter, "c-save");
         assert.strictEqual(pinned, 1);
-        const value = yield* inPage<string>(page, scale);
-        assert.strictEqual(value, zoomed);
-        const value_5 = yield* texts(page, "[data-structure]");
-        assert.isTrue(Arr.isArrayNonEmpty(value_5));
+        const scaleAfter = yield* inPage<string>(page, scale);
+        assert.strictEqual(scaleAfter, zoomed);
+        const structureTexts = yield* texts(page, "[data-structure]");
+        assert.isTrue(Arr.isArrayNonEmpty(structureTexts));
       })
     )
   );

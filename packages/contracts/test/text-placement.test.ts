@@ -181,8 +181,8 @@ describe("name tags at full size", () => {
           );
 
           for (const view of ["iso", "plan"] as const) {
-            const value_1 = yield* sourceOf(name, view);
-            const scene = sceneOf(value_1);
+            const sceneSource = yield* sourceOf(name, view);
+            const scene = sceneOf(sceneSource);
 
             for (const { between, parts } of sceneClashes(scene)) {
               const kinds = Arr.map(parts, ({ kind }) => kind);

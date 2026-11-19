@@ -79,8 +79,8 @@ const tinted = (look: readonly Paint[]) =>
   );
 
 const reviewPage = Effect.gen(function* () {
-  const fullMap_1 = yield* fullMap;
-  const opened = yield* buildAndOpen(fullMap_1, "review");
+  const fullMapFiles = yield* fullMap;
+  const opened = yield* buildAndOpen(fullMapFiles, "review");
 
   yield* Effect.promise(() =>
     opened.page.setViewportSize({ width: 1280, height: 800 })
@@ -107,13 +107,13 @@ describe("Plan view", () => {
 
           const after = yield* groundAtMiddle(page);
 
-          const value = yield* Effect.promise(() =>
+          const planPressed = yield* Effect.promise(() =>
             page
               .locator('[data-view-toggle] [data-view="plan"]')
               .getAttribute("aria-pressed")
           );
 
-          assert.strictEqual(value, "true");
+          assert.strictEqual(planPressed, "true");
           assert.closeTo(after.x, before.x, 0.05);
           assert.closeTo(after.y, before.y, 0.05);
           yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
@@ -176,12 +176,12 @@ describe("Plan view", () => {
 
         yield* waitFor(page, '[data-packet-panel="h-save"]');
 
-        const value = yield* Effect.promise(() =>
+        const packetPayloadText = yield* Effect.promise(() =>
           page.locator("[data-packet-payload]").textContent()
         );
 
         assert.strictEqual(
-          value,
+          packetPayloadText,
           `{
   "kind": "note",
   "target": "server"
@@ -194,8 +194,12 @@ describe("Plan view", () => {
   it.live("goes inside a structure on double-click, and comes back out", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const pipelineMap_1 = yield* pipelineMap;
-        const { page } = yield* buildAndOpen(pipelineMap_1, "flake-pipeline");
+        const pipelineMapFiles = yield* pipelineMap;
+
+        const { page } = yield* buildAndOpen(
+          pipelineMapFiles,
+          "flake-pipeline"
+        );
 
         yield* showView(page, "plan");
         yield* Effect.promise(() =>
@@ -208,8 +212,8 @@ describe("Plan view", () => {
 
         const toggle = page.locator('[data-view-toggle] [data-view="iso"]');
 
-        const value = yield* Effect.promise(() => toggle.isDisabled());
-        assert.isTrue(value);
+        const toggleDisabled = yield* Effect.promise(() => toggle.isDisabled());
+        assert.isTrue(toggleDisabled);
         assert.include(
           (yield* Effect.promise(() => toggle.getAttribute("title"))) ?? "",
           "inside view"
@@ -225,8 +229,8 @@ describe("Plan view", () => {
   it.live("draws an icon for each shape", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const shapesMap_1 = yield* shapesMap;
-        const { page } = yield* buildAndOpen(shapesMap_1, "shapes");
+        const shapesMapFiles = yield* shapesMap;
+        const { page } = yield* buildAndOpen(shapesMapFiles, "shapes");
 
         yield* showView(page, "plan");
 
@@ -352,8 +356,8 @@ describe("both views", () => {
 
           const layoutPath = path.join(map, "layout.json");
 
-          const value = yield* fs.readFileString(layoutPath);
-          const moved = yield* withServerAt(value, 9);
+          const layoutPathText = yield* fs.readFileString(layoutPath);
+          const moved = yield* withServerAt(layoutPathText, 9);
           yield* fs.writeFileString(layoutPath, moved);
 
           const after = yield* measure();

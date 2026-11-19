@@ -13,9 +13,9 @@ import { shapesMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const builtPage = Effect.gen(function* () {
-  const shapesMap_1 = yield* shapesMap;
+  const shapesMapFiles = yield* shapesMap;
 
-  return yield* buildAndOpen(shapesMap_1, "shapes");
+  return yield* buildAndOpen(shapesMapFiles, "shapes");
 });
 
 const transformExpression =
@@ -268,10 +268,10 @@ describe("the viewport", () => {
         yield* Effect.promise(() => page.mouse.move(x, y, { steps: 4 }));
         yield* Effect.promise(() => page.mouse.up());
 
-        const value = yield* drawingOf(page);
-        assert.deepStrictEqual(value, before);
-        const value_1 = yield* clickedOf(page);
-        assert.deepStrictEqual(value_1, ["box"]);
+        const drawingAfterDrag = yield* drawingOf(page);
+        assert.deepStrictEqual(drawingAfterDrag, before);
+        const clicked = yield* clickedOf(page);
+        assert.deepStrictEqual(clicked, ["box"]);
       })
     )
   );
@@ -332,8 +332,8 @@ describe("the viewport", () => {
         );
 
         assert.closeTo(after.left - before.left, -100, 1);
-        const value = yield* clickedOf(page);
-        assert.deepStrictEqual(value, ["box"]);
+        const clicked = yield* clickedOf(page);
+        assert.deepStrictEqual(clicked, ["box"]);
       })
     )
   );
@@ -368,9 +368,9 @@ describe("the viewport", () => {
           page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
         );
 
-        const value = yield* clickedOf(page);
+        const clicked = yield* clickedOf(page);
         // The drag's own click is swallowed; the real one lands.
-        assert.deepStrictEqual(value, ["box"]);
+        assert.deepStrictEqual(clicked, ["box"]);
       })
     )
   );
@@ -388,8 +388,8 @@ describe("the viewport", () => {
         );
         yield* waitForScale(page, `=== ${fitted}`);
 
-        const value = yield* scaleOf(page);
-        assert.closeTo(value, fitted, 1e-6);
+        const scaleNow = yield* scaleOf(page);
+        assert.closeTo(scaleNow, fitted, 1e-6);
         yield* assertFitted(page);
       })
     )

@@ -3,7 +3,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Schema } from "effect";
 import type { Locator, Page } from "playwright";
 
-import { click, count, textOf, waitFor, waitTimeout } from "./browser.ts";
+import {
+  assertCount,
+  assertTextIncludes,
+  click,
+  textOf,
+  waitFor,
+  waitTimeout,
+} from "./browser.ts";
 import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // Words on the page, against a real serve: a text suggestion shown beside the
@@ -50,14 +57,22 @@ describe("a text suggestion", () => {
 
         const field = `${panel} [data-suggestable="oneLiner"]`;
 
-        const value = yield* textOf(page, `${field} [data-current]`);
-        assert.include(value, "Saves edits and pushes changes to pages.");
-        const value_1 = yield* textOf(page, `${field} [data-current]`);
-        assert.include(value_1, "Current");
-        const value_2 = yield* textOf(page, `${field} [data-suggested]`);
-        assert.include(value_2, "Saves edits and tells every open page.");
-        const value_3 = yield* textOf(page, `${field} [data-suggested]`);
-        assert.include(value_3, "goes in the next batch");
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-current]`,
+          "Saves edits and pushes changes to pages."
+        );
+        yield* assertTextIncludes(page, `${field} [data-current]`, "Current");
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-suggested]`,
+          "Saves edits and tells every open page."
+        );
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-suggested]`,
+          "goes in the next batch"
+        );
 
         const proposals = yield* readProposals(home);
 
@@ -114,20 +129,18 @@ describe("a text suggestion", () => {
           ["steps.0.detail"]
         );
 
-        const value = yield* count(
-          page,
-          `${panel} [data-suggestable-step="1"] [data-suggest]`
-        );
-
         // One Edit for each step, not two.
-        assert.strictEqual(value, 1);
-        const value_4 = yield* count(page, `${panel} [data-suggest^="steps."]`);
-        assert.strictEqual(value_4, 2);
+        yield* assertCount(
+          page,
+          `${panel} [data-suggestable-step="1"] [data-suggest]`,
+          1
+        );
+        yield* assertCount(page, `${panel} [data-suggest^="steps."]`, 2);
 
         const edit = page.getByRole("button", { name: "Edit: step 2" });
 
-        const value_5 = yield* Effect.promise(() => edit.count());
-        assert.strictEqual(value_5, 1);
+        const editCount = yield* Effect.promise(() => edit.count());
+        assert.strictEqual(editCount, 1);
         yield* Effect.promise(() => edit.click());
         yield* fill(
           page,
@@ -172,7 +185,7 @@ describe("a text suggestion", () => {
           ]
         );
 
-        const value_6 = yield* Effect.promise(() =>
+        const discardCount = yield* Effect.promise(() =>
           page
             .getByRole("button", {
               name: "Discard suggestion: step 2 detail",
@@ -181,7 +194,7 @@ describe("a text suggestion", () => {
         );
 
         // Each open suggestion has a Discard that names its field.
-        assert.isAtLeast(value_6, 1);
+        assert.isAtLeast(discardCount, 1);
       })
   );
 
@@ -273,19 +286,17 @@ describe("a question", () => {
         assert.strictEqual(saved?.text, "5178 first, then the next free one.");
         assert.strictEqual(saved?.answeredOn, today);
 
-        const value = yield* textOf(
+        yield* assertTextIncludes(
           page,
-          '[data-question="Q-S1"] [data-answer]'
+          '[data-question="Q-S1"] [data-answer]',
+          `Answered ${today}`
         );
 
-        assert.include(value, `Answered ${today}`);
-
-        const value_7 = yield* count(
+        yield* assertCount(
           page,
-          '[data-question="Q-S1"] [data-answer-open]'
+          '[data-question="Q-S1"] [data-answer-open]',
+          0
         );
-
-        assert.strictEqual(value_7, 0);
         assert.deepStrictEqual(errors, []);
       }),
     60_000
@@ -319,17 +330,18 @@ describe("a question", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, row);
 
-        const value = yield* textOf(page, row);
-        assert.include(
-          value,
+        yield* assertTextIncludes(
+          page,
+          row,
           "New question on Save server: Should writes retry?"
         );
-        const value_8 = yield* count(page, `${row} button:has-text("Discard")`);
-        assert.strictEqual(value_8, 1);
-        const value_9 = yield* textOf(page, '[role="tab"][data-tab="pending"]');
-        assert.include(value_9, "Pending · 1");
-        const value_10 = yield* textOf(page, "[data-ready-for-review]");
-        assert.include(value_10, "· 1");
+        yield* assertCount(page, `${row} button:has-text("Discard")`, 1);
+        yield* assertTextIncludes(
+          page,
+          '[role="tab"][data-tab="pending"]',
+          "Pending · 1"
+        );
+        yield* assertTextIncludes(page, "[data-ready-for-review]", "· 1");
 
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
@@ -389,23 +401,24 @@ describe("the Pending tab with proposals", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-item][data-review-kind="note"]');
 
-        const value = yield* count(page, "[data-pending-empty]");
-        assert.strictEqual(value, 0);
+        yield* assertCount(page, "[data-pending-empty]", 0);
 
-        const value_11 = yield* textOf(
+        yield* assertTextIncludes(
           page,
-          '[role="tab"][data-tab="pending"]'
+          '[role="tab"][data-tab="pending"]',
+          "Pending · 1"
         );
-
-        assert.include(value_11, "Pending · 1");
 
         const intro = yield* textOf(page, "[data-pending-intro]");
 
         assert.include(intro, "Layout changes");
         assert.include(intro, "Proposals");
         assert.include(intro, "agent");
-        const value_12 = yield* textOf(page, "[data-review-list] h3");
-        assert.include(value_12, "Diagram changes");
+        yield* assertTextIncludes(
+          page,
+          "[data-review-list] h3",
+          "Diagram changes"
+        );
       }),
     60_000
   );
@@ -477,20 +490,25 @@ describe("the Pending tab with proposals", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-kind="question"]');
 
-        const value = yield* count(page, "[data-pending-empty]");
-        assert.strictEqual(value, 0);
-        const value_13 = yield* count(page, "[data-review-list]");
-        assert.strictEqual(value_13, 1);
-        const value_14 = yield* textOf(page, "[data-review-list] h3");
-        assert.include(value_14, "Diagram changes");
+        yield* assertCount(page, "[data-pending-empty]", 0);
+        yield* assertCount(page, "[data-review-list]", 1);
+        yield* assertTextIncludes(
+          page,
+          "[data-review-list] h3",
+          "Diagram changes"
+        );
 
-        const value_15 = yield* Effect.promise(() =>
+        const reviewItemKinds = yield* Effect.promise(() =>
           page.evaluate<string[]>(
             "[...document.querySelectorAll('[data-review-list] [data-review-item]')].map((item) => item.dataset.reviewKind)"
           )
         );
 
-        assert.sameMembers(value_15, ["suggestion", "answer", "question"]);
+        assert.sameMembers(reviewItemKinds, [
+          "suggestion",
+          "answer",
+          "question",
+        ]);
       }),
     60_000
   );
@@ -530,12 +548,13 @@ describe("a frozen suggestion", () => {
 
         yield* waitFor(page, `${field}[data-suggestion-state="frozen"]`);
 
-        const value = yield* textOf(page, `${field} [data-suggested]`);
-        assert.include(value, "In batch 1, waiting for the agent");
-        const value_16 = yield* count(page, `${field} button`);
-        assert.strictEqual(value_16, 0);
-        const value_17 = yield* count(page, `${field} [data-suggest]`);
-        assert.strictEqual(value_17, 0);
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-suggested]`,
+          "In batch 1, waiting for the agent"
+        );
+        yield* assertCount(page, `${field} button`, 0);
+        yield* assertCount(page, `${field} [data-suggest]`, 0);
 
         // The server still refuses a write the page can't make.
         const proposals = yield* readProposals(home);
@@ -572,8 +591,11 @@ describe("a frozen suggestion", () => {
         yield* waitFor(page, `${field}[data-suggestion-state="reviewed"]`);
         yield* waitFor(page, `${field} [data-suggest]`);
 
-        const value = yield* textOf(page, `${field} [data-suggest]`);
-        assert.include(value, "Suggest again");
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-suggest]`,
+          "Suggest again"
+        );
       }),
     90_000
   );
@@ -697,8 +719,8 @@ describe("the panel's buttons and headings", () => {
             .locator(`${panel} section`)
             .filter({ has: page.getByRole("heading", { name: heading }) });
 
-          const value = yield* Effect.promise(() => section.count());
-          assert.strictEqual(value, 1, heading);
+          const sectionCount = yield* Effect.promise(() => section.count());
+          assert.strictEqual(sectionCount, 1, heading);
 
           // The box's label takes no room on screen: the heading says it.
           const labels = yield* Effect.promise(() =>
@@ -718,11 +740,11 @@ describe("the panel's buttons and headings", () => {
 
           assert.strictEqual(shown, 0, heading);
 
-          const value_18 = yield* Effect.promise(() =>
+          const textboxCount = yield* Effect.promise(() =>
             section.getByRole("textbox", { name }).count()
           );
 
-          assert.strictEqual(value_18, 1, heading);
+          assert.strictEqual(textboxCount, 1, heading);
         }
       })
   );

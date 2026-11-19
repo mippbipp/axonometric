@@ -127,8 +127,8 @@ export const checkHistory = Effect.fnUntraced(function* (
         ];
   });
 
-  const value_1 = yield* revisionsIn(home);
-  const found = yield* Effect.forEach(value_1, check, { concurrency: 1 });
+  const revisions = yield* revisionsIn(home);
+  const found = yield* Effect.forEach(revisions, check, { concurrency: 1 });
 
   return Arr.flatten(found);
 });

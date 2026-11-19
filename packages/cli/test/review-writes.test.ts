@@ -135,8 +135,8 @@ describe("the review routes", () => {
           assert.strictEqual(asText.status, 415, route);
         }
 
-        const value_1 = yield* proposalsText(home);
-        assert.strictEqual(value_1, before);
+        const proposalsAfter = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfter, before);
       })
   );
 
@@ -191,8 +191,8 @@ describe("the review routes", () => {
         (yield* post(url, "/api/notes", ownOrigin(url), long)).status,
         400
       );
-      const value_1 = yield* proposalsText(home);
-      assert.strictEqual(value_1, before);
+      const proposalsAfter = yield* proposalsText(home);
+      assert.strictEqual(proposalsAfter, before);
     })
   );
 
@@ -215,8 +215,8 @@ describe("the review routes", () => {
 
       assert.strictEqual(sent.status, 409);
       assert.include(sent.body, "StaleProposals");
-      const value_1 = yield* proposalsText(home);
-      assert.strictEqual(value_1, before);
+      const proposalsAfter = yield* proposalsText(home);
+      assert.strictEqual(proposalsAfter, before);
     })
   );
 
@@ -256,8 +256,8 @@ describe("the review routes", () => {
         assert.include(answer.prompt, "batch 2");
         assert.include(answer.prompt, "summary");
 
-        const value_1 = yield* proposalsText(home);
-        const saved = yield* decodeProposals(value_1);
+        const proposalsJson = yield* proposalsText(home);
+        const saved = yield* decodeProposals(proposalsJson);
 
         assert.deepStrictEqual(saved, answer.proposals);
       })
@@ -293,8 +293,8 @@ describe("the review routes", () => {
 
         assert.strictEqual(reuse.status, 422);
         assert.include(reuse.body, "frozen-move");
-        const value_1 = yield* proposalsText(home);
-        assert.strictEqual(value_1, before);
+        const proposalsAfterReuse = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfterReuse, before);
 
         // An open move that lands on a frozen one's spot is refused as an
         // overlap: frozen changes still count.
@@ -320,8 +320,8 @@ describe("the review routes", () => {
         );
 
         assert.strictEqual(onto.status, 422);
-        const value_2 = yield* proposalsText(home);
-        assert.strictEqual(value_2, before);
+        const proposalsAfterOnto = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfterOnto, before);
       })
   );
 
@@ -366,8 +366,8 @@ describe("the review routes", () => {
 
         assert.strictEqual(accepted.status, 422, accepted.body);
         assert.include(accepted.body, "Wait for the agent");
-        const value_1 = yield* proposalsText(home);
-        assert.strictEqual(value_1, before);
+        const proposalsAfter = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfter, before);
 
         assert.strictEqual(
           (yield* readHome(home))["history/0001.json"],
@@ -476,8 +476,8 @@ describe("text suggestions, answers and questions", () => {
         assert.include(sent.body, why);
       }
 
-      const value_1 = yield* proposalsText(home);
-      assert.strictEqual(value_1, before);
+      const proposalsAfter = yield* proposalsText(home);
+      assert.strictEqual(proposalsAfter, before);
     })
   );
 
@@ -504,8 +504,8 @@ describe("text suggestions, answers and questions", () => {
 
       assert.strictEqual(gone.status, 200, gone.body);
 
-      const value_1 = yield* proposalsText(home);
-      const saved = yield* decodeProposals(value_1);
+      const proposalsJson = yield* proposalsText(home);
+      const saved = yield* decodeProposals(proposalsJson);
 
       assert.strictEqual(saved.suggestions?.[0]?.after, "Better.");
       assert.strictEqual(saved.suggestions?.[0]?.before, suggestion.before);

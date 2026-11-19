@@ -324,8 +324,8 @@ describe("layout", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const minimalMap_1 = yield* minimalMap;
-      const home = yield* makeHome(minimalMap_1);
+      const minimalMapFiles = yield* minimalMap;
+      const home = yield* makeHome(minimalMapFiles);
       const map = path.join(home, "pipeline", "map");
       const lock = path.join(map, ".axonometric", "lock");
 
@@ -345,8 +345,8 @@ describe("layout", () => {
       ]);
 
       assert.notStrictEqual(result.exitCode, 0);
-      const value = yield* fs.exists(lock);
-      assert.isFalse(value);
+      const lockExists = yield* fs.exists(lock);
+      assert.isFalse(lockExists);
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -372,8 +372,8 @@ describe("layout", () => {
         yield* Fiber.interrupt(waiting);
 
         assert.isBelow((yield* Clock.currentTimeMillis) - started, 1000);
-        const value = yield* fs.readFileString(lock);
-        assert.strictEqual(value, lockOf(pid));
+        const lockText = yield* fs.readFileString(lock);
+        assert.strictEqual(lockText, lockOf(pid));
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     15_000
   );

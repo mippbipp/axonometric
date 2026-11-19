@@ -72,10 +72,10 @@ describe("the page's font", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const pipelineMap_1 = yield* pipelineMap;
+          const pipelineMapFiles = yield* pipelineMap;
 
           const { page, errors } = yield* buildAndOpen(
-            pipelineMap_1,
+            pipelineMapFiles,
             "flake-pipeline"
           );
 
@@ -213,8 +213,12 @@ describe("the page's font", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const pipelineMap_1 = yield* pipelineMap;
-          const { page } = yield* buildAndOpen(pipelineMap_1, "flake-pipeline");
+          const pipelineMapFiles = yield* pipelineMap;
+
+          const { page } = yield* buildAndOpen(
+            pipelineMapFiles,
+            "flake-pipeline"
+          );
 
           // Basic Latin, Latin-1 Supplement without the soft hyphen (which is
           // zero width), Latin Extended-A, the 40 box-drawing characters

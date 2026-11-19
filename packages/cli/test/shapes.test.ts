@@ -8,9 +8,9 @@ import { shapesMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const builtPage = Effect.gen(function* () {
-  const shapesMap_1 = yield* shapesMap;
+  const shapesMapFiles = yield* shapesMap;
 
-  return yield* buildAndOpen(shapesMap_1, "shapes");
+  return yield* buildAndOpen(shapesMapFiles, "shapes");
 });
 
 // Code that runs in the page is written as expression strings, because this

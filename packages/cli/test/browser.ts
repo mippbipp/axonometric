@@ -200,6 +200,39 @@ export const textOf = (page: Page, selector: string) =>
 export const attributeOf = (page: Page, selector: string, name: string) =>
   Effect.promise(() => page.locator(selector).first().getAttribute(name));
 
+/** Fails the test unless exactly `expected` elements match `selector`. */
+export const assertCount = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string,
+  expected: number
+) {
+  const found = yield* count(page, selector);
+
+  assert.strictEqual(found, expected);
+});
+
+/** Fails the test unless the first element matching `selector` has text containing `expected`. */
+export const assertTextIncludes = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string,
+  expected: string
+) {
+  const text = yield* textOf(page, selector);
+
+  assert.include(text, expected);
+});
+
+/** Fails the test unless attribute `name` of the first element matching `target.selector` is `expected`. */
+export const assertAttribute = Effect.fnUntraced(function* (
+  page: Page,
+  target: { readonly selector: string; readonly name: string },
+  expected: string | null
+) {
+  const found = yield* attributeOf(page, target.selector, target.name);
+
+  assert.strictEqual(found, expected);
+});
+
 /**
  * Waits until the first element matching `selector` has every attribute in
  * `attributes` set to its value, and fails the test if it never does. The

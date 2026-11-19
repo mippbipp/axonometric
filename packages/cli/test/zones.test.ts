@@ -7,9 +7,9 @@ import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const reviewPage = Effect.gen(function* () {
-  const fullMap_1 = yield* fullMap;
+  const fullMapFiles = yield* fullMap;
 
-  return yield* buildAndOpen(fullMap_1, "review");
+  return yield* buildAndOpen(fullMapFiles, "review");
 });
 
 const drawnZones = (page: Page) =>
@@ -161,8 +161,8 @@ describe("zones in the Iso view", () => {
 
           yield* goToLast(page);
 
-          const value = yield* drawnZones(page);
-          assert.deepStrictEqual(value, ["loop", "outside", "people"]);
+          const zonesAtLast = yield* drawnZones(page);
+          assert.deepStrictEqual(zonesAtLast, ["loop", "outside", "people"]);
 
           const titles = yield* Effect.promise(() =>
             page.locator("[data-zone] [data-zone-title]").allTextContents()
@@ -204,9 +204,9 @@ describe("zones in the Iso view", () => {
       Effect.gen(function* () {
         const { page } = yield* reviewPage;
 
-        const value = yield* drawnZones(page);
+        const zonesAtFirst = yield* drawnZones(page);
         // Chapter 1 reveals the engineer (people) and the page (loop).
-        assert.deepStrictEqual(value, ["loop", "people"]);
+        assert.deepStrictEqual(zonesAtFirst, ["loop", "people"]);
       })
     )
   );

@@ -225,9 +225,9 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
       onSome: ({ number, frozenAt }) => ({ number, frozenAt, items }),
     });
 
-    const value_1 = yield* encodeReport({ home: absolute, batch });
+    const reportText = yield* encodeReport({ home: absolute, batch });
 
-    return yield* Console.log(value_1);
+    return yield* Console.log(reportText);
   }
 
   if (Option.isNone(oldest)) {

@@ -20,8 +20,8 @@ const focusedControl = (page: Page) =>
 
 /** The pipeline map's read-only file, at its last chapter. */
 const lastChapter = Effect.gen(function* () {
-  const pipelineMap_1 = yield* pipelineMap;
-  const opened = yield* buildAndOpen(pipelineMap_1, "flake-pipeline");
+  const pipelineMapFiles = yield* pipelineMap;
+  const opened = yield* buildAndOpen(pipelineMapFiles, "flake-pipeline");
 
   yield* Effect.promise(() =>
     opened.page.setViewportSize({ width: 1280, height: 800 })
@@ -320,8 +320,8 @@ describe("export", () => {
           const white = yield* exportFile(page, "png");
 
           assert.strictEqual(white.name, "flake-pipeline-iso-chapter-8.png");
-          const value = yield* cornerPixel(page, white.bytes);
-          assert.deepStrictEqual(value, [255, 255, 255, 255]);
+          const whiteCornerPixel = yield* cornerPixel(page, white.bytes);
+          assert.deepStrictEqual(whiteCornerPixel, [255, 255, 255, 255]);
         })
       ),
     60_000
@@ -368,24 +368,24 @@ describe("export", () => {
           yield* Effect.promise(() =>
             page.locator("[data-export-menu]").waitFor()
           );
-          const value = yield* focusedControl(page);
-          assert.strictEqual(value, "svg");
+          const focusedOnOpen = yield* focusedControl(page);
+          assert.strictEqual(focusedOnOpen, "svg");
 
           yield* press(page, "ArrowDown");
-          const value_1 = yield* focusedControl(page);
-          assert.strictEqual(value_1, "png");
+          const focusedAfterDown = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterDown, "png");
           yield* press(page, "End");
-          const value_2 = yield* focusedControl(page);
-          assert.strictEqual(value_2, "background");
+          const focusedAfterEnd = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterEnd, "background");
 
           // The background option is drawn as a checkbox in both states.
           const row = page.locator('[data-export-item="background"]');
 
-          const value_3 = yield* Effect.promise(() => row.textContent());
-          assert.include(value_3, "☐");
+          const uncheckedRow = yield* Effect.promise(() => row.textContent());
+          assert.include(uncheckedRow, "☐");
           yield* press(page, " ");
-          const value_4 = yield* Effect.promise(() => row.textContent());
-          assert.include(value_4, "☑");
+          const checkedRow = yield* Effect.promise(() => row.textContent());
+          assert.include(checkedRow, "☑");
 
           const checked = yield* Effect.promise(() =>
             page
@@ -395,11 +395,11 @@ describe("export", () => {
 
           assert.strictEqual(checked, "true");
           yield* press(page, "ArrowDown");
-          const value_5 = yield* focusedControl(page);
-          assert.strictEqual(value_5, "svg");
+          const focusedAfterWrapDown = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterWrapDown, "svg");
           yield* press(page, "ArrowUp");
-          const value_6 = yield* focusedControl(page);
-          assert.strictEqual(value_6, "background");
+          const focusedAfterUp = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterUp, "background");
 
           // The map's keys stay off while the menu has focus.
           yield* press(page, "v");
@@ -409,13 +409,13 @@ describe("export", () => {
 
           yield* press(page, "Escape");
 
-          const value_7 = yield* Effect.promise(() =>
+          const menuCountAfterEscape = yield* Effect.promise(() =>
             page.locator("[data-export-menu]").count()
           );
 
-          assert.strictEqual(value_7, 0);
-          const value_8 = yield* focusedControl(page);
-          assert.strictEqual(value_8, "export");
+          assert.strictEqual(menuCountAfterEscape, 0);
+          const focusedAfterClose = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterClose, "export");
 
           // Tab from the open menu closes it and moves focus on, off the menu.
           yield* press(page, "Enter");
@@ -424,18 +424,18 @@ describe("export", () => {
           );
           yield* press(page, "Tab");
 
-          const value_9 = yield* Effect.promise(() =>
+          const menuCountAfterTab = yield* Effect.promise(() =>
             page.locator("[data-export-menu]").count()
           );
 
-          assert.strictEqual(value_9, 0);
+          assert.strictEqual(menuCountAfterTab, 0);
 
-          const value_10 = yield* inPage<boolean>(
+          const focusMovedOn = yield* inPage<boolean>(
             page,
             `document.activeElement !== document.body && document.activeElement.closest("[data-export-menu]") === null && document.activeElement.dataset.control !== "export"`
           );
 
-          assert.isTrue(value_10, "focus moved on from the menu");
+          assert.isTrue(focusMovedOn, "focus moved on from the menu");
         })
       ),
     60_000
@@ -515,8 +515,8 @@ describe("export", () => {
           );
 
           assert.strictEqual(live, "polite");
-          const value = yield* inPage<number>(page, "window.__saved");
-          assert.strictEqual(value, 0);
+          const savedCount = yield* inPage<number>(page, "window.__saved");
+          assert.strictEqual(savedCount, 0);
         }
       })
     )

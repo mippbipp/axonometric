@@ -7,8 +7,8 @@ import { makeHome, runCli } from "./harness.ts";
 describe("routing", () => {
   it.effect("check warns about the crowded map's hop under a box", () =>
     Effect.gen(function* () {
-      const crowdedMap_1 = yield* crowdedMap;
-      const home = yield* makeHome(crowdedMap_1);
+      const crowdedMapFiles = yield* crowdedMap;
+      const home = yield* makeHome(crowdedMapFiles);
       const result = yield* runCli(home, ["check", `${home}/crowded/map`]);
 
       assert.strictEqual(result.exitCode, 0, result.stdout + result.stderr);

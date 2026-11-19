@@ -16,6 +16,8 @@ import {
 import type { Locator, Page } from "playwright";
 
 import {
+  assertCount,
+  assertTextIncludes,
   click,
   count,
   goToChapterPaused,
@@ -181,15 +183,15 @@ describe("the add form", () => {
             yield* Effect.promise(() => page.waitForTimeout(600));
             yield* waitFor(page, "[data-spot-outline]");
 
-            const value = yield* outlineOnCanvas(page);
-            assert.isTrue(value, `${view} ${group}`);
+            const outlineDrawn = yield* outlineOnCanvas(page);
+            assert.isTrue(outlineDrawn, `${view} ${group}`);
 
-            const value_1 = yield* count(
+            const newDragWarningCount = yield* count(
               page,
               "[data-drag-warning][data-warning-new=true]"
             );
 
-            assert.strictEqual(value_1, 0, `${view} ${group}`);
+            assert.strictEqual(newDragWarningCount, 0, `${view} ${group}`);
           }
         }),
       90_000
@@ -204,8 +206,11 @@ describe("the add form", () => {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
 
-        const value = yield* fs.readFileString(path.join(home, "layout.json"));
-        const { structures } = yield* decodeLayout(value);
+        const layoutText = yield* fs.readFileString(
+          path.join(home, "layout.json")
+        );
+
+        const { structures } = yield* decodeLayout(layoutText);
 
         // The review map's groups: people holds the engineer, outside the
         // upstream, and loop the rest.
@@ -275,15 +280,15 @@ describe("the add form", () => {
           );
         });
 
-        const value_2 = yield* x();
-        assert.notStrictEqual(value_2, "");
+        const suggestedX = yield* x();
+        assert.notStrictEqual(suggestedX, "");
         yield* assertBeside("people");
 
-        const value_3 = yield* Effect.promise(() =>
+        const addSubmitDisabled = yield* Effect.promise(() =>
           page.locator('[data-add="submit"]').isDisabled()
         );
 
-        assert.isFalse(value_3);
+        assert.isFalse(addSubmitDisabled);
 
         const first = yield* x();
 
@@ -304,8 +309,8 @@ describe("the add form", () => {
         yield* Effect.promise(() =>
           page.locator('[data-add="group"]').selectOption("people")
         );
-        const value_4 = yield* x();
-        assert.strictEqual(value_4, "30");
+        const typedX = yield* x();
+        assert.strictEqual(typedX, "30");
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
@@ -377,8 +382,11 @@ describe("the add form", () => {
           Arr.every(fromForm, ({ isNew }) => isNew),
           "add form"
         );
-        const value = yield* textOf(page, "[data-drag-warnings]");
-        assert.include(value, "New from this change");
+        yield* assertTextIncludes(
+          page,
+          "[data-drag-warnings]",
+          "New from this change"
+        );
 
         // The warnings are in the side panel, not over the drawing.
         const docked = yield* boxOf(page, "[data-drag-warnings]");
@@ -572,8 +580,7 @@ describe("the open page after verdict changed --as and commit", () => {
             .first()
             .waitFor({ ...waitTimeout, state: "detached" })
         );
-        const value = yield* count(page, `[data-structure="${provisional}"]`);
-        assert.strictEqual(value, 0);
+        yield* assertCount(page, `[data-structure="${provisional}"]`, 0);
         yield* waitFor(
           page,
           '[data-structure-panel="build-cache"][data-pinned]'

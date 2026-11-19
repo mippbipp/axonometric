@@ -4,8 +4,8 @@ import { Array as Arr, Effect, Schema } from "effect";
 import type { Page } from "playwright";
 
 import {
+  assertCount,
   click,
-  count,
   goToChapterPaused,
   pointOnHop,
   showView,
@@ -335,8 +335,8 @@ describe("zoom to fit", () => {
         Effect.gen(function* () {
           const { serve, page, errors } = yield* served;
 
-          const value = yield* farSpot(0);
-          const sent = yield* post(serve.url, "/api/notes", value);
+          const farSpotNote = yield* farSpot(0);
+          const sent = yield* post(serve.url, "/api/notes", farSpotNote);
 
           assert.strictEqual(sent.status, 200, sent.body);
 
@@ -346,8 +346,8 @@ describe("zoom to fit", () => {
           yield* click(page, 'button[title="Zoom to fit (0)"]');
           yield* Effect.promise(() => page.waitForTimeout(500));
 
-          const value_1 = yield* ringsOnScreen(page);
-          assert.isTrue(value_1);
+          const ringsShown = yield* ringsOnScreen(page);
+          assert.isTrue(ringsShown);
           assert.deepStrictEqual(errors, []);
         }),
       60_000
@@ -396,10 +396,10 @@ describe("the keyboard", () => {
           name: 'Note on "Save server"',
         });
 
-        const value = yield* Effect.promise(() => hopRing.count());
-        assert.strictEqual(value, 1);
-        const value_2 = yield* Effect.promise(() => boxRing.count());
-        assert.strictEqual(value_2, 1);
+        const hopRingCount = yield* Effect.promise(() => hopRing.count());
+        assert.strictEqual(hopRingCount, 1);
+        const boxRingCount = yield* Effect.promise(() => boxRing.count());
+        assert.strictEqual(boxRingCount, 1);
 
         yield* Effect.promise(() => hopRing.focus());
 
@@ -494,16 +494,15 @@ describe("the keyboard", () => {
         yield* waitFor(page, "[data-spot-cursor]");
         yield* Effect.promise(() => page.keyboard.press("ArrowLeft"));
 
-        const value = yield* Effect.promise(chapter);
+        const chapterAfterArrow = yield* Effect.promise(chapter);
         // The arrow moved the cursor, not the chapter.
-        assert.strictEqual(value, "c-all");
+        assert.strictEqual(chapterAfterArrow, "c-all");
 
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* Effect.promise(() =>
           page.locator("[data-spot-cursor]").waitFor({ state: "detached" })
         );
-        const value_3 = yield* count(page, "[data-spot-panel]");
-        assert.strictEqual(value_3, 0);
+        yield* assertCount(page, "[data-spot-panel]", 0);
       })
   );
 });

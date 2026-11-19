@@ -3,11 +3,11 @@ import { Array as Arr, Effect, String as Str } from "effect";
 import type { Page } from "playwright";
 
 import {
+  assertCount,
+  assertTextIncludes,
   click,
-  count,
   goToChapterPaused,
   showViewFitted,
-  textOf,
   waitFor,
   waitTimeout,
 } from "./browser.ts";
@@ -96,20 +96,17 @@ describe("creating a group", () => {
 
         for (const which of ["iso", "plan"] as const) {
           yield* showViewFitted(page, which);
-          const value = yield* count(page, "[data-pending-zone]");
-          assert.strictEqual(value, 1);
+          yield* assertCount(page, "[data-pending-zone]", 1);
 
-          const value_1 = yield* count(
+          yield* assertCount(
             page,
-            '[data-structure="server"][data-pending="true"]'
+            '[data-structure="server"][data-pending="true"]',
+            1
           );
-
-          assert.strictEqual(value_1, 1);
         }
 
-        const value = yield* textOf(page, "[data-side-index]");
         // The side index lists the new group with its members.
-        assert.include(value, "Data layer");
+        yield* assertTextIncludes(page, "[data-side-index]", "Data layer");
         assert.deepStrictEqual(errors, []);
       }),
     90_000
@@ -125,8 +122,11 @@ describe("creating a group", () => {
         yield* Effect.promise(() =>
           page.locator("[data-new-group-title]").fill("Spare")
         );
-        const value = yield* textOf(page, "[data-new-group-members]");
-        assert.include(value, "starts empty");
+        yield* assertTextIncludes(
+          page,
+          "[data-new-group-members]",
+          "starts empty"
+        );
         yield* click(page, "[data-new-group-submit]");
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, "[data-review-item]");
@@ -163,8 +163,11 @@ describe("renaming a group", () => {
         // The Pending tab names the title the map has now, not the new one.
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-kind="group"]');
-        const value = yield* textOf(page, '[data-review-kind="group"]');
-        assert.include(value, "Rename the group The loop to The save loop");
+        yield* assertTextIncludes(
+          page,
+          '[data-review-kind="group"]',
+          "Rename the group The loop to The save loop"
+        );
         yield* click(page, '[role="tab"][data-tab="details"]');
 
         const held = yield* proposalsOrEmpty(home);
@@ -191,8 +194,11 @@ describe("renaming a group", () => {
         );
         yield* click(page, "[data-group-rename]");
         yield* waitFor(page, "[data-group-failure]");
-        const value_2 = yield* textOf(page, "[data-group-failure]");
-        assert.include(value_2, "already has a group");
+        yield* assertTextIncludes(
+          page,
+          "[data-group-failure]",
+          "already has a group"
+        );
       }),
     90_000
   );
@@ -214,36 +220,31 @@ describe("a chapter proposal", () => {
 
         assert.strictEqual(held.chapters?.length, 1);
 
-        const value = yield* count(
-          page,
-          '[data-chapter-mark="hide"][data-chapter-mark-of="server"]'
-        );
-
         // c-save shows the ring, and a chapter that also draws the structure
         // does not.
-        assert.strictEqual(value, 1);
-
-        yield* goToChapterPaused(page, "c-all");
-        const value_3 = yield* count(page, '[data-structure="server"]');
-        assert.strictEqual(value_3, 1);
-        const value_4 = yield* count(page, "[data-chapter-mark]");
-        assert.strictEqual(value_4, 0);
-
-        const value_5 = yield* count(
+        yield* assertCount(
           page,
-          '[data-structure="server"][data-pending="true"]'
+          '[data-chapter-mark="hide"][data-chapter-mark-of="server"]',
+          1
         );
 
-        assert.strictEqual(value_5, 0);
+        yield* goToChapterPaused(page, "c-all");
+        yield* assertCount(page, '[data-structure="server"]', 1);
+        yield* assertCount(page, "[data-chapter-mark]", 0);
+
+        yield* assertCount(
+          page,
+          '[data-structure="server"][data-pending="true"]',
+          0
+        );
 
         yield* goToChapterPaused(page, "c-save");
 
-        const value_6 = yield* count(
+        yield* assertCount(
           page,
-          '[data-structure="server"][data-pending="true"]'
+          '[data-structure="server"][data-pending="true"]',
+          1
         );
-
-        assert.strictEqual(value_6, 1);
       }),
     90_000
   );
@@ -263,10 +264,8 @@ describe("a chapter proposal", () => {
         );
 
         yield* goToChapterPaused(page, "c-page");
-        const value = yield* count(page, "[data-chapter-mark]");
-        assert.strictEqual(value, 0);
-        const value_7 = yield* count(page, '[data-structure="pull-request"]');
-        assert.strictEqual(value_7, 0);
+        yield* assertCount(page, "[data-chapter-mark]", 0);
+        yield* assertCount(page, '[data-structure="pull-request"]', 0);
       }),
     90_000
   );
@@ -284,8 +283,11 @@ describe("a chapter proposal", () => {
             .click({ button: "right" })
         );
         yield* waitFor(page, '[data-structure-menu="proposals"]');
-        const value = yield* textOf(page, '[data-menu="chapter-toggle"]');
-        assert.include(value, "Hide from this chapter");
+        yield* assertTextIncludes(
+          page,
+          '[data-menu="chapter-toggle"]',
+          "Hide from this chapter"
+        );
         yield* click(page, '[data-menu="chapter-toggle"]');
         yield* waitForChapters(page, home, 1);
         yield* waitFor(page, '[data-chapter-mark="hide"]');
@@ -381,36 +383,31 @@ describe("the Pending tab", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-section="chapter"]');
 
-        const value = yield* count(page, "[data-review-section]");
-        assert.strictEqual(value, 2);
+        yield* assertCount(page, "[data-review-section]", 2);
 
-        const value_8 = yield* textOf(
+        yield* assertTextIncludes(
           page,
-          '[data-review-section="diagram"] h3'
+          '[data-review-section="diagram"] h3',
+          "Diagram changes"
         );
 
-        assert.include(value_8, "Diagram changes");
-
-        const value_9 = yield* textOf(
+        yield* assertTextIncludes(
           page,
-          '[data-review-section="chapter"] h3'
+          '[data-review-section="chapter"] h3',
+          "Chapter changes"
         );
 
-        assert.include(value_9, "Chapter changes");
-
-        const value_10 = yield* count(
+        yield* assertCount(
           page,
-          '[data-review-section="chapter"] [data-review-kind="chapter"]'
+          '[data-review-section="chapter"] [data-review-kind="chapter"]',
+          1
         );
 
-        assert.strictEqual(value_10, 1);
-
-        const value_11 = yield* count(
+        yield* assertCount(
           page,
-          '[data-review-section="diagram"] [data-review-kind="chapter"]'
+          '[data-review-section="diagram"] [data-review-kind="chapter"]',
+          0
         );
-
-        assert.strictEqual(value_11, 0);
 
         // Each item is listed once, and there's no old structures heading.
         const ids = yield* Effect.promise(() =>
@@ -421,15 +418,13 @@ describe("the Pending tab", () => {
 
         assert.isAbove(ids.length, 2);
         assert.strictEqual(new Set(ids).size, ids.length, Arr.join(ids, ", "));
-        const value_12 = yield* count(page, "[data-pending-structures]");
-        assert.strictEqual(value_12, 0);
+        yield* assertCount(page, "[data-pending-structures]", 0);
 
-        const value_13 = yield* count(
+        yield* assertCount(
           page,
-          "[data-side-panel] h3:text-is('Structure proposals')"
+          "[data-side-panel] h3:text-is('Structure proposals')",
+          0
         );
-
-        assert.strictEqual(value_13, 0);
       }),
     90_000
   );
@@ -541,8 +536,11 @@ describe("the warnings panel for group and chapter proposals", () => {
           ),
           words(open)
         );
-        const value = yield* textOf(page, "[data-warning-badge]");
-        assert.include(value, "New from this change");
+        yield* assertTextIncludes(
+          page,
+          "[data-warning-badge]",
+          "New from this change"
+        );
 
         // Still there after the group is sent.
         yield* click(page, "[data-new-group-submit]");
@@ -610,12 +608,11 @@ describe("the chapter details for a proposal", () => {
         yield* click(page, '[data-play-toggle="h-store"]');
         yield* waitFor(page, '[data-play-pending="unplay"]');
 
-        const value = yield* textOf(
+        yield* assertTextIncludes(
           page,
-          '[data-play-pending="unplay"] [data-play-state]'
+          '[data-play-pending="unplay"] [data-play-state]',
+          "Proposed to stop playing"
         );
-
-        assert.include(value, "Proposed to stop playing");
 
         yield* Effect.promise(() =>
           page.locator("[data-add-play-hop]").selectOption("h-pr")
@@ -623,12 +620,11 @@ describe("the chapter details for a proposal", () => {
         yield* click(page, "[data-add-play-submit]");
         yield* waitFor(page, '[data-play-pending="play"]');
 
-        const value_14 = yield* textOf(
+        yield* assertTextIncludes(
           page,
-          '[data-play-pending="play"] [data-play-state]'
+          '[data-play-pending="play"] [data-play-state]',
+          "Proposed to play"
         );
-
-        assert.include(value_14, "Proposed to play");
       }),
     90_000
   );
@@ -640,27 +636,30 @@ describe("the chapter details for a proposal", () => {
         const { page } = yield* served;
 
         yield* goToChapterPaused(page, "c-save");
-        const value = yield* count(page, "[data-chapter-legend]");
-        assert.strictEqual(value, 0);
+        yield* assertCount(page, "[data-chapter-legend]", 0);
 
         yield* click(page, '[data-reveal="pull-request"]');
         yield* waitFor(page, '[data-legend="reveal"]');
-        const value_15 = yield* textOf(page, '[data-legend="reveal"]');
-        assert.include(value_15, "Proposed to show");
-        const value_16 = yield* count(page, '[data-legend="hide"]');
-        assert.strictEqual(value_16, 0);
+        yield* assertTextIncludes(
+          page,
+          '[data-legend="reveal"]',
+          "Proposed to show"
+        );
+        yield* assertCount(page, '[data-legend="hide"]', 0);
 
         yield* click(page, '[data-structure="proposals"]');
         yield* click(page, '[data-chapter-toggle="hide"]');
         yield* unpin(page);
         yield* waitFor(page, '[data-legend="hide"]');
-        const value_17 = yield* textOf(page, '[data-legend="hide"]');
-        assert.include(value_17, "Proposed to hide");
+        yield* assertTextIncludes(
+          page,
+          '[data-legend="hide"]',
+          "Proposed to hide"
+        );
 
         // Another chapter shows none of it.
         yield* goToChapterPaused(page, "c-page");
-        const value_18 = yield* count(page, "[data-chapter-legend]");
-        assert.strictEqual(value_18, 0);
+        yield* assertCount(page, "[data-chapter-legend]", 0);
       }),
     90_000
   );

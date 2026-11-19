@@ -15,6 +15,8 @@ import {
 import type { Page } from "playwright";
 
 import {
+  assertAttribute,
+  assertCount,
   attributeOf,
   count,
   goToChapter,
@@ -324,8 +326,13 @@ describe("rerouting a hop by dragging a segment", () => {
         const middle = yield* middleOf(page, segmentSelector("h-store", 0));
         const unit = yield* unitOnScreen(page, "plan");
 
-        const value = yield* attributeOf(page, "svg[data-scale]", "data-scale");
-        const scale = Number(value);
+        const scaleText = yield* attributeOf(
+          page,
+          "svg[data-scale]",
+          "data-scale"
+        );
+
+        const scale = Number(scaleText);
 
         yield* pressAndMove(
           page,
@@ -473,13 +480,11 @@ describe("a reroute in the review loop", () => {
           screenDelta("plan", unit, { x: 1, y: 0 })
         );
 
-        const value = yield* attributeOf(
+        yield* assertAttribute(
           page,
-          '[data-route-preview="h-store"]',
-          "data-refused"
+          { selector: '[data-route-preview="h-store"]', name: "data-refused" },
+          "true"
         );
-
-        assert.strictEqual(value, "true");
         assert.include(
           (yield* Effect.promise(() =>
             page.locator("[data-route-preview] title").first().textContent()
@@ -504,9 +509,9 @@ describe("a reroute in the review loop", () => {
           "waiting for the agent"
         );
 
-        const value_1 = yield* proposalsIn(home);
+        const savedProposals = yield* proposalsIn(home);
         // Nothing but the freeze was written.
-        const saved = Option.getOrThrow(value_1);
+        const saved = Option.getOrThrow(savedProposals);
 
         assert.deepStrictEqual(saved.layout, []);
         assert.strictEqual(saved.batches?.length, 1);
@@ -544,9 +549,9 @@ describe("a reroute in the review loop", () => {
 
         yield* Effect.promise(() => page.mouse.up());
 
-        const value = yield* proposalsIn(home);
+        const savedProposals = yield* proposalsIn(home);
         // The drop wrote nothing but the freeze.
-        const saved = Option.getOrThrow(value);
+        const saved = Option.getOrThrow(savedProposals);
 
         assert.deepStrictEqual(saved.layout, []);
       }),
@@ -558,8 +563,8 @@ describe("a reroute in the review loop", () => {
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* frozenReroute;
-        const value = yield* proposalsIn(home);
-        const batch = Option.getOrThrow(value).batches?.[0];
+        const savedProposals = yield* proposalsIn(home);
+        const batch = Option.getOrThrow(savedProposals).batches?.[0];
         const itemId = batch?.items[0]?.id ?? "";
 
         for (const args of [
@@ -719,22 +724,22 @@ describe("text while dragging", () => {
             yield* pressAndMove(page, from, screenDelta(view, unit, spot.by));
             yield* Effect.sleep("300 millis");
 
-            const added_1 = yield* added;
-            assert.deepStrictEqual(added_1, [], `${view} view`);
+            const addedWhileDragging = yield* added;
+            assert.deepStrictEqual(addedWhileDragging, [], `${view} view`);
 
-            const value = yield* count(
+            const hopLabelDragHiddenCount = yield* count(
               page,
               "[data-hop-label][data-drag-hidden]"
             );
 
             // Labels of hops with an end on what moves are hidden.
-            assert.isAbove(value, 0, `${view} view`);
+            assert.isAbove(hopLabelDragHiddenCount, 0, `${view} view`);
 
             yield* Effect.promise(() => page.mouse.up());
             yield* waitForRevision(home, revision);
             yield* waitGone(page, "[data-drag-hidden]");
-            const added_2 = yield* added;
-            assert.deepStrictEqual(added_2, [], `${view} view, dropped`);
+            const addedAfterDrop = yield* added;
+            assert.deepStrictEqual(addedAfterDrop, [], `${view} view, dropped`);
           }
         }),
       120_000
@@ -1013,8 +1018,8 @@ describe("the panel for what a drag would leave", () => {
         const { home, page } = yield* servedReview;
         const layoutPath = path.join(home, "layout.json");
 
-        const value = yield* fs.readFileString(layoutPath);
-        const accepted = yield* decodeLayout(value);
+        const layoutPathText = yield* fs.readFileString(layoutPath);
+        const accepted = yield* decodeLayout(layoutPathText);
 
         yield* showView(page, "plan");
 
@@ -1181,10 +1186,9 @@ describe("the panel for what a drag would leave", () => {
         assert.include(reason, 'Reset the route of hop "h-store" first');
         assert.include(reason, "check reports as an error");
 
-        const value = yield* count(page, "[data-drag-warning]");
         // The panel says it in the open, not in a tooltip, and nothing is
         // listed as a warning meanwhile.
-        assert.strictEqual(value, 0);
+        yield* assertCount(page, "[data-drag-warning]", 0);
         yield* Effect.promise(() => page.mouse.up());
         yield* waitGone(page, "[data-drag-warnings]");
       }),
@@ -1213,10 +1217,10 @@ describe("the panel for what a drag would leave", () => {
 
         assert.isNotNull(panel);
 
-        const value = yield* drawingBoxes(page);
+        const boxes = yield* drawingBoxes(page);
 
         const covered = Arr.filter(
-          value,
+          boxes,
           (box) =>
             panel !== null &&
             box.left < panel.x + panel.width &&
@@ -1262,12 +1266,12 @@ describe("a group drag's hops", () => {
             )
           );
 
-        const value = yield* painted("[data-hop]");
+        const hopsPainted = yield* painted("[data-hop]");
         // Every hop has an end in the loop group, so no hop line or head
         // paints while it moves: h-note ends at the page.
-        assert.deepStrictEqual(value, []);
-        const value_2 = yield* painted("[data-hop] [data-arrowhead]");
-        assert.deepStrictEqual(value_2, []);
+        assert.deepStrictEqual(hopsPainted, []);
+        const arrowheadsPainted = yield* painted("[data-hop] [data-arrowhead]");
+        assert.deepStrictEqual(arrowheadsPainted, []);
 
         // A packet walks the old route, so it goes with its hop. It moves
         // from hop to hop as its run goes on, so look at a few moments of
@@ -1281,8 +1285,8 @@ describe("a group drag's hops", () => {
         yield* Effect.promise(() => page.mouse.up());
         yield* waitForRevision(home, 1);
         yield* waitGone(page, "[data-drag-hidden]");
-        const value_3 = yield* painted("[data-hop]");
-        assert.lengthOf(value_3, 4);
+        const hopsPaintedAfterDrop = yield* painted("[data-hop]");
+        assert.lengthOf(hopsPaintedAfterDrop, 4);
       }),
     120_000
   );
@@ -1332,10 +1336,13 @@ describe("the warnings while dragging", () => {
         const saved = yield* waitForRevision(home, 1);
         const [change] = reroutesIn(saved);
 
-        const value = yield* fs.readFileString(path.join(home, "layout.json"));
+        const layoutText = yield* fs.readFileString(
+          path.join(home, "layout.json")
+        );
+
         // Write that route into layout.json, as accepting it would, and run
         // check on the result.
-        const layout = yield* decodeLayout(value);
+        const layout = yield* decodeLayout(layoutText);
 
         const rerouted = yield* Schema.encodeEffect(LayoutFile)({
           ...layout,
@@ -1395,8 +1402,7 @@ describe("the warnings while dragging", () => {
         );
         yield* Effect.sleep("600 millis");
 
-        const value = yield* count(page, "[data-drag-warnings]");
-        assert.strictEqual(value, 0);
+        yield* assertCount(page, "[data-drag-warnings]", 0);
         yield* Effect.promise(() => page.mouse.up());
       })
   );

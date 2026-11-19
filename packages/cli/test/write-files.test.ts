@@ -30,10 +30,10 @@ describe("writing outputs", () => {
 
         yield* writeAll([{ file, content: "new" }]);
 
-        const value = yield* fs.readFileString(file);
-        assert.strictEqual(value, "new");
-        const value_1 = yield* fs.exists(`${file}.${process.pid}.tmp`);
-        assert.isFalse(value_1);
+        const fileText = yield* fs.readFileString(file);
+        assert.strictEqual(fileText, "new");
+        const tmpExists = yield* fs.exists(`${file}.${process.pid}.tmp`);
+        assert.isFalse(tmpExists);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     10_000
   );
@@ -71,14 +71,14 @@ describe("writing outputs", () => {
         );
 
         assert.isTrue(Exit.isFailure(exit));
-        const value = yield* fs.readFileString(one);
-        assert.strictEqual(value, "old one");
-        const value_2 = yield* fs.exists(two);
-        assert.isFalse(value_2);
-        const value_3 = yield* fs.exists(three);
-        assert.isFalse(value_3);
-        const value_4 = yield* fs.readDirectory(home);
-        assert.sameMembers(value_4, ["one.json"]);
+        const oneText = yield* fs.readFileString(one);
+        assert.strictEqual(oneText, "old one");
+        const twoExists = yield* fs.exists(two);
+        assert.isFalse(twoExists);
+        const threeExists = yield* fs.exists(three);
+        assert.isFalse(threeExists);
+        const entries = yield* fs.readDirectory(home);
+        assert.sameMembers(entries, ["one.json"]);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
   );
 
@@ -96,12 +96,12 @@ describe("writing outputs", () => {
       ]).pipe(Effect.exit);
 
       assert.isTrue(Exit.isFailure(exit));
-      const value = yield* fs.readFileString(a);
-      assert.strictEqual(value, "old a");
-      const value_5 = yield* fs.readFileString(b);
-      assert.strictEqual(value_5, "old b");
-      const value_6 = yield* fs.readDirectory(home);
-      assert.sameMembers(value_6, ["a.json", "b.json"]);
+      const aText = yield* fs.readFileString(a);
+      assert.strictEqual(aText, "old a");
+      const bText = yield* fs.readFileString(b);
+      assert.strictEqual(bText, "old b");
+      const entries = yield* fs.readDirectory(home);
+      assert.sameMembers(entries, ["a.json", "b.json"]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
   );
 });

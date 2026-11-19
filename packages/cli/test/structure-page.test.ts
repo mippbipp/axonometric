@@ -11,6 +11,7 @@ import {
 import type { Page } from "playwright";
 
 import {
+  assertCount,
   click,
   count,
   goToChapterPaused,
@@ -151,15 +152,16 @@ describe("adding a structure from the toolbar", () => {
         yield* waitFor(page, "[data-add-structure]");
 
         for (const field of ["name", "shape", "group", "status", "x", "y"]) {
-          const value = yield* count(page, `[data-add="${field}"]`);
-          assert.strictEqual(value, 1, field);
+          const addFieldCount = yield* count(page, `[data-add="${field}"]`);
+
+          assert.strictEqual(addFieldCount, 1, field);
         }
 
-        const value = yield* Effect.promise(() =>
+        const addSubmitDisabled = yield* Effect.promise(() =>
           page.locator('[data-add="submit"]').isDisabled()
         );
 
-        assert.isTrue(value);
+        assert.isTrue(addSubmitDisabled);
 
         yield* Effect.promise(() => page.locator('[data-add="x"]').fill("12"));
         yield* Effect.promise(() => page.locator('[data-add="y"]').fill("12"));
@@ -286,8 +288,8 @@ describe.each(["iso", "plan"] as const)(
               '[data-structure][data-pending="true"]'
             );
 
-            const value = yield* Effect.promise(() => proposed.count());
-            assert.strictEqual(value, 1, `chapter ${id}`);
+            const proposedCount = yield* Effect.promise(() => proposed.count());
+            assert.strictEqual(proposedCount, 1, `chapter ${id}`);
 
             const stroke = yield* strokeOf(
               page,
@@ -301,14 +303,13 @@ describe.each(["iso", "plan"] as const)(
 
             assert.notStrictEqual(stroke, ink);
 
-            const value_1 = yield* count(page, "[data-pending-badge]");
             // No text badge on the map: the look is outlines and tints.
-            assert.strictEqual(value_1, 0);
+            yield* assertCount(page, "[data-pending-badge]", 0);
 
-            const value_2 = yield* count(page, "[data-name-tag]");
-            assert.isAbove(value_2, 0);
-            const value_3 = yield* clashes(page);
-            assert.deepStrictEqual(value_3, [], `chapter ${id}`);
+            const nameTagCount = yield* count(page, "[data-name-tag]");
+            assert.isAbove(nameTagCount, 0);
+            const tagClashes = yield* clashes(page);
+            assert.deepStrictEqual(tagClashes, [], `chapter ${id}`);
           }
         }),
       90_000
@@ -334,8 +335,8 @@ describe("deleting a structure", () => {
 
           const mark = page.locator('[data-removed-mark="upstream"]');
 
-          const value = yield* Effect.promise(() => mark.count());
-          assert.strictEqual(value, 1);
+          const markCount = yield* Effect.promise(() => mark.count());
+          assert.strictEqual(markCount, 1);
 
           // The cross keeps clear of every chip and tag, wherever it is cut.
           const report = yield* Effect.promise(() =>
@@ -344,8 +345,8 @@ describe("deleting a structure", () => {
 
           assert.isAtLeast(report.strikes.length, 2);
           assert.deepStrictEqual(strikesOverText(report), []);
-          const value_4 = yield* clashes(page);
-          assert.deepStrictEqual(value_4, []);
+          const tagClashes = yield* clashes(page);
+          assert.deepStrictEqual(tagClashes, []);
         }
 
         const [saved] = (yield* readProposals(home)).structures ?? [];
@@ -355,11 +356,11 @@ describe("deleting a structure", () => {
           structure: "upstream",
         });
 
-        const value = yield* Effect.promise(() =>
+        const deletingText = yield* Effect.promise(() =>
           page.locator("[data-deleting]").textContent()
         );
 
-        assert.include(value, "crossed out");
+        assert.include(deletingText, "crossed out");
       }),
     90_000
   );
@@ -443,10 +444,10 @@ describe("deleting a structure", () => {
           ]);
 
           assert.strictEqual(exported.exitCode, 0, exported.stderr);
-          const value = yield* fs.readFileString(target);
+          const cliText = yield* fs.readFileString(target);
           assert.strictEqual(
             fromPage,
-            value,
+            cliText,
             `${which}: the page's SVG differs from the CLI's`
           );
         }
@@ -472,14 +473,13 @@ describe("the context menu on a structure", () => {
           yield* waitFor(page, '[data-structure-menu="server"]');
 
           for (const entry of ["shape", "group", "status"]) {
-            const value = yield* count(page, `[data-menu="${entry}"]`);
-            assert.strictEqual(value, 1, entry);
+            const menuEntryCount = yield* count(page, `[data-menu="${entry}"]`);
+
+            assert.strictEqual(menuEntryCount, 1, entry);
           }
 
-          const value = yield* count(page, '[data-menu="delete"]');
-          assert.strictEqual(value, 1);
-          const value_5 = yield* count(page, '[data-menu="rename"]');
-          assert.strictEqual(value_5, 1);
+          yield* assertCount(page, '[data-menu="delete"]', 1);
+          yield* assertCount(page, '[data-menu="rename"]', 1);
 
           yield* Effect.promise(() => page.keyboard.press("Escape"));
         }
@@ -520,8 +520,8 @@ describe("the context menu on a structure", () => {
         yield* click(page, '[data-menu="delete"]');
         yield* waitFor(page, '[data-removed-mark="upstream"]');
 
-        const value = yield* savedStructures(home, 5);
-        const changes = Arr.map(value, ({ change }) => change);
+        const savedChanges = yield* savedStructures(home, 5);
+        const changes = Arr.map(savedChanges, ({ change }) => change);
 
         assert.sameDeepMembers(
           [...changes],

@@ -7,9 +7,9 @@ import { minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const builtPage = Effect.gen(function* () {
-  const minimalMap_1 = yield* minimalMap;
+  const minimalMapFiles = yield* minimalMap;
 
-  return yield* buildAndOpen(minimalMap_1, "pipeline");
+  return yield* buildAndOpen(minimalMapFiles, "pipeline");
 });
 
 const paper =

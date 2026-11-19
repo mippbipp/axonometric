@@ -370,8 +370,8 @@ describe("structure writes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const fullMap_1 = yield* fullMap;
-        const root = yield* makeHome(fullMap_1);
+        const fullMapFiles = yield* fullMap;
+        const root = yield* makeHome(fullMapFiles);
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 

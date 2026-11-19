@@ -3,7 +3,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option } from "effect";
 import type { Page } from "playwright";
 
-import { click, count, textOf, waitFor, waitGone } from "./browser.ts";
+import {
+  assertCount,
+  assertTextIncludes,
+  click,
+  textOf,
+  waitFor,
+  waitGone,
+} from "./browser.ts";
 import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // The review loop in a page that a real serve serves: pin a note, send it to
@@ -88,10 +95,16 @@ describe("a note on a structure", () => {
 
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-item][data-review-state="open"]');
-        const value_1 = yield* textOf(page, "[data-review-list]");
-        assert.include(value_1, "Why a server, not a file watcher?");
-        const value_2 = yield* textOf(page, '[role="tab"][data-tab="pending"]');
-        assert.include(value_2, "Pending · 1");
+        yield* assertTextIncludes(
+          page,
+          "[data-review-list]",
+          "Why a server, not a file watcher?"
+        );
+        yield* assertTextIncludes(
+          page,
+          '[role="tab"][data-tab="pending"]',
+          "Pending · 1"
+        );
         assert.deepStrictEqual(errors, []);
       }),
     60_000
@@ -163,14 +176,16 @@ describe("the Ready for review button", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, "[data-waiting-for-agent]");
 
-        const value_1 = yield* count(
+        yield* assertCount(
           page,
-          '[data-review-item] button:has-text("Discard")'
+          '[data-review-item] button:has-text("Discard")',
+          0
         );
-
-        assert.strictEqual(value_1, 0);
-        const value_3 = yield* textOf(page, "[data-waiting-for-agent]");
-        assert.include(value_3, "waiting for the agent");
+        yield* assertTextIncludes(
+          page,
+          "[data-waiting-for-agent]",
+          "waiting for the agent"
+        );
 
         yield* click(page, '[role="tab"][data-tab="details"]');
         yield* pinNote(page, "Second question");
@@ -178,8 +193,7 @@ describe("the Ready for review button", () => {
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
 
-        const value_4 = yield* textOf(page, "[data-review-title]");
-        assert.include(value_4, "Batch 2");
+        yield* assertTextIncludes(page, "[data-review-title]", "Batch 2");
         assert.include((yield* copiedText(page)).at(-1) ?? "", "batch 2");
 
         const proposals = yield* readProposals(home);
@@ -210,8 +224,11 @@ describe("the Ready for review button", () => {
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
 
-        const value_1 = yield* textOf(page, "[data-review-dialog]");
-        assert.include(value_1, "Your browser blocked the clipboard");
+        yield* assertTextIncludes(
+          page,
+          "[data-review-dialog]",
+          "Your browser blocked the clipboard"
+        );
 
         const box = page.locator("[data-review-prompt]");
 
@@ -298,15 +315,17 @@ describe("the agent's verdicts", () => {
 
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-verdict="rejected"]');
-        const value_1 = yield* textOf(page, "[data-review-list]");
-        assert.include(value_1, "The page already polls nothing.");
-
-        const value_5 = yield* count(
+        yield* assertTextIncludes(
           page,
-          '[data-note-marker="server"][data-note-rejected="true"]'
+          "[data-review-list]",
+          "The page already polls nothing."
         );
 
-        assert.strictEqual(value_5, 1);
+        yield* assertCount(
+          page,
+          '[data-note-marker="server"][data-note-rejected="true"]',
+          1
+        );
         assert.deepStrictEqual(errors, []);
 
         // It survives a reload: the verdict is on disk, not in the page.

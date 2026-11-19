@@ -9,8 +9,8 @@ import { makeHome, runCli } from "./harness.ts";
 const builtSystemMd = Effect.runSync(
   Effect.cached(
     Effect.gen(function* () {
-      const fullMap_1 = yield* fullMap;
-      const home = yield* makeHome(fullMap_1);
+      const fullMapFiles = yield* fullMap;
+      const home = yield* makeHome(fullMapFiles);
       const result = yield* runCli(home, ["build", `${home}/review/map`]);
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
@@ -59,8 +59,8 @@ describe("the SYSTEM.md build writes", () => {
 
   it.effect("lists decisions with their ADR links", () =>
     Effect.gen(function* () {
-      const builtSystemMd_1 = yield* builtSystemMd;
-      const decisions = sectionOf(builtSystemMd_1, "## Decisions");
+      const systemMdText = yield* builtSystemMd;
+      const decisions = sectionOf(systemMdText, "## Decisions");
 
       assert.include(
         decisions,
@@ -100,8 +100,8 @@ describe("the SYSTEM.md build writes", () => {
 
   it.effect("gives each structure its fixed status label", () =>
     Effect.gen(function* () {
-      const builtSystemMd_1 = yield* builtSystemMd;
-      const structures = sectionOf(builtSystemMd_1, "## Structures");
+      const systemMdText = yield* builtSystemMd;
+      const structures = sectionOf(systemMdText, "## Structures");
 
       assert.include(
         structures,
@@ -185,8 +185,8 @@ describe("the SYSTEM.md build writes", () => {
 
   it.effect("leaves out every section with no content", () =>
     Effect.gen(function* () {
-      const minimalMap_1 = yield* minimalMap;
-      const home = yield* makeHome(minimalMap_1);
+      const minimalMapFiles = yield* minimalMap;
+      const home = yield* makeHome(minimalMapFiles);
       const result = yield* runCli(home, ["build", `${home}/pipeline/map`]);
       const systemMd = result.files["pipeline/SYSTEM.md"] ?? "";
 
