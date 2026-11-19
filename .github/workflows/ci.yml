@@ -37,8 +37,6 @@ jobs:
 
       - run: node --version
 
-      - run: bun run ox
-
       # The page tests open the built page in Chromium. Locally, the dev
       # shell provides it. They launch it headless, so only the headless
       # shell is installed. One path on every OS lets one cache step serve all
@@ -142,7 +140,9 @@ jobs:
 
       - run: nix run . -- --version
 
-  react-doctor:
+  # Lint, format, typecheck and React Doctor run once here, so the OS jobs
+  # only build and test. Nothing waits on it: both report in the same round.
+  lint:
     runs-on: ubuntu-24.04
 
     steps:
@@ -158,6 +158,8 @@ jobs:
           package-manager-cache: false
 
       - run: bun ci
+
+      - run: bun run ox
 
       # Fails on any React Doctor finding in the editor.
       - run: bun run react-doctor
