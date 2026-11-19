@@ -208,6 +208,31 @@ export default defineConfig({
       },
     },
     {
+      // The test lock wraps `turbo` before anything else runs, so it uses
+      // only Node's built-ins and stays out of the Effect runtime. Its tests
+      // run on node:test for the same reason.
+      files: ["scripts/with-test-lock.ts", "scripts/with-test-lock.test.ts"],
+      rules: {
+        "effecttsgo/async-function": "off",
+        "effecttsgo/global-date": "off",
+        "effecttsgo/new-promise": "off",
+        "effecttsgo/node-builtin-import": "off",
+        "effecttsgo/prefer-effect-array": "off",
+        "effecttsgo/prefer-effect-string": "off",
+        "effecttsgo/process-env": "off",
+        "node/no-process-env": "off",
+        "node/no-sync": "off",
+        "node/no-top-level-await": "off",
+        "unicorn/import-style": "off",
+        "unicorn/no-process-exit": "off",
+        "vitest/no-import-node-test": "off",
+        "vitest/prefer-importing-vitest-globals": "off",
+        "vitest/require-hook": "off",
+        // CI is set by the runner, not declared to turbo.
+        "turbo/no-undeclared-env-vars": ["error", { allowList: ["^CI$"] }],
+      },
+    },
+    {
       // An ambient module declaration has no imports or exports.
       files: ["**/*.d.ts"],
       rules: {

@@ -32,6 +32,10 @@
       "dependsOn": ["//#lint:fix"],
       "cache": false,
     },
+    // Node tests for the root scripts, such as the test lock.
+    "//#test:scripts": {
+      "inputs": ["scripts/**"],
+    },
     // Full `tsc --noEmit` for the root-owned files.
     "//#typecheck": {},
     // Full `tsc --noEmit` per package program
