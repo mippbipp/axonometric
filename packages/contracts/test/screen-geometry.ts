@@ -1,10 +1,16 @@
 import { Array as Arr } from "effect";
 
-import type { ScreenPoint, ScreenRect } from "../src/index.ts";
+import type { ScreenPoint, ScreenRect, View } from "../src/index.ts";
 
 // Distances on screen the tests measure drawings with, written out here
 // rather than taken from the geometry the scene places things with, so a
 // change there can't move the checks with it.
+
+/** The farthest a hop label's box may sit from its own route, in grid units. */
+export const labelReach: Readonly<Record<View, number>> = {
+  iso: 1.5,
+  plan: 2.5,
+};
 
 /** A rect's corners, clockwise from the top left. */
 export const rectCorners = (rect: ScreenRect): readonly ScreenPoint[] => [

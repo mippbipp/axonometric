@@ -46,6 +46,7 @@ import {
 import type { Leg } from "./route-geometry.ts";
 import {
   crossesPolygon,
+  labelReach,
   lineDistance,
   rectCorners,
   segmentDistance,
@@ -568,7 +569,7 @@ describe("scene", () => {
 
   for (const view of views) {
     it.effect(
-      `keeps every label within 1.5 grid units of its route in ${view === "iso" ? "the Iso view" : "Plan view"}`,
+      `keeps every label within ${labelReach[view]} grid units of its route in ${view === "iso" ? "the Iso view" : "Plan view"}`,
       () =>
         Effect.gen(function* () {
           const { unit } = groundProjections[view];
@@ -601,7 +602,7 @@ describe("scene", () => {
 
                   assert.isAtMost(
                     gap,
-                    1.5 + 1e-9,
+                    labelReach[view] + 1e-9,
                     `${hop.id}'s label in ${name} ${chapter.id}`
                   );
                 }

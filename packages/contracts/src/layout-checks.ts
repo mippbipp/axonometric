@@ -11,7 +11,7 @@ import type { MapProblem } from "./problems.ts";
 import { routeLength, routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
 import { sceneClashes, sceneOf } from "./scene.ts";
-import type { SceneClash } from "./scene.ts";
+import type { Scene, SceneClash } from "./scene.ts";
 import { zonesOf } from "./zones.ts";
 
 /** A structure and where the layout puts it. */
@@ -359,6 +359,17 @@ const viewNames: Readonly<Record<View, string>> = {
   plan: " in Plan view",
 };
 
+/**
+ * Which views `check` warns about hidden hop labels in. Plan view holds
+ * every label to the strict rule, so a hidden one means the layout lacks
+ * room. The Iso view lets a label sit nearer another route than its own to
+ * save it, and still hides many labels, so it isn't held to this.
+ */
+const labelsChecked: Readonly<Record<View, boolean>> = {
+  iso: false,
+  plan: true,
+};
+
 /** Every half-unit step a route takes, as order-free keys. */
 const stepKeysOf = (points: readonly GridPoint[]) =>
   new Set(
@@ -381,6 +392,42 @@ const stepKeysOf = (points: readonly GridPoint[]) =>
       });
     })
   );
+
+/**
+ * A warning for each hop whose label the scene leaves out in a view `check`
+ * holds to the label rule, once per hop and view across chapters.
+ */
+const hiddenLabelWarnings = ({
+  view,
+  scene,
+  where,
+  once,
+}: {
+  readonly view: View;
+  readonly scene: Scene;
+  /** Where the scene is, such as ` in chapter "c-all"`. */
+  readonly where: string;
+  /** Whether a key is seen for the first time, across chapters. */
+  readonly once: (key: string) => boolean;
+}): readonly MapProblem[] => {
+  if (!labelsChecked[view]) {
+    return [];
+  }
+
+  const hidden = Arr.filter(scene.hops, ({ label }) => label === undefined);
+
+  const fresh = Arr.filter(hidden, ({ hop }) =>
+    once(`label ${view} ${hop.id}`)
+  );
+
+  return Arr.map(fresh, ({ hop }) =>
+    mapWarning({
+      file: "layout.json",
+      path: ["structures"],
+      message: `the label of hop "${hop.id}" has no clear spot beside its route${where}${viewNames[view]}, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`,
+    })
+  );
+};
 
 /**
  * Warnings for two routes that run along the same segment, where at least
@@ -502,16 +549,30 @@ const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
         : Arr.filter(routeWarnings(hop, route), ({ message }) => once(message));
     });
 
-    const clashes = clashWarnings({
-      clashes: Arr.map(views, (view) => ({
+    const scenes = Arr.map(views, (view) => ({
+      view,
+      scene: sceneOf({
+        data,
+        layout,
+        revealed,
+        routes,
+        labelFirst: plays,
         view,
-        clashes: sceneClashes(
-          sceneOf({ data, layout, revealed, routes, labelFirst: plays, view })
-        ),
+      }),
+    }));
+
+    const clashes = clashWarnings({
+      clashes: Arr.map(scenes, ({ view, scene }) => ({
+        view,
+        clashes: sceneClashes(scene),
       })),
       where,
       once,
     });
+
+    const unlabelled = Arr.flatMap(scenes, ({ view, scene }) =>
+      hiddenLabelWarnings({ view, scene, where, once })
+    );
 
     const shared = Arr.filter(sharedSegments(data, routes), ({ message }) =>
       once(message)
@@ -528,7 +589,7 @@ const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
             ({ message }) => once(message)
           );
 
-    return [...routing, ...shared, ...zones, ...clashes];
+    return [...routing, ...shared, ...zones, ...clashes, ...unlabelled];
   });
 };
 

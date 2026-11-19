@@ -61,7 +61,7 @@ For the text itself:
 - A structure's `name` is a noun. `oneLiner` is one sentence. `whatItDoes` is for a newcomer who isn't an engineer. `howItsBuilt` names files, tables and APIs.
 - `tag` is a shortened `name`, shown on the name tag, and only for a long name. "Build gate build jobs" can be "Build jobs". Leave `tag` out when the name is short enough, and never use it as a second name: put a unit, file or branch name in `howItsBuilt`. Keep a tag to a few words. The tag text is widest in Iso view, and `check` warns when a name tag lands on a neighbouring box.
 - The `code` is 1 to 3 capital letters. The chip fits on the top face, so make it a letter or two.
-- Hop labels are short verbs or the thing carried. Payloads are real-looking JSON.
+- Hop labels are short verbs or the thing carried, a few words each. A label sits beside its hop's route and needs a clear spot there, about its own width. `check` warns when Plan view has none for a hop, because the drawing then leaves the label out and it shows only on hover, so shorten the label or give the route more room. Payloads are real-looking JSON.
 - A chapter lede is one sentence. A story is two or three, with one idea in it.
 - A number carries its source and date.
 - Text is plain. The page doesn't render HTML or Markdown in structure text.

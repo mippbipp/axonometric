@@ -331,11 +331,14 @@ describe("grown text at 1280×800", () => {
 
   for (const view of ["iso", "plan"] as const) {
     it.live(
-      `shows the review map's hop labels at 9 px or more in the ${view} view, and a hidden one while its hop is hovered`,
+      `shows the pipeline map's hop labels at 9 px or more in the ${view} view, and a hidden one while its hop is hovered`,
       () =>
         Effect.scoped(
           Effect.gen(function* () {
-            const page = yield* openAt1280(yield* fullMap, "review");
+            const page = yield* openAt1280(
+              yield* pipelineMap,
+              "flake-pipeline"
+            );
 
             yield* goToChapterPaused(page, "c-all");
             yield* showViewFitted(page, view);
@@ -359,7 +362,7 @@ describe("grown text at 1280×800", () => {
               (hop) => !shown.includes(hop)
             );
 
-            // At fit the review map's labels grow to reach 9 px, and some
+            // At fit the pipeline map's labels grow to reach 9 px, and some
             // no longer have room beside their hop.
             assert.isNotEmpty(hidden);
 
