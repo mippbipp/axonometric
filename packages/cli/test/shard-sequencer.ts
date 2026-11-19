@@ -10,35 +10,36 @@ import type { TestSpecification } from "vitest/node";
 
 /**
  * Seconds a test file takes on a CI runner, averaged over Linux, macOS and
- * Windows, from CI run 44582101536. Files not listed take `defaultSeconds`.
+ * Windows, from CI runs 44582101536 and 44635861872.
+ * Files not listed take `defaultSeconds`.
  * A file that grows or a new slow one only skews the split until someone
  * updates this table, and `shard-sequencer.test.ts` fails when a shard
  * holds more than 60% of the weight.
  */
 export const fileSeconds = {
-  "connection-page.test.ts": 96,
+  "connection-page.test.ts": 90,
   "spotlight.test.ts": 85,
-  "selection-edit.test.ts": 77,
   "readable-text-page.test.ts": 73,
-  "rerouting.test.ts": 72,
-  "export-svg.test.ts": 58,
-  "export.test.ts": 46,
-  "export-command.test.ts": 28,
+  "selection-edit.test.ts": 72,
+  "rerouting.test.ts": 63,
+  "export-svg.test.ts": 56,
+  "export.test.ts": 47,
+  "export-command.test.ts": 30,
+  "editing.test.ts": 28,
   "group-chapter-page.test.ts": 27,
-  "editing.test.ts": 25,
-  "note-targets-page.test.ts": 21,
-  "structure-follow.test.ts": 21,
+  "structure-follow.test.ts": 24,
+  "text-page.test.ts": 22,
   "structure-page.test.ts": 21,
-  "text-page.test.ts": 20,
-  "history-panel.test.ts": 18,
-  "structures.test.ts": 17,
+  "note-targets-page.test.ts": 20,
+  "structures.test.ts": 19,
+  "history-panel.test.ts": 17,
   "live-reload.test.ts": 16,
-  "review-page.test.ts": 15,
   "drag-warnings-big-map.test.ts": 14,
+  "review-page.test.ts": 14,
   "sources.test.ts": 14,
   "font-width.test.ts": 13,
-  "viewport.test.ts": 12,
   "plan-view.test.ts": 11,
+  "viewport.test.ts": 11,
   "edit-toggle.test.ts": 9,
 } as const satisfies Readonly<Record<string, number>>;
 
@@ -47,11 +48,10 @@ export const defaultSeconds = 2.5;
 const secondsByFile = new Map<string, number>(Rec.toEntries(fileSeconds));
 
 /**
- * Shard 1 also runs the other packages' tests, which took 8% to 11% of the CLI
- * suite's time in that run. Counting 9% of it as already spent in shard 1
- * evens out the two jobs.
+ * Shard 1 also runs the other packages' tests, which took about 5% of the CLI
+ * suite's time (after the other jobs' setup). Counting 5% of it as already spent in shard 1 evens out the two jobs.
  */
-const firstShardHeadStart = 0.09;
+const firstShardHeadStart = 0.05;
 
 export const weight = (file: string): number => {
   const name = Option.getOrElse(
