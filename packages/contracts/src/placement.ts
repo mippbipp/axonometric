@@ -1,10 +1,16 @@
-import { Array as Arr, Option, Order, Record as Rec } from "effect";
+import { Array as Arr, Option, Order, Record as Rec, Result } from "effect";
 import { dual } from "effect/Function";
 
-import { footprintsOverlap, tagCovers } from "./layout-checks.ts";
+import { isDetour } from "./detours.ts";
+import { boxOutline, nameTagRect, nameTagText, tagCoversBox } from "./iso.ts";
+import type { ScreenPoint, ScreenRect } from "./iso.ts";
+import { footprintsOverlap, spanOf, tagCovers } from "./layout-checks.ts";
 import type { PlacedStructure } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
+import { views } from "./plan.ts";
+import { routeRevealed } from "./routing.ts";
+import { sceneClashes, sceneOf } from "./scene.ts";
 import { zonePadding } from "./zones.ts";
 
 /** The footprint a newly placed structure gets. */
@@ -91,49 +97,79 @@ const otherZones = (placed: readonly PlacedStructure[], group: string) =>
 const apart = (a: Placement, b: Placement, gap: number) =>
   !footprintsOverlap(grow(a, gap / 2), grow(b, gap / 2));
 
+/** A placed structure's name tag and box outline on screen, in the Iso view. */
+interface Drawn {
+  readonly tag: ScreenRect;
+  readonly outline: readonly ScreenPoint[];
+}
+
+const drawnOf = ({ structure, placement }: PlacedStructure): Drawn => ({
+  tag: nameTagRect(placement, nameTagText(structure)),
+  outline: boxOutline(placement, structure.shape),
+});
+
+/** What `fits` measures a candidate against: the structures placed so far. */
+interface Ground {
+  readonly placed: readonly PlacedStructure[];
+  /** Each placed structure's tag and outline, in `placed` order. */
+  readonly drawn: readonly Drawn[];
+  /** The zones of every group but the candidate's. */
+  readonly zones: readonly Placement[];
+}
+
+const groundFor = (
+  placed: readonly PlacedStructure[],
+  group: string
+): Ground => ({
+  placed,
+  drawn: Arr.map(placed, drawnOf),
+  zones: otherZones(placed, group),
+});
+
 /**
  * Whether `candidate` is a good spot: clear of every footprint by the
  * structure gap, with no name tag drawn over a box either way, and with its
  * group's zone kept clear of every other zone by the group gap.
  */
-const fits = (
-  placed: readonly PlacedStructure[],
-  candidate: PlacedStructure
-) => {
+const fits = ({ placed, drawn, zones }: Ground, candidate: PlacedStructure) => {
   const spot = candidate.placement;
-
-  const clear = Arr.every(
-    placed,
-    (other) =>
-      apart(spot, other.placement, structureGap) &&
-      !tagCovers(candidate, other) &&
-      !tagCovers(other, candidate)
-  );
 
   const zone = boundsOf([
     ...footprints(membersOf(placed, candidate.structure.group)),
     spot,
   ]).pipe(Option.getOrElse(() => spot));
 
-  return (
-    clear &&
-    Arr.every(otherZones(placed, candidate.structure.group), (other) =>
-      apart(zone, other, groupGap)
-    )
-  );
+  // The zone test is the cheaper, and on a map of many groups it turns
+  // most slots away.
+  if (!Arr.every(zones, (other) => apart(zone, other, groupGap))) {
+    return false;
+  }
+
+  const own = drawnOf(candidate);
+
+  return Arr.every(placed, (other, index) => {
+    const theirs = drawn[index] ?? drawnOf(other);
+
+    return (
+      apart(spot, other.placement, structureGap) &&
+      !tagCoversBox(own.tag, theirs.outline) &&
+      !tagCoversBox(theirs.tag, own.outline)
+    );
+  });
 };
 
-/** The ids of the structures `id`'s hops connect it to. */
+/**
+ * The ids of the structures `id`'s hops connect it to, once per hop, so a
+ * structure joined by three hops counts three times.
+ */
 const neighboursOf = (data: MapData, id: string) =>
-  Arr.dedupe(
-    Arr.flatMap(data.hops, (hop) => {
-      if (hop.from === id && hop.to !== id) {
-        return [hop.to];
-      }
+  Arr.flatMap(data.hops, (hop) => {
+    if (hop.from === id && hop.to !== id) {
+      return [hop.to];
+    }
 
-      return hop.to === id && hop.from !== id ? [hop.from] : [];
-    })
-  );
+    return hop.to === id && hop.from !== id ? [hop.from] : [];
+  });
 
 /**
  * Slots on a grid of `pitch` units through `anchor`, covering everything
@@ -186,16 +222,166 @@ const preference = (score: (spot: Placement) => number, anchor: Point) => {
 };
 
 /**
+ * How many placed structures other than `a` and `b` stand in the ground
+ * between them, the rectangle their footprints span. A hop's route has to
+ * go round each one.
+ */
+const inTheWay = (
+  placed: readonly PlacedStructure[],
+  a: Placement,
+  b: Placement
+) => {
+  const between = spanOf(a, b);
+
+  return Arr.reduce(placed, 0, (count, { placement }) =>
+    placement !== a && placement !== b && footprintsOverlap(placement, between)
+      ? count + 1
+      : count
+  );
+};
+
+/**
+ * The most slots placement draws to compare for the structure of a
+ * one-member group.
+ */
+const drawnCandidates = 6;
+
+/**
+ * How many slots placement draws in all, shared between the one-member
+ * groups, so a map with many keeps `build` quick. Each drawing routes and
+ * lays out part of a chapter, a few tens of milliseconds.
+ */
+const drawingBudget = 12;
+
+/**
+ * The structures a hop away from `id`, and a hop away from those: the part
+ * of the map a structure placed at a slot changes the drawing of.
+ */
+const nearbyOf = (data: MapData, id: string) => {
+  const first = new Set([id, ...neighboursOf(data, id)]);
+
+  return new Set([
+    ...first,
+    ...Arr.flatMap([...first], (near) => neighboursOf(data, near)),
+  ]);
+};
+
+/** A structure being placed, and the map placed around it so far. */
+interface Placing {
+  readonly data: MapData;
+  readonly placed: readonly PlacedStructure[];
+  readonly structure: Structure;
+}
+
+/**
+ * The structures to draw for `structure`: those near it that are placed,
+ * revealed by the chapter that reveals it, with that chapter's hops
+ * labelled first. A map with no chapters draws them all.
+ */
+const drawnAround = (
+  { data, structure }: Placing,
+  structures: Readonly<Record<string, Placement>>
+) => {
+  const nearby = nearbyOf(data, structure.id);
+  const shown = (id: string) => nearby.has(id) && Rec.has(structures, id);
+
+  const index = Arr.findFirstIndex(data.chapters, ({ reveals }) =>
+    reveals.includes(structure.id)
+  );
+
+  return Option.match(index, {
+    onNone: () => ({
+      revealed: new Set(Arr.filter(Rec.keys(structures), shown)),
+      labelFirst: [],
+    }),
+    onSome: (found) => {
+      const chapters = data.chapters.slice(0, found + 1);
+      const sofar = Arr.flatMap(chapters, ({ reveals }) => reveals);
+
+      return {
+        revealed: new Set(Arr.filter(sofar, shown)),
+        labelFirst: data.chapters[found]?.plays ?? [],
+      };
+    },
+  });
+};
+
+/**
+ * How many problems the drawing near the structure at `spot` has: the
+ * detours, and the drawing warnings `check` gives, things drawn over each
+ * other in either view and Plan labels with no spot. It draws the chapter
+ * that reveals the structure (see `drawnAround`). Detours aren't problems
+ * `check` reports, but placement counts them with the rest.
+ */
+const drawnProblems = (placing: Placing, spot: Placement) => {
+  const { data, placed, structure } = placing;
+
+  const structures = Rec.fromEntries([
+    ...Arr.map(placed, (item) => [item.structure.id, item.placement] as const),
+    [structure.id, spot] as const,
+  ]);
+
+  const layout: Layout = { format: 1, revision: 0, structures };
+  const { revealed, labelFirst } = drawnAround(placing, structures);
+  const routes = routeRevealed({ data, layout, revealed });
+
+  const detours = Arr.filter(Rec.values(routes), ({ points }) =>
+    isDetour(points)
+  ).length;
+
+  return Arr.reduce(views, detours, (total, view) => {
+    const scene = sceneOf({ data, layout, revealed, routes, view, labelFirst });
+
+    // `check` holds only Plan view to the label rule.
+    const hidden =
+      view === "plan"
+        ? Arr.filter(scene.hops, ({ label }) => label === undefined).length
+        : 0;
+
+    return total + sceneClashes(scene).length + hidden;
+  });
+};
+
+/**
+ * The slot of `best`, in its order, whose drawing has the fewest problems
+ * near the structure. It stops at the first with none.
+ */
+const fewestProblems = (
+  placing: Placing,
+  best: Arr.NonEmptyReadonlyArray<Placement>
+) => {
+  let [chosen] = best;
+  let fewest = Number.POSITIVE_INFINITY;
+
+  for (const spot of best) {
+    const problems = drawnProblems(placing, spot);
+
+    if (problems < fewest) {
+      chosen = spot;
+      fewest = problems;
+    }
+
+    if (fewest === 0) {
+      break;
+    }
+  }
+
+  return chosen;
+};
+
+/**
  * Picks a spot for `structure`. It takes the free slot closest to its group
  * mates and to the structures its hops connect to, on a grid through its
  * first placed mate (or else its first placed neighbour). With nothing to be
  * near, it starts a new zone to the right of everything placed.
+ *
+ * With `drawn` above 1, as for the structure of a one-member group, it
+ * compares that many of its best slots by what they draw (see
+ * `drawnProblems`) and takes the one with the fewest problems.
  */
-const choose = (
-  data: MapData,
-  placed: readonly PlacedStructure[],
-  structure: Structure
-): Placement => {
+const choose = (placing: Placing, drawn: number): Placement => {
+  const { data, placed, structure } = placing;
+
   const neighbours = Arr.flatMap(neighboursOf(data, structure.id), (id) =>
     Option.toArray(
       Arr.findFirst(placed, (other) => other.structure.id === id).pipe(
@@ -219,19 +405,42 @@ const choose = (
     Option.match(zone, {
       onNone: () => 0,
       onSome: (box) => distance(spot, box),
-    }) + Arr.reduce(neighbours, 0, (sum, other) => sum + distance(spot, other));
+    }) +
+    Arr.reduce(
+      neighbours,
+      0,
+      (sum, other) =>
+        sum + distance(spot, other) + pitch * inTheWay(placed, spot, other)
+    );
+
+  const ground = groundFor(placed, structure.group);
 
   const candidates = Arr.filter(
     Arr.map(slotsAround(placed, anchor), (slot) => ({
       ...slot,
       ...defaultFootprint,
     })),
-    (placement) => fits(placed, { structure, placement })
+    (placement) => fits(ground, { structure, placement })
   );
 
-  return Arr.isReadonlyArrayNonEmpty(candidates)
-    ? Arr.min(candidates, preference(score, anchor))
-    : fallback;
+  if (!Arr.isReadonlyArrayNonEmpty(candidates)) {
+    return fallback;
+  }
+
+  const scores = new Map<Placement, number>(
+    Arr.map(candidates, (spot) => [spot, score(spot)])
+  );
+
+  const ranked = Arr.sort(
+    candidates,
+    preference((spot) => scores.get(spot) ?? score(spot), anchor)
+  );
+
+  const best = Arr.take(ranked, drawn);
+
+  return best.length > 1 && Arr.isReadonlyArrayNonEmpty(best)
+    ? fewestProblems(placing, best)
+    : ranked[0];
 };
 
 /** The same key for two ids whichever comes first. */
@@ -1146,9 +1355,27 @@ export const placeStructures: {
     Arr.map(initial, ({ structure }) => structure.group)
   );
 
-  const fresh = Arr.filter(
+  const membersOfGroup = (group: string) =>
+    Arr.filter(unplaced, (structure) => structure.group === group);
+
+  const newGroups = Arr.filter(
     Arr.dedupe(Arr.map(unplaced, ({ group }) => group)),
     (group) => !placedGroups.has(group)
+  );
+
+  // A one-member group has no block to arrange. Its structure is placed
+  // after the blocks, beside the structures its hops connect to.
+  const [oneMember, fresh] = Arr.partition(newGroups, (group) =>
+    membersOfGroup(group).length === 1
+      ? Result.succeed(group)
+      : Result.fail(group)
+  );
+
+  const oneMemberGroups = new Set(oneMember);
+
+  const drawnEach = Math.min(
+    drawnCandidates,
+    Math.floor(drawingBudget / Math.max(oneMemberGroups.size, 1))
   );
 
   const blocks = arrangeBlocks(
@@ -1166,15 +1393,28 @@ export const placeStructures: {
     Arr.map(blocks, ({ structure, placement }) => [structure.id, placement])
   );
 
-  const placed = Arr.reduce(unplaced, initial, (sofar, structure) => {
+  const blocked = new Set(Arr.map(blocks, ({ structure }) => structure.id));
+
+  // Block members go first, so a structure placed on its own never takes a
+  // block's ground.
+  const inOrder = [
+    ...Arr.filter(unplaced, ({ id }) => blocked.has(id)),
+    ...Arr.filter(unplaced, ({ id }) => !blocked.has(id)),
+  ];
+
+  const placed = Arr.reduce(inOrder, initial, (sofar, structure) => {
     // A block spot is kept unless something placed by hand is in its way.
     const planned = Option.filter(
       Option.fromNullishOr(blockSpot.get(structure.id)),
-      (placement) => fits(sofar, { structure, placement })
+      (placement) =>
+        fits(groundFor(sofar, structure.group), { structure, placement })
     );
 
     const spot = Option.getOrElse(planned, () =>
-      choose(data, sofar, structure)
+      choose(
+        { data, placed: sofar, structure },
+        oneMemberGroups.has(structure.group) ? drawnEach : 1
+      )
     );
 
     return [

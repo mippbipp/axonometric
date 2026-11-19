@@ -45,6 +45,22 @@ export const footprintsOverlap: {
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.d && b.y < a.y + a.d
 );
 
+/** The ground two footprints span, from the top left of both to the bottom right. */
+export const spanOf: {
+  (b: Placement): (a: Placement) => Placement;
+  (a: Placement, b: Placement): Placement;
+} = dual(2, (a: Placement, b: Placement): Placement => {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+
+  return {
+    x,
+    y,
+    w: Math.max(a.x + a.w, b.x + b.w) - x,
+    d: Math.max(a.y + a.d, b.y + b.d) - y,
+  };
+});
+
 /** Whether `a`'s name tag is drawn over `b`'s box in the Iso view. */
 export const tagCovers: {
   (b: PlacedStructure): (a: PlacedStructure) => boolean;

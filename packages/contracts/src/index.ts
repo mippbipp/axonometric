@@ -84,6 +84,7 @@ export {
   offEndFindings,
   onOutline,
   placedStructures,
+  spanOf,
 } from "./layout-checks.ts";
 
 export type {
@@ -160,6 +161,8 @@ export {
   sceneOf,
   silhouette,
 } from "./scene.ts";
+
+export { detourAllowance, detourOf, isDetour } from "./detours.ts";
 
 export { fitFloorOf, textZoomOf } from "./fit-floor.ts";
 
