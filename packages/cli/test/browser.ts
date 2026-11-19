@@ -143,6 +143,21 @@ export const inPage = <A>(page: Page, expression: string) =>
 export const waitFor = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).first().waitFor(waitTimeout));
 
+/**
+ * Waits until the drag warnings panel lists a warning and has every chapter
+ * checked. The page checks the chapter on screen first and the rest after,
+ * so until then a warning may name a later chapter than `check` would.
+ */
+export const waitForAllWarnings = (page: Page) =>
+  Effect.promise(() =>
+    page
+      .locator(
+        "[data-drag-warnings]:has([data-drag-warning]) [data-drag-warnings-heading]:not([data-checking])"
+      )
+      .first()
+      .waitFor(waitTimeout)
+  );
+
 /** Waits until no element matching `selector` is on the page. */
 export const waitGone = (page: Page, selector: string) =>
   Effect.promise(() =>

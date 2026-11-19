@@ -51,6 +51,12 @@ export interface DragReport {
   readonly problems: readonly DraggedProblem[];
   /** What the panel calls the change in its "New from …" mark. */
   readonly source: "drag" | "change";
+  /**
+   * Whether every chapter is checked. A drag's check comes in a chapter at a
+   * time, so until then `problems` holds the chapters checked so far. True
+   * when left out.
+   */
+  readonly complete?: boolean;
 }
 
 export const ChangePreviewContext = createContext<ChangePreview | null>(null);

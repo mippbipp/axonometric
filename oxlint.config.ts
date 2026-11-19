@@ -232,6 +232,14 @@ export default defineConfig({
       },
     },
     {
+      // A worker's entry listens for messages at the top level, as main.tsx
+      // renders there. It is not test setup code.
+      files: ["packages/editor/src/*.worker.ts"],
+      rules: {
+        "vitest/require-hook": "off",
+      },
+    },
+    {
       files: ["**/*.test.ts", "**/test/**/*.ts"],
       rules: {
         // @effect/vitest layer() owns setup and teardown internally
