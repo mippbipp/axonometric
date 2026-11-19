@@ -61,7 +61,10 @@ const PublishedManifest = Schema.Struct({
         `Expected one command, axonometric, got: ${Arr.join(Rec.keys(bin), ", ")}`
     )
   ),
-  engines: Schema.Struct({ node: Schema.Literal(">=24.22.1") }),
+  engines: Schema.Struct({
+    node: Schema.Literal(">=24.22.1"),
+    bun: Schema.Literal(">=1.4.4"),
+  }),
   // Everything is bundled into dist/bin.mjs, so installing the package
   // installs nothing else.
   dependencies: Schema.optionalKey(Schema.Never),
