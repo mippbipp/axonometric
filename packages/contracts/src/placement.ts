@@ -2,6 +2,8 @@ import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
 import { isDetour } from "./detours.ts";
+import { boxOutline, nameTagRect, nameTagText, tagCoversBox } from "./iso.ts";
+import type { ScreenPoint, ScreenRect } from "./iso.ts";
 import { footprintsOverlap, tagCovers } from "./layout-checks.ts";
 import type { PlacedStructure } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
@@ -95,36 +97,65 @@ const otherZones = (placed: readonly PlacedStructure[], group: string) =>
 const apart = (a: Placement, b: Placement, gap: number) =>
   !footprintsOverlap(grow(a, gap / 2), grow(b, gap / 2));
 
+/** A placed structure's name tag and box outline on screen, in the Iso view. */
+interface Drawn {
+  readonly tag: ScreenRect;
+  readonly outline: readonly ScreenPoint[];
+}
+
+const drawnOf = ({ structure, placement }: PlacedStructure): Drawn => ({
+  tag: nameTagRect(placement, nameTagText(structure)),
+  outline: boxOutline(placement, structure.shape),
+});
+
+/** What `fits` measures a candidate against: the structures placed so far. */
+interface Ground {
+  readonly placed: readonly PlacedStructure[];
+  /** Each placed structure's tag and outline, in `placed` order. */
+  readonly drawn: readonly Drawn[];
+  /** The zones of every group but the candidate's. */
+  readonly zones: readonly Placement[];
+}
+
+const groundFor = (
+  placed: readonly PlacedStructure[],
+  group: string
+): Ground => ({
+  placed,
+  drawn: Arr.map(placed, drawnOf),
+  zones: otherZones(placed, group),
+});
+
 /**
  * Whether `candidate` is a good spot: clear of every footprint by the
  * structure gap, with no name tag drawn over a box either way, and with its
  * group's zone kept clear of every other zone by the group gap.
  */
-const fits = (
-  placed: readonly PlacedStructure[],
-  candidate: PlacedStructure
-) => {
+const fits = ({ placed, drawn, zones }: Ground, candidate: PlacedStructure) => {
   const spot = candidate.placement;
-
-  const clear = Arr.every(
-    placed,
-    (other) =>
-      apart(spot, other.placement, structureGap) &&
-      !tagCovers(candidate, other) &&
-      !tagCovers(other, candidate)
-  );
 
   const zone = boundsOf([
     ...footprints(membersOf(placed, candidate.structure.group)),
     spot,
   ]).pipe(Option.getOrElse(() => spot));
 
-  return (
-    clear &&
-    Arr.every(otherZones(placed, candidate.structure.group), (other) =>
-      apart(zone, other, groupGap)
-    )
-  );
+  // The zone test is the cheaper, and on a map of many groups it turns
+  // most slots away.
+  if (!Arr.every(zones, (other) => apart(zone, other, groupGap))) {
+    return false;
+  }
+
+  const own = drawnOf(candidate);
+
+  return Arr.every(placed, (other, index) => {
+    const theirs = drawn[index] ?? drawnOf(other);
+
+    return (
+      apart(spot, other.placement, structureGap) &&
+      !tagCoversBox(own.tag, theirs.outline) &&
+      !tagCoversBox(theirs.tag, own.outline)
+    );
+  });
 };
 
 /**
@@ -217,8 +248,15 @@ const inTheWay = (
   );
 };
 
-/** How many of a lone structure's best slots placement draws to compare. */
+/** The most of a lone structure's best slots placement draws to compare. */
 const drawnCandidates = 6;
+
+/**
+ * How many slots placement draws in all, shared between the lone
+ * structures, so a map with many keeps `build` quick. Each drawing routes
+ * and lays out part of a chapter, a few tens of milliseconds.
+ */
+const drawingBudget = 12;
 
 /**
  * The structures a hop away from `id`, and a hop away from those: the part
@@ -341,11 +379,11 @@ const leastFaulty = (
  * first placed mate (or else its first placed neighbour). With nothing to be
  * near, it starts a new zone to the right of everything placed.
  *
- * A `lone` structure, the only member of a new group, compares its few best
- * slots by what they draw (see `drawnFaults`) and takes the one with the
- * fewest faults.
+ * With `drawn` above 1, as for the only member of a new group, it compares
+ * that many of its best slots by what they draw (see `drawnFaults`) and
+ * takes the one with the fewest faults.
  */
-const choose = (placing: Placing, lone: boolean): Placement => {
+const choose = (placing: Placing, drawn: number): Placement => {
   const { data, placed, structure } = placing;
 
   const neighbours = Arr.flatMap(neighboursOf(data, structure.id), (id) =>
@@ -379,22 +417,32 @@ const choose = (placing: Placing, lone: boolean): Placement => {
         sum + distance(spot, other) + pitch * inTheWay(placed, spot, other)
     );
 
+  const ground = groundFor(placed, structure.group);
+
   const candidates = Arr.filter(
     Arr.map(slotsAround(placed, anchor), (slot) => ({
       ...slot,
       ...defaultFootprint,
     })),
-    (placement) => fits(placed, { structure, placement })
+    (placement) => fits(ground, { structure, placement })
   );
 
   if (!Arr.isReadonlyArrayNonEmpty(candidates)) {
     return fallback;
   }
 
-  const ranked = Arr.sort(candidates, preference(score, anchor));
-  const best = Arr.take(ranked, drawnCandidates);
+  const scores = new Map<Placement, number>(
+    Arr.map(candidates, (spot) => [spot, score(spot)])
+  );
 
-  return lone && Arr.isReadonlyArrayNonEmpty(best)
+  const ranked = Arr.sort(
+    candidates,
+    preference((spot) => scores.get(spot) ?? score(spot), anchor)
+  );
+
+  const best = Arr.take(ranked, drawn);
+
+  return best.length > 1 && Arr.isReadonlyArrayNonEmpty(best)
     ? leastFaulty(placing, best)
     : ranked[0];
 };
@@ -1335,6 +1383,11 @@ export const placeStructures: {
     )
   );
 
+  const drawnEach = Math.min(
+    drawnCandidates,
+    Math.floor(drawingBudget / Math.max(loneGroups.size, 1))
+  );
+
   const blocks = arrangeBlocks(
     data,
     initial,
@@ -1363,13 +1416,14 @@ export const placeStructures: {
     // A block spot is kept unless something placed by hand is in its way.
     const planned = Option.filter(
       Option.fromNullishOr(blockSpot.get(structure.id)),
-      (placement) => fits(sofar, { structure, placement })
+      (placement) =>
+        fits(groundFor(sofar, structure.group), { structure, placement })
     );
 
     const spot = Option.getOrElse(planned, () =>
       choose(
         { data, placed: sofar, structure },
-        loneGroups.has(structure.group)
+        loneGroups.has(structure.group) ? drawnEach : 1
       )
     );
 

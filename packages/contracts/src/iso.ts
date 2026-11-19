@@ -171,10 +171,23 @@ const convexOverlap = (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
     );
   });
 
-/** Whether a name tag at `tag` is drawn over any part of `box`'s outline. */
+/**
+ * Whether a name tag at `tag` is drawn over any part of `box`'s outline. The
+ * tag's own edges lie along the screen axes, so an outline whose screen
+ * bounds miss the tag is clear without the full test.
+ */
 export const tagCoversBox: {
   (box: readonly ScreenPoint[]): (tag: ScreenRect) => boolean;
   (tag: ScreenRect, box: readonly ScreenPoint[]): boolean;
-} = dual(2, (tag: ScreenRect, box: readonly ScreenPoint[]) =>
-  convexOverlap(rectCorners(tag), box)
-);
+} = dual(2, (tag: ScreenRect, box: readonly ScreenPoint[]) => {
+  const across = extentAlong(box, { sx: 1, sy: 0 });
+  const down = extentAlong(box, { sx: 0, sy: 1 });
+
+  const apart =
+    across.max <= tag.left + tolerance ||
+    tag.right <= across.min + tolerance ||
+    down.max <= tag.top + tolerance ||
+    tag.bottom <= down.min + tolerance;
+
+  return !apart && convexOverlap(rectCorners(tag), box);
+});
