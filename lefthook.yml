@@ -1,6 +1,8 @@
 pre-commit:
   parallel: true
   jobs:
+    - run: gh actions-lock --verify-local
+      glob: ".github/workflows/*.{yml,yaml,lock}"
     - run: bun run ox:fix
       glob:
         - "*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}"

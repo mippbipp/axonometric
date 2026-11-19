@@ -21,14 +21,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version-file: package.json
 
       # The tests and the bundle run on the Node that npm users have.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .node-version
           package-manager-cache: false
@@ -57,7 +57,7 @@ jobs:
           echo "version=$version" >>"$GITHUB_OUTPUT"
           echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/ms-playwright" >>"$GITHUB_ENV"
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@v6.1.0
         id: browsers
         with:
           path: ${{ runner.temp }}/ms-playwright
@@ -109,7 +109,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Check that no workflow uses an npm token
         run: |
@@ -128,9 +128,9 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@v31.11.5
 
       # If bun.lock changed, this fails with a hash mismatch. Copy the
       # `got: sha256-...` value into `bunDeps.outputHash` in nix/package.nix.
@@ -146,13 +146,13 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version-file: package.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .node-version
           package-manager-cache: false
@@ -161,3 +161,19 @@ jobs:
 
       # Fails on any React Doctor finding in the editor.
       - run: bun run react-doctor
+
+  # Fails when .github/workflows/actions.lock is out of sync with the
+  # workflows or a locked pin no longer verifies upstream.
+  lockfile:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: gh extension install github/gh-actions-lock --pin v0.4.1
+
+      - run: gh actions-lock --verify
