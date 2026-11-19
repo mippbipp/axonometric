@@ -4,6 +4,6 @@
     "noEmit": true
   },
   // Root-owned files only
-  "include": ["*.config.ts"],
+  "include": ["*.config.ts", "scripts/*.ts"],
   "exclude": ["node_modules"]
 }
