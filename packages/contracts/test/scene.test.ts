@@ -46,6 +46,7 @@ import {
 import type { Leg } from "./route-geometry.ts";
 import {
   crossesPolygon,
+  labelReach,
   lineDistance,
   rectCorners,
   segmentDistance,
@@ -565,13 +566,6 @@ describe("scene", () => {
         }
       })
   );
-
-  // Plan view looks further for room, as it never puts a label nearer
-  // another route than its own.
-  const labelReach: Readonly<Record<(typeof views)[number], number>> = {
-    iso: 1.5,
-    plan: 2.5,
-  };
 
   for (const view of views) {
     it.effect(

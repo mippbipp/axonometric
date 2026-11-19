@@ -363,8 +363,7 @@ const viewNames: Readonly<Record<View, string>> = {
  * Which views `check` warns about hidden hop labels in. Plan view holds
  * every label to the strict rule, so a hidden one means the layout lacks
  * room. The Iso view lets a label sit nearer another route than its own to
- * save it, and its maps hide labels on main already, so it isn't held to
- * this yet.
+ * save it, and still hides many labels, so it isn't held to this.
  */
 const labelsChecked: Readonly<Record<View, boolean>> = {
   iso: false,

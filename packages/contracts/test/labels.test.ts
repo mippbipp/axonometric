@@ -13,6 +13,7 @@ import type { MapData, Layout, Scene, ScreenRect, View } from "../src/index.ts";
 import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
 import {
   crossesPolygon,
+  labelReach,
   lineDistance,
   rectCorners,
 } from "./screen-geometry.ts";
@@ -20,30 +21,27 @@ import {
 // What a hop label has to satisfy, measured here with the screen geometry
 // the tests keep apart from the scene's own.
 
-/** The farthest a label's box may sit from its own route, in grid units. */
-const reach: Readonly<Record<View, number>> = { iso: 1.5, plan: 2.5 };
+const throughRect = (
+  points: Scene["hops"][number]["points"],
+  rect: ScreenRect
+) =>
+  Arr.some(Arr.zip(points, Arr.drop(points, 1)), ([start, end]) =>
+    crossesPolygon({ start, end }, rectCorners(rect))
+  );
 
 /** How far a rect is from a route: its nearest corner or edge midpoint. */
-const gapTo = (
-  points: Scene["hops"][number]["points"],
-  { left, right, top, bottom }: ScreenRect
-) => {
-  const box = { left, right, top, bottom };
-
-  if (
-    Arr.some(Arr.zip(points, Arr.drop(points, 1)), ([start, end]) =>
-      crossesPolygon({ start, end }, rectCorners(box))
-    )
-  ) {
+const gapTo = (points: Scene["hops"][number]["points"], rect: ScreenRect) => {
+  if (throughRect(points, rect)) {
     return 0;
   }
 
+  const { left, right, top, bottom } = rect;
   const middle = { sx: (left + right) / 2, sy: (top + bottom) / 2 };
 
   return Math.min(
     ...Arr.map(
       [
-        ...rectCorners(box),
+        ...rectCorners(rect),
         { sx: middle.sx, sy: top },
         { sx: middle.sx, sy: bottom },
         { sx: left, sy: middle.sy },
@@ -53,14 +51,6 @@ const gapTo = (
     )
   );
 };
-
-const throughRect = (
-  points: Scene["hops"][number]["points"],
-  rect: ScreenRect
-) =>
-  Arr.some(Arr.zip(points, Arr.drop(points, 1)), ([start, end]) =>
-    crossesPolygon({ start, end }, rectCorners(rect))
-  );
 
 const rectsOverlap = (a: ScreenRect, b: ScreenRect) =>
   a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
@@ -73,7 +63,7 @@ const labelProblems = (scene: Scene) =>
     }
 
     const others = Arr.filter(scene.hops, (other) => other.hop.id !== hop.id);
-    const own = gapTo(points, label);
+    const ownGap = gapTo(points, label);
 
     const onOwn = throughRect(points, label)
       ? [`${hop.id}: its label sits on its own route`]
@@ -86,15 +76,15 @@ const labelProblems = (scene: Scene) =>
     );
 
     const far =
-      own > reach[scene.view] * groundProjections[scene.view].unit
-        ? [`${hop.id}: its label is ${own.toFixed(1)} from its route`]
+      ownGap > labelReach[scene.view] * groundProjections[scene.view].unit
+        ? [`${hop.id}: its label is ${ownGap.toFixed(1)} from its route`]
         : [];
 
     // Plan view never puts a label nearer another route than its own.
     const nearer =
       scene.view === "plan"
         ? Arr.flatMap(others, (other) =>
-            gapTo(other.points, label) < own
+            gapTo(other.points, label) < ownGap
               ? [`${hop.id}: its label is nearer ${other.hop.id}'s route`]
               : []
           )
@@ -182,6 +172,10 @@ const chapterOf = (id: string, plays: readonly string[]) => ({
   reveals: ["a", "b"],
   plays,
 });
+
+/** What `check` says of a hop whose label has no spot, where it is in Plan view. */
+const warningText = (where: string) =>
+  `the label of hop "h" has no clear spot beside its route${where} in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`;
 
 describe("hop labels", () => {
   for (const name of [
@@ -301,7 +295,7 @@ describe("hop labels", () => {
           const data = mapWith([chapterOf("c1", ["h"]), chapterOf("c2", [])]);
 
           assert.deepStrictEqual(hiddenLabelWarnings(data), [
-            'the label of hop "h" has no clear spot beside its route in chapter "c1" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.',
+            warningText(' in chapter "c1"'),
           ]);
         })
     );
@@ -311,7 +305,7 @@ describe("hop labels", () => {
         const data = mapWith([chapterOf("c-all", [])]);
 
         assert.deepStrictEqual(hiddenLabelWarnings(data), [
-          'the label of hop "h" has no clear spot beside its route in chapter "c-all" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.',
+          warningText(' in chapter "c-all"'),
         ]);
       })
     );
@@ -320,9 +314,7 @@ describe("hop labels", () => {
       Effect.sync(() => {
         const data = mapWith([]);
 
-        assert.deepStrictEqual(hiddenLabelWarnings(data), [
-          'the label of hop "h" has no clear spot beside its route in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.',
-        ]);
+        assert.deepStrictEqual(hiddenLabelWarnings(data), [warningText("")]);
       })
     );
   });

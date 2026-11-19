@@ -531,7 +531,7 @@ hosts/pewter/
       id: "h-build-attic",
       from: "build",
       to: "attic",
-      label: "push closures",
+      label: "attic push closures",
       payload: {
         command: "attic push cache:fleet result-pewter",
         when: "same-repo PR",
@@ -551,7 +551,7 @@ hosts/pewter/
       id: "h-pr-scope",
       from: "pr",
       to: "scope",
-      label: "PR target",
+      label: "PR target event",
       payload: {
         head: "flake-update",
         files: ["flake.lock", "modules/system/boot.nix"],
@@ -561,7 +561,7 @@ hosts/pewter/
       id: "h-blocked-scope",
       from: "blocked",
       to: "scope",
-      label: "main's copy",
+      label: "copy via API",
       payload: {
         prefixes: [".github/", "secrets/", "hosts/pewter/flake-updater/"],
         files: [".sops.yaml", "checks.nix"],
@@ -600,7 +600,7 @@ hosts/pewter/
       id: "h-ruleset-updater",
       from: "ruleset",
       to: "updater",
-      label: "ok",
+      label: "gate verdict",
       payload: {
         required: [
           "checks aarch64-linux",
@@ -621,7 +621,7 @@ hosts/pewter/
       id: "h-updater-workspace",
       from: "updater",
       to: "workspace",
-      label: "export tree",
+      label: "export tree + lock",
       payload: {
         work: "/var/lib/flake-fixer/work",
         context: "/var/lib/flake-fixer/context/flake.lock",
@@ -631,7 +631,7 @@ hosts/pewter/
       id: "h-updater-fixer",
       from: "updater",
       to: "fixer",
-      label: "errors",
+      label: "errors prompt",
       payload: {
         session: "flake-update #241",
         round: 1,
@@ -673,7 +673,7 @@ hosts/pewter/
       id: "h-workspace-updater",
       from: "workspace",
       to: "updater",
-      label: "tree",
+      label: "read tree",
       payload: {
         index: ".git/flake-fixer-index",
         files: ["flake.lock", "modules/system/boot.nix"],
@@ -741,7 +741,7 @@ hosts/pewter/
       id: "h-main-watchdog",
       from: "main",
       to: "watchdog",
-      label: "lock age",
+      label: "lock commit age",
       payload: { command: "git log -1 --format=%ct -- flake.lock", ageDays: 34 },
     },
     {

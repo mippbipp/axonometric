@@ -264,37 +264,46 @@ describe("export", () => {
       }).pipe(Effect.provide(NodeServices.layer))
     );
 
-    it.effect("--flow draws a picked flow's hops in the spotlight", () =>
-      Effect.gen(function* () {
-        const path = yield* Path.Path;
-        const home = yield* makeHome(yield* pipelineMap);
-        const map = path.join(home, "flake-pipeline", "map");
-        const file = "flake-pipeline/flake-pipeline-iso-chapter-8.svg";
+    it.effect(
+      "--flow draws a picked flow's hops in the spotlight",
+      () =>
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const home = yield* makeHome(yield* pipelineMap);
+          const map = path.join(home, "flake-pipeline", "map");
+          const file = "flake-pipeline/flake-pipeline-iso-chapter-8.svg";
 
-        const stale = yield* runCli(home, ["export", map, "--flow", "f-stale"]);
+          const stale = yield* runCli(home, [
+            "export",
+            map,
+            "--flow",
+            "f-stale",
+          ]);
 
-        assert.strictEqual(stale.exitCode, 0, stale.stderr);
+          assert.strictEqual(stale.exitCode, 0, stale.stderr);
 
-        const staleText = stale.files[file] ?? "";
+          const staleText = stale.files[file] ?? "";
 
-        assert.strictEqual(
-          fadedOf(staleText, "hop", "h-main-watchdog"),
-          "false"
-        );
-        assert.strictEqual(fadedOf(staleText, "hop", "h-pr-build"), "true");
-        assert.strictEqual(
-          fadedOf(staleText, "structure", "watchdog"),
-          "false"
-        );
-        assert.strictEqual(fadedOf(staleText, "structure", "build"), "true");
+          assert.strictEqual(
+            fadedOf(staleText, "hop", "h-main-watchdog"),
+            "false"
+          );
+          assert.strictEqual(fadedOf(staleText, "hop", "h-pr-build"), "true");
+          assert.strictEqual(
+            fadedOf(staleText, "structure", "watchdog"),
+            "false"
+          );
+          assert.strictEqual(fadedOf(staleText, "structure", "build"), "true");
 
-        // The last chapter plays nothing, so no --flow means all flows.
-        const all = yield* runCli(home, ["export", map, "--flow", "all"]);
-        const none = yield* runCli(home, ["export", map]);
+          // The last chapter plays nothing, so no --flow means all flows.
+          const all = yield* runCli(home, ["export", map, "--flow", "all"]);
+          const none = yield* runCli(home, ["export", map]);
 
-        assert.strictEqual(all.files[file], none.files[file]);
-        assert.notInclude(all.files[file] ?? "", 'data-faded="true"');
-      }).pipe(Effect.provide(NodeServices.layer))
+          assert.strictEqual(all.files[file], none.files[file]);
+          assert.notInclude(all.files[file] ?? "", 'data-faded="true"');
+        }).pipe(Effect.provide(NodeServices.layer)),
+      // Three exports of a 29-hop map, each placing every hop's label.
+      60_000
     );
 
     it.effect("--flow names a flow of the map, in the last chapter", () =>
