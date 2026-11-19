@@ -15,7 +15,8 @@ import { makeHome, runCli, startServe } from "./harness.ts";
 /** A home folder holding the minimal map, and its path. */
 const minimalHome = Effect.gen(function* () {
   const path = yield* Path.Path;
-  const root = yield* makeHome(yield* minimalMap);
+  const minimalMapFiles = yield* minimalMap;
+  const root = yield* makeHome(minimalMapFiles);
 
   return path.join(root, "pipeline", "map");
 }).pipe(Effect.provide(NodeServices.layer));
@@ -151,7 +152,8 @@ describe("status", () => {
         text.stdout,
         `Serving ${home} at http://127.0.0.1:5999, process ${pid}, since 2026-11-01T09:00:00.000Z.\n`
       );
-      assert.deepStrictEqual(yield* decodeReport(json.stdout), {
+      const report = yield* decodeReport(json.stdout);
+      assert.deepStrictEqual(report, {
         home,
         running: true,
         url: "http://127.0.0.1:5999",
@@ -163,7 +165,8 @@ describe("status", () => {
 
   it.live("ignores a state file whose process has exited", () =>
     Effect.gen(function* () {
-      const home = yield* homeWithStateFile(yield* deadPid);
+      const stalePid = yield* deadPid;
+      const home = yield* homeWithStateFile(stalePid);
 
       const text = yield* runCli(home, ["status", home]);
       const json = yield* runCli(home, ["status", home, "--json"]);
@@ -172,7 +175,8 @@ describe("status", () => {
         text.stdout,
         `No server is running for ${home}. Start one with axonometric serve.\n`
       );
-      assert.deepStrictEqual(yield* decodeReport(json.stdout), {
+      const report = yield* decodeReport(json.stdout);
+      assert.deepStrictEqual(report, {
         home,
         running: false,
       });
@@ -193,7 +197,8 @@ describe("serve", () => {
         assert.match(serve.url, /^http:\/\/127\.0\.0\.1:\d+$/u);
         assert.include(serve.output.stdout, serve.url);
         assert.strictEqual(serve.state.pid, process.pid);
-        assert.deepStrictEqual(yield* decodeReport(status.stdout), {
+        const report = yield* decodeReport(status.stdout);
+        assert.deepStrictEqual(report, {
           home,
           running: true,
           ...serve.state,
@@ -226,7 +231,8 @@ describe("serve", () => {
 
   it.live("starts over a state file left by a dead process", () =>
     Effect.gen(function* () {
-      const home = yield* homeWithStateFile(yield* deadPid);
+      const stalePid = yield* deadPid;
+      const home = yield* homeWithStateFile(stalePid);
 
       const serve = yield* startServe(home, ["--port", "0"]);
 
@@ -237,7 +243,8 @@ describe("serve", () => {
   it.live("fails when the port given with --port is busy", () =>
     Effect.gen(function* () {
       const home = yield* minimalHome;
-      const other = yield* startServe(yield* minimalHome, ["--port", "0"]);
+      const servedHome = yield* minimalHome;
+      const other = yield* startServe(servedHome, ["--port", "0"]);
       const port = portOf(other.url);
 
       const result = yield* runCli(home, ["serve", home, "--port", `${port}`]);
@@ -254,7 +261,8 @@ describe("serve", () => {
   it.live("uses port 5178, or the next free port when it's busy", () =>
     Effect.gen(function* () {
       const home = yield* minimalHome;
-      const first = yield* startServe(yield* minimalHome, []);
+      const firstHome = yield* minimalHome;
+      const first = yield* startServe(firstHome, []);
       const second = yield* startServe(home, []);
       const firstPort = portOf(first.url);
       const secondPort = portOf(second.url);
@@ -312,18 +320,24 @@ describe("serve", () => {
           `attacker.example.test:${port}`,
           `localhost.attacker.example.test:${port}`,
         ],
-        (host) => getWithHost(serve.url, "/api/state", host)
+        (host) => getWithHost(serve.url, "/api/state", host),
+        { concurrency: 1 }
       );
 
       assert.deepStrictEqual(
         statuses,
         [200, 200, 200, 200, 200, 200, 403, 403, 403]
       );
-      assert.strictEqual(
-        yield* getWithHost(serve.url, "/", "attacker.example.test"),
-        403
+
+      const statusWithHost = yield* getWithHost(
+        serve.url,
+        "/",
+        "attacker.example.test"
       );
-      assert.strictEqual(yield* getWithoutHost(serve.url), 403);
+
+      assert.strictEqual(statusWithHost, 403);
+      const statusWithoutHost = yield* getWithoutHost(serve.url);
+      assert.strictEqual(statusWithoutHost, 403);
     })
   );
 

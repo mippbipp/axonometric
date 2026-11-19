@@ -112,7 +112,8 @@ describe("a reroute frozen in a batch, written over HTTP", () => {
           assert.include(sent.body, "h-store", why);
         }
 
-        assert.strictEqual(yield* proposalsText(home), before);
+        const proposalsAfter = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfter, before);
       })
   );
 
@@ -126,7 +127,8 @@ describe("a reroute frozen in a batch, written over HTTP", () => {
 
       assert.strictEqual(sent.status, 200, sent.body);
 
-      const saved = yield* decodeProposals(yield* proposalsText(home));
+      const proposalsJson = yield* proposalsText(home);
+      const saved = yield* decodeProposals(proposalsJson);
 
       assert.deepStrictEqual(
         Arr.map(saved.layout, ({ id }) => id),

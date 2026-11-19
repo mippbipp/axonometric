@@ -72,8 +72,10 @@ describe("the page's font", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
+          const pipelineMapFiles = yield* pipelineMap;
+
           const { page, errors } = yield* buildAndOpen(
-            yield* pipelineMap,
+            pipelineMapFiles,
             "flake-pipeline"
           );
 
@@ -211,8 +213,10 @@ describe("the page's font", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
+          const pipelineMapFiles = yield* pipelineMap;
+
           const { page } = yield* buildAndOpen(
-            yield* pipelineMap,
+            pipelineMapFiles,
             "flake-pipeline"
           );
 

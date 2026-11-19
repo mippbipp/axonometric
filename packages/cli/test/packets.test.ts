@@ -3,6 +3,7 @@ import { Effect, String as Str } from "effect";
 import type { Page } from "playwright";
 
 import {
+  assertAttribute,
   attributeOf,
   attributesOf,
   click,
@@ -36,7 +37,9 @@ export default data;
 });
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMapFiles = yield* fullMap;
+
+  return yield* buildAndOpen(fullMapFiles, "review");
 });
 
 const packetIds = (page: Page) =>
@@ -99,7 +102,8 @@ describe("packets", () => {
         // both across and down, so a new cy means the dot has moved.
         yield* waitFor(page, `[data-packet] circle:not([cy="${start.cy}"])`);
 
-        assert.deepStrictEqual(yield* packetIds(page), ["h-note"]);
+        const movedPacketIds = yield* packetIds(page);
+        assert.deepStrictEqual(movedPacketIds, ["h-note"]);
       })
     )
   );
@@ -235,11 +239,13 @@ describe("packets", () => {
         assert.isTrue(playDisabled);
         assert.include(playTitle ?? "", "reduced motion");
         assert.include(playTitle ?? "", "Step");
+        const restingPacketIds = yield* packetIds(page);
         // At rest, the packet waits on the chapter's first hop.
-        assert.deepStrictEqual(yield* packetIds(page), ["h-note"]);
+        assert.deepStrictEqual(restingPacketIds, ["h-note"]);
 
         yield* stepTo(page, "h-save");
-        assert.deepStrictEqual(yield* packetIds(page), ["h-save"]);
+        const steppedPacketIds = yield* packetIds(page);
+        assert.deepStrictEqual(steppedPacketIds, ["h-save"]);
       })
     )
   );
@@ -276,12 +282,12 @@ describe("the flow picker", () => {
 
         // The last chapter plays no hops of its own, so it starts on all
         // flows: one packet each.
-        assert.strictEqual(
-          yield* attributeOf(
-            page,
-            '[data-flow-picker] [data-flow="all"]',
-            "aria-pressed"
-          ),
+        yield* assertAttribute(
+          page,
+          {
+            selector: '[data-flow-picker] [data-flow="all"]',
+            name: "aria-pressed",
+          },
           "true"
         );
         yield* waitFor(page, '[data-packet][data-run="f-note"]');

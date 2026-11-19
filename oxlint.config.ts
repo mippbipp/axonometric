@@ -208,6 +208,14 @@ export default defineConfig({
       },
     },
     {
+      // The bundler config embeds data in generated modules as JSON literals at
+      // build time; a throw fails the build.
+      files: ["packages/cli/tsdown.config.ts"],
+      rules: {
+        "effecttsgo/global-json": "off",
+      },
+    },
+    {
       // The test lock wraps `turbo` before anything else runs, so it uses
       // only Node's built-ins and stays out of the Effect runtime. Its tests
       // run on node:test for the same reason.
@@ -215,6 +223,7 @@ export default defineConfig({
       rules: {
         "effecttsgo/async-function": "off",
         "effecttsgo/global-date": "off",
+        "effecttsgo/global-json": "off",
         "effecttsgo/new-promise": "off",
         "effecttsgo/node-builtin-import": "off",
         "effecttsgo/prefer-effect-array": "off",
@@ -274,6 +283,8 @@ export default defineConfig({
         // Effect-integrated assert replaces expect.hasAssertions.
         "vitest/prefer-expect-assertions": "off",
         "effecttsgo/strict-effect-provide": "off",
+        // Fixtures are written and compared as plain JSON; a throw fails the test.
+        "effecttsgo/global-json": "off",
         // shared test helpers are plain data functions, so a data-last overload
         // has nothing to dualize
         "effecttsgo/missing-pipeable-signature": "off",

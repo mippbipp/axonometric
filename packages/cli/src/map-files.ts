@@ -357,11 +357,10 @@ export const inspectMap = Effect.fnUntraced(function* (
 ) {
   const arrange = options.arrange ?? ((_data, saved: Layout) => saved);
 
-  const [data, saved, loadedProposals] = yield* Effect.all([
-    loadData(home),
-    loadLayout(home),
-    loadProposals(home),
-  ]);
+  const [data, saved, loadedProposals] = yield* Effect.all(
+    [loadData(home), loadLayout(home), loadProposals(home)],
+    { concurrency: 1 }
+  );
 
   const history = yield* checkHistory(home, options.strictHistory === true);
 

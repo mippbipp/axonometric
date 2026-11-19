@@ -72,9 +72,8 @@ const checkIn = Effect.fnUntraced(function* (files: HomeFiles) {
 describe("route overrides", () => {
   it.effect("check passes an override that runs edge to edge", () =>
     Effect.gen(function* () {
-      const result = yield* checkIn(
-        yield* withRoutes({ "h-update": goodOverride })
-      );
+      const routedFiles = yield* withRoutes({ "h-update": goodOverride });
+      const result = yield* checkIn(routedFiles);
 
       assert.strictEqual(result.exitCode, 0, result.stdout + result.stderr);
       assert.include(result.stdout, ": 0 errors, 0 warnings.");
@@ -101,9 +100,8 @@ describe("route overrides", () => {
     },
   ])("check rejects an override with $broken", ({ route, says }) =>
     Effect.gen(function* () {
-      const result = yield* checkIn(
-        yield* withRawRoutes({ "h-update": route })
-      );
+      const routedFiles = yield* withRawRoutes({ "h-update": route });
+      const result = yield* checkIn(routedFiles);
 
       assert.notStrictEqual(result.exitCode, 0);
       assert.include(result.stdout, says);
@@ -112,16 +110,16 @@ describe("route overrides", () => {
 
   it.effect("check rejects an override that starts off its structure", () =>
     Effect.gen(function* () {
-      const result = yield* checkIn(
-        yield* withRoutes({
-          "h-update": [
-            { x: 1, y: 5 },
-            { x: 3, y: 5 },
-            { x: 3, y: 1 },
-            { x: 4, y: 1 },
-          ],
-        })
-      );
+      const routedFiles = yield* withRoutes({
+        "h-update": [
+          { x: 1, y: 5 },
+          { x: 3, y: 5 },
+          { x: 3, y: 1 },
+          { x: 4, y: 1 },
+        ],
+      });
+
+      const result = yield* checkIn(routedFiles);
 
       assert.notStrictEqual(result.exitCode, 0);
       assert.include(
@@ -134,10 +132,8 @@ describe("route overrides", () => {
   it.live("build draws a hop along its override", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(
-          yield* withRoutes({ "h-update": goodOverride }),
-          "pipeline"
-        );
+        const routedFiles = yield* withRoutes({ "h-update": goodOverride });
+        const { page } = yield* buildAndOpen(routedFiles, "pipeline");
 
         const drawn = yield* Effect.promise((): Promise<string> =>
           page.evaluate(

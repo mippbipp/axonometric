@@ -13,12 +13,14 @@ import {
 import type { Page } from "playwright";
 
 import {
+  assertAttribute,
+  assertCount,
+  assertTextIncludes,
   attributeOf,
   attributesOf,
   boxesOf,
   centreOf,
   click,
-  count,
   literal,
   openUrl,
   textOf,
@@ -184,9 +186,8 @@ const waitForPendingCount = Effect.fnUntraced(function* (
   wanted: number
 ) {
   for (let tries = 0; tries < 150; tries += 1) {
-    const proposals = yield* decodeProposals(
-      yield* readIn(root, "review/map/proposals.json")
-    );
+    const proposalsText = yield* readIn(root, "review/map/proposals.json");
+    const proposals = yield* decodeProposals(proposalsText);
 
     if (proposals.layout.length === wanted) {
       return proposals;
@@ -224,8 +225,10 @@ describe("the History panel", () => {
         assert.include(text, "#2");
         assert.include(text, "Spread out");
         assert.include(text, "3 items");
-        assert.include(
-          yield* textOf(page, '[data-revision="1"] [data-revision-items]'),
+
+        yield* assertTextIncludes(
+          page,
+          '[data-revision="1"] [data-revision-items]',
           "1 item"
         );
         assert.match(
@@ -245,10 +248,7 @@ describe("the History panel", () => {
         const { page, serve } = yield* servedWithTwo;
 
         yield* openHistory(page);
-        assert.strictEqual(
-          yield* count(page, "[data-history-list] [data-revision]"),
-          2
-        );
+        yield* assertCount(page, "[data-history-list] [data-revision]", 2);
 
         yield* acceptChanges(serve, {
           base: 4,
@@ -291,11 +291,10 @@ describe("the History panel", () => {
         assert.include(banner, "Past revision 1");
         assert.include(banner, "Drop the page");
         assert.include(banner, "read-only");
-        assert.strictEqual(
-          yield* count(
-            page,
-            '[data-past-revision] [data-control="back-to-current"]'
-          ),
+
+        yield* assertCount(
+          page,
+          '[data-past-revision] [data-control="back-to-current"]',
           1
         );
 
@@ -310,32 +309,31 @@ describe("the History panel", () => {
         // The same chapter, and the engineer can't be edited: no handles, no
         // toolbar, and a drag moves nothing. The Pending tab stays, switched
         // off with its count, so the tab strip doesn't move.
-        assert.strictEqual(
-          yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
+        yield* assertAttribute(
+          page,
+          { selector: "[data-walkthrough]", name: "data-chapter" },
           "c-all"
         );
-        assert.strictEqual(yield* count(page, '[data-tab="pending"]'), 1);
-        assert.strictEqual(
-          yield* attributeOf(page, '[data-tab="pending"]', "disabled"),
+        yield* assertCount(page, '[data-tab="pending"]', 1);
+
+        yield* assertAttribute(
+          page,
+          { selector: '[data-tab="pending"]', name: "disabled" },
           ""
         );
-        assert.include(
-          yield* textOf(page, '[data-tab="pending"]'),
-          "Pending · 0"
-        );
+        yield* assertTextIncludes(page, '[data-tab="pending"]', "Pending · 0");
+        const tabsAfter = yield* tabBoxes(page);
         assert.deepStrictEqual(
-          yield* tabBoxes(page),
+          tabsAfter,
           tabsBefore,
           "the tab strip didn't move"
         );
-        assert.strictEqual(yield* count(page, "[data-edit-toolbar]"), 0);
-        assert.strictEqual(
-          yield* count(page, '[data-structure][data-pending="true"]'),
-          0
-        );
+        yield* assertCount(page, "[data-edit-toolbar]", 0);
+
+        yield* assertCount(page, '[data-structure][data-pending="true"]', 0);
 
         yield* click(page, '[data-structure="engineer"]');
-        assert.strictEqual(yield* count(page, "[data-resize-handle]"), 0);
+        yield* assertCount(page, "[data-resize-handle]", 0);
 
         const before = yield* centreOf(page, '[data-structure="engineer"]');
 
@@ -345,22 +343,26 @@ describe("the History panel", () => {
           page.mouse.move(before.x, before.y + 80, { steps: 10 })
         );
         yield* Effect.promise(() => page.mouse.up());
-        assert.strictEqual(yield* count(page, "[data-drag-outline]"), 0);
+        yield* assertCount(page, "[data-drag-outline]", 0);
 
         // Switching the view keeps the revision open.
         yield* click(page, '[data-view-toggle] button[data-view="plan"]');
         yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
-        assert.strictEqual(yield* count(page, "[data-past-revision]"), 1);
+        yield* assertCount(page, "[data-past-revision]", 1);
 
         // Back to current: the banner goes, and the engineer is back.
         yield* click(page, '[data-control="back-to-current"]');
         yield* waitGone(page, "[data-past-revision]");
         yield* click(page, '[data-view-toggle] button[data-view="iso"]');
         yield* waitFor(page, '[data-walkthrough][data-view="iso"]');
-        assert.strictEqual(
-          yield* attributeOf(page, '[data-tab="pending"]', "disabled"),
-          null
+
+        const pendingTabDisabled = yield* attributeOf(
+          page,
+          '[data-tab="pending"]',
+          "disabled"
         );
+
+        assert.strictEqual(pendingTabDisabled, null);
 
         const back = yield* centreOf(page, '[data-structure="engineer"]');
 
@@ -380,48 +382,53 @@ describe("the History panel", () => {
         yield* openRevision(page, 1);
 
         // Compare is off until asked for.
-        assert.strictEqual(yield* count(page, "[data-compare-ring]"), 0);
-        assert.strictEqual(yield* count(page, "[data-compare-legend]"), 0);
+        yield* assertCount(page, "[data-compare-ring]", 0);
+        yield* assertCount(page, "[data-compare-legend]", 0);
 
         yield* click(page, '[data-control="compare"]');
         yield* waitFor(page, "[data-compare-legend]");
 
         // Revision 1 against the accepted map: the engineer and the server
         // moved, and the page is 2 × 2 where the accepted map has it 3 × 2.
-        assert.strictEqual(yield* count(page, ringOf("moved", "engineer")), 1);
-        assert.strictEqual(yield* count(page, ringOf("moved", "server")), 1);
-        assert.strictEqual(yield* count(page, ringOf("resized", "page")), 1);
-        assert.strictEqual(yield* count(page, ringOf("moved", "page")), 0);
-        assert.strictEqual(yield* count(page, ringOf("moved", "proposals")), 0);
+        yield* assertCount(page, ringOf("moved", "engineer"), 1);
+        yield* assertCount(page, ringOf("moved", "server"), 1);
+        yield* assertCount(page, ringOf("resized", "page"), 1);
+        yield* assertCount(page, ringOf("moved", "page"), 0);
+        yield* assertCount(page, ringOf("moved", "proposals"), 0);
 
         // The moved structure is outlined where the accepted map has it, in
         // ink and dotted, which the pink dashed ghost is not.
-        assert.strictEqual(
-          yield* count(page, '[data-compare-origin="engineer"]'),
-          1
-        );
-        assert.notStrictEqual(
-          yield* attributeOf(
-            page,
-            '[data-compare-origin="engineer"]',
-            "stroke-dasharray"
-          ),
-          yield* dashOf(page, "moved", "engineer")
-        );
-        assert.notStrictEqual(
-          yield* strokeOfSelector(page, '[data-compare-origin="engineer"]'),
-          yield* strokeOfSelector(page, ringOf("moved", "engineer"))
+        yield* assertCount(page, '[data-compare-origin="engineer"]', 1);
+
+        const originDash = yield* attributeOf(
+          page,
+          '[data-compare-origin="engineer"]',
+          "stroke-dasharray"
         );
 
-        // The kinds differ in dash, so no look rests on colour alone.
-        assert.notStrictEqual(
-          yield* dashOf(page, "moved", "engineer"),
-          yield* dashOf(page, "resized", "page")
+        const movedDash = yield* dashOf(page, "moved", "engineer");
+        assert.notStrictEqual(originDash, movedDash);
+
+        const originStroke = yield* strokeOfSelector(
+          page,
+          '[data-compare-origin="engineer"]'
         );
+
+        const ringStroke = yield* strokeOfSelector(
+          page,
+          ringOf("moved", "engineer")
+        );
+
+        assert.notStrictEqual(originStroke, ringStroke);
+
+        const movedDashLater = yield* dashOf(page, "moved", "engineer");
+        // The kinds differ in dash, so no look rests on colour alone.
+        const resizedDash = yield* dashOf(page, "resized", "page");
+        assert.notStrictEqual(movedDashLater, resizedDash);
 
         // Outlines only: there are no text badges, and nothing on the map
         // overlaps text, in either view.
-        assert.strictEqual(yield* count(page, "[data-compare-badge]"), 0);
+        yield* assertCount(page, "[data-compare-badge]", 0);
 
         for (const view of ["iso", "plan"] as const) {
           yield* click(page, `[data-view-toggle] button[data-view="${view}"]`);
@@ -471,21 +478,23 @@ describe("the History panel", () => {
         // selects the structure.
         yield* click(page, '[role="tab"][data-tab="history"]');
         yield* waitFor(page, "[data-difference-list]");
-        assert.include(
-          yield* textOf(page, "[data-difference-list]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-difference-list]",
           "Engineer moved from 0, 4 to 0, 0"
         );
         yield* click(page, '[data-difference="moved:engineer"] button');
         yield* waitFor(page, '[data-structure-panel="engineer"]');
-        assert.include(
-          yield* textOf(page, "[data-past-revision]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-past-revision]",
           "Against the accepted map"
         );
 
         // Compare off again clears the highlights.
         yield* click(page, '[data-control="compare"]');
         yield* waitGone(page, "[data-compare-legend]");
-        assert.strictEqual(yield* count(page, "[data-compare-ring]"), 0);
+        yield* assertCount(page, "[data-compare-ring]", 0);
         assert.deepStrictEqual(errors, []);
       }),
     60_000
@@ -565,13 +574,13 @@ describe("the History panel", () => {
               "data-compare-kind"
             );
 
-          assert.strictEqual(yield* kindOfHop("h-pr"), "added");
-          assert.strictEqual(yield* kindOfHop("h-read"), "removed");
-          assert.strictEqual(yield* kindOfHop("h-store"), "changed");
-          assert.strictEqual(
-            yield* count(page, '[data-compare-hop="h-note"]'),
-            0
-          );
+          const addedKind = yield* kindOfHop("h-pr");
+          assert.strictEqual(addedKind, "added");
+          const removedKind = yield* kindOfHop("h-read");
+          assert.strictEqual(removedKind, "removed");
+          const changedKind = yield* kindOfHop("h-store");
+          assert.strictEqual(changedKind, "changed");
+          yield* assertCount(page, '[data-compare-hop="h-note"]', 0);
           assert.include(
             (yield* attributeOf(
               page,
@@ -611,19 +620,17 @@ describe("the History panel", () => {
         );
         assert.include(dialog, "Engineer moved from 0, 4 to 0, 0");
         assert.include(dialog, "Map page resized from 3 × 2 to 2 × 2");
-        assert.strictEqual(yield* count(page, "[data-restore-meaning]"), 0);
+        yield* assertCount(page, "[data-restore-meaning]", 0);
 
         yield* click(page, '[data-control="close-restore"]');
         yield* waitGone(page, "[data-restore-dialog]");
 
         // The page is back on the current map, with the restore pending.
-        assert.strictEqual(yield* count(page, "[data-past-revision]"), 0);
+        yield* assertCount(page, "[data-past-revision]", 0);
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, "[data-pending-change]");
-        assert.strictEqual(
-          yield* count(page, '[data-structure][data-pending="true"]'),
-          3
-        );
+
+        yield* assertCount(page, '[data-structure][data-pending="true"]', 3);
 
         // proposals.json holds the pending changes the dialog listed.
         yield* Effect.promise(() =>
@@ -633,9 +640,8 @@ describe("the History panel", () => {
             .waitFor({ state: "visible", ...waitTimeout })
         );
 
-        const proposals = yield* decodeProposals(
-          yield* readIn(root, "review/map/proposals.json")
-        );
+        const proposalsText = yield* readIn(root, "review/map/proposals.json");
+        const proposals = yield* decodeProposals(proposalsText);
 
         const moves = Arr.flatMap(proposals.layout, (change) =>
           change.kind === "move"
@@ -669,11 +675,10 @@ describe("the History panel", () => {
           { kind: "resize", id: "page", x: 2, y: 2 },
         ]);
 
+        const layoutText = yield* readIn(root, "review/map/layout.json");
         // Nothing is accepted: layout.json still has revision 2's positions,
         // and no third revision exists.
-        const layout = yield* decodeLayout(
-          yield* readIn(root, "review/map/layout.json")
-        );
+        const layout = yield* decodeLayout(layoutText);
 
         assert.strictEqual(layout.structures.engineer?.y, 4);
         assert.strictEqual(layout.structures.page?.w, 3);
@@ -697,8 +702,9 @@ describe("the History panel", () => {
         yield* openRevision(page, 2);
         yield* click(page, '[data-control="restore"]');
         yield* waitFor(page, "[data-restore-dialog]");
-        assert.include(
-          yield* textOf(page, "[data-restore-done]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-restore-done]",
           "1 layout difference is now a pending change. Review it in the Pending tab, or undo it."
         );
         assert.deepStrictEqual(errors, []);
@@ -712,7 +718,8 @@ describe("the History panel", () => {
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const fs = yield* FileSystem.FileSystem;
-        const root = yield* makeHome(yield* fullMap);
+        const fullMapFiles = yield* fullMap;
+        const root = yield* makeHome(fullMapFiles);
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 
@@ -769,10 +776,8 @@ describe("the History panel", () => {
         assert.include(dialog, "same layout as the accepted map");
         yield* click(page, '[data-control="close-restore"]');
         yield* waitGone(page, "[data-restore-dialog]");
-        assert.strictEqual(
-          yield* count(page, '[data-structure][data-pending="true"]'),
-          0
-        );
+
+        yield* assertCount(page, '[data-structure][data-pending="true"]', 0);
         assert.deepStrictEqual(errors, []);
       }).pipe(Effect.provide(NodeServices.layer)),
     90_000

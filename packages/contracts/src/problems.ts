@@ -50,6 +50,7 @@ export const formatPath = (path: readonly PropertyKey[]) =>
       const name = String(key);
 
       if (!identifier.test(name)) {
+        // oxlint-disable-next-line effecttsgo/global-json -- quotes a string, which cannot throw
         return `[${JSON.stringify(name)}]`;
       }
 

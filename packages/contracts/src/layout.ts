@@ -165,7 +165,7 @@ export const JsonText = Schema.String.pipe(
       decode: (text, options) =>
         Effect.try({
           try: () => {
-            // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- see above
+            // oxlint-disable-next-line effecttsgo/global-json-in-effect, effecttsgo/prefer-schema-over-json -- see above
             const parsed: unknown = JSON.parse(text);
 
             return parsed;
@@ -179,6 +179,7 @@ export const JsonText = Schema.String.pipe(
               options
             ),
         }),
+      // oxlint-disable-next-line effecttsgo/global-json -- the encoder of a JSON value; stringify only throws on cycles and BigInt, which a decoded value lacks
       encode: (json) => Effect.succeed(`${JSON.stringify(json, null, 2)}\n`),
     })
   )

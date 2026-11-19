@@ -583,5 +583,5 @@ export const excalidrawOf = ({
 
 /** The text of a `.excalidraw` file, as the page and `export` both save it. */
 export const excalidrawText = (file: ExcalidrawFile) =>
-  // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- excalidrawOf's output is plain JSON data by construction
+  // oxlint-disable-next-line effecttsgo/global-json -- excalidrawOf's output is plain JSON data by construction
   `${JSON.stringify(file, null, 2)}\n`;

@@ -139,7 +139,8 @@ describe("routed hops", () => {
   it.live("draw the crowded map's boxes in front over the ones behind", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* crowdedMap, "crowded");
+        const crowdedMapFiles = yield* crowdedMap;
+        const { page } = yield* buildAndOpen(crowdedMapFiles, "crowded");
 
         yield* goToChapter(page, "c-all");
 
@@ -190,7 +191,8 @@ describe("routed hops", () => {
   it.live("draw stretches hidden behind boxes faintly over them", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* crowdedMap, "crowded");
+        const crowdedMapFiles = yield* crowdedMap;
+        const { page } = yield* buildAndOpen(crowdedMapFiles, "crowded");
 
         yield* goToChapter(page, "c-all");
 
@@ -224,7 +226,8 @@ describe("routed hops", () => {
   it.live("carry packets along the drawn route", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* fullMap, "review");
+        const fullMapFiles = yield* fullMap;
+        const { page } = yield* buildAndOpen(fullMapFiles, "review");
 
         yield* goToChapter(page, "c-save");
         yield* Effect.promise(() =>

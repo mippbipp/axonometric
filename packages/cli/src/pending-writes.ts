@@ -197,10 +197,13 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
 ) {
   const path = yield* Path.Path;
 
-  const readFiles = Effect.all({
-    proposals: Effect.flatMap(loadProposals(home), unreadable),
-    accepted: Effect.flatMap(loadLayout(home), unreadable),
-  });
+  const readFiles = Effect.all(
+    {
+      proposals: Effect.flatMap(loadProposals(home), unreadable),
+      accepted: Effect.flatMap(loadLayout(home), unreadable),
+    },
+    { concurrency: 1 }
+  );
 
   const { proposals: current, accepted } = yield* loadForWrite(
     home,

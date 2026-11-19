@@ -85,7 +85,8 @@ const assertRefused = Effect.fnUntraced(function* (
   const sent = yield* sending;
 
   assert.strictEqual(sent.status, status, sent.body);
-  assert.deepStrictEqual(yield* snapshot(root), before);
+  const filesAfter = yield* snapshot(root);
+  assert.deepStrictEqual(filesAfter, before);
 
   return sent;
 });
@@ -129,9 +130,11 @@ describe("accepting pending layout changes over HTTP", () => {
       ]);
       assert.strictEqual(answer.proposals.revision, 2);
 
-      const layout = yield* decodeLayoutFile(
-        yield* fs.readFileString(path.join(home, "layout.json"))
+      const layoutText = yield* fs.readFileString(
+        path.join(home, "layout.json")
       );
+
+      const layout = yield* decodeLayoutFile(layoutText);
 
       assert.deepStrictEqual(layout.structures.page, {
         x: 4,
@@ -216,15 +219,19 @@ describe("accepting pending layout changes over HTTP", () => {
         );
 
         assert.include(firstText, '"Move Map page; resize Save server"');
-        // The second revision didn't rewrite the first.
-        assert.strictEqual(
-          yield* fs.readFileString(path.join(home, "history", "0001.json")),
-          firstText
+
+        const firstRevisionText = yield* fs.readFileString(
+          path.join(home, "history", "0001.json")
         );
 
-        const secondRevision = yield* decodeRevisionText(
-          yield* fs.readFileString(path.join(home, "history", "0002.json"))
+        // The second revision didn't rewrite the first.
+        assert.strictEqual(firstRevisionText, firstText);
+
+        const secondRevisionText = yield* fs.readFileString(
+          path.join(home, "history", "0002.json")
         );
+
+        const secondRevision = yield* decodeRevisionText(secondRevisionText);
 
         assert.strictEqual(secondRevision.revision, 2);
         assert.deepStrictEqual(secondRevision.layout.structures.engineer, {
@@ -258,9 +265,11 @@ describe("accepting pending layout changes over HTTP", () => {
         });
 
         assert.strictEqual(sent.status, 200, sent.body);
-        assert.include(yield* fs.readFileString(systemMd), "# Review loop");
+        const systemMdText = yield* fs.readFileString(systemMd);
+        assert.include(systemMdText, "# Review loop");
 
-        const state = yield* pageState(yield* fs.readFileString(html));
+        const htmlText = yield* fs.readFileString(html);
+        const state = yield* pageState(htmlText);
 
         assert.isUndefined(state.proposals);
         assert.deepStrictEqual(state.layout.structures.page, {
@@ -362,10 +371,11 @@ describe("accepting pending layout changes over HTTP", () => {
           accept(url, { baseFileRevision: 1, changeIds: "all" })
         );
 
-        assert.strictEqual(
-          yield* fs.readFileString(path.join(home, "history")),
-          "not a folder"
+        const historyText = yield* fs.readFileString(
+          path.join(home, "history")
         );
+
+        assert.strictEqual(historyText, "not a folder");
 
         // The 500 has an empty body, so serve prints the cause.
         assert.include(
@@ -399,13 +409,14 @@ describe("accepting pending layout changes over HTTP", () => {
 
         assert.strictEqual(sent.status, 200, sent.body);
         assert.strictEqual((yield* decodeAccepted(sent.body)).revision, 2);
-        assert.strictEqual(
-          yield* fs.readFileString(old),
-          "an earlier revision, not ours to touch"
+        const oldText = yield* fs.readFileString(old);
+        assert.strictEqual(oldText, "an earlier revision, not ours to touch");
+
+        const secondRevisionExists = yield* fs.exists(
+          path.join(home, "history", "0002.json")
         );
-        assert.isTrue(
-          yield* fs.exists(path.join(home, "history", "0002.json"))
-        );
+
+        assert.isTrue(secondRevisionExists);
       }).pipe(Effect.provide(NodeServices.layer))
   );
 

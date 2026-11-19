@@ -122,6 +122,7 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
           data-packet-payload
           className="border-ink bg-face overflow-auto border p-2 text-xs"
         >
+          {/* oxlint-disable-next-line effecttsgo/global-json -- displays a payload example, which is plain JSON */}
           {JSON.stringify(hop.payload, null, 2)}
         </pre>
       )}
