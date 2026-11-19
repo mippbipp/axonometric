@@ -1,6 +1,6 @@
 name: Release
 
-# On a version tag, builds the single-executable binaries, stages the npm
+# On a version tag, builds the standalone binaries, stages the npm
 # package and publishes the binaries as a GitHub Release. On a push to main,
 # and on a pull request that changes how the binaries are built or installed,
 # it runs the same builds and checks without releasing anything. Other pull
@@ -185,7 +185,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The binary is a copy of this Node.
+      # The smoke test reads the version with Node, before it empties PATH.
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
@@ -199,7 +199,7 @@ jobs:
 
       - run: bunx turbo run build --filter axonometric
 
-      - run: bun run --cwd packages/cli build:sea
+      - run: bun run --cwd packages/cli build:binary
 
       - name: Smoke-test the binary
         env:
@@ -346,7 +346,6 @@ jobs:
       - name: Write the release notes
         working-directory: release
         run: |
-          node_version=$(cat ../.node-version)
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION"
           {
             echo "Install on Linux or macOS:"
@@ -361,7 +360,7 @@ jobs:
             echo "\$env:AXONOMETRIC_VERSION = '$VERSION'; irm $base/install.ps1 | iex"
             echo '```'
             echo
-            echo "Each archive holds one binary with Node $node_version built in, so you don't need Node installed. The macOS binaries have an ad-hoc signature and aren't notarized. The Windows binary isn't signed. SHA256SUMS lists every file's checksum."
+            echo "Each archive holds one binary with its runtime built in, so you don't need Node installed. The macOS binaries have an ad-hoc signature and aren't notarized. The Windows binary isn't signed. SHA256SUMS lists every file's checksum."
             echo
             echo "On npm, run \`npx axonometric@$VERSION\`, or install it with \`npm install -g axonometric@$VERSION\`."
             echo

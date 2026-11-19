@@ -58,7 +58,7 @@ const shared: UserConfig = {
     {
       // `axonometric docs` prints the Markdown files in docs/. The bundle
       // carries them as strings, so the command works offline from every
-      // install, and a CommonJS single executable can use them the same way.
+      // install and from the compiled binaries.
       name: "axonometric:embed-docs",
       load(id) {
         if (!docsContentModule.test(id)) {
@@ -115,7 +115,7 @@ export const resvgFonts = Effect.forEach(${JSON.stringify(fonts)}, unpack);
     {
       // From source, the CLI reads the editor's built page from disk. The
       // bundle carries the page as a string instead, so it needs no other
-      // files, and a CommonJS single executable can use it the same way.
+      // files, and neither do the compiled binaries.
       name: "axonometric:embed-editor-page",
       load(id) {
         if (!editorPageModule.test(id)) {
@@ -133,15 +133,8 @@ export const resvgFonts = Effect.forEach(${JSON.stringify(fonts)}, unpack);
   ],
 };
 
-export default defineConfig([
-  { ...shared, entry: { bin: "src/bin.ts" }, format: "esm" },
-  // Node 24's single executables only run a CommonJS entry script, so the
-  // binaries are built from this copy (see scripts/build-sea.ts).
-  {
-    ...shared,
-    entry: { sea: "src/bin.ts" },
-    format: "cjs",
-    clean: false,
-    outExtensions: () => ({ js: ".cjs" }),
-  },
-]);
+export default defineConfig({
+  ...shared,
+  entry: { bin: "src/bin.ts" },
+  format: "esm",
+});
