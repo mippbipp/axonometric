@@ -1,7 +1,7 @@
 // Packs the npm package into the tarball path given as the only argument,
 // then checks what's inside with the system tar. CI runs it on every pull
 // request, and the release workflow stages the tarball it writes, so the
-// check covers exactly what gets published. Run `pnpm build` first.
+// check covers exactly what gets published. Run `bun run build` first.
 //
 // `expectedFiles` is the one list of what the tarball may hold. The editor's
 // HTML is embedded in dist/bin.mjs as a string (see tsdown.config.ts), so it
@@ -88,10 +88,14 @@ const decodeManifest = Schema.decodeUnknownEffect(
   { errors: "all" }
 );
 
-const PackResult = Schema.Struct({
-  filename: Schema.String,
-  files: Schema.Array(Schema.Struct({ path: Schema.String })),
-});
+const PackedFile = Schema.Struct({ path: Schema.String });
+
+const PackResult = Schema.Array(
+  Schema.Struct({
+    filename: Schema.String,
+    files: Schema.Array(PackedFile),
+  })
+);
 
 const decodePackResult = Schema.decodeUnknownEffect(
   Schema.fromJsonString(PackResult)
@@ -188,30 +192,46 @@ const packNpm = Effect.gen(function* () {
 
   yield* fs.remove(tarball, { force: true });
 
+  // npm names the tarball itself, so it packs into the tarball's folder and
+  // the result is renamed.
   const packOutput = yield* Effect.scoped(
     Effect.flatMap(staged(packageDir, repoDir), (stage) =>
-      runText("pnpm", ["pack", "--json", "--out", tarball], stage)
+      runText(
+        "npm",
+        ["pack", "--json", "--pack-destination", path.dirname(tarball)],
+        stage
+      )
     )
   );
 
   const packed = yield* decodePackResult(packOutput).pipe(
     Effect.mapError((error) =>
       PackCheckFailed.make({
-        message: `Can't read pnpm pack --json output:\n${error.message}`,
+        message: `Can't read npm pack --json output:\n${error.message}`,
       })
     )
   );
 
-  const reported = sorted(Arr.map(packed.files, (file) => file.path));
+  const [result] = packed;
 
-  // pnpm's report must match what tar finds in the tarball it wrote.
+  if (result === undefined) {
+    return yield* PackCheckFailed.make({
+      message: "npm pack --json reported no tarball.",
+    });
+  }
+
+  yield* fs.rename(path.join(path.dirname(tarball), result.filename), tarball);
+
+  const reported = sorted(Arr.map(result.files, (file) => file.path));
+
+  // npm's report must match what tar finds in the tarball it wrote.
   const tarListing = yield* runText("tar", ["-tzf", tarball], packageDir);
   const tarLines = Arr.filter(Str.split(tarListing, "\n"), Str.isNonEmpty);
   const listed = sorted(Arr.map(tarLines, Str.replace(/^package\//u, "")));
 
   if (listed !== reported) {
     return yield* PackCheckFailed.make({
-      message: `pnpm pack reported:\n  ${reported}\nbut ${tarball} holds:\n  ${listed}`,
+      message: `npm pack reported:\n  ${reported}\nbut ${tarball} holds:\n  ${listed}`,
     });
   }
 

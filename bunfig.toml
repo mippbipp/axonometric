@@ -1,0 +1,3 @@
+[install]
+# Skips versions published in the last 24 hours, in seconds.
+minimumReleaseAge = 86400

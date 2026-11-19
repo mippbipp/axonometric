@@ -4,7 +4,7 @@ export default defineConfig({
   ignorePatterns: [
     "*.md",
     "dist",
-    "pnpm-lock.yaml",
+    "bun.lock",
     // vendored oxlint plugin: don't reformat third-party-owned source
     "tools/oxlint/anti-slop/**",
     // fixture maps are written the way an agent writes data.mjs

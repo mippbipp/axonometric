@@ -1,5 +1,5 @@
 // Builds a Node single-executable binary of the CLI for the OS and
-// architecture this runs on, from `dist/sea.cjs` (run `pnpm build` first).
+// architecture this runs on, from `dist/sea.cjs` (run `bun run build` first).
 // Writes `release/axonometric-<os>-<arch>/axonometric[.exe]` and packs it into
 // `release/axonometric-<os>-<arch>.tar.gz` (`.zip` on Windows).
 //
@@ -70,11 +70,11 @@ const buildSea = Effect.gen(function* () {
   }
 
   // Nix's Node links against libraries in /nix/store, so a binary built from
-  // it only runs where those store paths exist. pnpm runs scripts with the
-  // official Node build from `devEngines`.
+  // it only runs where those store paths exist. CI's actions/setup-node
+  // installs the official build.
   if (Str.startsWith("/nix/store/")(process.execPath)) {
     return yield* BuildFailed.make({
-      message: `${process.execPath} is Nix's Node. Run pnpm --filter axonometric build:sea, which uses the official Node build.`,
+      message: `${process.execPath} is Nix's Node. Run this with an official Node build, such as the one actions/setup-node installs.`,
     });
   }
 
