@@ -81,7 +81,8 @@ describe("the built bundle", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* minimalMap);
+        const minimalMapFiles = yield* minimalMap;
+        const home = yield* makeHome(minimalMapFiles);
 
         const result = yield* runBundle(home, ["build", "pipeline/map"]);
 

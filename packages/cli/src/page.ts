@@ -48,11 +48,16 @@ export const renderPage = Effect.fnUntraced(function* (
 ) {
   const page = yield* editorPage;
 
+  const encodedState = yield* encodeState(state);
+
+  const encodedServed =
+    served === undefined ? undefined : yield* encodeServed(served);
+
   const scripts = [
-    jsonScript(mapStateElementId, yield* encodeState(state)),
-    ...(served === undefined
+    jsonScript(mapStateElementId, encodedState),
+    ...(encodedServed === undefined
       ? []
-      : [jsonScript(servedPageElementId, yield* encodeServed(served))]),
+      : [jsonScript(servedPageElementId, encodedServed)]),
   ];
 
   const script = Arr.join(scripts, "\n");

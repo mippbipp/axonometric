@@ -109,7 +109,8 @@ describe("editing a hop label or a flow name over HTTP", () => {
           assert.strictEqual(edge.status, 422, id);
         }
 
-        assert.strictEqual(yield* proposalsText(home), before);
+        const proposalsAfter = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfter, before);
       })
   );
 
@@ -125,7 +126,8 @@ describe("editing a hop label or a flow name over HTTP", () => {
 
       assert.strictEqual(sent.status, 200, sent.body);
 
-      const saved = yield* decodeProposals(yield* proposalsText(home));
+      const proposalsJson = yield* proposalsText(home);
+      const saved = yield* decodeProposals(proposalsJson);
       const [first] = saved.hops ?? [];
 
       assert.strictEqual(
@@ -157,7 +159,8 @@ describe("reopening a rejected hop or flow over HTTP", () => {
           }
         }
 
-        assert.strictEqual(yield* proposalsText(home), before);
+        const proposalsAfter = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfter, before);
       })
   );
 
@@ -178,7 +181,8 @@ describe("reopening a rejected hop or flow over HTTP", () => {
 
       assert.strictEqual(sent.status, 200, sent.body);
 
-      const saved = yield* decodeProposals(yield* proposalsText(home));
+      const proposalsJson = yield* proposalsText(home);
+      const saved = yield* decodeProposals(proposalsJson);
 
       assert.isTrue(
         Arr.some(

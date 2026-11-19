@@ -98,7 +98,8 @@ const writeProposals = Effect.fnUntraced(
       )
     );
 
-    const now = DateTime.formatIso(yield* DateTime.now);
+    const currentTime = yield* DateTime.now;
+    const now = DateTime.formatIso(currentTime);
 
     // Built once per write: the frozen items alone are what open changes
     // land on, and all of them are what the checks read.

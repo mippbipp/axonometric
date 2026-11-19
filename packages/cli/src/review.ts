@@ -225,7 +225,9 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
       onSome: ({ number, frozenAt }) => ({ number, frozenAt, items }),
     });
 
-    return yield* Console.log(yield* encodeReport({ home: absolute, batch }));
+    const reportText = yield* encodeReport({ home: absolute, batch });
+
+    return yield* Console.log(reportText);
   }
 
   if (Option.isNone(oldest)) {
@@ -236,7 +238,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
 
   const { number, frozenAt } = oldest.value;
   const undecided = Arr.filter(items, ({ verdict }) => verdict === null);
-  const described = yield* Effect.forEach(items, textOf);
+  const described = yield* Effect.forEach(items, textOf, { concurrency: 1 });
   const listing = listedBySection(Arr.zip(items, described));
   const noun = items.length === 1 ? "item" : "items";
 

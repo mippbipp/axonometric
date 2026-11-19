@@ -37,7 +37,7 @@ export const printNotes = Effect.fnUntraced(function* ({
   yield* Effect.forEach(
     warnings,
     (warning) => Console.error(formatProblem(warning)),
-    { discard: true }
+    { discard: true, concurrency: 1 }
   );
 
   yield* Option.match(sourcesSkipped, {

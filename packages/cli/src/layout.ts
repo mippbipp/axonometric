@@ -174,7 +174,7 @@ const layout = Effect.fn("layout")(function* (
   yield* Effect.forEach(
     map.warnings,
     (warning) => Console.error(formatProblem(warning)),
-    { discard: true }
+    { discard: true, concurrency: 1 }
   );
 
   return yield* Console.log(

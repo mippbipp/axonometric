@@ -50,10 +50,8 @@ describe("what a group proposal adds to the layout checks", () => {
     "is nothing where the new group's zone fits, in the chapter viewed",
     () =>
       Effect.gen(function* () {
-        assert.deepStrictEqual(
-          yield* addedBy(groupOfTwo, inChapter("c-save")),
-          []
-        );
+        const problems = yield* addedBy(groupOfTwo, inChapter("c-save"));
+        assert.deepStrictEqual(problems, []);
       })
   );
 
@@ -71,10 +69,8 @@ describe("what a group proposal adds to the layout checks", () => {
 
   it.effect("adds nothing for an empty group, which has no zone to draw", () =>
     Effect.gen(function* () {
-      assert.deepStrictEqual(
-        yield* addedBy([newGroup], inChapter("c-all")),
-        []
-      );
+      const problems = yield* addedBy([newGroup], inChapter("c-all"));
+      assert.deepStrictEqual(problems, []);
     })
   );
 
@@ -89,11 +85,8 @@ describe("what a group proposal adds to the layout checks", () => {
         };
 
         for (const chapter of ["c-page", "c-save", "c-all"]) {
-          assert.deepStrictEqual(
-            yield* addedBy([rename], inChapter(chapter)),
-            [],
-            chapter
-          );
+          const problems = yield* addedBy([rename], inChapter(chapter));
+          assert.deepStrictEqual(problems, [], chapter);
         }
       })
   );
@@ -133,9 +126,10 @@ describe("what a chapter proposal adds to the layout checks", () => {
         change: { action: "play", chapter: "c-page", hop: "h-store" },
       };
 
+      const problems = yield* addedBy([play], inChapter("c-page"));
       // The hop's ends are not revealed in c-page, so it is not drawn there and
       // adds nothing to the drawing; review, not the layout checks, says it breaks.
-      assert.deepStrictEqual(yield* addedBy([play], inChapter("c-page")), []);
+      assert.deepStrictEqual(problems, []);
     })
   );
 
@@ -170,11 +164,8 @@ describe("what a chapter proposal adds to the layout checks", () => {
         ];
 
         for (const item of actions) {
-          assert.deepStrictEqual(
-            yield* addedBy([item], inChapter("c-save")),
-            [],
-            item.id
-          );
+          const problems = yield* addedBy([item], inChapter("c-save"));
+          assert.deepStrictEqual(problems, [], item.id);
         }
       })
   );

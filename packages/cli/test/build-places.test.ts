@@ -248,8 +248,10 @@ describe("build places structures", () => {
       Effect.gen(function* () {
         const pipeline = "flake-pipeline/map";
 
+        const pipelineMapFiles = yield* pipelineMap;
+
         const home = yield* makeHome(
-          Rec.remove(yield* pipelineMap, `${pipeline}/layout.json`)
+          Rec.remove(pipelineMapFiles, `${pipeline}/layout.json`)
         );
 
         const built = yield* runCli(home, ["build", `${home}/${pipeline}`]);

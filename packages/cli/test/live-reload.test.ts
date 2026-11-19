@@ -4,6 +4,9 @@ import { Effect, FileSystem, Path, String as Str } from "effect";
 import type { Page } from "playwright";
 
 import {
+  assertAttribute,
+  assertCount,
+  assertTextIncludes,
   attributeOf,
   boxesOf,
   count,
@@ -32,7 +35,8 @@ const editData = Effect.fnUntraced(function* (
   const path = yield* Path.Path;
   const file = path.join(home, "data.mjs");
 
-  yield* fs.writeFileString(file, edit(yield* fs.readFileString(file)));
+  const fileText = yield* fs.readFileString(file);
+  yield* fs.writeFileString(file, edit(fileText));
 }, Effect.provide(NodeServices.layer));
 
 const rename = (from: string, to: string) => Str.replaceAll(from, to);
@@ -123,18 +127,25 @@ describe("live reload", () => {
           path.join(root, "review", "review.html")
         );
 
-        assert.strictEqual(
-          yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
+        yield* assertAttribute(
+          page,
+          { selector: "[data-walkthrough]", name: "data-chapter" },
           "c-save"
         );
-        assert.strictEqual(
-          yield* attributeOf(page, '[data-selected="true"]', "data-structure"),
+
+        yield* assertAttribute(
+          page,
+          { selector: '[data-selected="true"]', name: "data-structure" },
           "server"
         );
-        assert.strictEqual(
-          yield* attributeOf(page, "svg[data-scale]", "data-scale"),
-          scale
+
+        const scaleText = yield* attributeOf(
+          page,
+          "svg[data-scale]",
+          "data-scale"
         );
+
+        assert.strictEqual(scaleText, scale);
         assert.include(systemMd, "Write server");
         assert.include(html, "Write server");
         assert.notInclude(html, `id="axonometric-served-page"`);
@@ -156,7 +167,8 @@ describe("live reload", () => {
         );
         yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
 
-        const before = Number(yield* attributeOf(page, face, "x"));
+        const startX = yield* attributeOf(page, face, "x");
+        const before = Number(startX);
 
         const moved = yield* runCli(home, [
           "layout",
@@ -176,21 +188,25 @@ describe("live reload", () => {
           )
         );
 
+        const movedX = yield* attributeOf(page, face, "x");
         // Two grid units along x, at 60 screen units each.
-        assert.strictEqual(
-          Number(yield* attributeOf(page, face, "x")) - before,
-          120
-        );
-        assert.strictEqual(
-          yield* attributeOf(page, "[data-walkthrough]", "data-view"),
+        assert.strictEqual(Number(movedX) - before, 120);
+
+        yield* assertAttribute(
+          page,
+          { selector: "[data-walkthrough]", name: "data-view" },
           "plan"
         );
-        assert.strictEqual(
-          yield* attributeOf(page, "[data-walkthrough]", "data-chapter"),
+
+        yield* assertAttribute(
+          page,
+          { selector: "[data-walkthrough]", name: "data-chapter" },
           "c-save"
         );
-        assert.strictEqual(
-          yield* attributeOf(page, '[data-selected="true"]', "data-structure"),
+
+        yield* assertAttribute(
+          page,
+          { selector: '[data-selected="true"]', name: "data-structure" },
           "server"
         );
       }),
@@ -217,12 +233,14 @@ describe("live reload", () => {
 
         assert.match(problem, /^error data\.mjs structures\[2\]\.name: /u);
         assert.strictEqual(problem, Str.trimStart(problem));
-        assert.strictEqual(yield* textOf(page, panelTitle), "Save server");
+        const brokenTitle = yield* textOf(page, panelTitle);
+        assert.strictEqual(brokenTitle, "Save server");
 
         yield* editData(home, rename('name: ""', 'name: "Fixed server"'));
         yield* waitGone(page, "[data-map-error]");
 
-        assert.strictEqual(yield* textOf(page, panelTitle), "Fixed server");
+        const fixedTitle = yield* textOf(page, panelTitle);
+        assert.strictEqual(fixedTitle, "Fixed server");
       }),
     60_000
   );
@@ -237,15 +255,16 @@ describe("live reload", () => {
         yield* serve.stop;
         yield* waitFor(page, "[data-server-stopped]");
 
-        assert.include(
-          yield* textOf(page, "[data-server-stopped]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-server-stopped]",
           "Server stopped"
         );
 
         yield* startServe(home, ["--port", port]);
         yield* waitGone(page, "[data-server-stopped]");
 
-        assert.strictEqual(yield* count(page, "[data-structure]"), 2);
+        yield* assertCount(page, "[data-structure]", 2);
       }),
     60_000
   );
@@ -291,7 +310,8 @@ export default data;
           path.join(root, "review", "SYSTEM.md")
         );
 
-        assert.strictEqual(yield* attributeOf(page, link, "href"), url);
+        const linkHref = yield* attributeOf(page, link, "href");
+        assert.strictEqual(linkHref, url);
         assert.include(systemMd, `(${url})`);
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
@@ -313,7 +333,8 @@ export default data;
             Str.replaceAll(/name: "[^"]*"/gu, 'name: ""')(text)
           );
           yield* waitFor(page, "[data-map-error]");
-          assert.isAbove(yield* count(page, "[data-map-problem]"), 8);
+          const mapProblemCount = yield* count(page, "[data-map-problem]");
+          assert.isAbove(mapProblemCount, 8);
           yield* assertClearOfControls(page, "[data-map-error]");
 
           yield* serve.stop;

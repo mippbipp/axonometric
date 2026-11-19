@@ -673,7 +673,8 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
     const { history } = yield* SubscriptionRef.get(held);
 
-    yield* SubscriptionRef.update(held, yield* reloadHistory(home, history));
+    const reloadedHistory = yield* reloadHistory(home, history);
+    yield* SubscriptionRef.update(held, reloadedHistory);
   }).pipe(
     Effect.scoped,
     Effect.catchCause((cause) =>
@@ -770,10 +771,13 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
       );
     }
 
+    const now = yield* DateTime.now;
+    const since = DateTime.formatIso(now);
+
     const recorded: ServerState = {
       url: `http://${urlHostName}:${portOf(server)}`,
       pid: process.pid,
-      since: DateTime.formatIso(yield* DateTime.now),
+      since,
     };
 
     yield* recordServer(home, recorded).pipe(Scope.provide(scope));

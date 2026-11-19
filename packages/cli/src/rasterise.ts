@@ -19,16 +19,22 @@ export class RasteriseFailed extends Schema.TaggedError<
 let started: Promise<void> | undefined;
 
 const start = resvgWasm.pipe(
-  Effect.flatMap((bytes) =>
-    Effect.tryPromise(() => {
-      started ??= initWasm(bytes);
-
-      return started;
-    })
-  ),
   Effect.mapError((cause) =>
     RasteriseFailed.make({
       reason: `the renderer didn't start: ${String(cause)}`,
+    })
+  ),
+  Effect.flatMap((bytes) =>
+    Effect.tryPromise({
+      try: () => {
+        started ??= initWasm(bytes);
+
+        return started;
+      },
+      catch: (cause) =>
+        RasteriseFailed.make({
+          reason: `the renderer didn't start: ${String(cause)}`,
+        }),
     })
   )
 );

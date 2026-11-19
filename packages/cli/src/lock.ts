@@ -180,9 +180,11 @@ export const withLock = Effect.fnUntraced(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const file = path.join(yield* stateFolder(home), "lock");
+  const stateDir = yield* stateFolder(home);
+  const file = path.join(stateDir, "lock");
 
-  const since = DateTime.formatIso(yield* DateTime.now);
+  const currentTime = yield* DateTime.now;
+  const since = DateTime.formatIso(currentTime);
   const content = yield* encodeHolder({ pid: process.pid, command, since });
 
   // Only remove the lock while it's still ours.

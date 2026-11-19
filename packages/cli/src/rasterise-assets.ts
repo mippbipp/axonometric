@@ -29,7 +29,12 @@ export const resvgFonts = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  return yield* Effect.forEach(fontFiles, (name) =>
-    fs.readFile(path.join(import.meta.dirname, "..", "assets", "fonts", name))
+  return yield* Effect.forEach(
+    fontFiles,
+    (name) =>
+      fs.readFile(
+        path.join(import.meta.dirname, "..", "assets", "fonts", name)
+      ),
+    { concurrency: 1 }
   );
 });

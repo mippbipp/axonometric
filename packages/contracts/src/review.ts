@@ -127,6 +127,7 @@ export const frozenRefusal: {
   )
 );
 
+// oxlint-disable-next-line effecttsgo/global-json -- a map key built from layout changes, never decoded
 const keyOf = (change: LayoutChange) => JSON.stringify(change);
 
 /**

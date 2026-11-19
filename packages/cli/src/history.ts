@@ -127,7 +127,8 @@ export const checkHistory = Effect.fnUntraced(function* (
         ];
   });
 
-  const found = yield* Effect.forEach(yield* revisionsIn(home), check);
+  const revisions = yield* revisionsIn(home);
+  const found = yield* Effect.forEach(revisions, check, { concurrency: 1 });
 
   return Arr.flatten(found);
 });
@@ -174,13 +175,17 @@ export const loadHistory = Effect.fnUntraced(function* (
   const saved = yield* revisionsIn(home);
   const kept = new Map(Arr.map(known, (entry) => [entry.revision, entry]));
 
-  const entries = yield* Effect.forEach(saved, (n) => {
-    const entry = kept.get(n);
+  const entries = yield* Effect.forEach(
+    saved,
+    (n) => {
+      const entry = kept.get(n);
 
-    return entry === undefined
-      ? Effect.map(readRevision(home, n), Option.map(historyEntryOf))
-      : Effect.succeedSome(entry);
-  });
+      return entry === undefined
+        ? Effect.map(readRevision(home, n), Option.map(historyEntryOf))
+        : Effect.succeedSome(entry);
+    },
+    { concurrency: 1 }
+  );
 
   return Arr.reverse(Arr.flatMap(entries, Option.toArray));
 });

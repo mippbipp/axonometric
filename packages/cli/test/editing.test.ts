@@ -16,6 +16,8 @@ import {
 import type { Page, Route } from "playwright";
 
 import {
+  assertAttribute,
+  assertCount,
   attributeOf,
   boxesOf,
   centreOf,
@@ -174,21 +176,22 @@ describe("moving structures", () => {
           y: onto.y - from.y,
         });
 
-        assert.strictEqual(
-          yield* attributeOf(page, "[data-drag-outline]", "data-refused"),
+        yield* assertAttribute(
+          page,
+          { selector: "[data-drag-outline]", name: "data-refused" },
           "true"
         );
 
         // The dragged box is see-through and its start is outlined, so the
         // box it's over, and the place it left, still show.
-        assert.strictEqual(
-          yield* count(page, '[data-drag-origin="engineer"]'),
-          1
+        yield* assertCount(page, '[data-drag-origin="engineer"]', 1);
+
+        const engineerOpacity = yield* opacityOf(
+          page,
+          '[data-structure="engineer"]'
         );
-        assert.isBelow(
-          Number(yield* opacityOf(page, '[data-structure="engineer"]')),
-          1
-        );
+
+        assert.isBelow(Number(engineerOpacity), 1);
 
         const before = yield* attributeOf(
           page,
@@ -200,19 +203,18 @@ describe("moving structures", () => {
         yield* waitGone(page, "[data-drag-outline]");
         yield* Effect.sleep("500 millis");
 
-        assert.isTrue(Option.isNone(yield* proposalsIn(home)));
-        assert.strictEqual(
-          yield* count(page, '[data-structure][data-pending="true"]'),
-          0
+        const savedProposals = yield* proposalsIn(home);
+        assert.isTrue(Option.isNone(savedProposals));
+
+        yield* assertCount(page, '[data-structure][data-pending="true"]', 0);
+
+        const engineerFaceX = yield* attributeOf(
+          page,
+          '[data-structure="engineer"] [data-face]',
+          "x"
         );
-        assert.strictEqual(
-          yield* attributeOf(
-            page,
-            '[data-structure="engineer"] [data-face]',
-            "x"
-          ),
-          before
-        );
+
+        assert.strictEqual(engineerFaceX, before);
       }),
     60_000
   );
@@ -232,7 +234,8 @@ describe("moving structures", () => {
         );
         yield* waitFor(page, '[data-inside-view="page"]');
 
-        assert.isTrue(Option.isNone(yield* proposalsIn(home)));
+        const savedProposals = yield* proposalsIn(home);
+        assert.isTrue(Option.isNone(savedProposals));
       }),
     60_000
   );
@@ -259,36 +262,33 @@ describe("the pending look", () => {
             yield* showView(page, "plan");
           }
 
-          assert.strictEqual(
-            yield* attributeOf(
-              page,
-              '[data-structure="engineer"]',
-              "data-pending"
-            ),
-            "true",
-            view
+          const pendingAttribute = yield* attributeOf(
+            page,
+            '[data-structure="engineer"]',
+            "data-pending"
           );
-          assert.strictEqual(
-            yield* count(page, '[data-accepted-outline="engineer"]'),
-            1,
-            view
+
+          assert.strictEqual(pendingAttribute, "true", view);
+
+          const acceptedOutlineCount = yield* count(
+            page,
+            '[data-accepted-outline="engineer"]'
           );
+
+          assert.strictEqual(acceptedOutlineCount, 1, view);
           // The pending look is the outline and the face tint: no text sits
           // on the map, and a screen reader hears it in the structure's name.
-          assert.strictEqual(
-            yield* count(page, "[data-pending-badge]"),
-            0,
-            view
+          const pendingBadgeCount = yield* count(page, "[data-pending-badge]");
+
+          assert.strictEqual(pendingBadgeCount, 0, view);
+
+          const engineerLabel = yield* attributeOf(
+            page,
+            '[data-structure="engineer"]',
+            "aria-label"
           );
-          assert.include(
-            yield* attributeOf(
-              page,
-              '[data-structure="engineer"]',
-              "aria-label"
-            ),
-            "pending change",
-            view
-          );
+
+          assert.include(engineerLabel, "pending change", view);
 
           const stroke = yield* strokeOf(page, '[data-structure="engineer"]');
           const ink = yield* strokeOf(page, '[data-structure="page"]');
@@ -342,15 +342,19 @@ describe("resizing structures", () => {
         );
         yield* waitFor(page, '[data-resize-handle="se"]');
 
-        assert.strictEqual(yield* count(page, "[data-resize-handle]"), 4);
+        yield* assertCount(page, "[data-resize-handle]", 4);
+
+        const scaleText = yield* attributeOf(
+          page,
+          "svg[data-scale]",
+          "data-scale"
+        );
 
         // The engineer's footprint is 2 × 2. On the Iso view's ground a unit
         // along x is 36 right and 18 down, and along y 36 left and 18 down,
         // in drawing units, so from the back corner (nw) the others sit at
         // these offsets.
-        const scale = Number(
-          yield* attributeOf(page, "svg[data-scale]", "data-scale")
-        );
+        const scale = Number(scaleText);
 
         const back = yield* centreOf(page, '[data-resize-handle="nw"]');
 
@@ -491,7 +495,8 @@ describe("the pending list", () => {
         assert.deepStrictEqual(after.layout, []);
         yield* waitGone(page, '[data-structure][data-pending="true"]');
         yield* waitGone(page, "[data-accepted-outline]");
-        assert.strictEqual(yield* attributeOf(page, face, "x"), accepted);
+        const faceX = yield* attributeOf(page, face, "x");
+        assert.strictEqual(faceX, accepted);
       }),
     60_000
   );
@@ -516,24 +521,22 @@ describe("editing off", () => {
         yield* Effect.promise(() =>
           page.locator('[data-structure="page"]').click()
         );
-        assert.strictEqual(yield* count(page, "[data-resize-handle]"), 0);
+        yield* assertCount(page, "[data-resize-handle]", 0);
 
         const before = yield* centreOf(page, '[data-structure="server"]');
 
         yield* dragBy(page, before, { x: 0, y: unit * 2 });
 
-        assert.strictEqual(yield* count(page, "[data-drag-outline]"), 0);
+        yield* assertCount(page, "[data-drag-outline]", 0);
 
         yield* Effect.promise(() =>
           page.locator('[role="tab"][data-tab="pending"]').click()
         );
         yield* waitFor(page, "[data-pending-change]");
+
         // The drag also proposed a group change; its row keeps a Discard, but
         // disabled, as every review row does while the server is stopped.
-        assert.strictEqual(
-          yield* count(page, "[data-pending-list] button:enabled"),
-          0
-        );
+        yield* assertCount(page, "[data-pending-list] button:enabled", 0);
       }),
     60_000
   );
@@ -574,34 +577,17 @@ describe("editing off", () => {
           opened.page.locator('[data-structure="engineer"]').click()
         );
 
-        assert.strictEqual(
-          yield* attributeOf(
-            opened.page,
-            '[data-structure="engineer"] [data-face]',
-            "x"
-          ),
+        yield* assertAttribute(
+          opened.page,
+          { selector: '[data-structure="engineer"] [data-face]', name: "x" },
           "0"
         );
-        assert.strictEqual(
-          yield* count(opened.page, '[data-pending="true"]'),
-          0
-        );
-        assert.strictEqual(
-          yield* count(opened.page, "[data-accepted-outline]"),
-          0
-        );
-        assert.strictEqual(
-          yield* count(opened.page, "[data-resize-handle]"),
-          0
-        );
-        assert.strictEqual(
-          yield* count(opened.page, '[data-layout-editor="on"]'),
-          0
-        );
-        assert.strictEqual(
-          yield* count(opened.page, '[role="tab"][data-tab="pending"]'),
-          0
-        );
+        yield* assertCount(opened.page, '[data-pending="true"]', 0);
+        yield* assertCount(opened.page, "[data-accepted-outline]", 0);
+        yield* assertCount(opened.page, "[data-resize-handle]", 0);
+        yield* assertCount(opened.page, '[data-layout-editor="on"]', 0);
+
+        yield* assertCount(opened.page, '[role="tab"][data-tab="pending"]', 0);
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
@@ -619,7 +605,8 @@ describe("editing off", () => {
     const { home, serve, page } = yield* servedReview;
     const held = yield* Latch.make();
     const reached = yield* Latch.make();
-    const run = Effect.runPromiseWith(yield* Effect.context());
+    const services = yield* Effect.context();
+    const run = Effect.runPromiseWith(services);
 
     yield* showView(page, "plan");
 
@@ -680,10 +667,7 @@ describe("editing off", () => {
           "page",
           "upstream",
         ]);
-        assert.strictEqual(
-          yield* count(page, '[data-edit-notice="conflict"]'),
-          0
-        );
+        yield* assertCount(page, '[data-edit-notice="conflict"]', 0);
       }),
     60_000
   );
