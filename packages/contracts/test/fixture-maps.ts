@@ -1,6 +1,6 @@
 import { Array as Arr, Effect, Schema } from "effect";
 
-import { Layout, MapData } from "../src/index.ts";
+import { Layout, MapData, placeStructures } from "../src/index.ts";
 
 /** A fixture map from the CLI's test fixtures, decoded. */
 export const fixture = (name: string) =>
@@ -28,6 +28,28 @@ export const fixture = (name: string) =>
     )(layoutModule).pipe(Effect.map(({ default: value }) => value));
 
     return { data: data.default, layout };
+  }).pipe(Effect.orDie);
+
+/** A fixture map with no saved layout, placed as `build` places it. */
+export const placedFixture = (name: string) =>
+  Effect.gen(function* () {
+    const module: unknown = yield* Effect.promise(
+      () =>
+        import(
+          new URL(
+            `../../cli/test/fixtures/${name}/map/data.mjs`,
+            import.meta.url
+          ).href
+        )
+    );
+
+    const { default: data } = yield* Schema.decodeUnknownEffect(
+      Schema.Struct({ default: MapData })
+    )(module);
+
+    const empty: Layout = { format: 1, revision: 0, structures: {} };
+
+    return { data, layout: placeStructures(data, empty).layout };
   }).pipe(Effect.orDie);
 
 /** What each chapter shows: its reveals and every earlier chapter's. */
