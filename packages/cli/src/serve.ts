@@ -259,11 +259,11 @@ const listenOn = (host: string, port: number) =>
     }).pipe(Effect.tap(() => closeConnections));
   }).pipe(
     Effect.asSome,
-    Effect.catchTag("ServeError", (error) =>
-      isAddressInUse(error.cause)
+    Effect.catchTag("ServeError", (failure) =>
+      isAddressInUse(failure.cause)
         ? Effect.succeedNone
         : Effect.fail(
-            ListenFailed.make({ host, reason: describeError(error.cause) })
+            ListenFailed.make({ host, reason: describeError(failure.cause) })
           )
     )
   );
@@ -330,16 +330,19 @@ const rebuildHeld = (home: string) =>
       proposals,
       rejected: Option.none(),
     })),
-    Effect.catchTag("MapInvalid", (error) =>
-      Effect.as(Console.error(printedRejection(error)), (held: Held): Held => ({
-        ...held,
-        rejected: Option.some(
-          ServerEvent.cases.MapRejected.make({
-            summary: summaryOf(error),
-            problems: error.problems,
-          })
-        ),
-      }))
+    Effect.catchTag("MapInvalid", (invalid) =>
+      Effect.as(
+        Console.error(printedRejection(invalid)),
+        (held: Held): Held => ({
+          ...held,
+          rejected: Option.some(
+            ServerEvent.cases.MapRejected.make({
+              summary: summaryOf(invalid),
+              problems: invalid.problems,
+            })
+          ),
+        })
+      )
     )
   );
 

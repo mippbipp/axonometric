@@ -606,6 +606,7 @@ describe("editing off", () => {
     const held = yield* Latch.make();
     const reached = yield* Latch.make();
     const services = yield* Effect.context();
+    // oxlint-disable-next-line eslint/no-restricted-properties -- Playwright calls this route handler from outside the Effect runtime, so it needs a Promise
     const run = Effect.runPromiseWith(services);
 
     yield* showView(page, "plan");

@@ -1,210 +1,63 @@
 import { recommended } from "@effect/tsgo/oxlint-presets";
+import nkzw from "@nkzw/oxlint-config/with-sorting";
 import { defineConfig } from "oxlint";
 
+const MANUAL_EFFECT_RUNNER_MESSAGE =
+  "Write the test with `it.effect(...)` or `layer(...)(...)` from `@effect/vitest`.";
+
 export default defineConfig({
-  extends: [recommended],
-  options: {
-    typeAware: true,
-    typeCheck: true, // not full-tree build typechecking
-    denyWarnings: true,
-  },
   categories: {
     correctness: "error",
-    suspicious: "warn",
+    nursery: "off",
     pedantic: "warn",
     perf: "error",
-    style: "warn",
     restriction: "warn",
-    nursery: "off",
+    style: "warn",
+    suspicious: "warn",
   },
-  plugins: [
-    "unicorn",
-    "typescript",
-    "oxc",
-    "eslint",
-    "vitest",
-    "jsx-a11y",
-    "react",
-    "node",
-    "import",
+  env: {
+    builtin: true,
+  },
+  extends: [recommended, nkzw],
+  globals: {},
+  ignorePatterns: [
+    "dist/**",
+    // agent tooling dirs (installed skills/hooks) are not application source
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    // fixture maps are written the way an agent writes data.mjs
+    "**/test/fixtures/**",
   ],
-  jsPlugins: [
-    "eslint-plugin-turbo",
-    "@shadcn/lint",
-    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
-    {
-      name: "anti-slop-effect",
-      specifier: "./tools/oxlint/anti-slop/effect/index.ts",
-    },
-  ],
-  rules: {
-    // --- anti-slop js plugin preferences ---
-
-    "oxc/no-accumulating-spread": "error",
-    "anti-slop/no-array-filter-map": "error",
-    "anti-slop/no-reduce-accumulator-copy": "error",
-    "anti-slop/no-chained-type-assertions": "error",
-    "anti-slop/no-conditional-empty-object-spread": "error",
-    "anti-slop/no-known-value-widening": "error",
-    "anti-slop/no-module-mocking": "error",
-    "anti-slop/no-object-parameters": "error",
-    "anti-slop/no-reflect-apply": "error",
-    "anti-slop/no-reflect-get": "error",
-    "anti-slop/no-runtime-typeof": "error",
-    // "shape" is a domain term here (see GLOSSARY.md): what a structure is
-    // drawn as. The rule targets "shape" meaning a value's type.
-    "anti-slop/no-shape-in-symbol-names": "off",
-    "anti-slop/no-unknown-parameters": "error",
-    "anti-slop/no-unknown-returns": "error",
-    "anti-slop/no-unknown-type-aliases": "error",
-    // Test names start lowercase, except for the glossary's view names,
-    // which GLOSSARY.md capitalises.
-    "vitest/prefer-lowercase-title": [
-      "warn",
-      { allowedPrefixes: ["Iso view", "Plan view"] },
-    ],
-    "anti-slop/no-unsafe-dictionary-type": "error",
-    "anti-slop/no-widen-then-assert": "error",
-    "anti-slop/require-readable-spacing": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error",
-    "anti-slop-effect/no-manual-effect-error-tag": "error",
-    "anti-slop-effect/no-manual-tag-comparison": "error",
-    "anti-slop-effect/no-manual-tagged-construction": "error",
-    "anti-slop-effect/no-service-constructor-imports": [
-      "error",
-      { packageAliases: ["@axonometric/"] },
-    ],
-    "anti-slop-effect/prefer-effect-match": "error",
-    // The workspace packages are private and bundled into one CLI, so no
-    // export is a public library API that could leak an unstable Effect type.
-    "effecttsgo/api-stability-leak": "off",
-    // --- not applicable in codebase ---
-    "unicorn/throw-new-error": "off", // Effect errors are values (Schema.TaggedError), never thrown
-    "import/named": "off",
-    "import/default": "off",
-    "import/namespace": "off",
-    "eslint/no-undef": "off",
-    "oxc/no-async-await": "off",
-    "oxc/no-optional-chaining": "off",
-    "oxc/no-rest-spread-properties": "off",
-    "react/react-in-jsx-scope": "off",
-
-    // --- js plugin preferences ---
-
-    "turbo/no-undeclared-env-vars": [
-      "error",
-      // Vite's built-in import.meta.env flags are compile-time constants, not env vars
-      { allowList: ["^(DEV|PROD|SSR|MODE|BASE_URL)$"] },
-    ],
-
-    // --- shadcn design-system rules (https://github.com/shadcn-ui/lint) ---
-    // no-raw-colors and no-inline-styles stay enabled inside the component
-    // dir too; the other three are off there (see override below)
-
-    "shadcn/no-arbitrary-values": ["error", { allow: ["layout"] }],
-    "shadcn/no-inline-styles": "error",
-    "shadcn/no-raw-colors": "error",
-    "shadcn/no-restyle": ["error", { allow: ["layout"] }],
-    // cn-* are shadcn's namespaced customization hooks and toaster is
-    // sonner's documented hook; neither is Tailwind CSS, both are upstream
-    // boilerplate kept so registry updates apply cleanly
-    "shadcn/no-unknown-classes": ["error", { allow: ["cn-*", "toaster"] }],
-    "shadcn/require-static-classes": "error",
-
-    // --- builtin plugin preferences ---
-
-    // oxfmt will sort imports
-    // https://github.com/oxc-project/oxc/issues/14253
-    // https://github.com/oxc-project/oxc/issues/13610
-    "eslint/sort-imports": "off",
-    "eslint/max-lines-per-function": "off",
-    "eslint/max-lines": "off",
-    "eslint/init-declarations": "off",
-    "eslint/new-cap": "off",
-    "eslint/sort-keys": "off",
-    "eslint/func-names": "off",
-    "eslint/func-style": "off",
-    "eslint/no-magic-numbers": "off",
-    "eslint/no-ternary": "off",
-    "eslint/no-nested-ternary": "off",
-    "eslint/no-bitwise": "off",
-    "eslint/no-void": "off",
-    "eslint/class-methods-use-this": "off",
-    "eslint/capitalized-comments": "off",
-    "eslint/max-statements": "off",
-    "eslint/max-classes-per-file": "off",
-    "eslint/id-length": "off",
-    "eslint/no-undefined": "off",
-    "eslint/no-duplicate-imports": [
-      "error",
-      {
-        allowSeparateTypeImports: true,
-      },
-    ],
-    "eslint/no-plusplus": "off",
-    "eslint/no-await-in-loop": "off",
-    "eslint/no-promise-executor-return": "off",
-    "eslint/no-inline-comments": "off",
-    "eslint/no-warning-comments": ["warn", { terms: ["fixme", "xxx"] }],
-    "eslint/no-use-before-define": "off",
-    "eslint/no-empty-function": "off",
-    // one declaration per statement; comma-joined declarations hurt readability
-    "eslint/one-var": ["error", "never"],
-    // A schema and its type share a name (`const Hop = Schema.Struct(...)`
-    // and `type Hop = typeof Hop.Type`). TypeScript keeps values and types
-    // apart, and tsc reports real redeclarations itself.
-    "eslint/no-redeclare": "off",
-    "eslint/no-underscore-dangle": "error",
-
-    "import/no-namespace": "off",
-    "import/no-named-export": "off",
-    "import/prefer-default-export": "off",
-    "import/exports-last": "off",
-    "import/group-exports": "off",
-    "import/max-dependencies": "off",
-    "import/no-relative-parent-imports": "off",
-    "import/no-nodejs-modules": "off",
-    "import/no-default-export": "off",
-    "import/consistent-type-specifier-style": "off",
-
-    "jest/require-hook": "off",
-
-    "react/jsx-filename-extension": ["error", { extensions: [".tsx"] }],
-    "react/jsx-max-depth": "off",
-    "react/no-multi-comp": "off",
-    "react/no-children-prop": "off",
-    // className/style passthrough is the shadcn composition model used by every
-    // component in packages/ui; forbidding it would remove the kit's styling API
-    "react/forbid-component-props": "off",
-    // no i18n infrastructure in the repo; inline copy is fine until then
-    "react/jsx-no-literals": "off",
-
-    "typescript/no-unsafe-type-assertion": "off",
-    "typescript/explicit-module-boundary-types": "off",
-    "typescript/explicit-function-return-type": "off",
-    "typescript/promise-function-async": "off",
-    "typescript/strict-boolean-expressions": "off",
-    "typescript/no-confusing-void-expression": "off",
-    "typescript/prefer-readonly-parameter-types": "off",
-
-    "unicorn/prefer-ternary": "off",
-    "unicorn/prefer-add-event-listener": "off",
-    "unicorn/no-array-method-this-argument": "off",
-    "unicorn/no-array-callback-reference": "off",
-    "unicorn/no-null": "off",
-    "unicorn/no-nested-ternary": "off",
-    "unicorn/no-array-for-each": "off",
-    "unicorn/switch-case-braces": "off",
-    "unicorn/no-array-reduce": "off",
+  jsPlugins: ["eslint-plugin-turbo", "@shadcn/lint"],
+  options: {
+    denyWarnings: true,
+    typeAware: true,
+    typeCheck: true, // not full-tree build typechecking
   },
   overrides: [
+    {
+      // tool config files are plain data; native array methods are fine
+      files: ["*.config.ts"],
+      rules: {
+        "effecttsgo/prefer-effect-array": "off",
+      },
+    },
     {
       // CLI and script entrypoints: the top-level runMain launches the process,
       // it is not test setup code
       files: ["packages/cli/src/bin.ts", "packages/cli/scripts/*.ts"],
       rules: {
-        "vitest/require-hook": "off",
         "effecttsgo/strict-effect-provide": "off",
+        "vitest/require-hook": "off",
       },
     },
     {
@@ -219,7 +72,7 @@ export default defineConfig({
       // The test lock wraps `turbo` before anything else runs, so it uses
       // only Node's built-ins and stays out of the Effect runtime. Its tests
       // run on node:test for the same reason.
-      files: ["scripts/with-test-lock.ts", "scripts/with-test-lock.test.ts"],
+      files: ["scripts/with-test-lock*.ts"],
       rules: {
         "effecttsgo/async-function": "off",
         "effecttsgo/global-date": "off",
@@ -232,6 +85,7 @@ export default defineConfig({
         "node/no-process-env": "off",
         "node/no-sync": "off",
         "node/no-top-level-await": "off",
+        "promise/avoid-new": "off",
         "unicorn/import-style": "off",
         "unicorn/no-process-exit": "off",
         "vitest/no-import-node-test": "off",
@@ -256,6 +110,20 @@ export default defineConfig({
         "effecttsgo/prefer-effect-array": "off",
         "effecttsgo/prefer-effect-record": "off",
         "effecttsgo/prefer-effect-string": "off",
+        // Event targets are narrowed to DOM nodes with instanceof; the DOM has
+        // no other type guard for them.
+        "@nkzw/no-instanceof": "off",
+      },
+    },
+    {
+      // The clipboard call hands its outcome to a callback, and either outcome
+      // is reported, so there is no rejection left to catch.
+      files: ["packages/editor/src/ready-for-review.tsx"],
+      rules: {
+        "promise/always-return": "off",
+        "promise/catch-or-return": "off",
+        "promise/no-callback-in-promise": "off",
+        "promise/prefer-catch": "off",
       },
     },
     {
@@ -274,6 +142,40 @@ export default defineConfig({
       },
     },
     {
+      // Effect.run* and ManagedRuntime.make skip the test runtime's scope,
+      // TestClock and layer cleanup; tests use it.effect or layer() from
+      // @effect/vitest instead
+      files: ["**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],
+      rules: {
+        "eslint/no-restricted-properties": [
+          "error",
+          ...[
+            "runCallback",
+            "runCallbackWith",
+            "runFork",
+            "runForkWith",
+            "runPromise",
+            "runPromiseExit",
+            "runPromiseExitWith",
+            "runPromiseWith",
+            "runSync",
+            "runSyncExit",
+            "runSyncExitWith",
+            "runSyncWith",
+          ].map((property) => ({
+            message: MANUAL_EFFECT_RUNNER_MESSAGE,
+            object: "Effect",
+            property,
+          })),
+          {
+            message: MANUAL_EFFECT_RUNNER_MESSAGE,
+            object: "ManagedRuntime",
+            property: "make",
+          },
+        ],
+      },
+    },
+    {
       files: ["**/*.test.ts", "**/test/**/*.ts"],
       rules: {
         // @effect/vitest layer() owns setup and teardown internally
@@ -281,8 +183,8 @@ export default defineConfig({
         // @effect/vitest layer() owns setup and teardown internally
         "vitest/require-hook": "off",
         // Effect-integrated assert replaces expect.hasAssertions.
-        "vitest/prefer-expect-assertions": "off",
         "effecttsgo/strict-effect-provide": "off",
+        "vitest/prefer-expect-assertions": "off",
         // Fixtures are written and compared as plain JSON; a throw fails the test.
         "effecttsgo/global-json": "off",
         // shared test helpers are plain data functions, so a data-last overload
@@ -318,11 +220,163 @@ export default defineConfig({
       },
     },
   ],
+  plugins: [
+    "unicorn",
+    "typescript",
+    "oxc",
+    "eslint",
+    "vitest",
+    "jsx-a11y",
+    "react",
+    "node",
+    "import",
+  ],
+  rules: {
+    "vitest/prefer-lowercase-title": [
+      "warn",
+      { allowedPrefixes: ["Iso view", "Plan view"] },
+    ],
+    // The workspace packages are private and bundled into one CLI, so no
+    // export is a public library API that could leak an unstable Effect type.
+    "effecttsgo/api-stability-leak": "off",
+    // TEMPORARY-SORT-OFF
+    "perfectionist/sort-enums": "off",
+    "perfectionist/sort-heritage-clauses": "off",
+    "perfectionist/sort-interfaces": "off",
+    "perfectionist/sort-jsx-props": "off",
+    "perfectionist/sort-object-types": "off",
+    "perfectionist/sort-objects": "off",
+    "typescript/array-type": "off",
+    // END-TEMPORARY-SORT-OFF
+    // --- not applicable in codebase ---
+    "eslint/no-undef": "off",
+    "import/default": "off",
+    "import/named": "off",
+    "import/namespace": "off",
+    "oxc/no-async-await": "off",
+    "oxc/no-optional-chaining": "off",
+    "oxc/no-rest-spread-properties": "off",
+    "react/react-in-jsx-scope": "off",
+    "unicorn/throw-new-error": "off", // Effect errors are values (Schema.TaggedError), never thrown
+
+    // --- js plugin preferences ---
+
+    "turbo/no-undeclared-env-vars": [
+      "error",
+      // Vite's built-in import.meta.env flags are compile-time constants, not env vars
+      { allowList: ["^(DEV|PROD|SSR|MODE|BASE_URL)$"] },
+    ],
+
+    // --- shadcn design-system rules (https://github.com/shadcn-ui/lint) ---
+    // no-raw-colors and no-inline-styles stay enabled inside the component
+    // dir too; the other three are off there (see override below)
+
+    "shadcn/no-arbitrary-values": ["error", { allow: ["layout"] }],
+    "shadcn/no-inline-styles": "error",
+    "shadcn/no-raw-colors": "error",
+    "shadcn/no-restyle": ["error", { allow: ["layout"] }],
+    // cn-* are shadcn's namespaced customization hooks and toaster is
+    // sonner's documented hook; neither is Tailwind CSS, both are upstream
+    // boilerplate kept so registry updates apply cleanly
+    "shadcn/no-unknown-classes": ["error", { allow: ["cn-*", "toaster"] }],
+    "shadcn/require-static-classes": "error",
+
+    // --- builtin plugin preferences ---
+
+    // effecttsgo/async-function already bans async functions, so the
+    // remaining Promise interop (the clipboard, Playwright, bundler hooks)
+    // has to chain .then()
+    "promise/prefer-await-to-then": "off",
+
+    // oxfmt will sort imports
+    // https://github.com/oxc-project/oxc/issues/14253
+    // https://github.com/oxc-project/oxc/issues/13610
+    "eslint/capitalized-comments": "off",
+    "eslint/class-methods-use-this": "off",
+    "eslint/func-names": "off",
+    "eslint/func-style": "off",
+    "eslint/id-length": "off",
+    "eslint/init-declarations": "off",
+    "eslint/max-classes-per-file": "off",
+    "eslint/max-lines": "off",
+    "eslint/max-lines-per-function": "off",
+    "eslint/max-statements": "off",
+    "eslint/new-cap": "off",
+    "eslint/no-await-in-loop": "off",
+    "eslint/no-bitwise": "off",
+    "eslint/no-duplicate-imports": [
+      "error",
+      {
+        allowSeparateTypeImports: true,
+      },
+    ],
+    "eslint/no-empty-function": "off",
+    "eslint/no-inline-comments": "off",
+    "eslint/no-magic-numbers": "off",
+    "eslint/no-nested-ternary": "off",
+    "eslint/no-plusplus": "off",
+    "eslint/no-promise-executor-return": "off",
+    "eslint/no-ternary": "off",
+    "eslint/no-undefined": "off",
+    "eslint/no-use-before-define": "off",
+    "eslint/no-void": "off",
+    "eslint/no-warning-comments": ["warn", { terms: ["fixme", "xxx"] }],
+    "eslint/sort-imports": "off",
+    "eslint/sort-keys": "off",
+    // one declaration per statement; comma-joined declarations hurt readability
+    "eslint/one-var": ["error", "never"],
+    // A schema and its type share a name (`const Hop = Schema.Struct(...)`
+    // and `type Hop = typeof Hop.Type`). TypeScript keeps values and types
+    // apart, and tsc reports real redeclarations itself.
+    "eslint/no-redeclare": "off",
+    "eslint/no-underscore-dangle": "error",
+
+    "import/consistent-type-specifier-style": "off",
+    "import/exports-last": "off",
+    "import/group-exports": "off",
+    "import/max-dependencies": "off",
+    "import/no-default-export": "off",
+    "import/no-named-export": "off",
+    "import/no-namespace": "off",
+    "import/no-nodejs-modules": "off",
+    "import/no-relative-parent-imports": "off",
+    "import/prefer-default-export": "off",
+
+    "jest/require-hook": "off",
+
+    "react/jsx-filename-extension": ["error", { extensions: [".tsx"] }],
+    "react/jsx-max-depth": "off",
+    "react/no-children-prop": "off",
+    "react/no-multi-comp": "off",
+    // className/style passthrough is the shadcn composition model used by every
+    // component in packages/ui; forbidding it would remove the kit's styling API
+    "react/forbid-component-props": "off",
+    // no i18n infrastructure in the repo; inline copy is fine until then
+    "react/jsx-no-literals": "off",
+
+    "typescript/explicit-function-return-type": "off",
+    "typescript/explicit-module-boundary-types": "off",
+    "typescript/no-confusing-void-expression": "off",
+    "typescript/no-unsafe-type-assertion": "off",
+    "typescript/prefer-readonly-parameter-types": "off",
+    "typescript/promise-function-async": "off",
+    "typescript/strict-boolean-expressions": "off",
+
+    "unicorn/no-array-callback-reference": "off",
+    "unicorn/no-array-for-each": "off",
+    "unicorn/no-array-method-this-argument": "off",
+    "unicorn/no-array-reduce": "off",
+    "unicorn/no-nested-ternary": "off",
+    "unicorn/no-null": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "unicorn/prefer-ternary": "off",
+    "unicorn/switch-case-braces": "off",
+  },
   settings: {
     "jsx-a11y": {
-      polymorphicPropName: "as",
-      components: {},
       attributes: {},
+      components: {},
+      polymorphicPropName: "as",
     },
     react: {
       formComponents: [],
@@ -332,27 +386,4 @@ export default defineConfig({
       typecheck: false,
     },
   },
-  env: {
-    builtin: true,
-  },
-  globals: {},
-  ignorePatterns: [
-    "dist/**",
-    // agent tooling dirs (installed skills/hooks) and the vendored plugin
-    // itself are not application source
-    ".agent/**",
-    ".agents/**",
-    ".claude/**",
-    ".codex/**",
-    ".continue/**",
-    ".cursor/**",
-    ".gemini/**",
-    ".opencode/**",
-    ".pi/**",
-    ".roo/**",
-    ".windsurf/**",
-    "tools/oxlint/anti-slop/**",
-    // fixture maps are written the way an agent writes data.mjs
-    "**/test/fixtures/**",
-  ],
 });

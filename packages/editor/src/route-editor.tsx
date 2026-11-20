@@ -107,7 +107,6 @@ function Segments({
 
         return (
           <line
-            // oxlint-disable-next-line react/no-array-index-key -- a segment is named by its position along the route.
             key={index}
             data-route-segment=""
             data-hop-id={routed.hop.id}
