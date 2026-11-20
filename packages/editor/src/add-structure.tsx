@@ -1,10 +1,11 @@
 import { maxStructureNameLength } from "@axonometric/contracts";
 import type { GridPoint } from "@axonometric/contracts";
+import { Toggle } from "@axonometric/ui/components/toggle";
 import { Array as Arr, Option } from "effect";
 import { useId } from "react";
 
 import { addChangeOf, previewId, sentId } from "./add-change.ts";
-import { controlClass } from "./control-class.ts";
+import { controlClass, uiControlClass } from "./control-class.ts";
 import { useDraftSpot } from "./draft-spot.ts";
 import type { DraftSpot } from "./draft-spot.ts";
 import { fieldClass } from "./field-class.ts";
@@ -214,17 +215,16 @@ export function AddStructureForm() {
               value={spot?.y ?? ""}
             />
           </label>
-          <button
-            aria-pressed={placing.picking}
-            className={controlClass}
+          <Toggle
+            className={uiControlClass}
             data-add="pick"
-            onClick={() => {
-              placing.pick(!placing.picking);
+            onPressedChange={(on) => {
+              placing.pick(on);
             }}
-            type="button"
+            pressed={placing.picking}
           >
             {placing.picking ? "Click the map…" : "Pick on map"}
-          </button>
+          </Toggle>
         </div>
         <p className="opacity-70" data-add-hint>
           {spotHint(placing.spot, drafted)}
