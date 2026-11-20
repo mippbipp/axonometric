@@ -77,7 +77,7 @@ const tagClashesAt = (source: SceneSource, zoom: number) => {
 };
 
 /**
- * The zoom zoom to fit uses for `source`'s drawing, given the zoom
+ * The zoom that Zoom to fit uses for `source`'s drawing, given the zoom
  * `fitScale` that fits: the same, unless its name tags, placed at the size
  * they're drawn at that zoom, overlap each other or a box where they don't
  * at full size. Then it's the smallest zoom text is sized for at which they
@@ -173,8 +173,8 @@ export interface Drawn {
   readonly points: ReadonlyArray<ScreenPoint>;
 }
 
+// oxlint-disable effecttsgo/missing-pipeable-signature -- called with both arguments in hand, never piped.
 /** The screen points a structure's drawing reaches in `view`, tag included. */
-// oxlint-disable-next-line effecttsgo/missing-pipeable-signature -- called with both arguments in hand, never piped.
 export const structureExtentOf = (
   view: View,
   { outline, placement, structure, tag }: SceneStructure
@@ -203,6 +203,7 @@ export const structureExtentOf = (
     { sx: tag.right, sy: tag.bottom },
   ];
 };
+// oxlint-enable effecttsgo/missing-pipeable-signature
 
 /** Everything a scene draws, with the structures each belongs to. */
 export const drawnIn = (scene: Scene): ReadonlyArray<Drawn> => [
