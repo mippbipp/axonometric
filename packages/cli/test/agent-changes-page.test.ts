@@ -311,9 +311,9 @@ describe("the agent's layout changes in the page", () => {
         );
 
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
         yield* click(page, "[data-review-close]");
-        yield* waitGone(page, "[data-review-dialog][open]");
+        yield* waitGone(page, "[data-review-dialog][data-open]");
 
         const proposals = yield* readProposals(home);
 
