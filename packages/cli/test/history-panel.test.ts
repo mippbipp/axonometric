@@ -372,8 +372,8 @@ describe("the History panel", () => {
 
         yield* assertAttribute(
           page,
-          { name: "disabled", selector: '[data-tab="pending"]' },
-          ""
+          { name: "aria-disabled", selector: '[data-tab="pending"]' },
+          "true"
         );
         yield* assertTextIncludes(page, '[data-tab="pending"]', "Pending · 0");
         const tabsAfter = yield* tabBoxes(page);
@@ -413,10 +413,10 @@ describe("the History panel", () => {
         const pendingTabDisabled = yield* attributeOf(
           page,
           '[data-tab="pending"]',
-          "disabled"
+          "aria-disabled"
         );
 
-        assert.strictEqual(pendingTabDisabled, null);
+        assert.notStrictEqual(pendingTabDisabled, "true");
 
         const back = yield* centreOf(page, '[data-structure="engineer"]');
 
