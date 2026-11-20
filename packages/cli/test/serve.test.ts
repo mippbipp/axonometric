@@ -159,28 +159,48 @@ describe("status", () => {
     })
   );
 
-  it.live("prints the URL and PID from a live server's state file", () =>
+  it.live("prints the URL, PID and page count of a live server", () =>
     Effect.gen(function* () {
-      const pid = yield* liveProcess;
-      const home = yield* homeWithStateFile(pid);
+      const home = yield* minimalHome;
+      const serve = yield* startServe(home, ["--port", "0"]);
 
       const text = yield* runCli(home, ["status", home]);
       const json = yield* runCli(home, ["status", home, "--json"]);
 
       assert.strictEqual(text.exitCode, 0, text.stderr);
-      assert.strictEqual(
+      assert.include(
         text.stdout,
-        `Serving ${home} at http://127.0.0.1:5999, process ${pid}, since 2026-11-01T09:00:00.000Z.\n`
+        `Serving ${home} at ${serve.url}, process ${process.pid}, since `
       );
+      assert.include(text.stdout, ", 0 pages connected.\n");
       const report = yield* decodeReport(json.stdout);
-      assert.deepStrictEqual(report, {
+      assert.include(report, {
         home,
-        pid,
+        pid: process.pid,
         running: true,
-        since: "2026-11-01T09:00:00.000Z",
-        url: "http://127.0.0.1:5999",
+        url: serve.url,
       });
     })
+  );
+
+  it.live(
+    "fails, rather than saying none runs, when a live process doesn't answer",
+    () =>
+      Effect.gen(function* () {
+        const pid = yield* liveProcess;
+        const home = yield* homeWithStateFile(pid);
+
+        const text = yield* runCli(home, ["status", home]);
+        const json = yield* runCli(home, ["status", home, "--json"]);
+
+        for (const result of [text, json]) {
+          assert.notStrictEqual(result.exitCode, 0);
+          assert.include(result.stderr, "http://127.0.0.1:5999");
+          assert.include(result.stderr, `process ${pid}`);
+          assert.include(result.stderr, "didn't answer");
+          assert.notInclude(result.stdout, "No server is running");
+        }
+      })
   );
 
   it.live("ignores a state file whose process has exited", () =>

@@ -93,6 +93,31 @@ export const agentHeldWriteRefusal = ({
     ),
   });
 
+/**
+ * Why the page's write of `after` over `before` is refused for changing who
+ * made a change: it holds an id that `before` lists with another `by`. The
+ * page can't make a change the agent's, or take one over under the same id.
+ * An engineer who takes over gets a new id, so that never trips this.
+ */
+export const authorChangeRefusal = ({
+  after,
+  before,
+}: {
+  readonly after: ReadonlyArray<LayoutChange>;
+  readonly before: ReadonlyArray<LayoutChange>;
+}): Option.Option<string> =>
+  Option.flatMap(
+    Arr.findFirst(after, (change) =>
+      Arr.some(before, (held) => held.id === change.id && held.by !== change.by)
+    ),
+    ({ by, id }) =>
+      Option.some(
+        by === "engineer"
+          ? `Change ${id} is the agent's. The page cannot change who made a change.`
+          : `Change ${id} is the engineer's. The page cannot change who made a change.`
+      )
+  );
+
 /** What the agent proposes for one target. */
 export type AgentProposal =
   /** Puts a structure at `next`. */

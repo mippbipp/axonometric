@@ -1,8 +1,11 @@
 import type { Structure } from "@axonometric/contracts";
+import {
+  RovingList,
+  RovingListItem,
+} from "@axonometric/ui/components/roving-list";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useMemo } from "react";
-import type { KeyboardEvent } from "react";
 
 import { useSelection } from "./selection-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -26,30 +29,22 @@ const useRevealedIn = () => {
   }, [stops]);
 };
 
-/** How far ↓ and ↑ move the selection through the index. */
-const arrowSteps: ReadonlyMap<string, number> = new Map([
-  ["ArrowDown", 1],
-  ["ArrowUp", -1],
-]);
-
 const itemClass =
   "focus-visible:outline-ink flex w-full cursor-pointer items-baseline gap-2 px-2 py-0.5 text-left text-xs focus-visible:outline-2 focus-visible:-outline-offset-2 hover:bg-face";
 
 function IndexItem({
   isNew,
   isSelected,
-  onKeyDown,
   structure,
 }: {
   readonly isNew: boolean;
   readonly isSelected: boolean;
-  readonly onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   readonly structure: Structure;
 }) {
   const { select } = useSelection();
 
   return (
-    <button
+    <RovingListItem
       aria-current={isSelected ? "true" : undefined}
       className={cn(
         itemClass,
@@ -62,12 +57,11 @@ function IndexItem({
       onClick={() => {
         select(structure.id);
       }}
-      onKeyDown={onKeyDown}
-      type="button"
+      value={structure.id}
     >
       <span className="w-6 shrink-0 font-medium">{structure.code}</span>
       <span>{structure.name}</span>
-    </button>
+    </RovingListItem>
   );
 }
 
@@ -81,7 +75,7 @@ function LaterItem({
   const { goTo } = useWalkthrough();
 
   return (
-    <button
+    <RovingListItem
       aria-label={`${structure.name}, revealed in chapter ${chapter}`}
       className={cn(itemClass, "opacity-50")}
       data-index-structure={structure.id}
@@ -89,65 +83,40 @@ function LaterItem({
       onClick={() => {
         goTo(chapter - 1);
       }}
-      type="button"
+      value={structure.id}
     >
       <span className="w-6 shrink-0 font-medium">{structure.code}</span>
       <span>{structure.name}</span>
       <span className="ml-auto shrink-0">ch {chapter}</span>
-    </button>
+    </RovingListItem>
   );
 }
 
 /**
  * Every structure by group, each with its code and name. Revealed ones
  * select their structure; later ones are dimmed, marked with the chapter that
- * reveals them, and jump to it. ↑ and ↓ move the selection through the
- * revealed ones. It hides on windows narrower than 1280px, so the map keeps
+ * reveals them, and jump to it. The list is one Tab stop, held by the selected
+ * structure. ↑ and ↓ move focus through every item, revealed or later, and
+ * Enter or Space on the focused one selects it; they don't move the
+ * selection. It hides on windows narrower than 1280px, so the map keeps
  * its room.
  */
 export function SideIndex({ className }: { readonly className?: string }) {
   const { newlyRevealed, revealed, state } = useWalkthrough();
-  const { select, selected } = useSelection();
+  const { selected } = useSelection();
   const revealedIn = useRevealedIn();
   const { groups, structures } = state.data;
 
-  const order = Arr.flatMap(groups, (group) =>
-    Arr.filter(
-      structures,
-      (structure) => structure.group === group.id && revealed.has(structure.id)
-    )
-  );
-
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const step = arrowSteps.get(event.key);
-
-    if (step === undefined || order.length === 0) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const at = order.findIndex(({ id }) => id === selected);
-    const from = at === -1 && step === -1 ? order.length : at;
-    const next = order[Math.max(0, Math.min(order.length - 1, from + step))];
-
-    if (next !== undefined) {
-      select(next.id);
-      event.currentTarget
-        .closest("[data-side-index]")
-        ?.querySelector<HTMLElement>(`[data-index-structure="${next.id}"]`)
-        ?.focus();
-    }
-  };
-
   return (
-    <nav
+    <RovingList
       aria-label="Structures"
       className={cn(
         "border-ink hidden w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r py-3 xl:flex",
         className
       )}
       data-side-index
+      orientation="vertical"
+      value={selected}
     >
       {Arr.map(groups, (group) => {
         const members = Arr.filter(
@@ -167,7 +136,6 @@ export function SideIndex({ className }: { readonly className?: string }) {
                     <IndexItem
                       isNew={newlyRevealed.has(structure.id)}
                       isSelected={selected === structure.id}
-                      onKeyDown={onKeyDown}
                       structure={structure}
                     />
                   ) : (
@@ -182,6 +150,6 @@ export function SideIndex({ className }: { readonly className?: string }) {
           </section>
         );
       })}
-    </nav>
+    </RovingList>
   );
 }

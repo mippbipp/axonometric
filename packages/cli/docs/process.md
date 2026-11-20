@@ -83,6 +83,16 @@ axonometric layout <home> --hop h-save --route auto
 
 List grid points from the edge of one footprint to the edge of the other, separated by spaces, with each point sharing `x` or `y` with the one before. `layout` refuses a route that doesn't start and end on the footprints' edges, has a diagonal leg or names a hop `data.mjs` lacks, and writes nothing. `--route auto` clears the override so the hop routes itself. It takes the map's lock and checks the file revision, like a move.
 
+Before you change the layout, find out whether an engineer is watching:
+
+```sh
+axonometric status <home> --json
+```
+
+While `pages` is above 0, a page is open, so propose with `layout --propose --reason` and let the engineer decide. With 0 pages, or when no server runs, apply the change directly.
+
+To learn what the engineer decided, pass `--since <time>` with `--json`. The first reply's `now` is the time to pass next. `decisions` then lists the engineer's accepts and discards of your changes after that time, oldest first, each with its `at`, your `change` and the `decision`. A change the engineer takes over by editing the same structure counts as discarded. A discard carries no reason. The server keeps the last 50 in memory, so a restart empties them. Each reply gives a new `now`, so nothing is missed or listed twice.
+
 To leave a move, resize or reroute for the engineer instead of applying it, add `--propose` and say why with `--reason`:
 
 ```sh

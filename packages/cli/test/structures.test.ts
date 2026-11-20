@@ -660,33 +660,92 @@ describe("the side index", () => {
     )
   );
 
-  it.live("selects a structure on click and moves with ↑ and ↓", () =>
+  it.live("selects on click and Enter; ↑ and ↓ only move focus", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { page } = yield* widePage;
 
+        const focusedIndexItem = () =>
+          Effect.promise(() =>
+            page.evaluate<string | null>(
+              "document.activeElement?.getAttribute('data-index-structure') ?? null"
+            )
+          );
+
+        const tabStops = () =>
+          Effect.promise(() =>
+            page.evaluate<Array<string>>(
+              "[...document.querySelectorAll('[data-side-index] [data-index-structure][tabindex=\"0\"]')].map((el) => el.getAttribute('data-index-structure'))"
+            )
+          );
+
+        const pinnedPanels = () =>
+          attributesOf(
+            page,
+            "[data-structure-panel][data-pinned]",
+            "data-structure-panel"
+          );
+
+        const currentItems = () =>
+          attributesOf(
+            page,
+            '[data-side-index] [aria-current="true"]',
+            "data-index-structure"
+          );
+
+        const initialStops = yield* tabStops();
+        // Before any selection one item holds the Tab stop.
+        assert.lengthOf(initialStops, 1);
+
         yield* click(page, indexItem("engineer"));
         yield* waitFor(page, '[data-structure-panel="engineer"][data-pinned]');
         yield* waitFor(page, `${indexItem("engineer")}[aria-current="true"]`);
+        yield* waitFor(page, `${indexItem("engineer")}[tabindex="0"]`);
+        const stopsAfterClick = yield* tabStops();
+        assert.deepStrictEqual(stopsAfterClick, ["engineer"]);
+        const focusAfterClick = yield* focusedIndexItem();
+        assert.strictEqual(focusAfterClick, "engineer");
 
+        // ↓ moves focus to the next revealed item, not the selection.
         yield* press(page, "ArrowDown");
-        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
-        yield* waitFor(page, '[data-structure="page"][data-selected="true"]');
+        yield* waitFor(page, `${indexItem("page")}:focus`);
+        const pinnedAfterDown = yield* pinnedPanels();
+        assert.deepStrictEqual(pinnedAfterDown, ["engineer"]);
+        const currentAfterDown = yield* currentItems();
+        assert.deepStrictEqual(currentAfterDown, ["engineer"]);
+        const stopsAfterDown = yield* tabStops();
+        assert.deepStrictEqual(stopsAfterDown, ["engineer"]);
 
-        // Unrevealed structures are skipped.
+        // Later structures are reachable, and focusing one doesn't jump
+        // chapters.
         yield* press(page, "ArrowDown");
-        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
+        yield* waitFor(page, `${indexItem("server")}:focus`);
+        const chapterAfterLater = yield* attributesOf(
+          page,
+          "[data-walkthrough]",
+          "data-chapter"
+        );
+        assert.deepStrictEqual(chapterAfterLater, ["c-page"]);
+        const pinnedAfterLater = yield* pinnedPanels();
+        assert.deepStrictEqual(pinnedAfterLater, ["engineer"]);
 
         yield* press(page, "ArrowUp");
-        yield* waitFor(page, '[data-structure-panel="engineer"][data-pinned]');
+        yield* press(page, "ArrowUp");
+        yield* waitFor(page, `${indexItem("engineer")}:focus`);
+        const focusAfterUp = yield* focusedIndexItem();
+        assert.strictEqual(focusAfterUp, "engineer");
 
-        const focused = yield* Effect.promise(() =>
-          page.evaluate(
-            "document.activeElement?.getAttribute('data-index-structure')"
-          )
-        );
-
-        assert.strictEqual(focused, "engineer");
+        // Enter on the focused item selects it, and the stop follows.
+        yield* press(page, "ArrowDown");
+        yield* waitFor(page, `${indexItem("page")}:focus`);
+        yield* press(page, "Enter");
+        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
+        yield* waitFor(page, `${indexItem("page")}[aria-current="true"]`);
+        yield* waitFor(page, `${indexItem("page")}[tabindex="0"]`);
+        const stopsAfterEnter = yield* tabStops();
+        assert.deepStrictEqual(stopsAfterEnter, ["page"]);
+        const currentAfterEnter = yield* currentItems();
+        assert.deepStrictEqual(currentAfterEnter, ["page"]);
       })
     )
   );

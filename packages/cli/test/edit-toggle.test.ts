@@ -182,6 +182,29 @@ describe("turning Edit on", () => {
       })
   );
 
+  it.live("e still toggles Edit with focus on a chapter rail button", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* firstVisit;
+
+        yield* waitFor(page, editButton);
+        const before = yield* pressed(page);
+        assert.strictEqual(before, "false");
+
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-chapter-rail] button[data-chapter]")
+            .first()
+            .focus()
+        );
+        yield* press(page, "e");
+        yield* waitFor(page, toolbar);
+        const after = yield* pressed(page);
+        assert.strictEqual(after, "true");
+      })
+    )
+  );
+
   it.live("e is left alone while typing in a field", () =>
     Effect.gen(function* () {
       const { page } = yield* firstVisit;

@@ -161,6 +161,8 @@ export interface ExportRequest {
   readonly format: Format;
   readonly home: string;
   readonly output: Option.Option<string>;
+  /** Whether to draw the map with every open layout change applied. */
+  readonly proposed: boolean;
   readonly view: View;
 }
 
@@ -269,6 +271,7 @@ const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
       arrange: (mapData, saved) => placeStructures(mapData, saved).layout,
       command: "export",
       paths,
+      proposed: request.proposed,
     });
 
   const state: MapState = {
@@ -366,6 +369,12 @@ export const exportCommand = Command.make(
       Flag.withDefault("paper"),
       Flag.withDescription("The background colour")
     ),
+    proposed: Flag.Boolean("proposed").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription(
+        "Draw the map with every open layout change applied, the engineer's and the agent's, before they are accepted. Without it, the accepted layout"
+      )
+    ),
     output: Flag.String("output").pipe(
       Flag.optional,
       Flag.withAlias("o"),
@@ -378,7 +387,7 @@ export const exportCommand = Command.make(
   (request) => exportMap(request)
 ).pipe(
   Command.withDescription(
-    "Write the map as an SVG, a PNG or an Excalidraw file, like the page's Export menu. Validates the map first, and writes nothing if it has an error."
+    "Write the map as an SVG, a PNG or an Excalidraw file, like the page's Export menu. Validates the map first, and writes nothing if it has an error. With --proposed, draws the map with its open layout changes applied."
   ),
   Command.withExamples([
     {

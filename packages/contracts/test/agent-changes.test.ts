@@ -1,7 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Match, Result } from "effect";
+import { Array as Arr, Match, Option, Result } from "effect";
 
-import { pendingRows, proposeAgentChange } from "../src/index.ts";
+import {
+  authorChangeRefusal,
+  pendingRows,
+  proposeAgentChange,
+} from "../src/index.ts";
 import type { AgentProposal, Layout, LayoutChange } from "../src/index.ts";
 
 const base: Layout = {
@@ -201,5 +205,48 @@ describe("the Pending tab's rows", () => {
     ];
 
     assert.deepStrictEqual(rowsOf(changes), ["(none): a1 a2", "Tidy: a3"]);
+  });
+});
+
+describe("the page changing who made a change", () => {
+  const before = [
+    agentMove("a1", "a", { at: [0, 6] }),
+    move("e1", "b", [4, 6]),
+  ];
+
+  it("refuses an agent change sent back as the engineer's, and the reverse", () => {
+    const asEngineer = authorChangeRefusal({
+      after: [move("a1", "a", [0, 6])],
+      before,
+    });
+    const asAgent = authorChangeRefusal({
+      after: [agentMove("e1", "b", { at: [4, 6] })],
+      before,
+    });
+
+    assert.isTrue(Option.isSome(asEngineer));
+    assert.include(Option.getOrThrow(asEngineer), "a1");
+    assert.include(Option.getOrThrow(asEngineer), "agent's");
+    assert.include(Option.getOrThrow(asAgent), "engineer's");
+  });
+
+  it("allows the list as it stands, a new change and a takeover under a new id", () => {
+    const takenOver = [move("fresh", "a", [0, 8]), move("e1", "b", [4, 6])];
+    const added = [...before, move("e2", "a", [8, 8])];
+
+    assert.isTrue(
+      Option.isNone(authorChangeRefusal({ after: before, before }))
+    );
+    assert.isTrue(
+      Option.isNone(
+        authorChangeRefusal({
+          after: added,
+          before,
+        })
+      )
+    );
+    assert.isTrue(
+      Option.isNone(authorChangeRefusal({ after: takenOver, before }))
+    );
   });
 });
