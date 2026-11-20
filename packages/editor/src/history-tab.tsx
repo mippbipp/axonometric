@@ -1,4 +1,5 @@
 import type { DifferenceLine } from "@axonometric/contracts";
+import { Toggle } from "@axonometric/ui/components/toggle";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
@@ -100,18 +101,14 @@ export function HistoryTab() {
 
             return (
               <li key={revision}>
-                <button
+                <Toggle
                   aria-label={`Revision ${revision}: ${message}, ${itemsText(items)}`}
-                  aria-pressed={isOpen}
-                  className={cn(
-                    "border-ink focus-visible:outline-ink flex w-full cursor-pointer flex-col gap-0.5 border px-2 py-1.5 text-left text-xs focus-visible:outline-2 focus-visible:outline-offset-1",
-                    isOpen ? "bg-ink text-paper" : "bg-paper text-ink"
-                  )}
+                  className="border-ink focus-visible:outline-ink bg-paper text-ink data-[pressed]:bg-ink data-[pressed]:text-paper hover:bg-paper hover:text-ink data-[pressed]:hover:bg-ink data-[pressed]:hover:text-paper flex h-auto w-full min-w-0 cursor-pointer flex-col items-stretch justify-start gap-0.5 rounded-none border px-2 py-1.5 text-left text-xs font-normal whitespace-normal transition-none focus-visible:outline-2 focus-visible:outline-offset-1"
                   data-revision={revision}
-                  onClick={() => {
+                  onPressedChange={() => {
                     open(revision);
                   }}
-                  type="button"
+                  pressed={isOpen}
                 >
                   <span className="flex gap-2">
                     <b className="font-medium">#{revision}</b>
@@ -132,7 +129,7 @@ export function HistoryTab() {
                       </>
                     )}
                   </span>
-                </button>
+                </Toggle>
               </li>
             );
           })}

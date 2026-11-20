@@ -110,7 +110,7 @@ describe("Plan view", () => {
           const planPressed = yield* Effect.promise(() =>
             page
               .locator('[data-view-toggle] [data-view="plan"]')
-              .getAttribute("aria-pressed")
+              .getAttribute("aria-checked")
           );
 
           assert.strictEqual(planPressed, "true");

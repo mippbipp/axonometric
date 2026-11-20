@@ -285,7 +285,7 @@ describe("the flow picker", () => {
         yield* assertAttribute(
           page,
           {
-            name: "aria-pressed",
+            name: "aria-checked",
             selector: '[data-flow-picker] [data-flow="all"]',
           },
           "true"
@@ -294,7 +294,7 @@ describe("the flow picker", () => {
         yield* waitFor(page, '[data-packet][data-run="f-accept"]');
 
         yield* click(page, '[data-flow-picker] [data-flow="f-accept"]');
-        yield* waitFor(page, '[data-flow="f-accept"][aria-pressed="true"]');
+        yield* waitFor(page, '[data-flow="f-accept"][aria-checked="true"]');
 
         const runs = yield* attributesOf(page, "[data-packet]", "data-run");
 
