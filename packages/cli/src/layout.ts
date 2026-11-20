@@ -96,6 +96,7 @@ const layout = Effect.fn("layout")(function* (
 
   const map = yield* loadMap({
     command: "layout",
+    drawingWarnings: true,
     home,
     output: path.dirname(home),
   });

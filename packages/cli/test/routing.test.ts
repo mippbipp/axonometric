@@ -19,4 +19,18 @@ describe("routing", () => {
       );
     })
   );
+
+  it.effect("build leaves out the drawing warning that check prints", () =>
+    Effect.gen(function* () {
+      const crowdedMapFiles = yield* crowdedMap;
+      const home = yield* makeHome(crowdedMapFiles);
+      const map = `${home}/crowded/map`;
+      const checked = yield* runCli(home, ["check", map]);
+      const built = yield* runCli(home, ["build", map]);
+
+      assert.include(checked.stdout, 'hop "h-secret" from "api" to "vault"');
+      assert.strictEqual(built.exitCode, 0, built.stderr);
+      assert.notInclude(built.stdout + built.stderr, "h-secret");
+    })
+  );
 });

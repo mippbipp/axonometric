@@ -86,6 +86,10 @@ _Avoid_: research note
 Something wrong with a map: an error, which blocks building it, or a warning, which doesn't.
 _Avoid_: issue, diagnostic
 
+**Drawing warning**:
+A warning that comes from routing and drawing each chapter in both views, such as a label drawn over a box or a route under one. Only `check` and `layout` report these, because finding them takes seconds on a big map.
+_Avoid_: layout warning, visual warning
+
 ## Walkthrough and views
 
 **Chapter**:

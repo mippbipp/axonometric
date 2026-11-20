@@ -324,6 +324,11 @@ export interface InspectOptions {
   /** As for `LoadRequest.arrange`. */
   readonly arrange?: Arrange | undefined;
   /**
+   * Whether to report the chapter drawing warnings, as `check` and `layout`
+   * do. They take seconds on a big map, so other commands leave them out.
+   */
+  readonly drawingWarnings?: boolean | undefined;
+  /**
    * Whether a file in `history/` that isn't a valid revision is an error, as
    * `check` reports it. Otherwise it's a warning: a damaged old revision
    * doesn't stop `build` or `serve`.
@@ -390,6 +395,7 @@ export const inspectMap = Effect.fnUntraced(function* (
       ...checkMap(
         { data: data.success, layout },
         {
+          drawingWarnings: options.drawingWarnings,
           linkExists: (target) => links.has(target),
           sourceFacts,
         }
@@ -432,6 +438,8 @@ export interface LoadRequest {
   readonly arrange?: Arrange;
   /** The command loading the map, named in the error. */
   readonly command: string;
+  /** As for `InspectOptions`. */
+  readonly drawingWarnings?: boolean;
   readonly home: string;
   /** The folder SYSTEM.md is written to, which links resolve against. */
   readonly output: string;
@@ -446,6 +454,7 @@ export interface LoadRequest {
 export const loadMap = Effect.fnUntraced(function* ({
   arrange,
   command,
+  drawingWarnings,
   home,
   output,
   strictHistory,
@@ -453,6 +462,7 @@ export const loadMap = Effect.fnUntraced(function* ({
 }: LoadRequest) {
   const { map, problems, sourcesSkipped } = yield* inspectMap(home, output, {
     arrange,
+    drawingWarnings,
     strictHistory,
     strictProposals,
   });

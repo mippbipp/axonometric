@@ -746,6 +746,23 @@ export const chapterFindings: {
 );
 
 /**
+ * The warnings from routing and drawing each chapter in both views: routes
+ * that share a segment or run under boxes, and anything else the Iso view or
+ * Plan view would draw over something in some chapter. This is the slow part
+ * of `checkLayout`, so callers ask for it only when they report it.
+ */
+export const drawingProblems: {
+  (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
+  (data: MapData, layout: Layout): ReadonlyArray<MapProblem>;
+} = dual(2, (data: MapData, layout: Layout): ReadonlyArray<MapProblem> =>
+  firstShown(
+    Arr.map(chapterViews(data), (view) =>
+      chapterFindings({ data, layout }, view)
+    )
+  )
+);
+
+/**
  * Problems with how the layout reads. Errors for route overrides whose ends
  * aren't on their hop's footprints; warnings for entries for structures
  * that no longer exist, route overrides for hops that no longer exist,
@@ -753,18 +770,15 @@ export const chapterFindings: {
  * overlap, name tags drawn over other boxes, zones that overlap, routes that
  * run under boxes, and anything else the Iso view or Plan view would draw
  * over something in some chapter. A structure with no placement gets nothing, because
- * `build` places it.
+ * `build` places it. The first group is `layoutWideProblems`, which is quick,
+ * and the drawing warnings are `drawingProblems`, which isn't.
  */
 export const checkLayout: {
   (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
   (data: MapData, layout: Layout): ReadonlyArray<MapProblem>;
 } = dual(2, (data: MapData, layout: Layout): ReadonlyArray<MapProblem> => [
   ...layoutWideProblems(data, layout),
-  ...firstShown(
-    Arr.map(chapterViews(data), (view) =>
-      chapterFindings({ data, layout }, view)
-    )
-  ),
+  ...drawingProblems(data, layout),
 ]);
 
 /**

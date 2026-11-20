@@ -80,6 +80,7 @@ export {
   checkLayout,
   draggedProblems,
   draggedProblemsIn,
+  drawingProblems,
   footprintsOverlap,
   offEndFindings,
   onOutline,
