@@ -10,6 +10,7 @@ import {
   showViewFitted,
   waitFor,
   waitTimeout,
+  choose,
 } from "./browser.ts";
 import { crosses, drawingReport } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
@@ -355,9 +356,7 @@ describe("a chapter proposal", () => {
         const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-page");
-        yield* Effect.promise(() =>
-          page.locator("[data-add-play-hop]").selectOption("h-store")
-        );
+        yield* choose(page, "[data-add-play-hop]", "h-store");
         yield* click(page, "[data-add-play-submit]");
         yield* waitForChapters(page, home, 1);
         yield* waitFor(page, '[data-play="h-store"][data-play-pending="play"]');
@@ -614,9 +613,7 @@ describe("the chapter details for a proposal", () => {
           "Proposed to stop playing"
         );
 
-        yield* Effect.promise(() =>
-          page.locator("[data-add-play-hop]").selectOption("h-pr")
-        );
+        yield* choose(page, "[data-add-play-hop]", "h-pr");
         yield* click(page, "[data-add-play-submit]");
         yield* waitFor(page, '[data-play-pending="play"]');
 

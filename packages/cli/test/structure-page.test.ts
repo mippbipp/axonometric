@@ -21,6 +21,7 @@ import {
   strokeOf,
   waitFor,
   waitTimeout,
+  choose,
 } from "./browser.ts";
 import { crosses, drawingReport, nameTagClashes } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
@@ -90,12 +91,8 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="name"]').fill(fields.name)
   );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="shape"]').selectOption("store")
-  );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="status"]').selectOption("planned")
-  );
+  yield* choose(page, '[data-add="shape"]', "store");
+  yield* choose(page, '[data-add="status"]', "planned");
   yield* Effect.promise(() =>
     page.locator('[data-add="x"]').fill(String(fields.x))
   );
@@ -169,15 +166,9 @@ describe("adding a structure from the toolbar", () => {
         yield* Effect.promise(() =>
           page.locator('[data-add="name"]').fill("Build cache")
         );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="shape"]').selectOption("store")
-        );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="group"]').selectOption("outside")
-        );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="status"]').selectOption("planned")
-        );
+        yield* choose(page, '[data-add="shape"]', "store");
+        yield* choose(page, '[data-add="group"]', "outside");
+        yield* choose(page, '[data-add="status"]', "planned");
         yield* click(page, '[data-add="submit"]');
         yield* Effect.promise(() =>
           page.waitForFunction(

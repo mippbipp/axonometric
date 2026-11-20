@@ -1,4 +1,5 @@
 import { flowsOfHop } from "@axonometric/contracts";
+import { Checkbox } from "@axonometric/ui/components/checkbox";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
@@ -49,14 +50,13 @@ export function HopFlows({ hop }: { readonly hop: string }) {
                 canEdit ? "cursor-pointer" : "opacity-60"
               )}
             >
-              <input
+              <Checkbox
                 checked={inFlows.includes(id)}
                 data-hop-flow={id}
                 disabled={!canEdit}
-                onChange={(event) => {
-                  toggle(id, event.target.checked);
+                onCheckedChange={(next) => {
+                  toggle(id, next === true);
                 }}
-                type="checkbox"
               />
               <span className="min-w-0 break-words">{name}</span>
               {accepted.has(id) ? null : (
