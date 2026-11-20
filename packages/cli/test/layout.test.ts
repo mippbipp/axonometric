@@ -705,6 +705,32 @@ describe("layout --propose", () => {
   );
 
   it.effect(
+    "gives the agent's proposal a new reason when only the reason changes",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* proposeWith(["gate", "--x", "8"]);
+
+        const { result } = yield* layoutWith(
+          ["gate", "--x", "8", "--propose", "--reason", "Make room"],
+          { [proposalsFile]: first.result.files[proposalsFile] ?? "" }
+        );
+
+        const proposals = yield* savedProposals(result.files);
+
+        assert.strictEqual(result.exitCode, 0, result.stderr);
+        assert.deepStrictEqual(
+          Arr.map(proposals.layout, ({ reason }) => reason),
+          ["Make room"]
+        );
+        assert.strictEqual(proposals.revision, 2);
+        assert.include(
+          result.stdout,
+          'gate: proposed as before, for "Make room"'
+        );
+      })
+  );
+
+  it.effect(
     "refuses a structure the engineer has pending, naming their change, and writes nothing",
     () =>
       Effect.gen(function* () {

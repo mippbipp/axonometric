@@ -600,7 +600,7 @@ const propose = Effect.fn("propose")(function* (
   );
 
   return yield* Console.log(
-    `${id}: proposed ${what}, for "${reason}". proposals.json is at revision ${revision}. The engineer accepts or discards it in the Pending tab.`
+    `${id}: proposed ${Str.isEmpty(what) ? "as before" : what}, for "${reason}". proposals.json is at revision ${revision}. The engineer accepts or discards it in the Pending tab.`
   );
 }, Effect.scoped);
 
