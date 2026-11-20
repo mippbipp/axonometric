@@ -1,12 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr } from "effect";
-import { vi } from "vitest";
 
 import { dragSegment, routeVertices, segmentGuides } from "../src/index.ts";
 import type { GridPoint, Placement } from "../src/index.ts";
 import { onEdge } from "./route-geometry.ts";
-
-vi.setConfig({ testTimeout: 5000 });
 
 const from: Placement = { d: 2, w: 2, x: 0, y: 0 };
 

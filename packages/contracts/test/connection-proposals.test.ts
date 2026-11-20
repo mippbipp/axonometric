@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Match, Option, Result, String as Str } from "effect";
-import { vi } from "vitest";
 
 import {
   breakageOf,
@@ -42,8 +41,6 @@ import {
 } from "./review-helpers.ts";
 
 // Seam 3: the pure functions behind hop and flow proposals, with plain data.
-
-vi.setConfig({ testTimeout: 5000 });
 
 const at = "2026-11-01T09:00:00.000Z";
 

@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Option, Result, Schema } from "effect";
-import { vi } from "vitest";
 
 import {
   acceptRefusal,
@@ -24,8 +23,6 @@ import type {
   Proposals as P,
   Structure,
 } from "../src/index.ts";
-
-vi.setConfig({ testTimeout: 5000 });
 
 const accepted: Layout = {
   format: 1,

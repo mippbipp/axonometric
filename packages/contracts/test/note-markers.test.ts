@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option, Order } from "effect";
-import { vi } from "vitest";
 
 import {
   gapAt,
@@ -12,8 +11,6 @@ import {
 import type { NoteMarkerSpot, Scene, ScreenPoint } from "../src/index.ts";
 import { chaptersOf, fixture } from "./fixture-maps.ts";
 import { lineDistance, rectCorners } from "./screen-geometry.ts";
-
-vi.setConfig({ testTimeout: 15_000 });
 
 // The sizes the page draws, written out here rather than taken from the
 // placer, so a change there can't move the check with it. A ring is 5 units

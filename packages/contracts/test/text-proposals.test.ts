@@ -7,7 +7,6 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { vi } from "vitest";
 
 import {
   AcceptedItem,
@@ -40,8 +39,6 @@ import type {
 } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
 import { unwrap } from "./review-helpers.ts";
-
-vi.setConfig({ testTimeout: 15_000 });
 
 const at = "2026-11-02T09:00:00.000Z";
 

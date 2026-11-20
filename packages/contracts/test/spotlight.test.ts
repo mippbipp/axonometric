@@ -1,11 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Order } from "effect";
-import { vi } from "vitest";
 
 import { chapterSpotlightOf, defaultFlowChoice } from "../src/index.ts";
 import type { FlowChoice, SpotlightTarget } from "../src/index.ts";
-
-vi.setConfig({ testTimeout: 5000 });
 
 // Seam 3: the spotlight, from the map's hops, what's revealed, the chapter's
 // play and the hovered and pinned items.
