@@ -3,6 +3,7 @@ import {
   excalidrawText,
   exportName,
   pngScale,
+  svgRequestOf,
   whiteBackground,
 } from "@axonometric/contracts";
 import type { View } from "@axonometric/contracts";
@@ -77,10 +78,10 @@ function MenuItem({
  * nothing.
  */
 export function ExportMenu({ view }: { readonly view: View }) {
-  const { index, state: shown } = useWalkthrough();
+  const { flowChoice, index, state: shown } = useWalkthrough();
   // Proposals are drawn on the page and left out of what it saves.
   const state = useExportState() ?? shown;
-  const spotlightNow = useSpotlightActions().current;
+  const targetsNow = useSpotlightActions().current;
   const [open, setOpen] = useState(false);
   const [onWhite, setOnWhite] = useState(false);
   const [problem, setProblem] = useState("");
@@ -130,14 +131,17 @@ export function ExportMenu({ view }: { readonly view: View }) {
     Effect.try({
       catch: () => ExportFailed.make({ reason: "The map couldn't be drawn." }),
       try: () =>
-        svgFileOf({
-          background: onWhite ? "white" : "paper",
-          chapter: index,
-          spotlight: spotlightNow(),
-          state,
-          theme: shownTheme(),
-          view,
-        }),
+        svgFileOf(
+          svgRequestOf({
+            background: onWhite ? "white" : "paper",
+            chapter: index,
+            choice: flowChoice,
+            ...targetsNow(),
+            state,
+            theme: shownTheme(),
+            view,
+          })
+        ),
     });
 
   const actions: Readonly<

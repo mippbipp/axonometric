@@ -1,5 +1,4 @@
 import {
-  chapterSpotlightOf,
   chapterStopsOf,
   defaultFlowChoice,
   excalidrawOf,
@@ -7,6 +6,7 @@ import {
   exportName,
   placeStructures,
   pngScale,
+  svgRequestOf,
   views,
   whiteBackground,
 } from "@axonometric/contracts";
@@ -198,7 +198,7 @@ export const defaultExportFile = ({
   );
 
 /** What an SVG or PNG of the map draws. */
-interface Drawing {
+export interface Drawing {
   readonly background: Background;
   /** The chapter's index, from 0. */
   readonly chapter: number;
@@ -207,6 +207,22 @@ interface Drawing {
   readonly state: MapState;
   readonly view: View;
 }
+
+/**
+ * The request an exported SVG is drawn from: the page's, in the light theme
+ * with nothing hovered or pinned, since a file has neither.
+ */
+export const svgRequestOfExport = (drawing: Drawing) =>
+  svgRequestOf({
+    background: drawing.background,
+    chapter: drawing.chapter,
+    choice: drawing.choice,
+    hovered: null,
+    pinned: null,
+    state: drawing.state,
+    theme: "light",
+    view: drawing.view,
+  });
 
 /**
  * A format's file: text, or the bytes of a PNG. The SVG comes from the same
@@ -232,30 +248,7 @@ const contentOf = Effect.fnUntraced(function* (
     );
   }
 
-  const { chapter, choice, state } = drawing;
-  const stop = chapterStopsOf(state)[chapter];
-
-  // Nothing is hovered or pinned in a file, so the spotlight is what the
-  // chapter or the picked flow plays: the page's, with no hover and no pin.
-  const spotlight =
-    stop === undefined
-      ? null
-      : chapterSpotlightOf({
-          choice,
-          data: state.data,
-          hovered: null,
-          pinned: null,
-          stop,
-        });
-
-  const { text } = svgFileOf({
-    background: drawing.background,
-    chapter,
-    spotlight,
-    state,
-    theme: "light",
-    view: drawing.view,
-  });
+  const { text } = svgFileOf(svgRequestOfExport(drawing));
 
   return format === "svg" ? text : yield* rasterise(text, pngScale);
 });

@@ -12,7 +12,7 @@ export type { HopState } from "./map-drawing.tsx";
 
 export { svgFileOf } from "./svg-file.tsx";
 
-export type { SvgFile, SvgRequest } from "./svg-file.tsx";
+export type { SvgFile } from "./svg-file.tsx";
 
 export type {
   StructureDrawingProps,

@@ -9,7 +9,7 @@ import {
   sceneOf,
   whiteBackground,
 } from "@axonometric/contracts";
-import type { MapState, Spotlight, View } from "@axonometric/contracts";
+import type { SvgRequest, View } from "@axonometric/contracts";
 import { String as Str } from "effect";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -22,27 +22,6 @@ import { PassThrough } from "./pass-through.ts";
 
 /** Space around the drawing, in drawing units. */
 const margin = 16;
-
-/** What an exported SVG is of, and how it looks. */
-export interface SvgRequest {
-  /** The colour behind the drawing: the palette's paper, or white. */
-  readonly background: "paper" | "white";
-  /** The chapter's index, from 0. */
-  readonly chapter: number;
-  /**
-   * What to draw at full strength, or `null` to fade nothing. The page
-   * passes the spotlight it shows; the `export` command passes the chapter's
-   * or the picked flow's, from `chapterSpotlightOf`.
-   */
-  readonly spotlight: Spotlight | null;
-  readonly state: MapState;
-  /**
-   * The palette to draw in. White always draws in the light palette, so
-   * dark-theme ink doesn't vanish on it.
-   */
-  readonly theme: "light" | "dark";
-  readonly view: View;
-}
 
 /** An SVG file's text and its size in pixels. */
 export interface SvgFile {
