@@ -18,27 +18,27 @@ import type { TestSpecification } from "vitest/node";
  */
 export const fileSeconds = {
   "connection-page.test.ts": 75,
-  "readable-text-page.test.ts": 73,
-  "selection-edit.test.ts": 56,
-  "rerouting.test.ts": 50,
-  "export.test.ts": 49,
-  "export-svg.test.ts": 48,
+  "drag-warnings-big-map.test.ts": 11,
+  "edit-toggle.test.ts": 8,
   "editing.test.ts": 29,
   "export-command.test.ts": 27,
-  "structure-follow.test.ts": 24,
+  "export-svg.test.ts": 48,
+  "export.test.ts": 49,
+  "font-width.test.ts": 12,
   "group-chapter-page.test.ts": 23,
+  "history-panel.test.ts": 15,
+  "live-reload.test.ts": 16,
+  "note-targets-page.test.ts": 17,
+  "plan-view.test.ts": 9,
+  "readable-text-page.test.ts": 73,
+  "rerouting.test.ts": 50,
+  "review-page.test.ts": 12,
+  "selection-edit.test.ts": 56,
+  "structure-follow.test.ts": 24,
   "structure-page.test.ts": 20,
   "structures.test.ts": 19,
   "text-page.test.ts": 19,
-  "note-targets-page.test.ts": 17,
-  "live-reload.test.ts": 16,
-  "history-panel.test.ts": 15,
-  "font-width.test.ts": 12,
-  "review-page.test.ts": 12,
-  "drag-warnings-big-map.test.ts": 11,
   "viewport.test.ts": 11,
-  "plan-view.test.ts": 9,
-  "edit-toggle.test.ts": 8,
 } as const satisfies Readonly<Record<string, number>>;
 
 export const defaultSeconds = 2.5;
@@ -61,8 +61,8 @@ export const weight = (file: string): number => {
 };
 
 interface Group {
+  readonly files: ReadonlyArray<string>;
   readonly seconds: number;
-  readonly files: readonly string[];
 }
 
 const bySeconds = Order.mapInput(Order.Number, (group: Group) => group.seconds);
@@ -73,14 +73,14 @@ const bySeconds = Order.mapInput(Order.Number, (group: Group) => group.seconds);
  * groups, which every shard job computes on its own.
  */
 export const splitByWeight = (
-  files: readonly string[],
+  files: ReadonlyArray<string>,
   count: number
-): readonly (readonly string[])[] => {
+): ReadonlyArray<ReadonlyArray<string>> => {
   const total = Arr.reduce(files, 0, (sum, file) => sum + weight(file));
 
   const empty = Arr.makeBy(count, (index): Group => ({
-    seconds: index === 0 ? total * firstShardHeadStart : 0,
     files: [],
+    seconds: index === 0 ? total * firstShardHeadStart : 0,
   }));
 
   const heaviestFirst = Arr.sort(
@@ -94,8 +94,8 @@ export const splitByWeight = (
     return Arr.map(all, (group) =>
       group === lightest
         ? {
-            seconds: group.seconds + weight(file),
             files: [...group.files, file],
+            seconds: group.seconds + weight(file),
           }
         : group
     );
@@ -110,9 +110,9 @@ export const splitByWeight = (
  */
 export default class WeightedShardSequencer extends BaseSequencer {
   public override shard(
-    files: TestSpecification[]
-  ): Promise<TestSpecification[]> {
-    const { index, count } = this.ctx.config.shard ?? { index: 1, count: 1 };
+    files: Array<TestSpecification>
+  ): Promise<Array<TestSpecification>> {
+    const { count, index } = this.ctx.config.shard ?? { count: 1, index: 1 };
 
     const groups = splitByWeight(
       Arr.map(files, (spec) => spec.moduleId),
