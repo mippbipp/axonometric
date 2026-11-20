@@ -1,4 +1,4 @@
-import { applyLayoutChanges, shiftedRoutes } from "@axonometric/contracts";
+import { layoutAfterChanges } from "@axonometric/contracts";
 import type {
   DraggedProblem,
   LayoutChange,
@@ -34,27 +34,6 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 const settle = Duration.millis(120);
 
 const none: ReadonlyArray<LayoutChange> = [];
-
-/** The layout a drag's changes would leave, with route overrides carried along. */
-const draggedLayout = (
-  { data, layout }: MapState,
-  changes: ReadonlyArray<LayoutChange>
-) => {
-  // A move carries a route override along when both its ends move
-  // together, as saving the move does.
-  const carried = Arr.flatMap(changes, (change) =>
-    change.kind === "move"
-      ? shiftedRoutes({
-          hops: data.hops,
-          id: (hop) => `preview-${hop}`,
-          layout,
-          moves: change.moves,
-        })
-      : []
-  );
-
-  return applyLayoutChanges(layout, [...changes, ...carried]);
-};
 
 /**
  * What the drag's check has found so far for one step: the problems, and
@@ -209,7 +188,11 @@ export function DragPreviewProvider({
 
     const send = Effect.sync(() => {
       checker.current?.step({
-        after: draggedLayout(state, changes),
+        after: layoutAfterChanges({
+          changes,
+          hops: state.data.hops,
+          layout: state.layout,
+        }),
         kind: "step",
         map: mapIdOf(state),
         onScreen: stop.id,

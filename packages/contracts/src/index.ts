@@ -268,6 +268,7 @@ export {
   hopsOf,
   HopTarget,
   LayoutChange,
+  layoutAfterChanges,
   layoutChangeKey,
   LayoutChanges,
   layoutRefusal,
@@ -280,12 +281,12 @@ export {
   RerouteChange,
   ResizeChange,
   sameLayoutChanges,
-  shiftedRoutes,
   StructureMove,
   StructureTarget,
   structuresOf,
   Target,
   targetIdsOf,
+  withCarriedRoutes,
 } from "./proposals.ts";
 
 export type { Clash, Placing, PlacingRoute } from "./proposals.ts";

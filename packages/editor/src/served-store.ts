@@ -41,12 +41,12 @@ import {
   ReopenWrite,
   sameLayoutChanges,
   ServedPage,
-  shiftedRoutes,
   servedPageElementId,
   ServerEvent,
   StaleProposals,
   StructureWrite,
   undoStep,
+  withCarriedRoutes,
   wroteFile,
 } from "@axonometric/contracts";
 import type {
@@ -534,12 +534,15 @@ const arranging = (
     const moves = plan(shown.structures);
 
     // A route override travels with its hop when both ends move together.
-    const carried = shiftedRoutes({
-      layout: shown,
-      hops,
-      moves,
-      id: rerouteId,
-    });
+    const carried = Arr.filter(
+      withCarriedRoutes({
+        layout: shown,
+        hops,
+        changes: appendMove({ changes: [], id, moves }),
+        id: rerouteId,
+      }),
+      (change) => change.kind === "reroute"
+    );
 
     return Arr.reduce(
       carried,

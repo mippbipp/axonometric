@@ -1076,15 +1076,8 @@ export const placeRoute = ({
   ];
 };
 
-/**
- * The reroutes that carry route overrides along with moved structures. An
- * override whose two ends both move by the same distance is shifted by it,
- * so it still starts and ends on its footprints. Overrides with one end
- * moved, or the ends moved apart, are left alone: the move is refused if
- * that leaves one off its footprint. `layout` is the layout the moves start
- * from, and `id` makes the id of each reroute from its hop's id.
- */
-export const shiftedRoutes = ({
+/** The reroutes that shift overrides whose two ends all move by `moves` together. */
+const shiftedRoutes = ({
   layout,
   hops,
   moves,
@@ -1142,6 +1135,64 @@ export const shiftedRoutes = ({
     }
   );
 };
+
+/**
+ * `changes`, with after each move the reroutes that carry route overrides
+ * along with it. An override whose two ends both move by the same distance
+ * is shifted by it, so it still starts and ends on its footprints. Overrides
+ * with one end moved, or the ends moved apart, are left alone: the move is
+ * refused if that leaves one off its footprint.
+ *
+ * Each move is taken from the layout the changes before it leave, so a later
+ * reroute in `changes` still wins over a carried one. `id` makes the id of
+ * each carried reroute from its hop's id.
+ */
+export const withCarriedRoutes = ({
+  layout,
+  changes,
+  hops,
+  id,
+}: {
+  readonly changes: ReadonlyArray<LayoutChange>;
+  readonly hops: ReadonlyArray<HopEnds>;
+  readonly id: (hop: string) => ChangeId;
+  readonly layout: Layout;
+}): ReadonlyArray<LayoutChange> =>
+  Arr.reduce(
+    changes,
+    { now: layout, out: [] as ReadonlyArray<LayoutChange> },
+    ({ now, out }, change) => {
+      const carried =
+        change.kind === "move"
+          ? shiftedRoutes({ hops, id, layout: now, moves: change.moves })
+          : [];
+
+      const next = [change, ...carried];
+
+      return { now: applyLayoutChanges(now, next), out: [...out, ...next] };
+    }
+  ).out;
+
+/**
+ * The layout after `changes`, with route overrides shifted along with moved
+ * structures. The served store saves a drop by this layout and the drag
+ * preview checks it, so the warnings a drag shows describe what the drop
+ * saves. `layout` is the layout the changes start from, and `hops` say where
+ * each override's ends belong.
+ */
+export const layoutAfterChanges = ({
+  layout,
+  changes,
+  hops,
+}: {
+  readonly changes: ReadonlyArray<LayoutChange>;
+  readonly hops: ReadonlyArray<HopEnds>;
+  readonly layout: Layout;
+}): Layout =>
+  applyLayoutChanges(
+    layout,
+    withCarriedRoutes({ changes, hops, id: (hop) => `carried-${hop}`, layout })
+  );
 
 /** `changes` without the change that has `id`. */
 export const discardChange: {
