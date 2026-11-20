@@ -378,22 +378,34 @@ describe("export", () => {
           const focusedAfterEnd = yield* focusedControl(page);
           assert.strictEqual(focusedAfterEnd, "background");
 
-          // The background option is drawn as a checkbox in both states.
+          // The background option reports its state, and choosing it leaves
+          // the menu open.
           const row = page.locator('[data-export-item="background"]');
 
-          const uncheckedRow = yield* Effect.promise(() => row.textContent());
-          assert.include(uncheckedRow, "☐");
+          const roleOfRow = yield* Effect.promise(() =>
+            row.getAttribute("role")
+          );
+
+          assert.strictEqual(roleOfRow, "menuitemcheckbox");
+
+          const uncheckedRow = yield* Effect.promise(() =>
+            row.getAttribute("aria-checked")
+          );
+
+          assert.strictEqual(uncheckedRow, "false");
           yield* press(page, " ");
-          const checkedRow = yield* Effect.promise(() => row.textContent());
-          assert.include(checkedRow, "☑");
 
           const checked = yield* Effect.promise(() =>
-            page
-              .locator('[data-export-item="background"]')
-              .getAttribute("aria-checked")
+            row.getAttribute("aria-checked")
           );
 
           assert.strictEqual(checked, "true");
+
+          const menuOpenAfterCheck = yield* Effect.promise(() =>
+            page.locator("[data-export-menu]").count()
+          );
+
+          assert.strictEqual(menuOpenAfterCheck, 1);
           yield* press(page, "ArrowDown");
           const focusedAfterWrapDown = yield* focusedControl(page);
           assert.strictEqual(focusedAfterWrapDown, "svg");
@@ -402,10 +414,16 @@ describe("export", () => {
           assert.strictEqual(focusedAfterUp, "background");
 
           // The map's keys stay off while the menu has focus.
+          // The view starts as iso, so wait out two frames before reading it:
+          // a key that got through would have switched it to plan by then.
           yield* press(page, "v");
-          yield* Effect.promise(() =>
-            page.locator('[data-walkthrough][data-view="iso"]').waitFor()
+
+          const viewAfterV = yield* inPage<string | null>(
+            page,
+            `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(document.querySelector("[data-walkthrough]")?.getAttribute("data-view") ?? null))))`
           );
+
+          assert.strictEqual(viewAfterV, "iso");
 
           yield* press(page, "Escape");
 
