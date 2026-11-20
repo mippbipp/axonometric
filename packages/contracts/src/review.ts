@@ -281,8 +281,10 @@ export interface FreezeResult {
 
 /**
  * Moves every open item, of every kind, into a new batch, numbered one more
- * than the last, frozen at `at`. Items keep their ids. The file's revision
- * goes up by one. Fails when nothing is open.
+ * than the last, frozen at `at`. Items keep their ids. The agent's layout
+ * changes stay open: only the engineer accepts or discards them, so the agent
+ * never reviews its own work. The file's revision goes up by one. Fails when
+ * nothing else is open.
  */
 export const freezeOpen = ({
   at,
@@ -295,7 +297,10 @@ export const freezeOpen = ({
   readonly known?: Partial<Record<Entity, ReadonlyArray<string>>> | undefined;
   readonly proposals: Proposals;
 }): Result.Result<FreezeResult, string> => {
-  const items = openItems(proposals);
+  const items = Arr.filter(
+    openItems(proposals),
+    (item) => item.kind !== "layout" || item.change.by !== "agent"
+  );
 
   if (items.length === 0) {
     return Result.fail(
@@ -326,6 +331,7 @@ export const freezeOpen = ({
     proposals: {
       ...emptied,
       batches: [...(proposals.batches ?? []), batch],
+      layout: Arr.filter(proposals.layout, ({ by }) => by === "agent"),
       revision: proposals.revision + 1,
     },
   });

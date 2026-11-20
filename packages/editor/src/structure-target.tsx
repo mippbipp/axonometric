@@ -6,6 +6,7 @@ import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
 import { useChapterPendingStructures } from "./chapter-marks-context.ts";
 import { spokenMarks, useCompare } from "./compare-context.ts";
 import {
+  agentStructures,
   pendingStructures,
   useEditing,
   useEditingIgnoringEdit,
@@ -53,10 +54,18 @@ export function StructureTarget({
   // A chapter proposal tints the structure in its own chapter only.
   const chapterPending = useChapterPendingStructures().has(id);
 
+  const layoutPending = pendingStructures(editingIgnoringEdit).has(id);
+
   const isPending =
-    pendingStructures(editingIgnoringEdit).has(id) ||
-    proposed?.structures.has(id) === true ||
-    chapterPending;
+    layoutPending || proposed?.structures.has(id) === true || chapterPending;
+
+  // Both authors on one structure should not happen (the engineer's edit
+  // takes over), so the agent's mark wins only as a tie-break.
+  const pendingBy = layoutPending
+    ? agentStructures(editingIgnoringEdit).has(id)
+      ? "agent"
+      : "engineer"
+    : undefined;
 
   const marks = useCompare();
   const kinds = marks?.structures.get(id);
@@ -97,7 +106,13 @@ export function StructureTarget({
       aria-label={Arr.join(
         [
           isMultiSelected ? `${name}, in the multi-selection` : name,
-          ...(isPending ? ["pending change"] : []),
+          ...(isPending
+            ? [
+                pendingBy === "agent"
+                  ? "pending change by the agent"
+                  : "pending change",
+              ]
+            : []),
           ...(isRemoved ? ["proposed for deletion"] : []),
           ...(marked === undefined ? [] : [marked]),
         ],
@@ -111,6 +126,7 @@ export function StructureTarget({
       data-compare={kinds?.join(" ")}
       data-multi-selected={isMultiSelected}
       data-pending={isPending}
+      data-pending-by={pendingBy}
       data-removed={isRemoved}
       data-selected={isSelected}
       data-structure={id}

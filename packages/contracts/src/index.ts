@@ -309,7 +309,7 @@ export {
   ChangeId,
   checkProposals,
   clashOf,
-  discardChange,
+  discardChanges,
   emptyProposals,
   Footprint,
   hopsOf,
@@ -318,6 +318,7 @@ export {
   layoutAfterChanges,
   layoutChangeKey,
   LayoutChanges,
+  agentChangeMade,
   agentChangeRefusal,
   layoutRefusal,
   MoveChange,
@@ -337,7 +338,17 @@ export {
   withCarriedRoutes,
 } from "./proposals.ts";
 
-export type { Clash, Placing, PlacingRoute } from "./proposals.ts";
+export type { Author, Clash, Placing, PlacingRoute } from "./proposals.ts";
+
+export {
+  agentHeldWriteRefusal,
+  agentTargetRefusal,
+  engineerTakesOver,
+  pendingRows,
+  proposeAgentChange,
+} from "./agent-changes.ts";
+
+export type { AgentProposal, PendingRow } from "./agent-changes.ts";
 
 export {
   Accepted,

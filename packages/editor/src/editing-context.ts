@@ -35,11 +35,14 @@ export interface Editing {
   /** Whether there is an edit to undo. */
   readonly canUndo: boolean;
   /**
-   * Removes the pending change with `id`, which restores the accepted value.
-   * Returns why it was refused, such as a structure that would land on
-   * another pending one, or `undefined` when it went ahead.
+   * Removes the pending changes with `ids`, which restores the accepted
+   * values, as one write and one undo step. Returns why it was refused, such
+   * as a structure that would land on another pending one, or `undefined`
+   * when it went ahead.
    */
-  readonly discard: (id: ChangeId) => string | undefined;
+  readonly discard: (
+    ids: Arr.NonEmptyReadonlyArray<ChangeId>
+  ) => string | undefined;
   /**
    * The layout changes frozen in batches that wait for the agent. They stay
    * drawn as pending, and can't be edited or discarded.
@@ -113,3 +116,17 @@ export const pendingHops = (editing: Editing | null): ReadonlySet<string> =>
       hopsOf
     )
   );
+
+const agentChanges = (editing: Editing | null) =>
+  Arr.filter(
+    [...(editing?.frozen ?? []), ...(editing?.pending ?? [])],
+    (change) => change.by === "agent"
+  );
+
+/** The ids of the structures the agent's pending changes act on. */
+export const agentStructures = (editing: Editing | null): ReadonlySet<string> =>
+  new Set(Arr.flatMap(agentChanges(editing), structuresOf));
+
+/** The ids of the hops the agent's pending changes reroute. */
+export const agentHops = (editing: Editing | null): ReadonlySet<string> =>
+  new Set(Arr.flatMap(agentChanges(editing), hopsOf));

@@ -6,7 +6,7 @@ import {
   agentChangeRefusal,
   applyLayoutChanges,
   checkProposals,
-  discardChange,
+  discardChanges,
   groupMembers,
   hopLabelOf,
   layoutAfterChanges,
@@ -474,6 +474,19 @@ describe("carrying routes along with a move", () => {
     ]);
   });
 
+  it("gives an override carried with the agent's move the move's author and reason", () => {
+    const [, carried] = withCarriedRoutes({
+      changes: [
+        { by: "agent", id: "m", kind: "move", moves: both, reason: "Tidy" },
+      ],
+      hops,
+      id: (hop) => `r-${hop}`,
+      layout: routed,
+    });
+
+    assert.deepInclude(carried, { by: "agent", reason: "Tidy" });
+  });
+
   it("leaves an override alone when only one end moves", () => {
     assert.deepStrictEqual(shift(both.slice(0, 1)), []);
   });
@@ -741,10 +754,14 @@ describe("placing a structure", () => {
     assert.deepStrictEqual(place([], id, { d: 1, w: 1, x: 0, y: 0 }), []);
   });
 
-  it("discards a change by id", () => {
-    const changes = [move("m1", "a", [0, 6]), resize("r1", "b", [3, 2])];
+  it("discards changes by id", () => {
+    const changes = [
+      move("m1", "a", [0, 6]),
+      resize("r1", "b", [3, 2]),
+      resize("r2", "a", [3, 2]),
+    ];
 
-    assert.deepStrictEqual(discardChange(changes, "m1"), [
+    assert.deepStrictEqual(discardChanges(changes, ["m1", "r2"]), [
       resize("r1", "b", [3, 2]),
     ]);
   });

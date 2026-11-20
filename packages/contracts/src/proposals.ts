@@ -106,6 +106,21 @@ export const ChangedBy = Schema.Literals(["engineer", "agent"])
 
 export type ChangedBy = typeof ChangedBy.Type;
 
+/** The most characters a reason holds: a verdict's, or an agent change's. */
+export const maxReasonLength = 1000;
+
+const reasonMessage = `expected a reason of 1 to ${maxReasonLength} characters.`;
+
+/** Why the agent decided as it did, or why it proposes a layout change. */
+export const Reason = Schema.String.annotate({
+  message: reasonMessage,
+}).check(
+  Schema.isNonEmpty({ message: reasonMessage }),
+  Schema.isMaxLength(maxReasonLength, { message: reasonMessage })
+);
+
+export type Reason = typeof Reason.Type;
+
 /** One structure's new position, in a move. */
 export const StructureMove = Schema.Struct({
   target: StructureTarget,
@@ -123,10 +138,11 @@ export const MoveChange = Schema.Struct({
   id: ChangeId,
   kind: Schema.Literal("move"),
   by: ChangedBy,
+  reason: Schema.optionalKey(Reason),
   moves: Schema.NonEmptyArray(StructureMove).annotate({
     message: "expected a list of at least one structure to move.",
   }),
-}).annotate(objectMessages("A move has only id, kind, by and moves."));
+}).annotate(objectMessages("A move has only id, kind, by, reason and moves."));
 
 export type MoveChange = typeof MoveChange.Type;
 
@@ -135,10 +151,13 @@ export const ResizeChange = Schema.Struct({
   id: ChangeId,
   kind: Schema.Literal("resize"),
   by: ChangedBy,
+  reason: Schema.optionalKey(Reason),
   target: StructureTarget,
   footprint: Footprint,
 }).annotate(
-  objectMessages("A resize has only id, kind, by, target and footprint.")
+  objectMessages(
+    "A resize has only id, kind, by, reason, target and footprint."
+  )
 );
 
 export type ResizeChange = typeof ResizeChange.Type;
@@ -152,10 +171,11 @@ export const RerouteChange = Schema.Struct({
   id: ChangeId,
   kind: Schema.Literal("reroute"),
   by: ChangedBy,
+  reason: Schema.optionalKey(Reason),
   target: HopTarget,
   points: Schema.NullOr(RouteOverride),
 }).annotate(
-  objectMessages("A reroute has only id, kind, by, target and points.")
+  objectMessages("A reroute has only id, kind, by, reason, target and points.")
 );
 
 export type RerouteChange = typeof RerouteChange.Type;
@@ -171,7 +191,7 @@ export const LayoutChange = Schema.Union([
   RerouteChange,
 ]).annotate({
   message:
-    'expected a layout change: { id, kind: "move", by, moves: [{ target, position: { x, y } }] }, { id, kind: "resize", by, target, footprint: { w, d } } or { id, kind: "reroute", by, target: { kind: "hop", id }, points: [{ x, y }, ...] or null }.',
+    'expected a layout change: { id, kind: "move", by, reason?, moves: [{ target, position: { x, y } }] }, { id, kind: "resize", by, reason?, target, footprint: { w, d } } or { id, kind: "reroute", by, reason?, target: { kind: "hop", id }, points: [{ x, y }, ...] or null }.',
 });
 
 export type LayoutChange = typeof LayoutChange.Type;
@@ -483,21 +503,6 @@ export const RaisedQuestion = Schema.Struct({
 }).annotate(objectMessages("A raised question has only id, target and text."));
 
 export type RaisedQuestion = typeof RaisedQuestion.Type;
-
-/** The most characters a verdict's reason holds. */
-export const maxReasonLength = 1000;
-
-const reasonMessage = `expected a reason of 1 to ${maxReasonLength} characters.`;
-
-/** Why the agent decided as it did. */
-export const Reason = Schema.String.annotate({
-  message: reasonMessage,
-}).check(
-  Schema.isNonEmpty({ message: reasonMessage }),
-  Schema.isMaxLength(maxReasonLength, { message: reasonMessage })
-);
-
-export type Reason = typeof Reason.Type;
 
 /** A reason that must be there: for a verdict that changes or turns down an item, and for a revision's rejected items. */
 export const RequiredReason = Reason.pipe(
@@ -938,9 +943,27 @@ const placementIn = (
   id: string
 ) => Rec.get(applyLayoutChanges(accepted, changes).structures, id);
 
+/**
+ * Who a change is laid as: the engineer, or the agent with the reason it
+ * gives. It is stamped on the changes `placeStructure` and `placeRoute`
+ * write, and they only update changes by the same author.
+ */
+export type Author =
+  | { readonly by: "engineer" }
+  | { readonly by: "agent"; readonly reason: Reason };
+
+const engineer: Author = { by: "engineer" };
+
+const stampOf = (author: Author) =>
+  author.by === "agent"
+    ? { by: author.by, reason: author.reason }
+    : { by: author.by };
+
 /** What `placeStructure` takes. */
 export interface Placing {
   readonly accepted: Layout;
+  /** Who places it: the engineer unless given. */
+  readonly author?: Author;
   readonly changes: ReadonlyArray<LayoutChange>;
   readonly id: string;
   /** Makes the id of a change that has to be added. */
@@ -948,25 +971,27 @@ export interface Placing {
   readonly next: Placement;
 }
 
-const movesOnly = (id: string) => (change: LayoutChange) =>
+const movesOnly = (id: string, by: ChangedBy) => (change: LayoutChange) =>
   change.kind === "move" &&
+  change.by === by &&
   change.moves.length === 1 &&
   change.moves[0]?.target.id === id;
 
-const resizesOnly = (id: string) => (change: LayoutChange) =>
-  change.kind === "resize" && change.target.id === id;
+const resizesOnly = (id: string, by: ChangedBy) => (change: LayoutChange) =>
+  change.kind === "resize" && change.by === by && change.target.id === id;
 
 /**
- * The changes after structure `id` is put at `next`. A structure that
- * already has a move of its own, or a resize, has that change updated and
- * keeps its id; otherwise a change is added. A change that would leave the
- * structure where the rest of the list already puts it is dropped. The
- * structure's own changes go last, so they win over earlier ones, such as a
- * group move.
+ * The changes after structure `id` is put at `next` by `author`. A structure
+ * that already has a move of its own by the same author, or a resize, has
+ * that change updated and keeps its id; otherwise a change is added. A change
+ * that would leave the structure where the rest of the list already puts it
+ * is dropped. The structure's own changes go last, so they win over earlier
+ * ones, such as a group move.
  */
 export const placeStructure = ({
   changes,
   accepted,
+  author = engineer,
   id,
   next,
   newId,
@@ -975,8 +1000,9 @@ export const placeStructure = ({
     return changes;
   }
 
-  const isMove = movesOnly(id);
-  const isResize = resizesOnly(id);
+  const isMove = movesOnly(id, author.by);
+  const isResize = resizesOnly(id, author.by);
+  const stamp = stampOf(author);
   const target = { kind: "structure" as const, id };
 
   const without = (drop: (change: LayoutChange) => boolean) =>
@@ -1003,7 +1029,7 @@ export const placeStructure = ({
               onSome: (change) => change.id,
             }),
             kind: "move",
-            by: "engineer",
+            ...stamp,
             moves: [{ target, position: { x: next.x, y: next.y } }],
           },
         ];
@@ -1018,7 +1044,7 @@ export const placeStructure = ({
               onSome: (change) => change.id,
             }),
             kind: "resize",
-            by: "engineer",
+            ...stamp,
             target,
             footprint: { w: next.w, d: next.d },
           },
@@ -1054,6 +1080,8 @@ const samePoints = (
 /** What `placeRoute` takes. */
 export interface PlacingRoute {
   readonly accepted: Layout;
+  /** Who reroutes it: the engineer unless given. */
+  readonly author?: Author;
   readonly changes: ReadonlyArray<LayoutChange>;
   readonly hop: string;
   /** Makes the id of a change that has to be added. */
@@ -1064,19 +1092,23 @@ export interface PlacingRoute {
 
 /**
  * The changes after hop `hop` is given the route override `points`, or none
- * with `null`. A hop that already has a reroute keeps its id as the route
- * changes. A route that leaves the hop as the rest of the list already has it,
- * such as a reset of a hop with no override, drops the change instead.
+ * with `null`, by `author`. A hop that already has a reroute by the same
+ * author keeps its id as the route changes. A route that leaves the hop as
+ * the rest of the list already has it, such as a reset of a hop with no
+ * override, drops the change instead.
  */
 export const placeRoute = ({
   changes,
   accepted,
+  author = engineer,
   hop,
   points,
   newId,
 }: PlacingRoute): ReadonlyArray<LayoutChange> => {
   const own = (change: LayoutChange) =>
-    change.kind === "reroute" && change.target.id === hop;
+    change.kind === "reroute" &&
+    change.by === author.by &&
+    change.target.id === hop;
 
   const others = Arr.filter(changes, (change) => !own(change));
   const before = routeOf(applyLayoutChanges(accepted, others), hop);
@@ -1092,7 +1124,7 @@ export const placeRoute = ({
     {
       id: Option.match(old, { onNone: newId, onSome: (change) => change.id }),
       kind: "reroute",
-      by: "engineer",
+      ...stampOf(author),
       target: { kind: "hop", id: hop },
       points,
     },
@@ -1106,12 +1138,15 @@ const shiftedRoutes = ({
   moves,
   id,
   by,
+  reason,
 }: {
   readonly by: ChangedBy;
   readonly hops: ReadonlyArray<HopEnds>;
   readonly id: (hop: string) => ChangeId;
   readonly layout: Layout;
   readonly moves: ReadonlyArray<StructureMove>;
+  /** The reason of the move the reroutes travel with, which they share. */
+  readonly reason: Reason | undefined;
 }): ReadonlyArray<LayoutChange> => {
   const deltas = new Map(
     Arr.flatMap(moves, ({ target, position }) => {
@@ -1146,18 +1181,18 @@ const shiftedRoutes = ({
         return [];
       }
 
-      return [
-        {
-          id: id(hop),
-          kind: "reroute",
-          by,
-          target: { kind: "hop", id: hop },
-          points: Arr.map(points, ({ x, y }) => ({
-            x: x + start.x,
-            y: y + start.y,
-          })),
-        },
-      ];
+      const carried: RerouteChange = {
+        id: id(hop),
+        kind: "reroute",
+        by,
+        target: { kind: "hop", id: hop },
+        points: Arr.map(points, ({ x, y }) => ({
+          x: x + start.x,
+          y: y + start.y,
+        })),
+      };
+
+      return [reason === undefined ? carried : { ...carried, reason }];
     }
   );
 };
@@ -1196,6 +1231,7 @@ export const withCarriedRoutes = ({
               id,
               layout: now,
               moves: change.moves,
+              reason: change.reason,
             })
           : [];
 
@@ -1226,22 +1262,22 @@ export const layoutAfterChanges = ({
     withCarriedRoutes({ changes, hops, id: (hop) => `carried-${hop}`, layout })
   );
 
-/** `changes` without the change that has `id`. */
-export const discardChange: {
+/** `changes` without the changes whose ids are in `ids`. */
+export const discardChanges: {
   (
-    id: ChangeId
+    ids: ReadonlyArray<ChangeId>
   ): (changes: ReadonlyArray<LayoutChange>) => ReadonlyArray<LayoutChange>;
   (
     changes: ReadonlyArray<LayoutChange>,
-    id: ChangeId
+    ids: ReadonlyArray<ChangeId>
   ): ReadonlyArray<LayoutChange>;
 } = dual(
   2,
   (
     changes: ReadonlyArray<LayoutChange>,
-    id: ChangeId
+    ids: ReadonlyArray<ChangeId>
   ): ReadonlyArray<LayoutChange> =>
-    Arr.filter(changes, (change) => change.id !== id)
+    Arr.filter(changes, (change) => !ids.includes(change.id))
 );
 
 /** Another structure whose footprint `placement` would overlap. */
@@ -1426,11 +1462,49 @@ export const layoutRefusal = ({
   );
 };
 
+const sameMove = Schema.toEquivalence(StructureMove);
+
+/**
+ * Whether `change` is what `held` already was, or a move `held` became once
+ * some of its structures were taken out, as when the engineer takes over
+ * some members of an agent's group move.
+ */
+const keptFrom = (held: LayoutChange, change: LayoutChange) =>
+  sameChange(held, change) ||
+  (held.kind === "move" &&
+    change.kind === "move" &&
+    held.id === change.id &&
+    held.by === change.by &&
+    held.reason === change.reason &&
+    Arr.every(change.moves, (moved) =>
+      Arr.some(held.moves, (was) => sameMove(was, moved))
+    ));
+
+/**
+ * The first agent change in `after` that the page made or changed: one that
+ * `before` doesn't hold as it stands, or as a move with some of its
+ * structures taken out.
+ */
+export const agentChangeMade = ({
+  before,
+  after,
+}: {
+  readonly after: ReadonlyArray<LayoutChange>;
+  readonly before: ReadonlyArray<LayoutChange>;
+}): Option.Option<LayoutChange> =>
+  Arr.findFirst(
+    after,
+    (change) =>
+      change.by === "agent" &&
+      !Arr.some(before, (held) => keptFrom(held, change))
+  );
+
 /**
  * Why a write from the page is refused for marking a change as the agent's,
  * or nothing when it isn't. Only the CLI acts as the agent, so the page may
  * send an agent change back only as it already stands in `before`, such as
- * when it saves a list that keeps the agent's changes beside its own edit.
+ * when it saves a list that keeps the agent's changes beside its own edit,
+ * or with some of a move's structures taken over by the engineer.
  */
 export const agentChangeRefusal = ({
   before,
@@ -1440,12 +1514,7 @@ export const agentChangeRefusal = ({
   readonly before: ReadonlyArray<LayoutChange>;
 }): Option.Option<string> =>
   Option.map(
-    Arr.findFirst(
-      after,
-      (change) =>
-        change.by === "agent" &&
-        !Arr.some(before, (kept) => sameChange(kept, change))
-    ),
+    agentChangeMade({ after, before }),
     ({ id }) =>
       `Change ${id} is marked as the agent's. Only the CLI can make the agent's changes, so the page's changes are the engineer's.`
   );

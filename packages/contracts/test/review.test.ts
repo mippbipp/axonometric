@@ -205,6 +205,40 @@ describe("freezing", () => {
     assert.isTrue(Result.isFailure(result));
   });
 
+  it("leaves the agent's layout changes open, out of the batch", () => {
+    const agents: LayoutChange = {
+      ...move("a1", [0, 9]),
+      by: "agent",
+      reason: "Tidy",
+    };
+
+    const { batch, proposals } = unwrap(
+      freezeOpen({
+        at,
+        proposals: { ...open, layout: [agents, ...open.layout] },
+      })
+    );
+
+    assert.deepStrictEqual(
+      Arr.map(batch.items, ({ id }) => id),
+      ["m1", "n1"]
+    );
+    assert.deepStrictEqual(proposals.layout, [agents]);
+  });
+
+  it("refuses when only the agent's layout changes are open", () => {
+    const result = freezeOpen({
+      at,
+      proposals: {
+        format: 1,
+        layout: [{ ...move("a1", [0, 9]), by: "agent" }],
+        revision: 0,
+      },
+    });
+
+    assert.isTrue(Result.isFailure(result));
+  });
+
   it("keeps frozen layout changes drawn as pending until the commit", () => {
     const changes = frozenLayoutChanges(frozen());
 
