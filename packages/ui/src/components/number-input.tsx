@@ -17,7 +17,7 @@ function NumberInputControl({
   return (
     <NumberInputControlPrimitive
       className={cn(
-        "w-full min-w-0 rounded-none border border-input bg-background px-2 py-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:opacity-50",
+        "w-full min-w-0 rounded-none border border-input bg-background px-2 py-1 text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:opacity-50",
         className
       )}
       {...props}

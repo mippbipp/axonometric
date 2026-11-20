@@ -181,11 +181,24 @@
 /* The menu comes from the UI package, which paints with shadcn's tokens.
    Inside a menu they take the map's colours, so it reads as part of the page. */
 [data-slot="menu-content"],
-[data-slot="menu-sub-content"] {
+[data-slot="menu-sub-content"],
+[data-slot="select-content"] {
   --popover: var(--paper);
   --popover-foreground: var(--ink);
   --border: var(--ink);
   --accent: var(--ink);
   --accent-foreground: var(--paper);
   --muted: var(--face);
+}
+
+/* The form controls come from the UI package too. They take the map's
+   colours, with the ink for their borders and the checked box. */
+[data-slot="select-trigger"],
+[data-slot="number-input-control"],
+[data-slot="checkbox"] {
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --input: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
 }

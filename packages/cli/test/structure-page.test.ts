@@ -155,6 +155,22 @@ describe("adding a structure from the toolbar", () => {
           assert.strictEqual(addFieldCount, 1, field);
         }
 
+        for (const name of ["Shape", "Group", "Status"]) {
+          const named = yield* Effect.promise(() =>
+            page.getByRole("combobox", { exact: true, name }).count()
+          );
+
+          assert.strictEqual(named, 1, `${name} select is named`);
+        }
+
+        for (const name of ["x", "y"]) {
+          const named = yield* Effect.promise(() =>
+            page.getByRole("textbox", { exact: true, name }).count()
+          );
+
+          assert.strictEqual(named, 1, `${name} number input is named`);
+        }
+
         const addSubmitDisabled = yield* Effect.promise(() =>
           page.locator('[data-add="submit"]').isDisabled()
         );
