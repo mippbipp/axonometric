@@ -2,12 +2,15 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";
 
 import {
+  applyLayoutChanges,
   chapterViews,
   checkLayout,
   draggedProblems,
   draggedProblemsIn,
+  layoutAfterChanges,
+  withCarriedRoutes,
 } from "../src/index.ts";
-import type { Layout, MapData } from "../src/index.ts";
+import type { Layout, LayoutChange, MapData } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
 
 /** How far to move a structure, in grid units. */
@@ -108,5 +111,88 @@ describe("checking a drag a chapter at a time", () => {
         checkLayout(data, nudged(layout, right))
       );
     })
+  );
+});
+
+describe("the drag preview and the layout a drop saves", () => {
+  it.effect(
+    "report the problems check gives for the layout the served store would save",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout: saved } = yield* fixture("review");
+
+        // h-store takes a detour right of the server and the proposals, past
+        // the pull request.
+        const layout: Layout = {
+          ...saved,
+          routes: {
+            "h-store": [
+              { x: 9, y: 2 },
+              { x: 9, y: 4 },
+              { x: 13, y: 4 },
+              { x: 13, y: 7 },
+              { x: 10, y: 7 },
+            ],
+          },
+        };
+
+        // Moving both ends together drags the override with them, as it does
+        // when a drop is saved.
+        const changes: ReadonlyArray<LayoutChange> = [
+          {
+            id: "group",
+            kind: "move",
+            moves: [
+              {
+                position: { x: 8, y: 2 },
+                target: { id: "server", kind: "structure" },
+              },
+              {
+                position: { x: 8, y: 8 },
+                target: { id: "proposals", kind: "structure" },
+              },
+            ],
+          },
+        ];
+
+        const previewed = layoutAfterChanges({
+          changes,
+          hops: data.hops,
+          layout,
+        });
+
+        // What the store saves: the moves, then the reroutes it makes for them.
+        const reroutes = Arr.filter(
+          withCarriedRoutes({
+            changes,
+            hops: data.hops,
+            id: (hop) => `saved-${hop}`,
+            layout,
+          }),
+          ({ kind }) => kind === "reroute"
+        );
+
+        const savedLayout = applyLayoutChanges(layout, [
+          ...changes,
+          ...reroutes,
+        ]);
+
+        assert.lengthOf(reroutes, 1);
+        assert.deepStrictEqual(previewed, savedLayout);
+
+        const shown = Arr.map(
+          draggedProblems(data, layout, previewed),
+          ({ problem }) => problem
+        );
+
+        assert.isAbove(shown.length, 0);
+        assert.deepStrictEqual(shown, checkLayout(data, savedLayout));
+        // Without the carried override the layout reads differently, so the
+        // comparison would notice a preview that left it behind.
+        assert.notDeepEqual(
+          checkLayout(data, applyLayoutChanges(layout, changes)),
+          shown
+        );
+      })
   );
 });
