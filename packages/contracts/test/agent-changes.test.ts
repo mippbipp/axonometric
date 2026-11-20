@@ -103,11 +103,21 @@ describe("the agent proposing a layout change", () => {
     );
   });
 
-  it("gives back the list as it is when it already shows the proposal", () => {
+  it("gives back the list as it is when it already shows the proposal, for the same reason", () => {
+    const changes = [agentMove("m1", "a", { at: [0, 6], reason: "Tidy" })];
+    const again = propose(changes, placeAt("a", { x: 0, y: 6 }), "Tidy");
+
+    assert.deepStrictEqual(again, Result.succeed(changes));
+  });
+
+  it("replaces the reason when the same proposal comes with another", () => {
     const changes = [agentMove("m1", "a", { at: [0, 6], reason: "Tidy" })];
     const again = propose(changes, placeAt("a", { x: 0, y: 6 }), "Other");
 
-    assert.deepStrictEqual(again, Result.succeed(changes));
+    assert.deepStrictEqual(
+      again,
+      Result.succeed([agentMove("fresh", "a", { at: [0, 6], reason: "Other" })])
+    );
   });
 
   it("takes only the proposed structure out of an agent move of several", () => {

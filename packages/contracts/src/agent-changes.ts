@@ -153,7 +153,8 @@ const withoutAgentOn = (
  * `frozen`, and when the structure has no placement in `base`. Otherwise
  * every agent change on the target is dropped, and the new value is laid as
  * the agent's, relative to `base` and the rest of the list. A proposal equal
- * to what the list already shows returns the list unchanged.
+ * to what the list already shows, for the reason the agent already gave,
+ * returns the list unchanged.
  */
 export const proposeAgentChange = ({
   base,
@@ -188,6 +189,14 @@ export const proposeAgentChange = ({
   const author: Author = { by: "agent", reason };
   const others = withoutAgentOn(changes, [target]);
 
+  // A proposal the map already shows changes nothing, unless it gives the
+  // agent's change on the target a new reason.
+  const sameReason = Arr.every(
+    changes,
+    (change) =>
+      !byAgent(change) || !actsOn(change, target) || change.reason === reason
+  );
+
   return Match.valueTags(proposal, {
     Place: ({ next, structure }) =>
       Option.match(Rec.get(shown.structures, structure), {
@@ -197,7 +206,7 @@ export const proposeAgentChange = ({
           ),
         onSome: (placement) =>
           Result.succeed(
-            samePlacement(placement, next)
+            sameReason && samePlacement(placement, next)
               ? changes
               : placeStructure({
                   accepted: base,
@@ -211,7 +220,7 @@ export const proposeAgentChange = ({
       }),
     Reroute: ({ hop, points }) =>
       Result.succeed(
-        sameRoute(shown.routes?.[hop] ?? null, points)
+        sameReason && sameRoute(shown.routes?.[hop] ?? null, points)
           ? changes
           : placeRoute({
               accepted: base,
