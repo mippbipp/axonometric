@@ -13,7 +13,7 @@ import {
   createMenuController,
 } from "@axonometric/ui/components/menu";
 import { Array as Arr, Option } from "effect";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
 import { useContextMenu } from "./open-context-menu.ts";
@@ -37,8 +37,7 @@ const idOfSegment = (target: Element) =>
 export function HopMenu() {
   const connections = useConnections();
   const { selectHop } = useSelection();
-  // oxlint-disable-next-line react/hook-use-state -- the controller is made once and never replaced.
-  const [menu] = useState(() => createMenuController());
+  const menu = useMemo(() => createMenuController(), []);
   const [opened, setOpened] = useState<string | null>(null);
   const [handOffFocus, setHandOffFocus] = useState(false);
 
