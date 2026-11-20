@@ -275,6 +275,27 @@ export {
 export type { Observed, Stepped, UndoHistory } from "./undo-history.ts";
 
 export {
+  isQueued,
+  pendingRefusal,
+  pendingView,
+  startPending,
+  stepPending,
+} from "./pending-changes.ts";
+
+export type {
+  Arrangement,
+  EditNotice,
+  LayoutWrite,
+  PendingEdit,
+  PendingInput,
+  PendingOutcome,
+  PendingSession,
+  PendingView,
+  PendingWrite,
+  WriteAnswer,
+} from "./pending-changes.ts";
+
+export {
   alignMoves,
   appendMove,
   distributeMoves,

@@ -12,6 +12,7 @@ import {
   openItems,
   reviewEntries,
 } from "@axonometric/contracts";
+import type { EditNotice } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useMemo, useSyncExternalStore } from "react";
@@ -39,12 +40,7 @@ import { RenamesContext } from "./renames-context.ts";
 import { RestoreDialog } from "./restore-dialog.tsx";
 import { ReviewContext } from "./review-context.ts";
 import type { Review } from "./review-context.ts";
-import type {
-  EditNotice,
-  Rejection,
-  SavedRevision,
-  ServedStore,
-} from "./served-store.ts";
+import type { Rejection, SavedRevision, ServedStore } from "./served-store.ts";
 
 /**
  * The served page's notices. The page shows them under the chapter rail, over
