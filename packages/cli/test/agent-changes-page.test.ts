@@ -334,6 +334,92 @@ describe("the agent's layout changes in the page", () => {
   );
 
   it.live(
+    "tells the engineer how many changes the agent proposed and why while Edit is off, and links to Pending",
+    () =>
+      Effect.gen(function* () {
+        const { errors, home, page, root } = yield* openReviewMap(
+          proposalsOf([...tidyRow, storeRoute]),
+          { edit: false }
+        );
+        const notice = "[data-agent-proposal-notice]";
+
+        yield* waitFor(page, notice);
+        yield* assertTextIncludes(
+          page,
+          notice,
+          "The agent proposed 3 layout changes."
+        );
+        yield* assertTextIncludes(page, notice, "Reason: Tidy the loop.");
+
+        // A screen reader is told through a status region.
+        yield* Effect.promise(() =>
+          page.locator(notice).and(page.getByRole("status")).waitFor()
+        );
+
+        // A later proposal changes the count and adds its reason.
+        const proposed = yield* runCli(root, [
+          "layout",
+          home,
+          "upstream",
+          "--y",
+          "4",
+          "--propose",
+          "--reason",
+          "Make room",
+        ]);
+
+        assert.strictEqual(proposed.exitCode, 0, proposed.stderr);
+        yield* Effect.promise(() =>
+          page
+            .locator(notice, {
+              hasText: "The agent proposed 4 layout changes.",
+            })
+            .waitFor()
+        );
+        yield* assertTextIncludes(
+          page,
+          notice,
+          "Reason: Tidy the loop; Make room."
+        );
+
+        // The link opens the Pending tab, which lists them without Accept.
+        yield* pressButton(page, "See them in Pending");
+        yield* waitFor(page, "[data-pending-list]");
+        yield* assertCount(
+          page,
+          "[data-pending-list] [data-pending-by=agent]",
+          4
+        );
+        yield* assertCount(page, "[data-accept-change]", 0);
+        yield* assertCount(page, "[data-accept-group]", 0);
+
+        // Accepting needs Edit: turning it on drops the notice and offers Accept.
+        yield* click(page, "[data-edit-toggle]");
+        yield* waitFor(page, "[data-accept-change]");
+        yield* waitGone(page, notice);
+
+        yield* click(page, "[data-edit-toggle]");
+        yield* waitFor(page, notice);
+        assert.deepStrictEqual(errors, []);
+      }),
+    60_000
+  );
+
+  it.live(
+    "shows no notice while Edit is off when the agent has proposed nothing",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* openReviewMap(proposalsOf([engineerMove]), {
+          edit: false,
+        });
+
+        yield* waitFor(page, "[data-walkthrough]");
+        yield* assertCount(page, "[data-agent-proposal-notice]", 0);
+      }),
+    60_000
+  );
+
+  it.live(
     "keeps the agent's changes open when the engineer presses Ready for review",
     () =>
       Effect.gen(function* () {

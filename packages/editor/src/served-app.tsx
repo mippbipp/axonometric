@@ -19,6 +19,7 @@ import { useMemo, useSyncExternalStore } from "react";
 
 import { AcceptingContext } from "./accepting-context.ts";
 import type { Accepting } from "./accepting-context.ts";
+import { AgentProposalNotice } from "./agent-proposal-notice.tsx";
 import { App } from "./app.tsx";
 import { CompareContext } from "./compare-context.ts";
 import { ConnectionsContext } from "./connections-context.ts";
@@ -336,6 +337,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
                               notices={
                                 <>
                                   {history.banner}
+                                  <AgentProposalNotice />
                                   <ServedNotices
                                     notice={view.notice}
                                     rejection={view.rejection}
