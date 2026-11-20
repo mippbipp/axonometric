@@ -166,7 +166,7 @@ export const JsonText = Schema.String.pipe(
       decode: (text, options) =>
         Effect.try({
           try: () => {
-            // oxlint-disable-next-line effecttsgo/global-json-in-effect, effecttsgo/prefer-schema-over-json -- see above
+            // oxlint-disable-next-line effecttsgo/global-json-in-effect, effecttsgo/prefer-schema-over-json -- Schema.fromJsonString would drop Node's line and column from the syntax error message
             const parsed: unknown = JSON.parse(text);
 
             return parsed;
