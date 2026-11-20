@@ -23,9 +23,7 @@ export interface AgentDecisions {
     decision: AgentDecision["decision"]
   ) => Effect.Effect<void>;
   /** The page count, the time to pass next, and the decisions after `since`. */
-  readonly status: (
-    since: DateTime.Utc | undefined
-  ) => Effect.Effect<ServerStatus>;
+  readonly status: (since?: DateTime.Utc) => Effect.Effect<ServerStatus>;
 }
 
 /**
