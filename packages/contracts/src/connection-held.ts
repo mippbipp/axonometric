@@ -9,11 +9,11 @@ import type { FlowProposal, Proposals } from "./proposals.ts";
 type Held = Pick<Proposals, "hops" | "flows" | "batches">;
 
 /** The changes of the hop items open now, not in a batch yet. */
-export const openHopChanges = (proposals: Held): readonly HopChange[] =>
+export const openHopChanges = (proposals: Held): ReadonlyArray<HopChange> =>
   Arr.map(proposals.hops ?? [], ({ change }) => change);
 
 /** The changes of the hop items in batches that no commit has closed. */
-export const frozenHopChanges = (proposals: Held): readonly HopChange[] =>
+export const frozenHopChanges = (proposals: Held): ReadonlyArray<HopChange> =>
   Arr.flatMap(proposals.batches ?? [], (batch) =>
     batch.committed === undefined
       ? Arr.flatMap(batch.items, (item) =>
@@ -23,17 +23,19 @@ export const frozenHopChanges = (proposals: Held): readonly HopChange[] =>
   );
 
 /** The provisional ids of the hops a list of changes adds. */
-export const addedHopIds = (changes: readonly HopChange[]): readonly string[] =>
+export const addedHopIds = (
+  changes: ReadonlyArray<HopChange>
+): ReadonlyArray<string> =>
   Arr.flatMap(changes, (change) =>
     change.action === "add" ? [change.hop.id] : []
   );
 
 /** The changes of the flow items open now, not in a batch yet. */
-export const openFlowChanges = (proposals: Held): readonly FlowChange[] =>
+export const openFlowChanges = (proposals: Held): ReadonlyArray<FlowChange> =>
   Arr.map(proposals.flows ?? [], ({ change }) => change);
 
 /** The changes of the flow items in batches that no commit has closed. */
-export const frozenFlowChanges = (proposals: Held): readonly FlowChange[] =>
+export const frozenFlowChanges = (proposals: Held): ReadonlyArray<FlowChange> =>
   Arr.flatMap(proposals.batches ?? [], (batch) =>
     batch.committed === undefined
       ? Arr.flatMap(batch.items, (item) =>
@@ -44,8 +46,8 @@ export const frozenFlowChanges = (proposals: Held): readonly FlowChange[] =>
 
 /** The provisional ids of the flows a list of changes adds. */
 export const addedFlowIds = (
-  changes: readonly FlowChange[]
-): readonly string[] =>
+  changes: ReadonlyArray<FlowChange>
+): ReadonlyArray<string> =>
   Arr.flatMap(changes, (change) =>
     change.action === "add" ? [change.flow.id] : []
   );
@@ -70,7 +72,7 @@ export const withoutOpenHop: {
     return proposals;
   }
 
-  const kept = Arr.flatMap(open, (proposal): readonly FlowProposal[] => {
+  const kept = Arr.flatMap(open, (proposal): ReadonlyArray<FlowProposal> => {
     const { change } = proposal;
 
     if (change.action !== "add" && change.action !== "hops") {
@@ -84,5 +86,5 @@ export const withoutOpenHop: {
       : [];
   });
 
-  return { ...proposals, revision: proposals.revision + 1, flows: kept };
+  return { ...proposals, flows: kept, revision: proposals.revision + 1 };
 });

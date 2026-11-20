@@ -52,22 +52,22 @@ import type {
  * loses the zoom. A long list of problems scrolls inside the banner.
  */
 function ServedNotices({
-  rejection,
-  stopped,
   notice,
+  rejection,
   saved,
+  stopped,
 }: {
-  readonly rejection: Rejection | null;
-  readonly stopped: boolean;
   readonly notice: EditNotice | null;
+  readonly rejection: Rejection | null;
   readonly saved: SavedRevision | null;
+  readonly stopped: boolean;
 }) {
   return (
     <>
       {saved === null ? null : (
         <output
-          data-saved-revision={saved.revision}
           className="border-ink bg-paper text-ink pointer-events-auto max-w-full shrink-0 border px-3 py-1.5 text-xs"
+          data-saved-revision={saved.revision}
         >
           <b className="font-medium">Saved revision {saved.revision}</b>
           {`: ${saved.message}`}
@@ -75,8 +75,8 @@ function ServedNotices({
       )}
       {stopped ? (
         <output
-          data-server-stopped
           className="border-ink bg-paper text-ink pointer-events-auto max-w-full shrink-0 border px-3 py-1.5 text-xs"
+          data-server-stopped
         >
           Server stopped. This is the last map it sent, and editing is off. If
           serve starts again at this address, the page reconnects. If it starts
@@ -85,20 +85,20 @@ function ServedNotices({
       ) : null}
       {notice === null ? null : (
         <output
-          data-edit-notice={notice.kind}
           className={cn(
             "bg-paper text-ink pointer-events-auto max-w-full shrink-0 border-2 px-3 py-1.5 text-xs",
             notice.kind === "info" ? "border-ink" : "border-refused"
           )}
+          data-edit-notice={notice.kind}
         >
           {notice.message}
         </output>
       )}
       {rejection === null ? null : (
         <section
+          className="border-ink bg-paper text-ink pointer-events-auto flex min-h-0 w-full max-w-3xl flex-col gap-1.5 overflow-auto border-2 px-3 py-2 text-xs"
           data-map-error
           role="alert"
-          className="border-ink bg-paper text-ink pointer-events-auto flex min-h-0 w-full max-w-3xl flex-col gap-1.5 overflow-auto border-2 px-3 py-2 text-xs"
         >
           <h2 className="font-medium tracking-widest uppercase">
             The map files have an error
@@ -107,8 +107,8 @@ function ServedNotices({
           <ul className="flex flex-col gap-1">
             {Arr.map(rejection.problems, (problem) => (
               <li
-                key={`${problem.file} ${problem.path} ${problem.message}`}
                 data-map-problem={problem.severity}
+                key={`${problem.file} ${problem.path} ${problem.message}`}
               >
                 <b className="font-medium">{problem.severity}</b> {problem.file}
                 {problem.path === "" ? null : ` ${problem.path}`}:{" "}
@@ -122,7 +122,7 @@ function ServedNotices({
   );
 }
 
-const none: readonly string[] = [];
+const none: ReadonlyArray<string> = [];
 
 /**
  * The map page as `axonometric serve` serves it, kept up to date. It shows
@@ -152,8 +152,8 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
   const proposed = useMemo(
     () =>
       proposedMap({
-        state: view.state,
         proposals: { ...proposals, layout: pending },
+        state: view.state,
       }),
     [view.state, proposals, pending]
   );
@@ -187,7 +187,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     [view.state, accepted, frozen, pending]
   );
 
-  const history = useHistoryView({ store, view, shown });
+  const history = useHistoryView({ shown, store, view });
 
   const [editOn, setEditOn] = useStoredEdit();
 
@@ -202,20 +202,20 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
         ? null
         : {
             accepted,
-            pending,
-            frozen,
-            canEdit: !view.stopped,
-            refusalOf: store.refusalOf,
-            place: store.place,
-            discard: store.discard,
-            refusalOfMoves: store.refusalOfMoves,
             arrange: store.arrange,
-            reroute: store.reroute,
-            refusalOfReroute: store.refusalOfReroute,
-            canUndo: view.canUndo,
+            canEdit: !view.stopped,
             canRedo: view.canRedo,
-            undo: store.undo,
+            canUndo: view.canUndo,
+            discard: store.discard,
+            frozen,
+            pending,
+            place: store.place,
             redo: store.redo,
+            refusalOf: store.refusalOf,
+            refusalOfMoves: store.refusalOfMoves,
+            refusalOfReroute: store.refusalOfReroute,
+            reroute: store.reroute,
+            undo: store.undo,
           },
     [
       history.past,
@@ -231,9 +231,9 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
 
   const accepting = useMemo(
     (): Accepting => ({
-      canAccept: !view.stopped,
-      busy: view.accepting,
       accept: store.accept,
+      busy: view.accepting,
+      canAccept: !view.stopped,
     }),
     [view.stopped, view.accepting, store]
   );
@@ -244,41 +244,41 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
     );
 
     return {
-      proposed,
       canPropose: !view.stopped,
-      open: proposals.structures ?? [],
+      discard: store.structures.discard,
+      isOpenAdd: store.structures.isOpenAdd,
       nameOf: (id) => names.get(id) ?? id,
-      propose: store.structures.propose,
-      refusalOf: store.structures.refusalOf,
+      open: proposals.structures ?? [],
+      place: store.structures.place,
       problemsOf: (items, options) =>
         proposalProblems({
           before: { data: shown.data, layout: shown.layout },
           items,
-          scope: options?.scope,
           moved: options?.moved,
+          scope: options?.scope,
         }),
-      isOpenAdd: store.structures.isOpenAdd,
+      propose: store.structures.propose,
+      proposed,
+      refusalOf: store.structures.refusalOf,
       refusalOfPlace: store.structures.refusalOfPlace,
-      place: store.structures.place,
-      discard: store.structures.discard,
     };
   }, [proposed, shown, proposals.structures, view.stopped, store]);
 
   const proposalOps = useMemo(
     (): ProposalOps => ({
+      acceptedChapters: view.state.data.chapters,
       canPropose: !view.stopped,
-      groups: {
-        open: proposals.groups ?? [],
-        propose: store.groups.propose,
-        discard: store.groups.discard,
-      },
       chapters: {
+        discard: store.chapters.discard,
         open: proposals.chapters ?? [],
         propose: store.chapters.propose,
-        discard: store.chapters.discard,
+      },
+      groups: {
+        discard: store.groups.discard,
+        open: proposals.groups ?? [],
+        propose: store.groups.propose,
       },
       proposed,
-      acceptedChapters: view.state.data.chapters,
     }),
     [
       proposals.groups,
@@ -292,18 +292,18 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
 
   const connecting = useMemo(
     (): Connections => ({
-      proposed,
       canPropose: !view.stopped,
-      proposeHop: store.hops.propose,
-      refusalOfHop: store.hops.refusalOf,
-      proposeFlow: store.flows.propose,
-      refusalOfFlow: store.flows.refusalOf,
+      discard: store.review.discardProposal,
       problemsOfHop: (change) =>
         hopCandidateProblems({
           before: { data: shown.data, layout: shown.layout },
           change,
         }),
-      discard: store.review.discardProposal,
+      proposed,
+      proposeFlow: store.flows.propose,
+      proposeHop: store.hops.propose,
+      refusalOfFlow: store.flows.refusalOf,
+      refusalOfHop: store.hops.refusalOf,
     }),
     [proposed, shown, view.stopped, store]
   );
@@ -318,8 +318,8 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
         openItems(proposals),
         ({ kind }) => kind !== "layout"
       ).length,
-      replaces: proposals.replaces ?? {},
       ops: store.review,
+      replaces: proposals.replaces ?? {},
     };
   }, [proposals, view.stopped, store]);
 
@@ -337,23 +337,23 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
                         <HistoryContext value={history.panel}>
                           <CompareContext value={history.marks}>
                             <App
-                              state={history.drawn}
                               notices={
                                 <>
                                   {history.banner}
                                   <ServedNotices
-                                    rejection={view.rejection}
-                                    stopped={view.stopped}
                                     notice={view.notice}
+                                    rejection={view.rejection}
                                     saved={view.saved}
+                                    stopped={view.stopped}
                                   />
                                 </>
                               }
+                              state={history.drawn}
                             />
                             {history.report === null ? null : (
                               <RestoreDialog
-                                report={history.report}
                                 onClose={history.handleCloseReport}
+                                report={history.report}
                               />
                             )}
                           </CompareContext>

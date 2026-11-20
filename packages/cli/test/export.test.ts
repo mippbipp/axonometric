@@ -24,7 +24,7 @@ const lastChapter = Effect.gen(function* () {
   const opened = yield* buildAndOpen(pipelineMapFiles, "flake-pipeline");
 
   yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
+    opened.page.setViewportSize({ height: 800, width: 1280 })
   );
   yield* click(opened.page, '[data-chapter-rail] button[data-chapter="c-all"]');
   yield* Effect.promise(() =>
@@ -49,7 +49,7 @@ const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
   const { readFile } = yield* Effect.promise(() => import("node:fs/promises"));
   const bytes = yield* Effect.promise(() => readFile(path));
 
-  return { name: download.suggestedFilename(), bytes };
+  return { bytes, name: download.suggestedFilename() };
 });
 
 const chooseWhite = Effect.fnUntraced(function* (page: Page) {
@@ -59,19 +59,19 @@ const chooseWhite = Effect.fnUntraced(function* (page: Page) {
 });
 
 interface SvgReport {
-  readonly rootRole: string | null;
-  readonly labelledBy: string | null;
-  readonly firstChildren: readonly string[];
-  readonly titleText: string;
   readonly descText: string;
-  readonly ids: readonly string[];
-  /** Every `#id` the file refers to, by `url()`, `href` or ARIA. */
-  readonly references: readonly string[];
   /** Every `url()` or `href` that doesn't point inside the file. */
-  readonly external: readonly string[];
-  readonly text: string;
+  readonly external: ReadonlyArray<string>;
+  readonly firstChildren: ReadonlyArray<string>;
+  readonly ids: ReadonlyArray<string>;
+  readonly labelledBy: string | null;
+  /** Every `#id` the file refers to, by `url()`, `href` or ARIA. */
+  readonly references: ReadonlyArray<string>;
+  readonly rootRole: string | null;
   /** The text of each <style> element. */
-  readonly styleElements: readonly string[];
+  readonly styleElements: ReadonlyArray<string>;
+  readonly text: string;
+  readonly titleText: string;
 }
 
 /** Parses an SVG file in the page and reports what's in it. */
@@ -122,7 +122,7 @@ const decoder = new TextDecoder();
 
 /** The colour of a PNG's top left pixel, read through a canvas. */
 const cornerPixel = (page: Page, bytes: Uint8Array) =>
-  inPage<readonly number[]>(
+  inPage<ReadonlyArray<number>>(
     page,
     `(async () => {
       const image = new Image();
@@ -159,24 +159,24 @@ const relativeCentres = (page: Page, selector: (id: string) => string) =>
 const Binding = Schema.Struct({ elementId: Schema.String });
 
 const ExcalidrawElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.String,
-  frameId: Schema.NullOr(Schema.String),
-  containerId: Schema.optionalKey(Schema.String),
   boundElements: Schema.Array(
     Schema.Struct({ id: Schema.String, type: Schema.String })
   ),
-  startBinding: Schema.optionalKey(Schema.NullOr(Binding)),
+  containerId: Schema.optionalKey(Schema.String),
   endBinding: Schema.optionalKey(Schema.NullOr(Binding)),
+  frameId: Schema.NullOr(Schema.String),
+  id: Schema.String,
+  startBinding: Schema.optionalKey(Schema.NullOr(Binding)),
+  type: Schema.String,
 });
 
 const ExcalidrawFile = Schema.Struct({
+  appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
+  elements: Schema.Array(ExcalidrawElement),
+  files: Schema.Record(Schema.String, Schema.Unknown),
+  source: Schema.String,
   type: Schema.Literal("excalidraw"),
   version: Schema.Literal(2),
-  source: Schema.String,
-  elements: Schema.Array(ExcalidrawElement),
-  appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
-  files: Schema.Record(Schema.String, Schema.Unknown),
 });
 
 const decodeExcalidraw = Schema.decodeUnknownEffect(
@@ -189,14 +189,14 @@ describe("export", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors, requests } = yield* lastChapter;
+          const { errors, page, requests } = yield* lastChapter;
 
-          const names = yield* inPage<readonly string[]>(
+          const names = yield* inPage<ReadonlyArray<string>>(
             page,
             `[...document.querySelectorAll("[data-map-layer] [data-structure]")].map((element) => element.getAttribute("aria-label"))`
           );
 
-          const { name, bytes } = yield* exportFile(page, "svg");
+          const { bytes, name } = yield* exportFile(page, "svg");
           const report = yield* svgReport(page, decoder.decode(bytes));
           const prefix = "flake-pipeline-iso-chapter-8-";
 
@@ -340,7 +340,7 @@ describe("export", () => {
             '[data-chapter-rail] button[data-chapter="c-monday"]'
           );
 
-          const { name, bytes } = yield* exportFile(page, "excalidraw");
+          const { bytes, name } = yield* exportFile(page, "excalidraw");
           const file = yield* decodeExcalidraw(decoder.decode(bytes));
 
           assert.strictEqual(name, "flake-pipeline.excalidraw");
@@ -468,7 +468,7 @@ describe("export", () => {
             "pipeline"
           );
 
-          const { name, bytes } = yield* exportFile(opened.page, "svg");
+          const { bytes, name } = yield* exportFile(opened.page, "svg");
           const text = decoder.decode(bytes);
           const report = yield* svgReport(opened.page, text);
 

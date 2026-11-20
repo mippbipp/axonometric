@@ -6,31 +6,31 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** Numbered buttons for every chapter, and the current chapter's title. */
 export function ChapterRail({ className }: { readonly className?: string }) {
-  const { stops, index, stop, goTo } = useWalkthrough();
+  const { goTo, index, stop, stops } = useWalkthrough();
 
   return (
     <nav
       aria-label="Chapters"
-      data-chapter-rail
       className={cn("flex flex-wrap items-center gap-1.5", className)}
+      data-chapter-rail
     >
       {Arr.map(stops, (chapter, position) => (
         <button
-          key={chapter.id}
-          type="button"
-          data-chapter={chapter.id}
-          title={chapter.title}
-          aria-label={`Chapter ${position + 1}: ${chapter.title}`}
           aria-current={position === index ? "step" : undefined}
+          aria-label={`Chapter ${position + 1}: ${chapter.title}`}
           className={cn(
             controlClass,
             "size-6 p-0 leading-none",
             position === index && "bg-ink text-paper",
             position < index && "bg-face"
           )}
+          data-chapter={chapter.id}
+          key={chapter.id}
           onClick={() => {
             goTo(position);
           }}
+          title={chapter.title}
+          type="button"
         >
           {position + 1}
         </button>

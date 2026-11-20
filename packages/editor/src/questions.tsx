@@ -39,57 +39,57 @@ const headingButtonClass =
  * its answer when it's resolved, or the form that answers it when it's open.
  */
 function QuestionItem({
-  structure,
-  question,
   onPick,
+  question,
+  structure,
 }: {
+  readonly onPick: () => void;
+  readonly question: Question;
   /** The id of the structure the question is on. */
   readonly structure: string;
-  readonly question: Question;
-  readonly onPick: () => void;
 }) {
   return (
     <article
+      className="border-ink/30 border p-1.5 text-xs"
       data-question={question.id}
       data-state={question.state}
-      className="border-ink/30 border p-1.5 text-xs"
     >
       <h5>
-        <button type="button" className={headingButtonClass} onClick={onPick}>
+        <button className={headingButtonClass} onClick={onPick} type="button">
           <b className="font-medium">{question.id}</b> {question.text}
         </button>
       </h5>
       {question.state === "resolved" ? (
         <Answer question={question} />
       ) : (
-        <QuestionAnswer structure={structure} question={question.id} />
+        <QuestionAnswer question={question.id} structure={structure} />
       )}
     </article>
   );
 }
 
 function QuestionList<Q extends Question>({
-  kind,
-  title,
   groups,
+  kind,
   onPick,
+  title,
 }: {
+  readonly groups: ReadonlyArray<QuestionGroup<Q>>;
   readonly kind: "open" | "resolved";
-  readonly title: string;
-  readonly groups: readonly QuestionGroup<Q>[];
   readonly onPick: (structure: string) => void;
+  readonly title: string;
 }) {
   return (
-    <section data-question-list={kind} className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-question-list={kind}>
       <h3 className="text-xs tracking-widest uppercase opacity-70">{title}</h3>
       {groups.length === 0 ? (
         <p className="text-xs opacity-70">None so far.</p>
       ) : (
-        Arr.map(groups, ({ structure, questions }) => (
+        Arr.map(groups, ({ questions, structure }) => (
           <div
-            key={structure.id}
-            data-question-group={structure.id}
             className="flex flex-col gap-1"
+            data-question-group={structure.id}
+            key={structure.id}
           >
             <h4 className="text-xs font-medium">
               {structure.code} · {structure.name}
@@ -98,11 +98,11 @@ function QuestionList<Q extends Question>({
               {Arr.map(questions, (question) => (
                 <li key={question.id}>
                   <QuestionItem
-                    structure={structure.id}
-                    question={question}
                     onPick={() => {
                       onPick(structure.id);
                     }}
+                    question={question}
+                    structure={structure.id}
                   />
                 </li>
               ))}
@@ -128,13 +128,13 @@ export function QuestionsTab({ onPicked }: { readonly onPicked: () => void }) {
   };
 
   return (
-    <div data-questions-tab className="flex flex-col gap-4">
-      <QuestionList kind="open" title="Open" groups={open} onPick={pick} />
+    <div className="flex flex-col gap-4" data-questions-tab>
+      <QuestionList groups={open} kind="open" onPick={pick} title="Open" />
       <QuestionList
-        kind="resolved"
-        title="Resolved"
         groups={resolved}
+        kind="resolved"
         onPick={pick}
+        title="Resolved"
       />
     </div>
   );

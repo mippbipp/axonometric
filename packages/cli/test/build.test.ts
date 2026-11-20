@@ -15,16 +15,16 @@ const dataFile = "pipeline/map/data.mjs";
 const layoutFile = "pipeline/map/layout.json";
 
 interface PlacementInput {
+  readonly d: number;
+  readonly w: number;
   readonly x: number;
   readonly y: number;
-  readonly w: number;
-  readonly d: number;
 }
 
 const layoutWith = (structures: Readonly<Record<string, PlacementInput>>) => {
   const entries = Arr.map(
     Rec.toEntries(structures),
-    ([id, { x, y, w, d }]) =>
+    ([id, { d, w, x, y }]) =>
       `"${id}": { "x": ${x}, "y": ${y}, "w": ${w}, "d": ${d} }`
   );
 
@@ -37,7 +37,7 @@ const structure = (id: string, name: string) =>
 
 /** A data.mjs with the given structures and hops, and nothing else. */
 const dataWith = (
-  structures: readonly string[],
+  structures: ReadonlyArray<string>,
   hops = "[]"
 ) => `export default {
   format: 1,
@@ -170,8 +170,8 @@ describe("build", () => {
     Effect.gen(function* () {
       const result = yield* buildWith({
         [layoutFile]: layoutWith({
-          updater: { x: 0.25, y: 0, w: 2, d: 2 },
-          gate: { x: 4.5, y: 3, w: 1.75, d: 1.5 },
+          gate: { d: 1.5, w: 1.75, x: 4.5, y: 3 },
+          updater: { d: 2, w: 2, x: 0.25, y: 0 },
         }),
       });
 

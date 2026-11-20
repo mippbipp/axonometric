@@ -48,79 +48,79 @@ const structure = (
   id: string,
   extra: Partial<MapData["structures"][number]> = {}
 ): MapData["structures"][number] => ({
-  id,
   code: "A",
-  name: `Structure ${id}`,
-  shape: "box",
   group: "g1",
-  status: "live",
-  oneLiner: "One.",
-  whatItDoes: "Does.",
   howItsBuilt: "Built.",
+  id,
+  name: `Structure ${id}`,
+  oneLiner: "One.",
+  shape: "box",
+  status: "live",
+  whatItDoes: "Does.",
   ...extra,
 });
 
 const data: MapData = {
+  chapters: [
+    {
+      id: "ch1",
+      lede: "L",
+      plays: ["h-ab"],
+      reveals: ["a", "b"],
+      story: "S",
+      title: "First",
+    },
+    {
+      id: "ch2",
+      lede: "L",
+      plays: ["h-bc", "h-ca"],
+      reveals: ["c"],
+      story: "S",
+      title: "Second",
+    },
+  ],
+  flows: [],
   format: 1,
-  revision: 0,
-  overview: { title: "T", summary: "S" },
   groups: [
     { id: "g1", title: "One" },
     { id: "g2", title: "Two" },
   ],
-  structures: [structure("a"), structure("b"), structure("c", { group: "g2" })],
   hops: [
-    { id: "h-ab", from: "a", to: "b", label: "a to b" },
-    { id: "h-bc", from: "b", to: "c", label: "b to c" },
-    { id: "h-ca", from: "c", to: "a", label: "c to a" },
+    { from: "a", id: "h-ab", label: "a to b", to: "b" },
+    { from: "b", id: "h-bc", label: "b to c", to: "c" },
+    { from: "c", id: "h-ca", label: "c to a", to: "a" },
   ],
-  flows: [],
-  chapters: [
-    {
-      id: "ch1",
-      title: "First",
-      lede: "L",
-      story: "S",
-      reveals: ["a", "b"],
-      plays: ["h-ab"],
-    },
-    {
-      id: "ch2",
-      title: "Second",
-      lede: "L",
-      story: "S",
-      reveals: ["c"],
-      plays: ["h-bc", "h-ca"],
-    },
-  ],
+  overview: { summary: "S", title: "T" },
+  revision: 0,
+  structures: [structure("a"), structure("b"), structure("c", { group: "g2" })],
 };
 
 const layout: Layout = {
   format: 1,
   revision: 1,
   structures: {
-    a: { x: 0, y: 0, w: 2, d: 2 },
-    b: { x: 4, y: 0, w: 2, d: 2 },
-    c: { x: 8, y: 0, w: 2, d: 2 },
+    a: { d: 2, w: 2, x: 0, y: 0 },
+    b: { d: 2, w: 2, x: 4, y: 0 },
+    c: { d: 2, w: 2, x: 8, y: 0 },
   },
 };
 
-const state: MapState = { system: "t", data, layout };
+const state: MapState = { data, layout, system: "t" };
 
-const empty: Proposals = { format: 1, revision: 0, layout: [] };
+const empty: Proposals = { format: 1, layout: [], revision: 0 };
 
 const withGroups = (
-  ...groups: readonly (readonly [string, GroupChange])[]
+  ...groups: ReadonlyArray<readonly [string, GroupChange]>
 ): Proposals => ({
   ...empty,
-  groups: Arr.map(groups, ([id, change]) => ({ id, change })),
+  groups: Arr.map(groups, ([id, change]) => ({ change, id })),
 });
 
 const withChapters = (
-  ...chapters: readonly (readonly [string, ChapterChange])[]
+  ...chapters: ReadonlyArray<readonly [string, ChapterChange]>
 ): Proposals => ({
   ...empty,
-  chapters: Arr.map(chapters, ([id, change]) => ({ id, change })),
+  chapters: Arr.map(chapters, ([id, change]) => ({ change, id })),
 });
 
 const addGroup: GroupChange = {
@@ -140,65 +140,65 @@ const chapterOf = (shown: ReturnType<typeof proposedMap>, id: string) =>
   );
 
 const groupItem = (id: string, change: GroupChange): BatchItem => ({
+  change,
   id,
   kind: "group",
-  change,
 });
 
 const chapterItem = (id: string, change: ChapterChange): BatchItem => ({
+  change,
   id,
   kind: "chapter",
-  change,
 });
 
 const names = {
-  structure: (id: string) =>
-    Arr.findFirst(data.structures, (s) => s.id === id).pipe(
-      Option.match({ onNone: () => id, onSome: ({ name }) => name })
-    ),
-  hop: (id: string) =>
-    Arr.findFirst(data.hops, (hop) => hop.id === id).pipe(
-      Option.match({ onNone: () => id, onSome: ({ label }) => label })
+  chapter: (id: string) =>
+    Arr.findFirst(data.chapters, (chapter) => chapter.id === id).pipe(
+      Option.match({ onNone: () => id, onSome: ({ title }) => title })
     ),
   group: (id: string) =>
     Arr.findFirst(data.groups, (group) => group.id === id).pipe(
       Option.match({ onNone: () => id, onSome: ({ title }) => title })
     ),
-  chapter: (id: string) =>
-    Arr.findFirst(data.chapters, (chapter) => chapter.id === id).pipe(
-      Option.match({ onNone: () => id, onSome: ({ title }) => title })
+  hop: (id: string) =>
+    Arr.findFirst(data.hops, (hop) => hop.id === id).pipe(
+      Option.match({ onNone: () => id, onSome: ({ label }) => label })
+    ),
+  structure: (id: string) =>
+    Arr.findFirst(data.structures, (s) => s.id === id).pipe(
+      Option.match({ onNone: () => id, onSome: ({ name }) => name })
     ),
 };
 
 const breakage = (
   item: BatchItem,
-  siblings: readonly BatchItem[] = [item],
+  siblings: ReadonlyArray<BatchItem> = [item],
   map: MapData = data
 ) =>
   breakageOf({
+    data: map,
+    hops: map.hops,
     item,
     layout,
-    structureIds: new Set(Arr.map(map.structures, ({ id }) => id)),
-    hops: map.hops,
-    data: map,
     siblings,
+    structureIds: new Set(Arr.map(map.structures, ({ id }) => id)),
   });
 
 const change = (kind: ChapterChange): ChapterChange => kind;
 
 /** The ids of a list of open proposals. */
-const idsOf = (held: readonly { readonly id: string }[] | undefined) =>
+const idsOf = (held: ReadonlyArray<{ readonly id: string }> | undefined) =>
   Arr.map(
     Option.fromNullishOr(held).pipe(Option.getOrElse(() => [])),
     ({ id }) => id
   );
 
 /** The open list `held`, or none when the file has no such list. */
-const listOf = <A>(held: readonly A[] | undefined): readonly A[] =>
+const listOf = <A>(held: ReadonlyArray<A> | undefined): ReadonlyArray<A> =>
   Option.getOrElse(Option.fromNullishOr(held), () => []);
 
 /** The text of the `at`th line of `lines`, or nothing. */
-const lineAt = (held: readonly string[], position: number) =>
+const lineAt = (held: ReadonlyArray<string>, position: number) =>
   Option.getOrElse(Option.fromNullishOr(held[position]), () => "");
 
 /** Whether `line` starts with `start`. */
@@ -214,7 +214,7 @@ const changeOf = (item: BatchItem): ChapterChange =>
   );
 
 /** What a taken item says it did, for the assertions about final ids. */
-const doneBy = (entry: AcceptedItem): readonly string[] =>
+const doneBy = (entry: AcceptedItem): ReadonlyArray<string> =>
   Match.value(entry).pipe(
     Match.when({ kind: "structure" }, ({ change: held }) =>
       Match.value(held).pipe(
@@ -235,44 +235,44 @@ const toStorage = (map: MapData): MapData => ({
   ),
 });
 
-const frozenWith = (...items: readonly (readonly [string, BatchItem])[]) => {
+const frozenWith = (...items: ReadonlyArray<readonly [string, BatchItem]>) => {
   const proposals: Proposals = {
     ...empty,
-    groups: Arr.flatMap(items, ([, item]) =>
-      item.kind === "group" ? [{ id: item.id, change: item.change }] : []
-    ),
     chapters: Arr.flatMap(items, ([, item]) =>
-      item.kind === "chapter" ? [{ id: item.id, change: item.change }] : []
+      item.kind === "chapter" ? [{ change: item.change, id: item.id }] : []
+    ),
+    groups: Arr.flatMap(items, ([, item]) =>
+      item.kind === "group" ? [{ change: item.change, id: item.id }] : []
     ),
   };
 
-  return unwrap(freezeOpen({ proposals, at, known: { group: ["g1", "g2"] } }))
+  return unwrap(freezeOpen({ at, known: { group: ["g1", "g2"] }, proposals }))
     .proposals;
 };
 
 /** Proposes group change `change` the way the page does, with no members. */
 const proposeEmptyGroup = ({
-  proposals,
-  id,
   change: proposed,
+  id,
+  proposals,
   world,
 }: {
-  readonly proposals: Proposals;
-  readonly id: string;
   readonly change: GroupChange;
-  readonly world: { readonly data: MapData; readonly base: MapData };
+  readonly id: string;
+  readonly proposals: Proposals;
+  readonly world: { readonly base: MapData; readonly data: MapData };
 }) =>
   proposeGroupWithMembers({
-    proposals,
-    id,
     change: proposed,
+    id,
     members: [],
-    world,
+    proposals,
     structures: { data: world.data, layout },
+    world,
   });
 
 const verdicted = (proposals: Proposals, id: string, verdict: Verdict) =>
-  unwrap(recordVerdict({ proposals, id, verdict }));
+  unwrap(recordVerdict({ id, proposals, verdict }));
 
 const [firstChapter, secondChapter] = data.chapters;
 
@@ -283,8 +283,8 @@ if (firstChapter === undefined || secondChapter === undefined) {
 describe("the proposed map, for each group action", () => {
   it("adds a new group to the groups, and marks it", () => {
     const shown = proposedMap({
-      state,
       proposals: withGroups(["p1", addGroup]),
+      state,
     });
 
     assert.deepStrictEqual(
@@ -300,8 +300,8 @@ describe("the proposed map, for each group action", () => {
 
   it("renames a group, and marks it", () => {
     const shown = proposedMap({
-      state,
       proposals: withGroups(["p1", renameGroup]),
+      state,
     });
 
     assert.strictEqual(
@@ -316,20 +316,20 @@ describe("the proposed map, for each group action", () => {
 
   it("makes a structure's group change land in a group the same proposal adds", () => {
     const shown = proposedMap({
-      state,
       proposals: {
         ...withGroups(["g-1", addGroup]),
         structures: [
           {
+            change: { action: "group", group: "data-1", structure: "a" },
             id: "s-1",
-            change: { action: "group", structure: "a", group: "data-1" },
           },
           {
+            change: { action: "group", group: "data-1", structure: "b" },
             id: "s-2",
-            change: { action: "group", structure: "b", group: "data-1" },
           },
         ],
       },
+      state,
     });
 
     assert.deepStrictEqual(
@@ -346,8 +346,8 @@ describe("the proposed map, for each group action", () => {
 
   it("leaves the layout alone", () => {
     const shown = proposedMap({
-      state,
       proposals: withGroups(["p1", addGroup], ["p2", renameGroup]),
+      state,
     });
 
     assert.deepStrictEqual(shown.state.layout, layout);
@@ -358,15 +358,15 @@ describe("proposing a group", () => {
   it("creates a group with members as one write, or nothing", () => {
     const made = unwrap(
       proposeGroupWithMembers({
-        proposals: empty,
-        id: "g-1",
         change: addGroup,
+        id: "g-1",
         members: [
           { id: "s-1", structure: "a" },
           { id: "s-2", structure: "b" },
         ],
-        world: { data, base: data },
+        proposals: empty,
         structures: { data, layout },
+        world: { base: data, data },
       })
     );
 
@@ -374,15 +374,15 @@ describe("proposing a group", () => {
     assert.deepStrictEqual(idsOf(made.structures), ["s-1", "s-2"]);
 
     const refused = proposeGroupWithMembers({
-      proposals: empty,
-      id: "g-1",
       change: addGroup,
+      id: "g-1",
       members: [
         { id: "s-1", structure: "a" },
         { id: "s-2", structure: "missing" },
       ],
-      world: { data, base: data },
+      proposals: empty,
       structures: { data, layout },
+      world: { base: data, data },
     });
 
     assert.isTrue(Result.isFailure(refused));
@@ -390,10 +390,10 @@ describe("proposing a group", () => {
 
   it("refuses a group with the title another group has", () => {
     const refused = proposeEmptyGroup({
-      proposals: empty,
-      id: "g-1",
       change: { action: "add", group: { id: "again", title: "two" } },
-      world: { data, base: data },
+      id: "g-1",
+      proposals: empty,
+      world: { base: data, data },
     });
 
     assert.isTrue(Result.isFailure(refused));
@@ -402,10 +402,10 @@ describe("proposing a group", () => {
 
   it("refuses to rename a group the map lacks", () => {
     const refused = proposeEmptyGroup({
-      proposals: empty,
-      id: "g-1",
       change: { action: "rename", group: "nope", title: "Nope" },
-      world: { data, base: data },
+      id: "g-1",
+      proposals: empty,
+      world: { base: data, data },
     });
 
     assert.include(
@@ -417,10 +417,10 @@ describe("proposing a group", () => {
   it("edits the add when a group that is only proposed is renamed", () => {
     const first = unwrap(
       proposeEmptyGroup({
-        proposals: empty,
-        id: "g-1",
         change: addGroup,
-        world: { data, base: data },
+        id: "g-1",
+        proposals: empty,
+        world: { base: data, data },
       })
     );
 
@@ -431,10 +431,10 @@ describe("proposing a group", () => {
 
     const renamed = unwrap(
       proposeEmptyGroup({
-        proposals: first,
-        id: "g-2",
         change: { action: "rename", group: "data-1", title: "Storage" },
-        world: { data: grown, base: data },
+        id: "g-2",
+        proposals: first,
+        world: { base: data, data: grown },
       })
     );
 
@@ -448,19 +448,19 @@ describe("proposing a group", () => {
   it("takes the open rename away when the title goes back to what the map has", () => {
     const renamed = unwrap(
       proposeEmptyGroup({
-        proposals: empty,
-        id: "g-1",
         change: renameGroup,
-        world: { data, base: data },
+        id: "g-1",
+        proposals: empty,
+        world: { base: data, data },
       })
     );
 
     const undone = unwrap(
       proposeEmptyGroup({
-        proposals: renamed,
-        id: "g-2",
         change: { action: "rename", group: "g1", title: "One" },
-        world: { data, base: data },
+        id: "g-2",
+        proposals: renamed,
+        world: { base: data, data },
       })
     );
 
@@ -471,24 +471,24 @@ describe("proposing a group", () => {
 describe("the proposed map, for each chapter action", () => {
   it("reveal adds the structure to the chapter and marks it in that chapter only", () => {
     const shown = proposedMap({
-      state,
       proposals: withChapters([
         "c1",
         change({ action: "reveal", chapter: "ch1", structure: "c" }),
       ]),
+      state,
     });
 
     assert.deepStrictEqual(chapterOf(shown, "ch1").reveals, ["a", "b", "c"]);
     assert.deepStrictEqual(chapterOf(shown, "ch2").reveals, ["c"]);
     assert.isTrue(
       marked(shown, {
+        kind: "reveal",
         name: chapterMarkName,
         scope: "ch1",
-        kind: "reveal",
       }).has("c")
     );
     assert.strictEqual(
-      marked(shown, { name: chapterMarkName, scope: "ch2", kind: "reveal" })
+      marked(shown, { kind: "reveal", name: chapterMarkName, scope: "ch2" })
         .size,
       0
     );
@@ -496,16 +496,16 @@ describe("the proposed map, for each chapter action", () => {
 
   it("hide keeps the structure in the chapter, marked, until the agent decides", () => {
     const shown = proposedMap({
-      state,
       proposals: withChapters([
         "c1",
         change({ action: "hide", chapter: "ch1", structure: "b" }),
       ]),
+      state,
     });
 
     assert.deepStrictEqual(chapterOf(shown, "ch1").reveals, ["a", "b"]);
     assert.isTrue(
-      marked(shown, { name: chapterMarkName, scope: "ch1", kind: "hide" }).has(
+      marked(shown, { kind: "hide", name: chapterMarkName, scope: "ch1" }).has(
         "b"
       )
     );
@@ -513,11 +513,11 @@ describe("the proposed map, for each chapter action", () => {
 
   it("play adds the hop to the chapter's plays", () => {
     const shown = proposedMap({
-      state,
       proposals: withChapters([
         "c1",
         change({ action: "play", chapter: "ch2", hop: "h-ab" }),
       ]),
+      state,
     });
 
     assert.deepStrictEqual(chapterOf(shown, "ch2").plays, [
@@ -526,7 +526,7 @@ describe("the proposed map, for each chapter action", () => {
       "h-ab",
     ]);
     assert.isTrue(
-      marked(shown, { name: chapterMarkName, scope: "ch2", kind: "play" }).has(
+      marked(shown, { kind: "play", name: chapterMarkName, scope: "ch2" }).has(
         "h-ab"
       )
     );
@@ -534,36 +534,36 @@ describe("the proposed map, for each chapter action", () => {
 
   it("unplay keeps the hop, marked, until the agent decides", () => {
     const shown = proposedMap({
-      state,
       proposals: withChapters([
         "c1",
         change({ action: "unplay", chapter: "ch2", hop: "h-ca" }),
       ]),
+      state,
     });
 
     assert.deepStrictEqual(chapterOf(shown, "ch2").plays, ["h-bc", "h-ca"]);
     assert.isTrue(
       marked(shown, {
+        kind: "unplay",
         name: chapterMarkName,
         scope: "ch2",
-        kind: "unplay",
       }).has("h-ca")
     );
   });
 
   it("order puts the plays in the new order, in that chapter only", () => {
     const shown = proposedMap({
-      state,
       proposals: withChapters([
         "c1",
         change({ action: "order", chapter: "ch2", plays: ["h-ca", "h-bc"] }),
       ]),
+      state,
     });
 
     assert.deepStrictEqual(chapterOf(shown, "ch2").plays, ["h-ca", "h-bc"]);
     assert.deepStrictEqual(chapterOf(shown, "ch1").plays, ["h-ab"]);
     assert.isTrue(
-      marked(shown, { name: chapterMarkName, scope: "ch2", kind: "order" }).has(
+      marked(shown, { kind: "order", name: chapterMarkName, scope: "ch2" }).has(
         "ch2"
       )
     );
@@ -571,11 +571,11 @@ describe("the proposed map, for each chapter action", () => {
 
   it("changes nothing about the diagram: structures, hops, groups and layout", () => {
     const shown = proposedMap({
-      state,
       proposals: withChapters(
         ["c1", change({ action: "reveal", chapter: "ch1", structure: "c" })],
         ["c2", change({ action: "play", chapter: "ch1", hop: "h-bc" })]
       ),
+      state,
     });
 
     assert.deepStrictEqual(shown.state.data.structures, data.structures);
@@ -593,18 +593,18 @@ describe("proposing a chapter change", () => {
   it("a hide after a reveal of the same structure takes the reveal away", () => {
     const revealed = unwrap(
       proposeChapter({
-        proposals: empty,
-        id: "c1",
         change: change({ action: "reveal", chapter: "ch1", structure: "c" }),
+        id: "c1",
+        proposals: empty,
         world,
       })
     );
 
     const undone = unwrap(
       proposeChapter({
-        proposals: revealed,
-        id: "c2",
         change: change({ action: "hide", chapter: "ch1", structure: "c" }),
+        id: "c2",
+        proposals: revealed,
         world,
       })
     );
@@ -615,9 +615,9 @@ describe("proposing a chapter change", () => {
   it("a change that leaves the chapter as it is proposes nothing", () => {
     const same = unwrap(
       proposeChapter({
-        proposals: empty,
-        id: "c1",
         change: change({ action: "play", chapter: "ch1", hop: "h-ab" }),
+        id: "c1",
+        proposals: empty,
         world,
       })
     );
@@ -628,26 +628,26 @@ describe("proposing a chapter change", () => {
   it("a second order of the same chapter replaces the first", () => {
     const first = unwrap(
       proposeChapter({
-        proposals: empty,
-        id: "c1",
         change: change({
           action: "order",
           chapter: "ch2",
           plays: ["h-ca", "h-bc"],
         }),
+        id: "c1",
+        proposals: empty,
         world,
       })
     );
 
     const second = unwrap(
       proposeChapter({
-        proposals: first,
-        id: "c2",
         change: change({
           action: "order",
           chapter: "ch2",
           plays: ["h-bc", "h-ca"],
         }),
+        id: "c2",
+        proposals: first,
         world,
       })
     );
@@ -657,23 +657,23 @@ describe("proposing a chapter change", () => {
 
   it("refuses a chapter, structure or hop the map lacks", () => {
     const noChapter = proposeChapter({
-      proposals: empty,
-      id: "c1",
       change: change({ action: "reveal", chapter: "nope", structure: "a" }),
+      id: "c1",
+      proposals: empty,
       world,
     });
 
     const noStructure = proposeChapter({
-      proposals: empty,
-      id: "c1",
       change: change({ action: "reveal", chapter: "ch1", structure: "nope" }),
+      id: "c1",
+      proposals: empty,
       world,
     });
 
     const noHop = proposeChapter({
-      proposals: empty,
-      id: "c1",
       change: change({ action: "play", chapter: "ch1", hop: "nope" }),
+      id: "c1",
+      proposals: empty,
       world,
     });
 
@@ -690,9 +690,9 @@ describe("proposing a chapter change", () => {
 
   it("lets the engineer propose a hop before the structures it needs", () => {
     const proposed = proposeChapter({
-      proposals: empty,
-      id: "c1",
       change: change({ action: "play", chapter: "ch1", hop: "h-bc" }),
+      id: "c1",
+      proposals: empty,
       world,
     });
 
@@ -819,18 +819,18 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
 
     const committing = unwrap(
       commitBatch({
-        proposals: frozen,
-        layout,
-        saved: layout,
+        at,
         data: next,
         hops: next.hops,
+        layout,
+        proposals: frozen,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
     assert.deepStrictEqual(
-      Arr.map(committing.accepted, ({ kind, id }) => [kind, id]),
+      Arr.map(committing.accepted, ({ id, kind }) => [kind, id]),
       [["group", "g-1"]]
     );
   });
@@ -843,13 +843,13 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
     );
 
     const committed = commitBatch({
-      proposals: frozen,
-      layout,
-      saved: layout,
+      at,
       data,
       hops: data.hops,
+      layout,
+      proposals: frozen,
       revision: 1,
-      at,
+      saved: layout,
     });
 
     assert.isTrue(Result.isFailure(committed));
@@ -859,24 +859,24 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
   it("follows changed --as: a structure moved into the group takes the final id", () => {
     const proposals: Proposals = {
       ...empty,
-      groups: [{ id: "g-1", change: addGroup }],
+      groups: [{ change: addGroup, id: "g-1" }],
       structures: [
         {
+          change: { action: "group", group: "data-1", structure: "a" },
           id: "s-1",
-          change: { action: "group", structure: "a", group: "data-1" },
         },
       ],
     };
 
     const frozen = unwrap(
-      freezeOpen({ proposals, at, known: { group: ["g1", "g2"] } })
+      freezeOpen({ at, known: { group: ["g1", "g2"] }, proposals })
     ).proposals;
 
     const decided = verdicted(
       verdicted(frozen, "g-1", {
-        verdict: "changed",
-        reason: "Called it storage.",
         as: "storage",
+        reason: "Called it storage.",
+        verdict: "changed",
       }),
       "s-1",
       { verdict: "accepted" }
@@ -886,13 +886,13 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
 
     const committing = unwrap(
       commitBatch({
-        proposals: decided,
-        layout,
-        saved: layout,
+        at,
         data: next,
         hops: next.hops,
+        layout,
+        proposals: decided,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
@@ -909,9 +909,9 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
     const frozen = frozenWith(["g-1", groupItem("g-1", addGroup)]);
 
     const refused = recordVerdict({
-      proposals: frozen,
       id: "g-1",
-      verdict: { verdict: "changed", reason: "No.", as: "g2" },
+      proposals: frozen,
+      verdict: { as: "g2", reason: "No.", verdict: "changed" },
     });
 
     assert.isTrue(Result.isFailure(refused));
@@ -928,9 +928,9 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
     ]);
 
     const refused = recordVerdict({
-      proposals: frozen,
       id: "c-1",
-      verdict: { verdict: "changed", reason: "No.", as: "x" },
+      proposals: frozen,
+      verdict: { as: "x", reason: "No.", verdict: "changed" },
     });
 
     assert.include(Result.merge(refused), "adds no structure");
@@ -946,13 +946,13 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
     );
 
     const refusedFirst = commitBatch({
-      proposals: frozen,
-      layout,
-      saved: layout,
+      at,
       data,
       hops: data.hops,
+      layout,
+      proposals: frozen,
       revision: 1,
-      at,
+      saved: layout,
     });
 
     assert.isTrue(Result.isFailure(refusedFirst));
@@ -967,13 +967,13 @@ describe("a group or chapter item through freeze, verdict and commit", () => {
 
     const committing = unwrap(
       commitBatch({
-        proposals: frozen,
-        layout,
-        saved: layout,
+        at,
         data: next,
         hops: next.hops,
+        layout,
+        proposals: frozen,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
@@ -1000,13 +1000,13 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
   const note: BatchItem = {
     id: "n",
     kind: "note",
-    target: { kind: "structure", id: "a" },
+    target: { id: "a", kind: "structure" },
     text: "Hi",
   };
 
   it("groups items by section, diagram first", () => {
     assert.deepStrictEqual(
-      Arr.map(bySection([play, group, reveal]), ({ section, items }) => [
+      Arr.map(bySection([play, group, reveal]), ({ items, section }) => [
         section,
         Arr.map(items, ({ id }) => id),
       ]),
@@ -1021,8 +1021,8 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
     const lines = promptLines(
       {
         ...empty,
-        groups: [{ id: "g-1", change: addGroup }],
-        chapters: [{ id: "c-1", change: changeOf(play) }],
+        chapters: [{ change: changeOf(play), id: "c-1" }],
+        groups: [{ change: addGroup, id: "g-1" }],
       },
       names
     );
@@ -1049,7 +1049,7 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
     const lines = promptLines(
       {
         ...empty,
-        groups: [{ id: "g-1", change: addGroup }],
+        groups: [{ change: addGroup, id: "g-1" }],
       },
       names
     );
@@ -1060,7 +1060,7 @@ describe("the prompt and review list diagram and chapter changes apart", () => {
 
   it("names the chapter by its title and the hop by its label", () => {
     const line = promptLine(
-      { ...empty, chapters: [{ id: "c-1", change: changeOf(play) }] },
+      { ...empty, chapters: [{ change: changeOf(play), id: "c-1" }] },
       names
     );
 
@@ -1084,18 +1084,18 @@ const titleRefused = (title: string) =>
   Result.isFailure(
     decodeWrite({
       baseFileRevision: 0,
-      id: "g",
       change: { action: "rename", group: "g1", title },
+      id: "g",
     })
   );
 
 /** Whether a group write with `members` is refused. */
-const writeRefused = (members: readonly unknown[]) =>
+const writeRefused = (members: ReadonlyArray<unknown>) =>
   Result.isFailure(
     decodeWrite({
       baseFileRevision: 0,
-      id: "g-1",
       change: addGroup,
+      id: "g-1",
       members,
     })
   );
@@ -1123,7 +1123,7 @@ describe("a group write", () => {
     for (const proposed of [rename, created]) {
       assert.isTrue(
         Result.isFailure(
-          decodeWrite({ baseFileRevision: 0, id: "g", change: proposed })
+          decodeWrite({ baseFileRevision: 0, change: proposed, id: "g" })
         )
       );
     }

@@ -18,7 +18,7 @@ import { useSending } from "./use-sending.ts";
 export const usePropose = () => {
   const proposing = useProposed();
   const panel = useChangePreview();
-  const { failure, sending, clear, refuse, run } = useSending();
+  const { clear, failure, refuse, run, sending } = useSending();
 
   // The panel is the page's, not this control's: it clears when the control goes.
   useEffect(
@@ -28,7 +28,7 @@ export const usePropose = () => {
     [panel]
   );
 
-  const problemsOf = (change: StructureChange): readonly DraggedProblem[] =>
+  const problemsOf = (change: StructureChange): ReadonlyArray<DraggedProblem> =>
     proposing?.problemsOf([structureItem(change)]) ?? [];
 
   const send = (change: StructureChange, done?: () => void) => {
@@ -40,7 +40,7 @@ export const usePropose = () => {
 
     if (refusal !== undefined) {
       refuse(refusal);
-      panel?.show({ refusal, problems: [] });
+      panel?.show({ problems: [], refusal });
 
       return;
     }
@@ -51,7 +51,7 @@ export const usePropose = () => {
       (finish) => {
         proposing.propose(change, (outcome) => {
           if (Result.isFailure(outcome)) {
-            panel?.show({ refusal: outcome.failure, problems: [] });
+            panel?.show({ problems: [], refusal: outcome.failure });
           }
 
           finish(outcome);
@@ -64,10 +64,10 @@ export const usePropose = () => {
   };
 
   return {
+    canPropose: proposing?.canPropose === true,
+    clear,
+    failure,
     send,
     sending,
-    failure,
-    clear,
-    canPropose: proposing?.canPropose === true,
   };
 };

@@ -24,11 +24,11 @@ function DifferenceItem({ line }: { readonly line: DifferenceLine }) {
         line.text
       ) : (
         <button
-          type="button"
           className={cn(controlClass, "w-full text-left")}
           onClick={() => {
             select(structureId);
           }}
+          type="button"
         >
           {line.text}
         </button>
@@ -37,7 +37,11 @@ function DifferenceItem({ line }: { readonly line: DifferenceLine }) {
   );
 }
 
-function Differences({ lines }: { readonly lines: readonly DifferenceLine[] }) {
+function Differences({
+  lines,
+}: {
+  readonly lines: ReadonlyArray<DifferenceLine>;
+}) {
   return (
     <ul className="flex flex-col gap-1 text-xs">
       {Arr.map(lines, (line) => (
@@ -60,42 +64,42 @@ export function HistoryTab() {
     return null;
   }
 
-  const { entries, opened, loading, failure, open, differences } = history;
+  const { differences, entries, failure, loading, open, opened } = history;
 
   return (
-    <section data-history-list className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" data-history-list>
       <p className="text-xs tracking-widest uppercase opacity-70">
         Revisions, newest first
       </p>
       {entries === null ? (
         <p className="text-sm opacity-80">Reading the history…</p>
       ) : Arr.isReadonlyArrayEmpty(entries) ? (
-        <p data-history-empty className="text-sm opacity-80">
+        <p className="text-sm opacity-80" data-history-empty>
           No revisions yet. Accepting pending layout changes saves the first.
         </p>
       ) : (
         <ol className="flex flex-col gap-1.5">
-          {Arr.map(entries, ({ revision, message, savedAt, items }) => {
+          {Arr.map(entries, ({ items, message, revision, savedAt }) => {
             const isOpen = opened === revision;
 
             return (
               <li key={revision}>
                 <button
-                  type="button"
-                  data-revision={revision}
-                  aria-pressed={isOpen}
                   aria-label={`Revision ${revision}: ${message}, ${itemsText(items)}`}
+                  aria-pressed={isOpen}
                   className={cn(
                     "border-ink focus-visible:outline-ink flex w-full cursor-pointer flex-col gap-0.5 border px-2 py-1.5 text-left text-xs focus-visible:outline-2 focus-visible:outline-offset-1",
                     isOpen ? "bg-ink text-paper" : "bg-paper text-ink"
                   )}
+                  data-revision={revision}
                   onClick={() => {
                     open(revision);
                   }}
+                  type="button"
                 >
                   <span className="flex gap-2">
                     <b className="font-medium">#{revision}</b>
-                    <span data-revision-message className="min-w-0 break-words">
+                    <span className="min-w-0 break-words" data-revision-message>
                       {message}
                     </span>
                   </span>
@@ -113,17 +117,17 @@ export function HistoryTab() {
         </ol>
       )}
       {loading ? (
-        <output data-history-loading className="text-xs opacity-80">
+        <output className="text-xs opacity-80" data-history-loading>
           Opening revision {opened}…
         </output>
       ) : null}
       {failure === null ? null : (
-        <p data-history-failure role="alert" className="text-refused text-xs">
+        <p className="text-refused text-xs" data-history-failure role="alert">
           {failure}
         </p>
       )}
       {differences === null ? null : (
-        <div data-difference-list className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2" data-difference-list>
           <p className="text-xs tracking-widest uppercase opacity-70">
             Differences from the accepted map
           </p>

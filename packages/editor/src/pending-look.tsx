@@ -16,7 +16,7 @@ export function AcceptedOutlines({
   structures,
   view,
 }: {
-  readonly structures: readonly SceneStructure[];
+  readonly structures: ReadonlyArray<SceneStructure>;
   readonly view: View;
 }) {
   const editing = useEditingIgnoringEdit();
@@ -36,14 +36,14 @@ export function AcceptedOutlines({
           ? []
           : [
               <polygon
-                key={structure.id}
+                className="stroke-pending fill-none opacity-50"
                 data-accepted-outline={structure.id}
+                key={structure.id}
                 points={toPoints(
                   groundOutline(accepted, groundProjections[view])
                 )}
-                className="stroke-pending fill-none opacity-50"
-                strokeWidth={1.2}
                 strokeDasharray="3 3"
+                strokeWidth={1.2}
               />,
             ];
       })}

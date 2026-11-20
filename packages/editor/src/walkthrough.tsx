@@ -10,18 +10,18 @@ import { WalkthroughContext } from "./walkthrough-context.ts";
 import type { Walkthrough } from "./walkthrough-context.ts";
 
 interface Position {
-  readonly index: number;
   /** `null` until someone uses the flow picker in this chapter. */
   readonly choice: FlowChoice | null;
+  readonly index: number;
 }
 
 /** Holds the current chapter and the flow picker's choice. */
 export function WalkthroughProvider({
-  state,
   children,
+  state,
 }: {
-  readonly state: MapState;
   readonly children: ReactNode;
+  readonly state: MapState;
 }) {
   const always = useProposedAdds();
 
@@ -38,8 +38,8 @@ export function WalkthroughProvider({
   );
 
   const [position, setPosition] = useState<Position>({
-    index: 0,
     choice: null,
+    index: 0,
   });
 
   const last = stops.length - 1;
@@ -48,7 +48,7 @@ export function WalkthroughProvider({
   const isLast = index === last;
 
   const flowChoice =
-    position.choice ?? defaultFlowChoice({ data: state.data, stop, isLast });
+    position.choice ?? defaultFlowChoice({ data: state.data, isLast, stop });
 
   const value = useMemo((): Walkthrough => {
     const goTo = (target: number) => {
@@ -57,42 +57,42 @@ export function WalkthroughProvider({
 
         return clamped === current.index
           ? current
-          : { index: clamped, choice: null };
+          : { choice: null, index: clamped };
       });
     };
 
-    const play = chapterPlayOf({ state, stop, choice: flowChoice });
+    const play = chapterPlayOf({ choice: flowChoice, state, stop });
 
     return {
-      state,
-      stops,
-      index,
-      stop,
-      isLast,
-      revealed: stop.revealed,
-      newlyRevealed: new Set(stop.newlyRevealed),
-      fit: stop.revealed,
-      flowChoice,
-      runs: play.runs,
-      playKey: play.key,
-      goTo,
-      next: () => {
-        setPosition((current) =>
-          current.index >= last
-            ? current
-            : { index: current.index + 1, choice: null }
-        );
-      },
       back: () => {
         setPosition((current) =>
           current.index <= 0
             ? current
-            : { index: current.index - 1, choice: null }
+            : { choice: null, index: current.index - 1 }
         );
       },
       chooseFlow: (choice) => {
         setPosition((current) => ({ ...current, choice }));
       },
+      fit: stop.revealed,
+      flowChoice,
+      goTo,
+      index,
+      isLast,
+      newlyRevealed: new Set(stop.newlyRevealed),
+      next: () => {
+        setPosition((current) =>
+          current.index >= last
+            ? current
+            : { choice: null, index: current.index + 1 }
+        );
+      },
+      playKey: play.key,
+      revealed: stop.revealed,
+      runs: play.runs,
+      state,
+      stop,
+      stops,
     };
   }, [state, stops, index, stop, isLast, last, flowChoice]);
 

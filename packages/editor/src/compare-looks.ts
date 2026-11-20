@@ -5,14 +5,14 @@ export type CompareKind = StructureMark | HopMark | "origin";
 
 /** How one kind of difference is drawn and worded. */
 export interface Look {
+  /** The stroke's dash pattern, so a look never depends on colour alone. */
+  readonly dash: string | undefined;
   /** The legend's words. */
   readonly label: string;
   /** What a screen reader hears after the name. */
   readonly spoken: string;
   /** The stroke colour, as a Tailwind class. */
   readonly stroke: string;
-  /** The stroke's dash pattern, so a look never depends on colour alone. */
-  readonly dash: string | undefined;
 }
 
 /**
@@ -26,46 +26,46 @@ export interface Look {
  * ghost, which is pink and dashed.
  */
 export const looks = {
-  moved: {
-    label: "Moved",
-    spoken: "moved",
-    stroke: "stroke-moved",
-    dash: "7 3",
-  },
-  resized: {
-    label: "Resized",
-    spoken: "resized",
-    stroke: "stroke-resized",
-    dash: "2 2",
-  },
-  changed: {
-    label: "Text changed",
-    spoken: "text changed",
-    stroke: "stroke-changed",
-    dash: undefined,
-  },
   added: {
+    dash: "10 2 2 2",
     label: "Only in this revision",
     spoken: "only in this revision",
     stroke: "stroke-added",
-    dash: "10 2 2 2",
   },
-  removed: {
-    label: "Only in the accepted map (ghost)",
-    spoken: "only in the accepted map",
-    stroke: "stroke-removed",
-    dash: "4 4",
+  changed: {
+    dash: undefined,
+    label: "Text changed",
+    spoken: "text changed",
+    stroke: "stroke-changed",
+  },
+  moved: {
+    dash: "7 3",
+    label: "Moved",
+    spoken: "moved",
+    stroke: "stroke-moved",
   },
   origin: {
+    dash: "1 4",
     label: "Where it is in the accepted map",
     spoken: "its place in the accepted map",
     stroke: "stroke-ink",
-    dash: "1 4",
+  },
+  removed: {
+    dash: "4 4",
+    label: "Only in the accepted map (ghost)",
+    spoken: "only in the accepted map",
+    stroke: "stroke-removed",
+  },
+  resized: {
+    dash: "2 2",
+    label: "Resized",
+    spoken: "resized",
+    stroke: "stroke-resized",
   },
 } as const satisfies Readonly<Record<CompareKind, Look>>;
 
 /** The order the legend lists the kinds in. */
-export const legendOrder: readonly CompareKind[] = [
+export const legendOrder: ReadonlyArray<CompareKind> = [
   "moved",
   "resized",
   "changed",

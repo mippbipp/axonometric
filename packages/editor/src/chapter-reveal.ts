@@ -5,10 +5,10 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** What the reveal toggle does for one structure in the current chapter. */
 export interface RevealToggle {
-  /** The words on the control: "Show in this chapter" or "Hide from this chapter". */
-  readonly label: string;
   /** The proposal the control sends. */
   readonly change: ChapterChange;
+  /** The words on the control: "Show in this chapter" or "Hide from this chapter". */
+  readonly label: string;
   /** Whether the structure is already proposed to change in this chapter. */
   readonly pending: boolean;
   /** Why the control is off, or nothing. */
@@ -25,7 +25,7 @@ export interface RevealToggle {
 export const useRevealToggle = (
   structure: string
 ): RevealToggle | undefined => {
-  const { state, stop, revealed } = useWalkthrough();
+  const { revealed, state, stop } = useWalkthrough();
   const revealing = useChapterMarks(stop.id, "reveal");
   const hiding = useChapterMarks(stop.id, "hide");
 
@@ -40,16 +40,16 @@ export const useRevealToggle = (
 
   if (!showing) {
     return {
-      label: "Show in this chapter",
       change: { action: "reveal", chapter: stop.id, structure },
+      label: "Show in this chapter",
       pending: false,
       unavailable: undefined,
     };
   }
 
   return {
-    label: "Hide from this chapter",
     change: { action: "hide", chapter: stop.id, structure },
+    label: "Hide from this chapter",
     pending: hiding.has(structure),
     unavailable: revealsHere
       ? undefined

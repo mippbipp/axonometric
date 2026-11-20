@@ -17,22 +17,22 @@ function LegendItem({ kind }: { readonly kind: CompareKind }) {
   const look = looks[kind];
 
   return (
-    <li data-legend={kind} className="flex items-center gap-1.5">
+    <li className="flex items-center gap-1.5" data-legend={kind}>
       <svg
         aria-hidden="true"
-        width={22}
+        className="shrink-0"
         height={10}
         viewBox="0 0 22 10"
-        className="shrink-0"
+        width={22}
       >
         <line
-          x1={1}
-          y1={5}
-          x2={21}
-          y2={5}
           className={look.stroke}
-          strokeWidth={2.4}
           strokeDasharray={look.dash}
+          strokeWidth={2.4}
+          x1={1}
+          x2={21}
+          y1={5}
+          y2={5}
         />
       </svg>
       <span>{look.label}</span>
@@ -47,33 +47,33 @@ function LegendItem({ kind }: { readonly kind: CompareKind }) {
  * Compare on it adds the legend.
  */
 export function RevisionBanner({
-  revision,
-  message,
-  savedAt,
-  comparing,
-  onCompare,
-  differences,
   canRestore,
-  onRestore,
+  comparing,
+  differences,
+  message,
   onBack,
+  onCompare,
+  onRestore,
+  revision,
+  savedAt,
 }: {
-  readonly revision: number;
-  readonly message: string;
-  readonly savedAt: string;
-  readonly comparing: boolean;
-  readonly onCompare: () => void;
-  readonly differences: DifferenceCount;
   readonly canRestore: boolean;
-  readonly onRestore: () => void;
+  readonly comparing: boolean;
+  readonly differences: DifferenceCount;
+  readonly message: string;
   readonly onBack: () => void;
+  readonly onCompare: () => void;
+  readonly onRestore: () => void;
+  readonly revision: number;
+  readonly savedAt: string;
 }) {
   const none = differences.layout + differences.meaning === 0;
 
   return (
     <section
-      data-past-revision={revision}
       aria-label={`Past revision ${revision}`}
       className="border-ink bg-paper text-ink pointer-events-auto flex max-w-full shrink-0 flex-col gap-1.5 border-2 px-3 py-2 text-xs"
+      data-past-revision={revision}
     >
       <p>
         <b className="font-medium tracking-widest uppercase">
@@ -89,34 +89,34 @@ export function RevisionBanner({
       </p>
       <div className="flex flex-wrap gap-1.5">
         <button
-          type="button"
-          data-control="compare"
           aria-pressed={comparing}
           className={cn(controlClass, comparing && "bg-ink text-paper")}
+          data-control="compare"
           onClick={onCompare}
+          type="button"
         >
           Compare with accepted
         </button>
         <button
-          type="button"
-          data-control="restore"
           className={controlClass}
+          data-control="restore"
           disabled={!canRestore}
           onClick={onRestore}
+          type="button"
         >
           Restore
         </button>
         <button
-          type="button"
-          data-control="back-to-current"
           className={controlClass}
+          data-control="back-to-current"
           onClick={onBack}
+          type="button"
         >
           Back to current
         </button>
       </div>
       {comparing ? (
-        <div data-compare-legend className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5" data-compare-legend>
           <p data-compare-summary>
             {none
               ? "Nothing differs from the accepted map."

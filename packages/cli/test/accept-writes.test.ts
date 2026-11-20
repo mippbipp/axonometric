@@ -37,9 +37,9 @@ const json = (value: Schema.JsonObject) =>
   );
 
 /** Saves `layout` as the pending changes, from revision `base`. */
-const pend = (url: string, base: number, layout: readonly LayoutChange[]) =>
+const pend = (url: string, base: number, layout: ReadonlyArray<LayoutChange>) =>
   Effect.flatMap(json({ baseFileRevision: base, layout }), (body) =>
-    writeText(url, { method: "put", target: layoutPath, body })
+    writeText(url, { body, method: "put", target: layoutPath })
   );
 
 const accept = (
@@ -48,7 +48,7 @@ const accept = (
   headers: Readonly<Record<string, string>> = ownOrigin(url)
 ) =>
   Effect.flatMap(json(body), (text) =>
-    writeText(url, { method: "post", target: acceptPath, headers, body: text })
+    writeText(url, { body: text, headers, method: "post", target: acceptPath })
   );
 
 /** Every file under `root`, the lock and server state left out. */
@@ -106,7 +106,7 @@ describe("accepting pending layout changes over HTTP", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const { root, home, url } = yield* served;
+      const { home, root, url } = yield* served;
 
       yield* pend(url, 0, [
         moveOf("m1", "page", { x: 4, y: 3 }),
@@ -137,16 +137,16 @@ describe("accepting pending layout changes over HTTP", () => {
       const layout = yield* decodeLayoutFile(layoutText);
 
       assert.deepStrictEqual(layout.structures.page, {
+        d: 2,
+        w: 2,
         x: 4,
         y: 3,
-        w: 2,
-        d: 2,
       });
       assert.deepStrictEqual(layout.structures.server, {
+        d: 2,
+        w: 2,
         x: 8,
         y: 0,
-        w: 2,
-        d: 2,
       });
 
       const files = yield* snapshot(root);
@@ -163,9 +163,9 @@ describe("accepting pending layout changes over HTTP", () => {
       assert.strictEqual(revision.message, "Lower the page");
       assert.deepStrictEqual(revision.accepted, [
         {
-          kind: "layout",
-          id: "m1",
           change: moveOf("m1", "page", { x: 4, y: 3 }),
+          id: "m1",
+          kind: "layout",
         },
       ]);
       assert.deepStrictEqual(revision.rejected, []);
@@ -186,10 +186,10 @@ describe("accepting pending layout changes over HTTP", () => {
         yield* pend(url, 0, [
           moveOf("m1", "page", { x: 4, y: 3 }),
           {
+            footprint: { d: 2, w: 3 },
             id: "r1",
             kind: "resize",
-            target: { kind: "structure", id: "server" },
-            footprint: { w: 3, d: 2 },
+            target: { id: "server", kind: "structure" },
           },
         ]);
 
@@ -235,10 +235,10 @@ describe("accepting pending layout changes over HTTP", () => {
 
         assert.strictEqual(secondRevision.revision, 2);
         assert.deepStrictEqual(secondRevision.layout.structures.engineer, {
+          d: 2,
+          w: 2,
           x: 0,
           y: 4,
-          w: 2,
-          d: 2,
         });
       }).pipe(Effect.provide(NodeServices.layer))
   );
@@ -273,10 +273,10 @@ describe("accepting pending layout changes over HTTP", () => {
 
         assert.isUndefined(state.proposals);
         assert.deepStrictEqual(state.layout.structures.page, {
+          d: 2,
+          w: 2,
           x: 4,
           y: 7,
-          w: 2,
-          d: 2,
         });
       }).pipe(Effect.provide(NodeServices.layer))
   );
@@ -311,7 +311,7 @@ describe("accepting pending layout changes over HTTP", () => {
     Effect.gen(function* () {
       const { root, url } = yield* served;
 
-      const bodies: readonly Schema.JsonObject[] = [
+      const bodies: ReadonlyArray<Schema.JsonObject> = [
         {},
         { baseFileRevision: 0 },
         { baseFileRevision: 0, changeIds: [] },
@@ -358,7 +358,7 @@ describe("accepting pending layout changes over HTTP", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { root, home, url, serve } = yield* served;
+        const { home, root, serve, url } = yield* served;
 
         yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
 

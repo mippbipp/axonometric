@@ -22,7 +22,7 @@ const encodeRaw = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
  * gate's -x face. The router wouldn't take it, so drawing it shows the
  * override was followed.
  */
-const goodOverride: readonly GridPoint[] = [
+const goodOverride: ReadonlyArray<GridPoint> = [
   { x: 2, y: 5 },
   { x: 3, y: 5 },
   { x: 3, y: 1 },
@@ -31,7 +31,7 @@ const goodOverride: readonly GridPoint[] = [
 
 /** The minimal map with `routes` written into its layout.json. */
 const withRoutes = Effect.fnUntraced(function* (
-  routes: Readonly<Record<string, readonly GridPoint[]>>
+  routes: Readonly<Record<string, ReadonlyArray<GridPoint>>>
 ) {
   const files = yield* minimalMap;
   const saved = yield* decodeLayout(files[layoutFile] ?? "");
@@ -50,7 +50,7 @@ const withRoutes = Effect.fnUntraced(function* (
  * refuses what these tests need to write.
  */
 const withRawRoutes = Effect.fnUntraced(function* (
-  routes: Readonly<Record<string, readonly GridPoint[]>>
+  routes: Readonly<Record<string, ReadonlyArray<GridPoint>>>
 ) {
   const files = yield* minimalMap;
   const saved = yield* decodeLayout(files[layoutFile] ?? "");

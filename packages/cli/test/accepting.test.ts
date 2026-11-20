@@ -33,25 +33,25 @@ const decodeRevision = Schema.decodeUnknownEffect(
 const pendingProposals = `${JSON.stringify(
   {
     format: 1,
-    revision: 1,
     layout: [
       {
         id: "move-engineer",
         kind: "move",
         moves: [
           {
-            target: { kind: "structure", id: "engineer" },
             position: { x: 0, y: 4 },
+            target: { id: "engineer", kind: "structure" },
           },
         ],
       },
       {
+        footprint: { d: 2, w: 3 },
         id: "resize-page",
         kind: "resize",
-        target: { kind: "structure", id: "page" },
-        footprint: { w: 3, d: 2 },
+        target: { id: "page", kind: "structure" },
       },
     ],
+    revision: 1,
   },
   null,
   2
@@ -82,7 +82,7 @@ describe("accepting layout changes in the page", () => {
     "accepts one change from its button, and the pending look goes",
     () =>
       Effect.gen(function* () {
-        const { root, page, errors } = yield* servedWithPending;
+        const { errors, page, root } = yield* servedWithPending;
 
         yield* assertCount(page, '[data-structure][data-pending="true"]', 2);
 
@@ -131,7 +131,7 @@ describe("accepting layout changes in the page", () => {
     "accepts all with the typed message, says nothing is left, and rebuilds what build writes",
     () =>
       Effect.gen(function* () {
-        const { root, page, errors } = yield* servedWithPending;
+        const { errors, page, root } = yield* servedWithPending;
 
         yield* Effect.promise(() =>
           page.getByLabel("Revision message (optional)").fill("Tidy the loop")
@@ -189,7 +189,7 @@ describe("accepting layout changes in the page", () => {
         const { page } = yield* openUrl(serve.url);
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1280, height: 800 })
+          page.setViewportSize({ height: 800, width: 1280 })
         );
         yield* Effect.promise(() =>
           page.locator('[role="tab"][data-tab="pending"]').click()

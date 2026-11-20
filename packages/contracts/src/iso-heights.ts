@@ -7,14 +7,14 @@ import type { Shape } from "./map-data.ts";
  */
 export const isoHeights = {
   box: 40,
-  tall: 66,
-  store: 56,
   cards: 30,
-  slab: 16,
-  screen: 10,
+  document: 62,
+  external: 36,
   gate: 40,
   job: 34,
   person: 64,
-  document: 62,
-  external: 36,
+  screen: 10,
+  slab: 16,
+  store: 56,
+  tall: 66,
 } as const satisfies Record<Shape, number>;

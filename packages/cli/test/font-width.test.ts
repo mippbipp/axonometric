@@ -15,9 +15,9 @@ import { buildAndOpen } from "./harness.ts";
 
 interface TagWidth {
   readonly id: string;
+  readonly size: number;
   readonly text: string;
   readonly width: number;
-  readonly size: number;
 }
 
 /**
@@ -25,7 +25,7 @@ interface TagWidth {
  * what the scene models; `getBBox` would add the ink's overshoot.
  */
 const nameTags = (page: Page) =>
-  inPage<readonly TagWidth[]>(
+  inPage<ReadonlyArray<TagWidth>>(
     page,
     `[...document.querySelectorAll("[data-map-layer] [data-name-tag] text")].map((text) => ({
       id: text.parentElement.dataset.nameTag,
@@ -41,7 +41,7 @@ const nameTags = (page: Page) =>
  * a label is SVG text, measured as the tags are.
  */
 const textWidths = (page: Page) =>
-  inPage<readonly TagWidth[]>(
+  inPage<ReadonlyArray<TagWidth>>(
     page,
     `(() => {
       const control = document.querySelector("[data-control='export']");
@@ -74,7 +74,7 @@ describe("the page's font", () => {
         Effect.gen(function* () {
           const pipelineMapFiles = yield* pipelineMap;
 
-          const { page, errors } = yield* buildAndOpen(
+          const { errors, page } = yield* buildAndOpen(
             pipelineMapFiles,
             "flake-pipeline"
           );
@@ -227,7 +227,7 @@ describe("the page's font", () => {
           // character the editor's strings use that it has. Characters it
           // lacks (the other box-drawing characters, ‖ ↶ ↷ ▸ ◂ ☐ ☑) use the
           // system's fonts, at whatever width those have.
-          const odd = yield* inPage<readonly string[]>(
+          const odd = yield* inPage<ReadonlyArray<string>>(
             page,
             `(async () => {
               await document.fonts.load("20px 'Liberation Mono'", "a");

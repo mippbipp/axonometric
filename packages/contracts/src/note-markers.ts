@@ -66,20 +66,20 @@ export interface NoteMarkerSpot {
 }
 
 const squareAround = ({ sx, sy }: NoteMarkerSpot): ScreenRect => ({
-  left: sx - noteMarkerRadius,
-  top: sy - noteMarkerRadius,
-  right: sx + noteMarkerRadius,
   bottom: sy + noteMarkerRadius,
+  left: sx - noteMarkerRadius,
+  right: sx + noteMarkerRadius,
+  top: sy - noteMarkerRadius,
 });
 
 /** Something a ring must stay clear of: a polygon and how wide its edge is drawn. */
 interface Solid {
-  readonly polygon: readonly ScreenPoint[];
+  readonly polygon: ReadonlyArray<ScreenPoint>;
   readonly stroke: number;
 }
 
 /** The polygons a marker must stay clear of: boxes, name tags, chips, zone titles and hop labels. */
-const solidsOf = (scene: Scene): readonly Solid[] => [
+const solidsOf = (scene: Scene): ReadonlyArray<Solid> => [
   ...Arr.map(scene.structures, ({ outline }) => ({
     polygon: outline,
     stroke: boxStroke,
@@ -115,10 +115,10 @@ const candidatesOf = ({
   tag,
   zoom,
 }: {
-  readonly outline: readonly ScreenPoint[];
+  readonly outline: ReadonlyArray<ScreenPoint>;
   readonly tag: ScreenRect;
   readonly zoom: number;
-}): readonly NoteMarkerSpot[] => {
+}): ReadonlyArray<NoteMarkerSpot> => {
   const reach = centreClearance(boxStroke, zoom);
 
   const ring = [...outline, ...Arr.take(outline, 1)];
@@ -128,7 +128,7 @@ const candidatesOf = ({
     sy: Arr.reduce(outline, 0, (sum, { sy }) => sum + sy) / outline.length,
   };
 
-  const edges: readonly (readonly [ScreenPoint, ScreenPoint])[] = Arr.zip(
+  const edges: ReadonlyArray<readonly [ScreenPoint, ScreenPoint]> = Arr.zip(
     ring,
     Arr.drop(ring, 1)
   );
@@ -189,12 +189,12 @@ const candidatesOf = ({
 };
 
 /** The segments of every hop's route, for keeping rings off the lines. */
-const routesOf = (scene: Scene): readonly (readonly ScreenPoint[])[] =>
+const routesOf = (scene: Scene): ReadonlyArray<ReadonlyArray<ScreenPoint>> =>
   Arr.map(scene.hops, ({ points }) => points);
 
 /** How far `spot` is from the edge of `polygon`, whichever side it is on. */
 const distanceToEdge = (
-  polygon: readonly ScreenPoint[],
+  polygon: ReadonlyArray<ScreenPoint>,
   spot: NoteMarkerSpot
 ) => distanceToPolyline([...polygon, ...Arr.take(polygon, 1)], spot);
 
@@ -204,17 +204,17 @@ const distanceToEdge = (
  * both strokes, and doesn't touch a marker in `taken`.
  */
 const isClear = ({
-  spot,
-  solids,
   lines,
+  solids,
+  spot,
   taken,
   zoom,
 }: {
-  readonly zoom: number;
+  readonly lines: ReadonlyArray<ReadonlyArray<ScreenPoint>>;
+  readonly solids: ReadonlyArray<Solid>;
   readonly spot: NoteMarkerSpot;
-  readonly solids: readonly Solid[];
-  readonly lines: readonly (readonly ScreenPoint[])[];
-  readonly taken: readonly NoteMarkerSpot[];
+  readonly taken: ReadonlyArray<NoteMarkerSpot>;
+  readonly zoom: number;
 }) => {
   const square = rectPolygon(squareAround(spot));
 
@@ -238,24 +238,24 @@ const isClear = ({
 
 /** What carries notes: structures and hops by id, and empty spots by position. */
 export interface NoteBearers {
-  readonly structures: ReadonlySet<string>;
-  readonly hops: ReadonlySet<string>;
-  readonly spots: readonly GridPoint[];
   /** How the view projects the ground, to place the spots. Left out when there are none. */
   readonly ground?: GroundProjection | undefined;
+  readonly hops: ReadonlySet<string>;
+  readonly spots: ReadonlyArray<GridPoint>;
+  readonly structures: ReadonlySet<string>;
 }
 
 /** The marker of one empty spot, and the spot it is for. */
 export interface PlacedSpot {
-  readonly spot: GridPoint;
   readonly marker: NoteMarkerSpot;
+  readonly spot: GridPoint;
 }
 
 /** Where every kind of note puts its marker. A bearer with no free spot is left out. */
 export interface PlacedMarkers {
-  readonly structures: ReadonlyMap<string, NoteMarkerSpot>;
   readonly hops: ReadonlyMap<string, NoteMarkerSpot>;
-  readonly spots: readonly PlacedSpot[];
+  readonly spots: ReadonlyArray<PlacedSpot>;
+  readonly structures: ReadonlyMap<string, NoteMarkerSpot>;
 }
 
 /** How far from a hop's line a ring sits: just past the clearance every line needs. */
@@ -269,9 +269,9 @@ const alongShares = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9];
  * its length, middle first. The line is a polyline on screen.
  */
 const besideCandidates = (
-  line: readonly ScreenPoint[],
+  line: ReadonlyArray<ScreenPoint>,
   zoom: number
-): readonly NoteMarkerSpot[] => {
+): ReadonlyArray<NoteMarkerSpot> => {
   const away = besideLine(zoom);
 
   const legs = Arr.zip(line, Arr.drop(line, 1));
@@ -325,7 +325,9 @@ const searchSteps = 10;
  * Spots around `at`, nearest first: `at` itself, then rings of eight
  * directions at each step out.
  */
-const aroundCandidates = (at: NoteMarkerSpot): readonly NoteMarkerSpot[] => [
+const aroundCandidates = (
+  at: NoteMarkerSpot
+): ReadonlyArray<NoteMarkerSpot> => [
   at,
   ...Arr.flatMap(Arr.range(1, searchSteps), (step) =>
     Arr.map(Arr.range(0, 7), (turn) => {
@@ -362,11 +364,11 @@ export const placeNoteMarkers: {
 } = dual(2, (scene: Scene, bearers: NoteBearers): PlacedMarkers => {
   const solids = solidsOf(scene);
   const lines = routesOf(scene);
-  const taken: NoteMarkerSpot[] = [];
+  const taken: Array<NoteMarkerSpot> = [];
 
-  const settle = (candidates: readonly NoteMarkerSpot[]) => {
+  const settle = (candidates: ReadonlyArray<NoteMarkerSpot>) => {
     const free = Arr.findFirst(candidates, (spot) =>
-      isClear({ spot, solids, lines, taken, zoom: scene.zoom })
+      isClear({ lines, solids, spot, taken, zoom: scene.zoom })
     );
 
     if (Option.isSome(free)) {
@@ -402,17 +404,17 @@ export const placeNoteMarkers: {
     }
   }
 
-  const spots: PlacedSpot[] = [];
+  const spots: Array<PlacedSpot> = [];
 
   for (const bearer of bearers.spots) {
     if (bearers.ground !== undefined) {
       const found = settle(aroundCandidates(bearers.ground.toScreen(bearer)));
 
       if (Option.isSome(found)) {
-        spots.push({ spot: bearer, marker: found.value });
+        spots.push({ marker: found.value, spot: bearer });
       }
     }
   }
 
-  return { structures, hops, spots };
+  return { hops, spots, structures };
 });

@@ -13,10 +13,10 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** `list` with the item at `from` moved to `to`. */
 const moved = (
-  list: readonly string[],
+  list: ReadonlyArray<string>,
   from: number,
   to: number
-): readonly string[] => {
+): ReadonlyArray<string> => {
   const item = list[from];
 
   if (item === undefined || from === to) {
@@ -30,9 +30,9 @@ const moved = (
 
 /** What a row says about a proposal that changes it. */
 const proposedWords = {
+  order: "Proposed order",
   play: "Proposed to play",
   unplay: "Proposed to stop playing",
-  order: "Proposed order",
 } as const;
 
 /**
@@ -46,8 +46,8 @@ const proposedWords = {
  * which are the keyboard's way to do the same.
  */
 export function ChapterEditor() {
-  const { state, stop, revealed } = useWalkthrough();
-  const { send, failure, canPropose, sending } = useChapterPropose();
+  const { revealed, state, stop } = useWalkthrough();
+  const { canPropose, failure, send, sending } = useChapterPropose();
   const editOn = useEditOn();
   const adding = useChapterMarks(stop.id, "play");
   const removing = useChapterMarks(stop.id, "unplay");
@@ -107,7 +107,7 @@ export function ChapterEditor() {
     ({ id }) => !revealed.has(id)
   );
 
-  const order = (next: readonly string[]) => {
+  const order = (next: ReadonlyArray<string>) => {
     send({ action: "order", chapter: stop.id, plays: [...next] });
   };
 
@@ -121,18 +121,18 @@ export function ChapterEditor() {
   };
 
   return (
-    <section data-chapter-editor={stop.id} className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" data-chapter-editor={stop.id}>
       <ChapterLegend />
       <div className="flex flex-col gap-1.5">
         <h3 className="text-xs tracking-widest uppercase opacity-70">
           Hops it plays
         </h3>
         {plays.length === 0 ? (
-          <p data-plays-empty className="text-xs opacity-70">
+          <p className="text-xs opacity-70" data-plays-empty>
             This chapter plays no hops.
           </p>
         ) : (
-          <ol data-plays className="flex flex-col gap-1">
+          <ol className="flex flex-col gap-1" data-plays>
             {Arr.map(plays, (hop, index) => {
               const missing = lacking(hop);
               const pending = pendingOf(hop, index);
@@ -140,16 +140,15 @@ export function ChapterEditor() {
               return (
                 // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dragging a row is a pointer shortcut; the move up and move down buttons in the row do the same from the keyboard.
                 <li
-                  key={hop}
-                  data-play={hop}
-                  data-play-pending={pending}
-                  data-play-over={over === index && dragging !== index}
-                  draggable={editOn && canPropose && plays.length > 1}
                   className="border-ink data-[play-pending=order]:border-pending data-[play-pending=play]:border-pending data-[play-pending=unplay]:border-refused flex items-center gap-1.5 border px-1.5 py-1 text-xs data-[play-over=true]:border-dashed data-[play-pending=unplay]:border-dashed"
-                  onDragStart={(event: DragEvent<HTMLLIElement>) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", hop);
-                    setDragging(index);
+                  data-play={hop}
+                  data-play-over={over === index && dragging !== index}
+                  data-play-pending={pending}
+                  draggable={editOn && canPropose && plays.length > 1}
+                  key={hop}
+                  onDragEnd={() => {
+                    setDragging(undefined);
+                    setOver(undefined);
                   }}
                   onDragOver={(event) => {
                     if (dragging !== undefined) {
@@ -157,13 +156,14 @@ export function ChapterEditor() {
                       setOver(index);
                     }
                   }}
+                  onDragStart={(event: DragEvent<HTMLLIElement>) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", hop);
+                    setDragging(index);
+                  }}
                   onDrop={(event) => {
                     event.preventDefault();
                     drop(index);
-                  }}
-                  onDragEnd={() => {
-                    setDragging(undefined);
-                    setOver(undefined);
                   }}
                 >
                   {editOn ? (
@@ -180,12 +180,12 @@ export function ChapterEditor() {
                       {nameOf(hops.get(hop)?.to ?? "")}
                     </span>
                     {pending === undefined ? null : (
-                      <span data-play-state className="block opacity-70">
+                      <span className="block opacity-70" data-play-state>
                         {proposedWords[pending]}
                       </span>
                     )}
                     {missing.length === 0 ? null : (
-                      <span data-play-lacks className="block opacity-70">
+                      <span className="block opacity-70" data-play-lacks>
                         This chapter hasn&rsquo;t revealed{" "}
                         {Arr.join(Arr.map(missing, nameOf), " or ")}.
                       </span>
@@ -194,39 +194,38 @@ export function ChapterEditor() {
                   {editOn ? (
                     <>
                       <button
-                        type="button"
-                        data-play-up={hop}
-                        className={controlClass}
-                        disabled={!canPropose || index === 0}
                         aria-label={`Move ${labelOf(hop)} up`}
+                        className={controlClass}
+                        data-play-up={hop}
+                        disabled={!canPropose || index === 0}
                         onClick={() => {
                           order(moved(plays, index, index - 1));
                         }}
+                        type="button"
                       >
                         ↑
                       </button>
                       <button
-                        type="button"
-                        data-play-down={hop}
-                        className={controlClass}
-                        disabled={!canPropose || index === plays.length - 1}
                         aria-label={`Move ${labelOf(hop)} down`}
+                        className={controlClass}
+                        data-play-down={hop}
+                        disabled={!canPropose || index === plays.length - 1}
                         onClick={() => {
                           order(moved(plays, index, index + 1));
                         }}
+                        type="button"
                       >
                         ↓
                       </button>
                       <button
-                        type="button"
-                        data-play-toggle={hop}
-                        className={controlClass}
-                        disabled={!canPropose}
                         aria-label={
                           pending === "unplay"
                             ? `Keep ${labelOf(hop)} in this chapter`
                             : `Remove ${labelOf(hop)} from this chapter`
                         }
+                        className={controlClass}
+                        data-play-toggle={hop}
+                        disabled={!canPropose}
                         onClick={() => {
                           send({
                             action: pending === "unplay" ? "play" : "unplay",
@@ -234,6 +233,7 @@ export function ChapterEditor() {
                             hop,
                           });
                         }}
+                        type="button"
                       >
                         {pending === "unplay" ? "Keep" : "Remove"}
                       </button>
@@ -246,8 +246,8 @@ export function ChapterEditor() {
         )}
         {!editOn || playable.length === 0 ? null : (
           <form
-            data-add-play
             className="flex gap-1.5"
+            data-add-play
             onSubmit={(event) => {
               event.preventDefault();
 
@@ -262,27 +262,27 @@ export function ChapterEditor() {
               Hop to play in this chapter
             </label>
             <select
-              id="add-play-hop"
-              data-add-play-hop
-              value={addHop}
-              disabled={!canPropose}
               className={`${fieldClass} min-w-0 flex-1`}
+              data-add-play-hop
+              disabled={!canPropose}
+              id="add-play-hop"
               onChange={(event) => {
                 setAddHop(event.target.value);
               }}
+              value={addHop}
             >
               <option value="">Add a hop…</option>
-              {Arr.map(playable, ({ id, label, from, to }) => (
+              {Arr.map(playable, ({ from, id, label, to }) => (
                 <option key={id} value={id}>
                   {label} ({nameOf(from)} → {nameOf(to)})
                 </option>
               ))}
             </select>
             <button
-              type="submit"
-              data-add-play-submit
               className={controlClass}
+              data-add-play-submit
               disabled={!canPropose || addHop === "" || sending}
+              type="submit"
             >
               Play it
             </button>
@@ -294,22 +294,22 @@ export function ChapterEditor() {
           <h3 className="text-xs tracking-widest uppercase opacity-70">
             Not revealed yet
           </h3>
-          <ul data-unrevealed className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-1" data-unrevealed>
             {Arr.map(unrevealed, ({ id, name }) => (
               <li
-                key={id}
-                data-unrevealed-structure={id}
                 className="flex items-center gap-1.5 text-xs"
+                data-unrevealed-structure={id}
+                key={id}
               >
                 <span className="min-w-0 flex-1 break-words">{name}</span>
                 <button
-                  type="button"
-                  data-reveal={id}
                   className={controlClass}
+                  data-reveal={id}
                   disabled={!canPropose}
                   onClick={() => {
                     send({ action: "reveal", chapter: stop.id, structure: id });
                   }}
+                  type="button"
                 >
                   Show in this chapter
                 </button>
@@ -319,7 +319,7 @@ export function ChapterEditor() {
         </div>
       )}
       {revealing.size + hiding.size === 0 ? null : (
-        <p data-chapter-reveal-note className="text-xs opacity-70">
+        <p className="text-xs opacity-70" data-chapter-reveal-note>
           {revealing.size > 0
             ? `Proposed to show here: ${Arr.join(Arr.map([...revealing], nameOf), ", ")}. `
             : ""}
@@ -330,9 +330,9 @@ export function ChapterEditor() {
       )}
       {failure === undefined ? null : (
         <p
-          role="alert"
-          data-chapter-failure
           className="border-refused border-l-2 pl-2 text-xs"
+          data-chapter-failure
+          role="alert"
         >
           {failure}
         </p>

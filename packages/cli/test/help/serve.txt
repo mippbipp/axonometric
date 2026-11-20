@@ -1,0 +1,21 @@
+DESCRIPTION
+  Serve the map on 127.0.0.1, and rebuild it and update open pages whenever data.mjs or layout.json changes. Runs until Ctrl-C.
+
+USAGE
+  axonometric serve [flags] <home>
+
+ARGUMENTS
+  home directory    The map's home folder, holding data.mjs and layout.json
+
+FLAGS
+  --port integer         Listen on this port, and fail if it's busy. 0 lets the system pick a free port. Without it, serve uses 5178 or the next free port.
+  --host string          The address to listen on. Anything but loopback lets other machines connect.
+  --allow-host string    Also answer requests addressed to this host name, such as a reverse proxy's. Repeat it for more names.
+  --open                 Open the map in the system's browser
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)

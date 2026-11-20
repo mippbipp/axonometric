@@ -16,21 +16,21 @@ import { StructureTarget } from "./structure-target.tsx";
  * pending change or a selection.
  */
 export function PageFrame({
+  children,
+  faded,
   id,
+  isNew,
+  look,
   shape,
   status,
-  isNew,
-  faded,
-  look,
-  children,
 }: StructureFrameProps) {
   return (
     <StructureTarget
-      id={id}
+      data-new={isNew}
       data-shape={shape}
       data-status={status}
-      data-new={isNew}
-      {...frameAttributes({ look, faded })}
+      id={id}
+      {...frameAttributes({ faded, look })}
     >
       {children}
     </StructureTarget>
@@ -52,11 +52,11 @@ export function PageLayers({ children }: { readonly children: ReactNode }) {
   return (
     <>
       <BoxSelect
-        view={editor.view}
         placements={editor.placements}
         revealed={editor.revealed}
+        view={editor.view}
       />
-      <LayoutEditor view={editor.view} placements={editor.placements}>
+      <LayoutEditor placements={editor.placements} view={editor.view}>
         {children}
       </LayoutEditor>
       <EdgeHandles view={editor.view} />

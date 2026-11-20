@@ -40,7 +40,7 @@ export const textZoomOf = (zoom: number) => {
 
 /** The zooms text is sized for, from 1 down to the one for `from`. */
 const textZoomsFrom = (from: number) => {
-  const zooms: number[] = [];
+  const zooms: Array<number> = [];
 
   for (let zoom = fullSize; zoom >= textZoomOf(from); zoom /= textZoomStep) {
     zooms.push(zoom);

@@ -15,15 +15,15 @@ import { useSelection } from "./selection-context.ts";
  */
 export const useSelectionKeys = (arrows: boolean) => {
   const {
-    selected,
-    selectedHop,
+    clearMultiSelection,
+    comeOut,
+    goInside,
     inside,
     multiSelection,
     select,
+    selected,
+    selectedHop,
     selectHop,
-    goInside,
-    comeOut,
-    clearMultiSelection,
   } = useSelection();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {

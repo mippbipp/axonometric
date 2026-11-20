@@ -23,7 +23,7 @@ const listTestFiles = Effect.gen(function* () {
   return Arr.filter(names, Str.endsWith(".test.ts"));
 }).pipe(Effect.provide(NodeServices.layer));
 
-const seconds = (files: readonly string[]) =>
+const seconds = (files: ReadonlyArray<string>) =>
   Arr.reduce(files, 0, (total, file) => total + weight(file));
 
 describe("ci shards of the cli tests", () => {

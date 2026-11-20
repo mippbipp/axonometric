@@ -18,16 +18,16 @@ export function EditToggle() {
 
   return (
     <button
-      type="button"
-      data-edit-toggle=""
       aria-pressed={edit.on}
-      title={
-        edit.on ? `Stop editing (${editKey})` : `Edit the map (${editKey})`
-      }
       className={cn(controlClass, edit.on && "bg-ink text-paper")}
+      data-edit-toggle=""
       onClick={() => {
         switchEdit(!edit.on);
       }}
+      title={
+        edit.on ? `Stop editing (${editKey})` : `Edit the map (${editKey})`
+      }
+      type="button"
     >
       Edit
     </button>

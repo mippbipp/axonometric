@@ -17,47 +17,47 @@ import { sceneOf } from "./scene.ts";
 /** Where an arrow's end is bound, in Excalidraw's binding format. */
 export interface ExcalidrawBinding {
   readonly elementId: string;
+  /** Where the end touches the element, as a share of its width and height. */
+  readonly fixedPoint: readonly [number, number];
   /** For Excalidraw before fixed-point bindings: aim at the middle. */
   readonly focus: number;
   readonly gap: number;
   readonly mode: "orbit";
-  /** Where the end touches the element, as a share of its width and height. */
-  readonly fixedPoint: readonly [number, number];
 }
 
 /** What another element bound to this one is. */
 export interface ExcalidrawBound {
-  readonly type: "arrow" | "text";
   readonly id: string;
+  readonly type: "arrow" | "text";
 }
 
 interface ElementBase {
-  readonly id: string;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
   readonly angle: 0;
-  readonly strokeColor: string;
   readonly backgroundColor: string;
-  readonly fillStyle: "solid";
-  readonly strokeWidth: number;
-  readonly strokeStyle: "solid" | "dashed";
-  readonly roughness: 0;
-  readonly opacity: number;
-  readonly groupIds: readonly string[];
-  readonly frameId: string | null;
-  readonly index: null;
-  readonly roundness: { readonly type: typeof proportionalRadius } | null;
-  readonly seed: number;
-  readonly version: 1;
-  readonly versionNonce: 0;
-  readonly isDeleted: false;
-  readonly boundElements: readonly ExcalidrawBound[];
-  readonly updated: 1;
+  readonly boundElements: ReadonlyArray<ExcalidrawBound>;
   readonly created: 1;
+  readonly fillStyle: "solid";
+  readonly frameId: string | null;
+  readonly groupIds: ReadonlyArray<string>;
+  readonly height: number;
+  readonly id: string;
+  readonly index: null;
+  readonly isDeleted: false;
   readonly link: null;
   readonly locked: false;
+  readonly opacity: number;
+  readonly roughness: 0;
+  readonly roundness: { readonly type: typeof proportionalRadius } | null;
+  readonly seed: number;
+  readonly strokeColor: string;
+  readonly strokeStyle: "solid" | "dashed";
+  readonly strokeWidth: number;
+  readonly updated: 1;
+  readonly version: 1;
+  readonly versionNonce: 0;
+  readonly width: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 export interface ExcalidrawRectangle extends ElementBase {
@@ -65,35 +65,35 @@ export interface ExcalidrawRectangle extends ElementBase {
 }
 
 export interface ExcalidrawText extends ElementBase {
-  readonly type: "text";
-  readonly text: string;
-  readonly originalText: string;
-  readonly fontSize: number;
-  readonly fontFamily: number;
-  readonly textAlign: "center";
-  readonly verticalAlign: "middle";
-  readonly containerId: string;
   readonly autoResize: true;
-  readonly lineHeight: number;
   /** The size before any scaling; Excalidraw keeps it only for sticky notes. */
   readonly baseFontSize: null;
+  readonly containerId: string;
+  readonly fontFamily: number;
+  readonly fontSize: number;
   readonly labelPosition: null;
+  readonly lineHeight: number;
+  readonly originalText: string;
+  readonly text: string;
+  readonly textAlign: "center";
+  readonly type: "text";
+  readonly verticalAlign: "middle";
 }
 
 export interface ExcalidrawArrow extends ElementBase {
-  readonly type: "arrow";
-  /** Relative to `x` and `y`; the first is always [0, 0]. */
-  readonly points: readonly (readonly [number, number])[];
-  readonly startBinding: ExcalidrawBinding | null;
-  readonly endBinding: ExcalidrawBinding | null;
-  readonly startArrowhead: null;
-  readonly endArrowhead: "arrow";
   readonly elbowed: false;
+  readonly endArrowhead: "arrow";
+  readonly endBinding: ExcalidrawBinding | null;
+  /** Relative to `x` and `y`; the first is always [0, 0]. */
+  readonly points: ReadonlyArray<readonly [number, number]>;
+  readonly startArrowhead: null;
+  readonly startBinding: ExcalidrawBinding | null;
+  readonly type: "arrow";
 }
 
 export interface ExcalidrawFrame extends ElementBase {
-  readonly type: "frame";
   readonly name: string;
+  readonly type: "frame";
 }
 
 export type ExcalidrawElement =
@@ -104,26 +104,26 @@ export type ExcalidrawElement =
 
 /** A `.excalidraw` file. */
 export interface ExcalidrawFile {
+  readonly appState: {
+    readonly gridSize: null;
+    readonly viewBackgroundColor: string;
+  };
+  readonly elements: ReadonlyArray<ExcalidrawElement>;
+  readonly files: Readonly<Record<string, never>>;
+  readonly source: string;
   readonly type: "excalidraw";
   readonly version: 2;
-  readonly source: string;
-  readonly elements: readonly ExcalidrawElement[];
-  readonly appState: {
-    readonly viewBackgroundColor: string;
-    readonly gridSize: null;
-  };
-  readonly files: Readonly<Record<string, never>>;
 }
 
 /** What `excalidrawOf` draws: a map and its layout. */
 export interface ExcalidrawSource {
-  readonly data: MapData;
-  readonly layout: Layout;
   /** The canvas colour. Defaults to the map's paper colour. */
   readonly background?: string | undefined;
+  readonly data: MapData;
+  readonly layout: Layout;
 }
 
-const { ink, face, paper } = palette.light;
+const { face, ink, paper } = palette.light;
 
 /** Excalidraw's `ROUNDNESS.PROPORTIONAL_RADIUS`: corners rounded by size. */
 const proportionalRadius = 3;
@@ -165,11 +165,11 @@ const fnvPrime = 16_777_619;
 
 /** The element ids, one namespace per kind, so map ids can't clash. */
 export const excalidrawIds = {
-  structure: (id: string) => `structure:${id}`,
-  name: (id: string) => `structure-name:${id}`,
+  group: (id: string) => `group:${id}`,
   hop: (id: string) => `hop:${id}`,
   label: (id: string) => `hop-label:${id}`,
-  group: (id: string) => `group:${id}`,
+  name: (id: string) => `structure-name:${id}`,
+  structure: (id: string) => `structure:${id}`,
 };
 
 /** A stable 31-bit seed from an id: FNV-1a. */
@@ -186,14 +186,14 @@ const seedOf = (id: string) => {
 
 const strokeStyles: Readonly<Record<Status, "solid" | "dashed">> = {
   live: "solid",
-  planned: "dashed",
   off: "solid",
+  planned: "dashed",
 };
 
 const opacities: Readonly<Record<Status, number>> = {
   live: fullOpacity,
-  planned: fullOpacity,
   off: offOpacity,
+  planned: fullOpacity,
 };
 
 const base = (
@@ -201,39 +201,39 @@ const base = (
   rect: ScreenRect,
   frameId: string | null
 ): ElementBase => ({
-  id,
-  x: rect.left,
-  y: rect.top,
-  width: rect.right - rect.left,
-  height: rect.bottom - rect.top,
   angle: 0,
-  strokeColor: ink,
   backgroundColor: "transparent",
-  fillStyle: "solid",
-  strokeWidth: 1,
-  strokeStyle: "solid",
-  roughness: 0,
-  opacity: fullOpacity,
-  groupIds: [],
-  frameId,
-  index: null,
-  roundness: null,
-  seed: seedOf(id),
-  version: 1,
-  versionNonce: 0,
-  isDeleted: false,
   boundElements: [],
-  updated: fixedTime,
   created: fixedTime,
+  fillStyle: "solid",
+  frameId,
+  groupIds: [],
+  height: rect.bottom - rect.top,
+  id,
+  index: null,
+  isDeleted: false,
   link: null,
   locked: false,
+  opacity: fullOpacity,
+  roughness: 0,
+  roundness: null,
+  seed: seedOf(id),
+  strokeColor: ink,
+  strokeStyle: "solid",
+  strokeWidth: 1,
+  updated: fixedTime,
+  version: 1,
+  versionNonce: 0,
+  width: rect.right - rect.left,
+  x: rect.left,
+  y: rect.top,
 });
 
 /** The width of `text` set in monospace at `size`. */
 const widthOf = (text: string, size: number) => text.length * size * charWidth;
 
 /** Breaks a word longer than `chars` into pieces that fit. */
-const pieces = (word: string, chars: number): readonly string[] =>
+const pieces = (word: string, chars: number): ReadonlyArray<string> =>
   word.length <= chars
     ? [word]
     : [Str.slice(0, chars)(word), ...pieces(Str.slice(chars)(word), chars)];
@@ -243,14 +243,14 @@ const pieces = (word: string, chars: number): readonly string[] =>
  * `size`. A word wider than a line is cut.
  */
 const wrap = ({
-  text,
   size,
+  text,
   width,
 }: {
-  readonly text: string;
   readonly size: number;
+  readonly text: string;
   readonly width: number;
-}): readonly string[] => {
+}): ReadonlyArray<string> => {
   const chars = Math.max(1, Math.floor(width / (size * charWidth)));
 
   return Arr.reduce(
@@ -268,26 +268,26 @@ const wrap = ({
 
 /** Text wrapped and sized to fit a box, as Excalidraw would lay it out. */
 interface Fitted {
-  readonly lines: readonly string[];
+  readonly lines: ReadonlyArray<string>;
   readonly size: number;
 }
 
 /** The largest size, from `size` down, whose wrapped lines fit the box. */
 const fitted = ({
-  text,
-  size,
   box,
+  size,
+  text,
 }: {
-  readonly text: string;
+  readonly box: { readonly height: number; readonly width: number };
   readonly size: number;
-  readonly box: { readonly width: number; readonly height: number };
+  readonly text: string;
 }): Fitted => {
-  const lines = wrap({ text, size, width: box.width });
+  const lines = wrap({ size, text, width: box.width });
 
   return size <= smallestNameSize ||
     lines.length * size * lineHeight <= box.height
     ? { lines, size }
-    : fitted({ text, size: size - 1, box });
+    : fitted({ box, size: size - 1, text });
 };
 
 /**
@@ -296,19 +296,19 @@ const fitted = ({
  * `originalText` the whole text.
  */
 const boundText = ({
-  id,
-  text,
-  fit,
   centre,
   containerId,
+  fit,
   frameId,
+  id,
+  text,
 }: {
-  readonly id: string;
-  readonly text: string;
-  readonly fit: Fitted;
   readonly centre: ScreenPoint;
   readonly containerId: string;
+  readonly fit: Fitted;
   readonly frameId: string | null;
+  readonly id: string;
+  readonly text: string;
 }): ExcalidrawText => {
   const width = Math.max(
     ...Arr.map(fit.lines, (line) => widthOf(line, fit.size))
@@ -320,25 +320,25 @@ const boundText = ({
     ...base(
       id,
       {
-        left: centre.sx - width / 2,
-        top: centre.sy - height / 2,
-        right: centre.sx + width / 2,
         bottom: centre.sy + height / 2,
+        left: centre.sx - width / 2,
+        right: centre.sx + width / 2,
+        top: centre.sy - height / 2,
       },
       frameId
     ),
-    type: "text",
-    text: Arr.join(fit.lines, "\n"),
-    originalText: text,
-    fontSize: fit.size,
-    fontFamily: monospace,
-    textAlign: "center",
-    verticalAlign: "middle",
-    containerId,
     autoResize: true,
-    lineHeight,
     baseFontSize: null,
+    containerId,
+    fontFamily: monospace,
+    fontSize: fit.size,
     labelPosition: null,
+    lineHeight,
+    originalText: text,
+    text: Arr.join(fit.lines, "\n"),
+    textAlign: "center",
+    type: "text",
+    verticalAlign: "middle",
   };
 };
 
@@ -350,13 +350,13 @@ const bindingTo = (
   at: ScreenPoint
 ): ExcalidrawBinding => ({
   elementId,
-  focus: 0,
-  gap: 1,
-  mode: "orbit",
   fixedPoint: [
     clampShare((at.sx - rect.left) / Math.max(rect.right - rect.left, 1)),
     clampShare((at.sy - rect.top) / Math.max(rect.bottom - rect.top, 1)),
   ],
+  focus: 0,
+  gap: 1,
+  mode: "orbit",
 });
 
 const middleOf = (rect: ScreenRect): ScreenPoint => ({
@@ -365,7 +365,7 @@ const middleOf = (rect: ScreenRect): ScreenPoint => ({
 });
 
 /** The point halfway along a route, by length. */
-const halfway = (points: readonly ScreenPoint[]): ScreenPoint => {
+const halfway = (points: ReadonlyArray<ScreenPoint>): ScreenPoint => {
   const legs = Arr.map(segmentsOf(points), (leg) => ({
     ...leg,
     length: segmentLength(leg),
@@ -375,7 +375,7 @@ const halfway = (points: readonly ScreenPoint[]): ScreenPoint => {
 
   for (const leg of legs) {
     if (left <= leg.length && leg.length > 0) {
-      return lerp({ from: leg.start, to: leg.end, t: left / leg.length });
+      return lerp({ from: leg.start, t: left / leg.length, to: leg.end });
     }
 
     left -= leg.length;
@@ -392,10 +392,10 @@ const within = (inner: ScreenRect, outer: ScreenRect) =>
   inner.bottom <= outer.bottom;
 
 const rectOfElement = (element: ElementBase): ScreenRect => ({
-  left: element.x,
-  top: element.y,
-  right: element.x + element.width,
   bottom: element.y + element.height,
+  left: element.x,
+  right: element.x + element.width,
+  top: element.y,
 });
 
 /**
@@ -407,9 +407,9 @@ const rectOfElement = (element: ElementBase): ScreenRect => ({
  * group's frame.
  */
 export const excalidrawOf = ({
+  background = paper,
   data,
   layout,
-  background = paper,
 }: ExcalidrawSource): ExcalidrawFile => {
   const scene = sceneOf({
     data,
@@ -428,14 +428,14 @@ export const excalidrawOf = ({
   );
 
   const rectOf = new Map(
-    Arr.map(scene.structures, ({ structure, outline }) => [
+    Arr.map(scene.structures, ({ outline, structure }) => [
       structure.id,
       boundsOfPoints(outline),
     ])
   );
 
   const zoneBounds = new Map(
-    Arr.map(scene.zones, ({ zone, bounds }) => [
+    Arr.map(scene.zones, ({ bounds, zone }) => [
       excalidrawIds.group(zone.group.id),
       bounds,
     ])
@@ -446,7 +446,11 @@ export const excalidrawOf = ({
    * when the arrow and its label lie inside the group's frame. A frame clips
    * what sticks out of it, so anything that does stays outside.
    */
-  const hopFrame = (from: string, to: string, parts: readonly ScreenRect[]) => {
+  const hopFrame = (
+    from: string,
+    to: string,
+    parts: ReadonlyArray<ScreenRect>
+  ) => {
     const frame = frameOf.get(from);
     const bounds = frame === undefined ? undefined : zoneBounds.get(frame);
 
@@ -470,44 +474,44 @@ export const excalidrawOf = ({
 
     const arrows = Arr.flatMap(scene.hops, ({ hop }) =>
       hop.from === structure.id || hop.to === structure.id
-        ? [{ type: "arrow" as const, id: excalidrawIds.hop(hop.id) }]
+        ? [{ id: excalidrawIds.hop(hop.id), type: "arrow" as const }]
         : []
     );
 
     const rectangle: ExcalidrawRectangle = {
       ...base(id, rect, frameId),
-      type: "rectangle",
       backgroundColor: face,
-      strokeStyle: strokeStyles[structure.status],
-      opacity: opacities[structure.status],
-      roundness: { type: proportionalRadius },
       boundElements: [
-        { type: "text", id: excalidrawIds.name(structure.id) },
+        { id: excalidrawIds.name(structure.id), type: "text" },
         ...arrows,
       ],
+      opacity: opacities[structure.status],
+      roundness: { type: proportionalRadius },
+      strokeStyle: strokeStyles[structure.status],
+      type: "rectangle",
     };
 
     return [
       rectangle,
       boundText({
-        id: excalidrawIds.name(structure.id),
-        text: structure.name,
-        fit: fitted({
-          text: structure.name,
-          size: nameSize,
-          box: {
-            width: rect.right - rect.left - 2 * namePadding,
-            height: rect.bottom - rect.top - 2 * namePadding,
-          },
-        }),
         centre: middleOf(rect),
         containerId: id,
+        fit: fitted({
+          box: {
+            height: rect.bottom - rect.top - 2 * namePadding,
+            width: rect.right - rect.left - 2 * namePadding,
+          },
+          size: nameSize,
+          text: structure.name,
+        }),
         frameId,
+        id: excalidrawIds.name(structure.id),
+        text: structure.name,
       }),
     ];
   });
 
-  const hops = Arr.flatMap(scene.hops, ({ hop, points, label }) => {
+  const hops = Arr.flatMap(scene.hops, ({ hop, label, points }) => {
     const [first] = points;
     const last = points.at(-1);
     const from = rectOf.get(hop.from);
@@ -525,18 +529,18 @@ export const excalidrawOf = ({
     const id = excalidrawIds.hop(hop.id);
 
     const labelFit = fitted({
-      text: hop.label,
+      box: { height: Number.POSITIVE_INFINITY, width: labelWidth },
       size: labelSize,
-      box: { width: labelWidth, height: Number.POSITIVE_INFINITY },
+      text: hop.label,
     });
 
     const text = boundText({
-      id: excalidrawIds.label(hop.id),
-      text: hop.label,
-      fit: labelFit,
       centre: label === undefined ? halfway(points) : middleOf(label),
       containerId: id,
+      fit: labelFit,
       frameId: null,
+      id: excalidrawIds.label(hop.id),
+      text: hop.label,
     });
 
     const frameId = hopFrame(hop.from, hop.to, [
@@ -546,38 +550,38 @@ export const excalidrawOf = ({
 
     const arrow: ExcalidrawArrow = {
       ...base(id, boundsOfPoints(points), frameId),
-      x: first.sx,
-      y: first.sy,
-      type: "arrow",
+      boundElements: [{ id: excalidrawIds.label(hop.id), type: "text" }],
+      elbowed: false,
+      endArrowhead: "arrow",
+      endBinding: bindingTo(excalidrawIds.structure(hop.to), to, last),
       points: Arr.map(
         points,
         ({ sx, sy }) => [sx - first.sx, sy - first.sy] as const
       ),
-      startBinding: bindingTo(excalidrawIds.structure(hop.from), from, first),
-      endBinding: bindingTo(excalidrawIds.structure(hop.to), to, last),
       startArrowhead: null,
-      endArrowhead: "arrow",
-      elbowed: false,
-      boundElements: [{ type: "text", id: excalidrawIds.label(hop.id) }],
+      startBinding: bindingTo(excalidrawIds.structure(hop.from), from, first),
+      type: "arrow",
+      x: first.sx,
+      y: first.sy,
     };
 
     return [arrow, { ...text, frameId }];
   });
 
   // Frames come after their members, as Excalidraw orders them.
-  const frames = Arr.map(scene.zones, ({ zone, bounds }): ExcalidrawFrame => ({
+  const frames = Arr.map(scene.zones, ({ bounds, zone }): ExcalidrawFrame => ({
     ...base(excalidrawIds.group(zone.group.id), bounds, null),
-    type: "frame",
     name: zone.group.title,
+    type: "frame",
   }));
 
   return {
+    appState: { gridSize: null, viewBackgroundColor: background },
+    elements: [...structures, ...hops, ...frames],
+    files: {},
+    source: "https://github.com/mippbipp/axonometric",
     type: "excalidraw",
     version: 2,
-    source: "https://github.com/mippbipp/axonometric",
-    elements: [...structures, ...hops, ...frames],
-    appState: { viewBackgroundColor: background, gridSize: null },
-    files: {},
   };
 };
 

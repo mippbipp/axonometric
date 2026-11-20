@@ -9,19 +9,19 @@
  * of the way to paper in oklab.
  */
 export const palette = {
-  light: {
-    paper: "#e6dfbe",
-    ink: "#17170f",
-    face: "#efe9cc",
-    faceOff: "#eae3c4",
-    muted: "#8e8a70",
-  },
   dark: {
-    paper: "#1e1d15",
-    ink: "#e6dfbe",
     face: "#2a2920",
     faceOff: "#232219",
+    ink: "#e6dfbe",
     muted: "#6e6b54",
+    paper: "#1e1d15",
+  },
+  light: {
+    face: "#efe9cc",
+    faceOff: "#eae3c4",
+    ink: "#17170f",
+    muted: "#8e8a70",
+    paper: "#e6dfbe",
   },
 } as const;
 

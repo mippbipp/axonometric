@@ -8,8 +8,8 @@ export default defineConfig({
     // they take several times longer than locally, past Vitest's 5 s default.
     // Closing Chromium after a file has taken over the 10 s hook default on
     // a macOS runner, so hooks get the same time.
-    testTimeout: 30_000,
     hookTimeout: 30_000,
+    testTimeout: 30_000,
     // Test files in one worker share modules instead of importing everything
     // again, which saves the import time. Module state that a test file
     // leaves behind has to be reset from a setup file, which runs per file.

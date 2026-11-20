@@ -9,12 +9,12 @@ import type { Draft } from "./place-context.ts";
  */
 export const addChangeOf = ({
   draft,
-  spot,
   id,
+  spot,
 }: {
   readonly draft: Draft;
-  readonly spot: Placement | null;
   readonly id: (name: string) => string;
+  readonly spot: Placement | null;
 }): StructureChange | undefined => {
   const name = draft.name.trim();
 
@@ -22,14 +22,14 @@ export const addChangeOf = ({
     ? undefined
     : {
         action: "add",
+        at: spot,
         structure: {
+          group: draft.group,
           id: id(name),
           name,
           shape: draft.shape,
-          group: draft.group,
           status: draft.status,
         },
-        at: spot,
       };
 };
 

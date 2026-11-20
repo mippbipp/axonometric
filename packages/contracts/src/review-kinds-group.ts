@@ -31,10 +31,10 @@ const groupNotice =
 
 /** What the group kind adds under a provisional id, and how it says so. */
 const provisional = provisionalOf<GroupItem>({
-  entity: "group",
-  noun: "group",
   adds: ({ change }) =>
     change.action === "add" ? Option.some(change.group.id) : Option.none(),
+  entity: "group",
+  noun: "group",
 });
 
 /**
@@ -54,56 +54,38 @@ const titleIn = (data: Pick<MapData, "groups">, id: string) =>
 
 export const groupKind: KindSpec<GroupItem> = {
   ...plain<GroupItem>(),
-  textLimit: maxGroupTitleLength,
   listKey: "groups",
+  textLimit: maxGroupTitleLength,
   // The title has its own rules, so an edit goes through the panel's rename.
-  text: ({ change }) => Option.some(titleOf(change)),
-  textRefusal: (_item, text) => refusalOf(GroupTitle, text),
+  dangling: ({ change }, known) =>
+    change.action === "add" || known.groups.has(change.group)
+      ? Option.none()
+      : Option.some(`no group in data.mjs has the id "${change.group}"`),
   describe: ({ change }, called) =>
     Option.some(
       change.action === "add"
         ? `Add the group ${change.group.title}`
         : `Rename the group ${called.acceptedGroup(change.group)} to ${change.title}`
     ),
-  dangling: ({ change }, known) =>
-    change.action === "add" || known.groups.has(change.group)
-      ? Option.none()
-      : Option.some(`no group in data.mjs has the id "${change.group}"`),
+  text: ({ change }) => Option.some(titleOf(change)),
+  textRefusal: (_item, text) => refusalOf(GroupTitle, text),
   // The checks `proposeGroup` runs on a fresh proposal.
-  fits: ({ change }, data) => groupFit(change, data),
-  notice: groupNotice,
-  open: (proposals) =>
-    Arr.map(proposals.groups ?? [], (proposal): GroupItem => ({
-      id: proposal.id,
-      kind: "group",
-      change: proposal.change,
-    })),
-  clear: (proposals) => ({ ...proposals, groups: [] }),
-  add: (proposals, { id, change }) => ({
+  accepted: (item, verdict) => {
+    const base = { change: item.change, id: item.id, kind: "group" } as const;
+    const final = finalIdOf(item, verdict);
+
+    return decorate(
+      item.change.action === "add" && final !== item.change.group.id
+        ? { ...base, as: final }
+        : base,
+      verdict
+    );
+  },
+  add: (proposals, { change, id }) => ({
     ...proposals,
-    groups: [...(proposals.groups ?? []), { id, change }],
+    groups: [...(proposals.groups ?? []), { change, id }],
   }),
-  name: ({ change }) =>
-    change.action === "add" ? "add group" : "rename group",
-  targets: ({ change }): readonly Pointer[] => [
-    { kind: "group", id: groupOf(change) },
-  ],
-  summary: ({ id, change }, called) =>
-    change.action === "add"
-      ? `add group ${id}: ${quoteText(change.group.title)}, provisional id ${change.group.id}`
-      : `rename group ${id}: ${quoteText(called.acceptedGroup(change.group))} to ${quoteText(change.title)}`,
-  facts: ({ change }, _layout, data) => ({
-    before:
-      change.action === "add" || data === undefined
-        ? null
-        : Option.match(titleIn(data, change.group), {
-            onNone: () => null,
-            onSome: (title) => ({ group: { id: change.group, title } }),
-          }),
-    after: {
-      group: { id: groupOf(change), title: titleOf(change) },
-    },
-  }),
+  applies: (): ReadonlyArray<LayoutChange> => [],
   appliesToData: ({ change }, map) => ({
     ...map,
     data:
@@ -126,10 +108,6 @@ export const groupKind: KindSpec<GroupItem> = {
             ),
           },
   }),
-  touches: ({ change }) => ({
-    ...touchesNothing,
-    marks: [{ name: groupMark, ids: [groupOf(change)] }],
-  }),
   breakage: ({ change }, { data }) =>
     data === undefined || change.action === "add"
       ? Option.none()
@@ -138,9 +116,7 @@ export const groupKind: KindSpec<GroupItem> = {
         : Option.some(
             `No group in data.mjs has the id "${change.group}", so this rename has nothing to act on.`
           ),
-  verdictRefusal: provisional.verdictRefusal,
-  renames: provisional.renames,
-  applies: (): readonly LayoutChange[] => [],
+  clear: (proposals) => ({ ...proposals, groups: [] }),
   commitRefusal: (item, verdict, { data }) => {
     const { change } = item;
 
@@ -161,31 +137,55 @@ export const groupKind: KindSpec<GroupItem> = {
         )
       : Option.none();
   },
-  accepted: (item, verdict) => {
-    const base = { kind: "group", id: item.id, change: item.change } as const;
-    const final = finalIdOf(item, verdict);
-
-    return decorate(
-      item.change.action === "add" && final !== item.change.group.id
-        ? { ...base, as: final }
-        : base,
-      verdict
-    );
-  },
+  facts: ({ change }, _layout, data) => ({
+    after: {
+      group: { id: groupOf(change), title: titleOf(change) },
+    },
+    before:
+      change.action === "add" || data === undefined
+        ? null
+        : Option.match(titleIn(data, change.group), {
+            onNone: () => null,
+            onSome: (title) => ({ group: { id: change.group, title } }),
+          }),
+  }),
+  fits: ({ change }, data) => groupFit(change, data),
+  name: ({ change }) =>
+    change.action === "add" ? "add group" : "rename group",
+  notice: groupNotice,
+  open: (proposals) =>
+    Arr.map(proposals.groups ?? [], (proposal): GroupItem => ({
+      change: proposal.change,
+      id: proposal.id,
+      kind: "group",
+    })),
   rejected: (item, reason) => ({
-    kind: "group",
-    id: item.id,
     change: item.change,
+    id: item.id,
+    kind: "group",
     reason,
   }),
+  renames: provisional.renames,
   reopened: (item, newId, text) => ({
     ...item,
-    id: newId,
     change:
       text === undefined
         ? item.change
         : item.change.action === "add"
           ? { ...item.change, group: { ...item.change.group, title: text } }
           : { ...item.change, title: text },
+    id: newId,
   }),
+  summary: ({ change, id }, called) =>
+    change.action === "add"
+      ? `add group ${id}: ${quoteText(change.group.title)}, provisional id ${change.group.id}`
+      : `rename group ${id}: ${quoteText(called.acceptedGroup(change.group))} to ${quoteText(change.title)}`,
+  targets: ({ change }): ReadonlyArray<Pointer> => [
+    { id: groupOf(change), kind: "group" },
+  ],
+  touches: ({ change }) => ({
+    ...touchesNothing,
+    marks: [{ ids: [groupOf(change)], name: groupMark }],
+  }),
+  verdictRefusal: provisional.verdictRefusal,
 };

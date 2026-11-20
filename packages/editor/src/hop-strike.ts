@@ -6,13 +6,13 @@ import { Array as Arr, Option } from "effect";
  * How far a strike reaches from its centre, in drawing units: the full size
  * first, then smaller ones for a short route whose label leaves no room.
  */
-const reaches: readonly number[] = [7, 5, 3.5];
+const reaches: ReadonlyArray<number> = [7, 5, 3.5];
 
 /** The air kept between a strike and text, in drawing units. */
 const air = 2;
 
 /** Where along the route a strike tries to sit, as a share of its length. */
-const shares: readonly number[] = Arr.flatMap(Arr.range(0, 9), (step) => [
+const shares: ReadonlyArray<number> = Arr.flatMap(Arr.range(0, 9), (step) => [
   0.5 + step * 0.05,
   0.5 - (step + 1) * 0.05,
 ]);
@@ -25,7 +25,10 @@ interface Along {
 }
 
 /** The point at `share` of the way along `route`, and the direction there. */
-const alongRoute = (route: readonly ScreenPoint[], share: number): Along => {
+const alongRoute = (
+  route: ReadonlyArray<ScreenPoint>,
+  share: number
+): Along => {
   const lengths = Arr.map(Arr.zip(route, Arr.drop(route, 1)), ([a, b]) =>
     Math.hypot(b.sx - a.sx, b.sy - a.sy)
   );
@@ -62,25 +65,25 @@ const alongRoute = (route: readonly ScreenPoint[], share: number): Along => {
 /** The two lines of a strike across a route: a cross, one diagonal each way. */
 export interface Strike {
   readonly at: ScreenPoint;
-  readonly lines: readonly (readonly [ScreenPoint, ScreenPoint])[];
+  readonly lines: ReadonlyArray<readonly [ScreenPoint, ScreenPoint]>;
 }
 
 const clear = ({
   at,
+  outlines,
   reach,
   texts,
-  outlines,
 }: {
   readonly at: ScreenPoint;
+  readonly outlines: ReadonlyArray<ReadonlyArray<ScreenPoint>>;
   readonly reach: number;
-  readonly texts: readonly ScreenRect[];
-  readonly outlines: readonly (readonly ScreenPoint[])[];
+  readonly texts: ReadonlyArray<ScreenRect>;
 }) => {
   const box: ScreenRect = {
+    bottom: at.sy + reach + air,
     left: at.sx - reach - air,
     right: at.sx + reach + air,
     top: at.sy - reach - air,
-    bottom: at.sy + reach + air,
   };
 
   return (
@@ -105,21 +108,21 @@ const clear = ({
  * text. The hop is also drawn dashed, so it reads as deleted either way.
  */
 export const strikeOnRoute = ({
+  outlines,
   route,
   texts,
-  outlines,
 }: {
-  readonly route: readonly ScreenPoint[];
-  readonly texts: readonly ScreenRect[];
   /** The outline of every structure drawn. */
-  readonly outlines: readonly (readonly ScreenPoint[])[];
+  readonly outlines: ReadonlyArray<ReadonlyArray<ScreenPoint>>;
+  readonly route: ReadonlyArray<ScreenPoint>;
+  readonly texts: ReadonlyArray<ScreenRect>;
 }): Option.Option<Strike> =>
   Option.map(
     Arr.findFirst(
       Arr.flatMap(reaches, (reach) =>
         Arr.map(shares, (share) => ({ ...alongRoute(route, share), reach }))
       ),
-      ({ at, reach }) => clear({ at, reach, texts, outlines })
+      ({ at, reach }) => clear({ at, outlines, reach, texts })
     ),
     ({ at, dx, dy, reach: strikeReach }) => {
       // The diagonals are the route's direction turned a quarter either way

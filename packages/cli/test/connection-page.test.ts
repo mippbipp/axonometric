@@ -64,7 +64,7 @@ const waitAttached = (page: Page, selector: string) =>
  */
 const waitForFlowProposal = Effect.fnUntraced(function* (
   home: string,
-  wanted: (hops: readonly string[]) => boolean
+  wanted: (hops: ReadonlyArray<string>) => boolean
 ) {
   for (let tries = 0; tries < 150; tries += 1) {
     const found = Arr.findFirst(
@@ -92,7 +92,11 @@ const openFlows = Effect.fnUntraced(function* (page: Page) {
 });
 
 /** Waits until flow `flow` lists exactly `hops`, in that order. */
-const waitForFlowHops = (page: Page, flow: string, hops: readonly string[]) =>
+const waitForFlowHops = (
+  page: Page,
+  flow: string,
+  hops: ReadonlyArray<string>
+) =>
   Effect.promise(() =>
     page.waitForFunction(
       `[...document.querySelectorAll(${literal(`[data-sortable="hops:${flow}"] [data-sort-content]`)})].map((e) => e.getAttribute("data-sort-content")).join(",") === ${literal(Arr.join(hops, ","))}`,
@@ -133,12 +137,12 @@ const select = Effect.fnUntraced(function* (page: Page, id: string) {
 const dragFromHandle = Effect.fnUntraced(function* (
   page: Page,
   drag: {
+    readonly drop: boolean;
     readonly from: string;
     readonly to: { readonly x: number; readonly y: number };
-    readonly drop: boolean;
   }
 ) {
-  const { from, to, drop } = drag;
+  const { drop, from, to } = drag;
 
   yield* select(page, from);
 
@@ -164,7 +168,7 @@ const clashes = (page: Page) =>
 const labelClashes = (
   report: DrawingReport,
   label: string
-): readonly string[] => {
+): ReadonlyArray<string> => {
   const own = Arr.filter(report.text, ({ id }) => id === label);
 
   if (own.length === 0) {
@@ -203,13 +207,13 @@ const grown = (polygon: Drawn["polygon"], by: number): Drawn["polygon"] => {
 };
 
 /** The text every mark must keep clear of: tags, hop labels and chips, not zone titles. */
-const textToAvoid = (report: DrawingReport): readonly Drawn[] => [
+const textToAvoid = (report: DrawingReport): ReadonlyArray<Drawn> => [
   ...Arr.filter(report.text, ({ id }) => !Str.startsWith("title:")(id)),
   ...report.chips,
 ];
 
 /** The handles that come within `clearance` screen pixels of text. */
-const handlesNearText = (report: DrawingReport): readonly string[] =>
+const handlesNearText = (report: DrawingReport): ReadonlyArray<string> =>
   Arr.flatMap(report.handles, (handle) =>
     Arr.flatMap(textToAvoid(report), (other: Drawn) =>
       overlap(grown(handle.polygon, clearance), other.polygon)
@@ -219,7 +223,7 @@ const handlesNearText = (report: DrawingReport): readonly string[] =>
   );
 
 /** The legs of the line being drawn that run through text. */
-const previewsOverText = (report: DrawingReport): readonly string[] =>
+const previewsOverText = (report: DrawingReport): ReadonlyArray<string> =>
   Arr.flatMap(report.previews, ({ id, segment }) =>
     Arr.flatMap(textToAvoid(report), (other: Drawn) =>
       crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
@@ -230,7 +234,7 @@ const previewsOverText = (report: DrawingReport): readonly string[] =>
  * The ends of the line's pieces that lie off the line through the first
  * piece, by more than a pixel: none when the line is straight.
  */
-const bends = (previews: DrawingReport["previews"]): readonly string[] => {
+const bends = (previews: DrawingReport["previews"]): ReadonlyArray<string> => {
   const [a, b] = previews[0]?.segment ?? [];
 
   if (a === undefined || b === undefined) {
@@ -254,7 +258,7 @@ const bends = (previews: DrawingReport["previews"]): readonly string[] => {
 };
 
 /** The pieces of a hop's strike that run through a structure's box. */
-const strikesOverBoxes = (report: DrawingReport): readonly string[] =>
+const strikesOverBoxes = (report: DrawingReport): ReadonlyArray<string> =>
   Arr.flatMap(report.hopStrikes, ({ id, segment }) =>
     Arr.flatMap(report.structures, (box: Drawn) =>
       crosses(segment, box.polygon) ? [`${id} × ${box.id}`] : []
@@ -262,7 +266,7 @@ const strikesOverBoxes = (report: DrawingReport): readonly string[] =>
   );
 
 /** The pieces of a hop's strike that run over text. */
-const strikesOverText = (report: DrawingReport): readonly string[] =>
+const strikesOverText = (report: DrawingReport): ReadonlyArray<string> =>
   Arr.flatMap(report.hopStrikes, ({ id, segment }) =>
     Arr.flatMap(report.text, (other: Drawn) =>
       crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
@@ -310,7 +314,7 @@ const drawHop = Effect.fnUntraced(function* (page: Page, label: string) {
   const target = yield* centreOf(page, '[data-structure="server"]');
 
   // The drop reads the target the page last drew, so wait for it first.
-  yield* dragFromHandle(page, { from: "engineer", to: target, drop: false });
+  yield* dragFromHandle(page, { drop: false, from: "engineer", to: target });
   yield* waitForAttributes(page, "[data-hop-preview]", {
     "data-over": "server",
   });
@@ -334,7 +338,7 @@ describe.each(["iso", "plan"] as const)(
       "draws a dashed preview mid-drag, then opens the label field on a drop on a structure",
       () =>
         Effect.gen(function* () {
-          const { page, home } = yield* served;
+          const { home, page } = yield* served;
 
           yield* goToChapterPaused(page, "c-all");
           yield* showViewFitted(page, which);
@@ -342,9 +346,9 @@ describe.each(["iso", "plan"] as const)(
           const target = yield* centreOf(page, '[data-structure="server"]');
 
           yield* dragFromHandle(page, {
+            drop: false,
             from: "engineer",
             to: target,
-            drop: false,
           });
           // The preview shows from the first step of the drag, before the
           // pointer reaches the server, so wait for the target.
@@ -389,7 +393,7 @@ describe.each(["iso", "plan"] as const)(
       "creates the proposal with its label and draws the hop pending",
       () =>
         Effect.gen(function* () {
-          const { page, home, errors } = yield* served;
+          const { errors, home, page } = yield* served;
 
           yield* goToChapterPaused(page, "c-all");
           yield* showViewFitted(page, which);
@@ -402,7 +406,7 @@ describe.each(["iso", "plan"] as const)(
             saved?.change.action === "add"
               ? { ...saved.change.hop, id: "" }
               : undefined,
-            { id: "", from: "engineer", to: "server", label: "asks for a map" }
+            { from: "engineer", id: "", label: "asks for a map", to: "server" }
           );
 
           const proposed = page.locator(
@@ -469,7 +473,7 @@ describe("ending a drag without a target", () => {
     "creates nothing when the drop is on empty space, or when Escape ends the drag",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
 
@@ -482,12 +486,12 @@ describe("ending a drag without a target", () => {
 
         // Empty ground at the right edge of the fitted map.
         yield* dragFromHandle(page, {
+          drop: true,
           from: "engineer",
           to: {
             x: (surface?.x ?? 0) + (surface?.width ?? 0) * 0.92,
             y: (surface?.y ?? 0) + (surface?.height ?? 0) * 0.9,
           },
-          drop: true,
         });
         yield* Effect.sleep("400 millis");
 
@@ -506,9 +510,9 @@ describe("ending a drag without a target", () => {
         const target = yield* centreOf(page, '[data-structure="server"]');
 
         yield* dragFromHandle(page, {
+          drop: false,
           from: "engineer",
           to: target,
-          drop: false,
         });
         yield* waitAttached(page, "[data-hop-preview]");
         yield* Effect.promise(() => page.keyboard.press("Escape"));
@@ -545,9 +549,9 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
           const target = yield* centreOf(page, `[data-structure="${over}"]`);
 
           yield* dragFromHandle(page, {
+            drop: false,
             from: "engineer",
             to: target,
-            drop: false,
           });
           // Read the report once the line is routed to the target.
           yield* waitForAttributes(page, "[data-hop-preview]", {
@@ -592,7 +596,7 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
           y: (surface?.y ?? 0) + (surface?.height ?? 0) * 0.9,
         };
 
-        yield* dragFromHandle(page, { from: "engineer", to, drop: false });
+        yield* dragFromHandle(page, { drop: false, from: "engineer", to });
         yield* waitForPreviewAt(page, to);
 
         // The line may be cut where it passes text, but every piece lies on
@@ -628,9 +632,9 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
         const target = yield* centreOf(page, '[data-structure="pull-request"]');
 
         yield* dragFromHandle(page, {
+          drop: false,
           from: "engineer",
           to: target,
-          drop: false,
         });
         yield* faded("pull-request", "false");
         yield* faded("engineer", "false");
@@ -652,7 +656,7 @@ describe("the keyboard path to drawing a hop", () => {
     "starts from the structure's panel, picks the target from a list and proposes",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* select(page, "engineer");
@@ -686,7 +690,7 @@ describe("the keyboard path to drawing a hop", () => {
           saved?.change.action === "add"
             ? { ...saved.change.hop, id: "" }
             : undefined,
-          { id: "", from: "engineer", to: "proposals", label: "looks at" }
+          { from: "engineer", id: "", label: "looks at", to: "proposals" }
         );
       }),
     60_000
@@ -696,7 +700,7 @@ describe("the keyboard path to drawing a hop", () => {
     "starts from the structure's context menu, and Escape cancels",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* Effect.promise(() =>
@@ -722,7 +726,7 @@ describe("the hop panel and menu", () => {
     "relabels a hop from its panel",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-save");
@@ -753,7 +757,7 @@ describe("the hop panel and menu", () => {
     "puts a hop in one more flow, and takes it out of another, from its panel",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-pr");
@@ -811,7 +815,7 @@ describe("the hop panel and menu", () => {
     "deletes a hop from its panel: dashed, with a strike that holds no text",
     () =>
       Effect.gen(function* () {
-        const { page, home, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-pr");
@@ -848,7 +852,7 @@ describe("the hop panel and menu", () => {
     "opens a context menu on a hop with its flows and a delete",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         const at = yield* settledPointOnHop(page, "h-pr");
@@ -884,7 +888,7 @@ describe("the flows editor", () => {
     "reorders the hops in a flow with the move buttons",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -906,7 +910,7 @@ describe("the flows editor", () => {
     "reorders the hops in a flow from the keyboard with Alt and the arrow keys",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -932,7 +936,7 @@ describe("the flows editor", () => {
     "reorders the hops in a flow by dragging a grip",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -965,7 +969,7 @@ describe("the flows editor", () => {
     "creates a flow, renames it, and the proposal follows both",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -1027,7 +1031,7 @@ describe("the flows editor", () => {
     "renames a flow that data.mjs has",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -1106,7 +1110,7 @@ describe("a hop proposal in the Pending tab and in exports", () => {
     "is listed in the Pending tab with a Discard, and discarding removes the hop",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* drawHop(page, "asks");
@@ -1141,7 +1145,7 @@ describe("a hop proposal in the Pending tab and in exports", () => {
     "is left out of the exported SVG, with every other kind of proposal, and the SVG equals the CLI's",
     () =>
       Effect.gen(function* () {
-        const { home, serve, page } = yield* served;
+        const { home, page, serve } = yield* served;
 
         const farSpotNote = yield* farSpot(0);
         // A note far off the map, which a fit to the notes would take in
@@ -1277,7 +1281,7 @@ describe("a hop proposed for deletion", () => {
     "can't be edited, says it waits on the agent, is left out of the new flow's checklist, and withdraws while the proposal is open",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-save");
@@ -1359,7 +1363,7 @@ describe("a structure proposed for deletion", () => {
     "says it waits on the agent, and withdraws while the proposal is open",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-structure="upstream"]');
@@ -1398,7 +1402,7 @@ describe("a structure proposed for deletion", () => {
 });
 
 /** data.mjs with hop `hop` (engineer to server) and flow `flow` added. */
-const withHopAndFlow = (data: string, ids: { hop: string; flow: string }) =>
+const withHopAndFlow = (data: string, ids: { flow: string; hop: string }) =>
   pipe(
     data,
     Str.replace(
@@ -1462,8 +1466,8 @@ describe("the open page after verdict changed --as on a hop and a flow", () => {
         yield* fs.writeFileString(
           dataFile,
           withHopAndFlow(dataFileText, {
-            hop: "asks-map",
             flow: "storage",
+            hop: "asks-map",
           })
         );
 
@@ -1562,7 +1566,7 @@ describe("a flow that lists a hop proposed for deletion", () => {
     "can still be reordered with the move buttons",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-save");

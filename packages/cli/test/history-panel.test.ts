@@ -54,7 +54,7 @@ const decodeProposals = Schema.decodeUnknownEffect(
  * the page 2 × 2, and the server at (8, 0).
  */
 const servedWithTwo = Effect.gen(function* () {
-  const { root, home, serve } = yield* serveReviewMap({}, []);
+  const { home, root, serve } = yield* serveReviewMap({}, []);
 
   yield* acceptChanges(serve, {
     base: 0,
@@ -65,7 +65,7 @@ const servedWithTwo = Effect.gen(function* () {
     base: 2,
     changes: [
       moveOf("engineer-down", "engineer", { x: 0, y: 4 }),
-      resizeOf("page-wide", "page", { w: 3, d: 2 }),
+      resizeOf("page-wide", "page", { d: 2, w: 3 }),
       moveOf("server-down", "server", { x: 8, y: 4 }),
     ],
     message: "Spread out",
@@ -74,13 +74,13 @@ const servedWithTwo = Effect.gen(function* () {
   const opened = yield* openUrl(serve.url);
 
   yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
+    opened.page.setViewportSize({ height: 800, width: 1280 })
   );
   // The last chapter reveals every structure.
   yield* click(opened.page, '[data-chapter-rail] button[data-chapter="c-all"]');
   yield* waitFor(opened.page, '[data-walkthrough][data-chapter="c-all"]');
 
-  return { root, home, serve, ...opened };
+  return { home, root, serve, ...opened };
 }).pipe(Effect.provide(NodeServices.layer));
 
 /**
@@ -106,21 +106,21 @@ const assertReadable = Effect.fnUntraced(function* (page: Page, where: string) {
 
   const sizes = yield* Effect.promise(() =>
     page.evaluate<
-      readonly number[]
+      ReadonlyArray<number>
     >(`[...document.querySelectorAll("[data-name-tag] text")]
       .map((text) => parseFloat(getComputedStyle(text).fontSize) * Math.hypot(text.getScreenCTM().a, text.getScreenCTM().b))`)
   );
 
   const labelSizes = yield* Effect.promise(() =>
     page.evaluate<
-      readonly number[]
+      ReadonlyArray<number>
     >(`[...document.querySelectorAll("[data-hop-label]")]
       .filter((text) => getComputedStyle(text).visibility !== "hidden")
       .map((text) => parseFloat(getComputedStyle(text).fontSize) * Math.hypot(text.getScreenCTM().a, text.getScreenCTM().b))`)
   );
 
   const stray = yield* Effect.promise(() =>
-    page.evaluate<readonly string[]>(strayText)
+    page.evaluate<ReadonlyArray<string>>(strayText)
   );
 
   assert.isNotEmpty(report.text, where);
@@ -144,7 +144,7 @@ const assertReadable = Effect.fnUntraced(function* (page: Page, where: string) {
 const tabBoxes = Effect.fnUntraced(function* (page: Page) {
   const boxes = yield* boxesOf(page, '[role="tab"]');
 
-  return Arr.map(boxes, ({ x, y, width }) => [
+  return Arr.map(boxes, ({ width, x, y }) => [
     Math.round(x),
     Math.round(y),
     Math.round(width),
@@ -204,7 +204,7 @@ describe("the History panel", () => {
     "lists revisions newest first with number, message, date and item count",
     () =>
       Effect.gen(function* () {
-        const { page, errors } = yield* servedWithTwo;
+        const { errors, page } = yield* servedWithTwo;
 
         yield* openHistory(page);
 
@@ -273,7 +273,7 @@ describe("the History panel", () => {
     "opens an old revision read-only at its old positions, with a banner, and goes back",
     () =>
       Effect.gen(function* () {
-        const { page, errors } = yield* servedWithTwo;
+        const { errors, page } = yield* servedWithTwo;
 
         const nowEngineer = yield* centreOf(
           page,
@@ -311,14 +311,14 @@ describe("the History panel", () => {
         // off with its count, so the tab strip doesn't move.
         yield* assertAttribute(
           page,
-          { selector: "[data-walkthrough]", name: "data-chapter" },
+          { name: "data-chapter", selector: "[data-walkthrough]" },
           "c-all"
         );
         yield* assertCount(page, '[data-tab="pending"]', 1);
 
         yield* assertAttribute(
           page,
-          { selector: '[data-tab="pending"]', name: "disabled" },
+          { name: "disabled", selector: '[data-tab="pending"]' },
           ""
         );
         yield* assertTextIncludes(page, '[data-tab="pending"]', "Pending · 0");
@@ -376,7 +376,7 @@ describe("the History panel", () => {
     "compares with the accepted map: each kind of difference is an outline with its own dash, a legend entry and a spoken label, and no text lands on the map",
     () =>
       Effect.gen(function* () {
-        const { page, errors } = yield* servedWithTwo;
+        const { errors, page } = yield* servedWithTwo;
 
         yield* openHistory(page);
         yield* openRevision(page, 1);
@@ -533,10 +533,10 @@ describe("the History panel", () => {
         );
 
         const opened = yield* openUrl(serve.url);
-        const { page, errors } = opened;
+        const { errors, page } = opened;
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1280, height: 800 })
+          page.setViewportSize({ height: 800, width: 1280 })
         );
         yield* click(page, '[data-chapter-rail] button[data-chapter="c-all"]');
         yield* waitFor(page, '[data-walkthrough][data-chapter="c-all"]');
@@ -602,7 +602,7 @@ describe("the History panel", () => {
     "restores a layout difference as pending changes the Pending tab lists, and writes proposals.json",
     () =>
       Effect.gen(function* () {
-        const { root, serve, page, errors } = yield* servedWithTwo;
+        const { errors, page, root, serve } = yield* servedWithTwo;
 
         yield* openHistory(page);
         yield* openRevision(page, 1);
@@ -645,9 +645,9 @@ describe("the History panel", () => {
 
         const moves = Arr.flatMap(proposals.layout, (change) =>
           change.kind === "move"
-            ? Arr.map(change.moves, ({ target, position }) => ({
-                kind: "move",
+            ? Arr.map(change.moves, ({ position, target }) => ({
                 id: target.id,
+                kind: "move",
                 x: position.x,
                 y: position.y,
               }))
@@ -658,8 +658,8 @@ describe("the History panel", () => {
           change.kind === "resize"
             ? [
                 {
-                  kind: "resize",
                   id: change.target.id,
+                  kind: "resize",
                   x: change.footprint.w,
                   y: change.footprint.d,
                 },
@@ -670,9 +670,9 @@ describe("the History panel", () => {
         const summary = [...moves, ...resizes];
 
         assert.sameDeepMembers(summary, [
-          { kind: "move", id: "engineer", x: 0, y: 0 },
-          { kind: "move", id: "server", x: 8, y: 0 },
-          { kind: "resize", id: "page", x: 2, y: 2 },
+          { id: "engineer", kind: "move", x: 0, y: 0 },
+          { id: "server", kind: "move", x: 8, y: 0 },
+          { id: "page", kind: "resize", x: 2, y: 2 },
         ]);
 
         const layoutText = yield* readIn(root, "review/map/layout.json");
@@ -741,10 +741,10 @@ describe("the History panel", () => {
           )
         );
 
-        const { page, errors } = yield* openUrl(serve.url);
+        const { errors, page } = yield* openUrl(serve.url);
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1280, height: 800 })
+          page.setViewportSize({ height: 800, width: 1280 })
         );
         yield* click(page, '[data-chapter-rail] button[data-chapter="c-all"]');
         yield* waitFor(

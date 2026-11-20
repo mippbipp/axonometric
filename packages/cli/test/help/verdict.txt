@@ -1,0 +1,28 @@
+DESCRIPTION
+  Record accepted, changed or rejected on one item of the oldest batch that has no commit, under the map's lock. A reason is required for changed and rejected.
+
+USAGE
+  axonometric verdict [flags] <home> <item> <verdict>
+
+ARGUMENTS
+  home directory    The map's home folder, holding data.mjs and proposals.json
+  item string       The id of an item in the batch review printed
+  verdict choice    accepted, changed (you took it in another form) or rejected
+
+FLAGS
+  --reason string    Why. Required for changed and rejected; the engineer reads it on the page.
+  --as string        For a new structure, hop, flow or group you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes a structure's position under it.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+EXAMPLES
+  # Accept a proposed structure under the id you gave it
+  axonometric verdict docs/pipeline/map p-4f2a changed --reason "Called it the build cache." --as build-cache
+
+  # Reject a note and say why
+  axonometric verdict docs/pipeline/map n-4f2a rejected --reason "The gate already does this."

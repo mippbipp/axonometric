@@ -18,7 +18,7 @@ describe("the built page", () => {
   it.live("opens from disk in standards mode with no network requests", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, requests, errors } = yield* builtPage;
+        const { errors, page, requests } = yield* builtPage;
 
         const compatMode = yield* documentProperty(page, "compatMode");
         const characterSet = yield* documentProperty(page, "characterSet");

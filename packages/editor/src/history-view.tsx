@@ -28,13 +28,13 @@ import type { Edit, ServedView, ServedStore } from "./served-store.ts";
  */
 export const restoring = ({
   accepted,
-  revision,
   base,
+  revision,
 }: {
   readonly accepted: MapState;
-  readonly revision: Revision;
   /** A fresh change id, which the added changes' ids are built from. */
   readonly base: ChangeId;
+  readonly revision: Revision;
 }): Edit => {
   const snapshot = { data: revision.data, layout: revision.layout };
 
@@ -42,33 +42,33 @@ export const restoring = ({
     let used = 0;
 
     return restoreChanges({
-      current: accepted.data,
-      revision: snapshot,
-      changes,
       accepted: layout,
+      changes,
+      current: accepted.data,
       newId: () => {
         used += 1;
 
         return `${base}-${used}`;
       },
+      revision: snapshot,
     });
   };
 };
 
 /** What the page does with a past revision that is open. */
 export interface HistoryViewState {
+  /** The banner over the canvas while a revision is open. */
+  readonly banner: ReactNode;
   /** The map to draw: the revision when one is open, else the current map. */
   readonly drawn: MapState;
-  /** Whether a past revision is open, which turns editing off. */
-  readonly past: boolean;
+  readonly handleCloseReport: () => void;
   /** What Compare highlights, or `null` when it is off. */
   readonly marks: CompareMarks | null;
   readonly panel: HistoryPanel;
-  /** The banner over the canvas while a revision is open. */
-  readonly banner: ReactNode;
+  /** Whether a past revision is open, which turns editing off. */
+  readonly past: boolean;
   /** Said by the restore dialog, or `null` when it is closed. */
   readonly report: RestoreReport | null;
-  readonly handleCloseReport: () => void;
 }
 
 /**
@@ -80,15 +80,15 @@ export interface HistoryViewState {
  * layout with the pending changes applied.
  */
 export const useHistoryView = ({
+  shown,
   store,
   view,
-  shown,
 }: {
+  readonly shown: MapState;
   readonly store: ServedStore;
   readonly view: ServedView;
-  readonly shown: MapState;
 }): HistoryViewState => {
-  const { opened, open, close } = useOpenedRevision(store.loadRevision);
+  const { close, open, opened } = useOpenedRevision(store.loadRevision);
   const [comparing, setComparing] = useState(false);
   const [report, setReport] = useState<RestoreReport | null>(null);
   const past = opened?.status === "ready" ? opened.saved : null;
@@ -107,8 +107,8 @@ export const useHistoryView = ({
       past === null || diff === null
         ? null
         : describeDifferences({
-            diff,
             current: state.data,
+            diff,
             revision: past.data,
             revisionName: `revision ${past.revision}`,
           }),
@@ -133,8 +133,8 @@ export const useHistoryView = ({
 
     const { data, layout } = ghostedMap({
       current: state,
-      revision: base,
       diff,
+      revision: base,
     });
 
     return { ...base, data, layout };
@@ -142,13 +142,13 @@ export const useHistoryView = ({
 
   const panel = useMemo(
     (): HistoryPanel => ({
-      entries: view.history,
-      opened: opened?.revision ?? null,
-      loading: opened?.status === "loading",
-      failure: opened?.status === "failed" ? opened.message : null,
-      open,
-      pendingCount: view.pending.length,
       differences: comparing ? lines : null,
+      entries: view.history,
+      failure: opened?.status === "failed" ? opened.message : null,
+      loading: opened?.status === "loading",
+      open,
+      opened: opened?.revision ?? null,
+      pendingCount: view.pending.length,
     }),
     [view.history, view.pending.length, opened, open, comparing, lines]
   );
@@ -164,14 +164,14 @@ export const useHistoryView = ({
     }
 
     const refusal = store.restore(
-      restoring({ accepted: state, revision: past, base: newChangeId() })
+      restoring({ accepted: state, base: newChangeId(), revision: past })
     );
 
     setReport({
-      revision: past.revision,
-      restored: refusal === undefined ? lines.layout : [],
-      refusal,
       meaning: lines.meaning,
+      refusal,
+      restored: refusal === undefined ? lines.layout : [],
+      revision: past.revision,
       routes: lines.routes,
     });
 
@@ -183,32 +183,32 @@ export const useHistoryView = ({
   const banner =
     past === null || lines === null ? null : (
       <RevisionBanner
-        revision={past.revision}
-        message={past.message}
-        savedAt={past.savedAt}
+        canRestore={!view.stopped}
         comparing={comparing}
-        onCompare={() => {
-          setComparing((now) => !now);
-        }}
         differences={{
           layout: lines.layout.length,
           meaning: lines.meaning.length,
         }}
-        canRestore={!view.stopped}
-        onRestore={restore}
+        message={past.message}
         onBack={back}
+        onCompare={() => {
+          setComparing((now) => !now);
+        }}
+        onRestore={restore}
+        revision={past.revision}
+        savedAt={past.savedAt}
       />
     );
 
   return {
-    drawn,
-    past: past !== null,
-    marks,
-    panel,
     banner,
-    report,
+    drawn,
     handleCloseReport: () => {
       setReport(null);
     },
+    marks,
+    panel,
+    past: past !== null,
+    report,
   };
 };

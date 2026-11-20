@@ -12,12 +12,12 @@ export interface HopDraft {
  * it left from, where the pointer is on the ground and the structure under it.
  */
 export interface HopStretch {
-  readonly from: string;
-  /** Where the handle is drawn, on screen. */
-  readonly start: ScreenPoint;
   readonly end: GridPoint;
+  readonly from: string;
   /** The structure under the pointer, or `null` over empty space. */
   readonly over: string | null;
+  /** Where the handle is drawn, on screen. */
+  readonly start: ScreenPoint;
 }
 
 /**
@@ -28,14 +28,14 @@ export interface HopStretch {
  * a line for both, and the spotlight lights their two ends.
  */
 export interface HopDrafting {
-  readonly draft: HopDraft | null;
-  readonly stretch: HopStretch | null;
   /** Starts a draft from `from`, ending at `to` when given. */
   readonly begin: (from: string, to?: string) => void;
-  /** Sets where the draft ends. */
-  readonly pick: (to: string | null) => void;
   /** Drops the draft. */
   readonly cancel: () => void;
+  readonly draft: HopDraft | null;
+  /** Sets where the draft ends. */
+  readonly pick: (to: string | null) => void;
+  readonly stretch: HopStretch | null;
   /** Sets the drag in progress, or ends it with `null`. */
   readonly stretchTo: (stretch: HopStretch | null) => void;
 }

@@ -12,39 +12,39 @@ const at = "2026-11-01T09:00:00.000Z";
 
 const frozenFile = `${JSON.stringify(
   {
-    format: 1,
-    revision: 3,
-    layout: [],
-    notes: [],
     batches: [
       {
-        number: 1,
         frozenAt: at,
         items: [
           {
             id: "frozen-note",
             kind: "note",
-            target: { kind: "structure", id: "server" },
+            target: { id: "server", kind: "structure" },
             text: "Waiting for the agent",
           },
           {
-            id: "frozen-move",
-            kind: "layout",
             change: {
               id: "frozen-move",
               kind: "move",
               moves: [
                 {
-                  target: { kind: "structure", id: "engineer" },
                   position: { x: 0, y: 4 },
+                  target: { id: "engineer", kind: "structure" },
                 },
               ],
             },
+            id: "frozen-move",
+            kind: "layout",
           },
         ],
+        number: 1,
         verdicts: {},
       },
     ],
+    format: 1,
+    layout: [],
+    notes: [],
+    revision: 3,
   },
   null,
   2
@@ -61,10 +61,10 @@ type Args = readonly [
 ];
 
 const post = (...[url, target, headers, body]: Args) =>
-  writeText(url, { method: "post", target, headers, body });
+  writeText(url, { body, headers, method: "post", target });
 
 const put = (...[url, target, headers, body]: Args) =>
-  writeText(url, { method: "put", target, headers, body });
+  writeText(url, { body, headers, method: "put", target });
 
 const json = (value: Readonly<Record<string, Schema.Json>>) =>
   JSON.stringify(value);
@@ -110,8 +110,8 @@ describe("the review routes", () => {
             url,
             route,
             {
-              origin: "http://evil.example",
               "content-type": "application/json",
+              origin: "http://evil.example",
             },
             body
           );
@@ -126,7 +126,7 @@ describe("the review routes", () => {
           const asText = yield* post(
             url,
             route,
-            { origin: url, "content-type": "text/plain" },
+            { "content-type": "text/plain", origin: url },
             body
           );
 
@@ -150,27 +150,27 @@ describe("the review routes", () => {
         json({
           baseFileRevision: 3,
           id: "n1",
-          target: { kind: "unknown", id: "x" },
+          target: { id: "x", kind: "unknown" },
           text: "t",
         }),
         json({
           baseFileRevision: 3,
           id: "../x",
-          target: { kind: "structure", id: "server" },
+          target: { id: "server", kind: "structure" },
           text: "t",
         }),
         json({
           baseFileRevision: 3,
           id: "n1",
-          target: { kind: "structure", id: "server" },
+          target: { id: "server", kind: "structure" },
           text: "",
         }),
         json({
           baseFileRevision: 3,
-          id: "n1",
-          target: { kind: "structure", id: "server" },
-          text: "t",
           extra: true,
+          id: "n1",
+          target: { id: "server", kind: "structure" },
+          text: "t",
         }),
       ];
 
@@ -183,7 +183,7 @@ describe("the review routes", () => {
       const long = json({
         baseFileRevision: 3,
         id: "n1",
-        target: { kind: "structure", id: "server" },
+        target: { id: "server", kind: "structure" },
         text: Str.repeat(2001)("x"),
       });
 
@@ -208,7 +208,7 @@ describe("the review routes", () => {
         json({
           baseFileRevision: 1,
           id: "n1",
-          target: { kind: "structure", id: "server" },
+          target: { id: "server", kind: "structure" },
           text: "Based on an old file",
         })
       );
@@ -233,7 +233,7 @@ describe("the review routes", () => {
           json({
             baseFileRevision: 3,
             id: "n-open",
-            target: { kind: "structure", id: "page" },
+            target: { id: "page", kind: "structure" },
             text: "A fresh question",
           })
         );
@@ -282,8 +282,8 @@ describe("the review routes", () => {
                 kind: "move",
                 moves: [
                   {
-                    target: { kind: "structure", id: "engineer" },
                     position: { x: 0, y: 8 },
+                    target: { id: "engineer", kind: "structure" },
                   },
                 ],
               },
@@ -310,8 +310,8 @@ describe("the review routes", () => {
                 kind: "move",
                 moves: [
                   {
-                    target: { kind: "structure", id: "page" },
                     position: { x: 0, y: 4 },
+                    target: { id: "page", kind: "structure" },
                   },
                 ],
               },
@@ -344,8 +344,8 @@ describe("the review routes", () => {
                 kind: "move",
                 moves: [
                   {
-                    target: { kind: "structure", id: "engineer" },
                     position: { x: 0, y: 12 },
+                    target: { id: "engineer", kind: "structure" },
                   },
                 ],
               },
@@ -379,24 +379,24 @@ describe("the review routes", () => {
 
 describe("text suggestions, answers and questions", () => {
   const suggestion = {
-    id: "s-one",
-    target: { kind: "structure", id: "page" },
-    field: "oneLiner",
-    before: "Shows the map and records notes.",
     after: "Shows the map and saves each note.",
+    before: "Shows the map and records notes.",
+    field: "oneLiner",
+    id: "s-one",
+    target: { id: "page", kind: "structure" },
   } as const;
 
   const answer = {
-    id: "a-one",
-    target: { kind: "structure", id: "page" },
-    question: "Q-P1",
-    text: "Yes, 2000 characters.",
     answeredOn: "2026-11-02",
+    id: "a-one",
+    question: "Q-P1",
+    target: { id: "page", kind: "structure" },
+    text: "Yes, 2000 characters.",
   } as const;
 
   const question = {
     id: "q-one",
-    target: { kind: "structure", id: "server" },
+    target: { id: "server", kind: "structure" },
     text: "Should the server retry a failed write?",
   } as const;
 
@@ -408,7 +408,7 @@ describe("text suggestions, answers and questions", () => {
 
   const hopNote = {
     id: "n-hop",
-    target: { kind: "hop", id: "h-save" },
+    target: { id: "h-save", kind: "hop" },
     text: "Why not a socket?",
   } as const;
 
@@ -447,7 +447,7 @@ describe("text suggestions, answers and questions", () => {
       const refused = [
         [
           "/api/notes",
-          { ...hopNote, target: { kind: "hop", id: "no-such-hop" } },
+          { ...hopNote, target: { id: "no-such-hop", kind: "hop" } },
           "no-such-hop",
         ],
         [
@@ -459,7 +459,7 @@ describe("text suggestions, answers and questions", () => {
         ["/api/answers", { ...answer, question: "Q-P2" }, "resolved"],
         [
           "/api/questions",
-          { ...question, target: { kind: "structure", id: "nowhere" } },
+          { ...question, target: { id: "nowhere", kind: "structure" } },
           "nowhere",
         ],
       ] as const;

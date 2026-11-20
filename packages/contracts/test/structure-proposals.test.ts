@@ -52,26 +52,49 @@ const structure = (
   id: string,
   extra: Partial<MapData["structures"][number]> = {}
 ): MapData["structures"][number] => ({
-  id,
   code: "A",
-  name: `Structure ${id}`,
-  shape: "box",
   group: "g1",
-  status: "live",
-  oneLiner: "One.",
-  whatItDoes: "Does.",
   howItsBuilt: "Built.",
+  id,
+  name: `Structure ${id}`,
+  oneLiner: "One.",
+  shape: "box",
+  status: "live",
+  whatItDoes: "Does.",
   ...extra,
 });
 
 const data: MapData = {
+  chapters: [
+    {
+      id: "ch1",
+      lede: "L",
+      plays: ["h-ab"],
+      reveals: ["a", "b"],
+      story: "S",
+      title: "First",
+    },
+    {
+      id: "ch2",
+      lede: "L",
+      plays: ["h-bc"],
+      reveals: ["c"],
+      story: "S",
+      title: "Second",
+    },
+  ],
+  flows: [{ hops: ["h-ab", "h-bc"], id: "f1", name: "Main flow" }],
   format: 1,
-  revision: 0,
-  overview: { title: "T", summary: "S" },
   groups: [
     { id: "g1", title: "One" },
     { id: "g2", title: "Two" },
   ],
+  hops: [
+    { from: "a", id: "h-ab", label: "a to b", to: "b" },
+    { from: "b", id: "h-bc", label: "b to c", to: "c" },
+  ],
+  overview: { summary: "S", title: "T" },
+  revision: 0,
   structures: [
     structure("a", {
       questions: [{ id: "Q-A1", state: "open", text: "Why?" }],
@@ -79,79 +102,56 @@ const data: MapData = {
     structure("b"),
     structure("c", { group: "g2" }),
   ],
-  hops: [
-    { id: "h-ab", from: "a", to: "b", label: "a to b" },
-    { id: "h-bc", from: "b", to: "c", label: "b to c" },
-  ],
-  flows: [{ id: "f1", name: "Main flow", hops: ["h-ab", "h-bc"] }],
-  chapters: [
-    {
-      id: "ch1",
-      title: "First",
-      lede: "L",
-      story: "S",
-      reveals: ["a", "b"],
-      plays: ["h-ab"],
-    },
-    {
-      id: "ch2",
-      title: "Second",
-      lede: "L",
-      story: "S",
-      reveals: ["c"],
-      plays: ["h-bc"],
-    },
-  ],
 };
 
 const layout: Layout = {
   format: 1,
   revision: 1,
   structures: {
-    a: { x: 0, y: 0, w: 2, d: 2 },
-    b: { x: 4, y: 0, w: 2, d: 2 },
-    c: { x: 8, y: 0, w: 2, d: 2 },
+    a: { d: 2, w: 2, x: 0, y: 0 },
+    b: { d: 2, w: 2, x: 4, y: 0 },
+    c: { d: 2, w: 2, x: 8, y: 0 },
   },
 };
 
-const state: MapState = { system: "t", data, layout };
+const state: MapState = { data, layout, system: "t" };
 
-const empty: Proposals = { format: 1, revision: 0, layout: [] };
+const empty: Proposals = { format: 1, layout: [], revision: 0 };
 
 const add: StructureChange = {
   action: "add",
+  at: { d: 2, w: 2, x: 12, y: 0 },
   structure: {
+    group: "g2",
     id: "new-1",
     name: "Cache",
     shape: "store",
-    group: "g2",
     status: "planned",
   },
-  at: { x: 12, y: 0, w: 2, d: 2 },
 };
 
 const withStructures = (
-  ...structures: readonly (readonly [string, StructureChange])[]
+  ...structures: ReadonlyArray<readonly [string, StructureChange]>
 ): Proposals => ({
   ...empty,
-  structures: Arr.map(structures, ([id, change]) => ({ id, change })),
+  structures: Arr.map(structures, ([id, change]) => ({ change, id })),
 });
 
 const item = (id: string, change: StructureChange): BatchItem => ({
+  change,
   id,
   kind: "structure",
-  change,
 });
 
 const world = { data, layout };
 
 const proposed = (change: StructureChange) =>
-  proposedMap({ state, proposals: withStructures(["p1", change]) });
+  proposedMap({ proposals: withStructures(["p1", change]), state });
 
 /** The structures the first chapter reveals in the proposed map. */
 const revealedFirst = (
   shown: ReturnType<typeof proposedMap>
-): readonly string[] =>
+): ReadonlyArray<string> =>
   Option.match(Arr.head(shown.state.data.chapters), {
     onNone: () => [],
     onSome: ({ reveals }) => reveals,
@@ -161,7 +161,7 @@ const revealedFirst = (
 const touchedBy = (
   shown: ReturnType<typeof proposedMap>,
   id: string
-): readonly string[] =>
+): ReadonlyArray<string> =>
   Option.match(Option.fromNullishOr(shown.touches.get(id)), {
     onNone: () => [],
     onSome: ({ structures }) => structures,
@@ -177,7 +177,7 @@ const addedBy = (proposals: Proposals) => {
 };
 
 /** The structure item in a revision's accepted list. */
-const structureEntry = (entries: readonly AcceptedItem[]) => {
+const structureEntry = (entries: ReadonlyArray<AcceptedItem>) => {
   const entry = Arr.findFirst(entries, ({ kind }) => kind === "structure");
 
   assert.isTrue(Option.isSome(entry));
@@ -200,7 +200,7 @@ const placedLike = (nextData: MapData, saved: Layout): Layout => ({
         ),
         (s): readonly [string, Layout["structures"][string]] => [
           s.id,
-          { x: 20, y: 20, w: 2, d: 2 },
+          { d: 2, w: 2, x: 20, y: 20 },
         ]
       )
     ),
@@ -217,27 +217,27 @@ const committed = (verdict: Verdict, nextData: MapData, saved = layout) => {
   const frozen = unwrap(verdictOn(frozenWith(add), "p1", verdict));
 
   return commitBatch({
-    proposals: frozen,
-    layout: placedLike(nextData, saved),
-    saved,
+    at,
     data: nextData,
     hops: nextData.hops,
+    layout: placedLike(nextData, saved),
+    proposals: frozen,
     revision: 2,
-    at,
+    saved,
   });
 };
 
 const droppedAt = (id: string, x: number, y: number) =>
-  droppedIntoGroup({ data, layout, id, at: { x, y, w: 2, d: 2 } });
+  droppedIntoGroup({ at: { d: 2, w: 2, x, y }, data, id, layout });
 
 const refusedBy = (change: StructureChange) =>
-  Result.merge(proposeStructure({ proposals: empty, id: "p1", change, world }));
+  Result.merge(proposeStructure({ change, id: "p1", proposals: empty, world }));
 
 const breakageWithout = (patch: Partial<MapData>) =>
   Option.getOrThrow(
     breakage(
       { action: "delete", structure: "b" },
-      { ...data, hops: [], flows: [], chapters: [], ...patch }
+      { ...data, chapters: [], flows: [], hops: [], ...patch }
     )
   );
 
@@ -245,16 +245,16 @@ const decodeChange = Schema.decodeUnknownResult(StructureChange);
 
 /** A placement the add form could send, for the cap test. */
 interface Spot {
+  readonly d: number;
+  readonly w: number;
   readonly x: number;
   readonly y: number;
-  readonly w: number;
-  readonly d: number;
 }
 
 const addAt = (spot: Spot) => decodeChange({ ...add, at: spot });
 
 /** The batch of adds `ids` names, frozen, with item ids `p-<id>`. */
-const frozenAddsOf = (ids: readonly string[]): Proposals => {
+const frozenAddsOf = (ids: ReadonlyArray<string>): Proposals => {
   const changes = Arr.map(ids, (id): readonly [string, StructureChange] => [
     `p-${id}`,
     { ...add, structure: { ...add.structure, id } },
@@ -262,7 +262,7 @@ const frozenAddsOf = (ids: readonly string[]): Proposals => {
 
   const open = withStructures(...changes);
 
-  return unwrap(freezeOpen({ proposals: open, at })).proposals;
+  return unwrap(freezeOpen({ at, proposals: open })).proposals;
 };
 
 /** How far a spot is from the left edge of group g2's structure b, by taxicab. */
@@ -307,22 +307,22 @@ describe("the proposed map, for each structure action", () => {
       );
 
     assert.strictEqual(
-      find(proposed({ action: "rename", structure: "a", name: "Gate" }), "a")
+      find(proposed({ action: "rename", name: "Gate", structure: "a" }), "a")
         ?.name,
       "Gate"
     );
     assert.strictEqual(
-      find(proposed({ action: "shape", structure: "a", shape: "tall" }), "a")
+      find(proposed({ action: "shape", shape: "tall", structure: "a" }), "a")
         ?.shape,
       "tall"
     );
     assert.strictEqual(
-      find(proposed({ action: "group", structure: "a", group: "g2" }), "a")
+      find(proposed({ action: "group", group: "g2", structure: "a" }), "a")
         ?.group,
       "g2"
     );
     assert.strictEqual(
-      find(proposed({ action: "status", structure: "a", status: "off" }), "a")
+      find(proposed({ action: "status", status: "off", structure: "a" }), "a")
         ?.status,
       "off"
     );
@@ -339,21 +339,21 @@ describe("the proposed map, for each structure action", () => {
       ...empty,
       batches: [
         {
-          number: 1,
           frozenAt: at,
           items: [item("f1", add)],
+          number: 1,
           verdicts: {},
         },
       ],
       structures: [
         {
+          change: { action: "rename", name: "Bee", structure: "b" },
           id: "o1",
-          change: { action: "rename", structure: "b", name: "Bee" },
         },
       ],
     };
 
-    const shown = proposedMap({ state, proposals: frozen });
+    const shown = proposedMap({ proposals: frozen, state });
 
     assert.isTrue(
       Arr.some(shown.state.data.structures, (s) => s.id === "new-1")
@@ -365,7 +365,7 @@ describe("the proposed map, for each structure action", () => {
       "Bee"
     );
     assert.deepStrictEqual(
-      [...proposedMap({ state, proposals: frozen, open: false }).structures],
+      [...proposedMap({ open: false, proposals: frozen, state }).structures],
       ["new-1"]
     );
   });
@@ -375,18 +375,18 @@ describe("the proposed map, for each structure action", () => {
       ...empty,
       batches: [
         {
-          number: 1,
+          committed: { at, revision: 2 },
           frozenAt: at,
           items: [item("f1", add)],
+          number: 1,
           verdicts: { f1: { verdict: "accepted" } },
-          committed: { revision: 2, at },
         },
       ],
     };
 
     assert.isFalse(
       Arr.some(
-        proposedMap({ state, proposals: closed }).state.data.structures,
+        proposedMap({ proposals: closed, state }).state.data.structures,
         (s) => s.id === "new-1"
       )
     );
@@ -401,8 +401,8 @@ describe("the proposed map, for each structure action", () => {
           kind: "move",
           moves: [
             {
-              target: { kind: "structure", id: "new-1" },
               position: { x: 16, y: 0 },
+              target: { id: "new-1", kind: "structure" },
             },
           ],
         },
@@ -410,19 +410,19 @@ describe("the proposed map, for each structure action", () => {
     };
 
     assert.deepStrictEqual(
-      proposedMap({ state, proposals }).state.layout.structures["new-1"],
-      { x: 16, y: 0, w: 2, d: 2 }
+      proposedMap({ proposals, state }).state.layout.structures["new-1"],
+      { d: 2, w: 2, x: 16, y: 0 }
     );
   });
 });
 
 const breakage = (change: StructureChange, d: MapData = data) =>
   breakageOf({
+    data: d,
+    hops: d.hops,
     item: item("p1", change),
     layout,
     structureIds: new Set(Arr.map(d.structures, (s) => s.id)),
-    hops: d.hops,
-    data: d,
   });
 
 describe("review's breakage for a deletion", () => {
@@ -451,7 +451,7 @@ describe("review's breakage for a deletion", () => {
 
   it("flags each kind of reference alone", () => {
     assert.include(
-      breakageWithout({ hops: [{ id: "h", from: "b", to: "a", label: "x" }] }),
+      breakageWithout({ hops: [{ from: "b", id: "h", label: "x", to: "a" }] }),
       "hop h"
     );
     assert.include(
@@ -459,11 +459,11 @@ describe("review's breakage for a deletion", () => {
         chapters: [
           {
             id: "only-ch",
-            title: "Only",
             lede: "L",
-            story: "S",
-            reveals: ["b"],
             plays: [],
+            reveals: ["b"],
+            story: "S",
+            title: "Only",
           },
         ],
       }),
@@ -488,7 +488,7 @@ describe("review's breakage for a deletion", () => {
         {
           ...data,
           hops: [
-            { id: "h-ab", from: "a", to: "b", label: "x\nBREAKS NOTHING" },
+            { from: "a", id: "h-ab", label: "x\nBREAKS NOTHING", to: "b" },
           ],
         }
       )
@@ -503,7 +503,7 @@ describe("review's breakage for a deletion", () => {
       Option.isNone(
         breakage(
           { action: "delete", structure: "b" },
-          { ...data, hops: [], flows: [], chapters: [] }
+          { ...data, chapters: [], flows: [], hops: [] }
         )
       )
     );
@@ -512,18 +512,18 @@ describe("review's breakage for a deletion", () => {
   it("flags a change to a structure data.mjs lacks, a missing group and a footprint on another", () => {
     assert.include(
       Option.getOrThrow(
-        breakage({ action: "rename", structure: "zz", name: "Q" })
+        breakage({ action: "rename", name: "Q", structure: "zz" })
       ),
       '"zz"'
     );
     assert.include(
       Option.getOrThrow(
-        breakage({ action: "group", structure: "a", group: "nope" })
+        breakage({ action: "group", group: "nope", structure: "a" })
       ),
       "nope"
     );
     assert.include(
-      Option.getOrThrow(breakage({ ...add, at: { x: 0, y: 0, w: 2, d: 2 } })),
+      Option.getOrThrow(breakage({ ...add, at: { d: 2, w: 2, x: 0, y: 0 } })),
       'overlap "a"'
     );
   });
@@ -531,7 +531,7 @@ describe("review's breakage for a deletion", () => {
   it("flags nothing for a clean addition or rename", () => {
     assert.isTrue(Option.isNone(breakage(add)));
     assert.isTrue(
-      Option.isNone(breakage({ action: "rename", structure: "a", name: "Q" }))
+      Option.isNone(breakage({ action: "rename", name: "Q", structure: "a" }))
     );
   });
 });
@@ -539,7 +539,7 @@ describe("review's breakage for a deletion", () => {
 describe("proposing a structure", () => {
   it("adds the proposal", () => {
     const once = unwrap(
-      proposeStructure({ proposals: empty, id: "p1", change: add, world })
+      proposeStructure({ change: add, id: "p1", proposals: empty, world })
     );
 
     assert.strictEqual(once.structures?.length, 1);
@@ -556,25 +556,25 @@ describe("proposing a structure", () => {
       "already has"
     );
     assert.include(
-      refusedBy({ ...add, at: { x: 1, y: 1, w: 2, d: 2 } }),
+      refusedBy({ ...add, at: { d: 2, w: 2, x: 1, y: 1 } }),
       "overlap"
     );
     assert.include(
-      refusedBy({ action: "rename", structure: "zz", name: "Q" }),
+      refusedBy({ action: "rename", name: "Q", structure: "zz" }),
       '"zz"'
     );
   });
 
   it("edits the proposal of a new structure instead of adding another", () => {
     const first = unwrap(
-      proposeStructure({ proposals: empty, id: "p1", change: add, world })
+      proposeStructure({ change: add, id: "p1", proposals: empty, world })
     );
 
     const renamed = unwrap(
       proposeStructure({
-        proposals: first,
+        change: { action: "rename", name: "Cache 2", structure: "new-1" },
         id: "p2",
-        change: { action: "rename", structure: "new-1", name: "Cache 2" },
+        proposals: first,
         world,
       })
     );
@@ -585,14 +585,14 @@ describe("proposing a structure", () => {
 
   it("drops the proposal of a new structure when it is deleted", () => {
     const first = unwrap(
-      proposeStructure({ proposals: empty, id: "p1", change: add, world })
+      proposeStructure({ change: add, id: "p1", proposals: empty, world })
     );
 
     const gone = unwrap(
       proposeStructure({
-        proposals: first,
-        id: "p2",
         change: { action: "delete", structure: "new-1" },
+        id: "p2",
+        proposals: first,
         world,
       })
     );
@@ -603,18 +603,18 @@ describe("proposing a structure", () => {
   it("keeps one proposal per structure and action, and drops it when the value is back", () => {
     const renamed = unwrap(
       proposeStructure({
-        proposals: empty,
+        change: { action: "rename", name: "One", structure: "a" },
         id: "p1",
-        change: { action: "rename", structure: "a", name: "One" },
+        proposals: empty,
         world,
       })
     );
 
     const again = unwrap(
       proposeStructure({
-        proposals: renamed,
+        change: { action: "rename", name: "Two", structure: "a" },
         id: "p2",
-        change: { action: "rename", structure: "a", name: "Two" },
+        proposals: renamed,
         world,
       })
     );
@@ -624,9 +624,9 @@ describe("proposing a structure", () => {
 
     const back = unwrap(
       proposeStructure({
-        proposals: again,
+        change: { action: "rename", name: "Structure a", structure: "a" },
         id: "p3",
-        change: { action: "rename", structure: "a", name: "Structure a" },
+        proposals: again,
         world,
       })
     );
@@ -636,46 +636,46 @@ describe("proposing a structure", () => {
 
   it("moves a proposed structure by setting its own proposal again", () => {
     const first = unwrap(
-      proposeStructure({ proposals: empty, id: "p1", change: add, world })
+      proposeStructure({ change: add, id: "p1", proposals: empty, world })
     );
 
     const moved = unwrap(
       proposeStructure({
-        proposals: first,
+        change: { ...add, at: { d: 2, w: 2, x: 16, y: 0 } },
         id: "p1",
-        change: { ...add, at: { x: 16, y: 0, w: 2, d: 2 } },
+        proposals: first,
         world: {
           data,
-          layout: proposedMap({ state, proposals: first }).state.layout,
+          layout: proposedMap({ proposals: first, state }).state.layout,
         },
       })
     );
 
-    assert.deepStrictEqual(addedBy(moved).at, { x: 16, y: 0, w: 2, d: 2 });
+    assert.deepStrictEqual(addedBy(moved).at, { d: 2, w: 2, x: 16, y: 0 });
   });
 
   it("discards an open proposal, and refuses once it is frozen", () => {
     const first = unwrap(
-      proposeStructure({ proposals: empty, id: "p1", change: add, world })
+      proposeStructure({ change: add, id: "p1", proposals: empty, world })
     );
 
     assert.deepStrictEqual(
-      unwrap(discardProposal({ proposals: first, id: "p1" })).structures,
+      unwrap(discardProposal({ id: "p1", proposals: first })).structures,
       []
     );
 
-    const frozen = unwrap(freezeOpen({ proposals: first, at })).proposals;
+    const frozen = unwrap(freezeOpen({ at, proposals: first })).proposals;
 
     assert.include(
-      Result.merge(discardProposal({ proposals: frozen, id: "p1" })),
+      Result.merge(discardProposal({ id: "p1", proposals: frozen })),
       "waiting for the agent"
     );
     assert.include(
       Result.merge(
         proposeStructure({
-          proposals: frozen,
+          change: { action: "rename", name: "X", structure: "new-1" },
           id: "p2",
-          change: { action: "rename", structure: "new-1", name: "X" },
+          proposals: frozen,
           world,
         })
       ),
@@ -687,8 +687,8 @@ describe("proposing a structure", () => {
 const frozenWith = (change: StructureChange): Proposals =>
   unwrap(
     freezeOpen({
-      proposals: withStructures(["p1", change]),
       at,
+      proposals: withStructures(["p1", change]),
     })
   ).proposals;
 
@@ -697,16 +697,16 @@ const verdictOn = (
   id: string,
   verdict: Verdict
 ): Result.Result<Proposals, string> =>
-  recordVerdict({ proposals, id, verdict });
+  recordVerdict({ id, proposals, verdict });
 
 describe("a verdict of changed with --as", () => {
   it("is kept on the verdict, and refused on an item that adds no structure", () => {
     const frozen = frozenWith(add);
 
     const changed: Verdict = {
-      verdict: "changed",
-      reason: "Named cache.",
       as: "cache",
+      reason: "Named cache.",
+      verdict: "changed",
     };
 
     const recorded = unwrap(verdictOn(frozen, "p1", changed));
@@ -740,7 +740,7 @@ describe("committing a new structure", () => {
   it("writes the position under the final id the verdict gave, and the revision records it", () => {
     const done = unwrap(
       committed(
-        { verdict: "changed", reason: "Called it cache.", as: "cache" },
+        { as: "cache", reason: "Called it cache.", verdict: "changed" },
         withNew("cache")
       )
     );
@@ -757,29 +757,29 @@ describe("committing a new structure", () => {
   it("leaves the position alone when the agent placed the structure itself", () => {
     const done = unwrap(
       committed(
-        { verdict: "changed", reason: "Placed by hand.", as: "cache" },
+        { as: "cache", reason: "Placed by hand.", verdict: "changed" },
         withNew("cache"),
         {
           ...layout,
           structures: {
             ...layout.structures,
-            cache: { x: 30, y: 30, w: 2, d: 2 },
+            cache: { d: 2, w: 2, x: 30, y: 30 },
           },
         }
       )
     );
 
     assert.deepStrictEqual(done.layout.structures.cache, {
+      d: 2,
+      w: 2,
       x: 30,
       y: 30,
-      w: 2,
-      d: 2,
     });
   });
 
   it("records a rejected add without needing the structure", () => {
     const done = unwrap(
-      committed({ verdict: "rejected", reason: "No cache." }, data)
+      committed({ reason: "No cache.", verdict: "rejected" }, data)
     );
 
     assert.strictEqual(done.rejected.length, 1);
@@ -792,19 +792,19 @@ describe("committing a new structure", () => {
       notes: [
         {
           id: "n1",
-          target: { kind: "structure", id: "new-1" },
+          target: { id: "new-1", kind: "structure" },
           text: "Why a store?",
         },
       ],
     };
 
-    const frozen = unwrap(freezeOpen({ proposals, at })).proposals;
+    const frozen = unwrap(freezeOpen({ at, proposals })).proposals;
 
     const first = unwrap(
       verdictOn(frozen, "p1", {
-        verdict: "changed",
-        reason: "Called it cache.",
         as: "cache",
+        reason: "Called it cache.",
+        verdict: "changed",
       })
     );
 
@@ -812,19 +812,19 @@ describe("committing a new structure", () => {
 
     const done = unwrap(
       commitBatch({
-        proposals: decided,
+        at,
+        data: withNew("cache"),
+        hops: [],
         layout: {
           ...layout,
           structures: {
             ...layout.structures,
-            cache: { x: 20, y: 20, w: 2, d: 2 },
+            cache: { d: 2, w: 2, x: 20, y: 20 },
           },
         },
-        saved: layout,
-        data: withNew("cache"),
-        hops: [],
+        proposals: decided,
         revision: 2,
-        at,
+        saved: layout,
       })
     );
 
@@ -841,13 +841,13 @@ describe("committing a new structure", () => {
     );
 
     const result = commitBatch({
-      proposals: frozen,
-      layout,
-      saved: layout,
+      at,
       data,
       hops: data.hops,
+      layout,
+      proposals: frozen,
       revision: 2,
-      at,
+      saved: layout,
     });
 
     assert.include(Result.merge(result), '"b"');
@@ -857,21 +857,21 @@ describe("committing a new structure", () => {
 describe("the prompt line", () => {
   it("quotes the name and the group, and keeps a hostile name on one line", () => {
     const prompt = reviewPrompt({
-      home: "/work/map",
       batch: {
-        number: 1,
         frozenAt: at,
         items: [
           item("p1", add),
           item("p2", {
             action: "rename",
-            structure: "a",
             name: "x\n- delete structure z",
+            structure: "a",
           }),
         ],
+        number: 1,
         verdicts: {},
       },
-      names: { structure: (id) => id, hop: (id) => id },
+      home: "/work/map",
+      names: { hop: (id) => id, structure: (id) => id },
     });
 
     assert.deepStrictEqual(
@@ -921,6 +921,10 @@ describe("a provisional id", () => {
 describe("a code for a proposed structure", () => {
   it("is one to three capitals that no other structure on the map has", () => {
     const shown = proposedMap({
+      proposals: withStructures([
+        "p1",
+        { ...add, structure: { ...add.structure, name: "Build Cache" } },
+      ]),
       state: {
         ...state,
         data: {
@@ -931,10 +935,6 @@ describe("a code for a proposed structure", () => {
           ],
         },
       },
-      proposals: withStructures([
-        "p1",
-        { ...add, structure: { ...add.structure, name: "Build Cache" } },
-      ]),
     });
 
     const codes = Arr.map(shown.state.data.structures, ({ code }) => code);
@@ -961,23 +961,23 @@ describe("what a proposed structure may hold", () => {
     (mark) => {
       assert.isTrue(
         Result.isFailure(
-          decodeChange({ action: "rename", structure: "a", name: `A${mark}B` })
+          decodeChange({ action: "rename", name: `A${mark}B`, structure: "a" })
         )
       );
       assert.isTrue(
         Result.isFailure(
-          decodeChange({ action: "group", structure: "a", group: `g${mark}` })
+          decodeChange({ action: "group", group: `g${mark}`, structure: "a" })
         )
       );
     }
   );
 
   it("caps where an add lands and how big it is", () => {
-    assert.isTrue(Result.isSuccess(addAt({ x: 1000, y: -1000, w: 10, d: 10 })));
-    assert.isTrue(Result.isFailure(addAt({ x: 1000.5, y: 0, w: 2, d: 2 })));
-    assert.isTrue(Result.isFailure(addAt({ x: 0, y: -1001, w: 2, d: 2 })));
-    assert.isTrue(Result.isFailure(addAt({ x: 0, y: 0, w: 11, d: 2 })));
-    assert.isTrue(Result.isFailure(addAt({ x: 0, y: 0, w: 2, d: 10.5 })));
+    assert.isTrue(Result.isSuccess(addAt({ d: 10, w: 10, x: 1000, y: -1000 })));
+    assert.isTrue(Result.isFailure(addAt({ d: 2, w: 2, x: 1000.5, y: 0 })));
+    assert.isTrue(Result.isFailure(addAt({ d: 2, w: 2, x: 0, y: -1001 })));
+    assert.isTrue(Result.isFailure(addAt({ d: 2, w: 11, x: 0, y: 0 })));
+    assert.isTrue(Result.isFailure(addAt({ d: 10.5, w: 2, x: 0, y: 0 })));
   });
 });
 
@@ -994,19 +994,19 @@ describe("--as", () => {
 
   it("is refused when it names a structure the accepted map already has", () => {
     const refused = recordVerdict({
-      proposals: frozenAddsOf(["n1"]),
-      id: "p-n1",
-      verdict: changedAs("b"),
       accepted: { ...noKnownIds, structure: new Set(["a", "b", "c"]) },
+      id: "p-n1",
+      proposals: frozenAddsOf(["n1"]),
+      verdict: changedAs("b"),
     });
 
     assert.include(Result.merge(refused), "already has");
 
     const allowed = recordVerdict({
-      proposals: frozenAddsOf(["n1"]),
-      id: "p-n1",
-      verdict: changedAs("fresh"),
       accepted: { ...noKnownIds, structure: new Set(["a", "b", "c"]) },
+      id: "p-n1",
+      proposals: frozenAddsOf(["n1"]),
+      verdict: changedAs("fresh"),
     });
 
     assert.isTrue(Result.isSuccess(allowed));
@@ -1015,15 +1015,15 @@ describe("--as", () => {
   it("is refused when another item in the batch has it", () => {
     const first = unwrap(
       recordVerdict({
-        proposals: frozenAddsOf(["n1", "n2"]),
         id: "p-n1",
+        proposals: frozenAddsOf(["n1", "n2"]),
         verdict: changedAs("cache"),
       })
     );
 
     const refused = recordVerdict({
-      proposals: first,
       id: "p-n2",
+      proposals: first,
       verdict: changedAs("cache"),
     });
 
@@ -1031,8 +1031,8 @@ describe("--as", () => {
 
     // The same item may be given its verdict again.
     const again = recordVerdict({
-      proposals: first,
       id: "p-n1",
+      proposals: first,
       verdict: changedAs("cache"),
     });
 
@@ -1044,9 +1044,9 @@ describe("the structures a batch is frozen against", () => {
   it("are recorded at freeze and win over the ids the caller passes", () => {
     const frozen = unwrap(
       freezeOpen({
-        proposals: withStructures(["p1", add]),
         at,
         known: { structure: ["a", "b"] },
+        proposals: withStructures(["p1", add]),
       })
     ).proposals;
 
@@ -1054,20 +1054,20 @@ describe("the structures a batch is frozen against", () => {
 
     // "a" is on the frozen list, so --as a is refused whatever else is passed.
     const refused = recordVerdict({
-      proposals: frozen,
-      id: "p1",
-      verdict: changedAs("a"),
       accepted: noKnownIds,
+      id: "p1",
+      proposals: frozen,
+      verdict: changedAs("a"),
     });
 
     assert.include(Result.merge(refused), "already has");
 
     // An id that is not on it is allowed, even if the caller's set has it.
     const allowed = recordVerdict({
-      proposals: frozen,
-      id: "p1",
-      verdict: changedAs("fresh"),
       accepted: { ...noKnownIds, structure: new Set(["fresh"]) },
+      id: "p1",
+      proposals: frozen,
+      verdict: changedAs("fresh"),
     });
 
     assert.isTrue(Result.isSuccess(allowed));
@@ -1075,17 +1075,17 @@ describe("the structures a batch is frozen against", () => {
 
   it("are left out of a batch frozen without them, and the check falls back to the caller's set", () => {
     const frozen = unwrap(
-      freezeOpen({ proposals: withStructures(["p1", add]), at })
+      freezeOpen({ at, proposals: withStructures(["p1", add]) })
     ).proposals;
 
     assert.isUndefined(frozen.batches?.[0]?.structures);
 
     // With no list in the batch, the caller's set is what --as is checked against.
     const refused = recordVerdict({
-      proposals: frozen,
-      id: "p1",
-      verdict: changedAs("b"),
       accepted: { ...noKnownIds, structure: new Set(["b"]) },
+      id: "p1",
+      proposals: frozen,
+      verdict: changedAs("b"),
     });
 
     assert.include(Result.merge(refused), "already has");
@@ -1095,31 +1095,31 @@ describe("the structures a batch is frozen against", () => {
 /** A map with three groups in a row, each a zone with room between. */
 const rowData: MapData = {
   ...data,
+  chapters: [],
+  flows: [],
   groups: [
     { id: "g1", title: "One" },
     { id: "g2", title: "Two" },
     { id: "g3", title: "Three" },
   ],
+  hops: [],
   structures: [
     structure("a", { group: "g1" }),
     structure("b", { group: "g2" }),
     structure("c", { group: "g3" }),
   ],
-  hops: [],
-  flows: [],
-  chapters: [],
 };
 
 const rowLayout: Layout = {
   ...layout,
   structures: {
-    a: { x: 0, y: 0, w: 2, d: 2 },
-    b: { x: 8, y: 0, w: 2, d: 2 },
-    c: { x: 16, y: 0, w: 2, d: 2 },
+    a: { d: 2, w: 2, x: 0, y: 0 },
+    b: { d: 2, w: 2, x: 8, y: 0 },
+    c: { d: 2, w: 2, x: 16, y: 0 },
   },
 };
 
-const candidate = (...changes: readonly StructureChange[]) =>
+const candidate = (...changes: ReadonlyArray<StructureChange>) =>
   proposalProblems({
     before: { data: rowData, layout: rowLayout },
     items: Arr.map(changes, (change, index) => item(`p${index}`, change)),
@@ -1134,8 +1134,8 @@ describe("what a proposal would add to check's report", () => {
   it("is silent for a structure placed inside its own group's zone", () => {
     const found = candidate({
       ...add,
+      at: { d: 2, w: 2, x: 4, y: 0 },
       structure: { ...add.structure, group: "g1" },
-      at: { x: 4, y: 0, w: 2, d: 2 },
     });
 
     assert.deepStrictEqual(zoneWarnings(found), []);
@@ -1144,8 +1144,8 @@ describe("what a proposal would add to check's report", () => {
   it("reports a zone that a new structure stretches over another group's, marked new", () => {
     const found = candidate({
       ...add,
+      at: { d: 2, w: 2, x: 20, y: 0 },
       structure: { ...add.structure, group: "g1" },
-      at: { x: 20, y: 0, w: 2, d: 2 },
     });
 
     const [warning] = zoneWarnings(found);
@@ -1163,7 +1163,7 @@ describe("what a proposal would add to check's report", () => {
   });
 
   it("reports the zone a group change grows or makes overlap, which a drag never checked", () => {
-    const found = candidate({ action: "group", structure: "a", group: "g3" });
+    const found = candidate({ action: "group", group: "g3", structure: "a" });
 
     assert.isAbove(zoneWarnings(found).length, 0);
     assert.isTrue(Arr.every(zoneWarnings(found), ({ added }) => added));
@@ -1172,12 +1172,12 @@ describe("what a proposal would add to check's report", () => {
   it("does not mark a problem the map already had", () => {
     const crowded: Layout = {
       ...rowLayout,
-      structures: { ...rowLayout.structures, b: { x: 3, y: 0, w: 2, d: 2 } },
+      structures: { ...rowLayout.structures, b: { d: 2, w: 2, x: 3, y: 0 } },
     };
 
     const found = proposalProblems({
       before: { data: rowData, layout: crowded },
-      items: [item("p1", { action: "rename", structure: "a", name: "Alpha" })],
+      items: [item("p1", { action: "rename", name: "Alpha", structure: "a" })],
     });
 
     assert.isTrue(Arr.every(found, ({ added }) => !added));
@@ -1187,17 +1187,17 @@ describe("what a proposal would add to check's report", () => {
 const spotFor = (group: string, mapData = rowData, map = rowLayout) =>
   defaultSpotFor({
     data: mapData,
-    layout: map,
     group,
-    shape: "box",
+    layout: map,
     name: "New",
+    shape: "box",
   });
 
 describe("the default spot for a new structure", () => {
   it("is a free 2 by 2 slot beside the group's zone, clear of every footprint", () => {
     const { spot } = spotFor("g2");
 
-    assert.deepStrictEqual({ w: spot.w, d: spot.d }, { w: 2, d: 2 });
+    assert.deepStrictEqual({ d: spot.d, w: spot.w }, { d: 2, w: 2 });
     assert.isTrue(
       Arr.every(
         Rec.values(rowLayout.structures),
@@ -1245,51 +1245,51 @@ describe("the default spot for a new structure", () => {
     const map: Layout = {
       ...layout,
       structures: {
-        a: { x: 0, y: 0, w: 2, d: 2 },
-        g2: { x: 0, y: 4, w: 2, d: 2 },
-        g3: { x: 0, y: -4, w: 2, d: 2 },
-        g4: { x: -4, y: 0, w: 2, d: 2 },
-        g5: { x: 4, y: 0, w: 2, d: 2 },
+        a: { d: 2, w: 2, x: 0, y: 0 },
+        g2: { d: 2, w: 2, x: 0, y: 4 },
+        g3: { d: 2, w: 2, x: 0, y: -4 },
+        g4: { d: 2, w: 2, x: -4, y: 0 },
+        g5: { d: 2, w: 2, x: 4, y: 0 },
       },
     };
 
-    const { spot, added } = spotFor("g1", walled, map);
+    const { added, spot } = spotFor("g1", walled, map);
 
     assert.strictEqual(added, 1);
     assert.lengthOf(
-      newWarnings({ mapData: walled, map, group: "g1", spot }),
+      newWarnings({ group: "g1", map, mapData: walled, spot }),
       1
     );
   }, 60_000);
 });
 
-const lineOf = ({ path, message }: { path: string; message: string }) =>
+const lineOf = ({ message, path }: { message: string; path: string }) =>
   `${path}: ${message}`;
 
 /** What `check` reports for the map with a new box in `group` at `spot` that it didn't before. */
 const newWarnings = ({
-  mapData,
-  map,
   group,
+  map,
+  mapData,
   spot,
 }: {
-  readonly mapData: MapData;
-  readonly map: Layout;
   readonly group: string;
+  readonly map: Layout;
+  readonly mapData: MapData;
   readonly spot: Spot;
 }) => {
   const before = new Set(Arr.map(checkLayout(mapData, map), lineOf));
 
   const shown = proposedMap({
-    state: { system: "t", data: mapData, layout: map },
     proposals: withStructures([
       "p1",
       {
         ...add,
-        structure: { ...add.structure, name: "New", shape: "box", group },
         at: spot,
+        structure: { ...add.structure, group, name: "New", shape: "box" },
       },
     ]),
+    state: { data: mapData, layout: map, system: "t" },
   });
 
   return Arr.filter(
@@ -1310,12 +1310,12 @@ describe("the default spot, on the row map and the review map", () => {
           ["review", review.data, review.layout],
         ] as const) {
           for (const { id } of mapData.groups) {
-            const { spot, added } = spotFor(id, mapData, map);
+            const { added, spot } = spotFor(id, mapData, map);
             const where = `${name} ${id}`;
 
             assert.strictEqual(added, 0, where);
             assert.deepStrictEqual(
-              newWarnings({ mapData, map, group: id, spot }),
+              newWarnings({ group: id, map, mapData, spot }),
               [],
               where
             );

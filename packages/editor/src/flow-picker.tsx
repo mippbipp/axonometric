@@ -12,7 +12,7 @@ import { useWalkthrough } from "./walkthrough-context.ts";
  * flows.
  */
 export function FlowPicker({ className }: { readonly className?: string }) {
-  const { state, isLast, flowChoice, chooseFlow, stop } = useWalkthrough();
+  const { chooseFlow, flowChoice, isLast, state, stop } = useWalkthrough();
   const { flows } = state.data;
 
   if (!isLast || flows.length === 0) {
@@ -21,46 +21,46 @@ export function FlowPicker({ className }: { readonly className?: string }) {
 
   const chosen = flowChoiceKey(flowChoice);
 
-  const options: readonly {
-    readonly label: string;
+  const options: ReadonlyArray<{
     readonly choice: FlowChoice;
-  }[] = [
+    readonly label: string;
+  }> = [
     ...(stop.plays.length === 0
       ? []
-      : [{ label: "This chapter", choice: { kind: "chapter" } as const }]),
+      : [{ choice: { kind: "chapter" } as const, label: "This chapter" }]),
     ...Arr.map(flows, (flow) => ({
+      choice: { id: flow.id, kind: "flow" } as const,
       label: flow.name,
-      choice: { kind: "flow", id: flow.id } as const,
     })),
-    { label: "All flows", choice: { kind: "all" } },
+    { choice: { kind: "all" }, label: "All flows" },
   ];
 
   return (
     <fieldset
-      data-flow-picker
       className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)}
+      data-flow-picker
     >
       <legend className="sr-only">Flow to play</legend>
       <span className="mr-1 text-xs tracking-widest uppercase opacity-70">
         Flow
       </span>
-      {Arr.map(options, ({ label, choice }) => {
+      {Arr.map(options, ({ choice, label }) => {
         const key = flowChoiceKey(choice);
 
         return (
           <button
-            key={key}
-            type="button"
-            data-flow={choice.kind === "flow" ? choice.id : choice.kind}
             aria-pressed={key === chosen}
             className={cn(
               controlClass,
               "tracking-wider uppercase",
               key === chosen && "bg-ink text-paper"
             )}
+            data-flow={choice.kind === "flow" ? choice.id : choice.kind}
+            key={key}
             onClick={() => {
               chooseFlow(choice);
             }}
+            type="button"
           >
             {label}
           </button>

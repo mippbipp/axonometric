@@ -23,15 +23,15 @@ import { viewDrawings } from "./views.tsx";
 import { Zones } from "./zones.tsx";
 
 function NameTag({
-  placed,
-  grow,
   faded,
+  grow,
+  placed,
 }: {
-  readonly placed: SceneStructure;
   /** Whether the spotlight fades the structure, and so its tag. */
   readonly faded: boolean | undefined;
   /** How much the text is grown, to match the size the scene placed it at. */
   readonly grow: number;
+  readonly placed: SceneStructure;
 }) {
   const { paint } = useDrawing();
   const { tag } = placed;
@@ -41,28 +41,28 @@ function NameTag({
 
   return (
     <g
-      data-name-tag={placed.structure.id}
       data-faded={fade["data-faded"]}
+      data-name-tag={placed.structure.id}
       pointerEvents="none"
     >
       <rect
-        x={tag.left}
-        y={tag.top}
-        width={tag.right - tag.left}
-        height={tag.bottom - tag.top}
         fill={paint.paper}
+        height={tag.bottom - tag.top}
         stroke={paint.ink}
         strokeOpacity={fade.opacity}
         strokeWidth={0.9}
+        width={tag.right - tag.left}
+        x={tag.left}
+        y={tag.top}
       />
       <text
+        fill={paint.ink}
+        fontSize={textSizes.tag.font * grow}
+        opacity={fade.opacity}
+        stroke="none"
+        textAnchor="middle"
         x={(tag.left + tag.right) / 2}
         y={tag.top + textSizes.tag.baseline * grow}
-        textAnchor="middle"
-        fontSize={textSizes.tag.font * grow}
-        fill={paint.ink}
-        stroke="none"
-        opacity={fade.opacity}
       >
         {nameTagText(placed.structure)}
       </text>
@@ -82,7 +82,7 @@ const diamond = (at: ScreenPoint) =>
  * The arrowhead on the last leg: its tip on the route's end and its base
  * across the line, `arrowLength` back.
  */
-const arrowPoints = (points: readonly ScreenPoint[]) => {
+const arrowPoints = (points: ReadonlyArray<ScreenPoint>) => {
   const head = arrowheadOf(points);
   const polygon = arrowPolygon(points);
 
@@ -93,13 +93,13 @@ const arrowPoints = (points: readonly ScreenPoint[]) => {
 
 /** A hop's line, with the arrowhead drawn as part of its last segment. */
 function Arrow({
-  points,
   dashed = false,
   head,
+  points,
 }: {
-  readonly points: readonly ScreenPoint[];
   readonly dashed?: boolean;
   readonly head: boolean;
+  readonly points: ReadonlyArray<ScreenPoint>;
 }) {
   const { paint } = useDrawing();
   const arrow = head ? arrowPoints(points) : null;
@@ -110,16 +110,16 @@ function Arrow({
   return (
     <>
       <polyline
-        points={toPoints(line)}
         fill="none"
-        strokeWidth={1.4}
+        points={toPoints(line)}
         strokeDasharray={dashed ? dashes.hidden : undefined}
+        strokeWidth={1.4}
       />
       {arrow === null ? null : (
         <polygon
           data-arrowhead=""
-          points={arrow.polygon}
           fill={paint.ink}
+          points={arrow.polygon}
           stroke="none"
         />
       )}
@@ -128,23 +128,23 @@ function Arrow({
 }
 
 function HopArrow({
-  routed,
-  markBends,
   faded,
+  markBends,
   onHover,
+  routed,
   state,
 }: {
-  readonly routed: SceneHop;
-  /** The page's mark on the hop: a proposal that draws it, or one that deletes it. */
-  readonly state: HopState | undefined;
   /** Whether the spotlight fades the hop, or `undefined` without one. */
   readonly faded: boolean | undefined;
   /** Whether to mark the route's bends with diamonds. */
   readonly markBends: boolean;
   /** Called with the hop's id while the pointer is on its line, else null. */
   readonly onHover: ((hop: string | null) => void) | undefined;
+  readonly routed: SceneHop;
+  /** The page's mark on the hop: a proposal that draws it, or one that deletes it. */
+  readonly state: HopState | undefined;
 }) {
-  const { paint, live, idOf } = useDrawing();
+  const { idOf, live, paint } = useDrawing();
   const { hop, points } = routed;
   const bends = markBends ? routed.bends : [];
 
@@ -152,8 +152,8 @@ function HopArrow({
     <g
       data-hop={hop.id}
       data-hop-state={state}
-      id={idOf("hop", hop.id) ?? undefined}
       data-route={toPoints(points)}
+      id={idOf("hop", hop.id) ?? undefined}
       stroke={paint.ink}
       {...fadeAttributes({ faded, strength: fadedOpacity.line })}
       onPointerEnter={() => {
@@ -167,18 +167,18 @@ function HopArrow({
       {/* A wide, invisible line, so the hop is easy to point at. */}
       {live ? (
         <polyline
-          points={toPoints(points)}
           fill="none"
+          points={toPoints(points)}
           stroke="transparent"
           strokeWidth={10}
         />
       ) : null}
-      <Arrow points={points} head />
+      <Arrow head points={points} />
       {Arr.map(bends, (bend) => (
         <polygon
+          fill={paint.ink}
           key={`${bend.sx},${bend.sy}`}
           points={diamond(bend)}
-          fill={paint.ink}
           stroke="none"
         />
       ))}
@@ -200,12 +200,12 @@ export type HopState = "proposed" | "removed";
  * head and no faint one.
  */
 function HiddenHop({
-  routed,
   faded,
+  routed,
   state,
 }: {
-  readonly routed: SceneHop;
   readonly faded: boolean | undefined;
+  readonly routed: SceneHop;
   readonly state: HopState | undefined;
 }) {
   const { paint } = useDrawing();
@@ -219,10 +219,10 @@ function HiddenHop({
     >
       {Arr.map(routed.hidden, (stretch) => (
         <Arrow
-          key={toPoints(stretch.points)}
-          points={stretch.points}
           dashed
           head={stretch.reachesEnd}
+          key={toPoints(stretch.points)}
+          points={stretch.points}
         />
       ))}
     </g>
@@ -234,34 +234,34 @@ function HiddenHop({
  * found no room for shows only while `shown`, which a file never sets.
  */
 function HopLabel({
+  faded,
+  grow,
   routed,
   shown,
-  grow,
-  faded,
 }: {
-  readonly routed: SceneHop;
   readonly faded: boolean | undefined;
-  /** Whether to show the label even where the scene found no room. */
-  readonly shown: boolean;
   /** How much the text is grown, to match the size the scene placed it at. */
   readonly grow: number;
+  readonly routed: SceneHop;
+  /** Whether to show the label even where the scene found no room. */
+  readonly shown: boolean;
 }) {
   const { paint } = useDrawing();
-  const { hop, label, hoverLabel } = routed;
+  const { hop, hoverLabel, label } = routed;
   const at = label ?? (shown ? hoverLabel : undefined);
 
   return at === undefined ? null : (
     <text
       data-hop-label={hop.id}
       data-hop-label-fits={label !== undefined}
-      x={(at.left + at.right) / 2}
-      y={at.bottom - textSizes.label.baseline * grow}
-      textAnchor="middle"
-      fontSize={textSizes.label.font * grow}
       fill={paint.ink}
+      fontSize={textSizes.label.font * grow}
+      paintOrder="stroke"
       stroke={paint.paper}
       strokeWidth={3}
-      paintOrder="stroke"
+      textAnchor="middle"
+      x={(at.left + at.right) / 2}
+      y={at.bottom - textSizes.label.baseline * grow}
       {...fadeAttributes({ faded, strength: fadedOpacity.line })}
     >
       {hop.label}
@@ -275,13 +275,13 @@ function HatchPattern({ id }: { readonly id: string }) {
 
   return (
     <pattern
-      id={id}
-      width={6}
       height={6}
-      patternUnits="userSpaceOnUse"
+      id={id}
       patternTransform="rotate(45)"
+      patternUnits="userSpaceOnUse"
+      width={6}
     >
-      <line x1={0} y1={0} x2={0} y2={6} stroke={paint.ink} strokeWidth={1.1} />
+      <line stroke={paint.ink} strokeWidth={1.1} x1={0} x2={0} y1={0} y2={6} />
     </pattern>
   );
 }
@@ -300,38 +300,38 @@ function HatchPattern({ id }: { readonly id: string }) {
  * file leaves them all out.
  */
 export function MapDrawing({
-  scene,
-  hatch,
-  newlyRevealed,
-  spotlight,
   ground,
-  underlay,
+  hatch,
   hopsOverlay,
-  overlay,
-  onHopHover,
-  labelShown,
   hopStates,
+  labelShown,
+  newlyRevealed,
+  onHopHover,
+  overlay,
+  scene,
+  spotlight,
+  underlay,
 }: {
-  readonly scene: Scene;
+  readonly ground?: ReactNode;
   /** The id of the hatch pattern this draws and its faces use. */
   readonly hatch: string;
+  readonly hopsOverlay?: ReactNode;
+  /** How the page marks hops its proposals touch; a file passes none. */
+  readonly hopStates?: ReadonlyMap<string, HopState> | undefined;
+  /** Whether a hop's label shows even where the scene found no room. */
+  readonly labelShown?: ((hop: string) => boolean) | undefined;
   /** The structures to draw as new. */
   readonly newlyRevealed: ReadonlySet<string>;
+  readonly onHopHover?: ((hop: string | null) => void) | undefined;
+  readonly overlay?: ReactNode;
+  readonly scene: Scene;
   /**
    * What to draw at full strength. Every other hop, with its label, and
    * structure, with its name tag and code chip, is faded. Without one,
    * nothing fades.
    */
   readonly spotlight?: Spotlight | null | undefined;
-  readonly ground?: ReactNode;
   readonly underlay?: ReactNode;
-  readonly hopsOverlay?: ReactNode;
-  readonly overlay?: ReactNode;
-  readonly onHopHover?: ((hop: string | null) => void) | undefined;
-  /** Whether a hop's label shows even where the scene found no room. */
-  readonly labelShown?: ((hop: string) => boolean) | undefined;
-  /** How the page marks hops its proposals touch; a file passes none. */
-  readonly hopStates?: ReadonlyMap<string, HopState> | undefined;
 }) {
   const drawing = viewDrawings[scene.view];
   const { Structure } = drawing;
@@ -344,16 +344,16 @@ export function MapDrawing({
         <HatchPattern id={hatch} />
       </defs>
       {ground}
-      <Zones zones={scene.zones} Plate={drawing.Plate} />
+      <Zones Plate={drawing.Plate} zones={scene.zones} />
       {underlay}
       <g>
         {Arr.map(scene.hops, (item) => (
           <HopArrow
-            key={item.hop.id}
-            routed={item}
-            markBends={drawing.markBends}
             faded={fading.hop(item.hop.id)}
+            key={item.hop.id}
+            markBends={drawing.markBends}
             onHover={onHopHover}
+            routed={item}
             state={hopStates?.get(item.hop.id)}
           />
         ))}
@@ -363,20 +363,20 @@ export function MapDrawing({
         <g>
           {Arr.map(scene.structures, (item) => (
             <Structure
-              key={item.structure.id}
-              placed={item}
+              faded={fading.structure(item.structure.id)}
               hatch={hatch}
               isNew={newlyRevealed.has(item.structure.id)}
-              faded={fading.structure(item.structure.id)}
+              key={item.structure.id}
+              placed={item}
             />
           ))}
         </g>
-        <g aria-hidden="true" pointerEvents="none" opacity={0.4}>
+        <g aria-hidden="true" opacity={0.4} pointerEvents="none">
           {Arr.map(scene.hops, (item) => (
             <HiddenHop
+              faded={fading.hop(item.hop.id)}
               key={item.hop.id}
               routed={item}
-              faded={fading.hop(item.hop.id)}
               state={hopStates?.get(item.hop.id)}
             />
           ))}
@@ -384,10 +384,10 @@ export function MapDrawing({
         <g>
           {Arr.map(scene.structures, (item) => (
             <NameTag
+              faded={fading.structure(item.structure.id)}
+              grow={scene.growth.tag}
               key={item.structure.id}
               placed={item}
-              grow={scene.growth.tag}
-              faded={fading.structure(item.structure.id)}
             />
           ))}
         </g>
@@ -396,11 +396,11 @@ export function MapDrawing({
       <g pointerEvents="none">
         {Arr.map(scene.hops, (item) => (
           <HopLabel
+            faded={fading.hop(item.hop.id)}
+            grow={scene.growth.label}
             key={item.hop.id}
             routed={item}
             shown={labelShown?.(item.hop.id) === true}
-            grow={scene.growth.label}
-            faded={fading.hop(item.hop.id)}
           />
         ))}
       </g>

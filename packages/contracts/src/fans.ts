@@ -17,8 +17,8 @@ import type { HopRoute } from "./routing.ts";
 
 /** A hop the views draw, with the structures at its ends. */
 export interface DrawnHop {
-  readonly id: string;
   readonly from: string;
+  readonly id: string;
   readonly to: string;
 }
 
@@ -48,41 +48,41 @@ const legMargin = 0.05;
 
 /** One line's end on a structure's edge. */
 interface End {
-  readonly hop: number;
-  readonly first: boolean;
-  /** Where the line meets the edge, along the edge. */
-  readonly at: number;
-  /** How wide the end is along the edge, for spacing. */
-  readonly width: number;
-  /** Where the edge is across, and which way the line leaves it. */
-  readonly edge: number;
-  readonly inward: 1 | -1;
   /** Whether the edge runs along x, so the line's end leg runs along y. */
   readonly alongX: boolean;
-  /** How much of the end leg a jog may use, in grid units. */
-  readonly room: number;
-  /**
-   * The other hops' lines that run parallel to the edge: how far from it,
-   * and the stretch along it they cover. A jog that moves along the edge
-   * passes those that cover any of its stretch.
-   */
-  readonly crossings: readonly Crossing[];
+  /** Where the line meets the edge, along the edge. */
+  readonly at: number;
   /**
    * Where other hops' lines run square to the edge close to it, along the
    * edge, not counting ends on the edge itself. An end keeps a line gap from
    * them, or its last leg would run on top of one.
    */
-  readonly beside: readonly number[];
+  readonly beside: ReadonlyArray<number>;
+  /**
+   * The other hops' lines that run parallel to the edge: how far from it,
+   * and the stretch along it they cover. A jog that moves along the edge
+   * passes those that cover any of its stretch.
+   */
+  readonly crossings: ReadonlyArray<Crossing>;
+  /** Where the edge is across, and which way the line leaves it. */
+  readonly edge: number;
+  readonly first: boolean;
+  readonly high: number;
+  readonly hop: number;
+  readonly inward: 1 | -1;
   /** The range along the edge the end may take. */
   readonly low: number;
-  readonly high: number;
+  /** How much of the end leg a jog may use, in grid units. */
+  readonly room: number;
+  /** How wide the end is along the edge, for spacing. */
+  readonly width: number;
 }
 
 /** A line parallel to an edge: how far from it, and what it covers along it. */
 interface Crossing {
   readonly depth: number;
-  readonly low: number;
   readonly high: number;
+  readonly low: number;
 }
 
 /** How far from an edge a line square to it counts as beside an end's leg. */
@@ -90,15 +90,15 @@ const besideReach = 0.6;
 
 /** Where other lines run square to an edge, close to it but not on it. */
 const besideOf = ({
-  others,
   leg,
+  others,
 }: {
-  readonly others: readonly (readonly GridPosition[])[];
   readonly leg: {
     readonly alongX: boolean;
     readonly edge: number;
     readonly inward: 1 | -1;
   };
+  readonly others: ReadonlyArray<ReadonlyArray<GridPosition>>;
 }) =>
   Arr.flatMap(others, (line) =>
     Arr.flatMap(line.slice(1), (end, index) => {
@@ -130,16 +130,16 @@ const besideOf = ({
 
 /** The other lines parallel to the edge, on the inner side of an end's leg. */
 const crossingsOf = ({
-  others,
   leg,
+  others,
 }: {
-  readonly others: readonly (readonly GridPosition[])[];
   readonly leg: {
     readonly alongX: boolean;
     readonly at: number;
     readonly edge: number;
     readonly inward: 1 | -1;
   };
+  readonly others: ReadonlyArray<ReadonlyArray<GridPosition>>;
 }) =>
   Arr.flatMap(others, (line) =>
     Arr.flatMap(line.slice(1), (end, index) => {
@@ -158,25 +158,25 @@ const crossingsOf = ({
       const depth = (across - leg.edge) * leg.inward;
 
       return flat && depth > 0
-        ? [{ depth, low: Math.min(from, to), high: Math.max(from, to) }]
+        ? [{ depth, high: Math.max(from, to), low: Math.min(from, to) }]
         : [];
     })
   );
 
 const endOf = ({
+  first,
   hop,
   line,
-  first,
+  others,
   placement,
   view,
-  others,
 }: {
-  readonly hop: number;
-  readonly line: readonly GridPosition[];
   readonly first: boolean;
+  readonly hop: number;
+  readonly line: ReadonlyArray<GridPosition>;
+  readonly others: ReadonlyArray<ReadonlyArray<GridPosition>>;
   readonly placement: Placement | undefined;
   readonly view: View;
-  readonly others: readonly (readonly GridPosition[])[];
 }): End | undefined => {
   const point = first ? line[0] : line.at(-1);
   const next = first ? line[1] : line.at(-2);
@@ -202,7 +202,7 @@ const endOf = ({
     return undefined;
   }
 
-  const { low, high } = endRange(length);
+  const { high, low } = endRange(length);
   const widths = endWidths[view];
   // A line of one leg jogs at both its ends.
   const share = line.length === 2 ? 2 : 1;
@@ -210,23 +210,23 @@ const endOf = ({
   const inward = across < 0 ? -1 : 1;
 
   return {
-    hop,
-    first,
-    at,
-    width: first ? widths.start : widths.head,
-    edge,
-    inward,
     alongX,
-    crossings: crossingsOf({ others, leg: { alongX, at, edge, inward } }),
-    beside: besideOf({ others, leg: { alongX, edge, inward } }),
-    room: Math.max(0, Math.abs(across) - legMargin) / share,
-    low: origin + low,
+    at,
+    beside: besideOf({ leg: { alongX, edge, inward }, others }),
+    crossings: crossingsOf({ leg: { alongX, at, edge, inward }, others }),
+    edge,
+    first,
     high: origin + high,
+    hop,
+    inward,
+    low: origin + low,
+    room: Math.max(0, Math.abs(across) - legMargin) / share,
+    width: first ? widths.start : widths.head,
   };
 };
 
 /** Where a row of ends sits: the first at `start`, the rest after it. */
-const offsetsOf = (members: readonly End[]) =>
+const offsetsOf = (members: ReadonlyArray<End>) =>
   Arr.reduce(members, Arr.empty<number>(), (done, member, index) => {
     const before = members[index - 1];
     const last = done.at(-1);
@@ -238,15 +238,15 @@ const offsetsOf = (members: readonly End[]) =>
 
 /** A row of ends moved together, in order along the edge. */
 interface Cluster {
-  readonly members: readonly End[];
-  readonly targets: readonly number[];
+  readonly members: ReadonlyArray<End>;
+  readonly targets: ReadonlyArray<number>;
 }
 
 /**
  * Places a row of ends as near as it can to where their lines are, no
  * nearer to each other than their widths ask, and inside the edge's range.
  */
-const clusterOf = (members: readonly End[]): Cluster => {
+const clusterOf = (members: ReadonlyArray<End>): Cluster => {
   const offsets = offsetsOf(members);
   const [first] = members;
   const span = offsets.at(-1) ?? 0;
@@ -287,7 +287,7 @@ const crowds = (a: Cluster, b: Cluster) => {
  * edge: ends far enough apart stay where they are, and crowded ones spread
  * out around where they were.
  */
-const spread = (ends: readonly End[]): readonly number[] => {
+const spread = (ends: ReadonlyArray<End>): ReadonlyArray<number> => {
   let clusters = Arr.map(ends, (end) => clusterOf([end]));
 
   const findCrowded = () =>
@@ -322,9 +322,9 @@ const spread = (ends: readonly End[]): readonly number[] => {
  * neighbours; a target with no such room stays.
  */
 const clearOfLines = (
-  ends: readonly End[],
-  targets: readonly number[]
-): readonly number[] =>
+  ends: ReadonlyArray<End>,
+  targets: ReadonlyArray<number>
+): ReadonlyArray<number> =>
   Arr.reduce(ends, Arr.empty<number>(), (done, end, index) => {
     const target = targets[index] ?? end.at;
     const unit = unitOnScreen.iso;
@@ -373,8 +373,8 @@ const clearOfLines = (
 /** An end after the spread: where it goes, and how far from the edge it jogs. */
 interface Fan {
   readonly end: End;
-  readonly target: number;
   readonly jog: number;
+  readonly target: number;
 }
 
 /**
@@ -384,9 +384,9 @@ interface Fan {
  * back to its lane before the other's jog begins.
  */
 const fanned = (
-  row: readonly { readonly end: End; readonly target: number }[],
+  row: ReadonlyArray<{ readonly end: End; readonly target: number }>,
   { view }: { readonly view: View }
-): readonly Fan[] => {
+): ReadonlyArray<Fan> => {
   const unit = unitOnScreen[view];
   const clear = (arrowLength + headRoom) / unit;
   const step = jogStep / unit;
@@ -442,7 +442,7 @@ const fanned = (
       Arr.sort(
         Arr.filter(
           end.crossings,
-          ({ low, high }) =>
+          ({ high, low }) =>
             Math.max(low, Math.min(end.at, target) - near) <=
             Math.min(high, Math.max(end.at, target) + near)
         ),
@@ -472,13 +472,13 @@ const fanned = (
 
   return Arr.map(settled, ({ end, target }, index) => ({
     end,
-    target,
     jog: Math.min(jogs[index] ?? 0, end.room),
+    target,
   }));
 };
 
 /** One end's points from the edge inwards: to its target, then the jog. */
-const pointsOf = ({ end, target, jog }: Fan): readonly GridPosition[] => {
+const pointsOf = ({ end, jog, target }: Fan): ReadonlyArray<GridPosition> => {
   const at = (along: number, depth: number): GridPosition =>
     end.alongX
       ? { x: along, y: end.edge + end.inward * depth }
@@ -497,16 +497,16 @@ const pointsOf = ({ end, target, jog }: Fan): readonly GridPosition[] => {
  * override is drawn as it is.
  */
 export const drawnRoutes = ({
-  routes,
   hops,
   placements,
+  routes,
   view,
 }: {
-  readonly routes: Readonly<Record<string, HopRoute>>;
-  readonly hops: readonly DrawnHop[];
+  readonly hops: ReadonlyArray<DrawnHop>;
   readonly placements: Readonly<Record<string, Placement>>;
+  readonly routes: Readonly<Record<string, HopRoute>>;
   readonly view: View;
-}): Readonly<Record<string, readonly GridPosition[]>> => {
+}): Readonly<Record<string, ReadonlyArray<GridPosition>>> => {
   const lanes = laneRoutes(routes, laneWidths[view]);
   const listed = Arr.filter(hops, ({ id }) => lanes[id] !== undefined);
 
@@ -524,15 +524,15 @@ export const drawnRoutes = ({
       ],
       ({ first, id }) => {
         const end = endOf({
+          first,
           hop: index,
           line,
-          first,
-          placement: placements[id],
-          view,
           others: Arr.filter(
             Arr.map(listed, ({ id: other }) => lanes[other] ?? []),
             (_, at) => at !== index
           ),
+          placement: placements[id],
+          view,
         });
 
         return end === undefined ? [] : [{ end, id }];

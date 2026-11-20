@@ -44,98 +44,16 @@ const chapterFacts = (chapter: Chapter, change: ChapterChange) => ({
 
 export const chapterKind: KindSpec<ChapterItem> = {
   ...plain<ChapterItem>(),
-  section: "chapter",
-  textLimit: Number.POSITIVE_INFINITY,
-  listKey: "chapters",
-  text: () => Option.none(),
-  describe: ({ change }, called) =>
-    Option.some(actionOf(change).describe(called)),
-  dangling: ({ change }, known) => {
-    if (!known.chapters.has(change.chapter)) {
-      return Option.some(
-        `no chapter in data.mjs has the id "${change.chapter}"`
-      );
-    }
-
-    const lostStructure = Arr.findFirst(
-      structuresOfChange(change),
-      (id) => !known.structures.has(id)
-    );
-
-    if (Option.isSome(lostStructure)) {
-      return Option.some(
-        `no structure in data.mjs has the id "${lostStructure.value}"`
-      );
-    }
-
-    return Option.map(
-      Arr.findFirst(hopsOfChange(change), (id) => !known.hops.has(id)),
-      (id) => `no hop in data.mjs has the id "${id}"`
-    );
-  },
-  notice: chapterNotice,
-  open: (proposals) =>
-    Arr.map(proposals.chapters ?? [], (proposal): ChapterItem => ({
-      id: proposal.id,
-      kind: "chapter",
-      change: proposal.change,
-    })),
-  clear: (proposals) => ({ ...proposals, chapters: [] }),
-  add: (proposals, { id, change }) => ({
+  accepted: (item, verdict) =>
+    decorate(
+      { change: item.change, id: item.id, kind: "chapter" } as const,
+      verdict
+    ),
+  add: (proposals, { change, id }) => ({
     ...proposals,
-    chapters: [...(proposals.chapters ?? []), { id, change }],
+    chapters: [...(proposals.chapters ?? []), { change, id }],
   }),
-  name: ({ change }) => actionOf(change).label,
-  targets: ({ change }): readonly Pointer[] => [
-    { kind: "chapter", id: change.chapter },
-    ...Arr.map(structuresOfChange(change), (id): Pointer => ({
-      kind: "structure",
-      id,
-    })),
-    ...Arr.map(hopsOfChange(change), (id): Pointer => ({ kind: "hop", id })),
-  ],
-  summary: ({ id, change }, called) => {
-    const chapter = `${quoteText(called.chapter(change.chapter))} (${change.chapter})`;
-
-    const structureLine = (structure: string) =>
-      `${change.action} ${id}: ${quoteText(called.structure(structure))} (${structure}) in chapter ${chapter}`;
-
-    const hopLine = (hop: string) =>
-      `${change.action} ${id}: hop ${quoteText(called.hop(hop))} (${hop}) in chapter ${chapter}`;
-
-    return Match.value(change).pipe(
-      Match.discriminatorsExhaustive("action")({
-        reveal: ({ structure }) => structureLine(structure),
-        hide: ({ structure }) => structureLine(structure),
-        play: ({ hop }) => hopLine(hop),
-        unplay: ({ hop }) => hopLine(hop),
-        order: ({ plays }) =>
-          `order ${id}: chapter ${chapter} plays ${Arr.join(
-            Arr.map(plays, (hop) => `${quoteText(called.hop(hop))} (${hop})`),
-            ", "
-          )}`,
-      })
-    );
-  },
-  facts: ({ change }, _layout, data) => {
-    const found = Option.fromNullishOr(data).pipe(
-      Option.flatMap((map) => chapterOf(map, change.chapter))
-    );
-
-    return Option.match(found, {
-      onNone: () => ({
-        before: null,
-        after: { chapter: { id: change.chapter } },
-      }),
-      onSome: (chapter) => ({
-        before: chapterFacts(chapter, change),
-        after: chapterFacts(
-          applyChapterChange({ chapters: [chapter], change })[0] ?? chapter,
-          change
-        ),
-      }),
-    });
-  },
+  applies: (): ReadonlyArray<LayoutChange> => [],
   appliesToData: ({ change }, map) => ({
     ...map,
     data: {
@@ -144,31 +62,13 @@ export const chapterKind: KindSpec<ChapterItem> = {
       // proposed deletion leaves a structure on the map: the page draws it in
       // the pending look.
       chapters: applyChapterChange({
-        chapters: map.data.chapters,
         change,
+        chapters: map.data.chapters,
         holdRemovals: true,
       }),
     },
   }),
-  whenTaken: ({ change }, map) => ({
-    ...map,
-    data: {
-      ...map.data,
-      chapters: applyChapterChange({ chapters: map.data.chapters, change }),
-    },
-  }),
-  touches: ({ change }) => ({
-    ...touchesNothing,
-    marks: [
-      {
-        name: chapterMarkName,
-        scope: change.chapter,
-        kind: change.action,
-        ids: actionOf(change).marks,
-      },
-    ],
-  }),
-  breakage: (item, { structureIds, hops, data, siblings }) => {
+  breakage: (item, { data, hops, siblings, structureIds }) => {
     const { change } = item;
 
     if (data === undefined) {
@@ -208,25 +108,25 @@ export const chapterKind: KindSpec<ChapterItem> = {
     );
 
     return chapterBreakage({
-      change,
-      changes: together,
-      data,
       called: {
-        structure: (id) =>
-          Option.match(
-            Arr.findFirst(data.structures, (structure) => structure.id === id),
-            { onNone: () => id, onSome: ({ name }) => name }
-          ),
-        hop: hopLabelOf(data.hops),
         chapter: (id) =>
           Option.match(chapterOf(data, id), {
             onNone: () => id,
             onSome: ({ title }) => title,
           }),
+        hop: hopLabelOf(data.hops),
+        structure: (id) =>
+          Option.match(
+            Arr.findFirst(data.structures, (structure) => structure.id === id),
+            { onNone: () => id, onSome: ({ name }) => name }
+          ),
       },
+      change,
+      changes: together,
+      data,
     });
   },
-  applies: (): readonly LayoutChange[] => [],
+  clear: (proposals) => ({ ...proposals, chapters: [] }),
   commitRefusal: (item, verdict, { data }) => {
     const { change } = item;
 
@@ -237,6 +137,66 @@ export const chapterKind: KindSpec<ChapterItem> = {
         )
       : Option.none();
   },
+  dangling: ({ change }, known) => {
+    if (!known.chapters.has(change.chapter)) {
+      return Option.some(
+        `no chapter in data.mjs has the id "${change.chapter}"`
+      );
+    }
+
+    const lostStructure = Arr.findFirst(
+      structuresOfChange(change),
+      (id) => !known.structures.has(id)
+    );
+
+    if (Option.isSome(lostStructure)) {
+      return Option.some(
+        `no structure in data.mjs has the id "${lostStructure.value}"`
+      );
+    }
+
+    return Option.map(
+      Arr.findFirst(hopsOfChange(change), (id) => !known.hops.has(id)),
+      (id) => `no hop in data.mjs has the id "${id}"`
+    );
+  },
+  describe: ({ change }, called) =>
+    Option.some(actionOf(change).describe(called)),
+  facts: ({ change }, _layout, data) => {
+    const found = Option.fromNullishOr(data).pipe(
+      Option.flatMap((map) => chapterOf(map, change.chapter))
+    );
+
+    return Option.match(found, {
+      onNone: () => ({
+        after: { chapter: { id: change.chapter } },
+        before: null,
+      }),
+      onSome: (chapter) => ({
+        after: chapterFacts(
+          applyChapterChange({ change, chapters: [chapter] })[0] ?? chapter,
+          change
+        ),
+        before: chapterFacts(chapter, change),
+      }),
+    });
+  },
+  listKey: "chapters",
+  name: ({ change }) => actionOf(change).label,
+  notice: chapterNotice,
+  open: (proposals) =>
+    Arr.map(proposals.chapters ?? [], (proposal): ChapterItem => ({
+      change: proposal.change,
+      id: proposal.id,
+      kind: "chapter",
+    })),
+  rejected: (item, reason) => ({
+    change: item.change,
+    id: item.id,
+    kind: "chapter",
+    reason,
+  }),
+  reopened: (item, newId) => ({ ...item, id: newId }),
   retargeted: (item, renames) => {
     const { change } = item;
 
@@ -250,16 +210,56 @@ export const chapterKind: KindSpec<ChapterItem> = {
       ? item
       : { ...item, change: { ...change, structure: to } };
   },
-  accepted: (item, verdict) =>
-    decorate(
-      { kind: "chapter", id: item.id, change: item.change } as const,
-      verdict
-    ),
-  rejected: (item, reason) => ({
-    kind: "chapter",
-    id: item.id,
-    change: item.change,
-    reason,
+  section: "chapter",
+  summary: ({ change, id }, called) => {
+    const chapter = `${quoteText(called.chapter(change.chapter))} (${change.chapter})`;
+
+    const structureLine = (structure: string) =>
+      `${change.action} ${id}: ${quoteText(called.structure(structure))} (${structure}) in chapter ${chapter}`;
+
+    const hopLine = (hop: string) =>
+      `${change.action} ${id}: hop ${quoteText(called.hop(hop))} (${hop}) in chapter ${chapter}`;
+
+    return Match.value(change).pipe(
+      Match.discriminatorsExhaustive("action")({
+        hide: ({ structure }) => structureLine(structure),
+        order: ({ plays }) =>
+          `order ${id}: chapter ${chapter} plays ${Arr.join(
+            Arr.map(plays, (hop) => `${quoteText(called.hop(hop))} (${hop})`),
+            ", "
+          )}`,
+        play: ({ hop }) => hopLine(hop),
+        reveal: ({ structure }) => structureLine(structure),
+        unplay: ({ hop }) => hopLine(hop),
+      })
+    );
+  },
+  targets: ({ change }): ReadonlyArray<Pointer> => [
+    { id: change.chapter, kind: "chapter" },
+    ...Arr.map(structuresOfChange(change), (id): Pointer => ({
+      id,
+      kind: "structure",
+    })),
+    ...Arr.map(hopsOfChange(change), (id): Pointer => ({ id, kind: "hop" })),
+  ],
+  text: () => Option.none(),
+  textLimit: Number.POSITIVE_INFINITY,
+  touches: ({ change }) => ({
+    ...touchesNothing,
+    marks: [
+      {
+        ids: actionOf(change).marks,
+        kind: change.action,
+        name: chapterMarkName,
+        scope: change.chapter,
+      },
+    ],
   }),
-  reopened: (item, newId) => ({ ...item, id: newId }),
+  whenTaken: ({ change }, map) => ({
+    ...map,
+    data: {
+      ...map.data,
+      chapters: applyChapterChange({ change, chapters: map.data.chapters }),
+    },
+  }),
 };

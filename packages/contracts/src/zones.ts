@@ -14,11 +14,11 @@ export const zonePadding = 1;
  * every side. It's worked out from the layout each time and never stored.
  */
 export interface Zone {
-  readonly group: Group;
-  /** The ids of the structures it fits, in data.mjs order. */
-  readonly members: readonly string[];
   /** The zone's ground rectangle, in grid units, padding included. */
   readonly box: Placement;
+  readonly group: Group;
+  /** The ids of the structures it fits, in data.mjs order. */
+  readonly members: ReadonlyArray<string>;
 }
 
 /** What `zonesOf` fits zones to. */
@@ -38,7 +38,7 @@ const boundsOf = (boxes: Arr.NonEmptyReadonlyArray<Placement>): Placement => {
   const right = Math.max(...Arr.map(boxes, (box) => box.x + box.w));
   const bottom = Math.max(...Arr.map(boxes, (box) => box.y + box.d));
 
-  return { x: left, y: top, w: right - left, d: bottom - top };
+  return { d: bottom - top, w: right - left, x: left, y: top };
 };
 
 /**
@@ -50,7 +50,7 @@ export const zonesOf = ({
   data,
   layout,
   revealed,
-}: ZoneSource): readonly Zone[] =>
+}: ZoneSource): ReadonlyArray<Zone> =>
   Arr.flatMap(data.groups, (group) => {
     const members = Arr.flatMap(data.structures, (structure) => {
       const placement = layout.structures[structure.id];
@@ -70,14 +70,14 @@ export const zonesOf = ({
 
     return [
       {
-        group,
-        members: Arr.map(members, ({ id }) => id),
         box: {
+          d: bounds.d + 2 * zonePadding,
+          w: bounds.w + 2 * zonePadding,
           x: bounds.x - zonePadding,
           y: bounds.y - zonePadding,
-          w: bounds.w + 2 * zonePadding,
-          d: bounds.d + 2 * zonePadding,
         },
+        group,
+        members: Arr.map(members, ({ id }) => id),
       },
     ];
   });
@@ -89,13 +89,13 @@ export const zonesOf = ({
  */
 export const groupMembers = ({
   data,
-  layout,
   group,
+  layout,
 }: {
   readonly data: Pick<MapData, "structures">;
-  readonly layout: Layout;
   readonly group: string;
-}): readonly string[] =>
+  readonly layout: Layout;
+}): ReadonlyArray<string> =>
   Arr.flatMap(data.structures, (structure) =>
     structure.group === group && layout.structures[structure.id] !== undefined
       ? [structure.id]

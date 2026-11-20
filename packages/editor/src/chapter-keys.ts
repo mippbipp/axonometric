@@ -23,7 +23,7 @@ export const isTyping = (target: EventTarget | null) =>
  * pressed with a modifier, are left alone.
  */
 export const useChapterKeys = (arrows: boolean) => {
-  const { next: nextChapter, back: previousChapter } = useWalkthrough();
+  const { back: previousChapter, next: nextChapter } = useWalkthrough();
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (

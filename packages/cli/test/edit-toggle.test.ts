@@ -39,8 +39,8 @@ const pressed = (page: Page) =>
 
 /** The page's boxes for `a` and `b` do not overlap. */
 const apart = (
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number }
+  a: { height: number; width: number; x: number; y: number },
+  b: { height: number; width: number; x: number; y: number }
 ) =>
   a.x + a.width <= b.x ||
   b.x + b.width <= a.x ||
@@ -52,7 +52,7 @@ describe("edit, off by default", () => {
     "hides the toolbar, dragging, edge handles and the chapter panel's editing controls",
     () =>
       Effect.gen(function* () {
-        const { page, home, errors } = yield* firstVisit;
+        const { errors, home, page } = yield* firstVisit;
 
         const pressedAtStart = yield* pressed(page);
         assert.strictEqual(pressedAtStart, "false");
@@ -108,7 +108,7 @@ describe("edit, off by default", () => {
 
   it.live("hides a structure's editing controls but keeps Answer", () =>
     Effect.gen(function* () {
-      const { page, home } = yield* firstVisit;
+      const { home, page } = yield* firstVisit;
 
       yield* goToChapter(page, "c-all");
       yield* click(page, '[data-structure="server"]');

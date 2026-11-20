@@ -41,7 +41,7 @@ export function PendingTab() {
     return null;
   }
 
-  const { pending, accepted, discard } = editing;
+  const { accepted, discard, pending } = editing;
   const canEdit = editing.canEdit && editOn;
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
   const hopName = hopLabelOf(state.data.hops);
@@ -78,8 +78,8 @@ export function PendingTab() {
   );
 
   return (
-    <section data-pending-list className="flex flex-col gap-3">
-      <p data-pending-intro className="text-xs opacity-70">
+    <section className="flex flex-col gap-3" data-pending-list>
+      <p className="text-xs opacity-70" data-pending-intro>
         Layout changes are yours to accept. Accepting one writes it to
         layout.json and saves a revision, and discarding one puts the structure
         or route back as layout.json has it. Proposals are for the agent: notes,
@@ -88,14 +88,14 @@ export function PendingTab() {
       </p>
       {refusal === undefined ? null : (
         <p
-          data-discard-refused
           className="border-refused border-l-2 pl-2 text-xs"
+          data-discard-refused
         >
           {refusal}
         </p>
       )}
       {nothingAtAll ? (
-        <p data-pending-empty className="text-sm">
+        <p className="text-sm" data-pending-empty>
           {editOn
             ? "Nothing is pending. Drag a structure to move it, drag a corner of the selected one to resize it, drag a segment of an arrow to reroute it, or drag a zone title to move its group. Pin a note, suggest new text or answer a question from a structure's panel."
             : "Nothing is pending. Press Edit to move structures, propose changes or pin notes."}
@@ -105,30 +105,30 @@ export function PendingTab() {
         <>
           {acceptable ? (
             <div className="flex flex-col gap-1.5">
-              <label htmlFor={messageId} className="text-xs opacity-70">
+              <label className="text-xs opacity-70" htmlFor={messageId}>
                 Revision message (optional)
               </label>
               <input
-                id={messageId}
-                data-accept-message
-                type="text"
-                value={message}
-                maxLength={maxMessageLength}
-                placeholder="Leave empty to write one from the changes"
-                disabled={accepting.busy}
                 className="border-ink bg-paper text-ink focus-visible:outline-ink border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
+                data-accept-message
+                disabled={accepting.busy}
+                id={messageId}
+                maxLength={maxMessageLength}
                 onChange={(event) => {
                   setMessage(event.target.value);
                 }}
+                placeholder="Leave empty to write one from the changes"
+                type="text"
+                value={message}
               />
               <button
-                type="button"
-                data-accept-all
                 className={`${controlClass} self-start`}
+                data-accept-all
                 disabled={accepting.busy}
                 onClick={() => {
                   acceptWith("all");
                 }}
+                type="button"
               >
                 Accept all
               </button>
@@ -140,44 +140,44 @@ export function PendingTab() {
 
               return (
                 <li
-                  key={layoutChangeKey(change)}
+                  className="border-pending flex items-start gap-2 border-l-2 pl-2 text-sm"
                   data-pending-change={change.kind}
+                  data-pending-hop={hopsOf(change)[0]}
                   data-pending-id={change.id}
                   data-pending-structure={structuresOf(change)[0]}
-                  data-pending-hop={hopsOf(change)[0]}
-                  className="border-pending flex items-start gap-2 border-l-2 pl-2 text-sm"
+                  key={layoutChangeKey(change)}
                 >
                   <span className="min-w-0 flex-1">
                     {Arr.join(
                       describeChange(change, accepted, {
-                        structure: nameOf,
                         hop: hopName,
+                        structure: nameOf,
                       }),
                       "; "
                     )}
                   </span>
                   {acceptable ? (
                     <button
-                      type="button"
-                      data-accept-change={change.id}
-                      className={controlClass}
                       aria-label={`Accept the ${change.kind} of ${names}`}
+                      className={controlClass}
+                      data-accept-change={change.id}
                       disabled={accepting.busy}
                       onClick={() => {
                         acceptWith([change.id]);
                       }}
+                      type="button"
                     >
                       Accept
                     </button>
                   ) : null}
                   {canEdit ? (
                     <button
-                      type="button"
-                      className={controlClass}
                       aria-label={`Discard the ${change.kind} of ${names}`}
+                      className={controlClass}
                       onClick={() => {
                         discardWith(change);
                       }}
+                      type="button"
                     >
                       Discard
                     </button>
@@ -189,26 +189,26 @@ export function PendingTab() {
         </>
       )}
       {canEdit && overridden.length > 0 ? (
-        <section data-route-overrides className="flex flex-col gap-2">
+        <section className="flex flex-col gap-2" data-route-overrides>
           <h3 className="text-xs tracking-widest uppercase opacity-70">
             Routes set by hand
           </h3>
           <ul className="flex flex-col gap-2">
             {Arr.map(overridden, ({ id }) => (
               <li
-                key={id}
-                data-route-override={id}
                 className="flex items-start gap-2 text-sm"
+                data-route-override={id}
+                key={id}
               >
                 <span className="min-w-0 flex-1">{hopName(id)}</span>
                 <button
-                  type="button"
-                  data-reset-route={id}
-                  className={controlClass}
                   aria-label={`Reset the route ${hopName(id)}`}
+                  className={controlClass}
+                  data-reset-route={id}
                   onClick={() => {
                     setRefusal(editing.reroute(id, null));
                   }}
+                  type="button"
                 >
                   Reset route
                 </button>

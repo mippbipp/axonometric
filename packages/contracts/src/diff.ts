@@ -15,15 +15,15 @@ export interface MapSnapshot {
 
 /** A structure that sits somewhere else, or is another size, in the second map. */
 export interface Repositioned {
-  readonly id: string;
   readonly from: Placement;
+  readonly id: string;
   readonly to: Placement;
 }
 
 /** The fields of a structure or hop whose values differ. */
 export interface FieldChange {
+  readonly fields: ReadonlyArray<string>;
   readonly id: string;
-  readonly fields: readonly string[];
 }
 
 /**
@@ -52,27 +52,27 @@ const dataSections = Arr.filter(Rec.keys(MapData.fields), isDataSection);
  * the second map, `removed` follows the first.
  */
 export interface MapDiff {
-  readonly structures: {
-    /** In both maps, at another x or y in the second. */
-    readonly moved: readonly Repositioned[];
-    /** In both maps, another width or depth in the second. */
-    readonly resized: readonly Repositioned[];
-    /** Only in the second map. */
-    readonly added: readonly string[];
-    /** Only in the first map. */
-    readonly removed: readonly string[];
-    /** In both maps, with other values in some field other than the id. */
-    readonly changed: readonly FieldChange[];
-  };
   readonly hops: {
-    readonly added: readonly string[];
-    readonly removed: readonly string[];
-    readonly changed: readonly FieldChange[];
+    readonly added: ReadonlyArray<string>;
+    readonly changed: ReadonlyArray<FieldChange>;
+    readonly removed: ReadonlyArray<string>;
   };
-  /** The other parts of the data that differ. */
-  readonly sections: readonly DataSection[];
   /** Hops in both maps whose route override differs, or exists in only one. */
-  readonly rerouted: readonly string[];
+  readonly rerouted: ReadonlyArray<string>;
+  /** The other parts of the data that differ. */
+  readonly sections: ReadonlyArray<DataSection>;
+  readonly structures: {
+    /** Only in the second map. */
+    readonly added: ReadonlyArray<string>;
+    /** In both maps, with other values in some field other than the id. */
+    readonly changed: ReadonlyArray<FieldChange>;
+    /** In both maps, at another x or y in the second. */
+    readonly moved: ReadonlyArray<Repositioned>;
+    /** Only in the first map. */
+    readonly removed: ReadonlyArray<string>;
+    /** In both maps, another width or depth in the second. */
+    readonly resized: ReadonlyArray<Repositioned>;
+  };
 }
 
 /**
@@ -88,22 +88,21 @@ const structureFields = Arr.filter(
 
 const hopFields = Arr.filter(Rec.keys(Hop.fields), (key) => key !== "id");
 
-const byId = <A extends { readonly id: string }>(items: readonly A[]) =>
+const byId = <A extends { readonly id: string }>(items: ReadonlyArray<A>) =>
   new Map(Arr.map(items, (item) => [item.id, item] as const));
 
 /** Compares two lists of items with ids, field by field over `fields`. */
 const diffById = <A extends { readonly id: string }>(
-  before: readonly A[],
-  after: readonly A[],
-  fields: readonly (keyof A & string)[]
+  before: ReadonlyArray<A>,
+  after: ReadonlyArray<A>,
+  fields: ReadonlyArray<keyof A & string>
 ) => {
   const earlier = byId(before);
   const later = byId(after);
 
   return {
     added: Arr.flatMap(after, ({ id }) => (earlier.has(id) ? [] : [id])),
-    removed: Arr.flatMap(before, ({ id }) => (later.has(id) ? [] : [id])),
-    changed: Arr.flatMap(after, (item): readonly FieldChange[] => {
+    changed: Arr.flatMap(after, (item): ReadonlyArray<FieldChange> => {
       const was = earlier.get(item.id);
 
       const differing =
@@ -114,8 +113,9 @@ const diffById = <A extends { readonly id: string }>(
               (field) => !Equal.equals(was[field], item[field])
             );
 
-      return differing.length === 0 ? [] : [{ id: item.id, fields: differing }];
+      return differing.length === 0 ? [] : [{ fields: differing, id: item.id }];
     }),
+    removed: Arr.flatMap(before, ({ id }) => (later.has(id) ? [] : [id])),
   };
 };
 
@@ -144,7 +144,7 @@ export const diffMaps: {
 
   const repositioned = Arr.flatMap(
     after.data.structures,
-    ({ id }): readonly Repositioned[] => {
+    ({ id }): ReadonlyArray<Repositioned> => {
       if (!earlier.has(id)) {
         return [];
       }
@@ -153,7 +153,7 @@ export const diffMaps: {
       const to = Rec.get(after.layout.structures, id);
 
       return Option.isSome(from) && Option.isSome(to)
-        ? [{ id, from: from.value, to: to.value }]
+        ? [{ from: from.value, id, to: to.value }]
         : [];
     }
   );
@@ -164,21 +164,7 @@ export const diffMaps: {
   const hopsAfter = byId(after.data.hops);
 
   return {
-    structures: {
-      moved: Arr.filter(
-        repositioned,
-        ({ from, to }) => !samePosition(from, to)
-      ),
-      resized: Arr.filter(repositioned, ({ from, to }) => !sameSize(from, to)),
-      added: structures.added,
-      removed: structures.removed,
-      changed: structures.changed,
-    },
     hops,
-    sections: Arr.filter(
-      dataSections,
-      (section) => !Equal.equals(before.data[section], after.data[section])
-    ),
     rerouted: Arr.filter(
       Arr.dedupe([...Rec.keys(routesBefore), ...Rec.keys(routesAfter)]),
       (id) =>
@@ -186,6 +172,20 @@ export const diffMaps: {
         hopsAfter.has(id) &&
         !Equal.equals(Rec.get(routesBefore, id), Rec.get(routesAfter, id))
     ),
+    sections: Arr.filter(
+      dataSections,
+      (section) => !Equal.equals(before.data[section], after.data[section])
+    ),
+    structures: {
+      added: structures.added,
+      changed: structures.changed,
+      moved: Arr.filter(
+        repositioned,
+        ({ from, to }) => !samePosition(from, to)
+      ),
+      removed: structures.removed,
+      resized: Arr.filter(repositioned, ({ from, to }) => !sameSize(from, to)),
+    },
   };
 });
 
@@ -206,18 +206,18 @@ export const diffMaps: {
  * `describeDifferences` lists them.
  */
 export const restoreChanges = ({
-  current,
-  revision,
-  changes,
   accepted,
+  changes,
+  current,
   newId,
+  revision,
 }: {
-  readonly current: MapData;
-  readonly revision: MapSnapshot;
-  readonly changes: readonly LayoutChange[];
   readonly accepted: Layout;
+  readonly changes: ReadonlyArray<LayoutChange>;
+  readonly current: MapData;
   readonly newId: () => ChangeId;
-}): readonly LayoutChange[] => {
+  readonly revision: MapSnapshot;
+}): ReadonlyArray<LayoutChange> => {
   const shown: MapSnapshot = {
     data: current,
     layout: applyLayoutChanges(accepted, changes),
@@ -231,7 +231,7 @@ export const restoreChanges = ({
   );
 
   return Arr.reduce(targets, changes, (so, { id, to }) =>
-    placeStructure({ changes: so, accepted, id, next: to, newId })
+    placeStructure({ accepted, changes: so, id, newId, next: to })
   );
 };
 
@@ -248,19 +248,19 @@ export type HopMark = "added" | "removed" | "changed";
 
 /** What a compare highlights, by id. */
 export interface CompareMarks {
-  readonly structures: ReadonlyMap<string, readonly StructureMark[]>;
   readonly hops: ReadonlyMap<string, HopMark>;
   /**
    * Where the current map has each moved or resized structure, which the
    * revision's drawing leaves empty.
    */
   readonly origins: ReadonlyMap<string, Placement>;
+  readonly structures: ReadonlyMap<string, ReadonlyArray<StructureMark>>;
 }
 
 const marksOf = <M extends string>(
-  entries: readonly (readonly [M, readonly string[]])[]
+  entries: ReadonlyArray<readonly [M, ReadonlyArray<string>]>
 ) => {
-  const marks = new Map<string, M[]>();
+  const marks = new Map<string, Array<M>>();
 
   for (const [mark, ids] of entries) {
     for (const id of ids) {
@@ -278,7 +278,7 @@ const marksOf = <M extends string>(
  * current map only, as `diffMaps(current, revision)` says.
  */
 export const compareMarks = (diff: MapDiff): CompareMarks => {
-  const { structures, hops } = diff;
+  const { hops, structures } = diff;
 
   const hopMarks = marksOf<HopMark>([
     ["added", hops.added],
@@ -287,13 +287,6 @@ export const compareMarks = (diff: MapDiff): CompareMarks => {
   ]);
 
   return {
-    structures: marksOf<StructureMark>([
-      ["moved", Arr.map(structures.moved, ({ id }) => id)],
-      ["resized", Arr.map(structures.resized, ({ id }) => id)],
-      ["added", structures.added],
-      ["removed", structures.removed],
-      ["changed", Arr.map(structures.changed, ({ id }) => id)],
-    ]),
     hops: new Map(
       Arr.flatMap([...hopMarks], ([id, [mark]]) =>
         mark === undefined ? [] : [[id, mark] as const]
@@ -302,9 +295,16 @@ export const compareMarks = (diff: MapDiff): CompareMarks => {
     origins: new Map(
       Arr.map(
         [...structures.moved, ...structures.resized],
-        ({ id, from }) => [id, from] as const
+        ({ from, id }) => [id, from] as const
       )
     ),
+    structures: marksOf<StructureMark>([
+      ["moved", Arr.map(structures.moved, ({ id }) => id)],
+      ["resized", Arr.map(structures.resized, ({ id }) => id)],
+      ["added", structures.added],
+      ["removed", structures.removed],
+      ["changed", Arr.map(structures.changed, ({ id }) => id)],
+    ]),
   };
 };
 
@@ -313,10 +313,10 @@ export const compareMarks = (diff: MapDiff): CompareMarks => {
  * compare can show it as a ghost.
  */
 export interface GhostedMap extends MapSnapshot {
-  /** The structures that only the current map has, which `data` includes. */
-  readonly ghostStructures: ReadonlySet<string>;
   /** The hops that only the current map has, which `data` includes. */
   readonly ghostHops: ReadonlySet<string>;
+  /** The structures that only the current map has, which `data` includes. */
+  readonly ghostStructures: ReadonlySet<string>;
 }
 
 /**
@@ -329,18 +329,18 @@ export interface GhostedMap extends MapSnapshot {
  */
 export const ghostedMap = ({
   current,
-  revision,
   diff,
+  revision,
 }: {
   readonly current: MapSnapshot;
-  readonly revision: MapSnapshot;
   readonly diff: MapDiff;
+  readonly revision: MapSnapshot;
 }): GhostedMap => {
   const ghostStructures = new Set(diff.structures.removed);
   const ghostHops = new Set(diff.hops.removed);
 
   if (ghostStructures.size === 0 && ghostHops.size === 0) {
-    return { ...revision, ghostStructures, ghostHops };
+    return { ...revision, ghostHops, ghostStructures };
   }
 
   const structures = Arr.filter(current.data.structures, ({ id }) =>
@@ -377,12 +377,6 @@ export const ghostedMap = ({
   return {
     data: {
       ...revision.data,
-      groups: [...revision.data.groups, ...groups],
-      structures: [...revision.data.structures, ...structures],
-      hops: [
-        ...revision.data.hops,
-        ...Arr.filter(current.data.hops, ({ id }) => ghostHops.has(id)),
-      ],
       chapters: Arr.map(revision.data.chapters, (chapter) => ({
         ...chapter,
         reveals: [
@@ -393,7 +387,15 @@ export const ghostedMap = ({
           ),
         ],
       })),
+      groups: [...revision.data.groups, ...groups],
+      hops: [
+        ...revision.data.hops,
+        ...Arr.filter(current.data.hops, ({ id }) => ghostHops.has(id)),
+      ],
+      structures: [...revision.data.structures, ...structures],
     },
+    ghostHops,
+    ghostStructures,
     layout: {
       ...revision.layout,
       structures: {
@@ -401,25 +403,23 @@ export const ghostedMap = ({
         ...Rec.fromEntries(placements),
       },
     },
-    ghostStructures,
-    ghostHops,
   };
 };
 
 const fieldNames = {
+  howItsBuilt: "how it's built",
   oneLiner: "one-liner",
   whatItDoes: "what it does",
-  howItsBuilt: "how it's built",
 } as const satisfies Readonly<Record<string, string>>;
 
 const sectionPhrases = {
-  overview: "The overview differs",
-  groups: "The groups differ",
-  flows: "The flows differ",
   chapters: "The chapters differ",
+  flows: "The flows differ",
+  groups: "The groups differ",
+  overview: "The overview differs",
 } as const satisfies Readonly<Record<DataSection, string>>;
 
-const joinWords = (words: readonly string[]) => {
+const joinWords = (words: ReadonlyArray<string>) => {
   const last = words.at(-1);
 
   return words.length < 2 || last === undefined
@@ -429,7 +429,7 @@ const joinWords = (words: readonly string[]) => {
 
 const spot = ({ x, y }: Placement) => `${x}, ${y}`;
 
-const size = ({ w, d }: Placement) => `${w} × ${d}`;
+const size = ({ d, w }: Placement) => `${w} × ${d}`;
 
 const differs = (
   subject: string,
@@ -445,25 +445,25 @@ const differs = (
 export interface DifferenceLine {
   /** Names the difference, such as `moved:engineer`; no two lines share one. */
   readonly key: string;
-  readonly text: string;
   /** The structure to select when the line is chosen, if it has one. */
   readonly structureId: string | undefined;
+  readonly text: string;
 }
 
 const structureLine = (
   key: string,
   id: string,
   text: string
-): DifferenceLine => ({ key: `${key}:${id}`, text, structureId: id });
+): DifferenceLine => ({ key: `${key}:${id}`, structureId: id, text });
 
 /** The differences of a compare, as sentences. */
 export interface DifferenceLines {
   /** Layout differences a restore turns into pending changes. */
-  readonly layout: readonly DifferenceLine[];
+  readonly layout: ReadonlyArray<DifferenceLine>;
   /** Differences in what the map says, which a restore can't turn into layout changes. */
-  readonly meaning: readonly DifferenceLine[];
+  readonly meaning: ReadonlyArray<DifferenceLine>;
   /** Route overrides that differ, which a restore can't turn into layout changes yet. */
-  readonly routes: readonly DifferenceLine[];
+  readonly routes: ReadonlyArray<DifferenceLine>;
 }
 
 /**
@@ -472,13 +472,13 @@ export interface DifferenceLines {
  * how the revision is called in the sentences, such as "revision 2".
  */
 export const describeDifferences = ({
-  diff,
   current,
+  diff,
   revision,
   revisionName,
 }: {
-  readonly diff: MapDiff;
   readonly current: MapData;
+  readonly diff: MapDiff;
   readonly revision: MapData;
   readonly revisionName: string;
 }): DifferenceLines => {
@@ -508,8 +508,8 @@ export const describeDifferences = ({
 
   const hopLine = (key: string, id: string, text: string): DifferenceLine => ({
     key: `${key}:${id}`,
-    text,
     structureId: hops.get(id)?.from,
+    text,
   });
 
   const inRevisionOnly = `is in ${revisionName}, not in the accepted map`;
@@ -518,14 +518,14 @@ export const describeDifferences = ({
 
   return {
     layout: [
-      ...Arr.map(structures.moved, ({ id, from, to }) =>
+      ...Arr.map(structures.moved, ({ from, id, to }) =>
         structureLine(
           "moved",
           id,
           `${nameOf(id)} moved from ${spot(from)} to ${spot(to)}`
         )
       ),
-      ...Arr.map(structures.resized, ({ id, from, to }) =>
+      ...Arr.map(structures.resized, ({ from, id, to }) =>
         structureLine(
           "resized",
           id,
@@ -562,8 +562,8 @@ export const describeDifferences = ({
       ),
       ...Arr.map(diff.sections, (section): DifferenceLine => ({
         key: `section:${section}`,
-        text: sectionPhrases[section],
         structureId: undefined,
+        text: sectionPhrases[section],
       })),
     ],
     routes: Arr.map(diff.rerouted, (id) =>

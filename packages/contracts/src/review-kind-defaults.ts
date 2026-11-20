@@ -5,9 +5,9 @@ import type { KindSpec, Touches } from "./review-kinds.ts";
 
 /** An item that draws nothing differently. */
 export const touchesNothing: Touches = {
-  structures: [],
   hops: [],
   marks: [],
+  structures: [],
 };
 
 /** `--as` names a structure's final id, so it only fits an item that adds one. */
@@ -35,13 +35,13 @@ export const plain = <I extends BatchItem>(): Pick<
   | "retargeted"
   | "section"
 > => ({
-  section: "diagram",
   appliesToData: (_item, map) => map,
-  touches: () => touchesNothing,
   commitRefusal: () => Option.none(),
-  verdictRefusal: (_item, verdict) => asRefusal(verdict),
   renames: () => [],
   retargeted: (item) => item,
+  section: "diagram",
+  touches: () => touchesNothing,
+  verdictRefusal: (_item, verdict) => asRefusal(verdict),
 });
 
 /** The name of the mark for structures proposed for deletion, in `Touches.marks`. */

@@ -6,7 +6,7 @@ import { PlaceContext } from "./place-context.ts";
 import type { Draft, Placing } from "./place-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
-const blank: Draft = { name: "", shape: "box", group: "", status: "planned" };
+const blank: Draft = { group: "", name: "", shape: "box", status: "planned" };
 
 /** Holds the add form's draft and where its structure goes. */
 export function PlacingProvider({
@@ -23,7 +23,11 @@ export function PlacingProvider({
 
   const value = useMemo(
     (): Placing => ({
+      draft,
       open,
+      pick: setPicking,
+      picking,
+      setDraft,
       setOpen: (next) => {
         setOpen(next);
 
@@ -37,12 +41,8 @@ export function PlacingProvider({
           setDraft(blank);
         }
       },
-      draft,
-      setDraft,
-      picking,
-      spot,
-      pick: setPicking,
       setSpot,
+      spot,
     }),
     [open, draft, picking, spot, firstGroup]
   );

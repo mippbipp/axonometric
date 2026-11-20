@@ -21,7 +21,7 @@ export const listedTopics = (overview: string) =>
   );
 
 /** The subcommand names in `--help`'s SUBCOMMANDS list. */
-export const subcommandsIn = (help: string): readonly string[] =>
+export const subcommandsIn = (help: string): ReadonlyArray<string> =>
   Arr.flatMap(
     Arr.dropWhile(Str.split("\n")(help), (line) => line !== "SUBCOMMANDS"),
     (line: string) => {
@@ -32,7 +32,7 @@ export const subcommandsIn = (help: string): readonly string[] =>
   );
 
 /** The `--flag` names a command's `--help` lists, its global flags included. */
-export const flagsIn = (help: string): readonly string[] =>
+export const flagsIn = (help: string): ReadonlyArray<string> =>
   Arr.flatMap(Str.split("\n")(help), (line: string) => {
     const flag = groupOf(/^ {2}(?<flag>--[a-z][a-z-]*)/u.exec(line), "flag");
 
@@ -40,7 +40,7 @@ export const flagsIn = (help: string): readonly string[] =>
   });
 
 /** Every `--flag` token in `text`, leaving out the flags of git commands. */
-export const flagTokensIn = (text: string): readonly string[] => {
+export const flagTokensIn = (text: string): ReadonlyArray<string> => {
   const withoutGit = Str.replaceAll(/`git [^`]*`/gu, "")(text);
   const found = Str.matchAll(/(?<![\w-])(?<flag>--[a-z][a-z-]*)/gu)(withoutGit);
 
@@ -63,7 +63,9 @@ export const codeWordsIn = (text: string): ReadonlySet<string> => {
 };
 
 /** The `{ a, b: "c" }` field lists in backticks, each as its field names. */
-export const fieldListsIn = (text: string): readonly (readonly string[])[] =>
+export const fieldListsIn = (
+  text: string
+): ReadonlyArray<ReadonlyArray<string>> =>
   Arr.map(
     Arr.fromIterable(Str.matchAll(/`\{ (?<fields>[^`}]+) \}`/gu)(text)),
     (found) =>

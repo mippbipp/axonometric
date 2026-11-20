@@ -8,15 +8,15 @@ import type { MapState } from "./map-state.ts";
  */
 export interface ChapterStop {
   readonly id: string;
-  readonly title: string;
   readonly lede: string;
-  readonly story: string;
+  /** The structures this chapter reveals for the first time, in map order. */
+  readonly newlyRevealed: ReadonlyArray<string>;
+  /** The ids of the hops the chapter plays, in order. */
+  readonly plays: ReadonlyArray<string>;
   /** Every structure revealed by this chapter or an earlier one. */
   readonly revealed: ReadonlySet<string>;
-  /** The structures this chapter reveals for the first time, in map order. */
-  readonly newlyRevealed: readonly string[];
-  /** The ids of the hops the chapter plays, in order. */
-  readonly plays: readonly string[];
+  readonly story: string;
+  readonly title: string;
 }
 
 /** The id of the one chapter a map with no chapters gets. */
@@ -30,18 +30,18 @@ export const wholeMapChapterId = "whole-map";
 export const chapterStopsOf = (
   state: MapState
 ): Arr.NonEmptyReadonlyArray<ChapterStop> => {
-  const { structures, chapters } = state.data;
+  const { chapters, structures } = state.data;
 
   if (!Arr.isReadonlyArrayNonEmpty(chapters)) {
     return [
       {
         id: wholeMapChapterId,
-        title: "The whole map",
         lede: "Every structure at once.",
-        story: "This map has no chapters yet, so it shows everything.",
-        revealed: new Set(Arr.map(structures, ({ id }) => id)),
         newlyRevealed: [],
         plays: [],
+        revealed: new Set(Arr.map(structures, ({ id }) => id)),
+        story: "This map has no chapters yet, so it shows everything.",
+        title: "The whole map",
       },
     ];
   }
@@ -61,12 +61,12 @@ export const chapterStopsOf = (
 
     return {
       id: chapter.id,
-      title: chapter.title,
       lede: chapter.lede,
-      story: chapter.story,
-      revealed: new Set(revealed),
       newlyRevealed,
       plays: chapter.plays,
+      revealed: new Set(revealed),
+      story: chapter.story,
+      title: chapter.title,
     };
   });
 };

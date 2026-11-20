@@ -14,16 +14,16 @@ import { HttpClient, HttpClientRequest } from "effect/http";
 // another tab would: through the same API the page uses.
 
 export interface Sent {
-  readonly status: number;
   readonly body: string;
+  readonly status: number;
 }
 
 export const send = (request: HttpClientRequest.HttpClientRequest) =>
   HttpClient.HttpClient.use((client) => client.execute(request)).pipe(
     Effect.flatMap((response) =>
       Effect.map(response.text, (body): Sent => ({
-        status: response.status,
         body,
+        status: response.status,
       }))
     ),
     Effect.scoped,
@@ -38,8 +38,8 @@ const jsonType = "application/json";
 
 /** The headers a page the server served sends with a write. */
 export const ownOrigin = (url: string) => ({
-  origin: url,
   "content-type": jsonType,
+  origin: url,
 });
 
 /**
@@ -50,10 +50,10 @@ export const ownOrigin = (url: string) => ({
 export const writeText = (
   url: string,
   request: {
-    readonly method: "put" | "post";
-    readonly target: string;
     readonly body: string;
     readonly headers?: Readonly<Record<string, string>>;
+    readonly method: "put" | "post";
+    readonly target: string;
   }
 ) => {
   const headers = request.headers ?? ownOrigin(url);
@@ -71,21 +71,21 @@ export const writeText = (
 
 /** A POST of `body`, already JSON text, from the server's own origin. */
 export const post = (url: string, target: string, body: string) =>
-  writeText(url, { method: "post", target, body });
+  writeText(url, { body, method: "post", target });
 
 /** A write from the server's own origin, as the page sends it. */
 export const write = (
   url: string,
   request: {
+    readonly body: PendingLayoutWrite | AcceptWrite;
     readonly method: "put" | "post";
     readonly target: string;
-    readonly body: PendingLayoutWrite | AcceptWrite;
   }
 ) =>
   writeText(url, {
+    body: JSON.stringify(request.body),
     method: request.method,
     target: request.target,
-    body: JSON.stringify(request.body),
   });
 
 export const moveOf = (
@@ -95,7 +95,7 @@ export const moveOf = (
 ): LayoutChange => ({
   id,
   kind: "move",
-  moves: [{ target: { kind: "structure", id: structure }, position: to }],
+  moves: [{ position: to, target: { id: structure, kind: "structure" } }],
 });
 
 export const resizeOf = (
@@ -103,17 +103,17 @@ export const resizeOf = (
   structure: string,
   footprint: Footprint
 ): LayoutChange => ({
+  footprint,
   id,
   kind: "resize",
-  target: { kind: "structure", id: structure },
-  footprint,
+  target: { id: structure, kind: "structure" },
 });
 
 /** What `acceptChanges` saves and accepts. */
 export interface Acceptance {
   /** The file revision of proposals.json before the write. */
   readonly base: number;
-  readonly changes: readonly LayoutChange[];
+  readonly changes: ReadonlyArray<LayoutChange>;
   readonly message: string;
 }
 
@@ -128,24 +128,24 @@ export interface ServeOutput {
  * the answer and what serve printed, which says why for a 500.
  */
 export const acceptChanges = Effect.fnUntraced(function* (
-  { url, output }: ServeOutput & { readonly url: string },
+  { output, url }: ServeOutput & { readonly url: string },
   { base, changes, message }: Acceptance
 ) {
   const why = (sent: Sent) =>
     `${sent.status}: ${sent.body}\nserve printed:\n${output.stderr}`;
 
   const put = yield* write(url, {
+    body: { baseFileRevision: base, layout: changes },
     method: "put",
     target: "/api/proposals/layout",
-    body: { baseFileRevision: base, layout: changes },
   });
 
   assert.strictEqual(put.status, 200, why(put));
 
   const accepted = yield* write(url, {
+    body: { baseFileRevision: base + 1, changeIds: "all", message },
     method: "post",
     target: "/api/proposals/accept",
-    body: { baseFileRevision: base + 1, changeIds: "all", message },
   });
 
   assert.strictEqual(accepted.status, 200, why(accepted));

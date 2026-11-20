@@ -26,15 +26,15 @@ import type { Sent } from "./revisions.ts";
 const pendingLayout = "/api/proposals/layout";
 
 /** The review map served on a free port, with extra `serve` arguments. */
-const servedWith = (args: readonly string[]) => serveReviewMap({}, args);
+const servedWith = (args: ReadonlyArray<string>) => serveReviewMap({}, args);
 
 const served = servedWith([]);
 
 /** A body for the endpoint, which the server may refuse. */
 const WriteBody = Schema.Struct({
   baseFileRevision: Schema.optionalKey(Schema.Finite),
-  layout: Schema.optionalKey(Schema.Array(Schema.Unknown)),
   file: Schema.optionalKey(Schema.String),
+  layout: Schema.optionalKey(Schema.Array(Schema.Unknown)),
 });
 
 const toJson = (value: typeof WriteBody.Type) =>
@@ -60,10 +60,10 @@ const put = (
 ) =>
   Effect.flatMap(body, (text) =>
     writeText(url, {
+      body: text,
+      headers,
       method: "put",
       target: pendingLayout,
-      headers,
-      body: text,
     })
   );
 
@@ -85,7 +85,7 @@ const putChunked = (
       )
     )
   ).pipe(
-    Effect.map((response): Sent => ({ status: response.status, body: "" })),
+    Effect.map((response): Sent => ({ body: "", status: response.status })),
     Effect.scoped,
     Effect.orDie,
     Effect.provide(NodeHttpClient.layerNodeHttp)
@@ -127,7 +127,7 @@ const asProxied = (origin: string) => ({
 const pageAt = (x: number, y = 3): LayoutChange => ({
   id: "m1",
   kind: "move",
-  moves: [{ target: { kind: "structure", id: "page" }, position: { x, y } }],
+  moves: [{ position: { x, y }, target: { id: "page", kind: "structure" } }],
 });
 
 const moveBody = (baseFileRevision: number, x: number) =>
@@ -182,8 +182,8 @@ describe("writing pending layout changes over HTTP", () => {
       const savedProposals = yield* decodeProposals(saved);
       assert.deepStrictEqual(savedProposals, {
         format: 1,
-        revision: 1,
         layout: [pageAt(4)],
+        revision: 1,
       });
     }).pipe(Effect.provide(NodeServices.layer))
   );
@@ -287,8 +287,8 @@ describe("writing pending layout changes over HTTP", () => {
         put(
           url,
           {
-            origin: url,
             "content-type": "application/x-www-form-urlencoded",
+            origin: url,
           },
           Effect.succeed("baseFileRevision=0&layout=[]")
         )
@@ -296,7 +296,7 @@ describe("writing pending layout changes over HTTP", () => {
       yield* assertRefused(
         home,
         415,
-        put(url, { origin: url, "content-type": "text/plain" }, moveBody(0, 4))
+        put(url, { "content-type": "text/plain", origin: url }, moveBody(0, 4))
       );
     })
   );
@@ -331,7 +331,7 @@ describe("writing pending layout changes over HTTP", () => {
         "{ not json",
         yield* toJson({ baseFileRevision: 0 }),
         yield* moveBody(0, 0.3),
-        yield* toJson({ baseFileRevision: 0, layout: [], file: "../data.mjs" }),
+        yield* toJson({ baseFileRevision: 0, file: "../data.mjs", layout: [] }),
       ]) {
         yield* assertRefused(
           home,
@@ -363,8 +363,8 @@ describe("writing pending layout changes over HTTP", () => {
 
         assert.deepStrictEqual(answer.proposals, {
           format: 1,
-          revision: 1,
           layout: [pageAt(4)],
+          revision: 1,
         });
       })
   );
@@ -477,11 +477,11 @@ describe("writing pending layout changes over HTTP", () => {
           ),
           Stream.flatMap((event) =>
             ServerEvent.match(event, {
-              MapUpdated: ({ state }) => Stream.make(pageXOf(state)),
-              MapRejected: () => Stream.empty,
-              PendingUpdated: () => Stream.empty,
-              HistoryUpdated: () => Stream.empty,
               Heartbeat: () => Stream.empty,
+              HistoryUpdated: () => Stream.empty,
+              MapRejected: () => Stream.empty,
+              MapUpdated: ({ state }) => Stream.make(pageXOf(state)),
+              PendingUpdated: () => Stream.empty,
             })
           ),
           Stream.tap(() => open.open),

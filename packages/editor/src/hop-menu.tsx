@@ -83,12 +83,12 @@ export function HopMenu() {
 
   return (
     <OpenedHopMenu
-      key={opened.id}
       hop={hop}
-      opened={opened}
+      key={opened.id}
       onClose={() => {
         setOpened(null);
       }}
+      opened={opened}
     />
   );
 }
@@ -96,15 +96,15 @@ export function HopMenu() {
 /** The menu for one hop, open at the point it was asked for. */
 function OpenedHopMenu({
   hop,
-  opened,
   onClose,
+  opened,
 }: {
   readonly hop: Hop;
-  readonly opened: Opened;
   readonly onClose: () => void;
+  readonly opened: Opened;
 }) {
   const connections = useConnections();
-  const { toggle, failure: flowFailure } = useHopFlowToggle(hop.id);
+  const { failure: flowFailure, toggle } = useHopFlowToggle(hop.id);
   const [failure, setFailure] = useState<string | undefined>();
 
   if (connections === null) {
@@ -121,12 +121,12 @@ function OpenedHopMenu({
 
   return (
     <Menu
-      open
       onOpenChange={(open) => {
         if (!open) {
           onClose();
         }
       }}
+      open
     >
       <MenuContent anchor={anchor} data-hop-menu={hop.id}>
         <MenuLabel>{hop.label}</MenuLabel>
@@ -155,9 +155,9 @@ function OpenedHopMenu({
             <MenuSubContent>
               {Arr.map(flows, ({ id, name }) => (
                 <MenuCheckboxItem
-                  key={id}
-                  data-menu-flow={id}
                   checked={inFlows.includes(id)}
+                  data-menu-flow={id}
+                  key={id}
                   onCheckedChange={(wanted) => {
                     toggle(id, wanted);
                   }}
@@ -189,9 +189,9 @@ function OpenedHopMenu({
         </MenuItem>
         {(failure ?? flowFailure) === undefined ? null : (
           <p
-            role="alert"
-            data-menu-failure
             className="border-refused max-w-56 border-l-2 px-2 py-1"
+            data-menu-failure
+            role="alert"
           >
             {failure ?? flowFailure}
           </p>

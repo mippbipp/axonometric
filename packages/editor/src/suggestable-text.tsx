@@ -29,14 +29,14 @@ export function DiscardSuggestion({ entry }: { readonly entry: Entry }) {
 
   return (
     <button
-      type="button"
-      data-suggestion-discard={entry.item.field}
-      className={controlClass}
       aria-label={`Discard suggestion: ${fieldLabel(entry.item.field)}`}
+      className={controlClass}
+      data-suggestion-discard={entry.item.field}
       disabled={review?.canWrite !== true}
       onClick={() => {
         review?.ops.discardProposal(entry.item.id, noop);
       }}
+      type="button"
     >
       Discard
     </button>
@@ -55,12 +55,12 @@ export function EditSuggestion({
 
   return (
     <button
-      type="button"
-      data-suggestion-edit={entry.item.field}
-      className={controlClass}
       aria-label={`Edit suggestion: ${fieldLabel(entry.item.field)}`}
+      className={controlClass}
+      data-suggestion-edit={entry.item.field}
       disabled={review?.canWrite !== true}
       onClick={onEdit}
+      type="button"
     >
       Edit
     </button>
@@ -69,19 +69,19 @@ export function EditSuggestion({
 
 /** The box a suggestion is written in, for a new one or an open one edited again. */
 function SuggestionForm({
-  structure,
   field,
-  text,
-  open,
   onDone,
+  open,
+  structure,
+  text,
 }: {
-  readonly structure: string;
   readonly field: TextField;
-  /** The text as data.mjs has it. */
-  readonly text: string;
+  readonly onDone: () => void;
   /** The open suggestion being edited again, if any. */
   readonly open: Entry | undefined;
-  readonly onDone: () => void;
+  readonly structure: string;
+  /** The text as data.mjs has it. */
+  readonly text: string;
 }) {
   const review = useReview();
 
@@ -101,22 +101,20 @@ function SuggestionForm({
 
   return (
     <NoteForm
-      label={`Your suggestion for the ${fieldLabel(field)}`}
-      initial={open?.item.after ?? text}
-      submit={open === undefined ? "Suggest this" : "Save suggestion"}
-      placeholder="Write the text as you'd like it to read…"
-      limit={maxSuggestionLength}
-      rows={4}
       canSend={(next) => next !== text && next !== open?.item.after}
+      initial={open?.item.after ?? text}
+      label={`Your suggestion for the ${fieldLabel(field)}`}
+      limit={maxSuggestionLength}
+      onCancel={onDone}
       onSubmit={(next, done) => {
         if (open === undefined) {
           review.ops.add(
             {
+              after: next,
+              before: text,
+              field,
               kind: "suggestion",
               structureId: structure,
-              field,
-              before: text,
-              after: next,
             },
             finish(done)
           );
@@ -124,7 +122,9 @@ function SuggestionForm({
           review.ops.editProposal(open.item.id, next, finish(done));
         }
       }}
-      onCancel={onDone}
+      placeholder="Write the text as you'd like it to read…"
+      rows={4}
+      submit={open === undefined ? "Suggest this" : "Save suggestion"}
     />
   );
 }
@@ -136,28 +136,28 @@ function SuggestionForm({
  * none, since it belongs to the agent until the commit.
  */
 function SuggestionBeside({
+  children,
+  className,
   entry,
   text,
-  className,
-  children,
 }: {
+  readonly children?: ReactNode;
+  readonly className: string | undefined;
   readonly entry: Entry;
   /** The text as data.mjs has it. */
   readonly text: string;
-  readonly className: string | undefined;
-  readonly children?: ReactNode;
 }) {
   const { item, status } = entry;
 
   return (
     <div
-      data-suggested
       className="border-pending flex flex-col gap-1 border-l-2 pl-2"
+      data-suggested
     >
       <span className={labelClass}>Suggested</span>
       <p className={cn(className, "break-words")}>{item.after}</p>
       {item.before === text ? null : (
-        <span data-original-changed className="text-xs">
+        <span className="text-xs" data-original-changed>
           The current text has changed since you wrote this.
         </span>
       )}
@@ -174,16 +174,16 @@ function SuggestionBeside({
  * marked as current. `children` are the buttons for an open suggestion.
  */
 export function TextAndSuggestion({
+  children,
+  className,
   found,
   text,
-  className,
-  children,
 }: {
+  readonly children?: ReactNode;
+  readonly className: string | undefined;
   readonly found: Entry | undefined;
   /** The text as data.mjs has it. */
   readonly text: string;
-  readonly className: string | undefined;
-  readonly children?: ReactNode;
 }) {
   if (found === undefined) {
     return <p className={className}>{text}</p>;
@@ -200,11 +200,11 @@ export function TextAndSuggestion({
 
   return (
     <>
-      <div data-current className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-0.5" data-current>
         <span className={labelClass}>Current</span>
         <p className={className}>{text}</p>
       </div>
-      <SuggestionBeside entry={found} text={text} className={className}>
+      <SuggestionBeside className={className} entry={found} text={text}>
         {children}
       </SuggestionBeside>
     </>
@@ -216,28 +216,28 @@ export function TextAndSuggestion({
  * "step 2": Edit, or Suggest again after the agent turned one down.
  */
 export function StartButton({
-  field,
-  what,
   again,
+  field,
   onStart,
+  what,
 }: {
-  /** The field it starts, or the step's name field for a whole step. */
-  readonly field: TextField;
-  readonly what: string;
   /** Whether the text was suggested before, and the agent turned that down. */
   readonly again: boolean;
+  /** The field it starts, or the step's name field for a whole step. */
+  readonly field: TextField;
   readonly onStart: () => void;
+  readonly what: string;
 }) {
   const label = again ? "Suggest again" : "Edit";
 
   return (
     <span>
       <button
-        type="button"
-        data-suggest={field}
-        className={controlClass}
         aria-label={`${label}: ${what}`}
+        className={controlClass}
+        data-suggest={field}
         onClick={onStart}
+        type="button"
       >
         {label}
       </button>
@@ -262,18 +262,18 @@ export function StartButton({
  * On a page that can't write, this is just the text.
  */
 export function SuggestableText({
-  structure,
-  field,
-  text,
   className,
+  field,
+  structure,
+  text,
 }: {
-  /** The structure's id. */
-  readonly structure: string;
-  readonly field: TextField;
-  /** The text as data.mjs has it. */
-  readonly text: string;
   /** How the text is set. */
   readonly className?: string;
+  readonly field: TextField;
+  /** The structure's id. */
+  readonly structure: string;
+  /** The text as data.mjs has it. */
+  readonly text: string;
 }) {
   const review = useReview();
   const editOn = useEditOn();
@@ -293,25 +293,25 @@ export function SuggestableText({
 
   return (
     <div
+      className="flex flex-col gap-1.5"
       data-suggestable={field}
       data-suggestion-state={found?.status.state ?? "none"}
-      className="flex flex-col gap-1.5"
     >
       {editing ? (
         <>
           <p className={className}>{text}</p>
           <SuggestionForm
-            structure={structure}
             field={field}
-            text={text}
-            open={open}
             onDone={() => {
               setOpened(false);
             }}
+            open={open}
+            structure={structure}
+            text={text}
           />
         </>
       ) : (
-        <TextAndSuggestion found={found} text={text} className={className}>
+        <TextAndSuggestion className={className} found={found} text={text}>
           {open === undefined || !editOn ? null : (
             <>
               <EditSuggestion entry={open} onEdit={start} />
@@ -326,10 +326,10 @@ export function SuggestableText({
       open === undefined &&
       canSuggest(found) ? (
         <StartButton
-          field={field}
-          what={fieldLabel(field)}
           again={found !== undefined && !wasTaken(found.status)}
+          field={field}
           onStart={start}
+          what={fieldLabel(field)}
         />
       ) : null}
     </div>

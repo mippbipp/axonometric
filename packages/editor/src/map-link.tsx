@@ -9,11 +9,11 @@ import type { ReactNode } from "react";
  * Links open in a new tab, so following one doesn't lose the walkthrough.
  */
 export function MapLink({
-  href,
   children,
+  href,
 }: {
-  readonly href?: string | undefined;
   readonly children: ReactNode;
+  readonly href?: string | undefined;
 }) {
   if (href === undefined) {
     return <code className="wrap-anywhere">{children}</code>;
@@ -21,10 +21,10 @@ export function MapLink({
 
   return (
     <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
       className="focus-visible:outline-ink wrap-anywhere underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-1"
+      href={href}
+      rel="noreferrer"
+      target="_blank"
     >
       {children}
     </a>

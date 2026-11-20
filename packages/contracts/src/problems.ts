@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import { Array as Arr, Predicate, Result, Schema, SchemaIssue } from "effect";
 import { dual } from "effect/Function";
 
@@ -40,7 +41,7 @@ export type MapProblem = typeof MapProblem.Type;
 const identifier = /^[A-Za-z_$][\w$]*$/u;
 
 /** Formats a path such as `["structures", 1, "id"]` as `structures[1].id`. */
-export const formatPath = (path: readonly PropertyKey[]) =>
+export const formatPath = (path: ReadonlyArray<PropertyKey>) =>
   Arr.join(
     Arr.map(path, (key, index) => {
       if (Predicate.isNumber(key)) {
@@ -62,9 +63,9 @@ export const formatPath = (path: readonly PropertyKey[]) =>
 /** Where a problem is and what's wrong. An empty path means the whole file. */
 interface ProblemAt {
   readonly file: MapFile;
-  readonly path: readonly PropertyKey[];
-  readonly message: string;
   readonly hint?: string;
+  readonly message: string;
+  readonly path: ReadonlyArray<PropertyKey>;
 }
 
 const make =
@@ -90,18 +91,20 @@ const formatter = SchemaIssue.makeFormatterStandardSchemaV1();
 
 /** Lists every failure in a schema issue as an error in `file`. */
 export const problemsFromIssue: {
-  (issue: SchemaIssue.Issue): (file: MapFile) => readonly MapProblem[];
-  (file: MapFile, issue: SchemaIssue.Issue): readonly MapProblem[];
-} = dual(2, (file: MapFile, issue: SchemaIssue.Issue): readonly MapProblem[] =>
-  Arr.map(formatter(issue).issues, (failure) =>
-    mapError({
-      file,
-      path: Arr.map(failure.path ?? [], (segment) =>
-        Predicate.isPropertyKey(segment) ? segment : segment.key
-      ),
-      message: failure.message,
-    })
-  )
+  (issue: SchemaIssue.Issue): (file: MapFile) => ReadonlyArray<MapProblem>;
+  (file: MapFile, issue: SchemaIssue.Issue): ReadonlyArray<MapProblem>;
+} = dual(
+  2,
+  (file: MapFile, issue: SchemaIssue.Issue): ReadonlyArray<MapProblem> =>
+    Arr.map(formatter(issue).issues, (failure) =>
+      mapError({
+        file,
+        path: Arr.map(failure.path ?? [], (segment) =>
+          Predicate.isPropertyKey(segment) ? segment : segment.key
+        ),
+        message: failure.message,
+      })
+    )
 );
 
 /**
@@ -120,7 +123,7 @@ export const formatProblem = (problem: MapProblem) => {
 };
 
 /** Splits `problems` into errors and warnings, each in their original order. */
-export const splitProblems = (problems: readonly MapProblem[]) => {
+export const splitProblems = (problems: ReadonlyArray<MapProblem>) => {
   const [errors, warnings] = Arr.partition(problems, (problem) =>
     problem.severity === "error"
       ? Result.succeed(problem)

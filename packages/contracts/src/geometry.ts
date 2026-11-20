@@ -5,8 +5,8 @@ import type { ScreenPoint, ScreenRect } from "./iso.ts";
 
 /** A straight piece of a line on screen. */
 export interface Segment {
-  readonly start: ScreenPoint;
   readonly end: ScreenPoint;
+  readonly start: ScreenPoint;
 }
 
 /** A share of a segment, from 0 at its start to 1 at its end. */
@@ -22,7 +22,7 @@ const tolerance = 1e-6;
 export const tiny = 1e-9;
 
 /** A rect with no size, at the origin: where a missing rect stands in. */
-export const emptyRect: ScreenRect = { left: 0, top: 0, right: 0, bottom: 0 };
+export const emptyRect: ScreenRect = { bottom: 0, left: 0, right: 0, top: 0 };
 
 /** How far apart the sideways spots for a name tag are, in screen units. */
 const slideStep = 6;
@@ -31,7 +31,7 @@ const slideStep = 6;
  * How far a name tag may slide sideways, up to `reach` either way, the
  * smallest slide first.
  */
-export const slideOffsets = (reach: number): readonly number[] => {
+export const slideOffsets = (reach: number): ReadonlyArray<number> => {
   const steps = Math.floor(reach / slideStep);
 
   return Arr.sort(
@@ -41,7 +41,7 @@ export const slideOffsets = (reach: number): readonly number[] => {
 };
 
 /** A rect's corners, clockwise from the top left. */
-export const rectPolygon = (rect: ScreenRect): readonly ScreenPoint[] => [
+export const rectPolygon = (rect: ScreenRect): ReadonlyArray<ScreenPoint> => [
   { sx: rect.left, sy: rect.top },
   { sx: rect.right, sy: rect.top },
   { sx: rect.right, sy: rect.bottom },
@@ -53,7 +53,9 @@ export const rectPolygon = (rect: ScreenRect): readonly ScreenPoint[] => [
 // `sceneOf` went from 930 ms to 130 ms on the pipeline map.
 
 /** The smallest rect holding every point. */
-export const boundsOfPoints = (points: readonly ScreenPoint[]): ScreenRect => {
+export const boundsOfPoints = (
+  points: ReadonlyArray<ScreenPoint>
+): ScreenRect => {
   let left = Number.POSITIVE_INFINITY;
   let top = Number.POSITIVE_INFINITY;
   let right = Number.NEGATIVE_INFINITY;
@@ -66,7 +68,7 @@ export const boundsOfPoints = (points: readonly ScreenPoint[]): ScreenRect => {
     bottom = Math.max(bottom, sy);
   }
 
-  return { left, top, right, bottom };
+  return { bottom, left, right, top };
 };
 
 /** A rect grown by `by` on every side. */
@@ -74,17 +76,17 @@ export const growRect: {
   (by: number): (rect: ScreenRect) => ScreenRect;
   (rect: ScreenRect, by: number): ScreenRect;
 } = dual(2, (rect: ScreenRect, by: number): ScreenRect => ({
-  left: rect.left - by,
-  top: rect.top - by,
-  right: rect.right + by,
   bottom: rect.bottom + by,
+  left: rect.left - by,
+  right: rect.right + by,
+  top: rect.top - by,
 }));
 
 const origin: ScreenPoint = { sx: 0, sy: 0 };
 
 /** The least and greatest of `polygon`'s points along the axis (ax, ay). */
 const extentAlong = (
-  polygon: readonly ScreenPoint[],
+  polygon: ReadonlyArray<ScreenPoint>,
   { ax, ay }: { readonly ax: number; readonly ay: number }
 ) => {
   let min = Number.POSITIVE_INFINITY;
@@ -97,7 +99,7 @@ const extentAlong = (
     max = Math.max(max, along);
   }
 
-  return { min, max };
+  return { max, min };
 };
 
 /**
@@ -105,9 +107,9 @@ const extentAlong = (
  * projections onto it are apart, or only touch.
  */
 const separatedByEdgeOf = (
-  edges: readonly ScreenPoint[],
-  a: readonly ScreenPoint[],
-  b: readonly ScreenPoint[]
+  edges: ReadonlyArray<ScreenPoint>,
+  a: ReadonlyArray<ScreenPoint>,
+  b: ReadonlyArray<ScreenPoint>
 ) => {
   for (let index = 0; index < edges.length; index += 1) {
     const point = edges[index] ?? origin;
@@ -130,11 +132,11 @@ const separatedByEdgeOf = (
  * Polygons that only touch along an edge or at a corner don't.
  */
 export const convexOverlap: {
-  (b: readonly ScreenPoint[]): (a: readonly ScreenPoint[]) => boolean;
-  (a: readonly ScreenPoint[], b: readonly ScreenPoint[]): boolean;
+  (b: ReadonlyArray<ScreenPoint>): (a: ReadonlyArray<ScreenPoint>) => boolean;
+  (a: ReadonlyArray<ScreenPoint>, b: ReadonlyArray<ScreenPoint>): boolean;
 } = dual(
   2,
-  (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
+  (a: ReadonlyArray<ScreenPoint>, b: ReadonlyArray<ScreenPoint>) =>
     !separatedByEdgeOf(a, a, b) && !separatedByEdgeOf(b, a, b)
 );
 
@@ -143,11 +145,16 @@ export const convexOverlap: {
  * `undefined` when none of it is.
  */
 export const clipToConvex: {
-  (polygon: readonly ScreenPoint[]): (segment: Segment) => Interval | undefined;
-  (segment: Segment, polygon: readonly ScreenPoint[]): Interval | undefined;
+  (
+    polygon: ReadonlyArray<ScreenPoint>
+  ): (segment: Segment) => Interval | undefined;
+  (segment: Segment, polygon: ReadonlyArray<ScreenPoint>): Interval | undefined;
 } = dual(
   2,
-  (segment: Segment, polygon: readonly ScreenPoint[]): Interval | undefined => {
+  (
+    segment: Segment,
+    polygon: ReadonlyArray<ScreenPoint>
+  ): Interval | undefined => {
     // A plain loop over the edges: it runs for every candidate spot.
     let cx = 0;
     let cy = 0;
@@ -193,17 +200,17 @@ export const clipToConvex: {
   }
 );
 
-export const segmentLength = ({ start, end }: Segment) =>
+export const segmentLength = ({ end, start }: Segment) =>
   Math.hypot(end.sx - start.sx, end.sy - start.sy);
 
 /** The straight pieces of a polyline, in order. */
 export const segmentsOf = (
-  points: readonly ScreenPoint[]
-): readonly (Segment & { readonly index: number })[] =>
+  points: ReadonlyArray<ScreenPoint>
+): ReadonlyArray<Segment & { readonly index: number }> =>
   Arr.flatMap(points, (start, index) => {
     const end = points[index + 1];
 
-    return end === undefined ? [] : [{ start, end, index }];
+    return end === undefined ? [] : [{ end, index, start }];
   });
 
 /**
@@ -211,9 +218,9 @@ export const segmentsOf = (
  * rather than just touching it.
  */
 export const segmentCrosses: {
-  (polygon: readonly ScreenPoint[]): (segment: Segment) => boolean;
-  (segment: Segment, polygon: readonly ScreenPoint[]): boolean;
-} = dual(2, (segment: Segment, polygon: readonly ScreenPoint[]) => {
+  (polygon: ReadonlyArray<ScreenPoint>): (segment: Segment) => boolean;
+  (segment: Segment, polygon: ReadonlyArray<ScreenPoint>): boolean;
+} = dual(2, (segment: Segment, polygon: ReadonlyArray<ScreenPoint>) => {
   const inside = clipToConvex(segment, polygon);
 
   return (
@@ -225,12 +232,12 @@ export const segmentCrosses: {
 /** The point a share `t` of the way from `from` to `to`. */
 export const lerp = ({
   from,
-  to,
   t,
+  to,
 }: {
   readonly from: ScreenPoint;
-  readonly to: ScreenPoint;
   readonly t: number;
+  readonly to: ScreenPoint;
 }): ScreenPoint => ({
   sx: from.sx + (to.sx - from.sx) * t,
   sy: from.sy + (to.sy - from.sy) * t,
@@ -248,9 +255,9 @@ const distanceToRect = (rect: ScreenRect, { sx, sy }: ScreenPoint) =>
  * nearest points, 0 where they overlap.
  */
 export const gapBetween: {
-  (polygon: readonly ScreenPoint[]): (rect: ScreenRect) => number;
-  (rect: ScreenRect, polygon: readonly ScreenPoint[]): number;
-} = dual(2, (rect: ScreenRect, polygon: readonly ScreenPoint[]) => {
+  (polygon: ReadonlyArray<ScreenPoint>): (rect: ScreenRect) => number;
+  (rect: ScreenRect, polygon: ReadonlyArray<ScreenPoint>): number;
+} = dual(2, (rect: ScreenRect, polygon: ReadonlyArray<ScreenPoint>) => {
   if (convexOverlap(rectPolygon(rect), polygon)) {
     return 0;
   }
@@ -266,9 +273,9 @@ export const gapBetween: {
 
 /** How far a point sits from a polyline. */
 export const distanceToPolyline: {
-  (point: ScreenPoint): (points: readonly ScreenPoint[]) => number;
-  (points: readonly ScreenPoint[], point: ScreenPoint): number;
-} = dual(2, (points: readonly ScreenPoint[], point: ScreenPoint) => {
+  (point: ScreenPoint): (points: ReadonlyArray<ScreenPoint>) => number;
+  (points: ReadonlyArray<ScreenPoint>, point: ScreenPoint): number;
+} = dual(2, (points: ReadonlyArray<ScreenPoint>, point: ScreenPoint) => {
   // A plain loop: label placement measures every candidate spot with it.
   let best = Number.POSITIVE_INFINITY;
 

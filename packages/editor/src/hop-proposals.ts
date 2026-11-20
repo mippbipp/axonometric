@@ -8,14 +8,14 @@ import { useReview } from "./review-context.ts";
 
 /** What the page knows about the proposals on one hop. */
 export interface HopProposals {
-  /** The open proposals that draw, relabel or delete the hop. */
-  readonly open: readonly HopProposal[];
   /** Whether the hop is proposed for deletion, open or waiting in a batch. */
   readonly deleted: boolean;
-  /** Whether the hop is only proposed: data.mjs has no such hop yet. */
-  readonly drawn: boolean;
   /** The open proposal that deletes the hop, if any. */
   readonly deletion: Option.Option<HopProposal>;
+  /** Whether the hop is only proposed: data.mjs has no such hop yet. */
+  readonly drawn: boolean;
+  /** The open proposals that draw, relabel or delete the hop. */
+  readonly open: ReadonlyArray<HopProposal>;
   /** The open proposal that relabels the hop, if any. */
   readonly relabel: Option.Option<HopProposal>;
 }
@@ -34,17 +34,17 @@ export const useHopProposals = (id: string): HopProposals | null => {
   const open = Arr.filter(
     Arr.flatMap(review?.entries ?? [], ({ item, status }) =>
       item.kind === "hop" && status.state === "open"
-        ? [{ id: item.id, change: item.change }]
+        ? [{ change: item.change, id: item.id }]
         : []
     ),
     ({ change }) => actsOn(id)(change)
   );
 
   return {
-    open,
     deleted: marked(connections.proposed, removedHopMark).has(id),
-    drawn: Arr.some(open, ({ change }) => change.action === "add"),
     deletion: Arr.findFirst(open, ({ change }) => change.action === "delete"),
+    drawn: Arr.some(open, ({ change }) => change.action === "add"),
+    open,
     relabel: Arr.findFirst(open, ({ change }) => change.action === "relabel"),
   };
 };

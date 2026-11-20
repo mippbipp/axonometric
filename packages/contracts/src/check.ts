@@ -9,13 +9,13 @@ import type { MapProblem } from "./problems.ts";
 import { checkSources, repeatedSources } from "./sources.ts";
 import type { SourceFacts } from "./sources.ts";
 
-type Path = readonly PropertyKey[];
+type Path = ReadonlyArray<PropertyKey>;
 
 const error = (path: Path, message: string) =>
-  mapError({ file: "data.mjs", path, message });
+  mapError({ file: "data.mjs", message, path });
 
 const warning = (path: Path, message: string) =>
-  mapWarning({ file: "data.mjs", path, message });
+  mapWarning({ file: "data.mjs", message, path });
 
 interface Keyed {
   readonly key: string;
@@ -24,9 +24,9 @@ interface Keyed {
 
 /** An error for every item whose key an earlier item already uses. */
 const repeats = (
-  items: readonly Keyed[],
+  items: ReadonlyArray<Keyed>,
   message: (key: string) => string
-): readonly MapProblem[] => {
+): ReadonlyArray<MapProblem> => {
   const seen = new Set<string>();
 
   return Arr.flatMap(items, ({ key, path }) => {
@@ -39,10 +39,10 @@ const repeats = (
 };
 
 const keyedBy = <A>(
-  items: readonly A[],
+  items: ReadonlyArray<A>,
   section: string,
   field: keyof A & string
-): readonly Keyed[] =>
+): ReadonlyArray<Keyed> =>
   Arr.map(items, (item, index) => ({
     key: String(item[field]),
     path: [section, index, field],
@@ -90,7 +90,7 @@ const uniqueIds = (data: MapData) => [
 
 /** Errors for every id in `ids` that isn't in `known`. */
 const unknownIds = (
-  { ids, path }: { readonly ids: readonly string[]; readonly path: Path },
+  { ids, path }: { readonly ids: ReadonlyArray<string>; readonly path: Path },
   known: ReadonlySet<string>,
   message: (id: string) => string
 ) =>
@@ -154,7 +154,7 @@ const references = (data: MapData) => {
  * between structures revealed by then, and once the last chapter is reached
  * every structure has been revealed.
  */
-const walkthrough = (data: MapData): readonly MapProblem[] => {
+const walkthrough = (data: MapData): ReadonlyArray<MapProblem> => {
   if (data.chapters.length === 0) {
     return [];
   }
@@ -229,8 +229,8 @@ interface RelativeLink {
  * Every link in the overview that names a file rather than a full URL, such
  * as `https://...`.
  */
-const relativeLinks = (data: MapData): readonly RelativeLink[] => {
-  const fields: readonly LinkField[] = [
+const relativeLinks = (data: MapData): ReadonlyArray<RelativeLink> => {
+  const fields: ReadonlyArray<LinkField> = [
     ...Arr.map(data.overview.decisions ?? [], (decision, index) => ({
       link: decision.adr,
       path: ["overview", "decisions", index, "adr"],
@@ -249,7 +249,7 @@ const relativeLinks = (data: MapData): readonly RelativeLink[] => {
 const links = (
   data: MapData,
   linkExists: (link: string) => boolean
-): readonly MapProblem[] => {
+): ReadonlyArray<MapProblem> => {
   const candidates = relativeLinks(data);
 
   return Arr.flatMap(candidates, ({ link, path }) =>
@@ -291,7 +291,7 @@ const maxPlays = 5;
  * A chapter other than the last is a small stop: a few new structures and a
  * small flow. The last chapter reveals what's left and replays the flows.
  */
-const chapterSize = (data: MapData): readonly MapProblem[] =>
+const chapterSize = (data: MapData): ReadonlyArray<MapProblem> =>
   Arr.flatMap(data.chapters.slice(0, -1), (chapter, index) => [
     ...(chapter.reveals.length > maxReveals
       ? [
@@ -346,9 +346,9 @@ const shortensName = (tag: string, name: string) => {
 };
 
 /** A tag only shortens the name, so it is shorter and made from the name. */
-const tagShortensName = (data: MapData): readonly MapProblem[] =>
+const tagShortensName = (data: MapData): ReadonlyArray<MapProblem> =>
   Arr.flatMap(data.structures, (structure, index) => {
-    const { tag, name } = structure;
+    const { name, tag } = structure;
 
     if (tag === undefined) {
       return [];
@@ -399,14 +399,14 @@ export interface MapFiles {
  * structure with no placement is fine, because `build` places it.
  */
 export const checkMap: {
-  (options: CheckOptions): (files: MapFiles) => readonly MapProblem[];
-  (files: MapFiles, options: CheckOptions): readonly MapProblem[];
+  (options: CheckOptions): (files: MapFiles) => ReadonlyArray<MapProblem>;
+  (files: MapFiles, options: CheckOptions): ReadonlyArray<MapProblem>;
 } = dual(
   2,
   (
     { data, layout }: MapFiles,
     options: CheckOptions
-  ): readonly MapProblem[] => [
+  ): ReadonlyArray<MapProblem> => [
     ...uniqueIds(data),
     ...references(data),
     ...walkthrough(data),
@@ -423,5 +423,5 @@ export const checkMap: {
 );
 
 /** Every relative link in the map, for resolving before `checkMap`. */
-export const linkTargets = (data: MapData): readonly string[] =>
+export const linkTargets = (data: MapData): ReadonlyArray<string> =>
   Arr.map(relativeLinks(data), ({ link }) => link);

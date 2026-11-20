@@ -60,7 +60,7 @@ export const recordServer = Effect.fnUntraced(function* (
   const file = yield* serverStateFile(home);
   const content = yield* encodeState(state);
 
-  yield* Effect.acquireRelease(writeAll([{ file, content }]), () =>
+  yield* Effect.acquireRelease(writeAll([{ content, file }]), () =>
     readText(file).pipe(
       Effect.flatMap((current) =>
         Option.contains(current, content) ? fs.remove(file) : Effect.void

@@ -8,11 +8,11 @@ import { createContext, use } from "react";
  */
 export interface DropOutlines {
   /** Each structure on the move, where it was and where it would go. */
-  readonly moving: readonly {
-    readonly id: string;
+  readonly moving: ReadonlyArray<{
     readonly from: Placement;
+    readonly id: string;
     readonly to: Placement;
-  }[];
+  }>;
   /** Why the drop would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
 }

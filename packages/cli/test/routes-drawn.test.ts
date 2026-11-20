@@ -98,12 +98,12 @@ const labelReport = `
 
 interface LabelReport {
   readonly hop: string;
-  readonly own: number;
   readonly nearestOther: number;
+  readonly own: number;
 }
 
 const labelsIn = Effect.fnUntraced(function* (page: Page) {
-  return yield* Effect.promise((): Promise<readonly LabelReport[]> =>
+  return yield* Effect.promise((): Promise<ReadonlyArray<LabelReport>> =>
     page.evaluate(labelReport)
   );
 });
@@ -146,8 +146,9 @@ describe("routed hops", () => {
 
         // At a point where the west wall's box and the vault's both draw,
         // the topmost structure is the one in front.
-        const onTop = yield* Effect.promise((): Promise<readonly string[]> =>
-          page.evaluate(`(() => {
+        const onTop = yield* Effect.promise(
+          (): Promise<ReadonlyArray<string>> =>
+            page.evaluate(`(() => {
             const structure = (id) => document.querySelector('[data-structure="' + id + '"]');
             const west = structure("west");
             const inFill = (element, x, y) =>

@@ -18,24 +18,25 @@ import type { ReviewDone } from "./served-store.ts";
  * the accepted map alone, so nothing here reaches an export.
  */
 export interface ProposedStructures {
-  /** The map as proposed; see `proposedMap`. */
-  readonly proposed: ProposedMap;
   /** Whether writes can be sent now. False while the server is down. */
   readonly canPropose: boolean;
-  /** The open proposals: those not in a batch yet. */
-  readonly open: readonly StructureProposal[];
+  /** Removes the open proposal with this id. */
+  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+  /** Whether `id` is a structure the engineer proposed and hasn't sent yet. */
+  readonly isOpenAdd: (id: string) => boolean;
   /**
    * A structure's name before any proposal renames it, or the name a new
    * structure was proposed under.
    */
   readonly nameOf: (id: string) => string;
-  /** Proposes `change`; `done` gets the proposal's id, or why it was refused. */
-  readonly propose: (
-    change: StructureChange,
+  /** The open proposals: those not in a batch yet. */
+  readonly open: ReadonlyArray<StructureProposal>;
+  /** Puts the structure the engineer proposed at `next`. */
+  readonly place: (
+    id: string,
+    next: Placement,
     done: ReviewDone<ChangeId>
-  ) => void;
-  /** Why `change` would be refused, or `undefined`. */
-  readonly refusalOf: (change: StructureChange) => string | undefined;
+  ) => string | undefined;
   /**
    * What `check` would report for the map as proposed with `items` added,
    * each marked new when the map as proposed now didn't have it. `items` are
@@ -45,25 +46,24 @@ export interface ProposedStructures {
    * chapter draws.
    */
   readonly problemsOf: (
-    items: readonly BatchItem[],
+    items: ReadonlyArray<BatchItem>,
     options?: {
-      readonly scope?: CheckScope;
       /** Structures moved first, such as the one a drop just moved, by id. */
       readonly moved?: Readonly<Record<string, Placement>>;
+      readonly scope?: CheckScope;
     }
-  ) => readonly DraggedProblem[];
-  /** Whether `id` is a structure the engineer proposed and hasn't sent yet. */
-  readonly isOpenAdd: (id: string) => boolean;
+  ) => ReadonlyArray<DraggedProblem>;
+  /** Proposes `change`; `done` gets the proposal's id, or why it was refused. */
+  readonly propose: (
+    change: StructureChange,
+    done: ReviewDone<ChangeId>
+  ) => void;
+  /** The map as proposed; see `proposedMap`. */
+  readonly proposed: ProposedMap;
+  /** Why `change` would be refused, or `undefined`. */
+  readonly refusalOf: (change: StructureChange) => string | undefined;
   /** Why putting the proposed structure `id` at `next` would be refused. */
   readonly refusalOfPlace: (id: string, next: Placement) => string | undefined;
-  /** Puts the structure the engineer proposed at `next`. */
-  readonly place: (
-    id: string,
-    next: Placement,
-    done: ReviewDone<ChangeId>
-  ) => string | undefined;
-  /** Removes the open proposal with this id. */
-  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
 }
 
 export const ProposedContext = createContext<ProposedStructures | null>(null);

@@ -26,8 +26,8 @@ const structure = (id: string, group: string) =>
 
 /** A data.mjs with two groups, the given structures, and hops between them. */
 const dataWith = (
-  structures: readonly string[],
-  hops: readonly (readonly [string, string])[] = []
+  structures: ReadonlyArray<string>,
+  hops: ReadonlyArray<readonly [string, string]> = []
 ) => `export default {
   format: 1,
   revision: 0,
@@ -170,7 +170,7 @@ describe("build places structures", () => {
             ...stale,
             structures: {
               ...stale.structures,
-              gone: { x: 20, y: 20, w: 2, d: 2 },
+              gone: { d: 2, w: 2, x: 20, y: 20 },
             },
           }),
         });
@@ -211,11 +211,11 @@ describe("build places structures", () => {
             ...saved,
             revision: 4,
             routes: {
-              "h-update": kept,
               "h-gone": [
                 { x: 0, y: 5 },
                 { x: 4, y: 5 },
               ],
+              "h-update": kept,
             },
           }),
         });

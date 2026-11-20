@@ -13,19 +13,19 @@ const plateStroke = 0.45;
 const titleOpacity = 0.75;
 
 function ZoneTitle({ drawing }: { readonly drawing: SceneZone }) {
-  const { paint, live } = useDrawing();
+  const { live, paint } = useDrawing();
   const { title } = drawing.zone.group;
 
   return drawing.titleTransform === undefined ? null : (
     <text
       data-zone-title=""
-      transform={drawing.titleTransform}
       fill={paint.ink}
       fillOpacity={titleOpacity}
-      stroke="none"
       fontSize={10}
       fontWeight={500}
       letterSpacing={1}
+      stroke="none"
+      transform={drawing.titleTransform}
     >
       {/* The page sets titles in capitals with CSS, keeping them as written
           for assistive technology; a file has no stylesheet. */}
@@ -36,7 +36,7 @@ function ZoneTitle({ drawing }: { readonly drawing: SceneZone }) {
 
 /** A zone in the Iso view: a plate on the ground, with its title. */
 export function IsoPlate({ drawing }: { readonly drawing: SceneZone }) {
-  const { paint, idOf } = useDrawing();
+  const { idOf, paint } = useDrawing();
 
   return (
     <g
@@ -45,9 +45,9 @@ export function IsoPlate({ drawing }: { readonly drawing: SceneZone }) {
     >
       <polygon
         data-zone-plate=""
-        points={toPoints(drawing.plate)}
         fill={paint.ink}
         fillOpacity={plateFill}
+        points={toPoints(drawing.plate)}
         stroke={paint.ink}
         strokeOpacity={plateStroke}
         strokeWidth={0.9}
@@ -59,7 +59,7 @@ export function IsoPlate({ drawing }: { readonly drawing: SceneZone }) {
 
 /** A zone in Plan view: a rounded outline from above, with its title. */
 export function PlanPlate({ drawing }: { readonly drawing: SceneZone }) {
-  const { paint, idOf } = useDrawing();
+  const { idOf, paint } = useDrawing();
   const { bounds } = drawing;
 
   return (
@@ -69,16 +69,16 @@ export function PlanPlate({ drawing }: { readonly drawing: SceneZone }) {
     >
       <rect
         data-zone-plate=""
-        x={bounds.left}
-        y={bounds.top}
-        width={bounds.right - bounds.left}
-        height={bounds.bottom - bounds.top}
-        rx={planZoneRadius}
         fill={paint.ink}
         fillOpacity={plateFill}
+        height={bounds.bottom - bounds.top}
+        rx={planZoneRadius}
         stroke={paint.ink}
         strokeOpacity={plateStroke}
         strokeWidth={0.9}
+        width={bounds.right - bounds.left}
+        x={bounds.left}
+        y={bounds.top}
       />
       <ZoneTitle drawing={drawing} />
     </g>
@@ -91,17 +91,17 @@ export function PlanPlate({ drawing }: { readonly drawing: SceneZone }) {
  * and structures paint over it.
  */
 export function Zones({
-  zones,
   Plate,
+  zones,
 }: {
-  readonly zones: readonly SceneZone[];
   /** How the view draws one zone. */
   readonly Plate: ComponentType<{ readonly drawing: SceneZone }>;
+  readonly zones: ReadonlyArray<SceneZone>;
 }) {
   return (
     <g data-zones="">
       {Arr.map(zones, (drawing) => (
-        <Plate key={drawing.zone.group.id} drawing={drawing} />
+        <Plate drawing={drawing} key={drawing.zone.group.id} />
       ))}
     </g>
   );

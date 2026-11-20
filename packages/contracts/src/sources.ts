@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import { Array as Arr, Option, Schema, String as Str } from "effect";
 import { dual } from "effect/Function";
 
@@ -40,8 +41,8 @@ export type SourceFacts = (source: Source) => SourceFact;
  */
 export const sourceSegments = (
   path: string
-): Option.Option<readonly string[]> => {
-  const segments: string[] = [];
+): Option.Option<ReadonlyArray<string>> => {
+  const segments: Array<string> = [];
 
   for (const segment of Str.split(path, "/")) {
     if (segment === "..") {
@@ -74,8 +75,8 @@ const at = (structure: number, source: number, field: keyof Source) => [
 const problemsOf = (
   { id, source }: { readonly id: string; readonly source: Source },
   fact: SourceFact,
-  where: { readonly structure: number; readonly source: number }
-): readonly MapProblem[] => {
+  where: { readonly source: number; readonly structure: number }
+): ReadonlyArray<MapProblem> => {
   const path = at(where.structure, where.source, "path");
   const named = `"${source.path}"`;
 
@@ -136,14 +137,16 @@ const problemsOf = (
  * paths name the same file, whatever their commits. The page and SYSTEM.md
  * show these, and `check` warns about the rest.
  */
-export const uniqueSources = (sources: readonly Source[]): readonly Source[] =>
+export const uniqueSources = (
+  sources: ReadonlyArray<Source>
+): ReadonlyArray<Source> =>
   Arr.dedupeWith(
     sources,
     (a, b) => normalSourcePath(a.path) === normalSourcePath(b.path)
   );
 
 /** A warning for every source that repeats an earlier one in its structure. */
-export const repeatedSources = (data: MapData): readonly MapProblem[] =>
+export const repeatedSources = (data: MapData): ReadonlyArray<MapProblem> =>
   Arr.flatMap(data.structures, (structure, index) => {
     const seen = new Set<string>();
 
@@ -167,9 +170,9 @@ export const repeatedSources = (data: MapData): readonly MapProblem[] =>
 
 /** Errors and warnings for every structure's sources, from git's facts. */
 export const checkSources: {
-  (facts: SourceFacts): (data: MapData) => readonly MapProblem[];
-  (data: MapData, facts: SourceFacts): readonly MapProblem[];
-} = dual(2, (data: MapData, facts: SourceFacts): readonly MapProblem[] =>
+  (facts: SourceFacts): (data: MapData) => ReadonlyArray<MapProblem>;
+  (data: MapData, facts: SourceFacts): ReadonlyArray<MapProblem>;
+} = dual(2, (data: MapData, facts: SourceFacts): ReadonlyArray<MapProblem> =>
   Arr.flatMap(data.structures, (structure, index) =>
     Arr.flatMap(structure.sources ?? [], (source, sourceIndex) =>
       problemsOf({ id: structure.id, source }, facts(source), {

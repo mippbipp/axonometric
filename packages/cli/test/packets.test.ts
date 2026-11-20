@@ -135,7 +135,7 @@ describe("packets", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors } = yield* reviewPage;
+          const { errors, page } = yield* reviewPage;
 
           yield* goToChapter(page, "c-save");
           yield* waitFor(page, '[data-packets][data-playing="true"]');
@@ -285,8 +285,8 @@ describe("the flow picker", () => {
         yield* assertAttribute(
           page,
           {
-            selector: '[data-flow-picker] [data-flow="all"]',
             name: "aria-pressed",
+            selector: '[data-flow-picker] [data-flow="all"]',
           },
           "true"
         );

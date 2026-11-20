@@ -51,78 +51,78 @@ const structure = (
   id: string,
   extra: Partial<MapData["structures"][number]> = {}
 ): MapData["structures"][number] => ({
-  id,
   code: "A",
-  name: `Structure ${id}`,
-  shape: "box",
   group: "g1",
-  status: "live",
-  oneLiner: "One.",
-  whatItDoes: "Does.",
   howItsBuilt: "Built.",
+  id,
+  name: `Structure ${id}`,
+  oneLiner: "One.",
+  shape: "box",
+  status: "live",
+  whatItDoes: "Does.",
   ...extra,
 });
 
 const data: MapData = {
-  format: 1,
-  revision: 0,
-  overview: { title: "T", summary: "S" },
-  groups: [{ id: "g1", title: "One" }],
-  structures: [structure("a"), structure("b"), structure("c")],
-  hops: [
-    { id: "h-ab", from: "a", to: "b", label: "a to b" },
-    { id: "h-bc", from: "b", to: "c", label: "b to c" },
-    { id: "h-ca", from: "c", to: "a", label: "c to a" },
-  ],
-  flows: [
-    { id: "f1", name: "Main flow", hops: ["h-ab", "h-bc"] },
-    { id: "f2", name: "Return", hops: ["h-ca"] },
-  ],
   chapters: [
     {
       id: "ch1",
-      title: "First",
       lede: "L",
-      story: "S",
-      reveals: ["a", "b", "c"],
       plays: ["h-ab"],
+      reveals: ["a", "b", "c"],
+      story: "S",
+      title: "First",
     },
   ],
+  flows: [
+    { hops: ["h-ab", "h-bc"], id: "f1", name: "Main flow" },
+    { hops: ["h-ca"], id: "f2", name: "Return" },
+  ],
+  format: 1,
+  groups: [{ id: "g1", title: "One" }],
+  hops: [
+    { from: "a", id: "h-ab", label: "a to b", to: "b" },
+    { from: "b", id: "h-bc", label: "b to c", to: "c" },
+    { from: "c", id: "h-ca", label: "c to a", to: "a" },
+  ],
+  overview: { summary: "S", title: "T" },
+  revision: 0,
+  structures: [structure("a"), structure("b"), structure("c")],
 };
 
 const layout: Layout = {
   format: 1,
   revision: 1,
   structures: {
-    a: { x: 0, y: 0, w: 2, d: 2 },
-    b: { x: 4, y: 0, w: 2, d: 2 },
-    c: { x: 8, y: 0, w: 2, d: 2 },
+    a: { d: 2, w: 2, x: 0, y: 0 },
+    b: { d: 2, w: 2, x: 4, y: 0 },
+    c: { d: 2, w: 2, x: 8, y: 0 },
   },
 };
 
-const state: MapState = { system: "t", data, layout };
+const state: MapState = { data, layout, system: "t" };
 
-const empty: Proposals = { format: 1, revision: 0, layout: [] };
+const empty: Proposals = { format: 1, layout: [], revision: 0 };
 
-const world = { data, base: data, layout };
+const world = { base: data, data, layout };
 
 const addHop: HopChange = {
   action: "add",
-  hop: { id: "new-hop", from: "a", to: "c", label: "skips b" },
+  hop: { from: "a", id: "new-hop", label: "skips b", to: "c" },
 };
 
 const withHops = (
-  ...hops: readonly (readonly [string, HopChange])[]
+  ...hops: ReadonlyArray<readonly [string, HopChange]>
 ): Proposals => ({
   ...empty,
-  hops: Arr.map(hops, ([id, change]) => ({ id, change })),
+  hops: Arr.map(hops, ([id, change]) => ({ change, id })),
 });
 
 const withFlows = (
-  ...flows: readonly (readonly [string, FlowChange])[]
+  ...flows: ReadonlyArray<readonly [string, FlowChange]>
 ): Proposals => ({
   ...empty,
-  flows: Arr.map(flows, ([id, change]) => ({ id, change })),
+  flows: Arr.map(flows, ([id, change]) => ({ change, id })),
 });
 
 /** Why a check refused, as text; fails the test when it did not refuse. */
@@ -130,8 +130,8 @@ const refusalText = (result: Result.Result<unknown, string>): string => {
   assert.isTrue(Result.isFailure(result), "expected a refusal");
 
   return Result.match(result, {
-    onSuccess: () => "",
     onFailure: (why) => why,
+    onSuccess: () => "",
   });
 };
 
@@ -140,11 +140,11 @@ const committedAll = (proposals: Proposals): Proposals => ({
   ...proposals,
   batches: Arr.map(proposals.batches ?? [], (batch) => ({
     ...batch,
-    committed: { revision: 2, at },
+    committed: { at, revision: 2 },
   })),
 });
 
-const shownWith = (proposals: Proposals) => proposedMap({ state, proposals });
+const shownWith = (proposals: Proposals) => proposedMap({ proposals, state });
 
 const hopOfId = (shown: ReturnType<typeof shownWith>, id: string) =>
   Arr.findFirst(shown.state.data.hops, (hop) => hop.id === id).pipe(
@@ -159,14 +159,16 @@ const flowOfId = (shown: ReturnType<typeof shownWith>, id: string) =>
 const touchedHops = (
   shown: ReturnType<typeof shownWith>,
   id: string
-): readonly string[] =>
+): ReadonlyArray<string> =>
   Option.match(Option.fromNullishOr(shown.touches.get(id)), {
     onNone: () => [],
     onSome: ({ hops }) => hops,
   });
 
 /** The hops the first chapter plays in the proposed map. */
-const playedFirst = (shown: ReturnType<typeof shownWith>): readonly string[] =>
+const playedFirst = (
+  shown: ReturnType<typeof shownWith>
+): ReadonlyArray<string> =>
   Option.match(Arr.head(shown.state.data.chapters), {
     onNone: () => [],
     onSome: ({ plays }) => plays,
@@ -178,19 +180,19 @@ const flowIds = (shown: ReturnType<typeof shownWith>) =>
 const messageOf = (item: BatchItem, over: Partial<MapData> = {}) =>
   Option.getOrThrow(breakage(item, over));
 
-const mentionsId = (messages: readonly string[], id: string) =>
+const mentionsId = (messages: ReadonlyArray<string>, id: string) =>
   Arr.some(messages, Str.includes(`"${id}"`));
 
 const hopItem = (id: string, change: HopChange): BatchItem => ({
+  change,
   id,
   kind: "hop",
-  change,
 });
 
 const flowItem = (id: string, change: FlowChange): BatchItem => ({
+  change,
   id,
   kind: "flow",
-  change,
 });
 
 /** The first hop proposal's add, or nothing. */
@@ -218,75 +220,75 @@ const nameOfFlowChange = (change: FlowChange | undefined) =>
   );
 
 const refusedHop = (change: HopChange) =>
-  Result.merge(proposeHop({ proposals: empty, id: "p1", change, world }));
+  Result.merge(proposeHop({ change, id: "p1", proposals: empty, world }));
 
 const refusedFlow = (change: FlowChange) =>
-  Result.merge(proposeFlow({ proposals: empty, id: "p1", change, world }));
+  Result.merge(proposeFlow({ change, id: "p1", proposals: empty, world }));
 
 const relabelHop = (label: string, id: string, proposals: Proposals) =>
   unwrap(
     proposeHop({
-      proposals,
-      id,
       change: { action: "relabel", hop: "h-ab", label },
+      id,
+      proposals,
       world,
     })
   );
 
 const setFlowHops = (
-  hops: readonly [string, ...string[]],
+  hops: readonly [string, ...Array<string>],
   id: string,
   proposals: Proposals
 ) =>
   unwrap(
     proposeFlow({
-      proposals,
-      id,
       change: { action: "hops", flow: "f1", hops },
+      id,
+      proposals,
       world,
     })
   );
 
 const reorderFlows = (
-  flows: readonly [string, ...string[]],
+  flows: readonly [string, ...Array<string>],
   id: string,
   proposals: Proposals
 ) =>
   unwrap(
     proposeFlow({
-      proposals,
-      id,
       change: { action: "reorder", flows },
+      id,
+      proposals,
       world,
     })
   );
 
 const withNewHop = (id: string): MapData => ({
   ...data,
-  hops: [...data.hops, { id, from: "a", to: "c", label: "skips b" }],
+  hops: [...data.hops, { from: "a", id, label: "skips b", to: "c" }],
 });
 
 /** `addHop` (or `change`) frozen with `verdict` given on it. */
 const frozenHopWith = (verdict: Verdict, change: HopChange = addHop) => {
   const batch = unwrap(
-    freezeOpen({ proposals: withHops(["p1", change]), at })
+    freezeOpen({ at, proposals: withHops(["p1", change]) })
   ).proposals;
 
-  return unwrap(recordVerdict({ proposals: batch, id: "p1", verdict }));
+  return unwrap(recordVerdict({ id: "p1", proposals: batch, verdict }));
 };
 
 const commitWith = (proposals: Proposals, next: MapData) =>
   commitBatch({
-    proposals,
-    layout,
-    saved: layout,
+    at,
     data: next,
     hops: next.hops,
+    layout,
+    proposals,
     revision: 2,
-    at,
+    saved: layout,
   });
 
-const hopEntryOf = (entries: readonly AcceptedItem[]) =>
+const hopEntryOf = (entries: ReadonlyArray<AcceptedItem>) =>
   Arr.findFirst(entries, ({ kind }) => kind === "hop").pipe(Option.getOrThrow);
 
 const flowHopsOf = (entry: AcceptedItem) =>
@@ -294,11 +296,11 @@ const flowHopsOf = (entry: AcceptedItem) =>
 
 const breakage = (item: BatchItem, over: Partial<MapData> = {}) =>
   breakageOf({
+    data: { ...data, ...over },
+    hops: data.hops,
     item,
     layout,
     structureIds: new Set(["a", "b", "c"]),
-    hops: data.hops,
-    data: { ...data, ...over },
   });
 
 describe("the proposed map, for each hop action", () => {
@@ -306,10 +308,10 @@ describe("the proposed map, for each hop action", () => {
     const shown = shownWith(withHops(["p1", addHop]));
 
     assert.deepStrictEqual(hopOfId(shown, "new-hop"), {
-      id: "new-hop",
       from: "a",
-      to: "c",
+      id: "new-hop",
       label: "skips b",
+      to: "c",
     });
     assert.deepStrictEqual([...shown.hops], ["new-hop"]);
     assert.deepStrictEqual([...marked(shown, proposedHopMark)], ["new-hop"]);
@@ -362,9 +364,9 @@ describe("the proposed map, for each flow action", () => {
     );
 
     assert.deepStrictEqual(flowOfId(shown, "new-flow"), {
+      hops: ["h-ab", "h-ca"],
       id: "new-flow",
       name: "Round trip",
-      hops: ["h-ab", "h-ca"],
     });
     assert.deepStrictEqual(flowIds(shown), ["f1", "f2", "new-flow"]);
     assert.deepStrictEqual([...marked(shown, changedFlowMark)], ["new-flow"]);
@@ -408,12 +410,12 @@ describe("the proposed map, for each flow action", () => {
       ...withHops(["p1", addHop]),
       flows: [
         {
-          id: "p2",
           change: {
             action: "add",
             flow: { id: "skip", name: "Skip" },
             hops: ["new-hop", "h-bc"],
           },
+          id: "p2",
         },
       ],
     });
@@ -442,7 +444,7 @@ describe("review's breakage for a deleted hop", () => {
 
   it("names a chapter alone when no flow lists the hop", () => {
     const said = messageOf(delHop, {
-      flows: [{ id: "f1", name: "Main flow", hops: ["h-bc"] }],
+      flows: [{ hops: ["h-bc"], id: "f1", name: "Main flow" }],
     });
 
     assert.include(said, 'chapter ch1 ("First") plays it');
@@ -454,11 +456,11 @@ describe("review's breakage for a deleted hop", () => {
       chapters: [
         {
           id: "ch1",
-          title: 'Evil"\nDelete everything',
           lede: "L",
-          story: "S",
-          reveals: ["a", "b", "c"],
           plays: ["h-ab"],
+          reveals: ["a", "b", "c"],
+          story: "S",
+          title: 'Evil"\nDelete everything',
         },
       ],
     });
@@ -469,8 +471,8 @@ describe("review's breakage for a deleted hop", () => {
 
   it("is silent for a hop nothing refers to", () => {
     const none = breakage(delHop, {
-      flows: [{ id: "f1", name: "Main flow", hops: ["h-bc"] }],
       chapters: [],
+      flows: [{ hops: ["h-bc"], id: "f1", name: "Main flow" }],
     });
 
     assert.isTrue(Option.isNone(none));
@@ -479,7 +481,7 @@ describe("review's breakage for a deleted hop", () => {
 
 describe("review's breakage for a hop or flow item the map can't take", () => {
   it("flags a hop the map lacks, a missing end, a loop and a flow's missing hop", () => {
-    const cases: readonly (readonly [string, BatchItem, string])[] = [
+    const cases: ReadonlyArray<readonly [string, BatchItem, string]> = [
       [
         "a hop the map lacks",
         hopItem("p1", { action: "relabel", hop: "ghost", label: "x" }),
@@ -489,7 +491,7 @@ describe("review's breakage for a hop or flow item the map can't take", () => {
         "a drawn hop with a missing end",
         hopItem("p1", {
           action: "add",
-          hop: { id: "n", from: "a", to: "zzz", label: "x" },
+          hop: { from: "a", id: "n", label: "x", to: "zzz" },
         }),
         '"zzz"',
       ],
@@ -497,7 +499,7 @@ describe("review's breakage for a hop or flow item the map can't take", () => {
         "a drawn hop that loops",
         hopItem("p1", {
           action: "add",
-          hop: { id: "n", from: "a", to: "a", label: "x" },
+          hop: { from: "a", id: "n", label: "x", to: "a" },
         }),
         "two different structures",
       ],
@@ -517,11 +519,11 @@ describe("review's breakage for a hop or flow item the map can't take", () => {
 describe("proposing a hop", () => {
   it("adds the proposal, and the same write again changes nothing", () => {
     const once = unwrap(
-      proposeHop({ proposals: empty, id: "p1", change: addHop, world })
+      proposeHop({ change: addHop, id: "p1", proposals: empty, world })
     );
 
     const twice = unwrap(
-      proposeHop({ proposals: once, id: "p1", change: addHop, world })
+      proposeHop({ change: addHop, id: "p1", proposals: once, world })
     );
 
     assert.strictEqual(once.hops?.length, 1);
@@ -551,16 +553,16 @@ describe("proposing a hop", () => {
 
   it("edits the proposal of a new hop when it is relabelled", () => {
     const first = unwrap(
-      proposeHop({ proposals: empty, id: "p1", change: addHop, world })
+      proposeHop({ change: addHop, id: "p1", proposals: empty, world })
     );
 
     const shown = shownWith(first).state.data;
 
     const relabelled = unwrap(
       proposeHop({
-        proposals: first,
-        id: "p2",
         change: { action: "relabel", hop: "new-hop", label: "skips" },
+        id: "p2",
+        proposals: first,
         world: { ...world, data: shown },
       })
     );
@@ -572,16 +574,16 @@ describe("proposing a hop", () => {
 
   it("drops the proposal of a new hop when it is deleted", () => {
     const first = unwrap(
-      proposeHop({ proposals: empty, id: "p1", change: addHop, world })
+      proposeHop({ change: addHop, id: "p1", proposals: empty, world })
     );
 
     const shown = shownWith(first).state.data;
 
     const deleted = unwrap(
       proposeHop({
-        proposals: first,
-        id: "p3",
         change: { action: "delete", hop: "new-hop" },
+        id: "p3",
+        proposals: first,
         world: { ...world, data: shown },
       })
     );
@@ -604,29 +606,29 @@ describe("proposing a hop", () => {
       ...withHops(["p1", addHop]),
       flows: [
         {
-          id: "p2",
           change: {
             action: "hops",
             flow: "f1",
             hops: ["h-ab", "new-hop", "h-bc"],
           },
+          id: "p2",
         },
         {
-          id: "p3",
           change: {
             action: "add",
             flow: { id: "only", name: "Only" },
             hops: ["new-hop"],
           },
+          id: "p3",
         },
       ],
     };
 
     const deleted = unwrap(
       proposeHop({
-        proposals,
-        id: "p4",
         change: { action: "delete", hop: "new-hop" },
+        id: "p4",
+        proposals,
         world: { ...world, data: shownWith(proposals).state.data },
       })
     );
@@ -634,21 +636,21 @@ describe("proposing a hop", () => {
     assert.deepStrictEqual(deleted.hops, []);
     assert.deepStrictEqual(deleted.flows, [
       {
-        id: "p2",
         change: { action: "hops", flow: "f1", hops: ["h-ab", "h-bc"] },
+        id: "p2",
       },
     ]);
   });
 
   it("refuses a change to a hop that waits in a batch", () => {
     const frozen = unwrap(
-      freezeOpen({ proposals: withHops(["p1", addHop]), at })
+      freezeOpen({ at, proposals: withHops(["p1", addHop]) })
     ).proposals;
 
     const refused = proposeHop({
-      proposals: frozen,
-      id: "p9",
       change: { action: "relabel", hop: "new-hop", label: "x" },
+      id: "p9",
+      proposals: frozen,
       world,
     });
 
@@ -659,13 +661,13 @@ describe("proposing a hop", () => {
 describe("proposing a flow", () => {
   const madeFlow = unwrap(
     proposeFlow({
-      proposals: empty,
-      id: "p1",
       change: {
         action: "add",
         flow: { id: "new-flow", name: "Round trip" },
         hops: ["h-ab"],
       },
+      id: "p1",
+      proposals: empty,
       world,
     })
   );
@@ -675,9 +677,9 @@ describe("proposing a flow", () => {
   it("edits a new flow's proposal when it is renamed", () => {
     const renamed = unwrap(
       proposeFlow({
-        proposals: madeFlow,
-        id: "p2",
         change: { action: "rename", flow: "new-flow", name: "Loop" },
+        id: "p2",
+        proposals: madeFlow,
         world: withNew,
       })
     );
@@ -689,9 +691,9 @@ describe("proposing a flow", () => {
   it("edits a new flow's proposal when it is given other hops", () => {
     const reordered = unwrap(
       proposeFlow({
-        proposals: madeFlow,
-        id: "p3",
         change: { action: "hops", flow: "new-flow", hops: ["h-ca", "h-ab"] },
+        id: "p3",
+        proposals: madeFlow,
         world: withNew,
       })
     );
@@ -770,17 +772,17 @@ describe("proposing a flow", () => {
 describe("a verdict of changed with --as, for a hop and a flow", () => {
   const frozenHop = unwrap(
     freezeOpen({
-      proposals: withHops(["p1", addHop]),
       at,
       known: { hop: ["h-ab", "h-bc", "h-ca"] },
+      proposals: withHops(["p1", addHop]),
     })
   ).proposals;
 
   it("is kept on the verdict", () => {
     const recorded = unwrap(
       recordVerdict({
-        proposals: frozenHop,
         id: "p1",
+        proposals: frozenHop,
         verdict: changedAs("skip"),
       })
     );
@@ -793,8 +795,8 @@ describe("a verdict of changed with --as, for a hop and a flow", () => {
 
   it("is refused for an id the batch was frozen against", () => {
     const refused = recordVerdict({
-      proposals: frozenHop,
       id: "p1",
+      proposals: frozenHop,
       verdict: changedAs("h-ab"),
     });
 
@@ -804,17 +806,17 @@ describe("a verdict of changed with --as, for a hop and a flow", () => {
   it("is refused on an item that draws no hop", () => {
     const relabel = unwrap(
       freezeOpen({
+        at,
         proposals: withHops([
           "p1",
           { action: "relabel", hop: "h-ab", label: "reads" },
         ]),
-        at,
       })
     ).proposals;
 
     const refused = recordVerdict({
-      proposals: relabel,
       id: "p1",
+      proposals: relabel,
       verdict: changedAs("x"),
     });
 
@@ -824,6 +826,8 @@ describe("a verdict of changed with --as, for a hop and a flow", () => {
   it("is checked against the flows a batch was frozen against", () => {
     const frozen = unwrap(
       freezeOpen({
+        at,
+        known: { flow: ["f1", "f2"] },
         proposals: withFlows([
           "p1",
           {
@@ -832,20 +836,18 @@ describe("a verdict of changed with --as, for a hop and a flow", () => {
             hops: ["h-ab"],
           },
         ]),
-        at,
-        known: { flow: ["f1", "f2"] },
       })
     ).proposals;
 
     const same = recordVerdict({
-      proposals: frozen,
       id: "p1",
+      proposals: frozen,
       verdict: changedAs("f1"),
     });
 
     const fresh = recordVerdict({
-      proposals: frozen,
       id: "p1",
+      proposals: frozen,
       verdict: changedAs("fresh"),
     });
 
@@ -874,9 +876,9 @@ describe("committing a drawn hop", () => {
 
   it("follows the final id from changed --as, in the revision's entry", () => {
     const verdict: Verdict = {
-      verdict: "changed",
-      reason: "Named it.",
       as: "skip",
+      reason: "Named it.",
+      verdict: "changed",
     };
 
     const done = unwrap(commitWith(frozenHopWith(verdict), withNewHop("skip")));
@@ -889,9 +891,9 @@ describe("committing a drawn hop", () => {
 
   it("refuses a changed add while data.mjs lacks the hop under the final id", () => {
     const verdict: Verdict = {
-      verdict: "changed",
-      reason: "Named it.",
       as: "skip",
+      reason: "Named it.",
+      verdict: "changed",
     };
 
     const refused = commitWith(frozenHopWith(verdict), withNewHop("new-hop"));
@@ -916,7 +918,7 @@ describe("committing a drawn hop", () => {
 
   it("takes a rejected delete", () => {
     const rejected = frozenHopWith(
-      { verdict: "rejected", reason: "Needed." },
+      { reason: "Needed.", verdict: "rejected" },
       { action: "delete", hop: "h-bc" }
     );
 
@@ -926,8 +928,8 @@ describe("committing a drawn hop", () => {
   it("takes an accepted delete once the hop is gone", () => {
     const gone: MapData = {
       ...data,
+      flows: [{ hops: ["h-ab"], id: "f1", name: "Main flow" }],
       hops: Arr.filter(data.hops, ({ id }) => id !== "h-bc"),
-      flows: [{ id: "f1", name: "Main flow", hops: ["h-ab"] }],
     };
 
     const accepted = frozenHopWith(
@@ -943,26 +945,26 @@ describe("committing a drawn hop", () => {
       ...withHops(["p1", addHop]),
       flows: [
         {
-          id: "p2",
           change: { action: "hops", flow: "f1", hops: ["h-ab", "new-hop"] },
+          id: "p2",
         },
       ],
     };
 
-    const batch = unwrap(freezeOpen({ proposals: both, at })).proposals;
+    const batch = unwrap(freezeOpen({ at, proposals: both })).proposals;
 
     const named = unwrap(
       recordVerdict({
-        proposals: batch,
         id: "p1",
-        verdict: { verdict: "changed", reason: "Named it.", as: "skip" },
+        proposals: batch,
+        verdict: { as: "skip", reason: "Named it.", verdict: "changed" },
       })
     );
 
     const judged = unwrap(
       recordVerdict({
-        proposals: named,
         id: "p2",
+        proposals: named,
         verdict: { verdict: "accepted" },
       })
     );
@@ -970,8 +972,8 @@ describe("committing a drawn hop", () => {
     const next: MapData = {
       ...withNewHop("skip"),
       flows: [
-        { id: "f1", name: "Main flow", hops: ["h-ab", "skip"] },
-        { id: "f2", name: "Return", hops: ["h-ca"] },
+        { hops: ["h-ab", "skip"], id: "f1", name: "Main flow" },
+        { hops: ["h-ca"], id: "f2", name: "Return" },
       ],
     };
 
@@ -988,8 +990,8 @@ describe("committing a drawn hop", () => {
 
 describe("the prompt line and review's before and after", () => {
   const names = {
-    structure: (id: string) => `Structure ${id}`,
     hop: hopLabelOf(data.hops),
+    structure: (id: string) => `Structure ${id}`,
   };
 
   const relabel = hopItem("p1", {
@@ -1008,8 +1010,8 @@ describe("the prompt line and review's before and after", () => {
 
   it("states a relabel's before and after", () => {
     assert.deepStrictEqual(specOf(relabel).facts(relabel, layout, data), {
-      before: { hop: { label: "a to b" } },
       after: { hop: { label: "reads" } },
+      before: { hop: { label: "a to b" } },
     });
   });
 
@@ -1019,11 +1021,11 @@ describe("the prompt line and review's before and after", () => {
 
     assert.deepStrictEqual(facts.before, {
       hop: {
-        id: "h-ab",
-        from: "a",
-        to: "b",
-        label: "a to b",
         flows: ["f1"],
+        from: "a",
+        id: "h-ab",
+        label: "a to b",
+        to: "b",
       },
     });
     assert.deepStrictEqual(facts.after, { hop: { deleted: true } });
@@ -1052,8 +1054,8 @@ describe("warnings about open hop and flow proposals", () => {
       ...withHops(["p1", { action: "relabel", hop: "ghost", label: "x" }]),
       flows: [
         {
-          id: "p2",
           change: { action: "hops", flow: "f1", hops: ["nope"] },
+          id: "p2",
         },
       ],
     });
@@ -1069,8 +1071,8 @@ describe("warnings about open hop and flow proposals", () => {
       ...withHops(["p1", addHop]),
       flows: [
         {
-          id: "p2",
           change: { action: "hops", flow: "f1", hops: ["h-ab", "new-hop"] },
+          id: "p2",
         },
       ],
     });
@@ -1087,7 +1089,7 @@ describe("a new flow that lists a hop being deleted", () => {
 
   const into = (change: FlowChange, proposals: Proposals = deleting) =>
     refusalText(
-      proposeFlow({ proposals, id: "p1", change, world: { ...world, data } })
+      proposeFlow({ change, id: "p1", proposals, world: { ...world, data } })
     );
 
   it("is refused, naming the hop and the way out", () => {
@@ -1103,7 +1105,7 @@ describe("a new flow that lists a hop being deleted", () => {
   });
 
   it("is refused when the deletion waits in a batch", () => {
-    const frozen = unwrap(freezeOpen({ proposals: deleting, at })).proposals;
+    const frozen = unwrap(freezeOpen({ at, proposals: deleting })).proposals;
 
     const said = into(
       {
@@ -1125,9 +1127,9 @@ describe("a new flow that lists a hop being deleted", () => {
 
   it("lets a flow that already lists it be reordered", () => {
     const reordered = proposeFlow({
-      proposals: deleting,
-      id: "p1",
       change: { action: "hops", flow: "f1", hops: ["h-bc", "h-ab"] },
+      id: "p1",
+      proposals: deleting,
       world: { ...world, data },
     });
 
@@ -1136,17 +1138,17 @@ describe("a new flow that lists a hop being deleted", () => {
 
   it("is allowed once the deletion is withdrawn", () => {
     const withdrawn = unwrap(
-      discardProposal({ proposals: deleting, id: "d1" })
+      discardProposal({ id: "d1", proposals: deleting })
     );
 
     const made = proposeFlow({
-      proposals: withdrawn,
-      id: "p1",
       change: {
         action: "add",
         flow: { id: "new-flow", name: "Trail" },
         hops: ["h-bc"],
       },
+      id: "p1",
+      proposals: withdrawn,
       world,
     });
 
@@ -1157,20 +1159,20 @@ describe("a new flow that lists a hop being deleted", () => {
 const rejected = (proposals: Proposals): Proposals =>
   unwrap(
     recordVerdict({
-      proposals,
       id: "h1",
-      verdict: { verdict: "rejected", reason: "No." },
+      proposals,
+      verdict: { reason: "No.", verdict: "rejected" },
     })
   );
 
 describe("a hop label or flow name edited or reopened", () => {
   const frozenRelabel = unwrap(
     freezeOpen({
+      at,
       proposals: withHops([
         "h1",
         { action: "relabel", hop: "h-ab", label: "reads" },
       ]),
-      at,
     })
   ).proposals;
 
@@ -1181,7 +1183,7 @@ describe("a hop label or flow name edited or reopened", () => {
     ]);
 
     const said = refusalText(
-      editProposal({ proposals: open, id: "f1", text: "two\nlines" })
+      editProposal({ id: "f1", proposals: open, text: "two\nlines" })
     );
 
     assert.include(said, "on one line");
@@ -1194,7 +1196,7 @@ describe("a hop label or flow name edited or reopened", () => {
     ]);
 
     const edited = unwrap(
-      editProposal({ proposals: open, id: "h1", text: "loads" })
+      editProposal({ id: "h1", proposals: open, text: "loads" })
     );
 
     assert.deepStrictEqual(edited.hops?.[0]?.change, {
@@ -1208,14 +1210,14 @@ describe("a hop label or flow name edited or reopened", () => {
     const committed = committedAll(rejected(frozenRelabel));
 
     const reopened = reopenItem({
-      proposals: committed,
-      id: "h1",
-      newId: "h2",
-      layout,
-      known: new Set(["a", "b", "c"]),
-      hops: data.hops,
-      text: "a\nb",
       data,
+      hops: data.hops,
+      id: "h1",
+      known: new Set(["a", "b", "c"]),
+      layout,
+      newId: "h2",
+      proposals: committed,
+      text: "a\nb",
     });
 
     assert.isTrue(Result.isFailure(reopened));
@@ -1228,35 +1230,35 @@ describe("a hop or flow accepted under another id, as the page follows it", () =
     const both: Proposals = {
       ...withHops(["h1", addHop]),
       // A new structure with the same provisional id as the new hop.
-      structures: [
-        {
-          id: "s1",
-          change: {
-            action: "add",
-            structure: {
-              id: "new-hop",
-              name: "Cache",
-              shape: "store",
-              group: "g1",
-              status: "planned",
-            },
-            at: { x: 12, y: 0, w: 2, d: 2 },
-          },
-        },
-      ],
       flows: [
         {
-          id: "f1p",
           change: {
             action: "add",
             flow: { id: "new-flow", name: "Round" },
             hops: ["h-ab"],
           },
+          id: "f1p",
+        },
+      ],
+      structures: [
+        {
+          change: {
+            action: "add",
+            at: { d: 2, w: 2, x: 12, y: 0 },
+            structure: {
+              group: "g1",
+              id: "new-hop",
+              name: "Cache",
+              shape: "store",
+              status: "planned",
+            },
+          },
+          id: "s1",
         },
       ],
     };
 
-    const frozen = unwrap(freezeOpen({ proposals: both, at })).proposals;
+    const frozen = unwrap(freezeOpen({ at, proposals: both })).proposals;
 
     const judged = Arr.reduce(
       [
@@ -1268,9 +1270,9 @@ describe("a hop or flow accepted under another id, as the page follows it", () =
       (so, [id, as]) =>
         unwrap(
           recordVerdict({
-            proposals: so,
             id,
-            verdict: { verdict: "changed", reason: "Named it.", as },
+            proposals: so,
+            verdict: { as, reason: "Named it.", verdict: "changed" },
           })
         )
     );

@@ -7,8 +7,8 @@ import type { ScreenPoint } from "./projection.ts";
 /** Something drawn, with the structures it belongs to and the points it reaches. */
 export interface Drawn {
   /** The structures it belongs to: one for a structure, two for a hop. */
-  readonly ids: readonly string[];
-  readonly points: readonly ScreenPoint[];
+  readonly ids: ReadonlyArray<string>;
+  readonly points: ReadonlyArray<ScreenPoint>;
 }
 
 /** What the viewport fits, and the key that says when to fit it again. */
@@ -27,8 +27,8 @@ export const fitOf = ({
   drawn,
   fitTo,
 }: {
-  readonly drawn: readonly Drawn[];
-  readonly fitTo?: readonly string[] | undefined;
+  readonly drawn: ReadonlyArray<Drawn>;
+  readonly fitTo?: ReadonlyArray<string> | undefined;
 }): Fit => {
   if (fitTo === undefined) {
     return {

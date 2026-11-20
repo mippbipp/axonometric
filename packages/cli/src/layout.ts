@@ -37,7 +37,7 @@ type Changes = Readonly<Record<Field, Option.Option<number>>>;
 
 const onHalfUnit = (value: number) => Number.isInteger(value * 2);
 
-const describePlacement = ({ x, y, w, d }: Placement) =>
+const describePlacement = ({ d, w, x, y }: Placement) =>
   `x ${x}, y ${y}, w ${w}, d ${d}`;
 
 /** Every problem with the values given, before the map is read. */
@@ -95,9 +95,9 @@ const layout = Effect.fn("layout")(function* (
   yield* withLock(home, "layout");
 
   const map = yield* loadMap({
+    command: "layout",
     home,
     output: path.dirname(home),
-    command: "layout",
   });
 
   const ids = Arr.map(map.data.structures, (structure) => structure.id);
@@ -126,10 +126,10 @@ const layout = Effect.fn("layout")(function* (
   }));
 
   const after: Placement = {
+    d: Option.getOrElse(changes.d, () => base.d),
+    w: Option.getOrElse(changes.w, () => base.w),
     x: Option.getOrElse(changes.x, () => base.x),
     y: Option.getOrElse(changes.y, () => base.y),
-    w: Option.getOrElse(changes.w, () => base.w),
-    d: Option.getOrElse(changes.d, () => base.d),
   };
 
   const clash = Arr.findFirst(
@@ -161,8 +161,8 @@ const layout = Effect.fn("layout")(function* (
 
   yield* writeAll([
     {
-      file: path.join(home, "layout.json"),
       content: yield* encodeLayout(next),
+      file: path.join(home, "layout.json"),
     },
   ]);
 
@@ -174,7 +174,7 @@ const layout = Effect.fn("layout")(function* (
   yield* Effect.forEach(
     map.warnings,
     (warning) => Console.error(formatProblem(warning)),
-    { discard: true, concurrency: 1 }
+    { concurrency: 1, discard: true }
   );
 
   return yield* Console.log(
@@ -185,6 +185,7 @@ const layout = Effect.fn("layout")(function* (
 const gridFlag = (name: Field, description: string) =>
   Flag.Finite(name).pipe(Flag.withDescription(description), Flag.optional);
 
+/* oxlint-disable perfectionist/sort-objects -- these keys set the argument and flag order `--help` prints, so they stay in the written order */
 export const layoutCommand = Command.make(
   "layout",
   {
@@ -201,7 +202,8 @@ export const layoutCommand = Command.make(
     w: gridFlag("w", "Footprint width along x, in grid units"),
     d: gridFlag("d", "Footprint depth along y, in grid units"),
   },
-  ({ home, structure, x, y, w, d }) => layout(home, structure, { x, y, w, d })
+  /* oxlint-enable perfectionist/sort-objects */
+  ({ d, home, structure, w, x, y }) => layout(home, structure, { d, w, x, y })
 ).pipe(
   Command.withDescription(
     "Move or resize one structure in layout.json, under the map's lock. Values land on half units, such as 4 or 4.5. Fields you leave out keep their value."

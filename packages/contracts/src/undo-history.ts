@@ -11,19 +11,19 @@ import { Option } from "effect";
  *   valid while the file is still as the session left it.
  */
 export interface UndoHistory<A> {
-  readonly past: readonly A[];
-  readonly future: readonly A[];
+  readonly future: ReadonlyArray<A>;
+  readonly past: ReadonlyArray<A>;
   readonly revision: number;
 }
 
 /** A history with no steps, good for file revision `revision`. */
 export const emptyHistory = <A>(revision: number): UndoHistory<A> => ({
-  past: [],
   future: [],
+  past: [],
   revision,
 });
 
-const hasSteps = <A>({ past, future }: UndoHistory<A>) =>
+const hasSteps = <A>({ future, past }: UndoHistory<A>) =>
   past.length > 0 || future.length > 0;
 
 /**
@@ -34,73 +34,73 @@ const hasSteps = <A>({ past, future }: UndoHistory<A>) =>
  * change, so the history starts again.
  */
 export const pushStep = <A>({
-  history,
   before,
-  fileRevision,
   cap,
+  fileRevision,
+  history,
 }: {
-  readonly history: UndoHistory<A>;
   readonly before: A;
-  readonly fileRevision: number;
   readonly cap: number;
+  readonly fileRevision: number;
+  readonly history: UndoHistory<A>;
 }): UndoHistory<A> => {
   const kept =
     history.revision === fileRevision ? history : emptyHistory<A>(fileRevision);
 
   return {
-    past: [...kept.past, before].slice(-cap),
     future: [],
+    past: [...kept.past, before].slice(-cap),
     revision: kept.revision,
   };
 };
 
 /** What an undo or redo gives: the list to set, and the history after it. */
 export interface Stepped<A> {
-  readonly target: A;
   readonly history: UndoHistory<A>;
+  readonly target: A;
 }
 
 /** Undo from the list `current`: the last list before it, if any. */
 export const undoStep = <A>({
-  history,
   current,
+  history,
 }: {
-  readonly history: UndoHistory<A>;
   readonly current: A;
+  readonly history: UndoHistory<A>;
 }): Option.Option<Stepped<A>> => {
   const target = history.past.at(-1);
 
   return target === undefined
     ? Option.none()
     : Option.some({
-        target,
         history: {
           ...history,
-          past: history.past.slice(0, -1),
           future: [...history.future, current],
+          past: history.past.slice(0, -1),
         },
+        target,
       });
 };
 
 /** Redo from the list `current`: the list the last undo left, if any. */
 export const redoStep = <A>({
-  history,
   current,
+  history,
 }: {
-  readonly history: UndoHistory<A>;
   readonly current: A;
+  readonly history: UndoHistory<A>;
 }): Option.Option<Stepped<A>> => {
   const target = history.future.at(-1);
 
   return target === undefined
     ? Option.none()
     : Option.some({
-        target,
         history: {
           ...history,
-          past: [...history.past, current],
           future: history.future.slice(0, -1),
+          past: [...history.past, current],
         },
+        target,
       });
 };
 
@@ -115,9 +115,9 @@ export const wroteFile = <A>({
 
 /** What `observeFile` decides. */
 export interface Observed<A> {
-  readonly history: UndoHistory<A>;
   /** Whether the history had steps that were just thrown away. */
   readonly cleared: boolean;
+  readonly history: UndoHistory<A>;
 }
 
 /**
@@ -131,23 +131,23 @@ export interface Observed<A> {
  *   someone else's write made it stale.
  */
 export const observeFile = <A>({
-  history,
-  fileRevision,
   acceptedChanged,
+  fileRevision,
+  history,
 }: {
-  readonly history: UndoHistory<A>;
-  readonly fileRevision: number;
   readonly acceptedChanged: boolean;
+  readonly fileRevision: number;
+  readonly history: UndoHistory<A>;
 }): Observed<A> => {
   if (acceptedChanged) {
     return {
-      history: emptyHistory<A>(fileRevision),
       cleared: hasSteps(history),
+      history: emptyHistory<A>(fileRevision),
     };
   }
 
   return {
-    history: hasSteps(history) ? history : emptyHistory<A>(fileRevision),
     cleared: false,
+    history: hasSteps(history) ? history : emptyHistory<A>(fileRevision),
   };
 };

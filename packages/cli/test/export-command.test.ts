@@ -27,17 +27,17 @@ const mapFiles = (files: HomeFiles) =>
  * arrow, and a frame per group.
  */
 const SceneElement = Schema.Struct({
-  type: Schema.String,
-  originalText: Schema.optionalKey(Schema.String),
   name: Schema.optionalKey(Schema.String),
+  originalText: Schema.optionalKey(Schema.String),
+  type: Schema.String,
 });
 
 const ExcalidrawScene = Schema.fromJsonString(
   Schema.Struct({
+    appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
+    elements: Schema.Array(SceneElement),
     type: Schema.Literal("excalidraw"),
     version: Schema.Literal(2),
-    elements: Schema.Array(SceneElement),
-    appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
   })
 );
 
@@ -94,10 +94,10 @@ describe("export", () => {
         // The pipeline map has 15 structures, 29 hops and 4 groups. Each
         // structure and hop carries its name or label as a text element.
         assert.deepStrictEqual(countsOf(scene), {
-          rectangle: 15,
           arrow: 29,
-          text: 44,
           frame: 4,
+          rectangle: 15,
+          text: 44,
         });
 
         const texts = textsOf(scene);

@@ -42,14 +42,14 @@ import { provisionalIdOf } from "./structure-change.ts";
  *   the open proposal away.
  */
 export interface ConnectionWorld {
-  readonly data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">;
   readonly base: Pick<MapData, "hops" | "flows">;
+  readonly data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">;
 }
 
-const hopsOpen = (proposals: Proposals): readonly HopProposal[] =>
+const hopsOpen = (proposals: Proposals): ReadonlyArray<HopProposal> =>
   proposals.hops ?? [];
 
-const flowsOpen = (proposals: Proposals): readonly FlowProposal[] =>
+const flowsOpen = (proposals: Proposals): ReadonlyArray<FlowProposal> =>
   proposals.flows ?? [];
 
 const noHop = (id: string) =>
@@ -109,9 +109,9 @@ const hopWorldRefusal = (
 
 /** An open hop add changed in the one field `change` names, or taken off with a delete. */
 const editedHopAdd = (
-  open: readonly HopProposal[],
+  open: ReadonlyArray<HopProposal>,
   change: HopChange
-): Option.Option<readonly HopProposal[]> => {
+): Option.Option<ReadonlyArray<HopProposal>> => {
   const id = hopOf(change);
 
   const found = Arr.findFirst(
@@ -144,17 +144,17 @@ const editedHopAdd = (
 
 /** What the propose engine needs to know about hop proposals on `world`. */
 const hopKind = (world: ConnectionWorld): ProposalKind<HopChange> => ({
+  edited: editedHopAdd,
+  isAdd: (change) => change.action === "add",
+  isCurrent: (change) => hopIsCurrent(world.base, change),
   noun: "hop",
   open: hopsOpen,
-  withOpen: (held, hops) => ({ ...held, revision: held.revision + 1, hops }),
-  targetOf: hopOf,
-  isAdd: (change) => change.action === "add",
+  refusal: (change) => hopWorldRefusal(world, change),
   sameChange: sameHopChange,
   sameSubject: sameHopSubject,
+  targetOf: hopOf,
   waitingAdds: (held) => addedHopIds(frozenHopChanges(held)),
-  edited: editedHopAdd,
-  refusal: (change) => hopWorldRefusal(world, change),
-  isCurrent: (change) => hopIsCurrent(world.base, change),
+  withOpen: (held, hops) => ({ ...held, hops, revision: held.revision + 1 }),
 });
 
 /**
@@ -165,18 +165,18 @@ const hopKind = (world: ConnectionWorld): ProposalKind<HopChange> => ({
  * a hop or structure the map lacks, or joins a structure to itself.
  */
 export const proposeHop = ({
-  proposals,
-  id,
   change,
+  id,
+  proposals,
   world,
 }: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
   readonly change: HopChange;
+  readonly id: ChangeId;
+  readonly proposals: Proposals;
   readonly world: ConnectionWorld;
 }): Result.Result<Proposals, string> => {
   const added = Result.map(
-    proposeInto({ kind: hopKind(world), proposals, id, change }),
+    proposeInto({ change, id, kind: hopKind(world), proposals }),
     (next) =>
       change.action === "delete" ? withoutOpenHop(next, hopOf(change)) : next
   );
@@ -249,9 +249,9 @@ const flowWorldRefusal = (
 
 /** An open flow add changed by a rename or a new list of hops. */
 const editedFlowAdd = (
-  open: readonly FlowProposal[],
+  open: ReadonlyArray<FlowProposal>,
   change: FlowChange
-): Option.Option<readonly FlowProposal[]> => {
+): Option.Option<ReadonlyArray<FlowProposal>> => {
   if (change.action === "add" || change.action === "reorder") {
     return Option.none();
   }
@@ -286,17 +286,17 @@ const flowKind = (
   world: ConnectionWorld,
   proposals: Proposals
 ): ProposalKind<FlowChange> => ({
+  edited: editedFlowAdd,
+  isAdd: (change) => change.action === "add",
+  isCurrent: (change) => flowIsCurrent(world.base, change),
   noun: "flow",
   open: flowsOpen,
-  withOpen: (held, flows) => ({ ...held, revision: held.revision + 1, flows }),
-  targetOf: flowOf,
-  isAdd: (change) => change.action === "add",
+  refusal: (change) => flowWorldRefusal(world, proposals, change),
   sameChange: sameFlowChange,
   sameSubject: sameFlowSubject,
+  targetOf: flowOf,
   waitingAdds: (held) => addedFlowIds(frozenFlowChanges(held)),
-  edited: editedFlowAdd,
-  refusal: (change) => flowWorldRefusal(world, proposals, change),
-  isCurrent: (change) => flowIsCurrent(world.base, change),
+  withOpen: (held, flows) => ({ ...held, flows, revision: held.revision + 1 }),
 });
 
 /**
@@ -306,17 +306,17 @@ const flowKind = (
  * a flow or hop the map lacks, or lists a hop that is proposed for deletion.
  */
 export const proposeFlow = ({
-  proposals,
-  id,
   change,
+  id,
+  proposals,
   world,
 }: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
   readonly change: FlowChange;
+  readonly id: ChangeId;
+  readonly proposals: Proposals;
   readonly world: ConnectionWorld;
 }): Result.Result<Proposals, string> =>
-  proposeInto({ kind: flowKind(world, proposals), proposals, id, change });
+  proposeInto({ change, id, kind: flowKind(world, proposals), proposals });
 
 /** A fresh provisional id for a flow called `name`, such as `checkout-4f2a`. */
 export const newFlowId = (name: string): string =>
@@ -331,108 +331,114 @@ export const newFlowId = (name: string): string =>
  * data.mjs as the agent left it, not the proposed map.
  */
 export const checkConnectionProposals: {
-  (proposals: Proposals): (data: MapData) => readonly MapProblem[];
-  (data: MapData, proposals: Proposals): readonly MapProblem[];
-} = dual(2, (data: MapData, proposals: Proposals): readonly MapProblem[] => {
-  const hopIds = new Set(Arr.map(data.hops, ({ id }) => id));
-  const flowIds = new Set(Arr.map(data.flows, ({ id }) => id));
+  (proposals: Proposals): (data: MapData) => ReadonlyArray<MapProblem>;
+  (data: MapData, proposals: Proposals): ReadonlyArray<MapProblem>;
+} = dual(
+  2,
+  (data: MapData, proposals: Proposals): ReadonlyArray<MapProblem> => {
+    const hopIds = new Set(Arr.map(data.hops, ({ id }) => id));
+    const flowIds = new Set(Arr.map(data.flows, ({ id }) => id));
 
-  const proposedHops = new Set([
-    ...addedHopIds(frozenHopChanges(proposals)),
-    ...addedHopIds(openHopChanges(proposals)),
-  ]);
+    const proposedHops = new Set([
+      ...addedHopIds(frozenHopChanges(proposals)),
+      ...addedHopIds(openHopChanges(proposals)),
+    ]);
 
-  const proposedFlows = new Set([
-    ...addedFlowIds(frozenFlowChanges(proposals)),
-    ...addedFlowIds(openFlowChanges(proposals)),
-  ]);
+    const proposedFlows = new Set([
+      ...addedFlowIds(frozenFlowChanges(proposals)),
+      ...addedFlowIds(openFlowChanges(proposals)),
+    ]);
 
-  const hopProblems = Arr.flatMap(hopsOpen(proposals), ({ change }, index) => {
-    const id = hopOf(change);
-    const path = ["hops", index, "change", "hop"];
+    const hopProblems = Arr.flatMap(
+      hopsOpen(proposals),
+      ({ change }, index) => {
+        const id = hopOf(change);
+        const path = ["hops", index, "change", "hop"];
 
-    if (change.action === "add") {
-      return hopIds.has(id)
-        ? [
-            mapWarning({
-              file: "proposals.json",
-              path: [...path, "id"],
-              message: `data.mjs already has a hop with the id "${id}", which this proposal adds. Discard it from the page's Pending list.`,
-            }),
-          ]
-        : [];
-    }
-
-    return hopIds.has(id) || proposedHops.has(id)
-      ? []
-      : [
-          mapWarning({
-            file: "proposals.json",
-            path,
-            message: `no hop in data.mjs has the id "${id}", so this ${change.action} does nothing. Discard it from the page's Pending list.`,
-          }),
-        ];
-  });
-
-  const flowProblems = Arr.flatMap(
-    flowsOpen(proposals),
-    ({ change }, index) => {
-      const path = ["flows", index, "change"];
-
-      const unknownHops =
-        change.action === "add" || change.action === "hops"
-          ? Arr.flatMap(change.hops, (hop) =>
-              hopIds.has(hop) || proposedHops.has(hop)
-                ? []
-                : [
-                    mapWarning({
-                      file: "proposals.json",
-                      path: [...path, "hops"],
-                      message: `no hop in data.mjs has the id "${hop}", so this flow lists a hop that isn't there. Discard it from the page's Pending list.`,
-                    }),
-                  ]
-            )
-          : [];
-
-      if (change.action === "add") {
-        return flowIds.has(change.flow.id)
-          ? [
-              mapWarning({
-                file: "proposals.json",
-                path: [...path, "flow", "id"],
-                message: `data.mjs already has a flow with the id "${change.flow.id}", which this proposal adds. Discard it from the page's Pending list.`,
-              }),
-              ...unknownHops,
-            ]
-          : unknownHops;
-      }
-
-      if (change.action === "reorder") {
-        return Arr.flatMap(change.flows, (flow) =>
-          flowIds.has(flow) || proposedFlows.has(flow)
-            ? []
-            : [
+        if (change.action === "add") {
+          return hopIds.has(id)
+            ? [
                 mapWarning({
                   file: "proposals.json",
-                  path: [...path, "flows"],
-                  message: `no flow in data.mjs has the id "${flow}", so the order can't include it. Discard it from the page's Pending list.`,
+                  message: `data.mjs already has a hop with the id "${id}", which this proposal adds. Discard it from the page's Pending list.`,
+                  path: [...path, "id"],
                 }),
               ]
-        );
+            : [];
+        }
+
+        return hopIds.has(id) || proposedHops.has(id)
+          ? []
+          : [
+              mapWarning({
+                file: "proposals.json",
+                message: `no hop in data.mjs has the id "${id}", so this ${change.action} does nothing. Discard it from the page's Pending list.`,
+                path,
+              }),
+            ];
       }
+    );
 
-      return flowIds.has(change.flow) || proposedFlows.has(change.flow)
-        ? unknownHops
-        : [
-            mapWarning({
-              file: "proposals.json",
-              path,
-              message: `no flow in data.mjs has the id "${change.flow}", so this ${change.action} does nothing. Discard it from the page's Pending list.`,
-            }),
-            ...unknownHops,
-          ];
-    }
-  );
+    const flowProblems = Arr.flatMap(
+      flowsOpen(proposals),
+      ({ change }, index) => {
+        const path = ["flows", index, "change"];
 
-  return [...hopProblems, ...flowProblems];
-});
+        const unknownHops =
+          change.action === "add" || change.action === "hops"
+            ? Arr.flatMap(change.hops, (hop) =>
+                hopIds.has(hop) || proposedHops.has(hop)
+                  ? []
+                  : [
+                      mapWarning({
+                        file: "proposals.json",
+                        message: `no hop in data.mjs has the id "${hop}", so this flow lists a hop that isn't there. Discard it from the page's Pending list.`,
+                        path: [...path, "hops"],
+                      }),
+                    ]
+              )
+            : [];
+
+        if (change.action === "add") {
+          return flowIds.has(change.flow.id)
+            ? [
+                mapWarning({
+                  file: "proposals.json",
+                  message: `data.mjs already has a flow with the id "${change.flow.id}", which this proposal adds. Discard it from the page's Pending list.`,
+                  path: [...path, "flow", "id"],
+                }),
+                ...unknownHops,
+              ]
+            : unknownHops;
+        }
+
+        if (change.action === "reorder") {
+          return Arr.flatMap(change.flows, (flow) =>
+            flowIds.has(flow) || proposedFlows.has(flow)
+              ? []
+              : [
+                  mapWarning({
+                    file: "proposals.json",
+                    message: `no flow in data.mjs has the id "${flow}", so the order can't include it. Discard it from the page's Pending list.`,
+                    path: [...path, "flows"],
+                  }),
+                ]
+          );
+        }
+
+        return flowIds.has(change.flow) || proposedFlows.has(change.flow)
+          ? unknownHops
+          : [
+              mapWarning({
+                file: "proposals.json",
+                message: `no flow in data.mjs has the id "${change.flow}", so this ${change.action} does nothing. Discard it from the page's Pending list.`,
+                path,
+              }),
+              ...unknownHops,
+            ];
+      }
+    );
+
+    return [...hopProblems, ...flowProblems];
+  }
+);

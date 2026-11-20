@@ -47,7 +47,7 @@ export function StructureMenu() {
   const byId = useStructuresById();
   const { state } = useWalkthrough();
   const { select } = useSelection();
-  const { send, failure } = usePropose();
+  const { failure, send } = usePropose();
   const chapter = useChapterPropose();
   const newGroup = useNewGroupForm();
   const { multiSelection, setMultiSelection } = useSelection();
@@ -100,12 +100,12 @@ export function StructureMenu() {
 
   return (
     <Menu
-      open
       onOpenChange={(open) => {
         if (!open) {
           setOpened(null);
         }
       }}
+      open
     >
       <MenuContent anchor={anchor} data-structure-menu={structure.id}>
         <MenuLabel>{structure.name}</MenuLabel>
@@ -132,7 +132,6 @@ export function StructureMenu() {
           </MenuSubTrigger>
           <MenuSubContent>
             <MenuRadioGroup
-              value={structure.shape}
               onValueChange={(next) => {
                 const choice = Option.getOrUndefined(
                   Arr.findFirst(shapeChoices, ({ value }) => value === next)
@@ -142,12 +141,13 @@ export function StructureMenu() {
                   send(changeFor.shape(structure, choice.value));
                 }
               }}
+              value={structure.shape}
             >
-              {Arr.map(shapeChoices, ({ value, label }) => (
+              {Arr.map(shapeChoices, ({ label, value }) => (
                 <MenuRadioItem
+                  data-menu-shape={value}
                   key={value}
                   value={value}
-                  data-menu-shape={value}
                 >
                   {label}
                 </MenuRadioItem>
@@ -161,13 +161,13 @@ export function StructureMenu() {
           </MenuSubTrigger>
           <MenuSubContent>
             <MenuRadioGroup
-              value={structure.group}
               onValueChange={(next: string) => {
                 send(changeFor.group(structure, next));
               }}
+              value={structure.group}
             >
               {Arr.map(state.data.groups, ({ id, title }) => (
-                <MenuRadioItem key={id} value={id} data-menu-group={id}>
+                <MenuRadioItem data-menu-group={id} key={id} value={id}>
                   {title}
                 </MenuRadioItem>
               ))}
@@ -180,7 +180,6 @@ export function StructureMenu() {
           </MenuSubTrigger>
           <MenuSubContent>
             <MenuRadioGroup
-              value={structure.status}
               onValueChange={(next) => {
                 const choice = Option.getOrUndefined(
                   Arr.findFirst(statusChoices, ({ value }) => value === next)
@@ -190,12 +189,13 @@ export function StructureMenu() {
                   send(changeFor.status(structure, choice.value));
                 }
               }}
+              value={structure.status}
             >
-              {Arr.map(statusChoices, ({ value, label }) => (
+              {Arr.map(statusChoices, ({ label, value }) => (
                 <MenuRadioItem
+                  data-menu-status={value}
                   key={value}
                   value={value}
-                  data-menu-status={value}
                 >
                   {label}
                 </MenuRadioItem>
@@ -253,18 +253,18 @@ export function StructureMenu() {
         </MenuItem>
         {chapter.failure === undefined ? null : (
           <p
-            role="alert"
-            data-menu-chapter-failure
             className="border-refused max-w-56 border-l-2 px-2 py-1"
+            data-menu-chapter-failure
+            role="alert"
           >
             {chapter.failure}
           </p>
         )}
         {failure === undefined ? null : (
           <p
-            role="alert"
-            data-menu-failure
             className="border-refused max-w-56 border-l-2 px-2 py-1"
+            data-menu-failure
+            role="alert"
           >
             {failure}
           </p>

@@ -53,26 +53,26 @@ import { WalkthroughProvider } from "./walkthrough.tsx";
 
 /** The keys the hint bar lists, for what's on screen. */
 const hintsOf = ({
+  canGoInside,
+  editable,
+  editing,
+  inside,
+  multiSelected,
   overviewOpen,
   selected,
-  inside,
-  canGoInside,
-  editing,
-  editable,
-  multiSelected,
 }: {
+  /** Whether the selected structure has steps. */
+  readonly canGoInside: boolean;
+  /** Whether the page has an Edit button, which `e` presses. */
+  readonly editable: boolean;
+  /** Whether Edit is on, so the page can edit the layout. */
+  readonly editing: boolean;
+  readonly inside: boolean;
+  /** How many structures are in the multi-selection. */
+  readonly multiSelected: number;
   /** Whether the How it's built page is open. */
   readonly overviewOpen: boolean;
   readonly selected: boolean;
-  readonly inside: boolean;
-  /** Whether the selected structure has steps. */
-  readonly canGoInside: boolean;
-  /** Whether Edit is on, so the page can edit the layout. */
-  readonly editing: boolean;
-  /** Whether the page has an Edit button, which `e` presses. */
-  readonly editable: boolean;
-  /** How many structures are in the multi-selection. */
-  readonly multiSelected: number;
 }) => {
   const editHint = editable ? [editing ? "e stops editing" : "e edits"] : [];
 
@@ -129,8 +129,8 @@ interface Notices {
 }
 
 function WalkthroughPage({ notices }: Notices) {
-  const { state, stop, revealed, newlyRevealed, fit } = useWalkthrough();
-  const { selected, inside, multiSelection } = useSelection();
+  const { fit, newlyRevealed, revealed, state, stop } = useWalkthrough();
+  const { inside, multiSelection, selected } = useSelection();
   const editing = useEditing();
   const editable = useEditSwitch() !== null;
   const { open: overviewOpen } = useOverviewPage();
@@ -171,9 +171,9 @@ function WalkthroughPage({ notices }: Notices) {
     (hop: Hop) =>
       screenRouteOf({
         data: state.data,
+        hop,
         layout: state.layout,
         revealed,
-        hop,
         view,
       }),
     [state.data, state.layout, revealed, view]
@@ -181,10 +181,10 @@ function WalkthroughPage({ notices }: Notices) {
 
   return (
     <main
-      data-walkthrough
+      className="bg-paper text-ink flex h-svh flex-col font-mono"
       data-chapter={stop.id}
       data-view={view}
-      className="bg-paper text-ink flex h-svh flex-col font-mono"
+      data-walkthrough
     >
       <header className="border-ink flex items-center gap-4 border-b px-4 py-2">
         <h1 className="text-sm font-medium tracking-widest uppercase">
@@ -193,9 +193,9 @@ function WalkthroughPage({ notices }: Notices) {
         <div className="ml-auto flex items-stretch gap-1.5">
           <ReadyForReview />
           <ViewToggle
-            view={view}
             choose={setView}
             disabledBecause={switchBlocked}
+            view={view}
           />
           <EditToggle />
           <OverviewButton />
@@ -210,21 +210,21 @@ function WalkthroughPage({ notices }: Notices) {
               so its pan and zoom survive the visit. It keeps its size, so
               the viewport doesn't refit on a resize. */}
           <div
-            data-map-layer
-            inert={insideStructure !== undefined}
             className={cn(
               "absolute inset-0",
               insideStructure !== undefined && "invisible"
             )}
+            data-map-layer
+            inert={insideStructure !== undefined}
           >
             <MapView
-              view={view}
-              state={state}
-              revealed={revealed}
-              newlyRevealed={newlyRevealed}
-              fitTo={fit}
               fitKey={stop.id}
+              fitTo={fit}
               labelFirst={stop.plays}
+              newlyRevealed={newlyRevealed}
+              revealed={revealed}
+              state={state}
+              view={view}
             >
               <PacketLayer routeOf={routeOf} />
             </MapView>
@@ -234,8 +234,8 @@ function WalkthroughPage({ notices }: Notices) {
               <div className="flex w-full flex-wrap items-start gap-x-3 gap-y-2">
                 <ChapterRail className="pointer-events-auto min-w-0 flex-1 basis-80" />
                 <EditToolbar
-                  view={view}
                   className="pointer-events-auto ml-auto shrink-0"
+                  view={view}
                 />
               </div>
               {/* The inside view shows the notices instead, while it's open. */}
@@ -244,8 +244,8 @@ function WalkthroughPage({ notices }: Notices) {
             {/* Stops short of the zoom controls at the bottom right, and wraps
                 upward when the flows don't fit on one line. */}
             <div
-              data-playback-bar
               className="absolute bottom-3 left-3 flex max-w-[calc(100%-13rem)] flex-wrap items-center gap-x-3 gap-y-1.5"
+              data-playback-bar
             >
               <PlaybackControls />
               <FlowPicker className="border-ink border-l pl-3" />
@@ -259,8 +259,8 @@ function WalkthroughPage({ notices }: Notices) {
               />
               <div className="pointer-events-none absolute inset-x-3 top-3 bottom-2/3 flex flex-col items-start gap-2">
                 <Breadcrumb
-                  structure={insideStructure}
                   className="pointer-events-auto shrink-0"
+                  structure={insideStructure}
                 />
                 {notices}
               </div>
@@ -278,22 +278,22 @@ function WalkthroughPage({ notices }: Notices) {
           don't fit wrap onto a second line, which the list clips, so a hint
           shows whole or not at all. */}
       <footer
-        data-hints
         className="border-ink flex h-6 shrink-0 border-t px-4 py-1 text-xs opacity-70"
+        data-hints
       >
         <ul className="flex h-4 min-w-0 flex-wrap gap-x-4 gap-y-2 overflow-hidden">
           {Arr.map(
             hintsOf({
+              canGoInside: hasSteps(selectedStructure),
+              editable,
+              editing: editing?.canEdit === true,
+              inside: insideStructure !== undefined,
+              multiSelected: arrowOwner === "nudge" ? multiSelection.size : 0,
               overviewOpen,
               selected: selected !== null,
-              inside: insideStructure !== undefined,
-              canGoInside: hasSteps(selectedStructure),
-              editing: editing?.canEdit === true,
-              editable,
-              multiSelected: arrowOwner === "nudge" ? multiSelection.size : 0,
             }),
             (hint) => (
-              <li key={hint} data-hint className="shrink-0 whitespace-nowrap">
+              <li className="shrink-0 whitespace-nowrap" data-hint key={hint}>
                 {hint}
               </li>
             )
@@ -309,8 +309,8 @@ function WalkthroughPage({ notices }: Notices) {
  * where the state comes from.
  */
 export function App({
-  state,
   notices,
+  state,
 }: Notices & { readonly state: MapState }) {
   return (
     <WalkthroughProvider state={state}>

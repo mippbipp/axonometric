@@ -18,13 +18,13 @@ const served = Effect.gen(function* () {
   const root = yield* makeHome(pipelineMapFiles);
   const home = path.join(root, "flake-pipeline", "map");
   const serve = yield* startServe(home, ["--port", "0"]);
-  const { page, errors } = yield* openUrl(serve.url);
+  const { errors, page } = yield* openUrl(serve.url);
 
   yield* Effect.promise(() =>
-    page.setViewportSize({ width: 1600, height: 900 })
+    page.setViewportSize({ height: 900, width: 1600 })
   );
 
-  return { page, errors };
+  return { errors, page };
 }).pipe(Effect.provide(NodeServices.layer));
 
 /**
@@ -38,7 +38,7 @@ const slowestMove = Effect.fnUntraced(function* (
     moves,
   }: { readonly from: { x: number; y: number }; readonly moves: number }
 ) {
-  const times: number[] = [];
+  const times: Array<number> = [];
 
   for (const index of Arr.range(1, moves)) {
     const began = yield* Clock.currentTimeMillis;
@@ -56,7 +56,7 @@ const slowestMove = Effect.fnUntraced(function* (
 
 /** Each drag warning's message, sorted. */
 const shownWarnings = (page: Page) =>
-  inPage<readonly string[]>(
+  inPage<ReadonlyArray<string>>(
     page,
     `[...document.querySelectorAll("[data-drag-warning] [data-warning-message]")].map((item) => item.textContent)`
   ).pipe(Effect.map((shown) => Arr.sort(shown, Order.String)));
@@ -66,7 +66,7 @@ describe("the drag warnings on a big map", () => {
     "check the chapter on screen first, keep the drag smooth, and end with every chapter",
     () =>
       Effect.gen(function* () {
-        const { page, errors } = yield* served;
+        const { errors, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-monday");
 

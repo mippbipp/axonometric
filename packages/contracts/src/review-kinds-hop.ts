@@ -40,10 +40,10 @@ const hopNotice =
 
 /** What the hop kind adds under a provisional id, and how it says so. */
 const provisional = provisionalOf<HopItem>({
-  entity: "hop",
-  noun: "hop",
   adds: ({ change }) =>
     change.action === "add" ? Option.some(change.hop.id) : Option.none(),
+  entity: "hop",
+  noun: "hop",
 });
 
 /**
@@ -57,86 +57,46 @@ const finalIdOf = (item: HopItem, verdict: Verdict): string =>
 
 export const hopKind: KindSpec<HopItem> = {
   ...plain<HopItem>(),
-  textLimit: maxHopLabelLength,
+  describe: ({ change }, called) =>
+    Option.some(
+      describeHop(change, { hop: called.hop, structure: called.structure })
+    ),
   listKey: "hops",
   text: ({ change }) => hopActionOf(change).text(),
+  textLimit: maxHopLabelLength,
   textRefusal: ({ change }, text) =>
     Option.isNone(hopActionOf(change).text())
       ? Option.none()
       : refusalOf(HopLabel, text),
-  describe: ({ change }, called) =>
-    Option.some(
-      describeHop(change, { structure: called.structure, hop: called.hop })
-    ),
   // Whether the hop or the structures it joins exist depends on what other
   // proposals add, so `checkConnectionProposals` words these.
-  dangling: () => Option.none(),
-  notice: hopNotice,
-  open: (proposals) =>
-    Arr.map(proposals.hops ?? [], (proposal): HopItem => ({
-      id: proposal.id,
-      kind: "hop",
-      change: proposal.change,
-    })),
-  clear: (proposals) => ({ ...proposals, hops: [] }),
-  add: (proposals, { id, change }) => ({
+  accepted: (item, verdict) => {
+    const base = { change: item.change, id: item.id, kind: "hop" } as const;
+    const final = finalIdOf(item, verdict);
+
+    return decorate(
+      item.change.action === "add" && final !== item.change.hop.id
+        ? { ...base, as: final }
+        : base,
+      verdict
+    );
+  },
+  add: (proposals, { change, id }) => ({
     ...proposals,
-    hops: [...(proposals.hops ?? []), { id, change }],
+    hops: [...(proposals.hops ?? []), { change, id }],
   }),
-  discarded: (proposals, { change }) =>
-    change.action === "add"
-      ? withoutOpenHop(proposals, change.hop.id)
-      : proposals,
-  name: ({ change }) => hopLabel(change),
-  targets: ({ change }): readonly Pointer[] => hopActionOf(change).targets(),
-  summary: ({ id, change }, called) =>
-    summarizeHop(change, id, { structure: called.structure, hop: called.hop }),
-  facts: ({ change }, _layout, data) => factsOfHop(change, data),
+  applies: () => [],
   appliesToData: ({ change }, map) => ({
     ...map,
     data: hopChangeToData(map.data, change),
   }),
-  touches: ({ change }) => {
-    const { proposed, removed } = hopActionOf(change).marks();
-
-    return {
-      structures: [],
-      hops: [hopOf(change)],
-      marks: [
-        { name: removedHopMark, ids: removed },
-        { name: proposedHopMark, ids: proposed },
-      ],
-    };
-  },
-  breakage: ({ change }, { structureIds, hops, data }) =>
+  breakage: ({ change }, { data, hops, structureIds }) =>
     hopBreakage(change, {
-      structureIds,
-      hopIds: new Set(Arr.map(hops, ({ id }) => id)),
       data,
+      hopIds: new Set(Arr.map(hops, ({ id }) => id)),
+      structureIds,
     }),
-  verdictRefusal: provisional.verdictRefusal,
-  renames: provisional.renames,
-  retargeted: (item, renames) => {
-    const { change } = item;
-
-    if (change.action === "add") {
-      const { from, to } = change.hop;
-
-      const next = {
-        from: followed(renames, "structure", from),
-        to: followed(renames, "structure", to),
-      };
-
-      return next.from === from && next.to === to
-        ? item
-        : { ...item, change: { ...change, hop: { ...change.hop, ...next } } };
-    }
-
-    const hop = followed(renames, "hop", change.hop);
-
-    return hop === change.hop ? item : { ...item, change: { ...change, hop } };
-  },
-  applies: () => [],
+  clear: (proposals) => ({ ...proposals, hops: [] }),
   commitRefusal: (item, verdict, { data }) => {
     const { change } = item;
 
@@ -162,29 +122,70 @@ export const hopKind: KindSpec<HopItem> = {
         )
       : Option.none();
   },
-  accepted: (item, verdict) => {
-    const base = { kind: "hop", id: item.id, change: item.change } as const;
-    const final = finalIdOf(item, verdict);
-
-    return decorate(
-      item.change.action === "add" && final !== item.change.hop.id
-        ? { ...base, as: final }
-        : base,
-      verdict
-    );
-  },
+  dangling: () => Option.none(),
+  discarded: (proposals, { change }) =>
+    change.action === "add"
+      ? withoutOpenHop(proposals, change.hop.id)
+      : proposals,
+  facts: ({ change }, _layout, data) => factsOfHop(change, data),
+  name: ({ change }) => hopLabel(change),
+  notice: hopNotice,
+  open: (proposals) =>
+    Arr.map(proposals.hops ?? [], (proposal): HopItem => ({
+      change: proposal.change,
+      id: proposal.id,
+      kind: "hop",
+    })),
   rejected: (item, reason) => ({
-    kind: "hop",
-    id: item.id,
     change: item.change,
+    id: item.id,
+    kind: "hop",
     reason,
   }),
+  renames: provisional.renames,
   reopened: (item, newId, text) => ({
     ...item,
-    id: newId,
     change:
       text === undefined
         ? item.change
         : hopActionOf(item.change).withText(text),
+    id: newId,
   }),
+  retargeted: (item, renames) => {
+    const { change } = item;
+
+    if (change.action === "add") {
+      const { from, to } = change.hop;
+
+      const next = {
+        from: followed(renames, "structure", from),
+        to: followed(renames, "structure", to),
+      };
+
+      return next.from === from && next.to === to
+        ? item
+        : { ...item, change: { ...change, hop: { ...change.hop, ...next } } };
+    }
+
+    const hop = followed(renames, "hop", change.hop);
+
+    return hop === change.hop ? item : { ...item, change: { ...change, hop } };
+  },
+  summary: ({ change, id }, called) =>
+    summarizeHop(change, id, { hop: called.hop, structure: called.structure }),
+  targets: ({ change }): ReadonlyArray<Pointer> =>
+    hopActionOf(change).targets(),
+  touches: ({ change }) => {
+    const { proposed, removed } = hopActionOf(change).marks();
+
+    return {
+      hops: [hopOf(change)],
+      marks: [
+        { ids: removed, name: removedHopMark },
+        { ids: proposed, name: proposedHopMark },
+      ],
+      structures: [],
+    };
+  },
+  verdictRefusal: provisional.verdictRefusal,
 };

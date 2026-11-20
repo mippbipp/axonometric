@@ -32,9 +32,9 @@ const homeWithStateFile = Effect.fnUntraced(function* (pid: number) {
   const root = yield* makeHome({
     ...(yield* minimalMap),
     "pipeline/map/.axonometric/server.json": yield* encodeServerState({
-      url: "http://127.0.0.1:5999",
       pid,
       since: "2026-11-01T09:00:00.000Z",
+      url: "http://127.0.0.1:5999",
     }),
   });
 
@@ -155,10 +155,10 @@ describe("status", () => {
       const report = yield* decodeReport(json.stdout);
       assert.deepStrictEqual(report, {
         home,
-        running: true,
-        url: "http://127.0.0.1:5999",
         pid,
+        running: true,
         since: "2026-11-01T09:00:00.000Z",
+        url: "http://127.0.0.1:5999",
       });
     })
   );

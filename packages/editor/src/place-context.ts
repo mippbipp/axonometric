@@ -3,9 +3,9 @@ import { createContext, use } from "react";
 
 /** What the add form holds while the engineer fills it in. */
 export interface Draft {
+  readonly group: string;
   readonly name: string;
   readonly shape: Shape;
-  readonly group: string;
   readonly status: Status;
 }
 
@@ -17,19 +17,19 @@ export interface Draft {
  * the picker shows that.
  */
 export interface Placing {
+  readonly draft: Draft;
   /** Whether the form is open. */
   readonly open: boolean;
-  readonly setOpen: (open: boolean) => void;
-  readonly draft: Draft;
-  readonly setDraft: (draft: Draft) => void;
-  /** Whether the next click on the map picks a spot. */
-  readonly picking: boolean;
-  /** The spot picked or typed, snapped to half units, or `null` for none yet. */
-  readonly spot: GridPoint | null;
   /** Starts or stops waiting for a click. */
   readonly pick: (picking: boolean) => void;
+  /** Whether the next click on the map picks a spot. */
+  readonly picking: boolean;
+  readonly setDraft: (draft: Draft) => void;
+  readonly setOpen: (open: boolean) => void;
   /** Sets the spot, as a click or a typed position does. */
   readonly setSpot: (spot: GridPoint | null) => void;
+  /** The spot picked or typed, snapped to half units, or `null` for none yet. */
+  readonly spot: GridPoint | null;
 }
 
 export const PlaceContext = createContext<Placing | null>(null);

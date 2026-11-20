@@ -80,20 +80,20 @@ const pinSpot = Effect.fnUntraced(function* (
 });
 
 interface Box {
-  readonly name: string;
-  readonly left: number;
-  readonly top: number;
-  readonly right: number;
   readonly bottom: number;
+  readonly left: number;
+  readonly name: string;
+  readonly right: number;
+  readonly top: number;
 }
 
 interface Markers {
-  /** Every ring's screen box. */
-  readonly rings: Box[];
-  /** Boxes of text a ring must stay clear of: name tags, hop labels and chips. */
-  readonly texts: Box[];
   /** Rings that sit on a drawn shape of a structure, by name. */
-  readonly onShapes: string[];
+  readonly onShapes: Array<string>;
+  /** Every ring's screen box. */
+  readonly rings: Array<Box>;
+  /** Boxes of text a ring must stay clear of: name tags, hop labels and chips. */
+  readonly texts: Array<Box>;
 }
 
 /**
@@ -184,7 +184,7 @@ describe("a note on a hop", () => {
     "is pinned from the hop's panel, shown on the panel and marked on the map",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-save");
@@ -196,7 +196,7 @@ describe("a note on a hop", () => {
 
         assert.deepStrictEqual(
           Arr.map(proposals.notes ?? [], ({ target, text }) => [target, text]),
-          [[{ kind: "hop", id: "h-save" }, "Why not a socket?"]]
+          [[{ id: "h-save", kind: "hop" }, "Why not a socket?"]]
         );
 
         yield* click(page, '[role="tab"][data-tab="pending"]');
@@ -221,7 +221,7 @@ describe("a note on an empty spot", () => {
     "is pinned with the Note tool, saved on the half-unit grid and listed in the panel",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* pinSpot(page, { x: 0.5, y: 0.82 }, "A cache could sit here.");
@@ -277,7 +277,7 @@ describe("markers for hops and spots", () => {
           );
           yield* waitFor(page, '[data-note-marker="server"]');
 
-          const { rings, texts, onShapes } = yield* markersOnPage(page);
+          const { onShapes, rings, texts } = yield* markersOnPage(page);
 
           assert.isAtLeast(rings.length, 3);
           assert.deepStrictEqual(onShapes, [], `rings on a box in ${view}`);
@@ -333,7 +333,7 @@ describe("zoom to fit", () => {
       `includes a spot note far from the map in ${view}`,
       () =>
         Effect.gen(function* () {
-          const { serve, page, errors } = yield* served;
+          const { errors, page, serve } = yield* served;
 
           const farSpotNote = yield* farSpot(0);
           const sent = yield* post(serve.url, "/api/notes", farSpotNote);
@@ -516,7 +516,7 @@ describe("the keyboard", () => {
 const ringToLinePixels = (page: Page) =>
   Effect.promise(() =>
     page.evaluate<
-      readonly { ring: string; hop: string; pixels: number }[]
+      ReadonlyArray<{ hop: string; pixels: number; ring: string }>
     >(`(() => {
       const near = (p, a, b) => {
         const dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy;
@@ -568,7 +568,7 @@ describe("hop rings at fit", () => {
       `keep 3 screen pixels from every hop's line at 1280×800 in ${view}`,
       () =>
         Effect.gen(function* () {
-          const { page, errors } = yield* served;
+          const { errors, page } = yield* served;
 
           yield* goToChapterPaused(page, "c-all");
           yield* showView(page, view);
@@ -587,7 +587,7 @@ describe("hop rings at fit", () => {
 
           assert.isAtLeast(gaps.length, 9);
 
-          for (const { ring, hop, pixels } of gaps) {
+          for (const { hop, pixels, ring } of gaps) {
             assert.isAtLeast(
               pixels,
               3 - 0.05,

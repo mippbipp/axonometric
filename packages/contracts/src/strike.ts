@@ -16,10 +16,10 @@ export const grown: {
   (by: number): (rect: ScreenRect) => ScreenRect;
   (rect: ScreenRect, by: number): ScreenRect;
 } = dual(2, (rect: ScreenRect, by: number): ScreenRect => ({
-  left: rect.left - by,
-  top: rect.top - by,
-  right: rect.right + by,
   bottom: rect.bottom + by,
+  left: rect.left - by,
+  right: rect.right + by,
+  top: rect.top - by,
 }));
 
 /** The share of the segment between `from` and `to`, 0 at its start and 1 at its end. */
@@ -31,9 +31,9 @@ interface Share {
 const byStart = Order.mapInput(Order.Number, (share: Share) => share.from);
 
 /** The shares from 0 to 1 that `cuts` leave, in order. */
-const gapsOutside = (cuts: readonly Share[]): readonly Share[] => {
+const gapsOutside = (cuts: ReadonlyArray<Share>): ReadonlyArray<Share> => {
   let reach = 0;
-  const gaps: Share[] = [];
+  const gaps: Array<Share> = [];
 
   for (const cut of Arr.sort(cuts, byStart)) {
     if (cut.from > reach) {
@@ -60,21 +60,21 @@ export const minStrikePiece = 5;
  */
 export const outsideHoles: {
   (
-    holes: readonly (readonly ScreenPoint[])[],
+    holes: ReadonlyArray<ReadonlyArray<ScreenPoint>>,
     minPiece: number
-  ): (segment: Segment) => readonly Segment[];
+  ): (segment: Segment) => ReadonlyArray<Segment>;
   (
     segment: Segment,
-    holes: readonly (readonly ScreenPoint[])[],
+    holes: ReadonlyArray<ReadonlyArray<ScreenPoint>>,
     minPiece: number
-  ): readonly Segment[];
+  ): ReadonlyArray<Segment>;
 } = dual(
   3,
   (
     segment: Segment,
-    holes: readonly (readonly ScreenPoint[])[],
+    holes: ReadonlyArray<ReadonlyArray<ScreenPoint>>,
     minPiece: number
-  ): readonly Segment[] => {
+  ): ReadonlyArray<Segment> => {
     const cuts = Arr.flatMap(holes, (hole) =>
       Option.toArray(Option.fromNullishOr(clipToConvex(segment, hole)))
     );
@@ -94,7 +94,7 @@ export const outsideHoles: {
       ({ from, to }) => (to - from) * length >= minPiece
     );
 
-    return Arr.map(long, ({ from, to }) => ({ start: at(from), end: at(to) }));
+    return Arr.map(long, ({ from, to }) => ({ end: at(to), start: at(from) }));
   }
 );
 
@@ -105,15 +105,15 @@ export const outsideHoles: {
  * cross never crosses a letter and the text stays readable.
  */
 export const strikeSegments = ({
-  placement,
   ground,
+  placement,
   text,
 }: {
-  readonly placement: Placement;
   readonly ground: GroundProjection;
+  readonly placement: Placement;
   /** The boxes of the text on the structure; `undefined` ones are left out. */
-  readonly text: readonly (ScreenRect | undefined)[];
-}): readonly Segment[] => {
+  readonly text: ReadonlyArray<ScreenRect | undefined>;
+}): ReadonlyArray<Segment> => {
   const [a, b, c, d] = groundOutline(placement, ground);
 
   if (
@@ -130,7 +130,7 @@ export const strikeSegments = ({
   );
 
   return [
-    ...outsideHoles({ start: a, end: c }, holes, minStrikePiece),
-    ...outsideHoles({ start: b, end: d }, holes, minStrikePiece),
+    ...outsideHoles({ end: c, start: a }, holes, minStrikePiece),
+    ...outsideHoles({ end: d, start: b }, holes, minStrikePiece),
   ];
 };

@@ -33,10 +33,10 @@ const structureNotice =
 
 /** What the structure kind adds under a provisional id, and how it says so. */
 const provisional = provisionalOf<StructureItem>({
-  entity: "structure",
-  noun: "structure",
   adds: ({ change }) =>
     change.action === "add" ? Option.some(change.structure.id) : Option.none(),
+  entity: "structure",
+  noun: "structure",
 });
 
 /**
@@ -51,14 +51,14 @@ const finalIdOf = (item: StructureItem, verdict: Verdict): string =>
 /** Whether `kept`, the spot layout.json holds for `id`, is where `build` puts it. */
 const isAutoPlaced = ({
   data,
-  saved,
   id,
   kept,
+  saved,
 }: {
   readonly data: MapData;
-  readonly saved: Layout;
   readonly id: string;
   readonly kept: Placement;
+  readonly saved: Layout;
 }): boolean => {
   const unplaced: Layout = {
     ...saved,
@@ -91,107 +91,31 @@ const textOfChange = (change: StructureItem["change"]): Option.Option<string> =>
 
 export const structureKind: KindSpec<StructureItem> = {
   ...plain<StructureItem>(),
-  textLimit: maxStructureNameLength,
-  textRefusal: ({ change }, text) =>
-    Option.isNone(textOfChange(change))
-      ? Option.none()
-      : refusalOf(StructureName, text),
-  listKey: "structures",
-  text: ({ change }) => textOfChange(change),
-  describe: ({ change }, called) =>
-    Option.some(
-      actionOf(change).describe({
-        structure: called.structure,
-        group: called.group,
-      })
-    ),
-  dangling: ({ change }, known) =>
-    change.action === "add" || known.structures.has(structureOf(change))
-      ? Option.none()
-      : Option.some(
-          `no structure in data.mjs has the id "${structureOf(change)}"`
-        ),
-  notice: structureNotice,
-  open: (proposals) =>
-    Arr.map(proposals.structures ?? [], (proposal): StructureItem => ({
-      id: proposal.id,
+  accepted: (item, verdict) => {
+    const base = {
+      change: item.change,
+      id: item.id,
       kind: "structure",
-      change: proposal.change,
-    })),
-  clear: (proposals) => ({ ...proposals, structures: [] }),
-  add: (proposals, { id, change }) => ({
-    ...proposals,
-    structures: [...(proposals.structures ?? []), { id, change }],
-  }),
-  name: ({ change }) => actionOf(change).label,
-  targets: ({ change }): readonly Pointer[] => [
-    { kind: "structure", id: structureOf(change) },
-  ],
-  summary: ({ id, change }, called) =>
-    actionOf(change).summary(id, called.structure),
-  facts: ({ change }, layout, data) =>
-    actionOf(change).facts(
-      Option.flatMap(Option.fromNullishOr(data), (map) =>
-        Arr.findFirst(map.structures, ({ id }) => id === structureOf(change))
-      ),
-      layout
-    ),
-  appliesToData: ({ change }, map) => ({
-    data: structureChangeToData(map.data, change),
-    layout: structureChangeToLayout(map.layout, change),
-  }),
-  touches: ({ change }) => ({
-    structures: [structureOf(change)],
-    hops: [],
-    marks: [
-      {
-        name: removedMark,
-        ids: change.action === "delete" ? [structureOf(change)] : [],
-      },
-    ],
-  }),
-  breakage: ({ change }, landing) =>
-    landing.data === undefined
-      ? Option.none()
-      : structureBreakage(change, { ...landing, data: landing.data }),
-  verdictRefusal: provisional.verdictRefusal,
-  renames: provisional.renames,
-  retargeted: (item, renames) => {
-    const { change } = item;
+    } as const;
 
-    // A structure that goes into a new group follows the id the agent gave
-    // the group.
-    const groupId = (group: string) => followed(renames, "group", group);
+    const final = finalIdOf(item, verdict);
 
-    if (change.action === "add") {
-      const group = groupId(change.structure.group);
-
-      return group === change.structure.group
-        ? item
-        : {
-            ...item,
-            change: { ...change, structure: { ...change.structure, group } },
-          };
-    }
-
-    const to = followed(renames, "structure", change.structure);
-
-    if (change.action === "group") {
-      return {
-        ...item,
-        change: { ...change, structure: to, group: groupId(change.group) },
-      };
-    }
-
-    return to === change.structure
-      ? item
-      : { ...item, change: { ...change, structure: to } };
+    return decorate(
+      item.change.action === "add" && final !== item.change.structure.id
+        ? { ...base, as: final }
+        : base,
+      verdict
+    );
   },
+  add: (proposals, { change, id }) => ({
+    ...proposals,
+    structures: [...(proposals.structures ?? []), { change, id }],
+  }),
   applies: (
     item,
     verdict,
-    { layout, saved, data }
-  ): readonly LayoutChange[] => {
+    { data, layout, saved }
+  ): ReadonlyArray<LayoutChange> => {
     const { change } = item;
 
     if (verdict.verdict === "rejected" || change.action !== "add") {
@@ -215,13 +139,13 @@ export const structureKind: KindSpec<StructureItem> = {
 
     if (
       Option.isSome(kept) &&
-      !isAutoPlaced({ data, saved, id, kept: kept.value })
+      !isAutoPlaced({ data, id, kept: kept.value, saved })
     ) {
       return [];
     }
 
-    const target = { kind: "structure" as const, id };
-    const { x, y, w, d } = change.at;
+    const target = { id, kind: "structure" as const };
+    const { d, w, x, y } = change.at;
     const there = placed.value;
 
     return [
@@ -231,21 +155,30 @@ export const structureKind: KindSpec<StructureItem> = {
             {
               id: `${item.id}-move`,
               kind: "move" as const,
-              moves: [{ target, position: { x, y } }] as const,
+              moves: [{ position: { x, y }, target }] as const,
             },
           ]),
       ...(there.w === w && there.d === d
         ? []
         : [
             {
+              footprint: { d, w },
               id: `${item.id}-size`,
               kind: "resize" as const,
               target,
-              footprint: { w, d },
             },
           ]),
     ];
   },
+  appliesToData: ({ change }, map) => ({
+    data: structureChangeToData(map.data, change),
+    layout: structureChangeToLayout(map.layout, change),
+  }),
+  breakage: ({ change }, landing) =>
+    landing.data === undefined
+      ? Option.none()
+      : structureBreakage(change, { ...landing, data: landing.data }),
+  clear: (proposals) => ({ ...proposals, structures: [] }),
   commitRefusal: (item, verdict, { data }) => {
     const { change } = item;
 
@@ -271,31 +204,44 @@ export const structureKind: KindSpec<StructureItem> = {
         )
       : Option.none();
   },
-  accepted: (item, verdict) => {
-    const base = {
+  dangling: ({ change }, known) =>
+    change.action === "add" || known.structures.has(structureOf(change))
+      ? Option.none()
+      : Option.some(
+          `no structure in data.mjs has the id "${structureOf(change)}"`
+        ),
+  describe: ({ change }, called) =>
+    Option.some(
+      actionOf(change).describe({
+        group: called.group,
+        structure: called.structure,
+      })
+    ),
+  facts: ({ change }, layout, data) =>
+    actionOf(change).facts(
+      Option.flatMap(Option.fromNullishOr(data), (map) =>
+        Arr.findFirst(map.structures, ({ id }) => id === structureOf(change))
+      ),
+      layout
+    ),
+  listKey: "structures",
+  name: ({ change }) => actionOf(change).label,
+  notice: structureNotice,
+  open: (proposals) =>
+    Arr.map(proposals.structures ?? [], (proposal): StructureItem => ({
+      change: proposal.change,
+      id: proposal.id,
       kind: "structure",
-      id: item.id,
-      change: item.change,
-    } as const;
-
-    const final = finalIdOf(item, verdict);
-
-    return decorate(
-      item.change.action === "add" && final !== item.change.structure.id
-        ? { ...base, as: final }
-        : base,
-      verdict
-    );
-  },
+    })),
   rejected: (item, reason) => ({
-    kind: "structure",
-    id: item.id,
     change: item.change,
+    id: item.id,
+    kind: "structure",
     reason,
   }),
+  renames: provisional.renames,
   reopened: (item, newId, text) => ({
     ...item,
-    id: newId,
     change:
       text === undefined
         ? item.change
@@ -310,5 +256,59 @@ export const structureKind: KindSpec<StructureItem> = {
             })),
             Match.orElse((change) => change)
           ),
+    id: newId,
   }),
+  retargeted: (item, renames) => {
+    const { change } = item;
+
+    // A structure that goes into a new group follows the id the agent gave
+    // the group.
+    const groupId = (group: string) => followed(renames, "group", group);
+
+    if (change.action === "add") {
+      const group = groupId(change.structure.group);
+
+      return group === change.structure.group
+        ? item
+        : {
+            ...item,
+            change: { ...change, structure: { ...change.structure, group } },
+          };
+    }
+
+    const to = followed(renames, "structure", change.structure);
+
+    if (change.action === "group") {
+      return {
+        ...item,
+        change: { ...change, group: groupId(change.group), structure: to },
+      };
+    }
+
+    return to === change.structure
+      ? item
+      : { ...item, change: { ...change, structure: to } };
+  },
+  summary: ({ change, id }, called) =>
+    actionOf(change).summary(id, called.structure),
+  targets: ({ change }): ReadonlyArray<Pointer> => [
+    { id: structureOf(change), kind: "structure" },
+  ],
+  text: ({ change }) => textOfChange(change),
+  textLimit: maxStructureNameLength,
+  textRefusal: ({ change }, text) =>
+    Option.isNone(textOfChange(change))
+      ? Option.none()
+      : refusalOf(StructureName, text),
+  touches: ({ change }) => ({
+    hops: [],
+    marks: [
+      {
+        ids: change.action === "delete" ? [structureOf(change)] : [],
+        name: removedMark,
+      },
+    ],
+    structures: [structureOf(change)],
+  }),
+  verdictRefusal: provisional.verdictRefusal,
 };

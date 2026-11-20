@@ -9,9 +9,9 @@ import { PageFrame, PageLayers } from "./page-drawing.tsx";
  * structure, and with the editor around them.
  */
 export const pageDrawing: DrawingEnvironment = {
-  paint: pagePaint,
-  live: true,
   Frame: PageFrame,
-  Layers: PageLayers,
   idOf: () => null,
+  Layers: PageLayers,
+  live: true,
+  paint: pagePaint,
 };

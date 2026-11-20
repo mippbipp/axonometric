@@ -1,0 +1,22 @@
+DESCRIPTION
+  Print the instructions for building and reviewing a map. Read them before you use any other command. They ship with the CLI, so they match this version.
+
+USAGE
+  axonometric docs [flags] [<topic>]
+
+ARGUMENTS
+  topic choice    One of process, data, chapters, design, review, visual-check. Without it, docs prints an overview and lists the topics. (optional)
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+EXAMPLES
+  # The overview and the topics
+  axonometric docs
+
+  # How to review a batch of the engineer's proposals
+  axonometric docs review

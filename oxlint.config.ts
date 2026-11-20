@@ -239,15 +239,6 @@ export default defineConfig({
     // The workspace packages are private and bundled into one CLI, so no
     // export is a public library API that could leak an unstable Effect type.
     "effecttsgo/api-stability-leak": "off",
-    // TEMPORARY-SORT-OFF
-    "perfectionist/sort-enums": "off",
-    "perfectionist/sort-heritage-clauses": "off",
-    "perfectionist/sort-interfaces": "off",
-    "perfectionist/sort-jsx-props": "off",
-    "perfectionist/sort-object-types": "off",
-    "perfectionist/sort-objects": "off",
-    "typescript/array-type": "off",
-    // END-TEMPORARY-SORT-OFF
     // --- not applicable in codebase ---
     "eslint/no-undef": "off",
     "import/default": "off",

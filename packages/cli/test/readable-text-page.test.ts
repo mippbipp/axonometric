@@ -26,7 +26,7 @@ import { buildAndOpen } from "./harness.ts";
  * included. Text that's hidden isn't listed.
  */
 const sizesOf = (page: Page, selector: string) =>
-  inPage<readonly number[]>(
+  inPage<ReadonlyArray<number>>(
     page,
     `[...document.querySelectorAll(${JSON.stringify(selector)})]
       .filter((text) => getComputedStyle(text).visibility !== "hidden")
@@ -48,7 +48,7 @@ const openAt1280 = Effect.fnUntraced(function* (
   const { page } = yield* buildAndOpen(files, system);
 
   yield* Effect.promise(() =>
-    page.setViewportSize({ width: 1280, height: 800 })
+    page.setViewportSize({ height: 800, width: 1280 })
   );
 
   return page;
@@ -130,11 +130,11 @@ describe("text on the pipeline map at 1280×800", () => {
         // Each step tag clears every other step's box, and sits nearer its
         // own step than any other.
         const tags = yield* inPage<
-          readonly {
-            readonly step: number;
-            readonly onOthers: readonly number[];
+          ReadonlyArray<{
             readonly nearest: number;
-          }[]
+            readonly onOthers: ReadonlyArray<number>;
+            readonly step: number;
+          }>
         >(
           page,
           `(() => {
@@ -184,12 +184,12 @@ const clashesNow = Effect.fnUntraced(function* (page: Page) {
 
   const firstLegs =
     view === "iso"
-      ? yield* inPage<readonly FirstLeg[]>(page, firstLegsReport)
+      ? yield* inPage<ReadonlyArray<FirstLeg>>(page, firstLegsReport)
       : [];
 
   return [
     ...textClashes(report),
-    ...Arr.flatMap(firstLegs, ({ hop, from, leg }) =>
+    ...Arr.flatMap(firstLegs, ({ from, hop, leg }) =>
       Arr.some(
         report.text,
         (tag) => tag.id === `tag:${from}` && crosses(leg, tag.polygon)
@@ -209,7 +209,7 @@ const zoomInToBaseSize = Effect.fnUntraced(function* (page: Page) {
 
 /** Whether every structure, tag, zone and label is inside the canvas. */
 const outsideCanvas = (page: Page) =>
-  inPage<readonly string[]>(
+  inPage<ReadonlyArray<string>>(
     page,
     `(() => {
       const box = document.querySelector("svg[data-scale]").getBoundingClientRect();
@@ -225,27 +225,27 @@ const outsideCanvas = (page: Page) =>
   );
 
 describe("grown text at 1280×800", () => {
-  for (const { name, map, system, fits, isoChapters } of [
+  for (const { fits, isoChapters, map, name, system } of [
     {
-      name: "review",
+      fits: false,
+      isoChapters: ["c-all"],
       map: fullMap,
+      name: "review",
       system: "review",
-      fits: false,
-      isoChapters: ["c-all"],
     },
     {
-      name: "crowded",
+      fits: false,
+      isoChapters: ["c-all"],
       map: crowdedMap,
+      name: "crowded",
       system: "crowded",
-      fits: false,
-      isoChapters: ["c-all"],
     },
     {
-      name: "pipeline",
-      map: pipelineMap,
-      system: "flake-pipeline",
       fits: true,
       isoChapters: ["c-monday", "c-pr", "c-all"],
+      map: pipelineMap,
+      name: "pipeline",
+      system: "flake-pipeline",
     },
   ]) {
     it.live(
@@ -320,7 +320,7 @@ describe("grown text at 1280×800", () => {
           );
 
           yield* Effect.promise(() =>
-            page.setViewportSize({ width: 1780, height: 1020 })
+            page.setViewportSize({ height: 1020, width: 1780 })
           );
 
           for (const chapter of ["c-monday", "c-pr", "c-all"]) {
@@ -394,7 +394,7 @@ describe("hidden hop labels on the pipeline map at fit", () => {
 
         // A packet on a hop whose label the scene hid, and that hop's label
         // from the map state.
-        const hidden = yield* inPage<{ hop: string; label: string }[]>(
+        const hidden = yield* inPage<Array<{ hop: string; label: string }>>(
           page,
           `(() => {
             const state = JSON.parse(document.getElementById("axonometric-map-state").textContent);

@@ -40,9 +40,9 @@ const packed = (bytes: Uint8Array) =>
   }).then((packedBytes) => packedBytes.toString("base64"));
 
 const shared: UserConfig = {
+  dts: false,
   platform: "node",
   target: "node24.22",
-  dts: false,
   // React picks its development or production build from NODE_ENV at run
   // time. Fixing it here drops the development build, which would run
   // whenever the variable is unset, and keeps the bundle's size down.
@@ -59,7 +59,6 @@ const shared: UserConfig = {
       // `axonometric docs` prints the Markdown files in docs/. The bundle
       // carries them as strings, so the command works offline from every
       // install and from the compiled binaries.
-      name: "axonometric:embed-docs",
       load(id) {
         if (!docsContentModule.test(id)) {
           return null;
@@ -87,11 +86,11 @@ const shared: UserConfig = {
               `import { Effect } from "effect";\nexport const docsContent = Effect.succeed(${JSON.stringify(Rec.fromEntries(texts))});\n`
           );
       },
+      name: "axonometric:embed-docs",
     },
     {
       // The PNG rasteriser's WASM and fonts ride in the bundle as compressed
       // strings, and are unpacked on first use.
-      name: "axonometric:embed-rasteriser-assets",
       load(id) {
         if (!rasteriseAssetsModule.test(id)) {
           return null;
@@ -111,12 +110,12 @@ export const resvgFonts = Effect.forEach(${JSON.stringify(fonts)}, unpack);
 `
         );
       },
+      name: "axonometric:embed-rasteriser-assets",
     },
     {
       // From source, the CLI reads the editor's built page from disk. The
       // bundle carries the page as a string instead, so it needs no other
       // files, and neither do the compiled binaries.
-      name: "axonometric:embed-editor-page",
       load(id) {
         if (!editorPageModule.test(id)) {
           return null;
@@ -129,6 +128,7 @@ export const resvgFonts = Effect.forEach(${JSON.stringify(fonts)}, unpack);
               `import { Effect } from "effect";\nexport const editorPage = Effect.succeed(${JSON.stringify(html)});\n`
           );
       },
+      name: "axonometric:embed-editor-page",
     },
   ],
 };

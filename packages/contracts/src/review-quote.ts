@@ -38,17 +38,17 @@ export const decorate: {
     verdict: Verdict
   ): <A extends object>(
     base: A
-  ) => A & { readonly reason?: string; readonly changed?: true };
+  ) => A & { readonly changed?: true; readonly reason?: string };
   <A extends object>(
     base: A,
     verdict: Verdict
-  ): A & { readonly reason?: string; readonly changed?: true };
+  ): A & { readonly changed?: true; readonly reason?: string };
 } = dual(
   2,
   <A extends object>(
     base: A,
     verdict: Verdict
-  ): A & { readonly reason?: string; readonly changed?: true } => {
+  ): A & { readonly changed?: true; readonly reason?: string } => {
     const withReason =
       "reason" in verdict && verdict.reason !== undefined
         ? { ...base, reason: verdict.reason }

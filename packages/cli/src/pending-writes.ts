@@ -34,8 +34,8 @@ import { writeAll } from "./write-files.ts";
 const reject = (status: number, message: string) =>
   Effect.succeed(
     HttpServerResponse.text(`${message}\n`, {
-      status,
       headers: { connection: "close" },
+      status,
     })
   );
 
@@ -65,7 +65,7 @@ const originUrl = (origin: string) =>
  * with neither, such as from curl, is refused.
  */
 const fromOwnOrigin = (request: HttpServerRequest.HttpServerRequest) => {
-  const { origin, host } = request.headers;
+  const { host, origin } = request.headers;
 
   if (origin === undefined) {
     return request.headers["sec-fetch-site"] === "same-origin";
@@ -121,8 +121,8 @@ export const unreadable = <A>(
   loaded: Result.Result<A, MapFilesUnreadable["problems"]>
 ) =>
   Result.match(loaded, {
-    onSuccess: (value) => Effect.succeed(value),
     onFailure: (problems) => Effect.fail(MapFilesUnreadable.make({ problems })),
+    onSuccess: (value) => Effect.succeed(value),
   });
 
 /**
@@ -149,11 +149,11 @@ export const loadForWrite = Effect.fnUntraced(function* <
 
 /** A write of the pending layout, and the map's hops it is checked against. */
 export interface PendingWrite {
-  readonly write: PendingLayoutWrite;
-  /** The map's hops, as the server last built them. */
-  readonly hops: readonly HopEnds[];
   /** The map's data as the server last built it, which proposed structures change. */
   readonly data: MapData;
+  /** The map's hops, as the server last built them. */
+  readonly hops: ReadonlyArray<HopEnds>;
+  readonly write: PendingLayoutWrite;
 }
 
 /**
@@ -163,7 +163,7 @@ export interface PendingWrite {
  */
 const usedElsewhere = (
   current: Proposals,
-  layout: readonly LayoutChange[]
+  layout: ReadonlyArray<LayoutChange>
 ): Option.Option<string> => {
   const taken = new Set([
     ...Arr.flatMap(openItems(current), ({ id, kind }) =>
@@ -192,11 +192,14 @@ const usedElsewhere = (
  */
 export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   home: string,
-  { write, hops, data }: PendingWrite,
+  { data, hops, write }: PendingWrite,
   written: (proposals: Proposals) => Effect.Effect<void>
 ) {
   const path = yield* Path.Path;
 
+  // The files are read in this order, one at a time, so when both are
+  // unreadable the error names proposals.json.
+  /* oxlint-disable perfectionist/sort-objects -- Effect.all runs the fields in key order, which picks the error shown when both files fail */
   const readFiles = Effect.all(
     {
       proposals: Effect.flatMap(loadProposals(home), unreadable),
@@ -204,8 +207,9 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
     },
     { concurrency: 1 }
   );
+  /* oxlint-enable perfectionist/sort-objects */
 
-  const { proposals: current, accepted } = yield* loadForWrite(
+  const { accepted, proposals: current } = yield* loadForWrite(
     home,
     write.baseFileRevision,
     readFiles
@@ -224,34 +228,34 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   // a write can't touch what a frozen item acts on.
   const refusal = Option.orElse(
     Option.orElse(usedElsewhere(current, write.layout), () =>
-      frozenWriteRefusal({ proposals: current, after: write.layout })
+      frozenWriteRefusal({ after: write.layout, proposals: current })
     ),
     () =>
       layoutRefusal({
         accepted: base,
-        before: current.layout,
         after: write.layout,
+        before: current.layout,
         hops,
       })
   );
 
   if (Option.isSome(refusal)) {
     return yield* LayoutChangeRefused.make({
-      reason: refusal.value,
       proposals: current,
+      reason: refusal.value,
     });
   }
 
   const next: Proposals = {
     ...current,
-    revision: current.revision + 1,
     layout: write.layout,
+    revision: current.revision + 1,
   };
 
   yield* writeAll([
     {
-      file: path.join(home, "proposals.json"),
       content: yield* encodeProposals(next),
+      file: path.join(home, "proposals.json"),
     },
   ]);
 

@@ -31,9 +31,9 @@ const inputClass =
 /** One part of a step: its field, the text data.mjs has, and the suggestion for it. */
 interface Part {
   readonly field: TextField;
+  readonly found: Entry | undefined;
   readonly label: string;
   readonly text: string;
-  readonly found: Entry | undefined;
 }
 
 /**
@@ -42,10 +42,10 @@ interface Part {
  * differs from the text and from the open suggestion.
  */
 const changesOf = (
-  parts: readonly Part[],
+  parts: ReadonlyArray<Part>,
   values: Readonly<Record<string, string>>
 ) =>
-  Arr.filter(parts, ({ field, text, found }) => {
+  Arr.filter(parts, ({ field, found, text }) => {
     const value = (values[field] ?? "").trim();
 
     return (
@@ -63,22 +63,22 @@ const changesOf = (
  * one suggestion for each part that changed.
  */
 function StepForm({
-  structure,
-  parts,
   index,
   onDone,
+  parts,
+  structure,
 }: {
-  readonly structure: string;
-  readonly parts: readonly Part[];
   readonly index: number;
   readonly onDone: () => void;
+  readonly parts: ReadonlyArray<Part>;
+  readonly structure: string;
 }) {
   const review = useReview();
   const id = useId();
 
   const [values, setValues] = useState<Readonly<Record<string, string>>>(() =>
     Rec.fromEntries(
-      Arr.map(parts, ({ field, text, found }) => [
+      Arr.map(parts, ({ field, found, text }) => [
         field,
         openOf(found)?.item.after ?? text,
       ])
@@ -96,7 +96,7 @@ function StepForm({
 
   /** Sends one part's suggestion, new or edited again, and says how it ended. */
   const sendPart = (
-    { field, text, found }: Part,
+    { field, found, text }: Part,
     after: string,
     finish: (outcome: Result.Result<unknown, string>) => void
   ) => {
@@ -105,11 +105,11 @@ function StepForm({
     if (open === undefined) {
       review.ops.add(
         {
+          after,
+          before: text,
+          field,
           kind: "suggestion",
           structureId: structure,
-          field,
-          before: text,
-          after,
         },
         finish
       );
@@ -119,7 +119,7 @@ function StepForm({
   };
 
   const send = () => {
-    const failures: string[] = [];
+    const failures: Array<string> = [];
     let left = changes.length;
 
     setSending(true);
@@ -149,49 +149,49 @@ function StepForm({
 
   return (
     <form
-      data-step-form={index}
       className="flex flex-col gap-1.5"
+      data-step-form={index}
       onSubmit={(event) => {
         event.preventDefault();
         send();
       }}
     >
-      {Arr.map(parts, ({ field, label, found }) => {
+      {Arr.map(parts, ({ field, found, label }) => {
         const locked = !canSuggest(found);
 
         return (
-          <div key={field} className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1" key={field}>
             <label
-              htmlFor={`${id}-${field}`}
               className="text-xs tracking-widest uppercase opacity-70"
+              htmlFor={`${id}-${field}`}
             >
               Step {index + 1} {label}
             </label>
             {field === parts[0]?.field ? (
               <input
-                id={`${id}-${field}`}
-                data-step-text={field}
-                type="text"
-                value={values[field] ?? ""}
-                maxLength={maxSuggestionLength}
-                disabled={sending || locked}
                 className={inputClass}
+                data-step-text={field}
+                disabled={sending || locked}
+                id={`${id}-${field}`}
+                maxLength={maxSuggestionLength}
                 onChange={(event) => {
                   setValues({ ...values, [field]: event.target.value });
                 }}
+                type="text"
+                value={values[field] ?? ""}
               />
             ) : (
               <textarea
-                id={`${id}-${field}`}
-                data-step-text={field}
-                rows={3}
-                value={values[field] ?? ""}
-                maxLength={maxSuggestionLength}
-                disabled={sending || locked}
                 className={inputClass}
+                data-step-text={field}
+                disabled={sending || locked}
+                id={`${id}-${field}`}
+                maxLength={maxSuggestionLength}
                 onChange={(event) => {
                   setValues({ ...values, [field]: event.target.value });
                 }}
+                rows={3}
+                value={values[field] ?? ""}
               />
             )}
             {locked ? (
@@ -204,23 +204,23 @@ function StepForm({
       })}
       {failure === undefined ? null : (
         <p
-          role="alert"
-          data-step-failure
           className="border-refused border-l-2 pl-2 text-xs"
+          data-step-failure
+          role="alert"
         >
           {failure}
         </p>
       )}
       <div className="flex gap-1.5">
         <button
-          type="submit"
-          data-step-send
           className={controlClass}
+          data-step-send
           disabled={sending || changes.length === 0}
+          type="submit"
         >
           {sending ? "Saving…" : "Save suggestion"}
         </button>
-        <button type="button" className={controlClass} onClick={onDone}>
+        <button className={controlClass} onClick={onDone} type="button">
           Cancel
         </button>
       </div>
@@ -250,14 +250,14 @@ const suggestionButtons = (found: Entry | undefined, onEdit: () => void) => {
  * Discard of its own.
  */
 export function SuggestableStep({
-  structure,
   index,
   step,
+  structure,
 }: {
-  /** The structure's id. */
-  readonly structure: string;
   readonly index: number;
   readonly step: Step;
+  /** The structure's id. */
+  readonly structure: string;
 }) {
   const review = useReview();
   const editOn = useEditOn();
@@ -273,18 +273,18 @@ export function SuggestableStep({
   const [opened, setOpened] = useState(false);
   const editing = opened && editOn;
 
-  const parts: readonly Part[] = [
+  const parts: ReadonlyArray<Part> = [
     {
       field: stepNameField(index),
+      found: nameFound,
       label: "name",
       text: step.name,
-      found: nameFound,
     },
     {
       field: stepDetailField(index),
+      found: detailFound,
       label: "detail",
       text: step.detail,
-      found: detailFound,
     },
   ];
 
@@ -317,10 +317,10 @@ export function SuggestableStep({
       </span>
       {editOn && review.canWrite && !editing && editable ? (
         <StartButton
-          field={stepNameField(index)}
-          what={stepNumber}
           again={again}
+          field={stepNameField(index)}
           onStart={start}
+          what={stepNumber}
         />
       ) : null}
     </span>
@@ -328,29 +328,29 @@ export function SuggestableStep({
 
   return (
     <span
-      data-suggestable-step={index}
       className="flex min-w-0 flex-col gap-1.5"
+      data-suggestable-step={index}
     >
       {head}
       {editing ? (
         <StepForm
-          structure={structure}
-          parts={parts}
           index={index}
           onDone={() => {
             setOpened(false);
           }}
+          parts={parts}
+          structure={structure}
         />
       ) : (
-        Arr.map(parts, ({ field, text, found }) =>
+        Arr.map(parts, ({ field, found, text }) =>
           // The heading already shows the name, so it gets a block of its own
           // only to show a suggestion or a verdict.
           field === parts[0]?.field && found === undefined ? null : (
             <span
-              key={field}
+              className="flex flex-col gap-1.5"
               data-suggestable={field}
               data-suggestion-state={found?.status.state ?? "none"}
-              className="flex flex-col gap-1.5"
+              key={field}
             >
               {field === parts[0]?.field &&
               found !== undefined &&
@@ -358,11 +358,11 @@ export function SuggestableStep({
                 <ItemStatusLine status={found.status} />
               ) : (
                 <TextAndSuggestion
-                  found={found}
-                  text={text}
                   className={
                     field === parts[0]?.field ? "font-medium" : undefined
                   }
+                  found={found}
+                  text={text}
                 >
                   {editOn ? suggestionButtons(found, start) : null}
                 </TextAndSuggestion>

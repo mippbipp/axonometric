@@ -55,10 +55,10 @@ export const nameTagText = (structure: Pick<Structure, "name" | "tag">) =>
 
 /** An axis-aligned rectangle on screen. */
 export interface ScreenRect {
-  readonly left: number;
-  readonly top: number;
-  readonly right: number;
   readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
 }
 
 /**
@@ -79,30 +79,30 @@ export const nameTagRect: {
   const top = front.sy + tagOffset;
 
   return {
-    left: front.sx - width / 2,
-    top,
-    right: front.sx + width / 2,
     bottom: top + tagHeight,
+    left: front.sx - width / 2,
+    right: front.sx + width / 2,
+    top,
   };
 });
 
 /** A footprint's corners on screen, named by where they sit in the Iso view. */
 export interface Corners {
   readonly back: ScreenPoint;
-  readonly right: ScreenPoint;
   readonly front: ScreenPoint;
   readonly left: ScreenPoint;
+  readonly right: ScreenPoint;
 }
 
 /** The four corners of a footprint, raised to height `z`. */
 export const corners: {
   (z: number): (placement: Placement) => Corners;
   (placement: Placement, z: number): Corners;
-} = dual(2, ({ x, y, w, d }: Placement, z: number): Corners => ({
+} = dual(2, ({ d, w, x, y }: Placement, z: number): Corners => ({
   back: project({ x, y, z }),
-  right: project({ x: x + w, y, z }),
   front: project({ x: x + w, y: y + d, z }),
   left: project({ x, y: y + d, z }),
+  right: project({ x: x + w, y, z }),
 }));
 
 /**
@@ -111,11 +111,16 @@ export const corners: {
  * corner.
  */
 export const boxOutline: {
-  (shape: Structure["shape"]): (placement: Placement) => readonly ScreenPoint[];
-  (placement: Placement, shape: Structure["shape"]): readonly ScreenPoint[];
+  (
+    shape: Structure["shape"]
+  ): (placement: Placement) => ReadonlyArray<ScreenPoint>;
+  (placement: Placement, shape: Structure["shape"]): ReadonlyArray<ScreenPoint>;
 } = dual(
   2,
-  (placement: Placement, shape: Structure["shape"]): readonly ScreenPoint[] => {
+  (
+    placement: Placement,
+    shape: Structure["shape"]
+  ): ReadonlyArray<ScreenPoint> => {
     const ground = corners(placement, 0);
     const top = corners(placement, isoHeights[shape]);
 
@@ -130,27 +135,30 @@ export const boxOutline: {
   }
 );
 
-const rectCorners = (rect: ScreenRect): readonly ScreenPoint[] => [
+const rectCorners = (rect: ScreenRect): ReadonlyArray<ScreenPoint> => [
   { sx: rect.left, sy: rect.top },
   { sx: rect.right, sy: rect.top },
   { sx: rect.right, sy: rect.bottom },
   { sx: rect.left, sy: rect.bottom },
 ];
 
-const edgeNormals = (polygon: readonly ScreenPoint[]) =>
+const edgeNormals = (polygon: ReadonlyArray<ScreenPoint>) =>
   Arr.map(polygon, (point, index) => {
     const next = polygon[(index + 1) % polygon.length] ?? point;
 
     return { sx: next.sy - point.sy, sy: point.sx - next.sx };
   });
 
-const extentAlong = (polygon: readonly ScreenPoint[], axis: ScreenPoint) => {
+const extentAlong = (
+  polygon: ReadonlyArray<ScreenPoint>,
+  axis: ScreenPoint
+) => {
   const values = Arr.map(
     polygon,
     (point) => point.sx * axis.sx + point.sy * axis.sy
   );
 
-  return { min: Math.min(...values), max: Math.max(...values) };
+  return { max: Math.max(...values), min: Math.min(...values) };
 };
 
 /** Shapes that only touch along an edge don't overlap. */
@@ -159,7 +167,10 @@ const tolerance = 1e-9;
 /**
  * Whether two convex polygons share some area, by the separating axis test.
  */
-const convexOverlap = (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
+const convexOverlap = (
+  a: ReadonlyArray<ScreenPoint>,
+  b: ReadonlyArray<ScreenPoint>
+) =>
   Arr.every([...edgeNormals(a), ...edgeNormals(b)], (axis) => {
     const first = extentAlong(a, axis);
     const second = extentAlong(b, axis);
@@ -177,9 +188,9 @@ const convexOverlap = (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
  * bounds miss the tag is clear without the full test.
  */
 export const tagCoversBox: {
-  (box: readonly ScreenPoint[]): (tag: ScreenRect) => boolean;
-  (tag: ScreenRect, box: readonly ScreenPoint[]): boolean;
-} = dual(2, (tag: ScreenRect, box: readonly ScreenPoint[]) => {
+  (box: ReadonlyArray<ScreenPoint>): (tag: ScreenRect) => boolean;
+  (tag: ScreenRect, box: ReadonlyArray<ScreenPoint>): boolean;
+} = dual(2, (tag: ScreenRect, box: ReadonlyArray<ScreenPoint>) => {
   const across = extentAlong(box, { sx: 1, sy: 0 });
   const down = extentAlong(box, { sx: 0, sy: 1 });
 

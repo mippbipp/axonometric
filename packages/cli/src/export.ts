@@ -59,7 +59,7 @@ export class ExportRejected extends Schema.TaggedError<
  * chapter's index.
  */
 const chapterIndexOf = (
-  stops: readonly ChapterStop[],
+  stops: ReadonlyArray<ChapterStop>,
   input: string
 ): Option.Option<number> => {
   const byId = Arr.findFirstIndex(stops, (stop) => stop.id === input);
@@ -76,7 +76,7 @@ const chapterIndexOf = (
 };
 
 /** Why no chapter is called `input`, and which are. */
-const unknownChapter = (stops: readonly ChapterStop[], input: string) => {
+const unknownChapter = (stops: ReadonlyArray<ChapterStop>, input: string) => {
   const listed = Arr.join(
     Arr.map(stops, (stop, at) => `${at + 1} (${stop.id})`),
     ", "
@@ -91,18 +91,18 @@ const unknownChapter = (stops: readonly ChapterStop[], input: string) => {
  * flow picker, and only among the map's flows.
  */
 const flowChoiceOf = ({
-  state,
-  stop,
   chapters,
   index,
   input,
+  state,
+  stop,
 }: {
-  readonly state: MapState;
   readonly chapters: number;
   /** The chapter's index, from 0. */
   readonly index: number;
-  readonly stop: ChapterStop | undefined;
   readonly input: Option.Option<string>;
+  readonly state: MapState;
+  readonly stop: ChapterStop | undefined;
 }): Effect.Effect<FlowChoice, ExportRejected> => {
   if (stop === undefined) {
     return Effect.succeed({ kind: "chapter" });
@@ -112,7 +112,7 @@ const flowChoiceOf = ({
 
   if (Option.isNone(input)) {
     return Effect.succeed(
-      defaultFlowChoice({ data: state.data, stop, isLast })
+      defaultFlowChoice({ data: state.data, isLast, stop })
     );
   }
 
@@ -132,7 +132,7 @@ const flowChoiceOf = ({
   }
 
   if (Arr.some(flows, (flow) => flow.id === named)) {
-    return Effect.succeed({ kind: "flow", id: named });
+    return Effect.succeed({ id: named, kind: "flow" });
   }
 
   const ids = Arr.join(
@@ -149,9 +149,7 @@ const flowChoiceOf = ({
 
 /** What `export` draws, from the options. */
 export interface ExportRequest {
-  readonly home: string;
-  readonly format: Format;
-  readonly view: View;
+  readonly background: Background;
   /** A chapter's id or number. The last chapter when left out. */
   readonly chapter: Option.Option<string>;
   /**
@@ -159,14 +157,16 @@ export interface ExportRequest {
    * chapter's own hops when left out.
    */
   readonly flow: Option.Option<string>;
-  readonly background: Background;
+  readonly format: Format;
+  readonly home: string;
   readonly output: Option.Option<string>;
+  readonly view: View;
 }
 
 const extensions = {
-  svg: "svg",
-  png: "png",
   excalidraw: "excalidraw",
+  png: "png",
+  svg: "svg",
 } as const satisfies Record<Format, string>;
 
 /**
@@ -175,36 +175,36 @@ const extensions = {
  * whole map, so it is named for the system alone.
  */
 export const defaultExportFile = ({
+  chapter,
+  format,
   output,
   state,
-  format,
   view,
-  chapter,
 }: {
+  readonly chapter: number;
+  readonly format: Format;
   readonly output: string;
   readonly state: MapState;
-  readonly format: Format;
   readonly view: View;
-  readonly chapter: number;
 }) =>
   Path.Path.use((path) =>
     Effect.succeed(
       path.join(
         output,
-        `${format === "excalidraw" ? state.system : exportName({ system: state.system, view, chapter })}.${extensions[format]}`
+        `${format === "excalidraw" ? state.system : exportName({ chapter, system: state.system, view })}.${extensions[format]}`
       )
     )
   );
 
 /** What an SVG or PNG of the map draws. */
 interface Drawing {
-  readonly state: MapState;
-  readonly view: View;
   readonly background: Background;
   /** The chapter's index, from 0. */
   readonly chapter: number;
   /** What the chapter or flow plays, as the page's flow picker would. */
   readonly choice: FlowChoice;
+  readonly state: MapState;
+  readonly view: View;
 }
 
 /**
@@ -223,15 +223,15 @@ const contentOf = Effect.fnUntraced(function* (
   if (format === "excalidraw") {
     return excalidrawText(
       excalidrawOf({
-        data: drawing.state.data,
-        layout: drawing.state.layout,
         background:
           drawing.background === "white" ? whiteBackground : undefined,
+        data: drawing.state.data,
+        layout: drawing.state.layout,
       })
     );
   }
 
-  const { state, chapter, choice } = drawing;
+  const { chapter, choice, state } = drawing;
   const stop = chapterStopsOf(state)[chapter];
 
   // Nothing is hovered or pinned in a file, so the spotlight is what the
@@ -240,20 +240,20 @@ const contentOf = Effect.fnUntraced(function* (
     stop === undefined
       ? null
       : chapterSpotlightOf({
-          data: state.data,
-          stop,
           choice,
+          data: state.data,
           hovered: null,
           pinned: null,
+          stop,
         });
 
   const { text } = svgFileOf({
-    state,
-    view: drawing.view,
-    chapter,
     background: drawing.background,
-    theme: "light",
+    chapter,
     spotlight,
+    state,
+    theme: "light",
+    view: drawing.view,
   });
 
   return format === "svg" ? text : yield* rasterise(text, pngScale);
@@ -262,23 +262,23 @@ const contentOf = Effect.fnUntraced(function* (
 const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
-  const { home, format, view, background } = request;
+  const { background, format, home, view } = request;
   const output = path.dirname(home);
 
   yield* withLock(home, "export");
 
   // Structures with no saved position are placed as `build` would, but
   // nothing is saved: export writes only the file it was asked for.
-  const { data, layout, warnings, sourcesSkipped, sourceLinks } =
+  const { data, layout, sourceLinks, sourcesSkipped, warnings } =
     yield* loadMap({
+      arrange: (mapData, saved) => placeStructures(mapData, saved).layout,
+      command: "export",
       home,
       output,
-      command: "export",
-      arrange: (mapData, saved) => placeStructures(mapData, saved).layout,
     });
 
   const system = path.basename(output);
-  const state: MapState = { system, data, layout, sourceLinks };
+  const state: MapState = { data, layout, sourceLinks, system };
   const stops = chapterStopsOf(state);
 
   const index = yield* Option.match(request.chapter, {
@@ -294,45 +294,46 @@ const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
   const stop = stops[index];
 
   const choice = yield* flowChoiceOf({
-    state,
-    stop,
     chapters: stops.length,
     index,
     input: request.flow,
+    state,
+    stop,
   });
 
-  yield* printNotes({ warnings, sourcesSkipped });
+  yield* printNotes({ sourcesSkipped, warnings });
 
   const target = Option.isSome(request.output)
     ? request.output.value
     : yield* defaultExportFile({
+        chapter: index + 1,
+        format,
         output,
         state,
-        format,
         view,
-        chapter: index + 1,
       });
 
   const content = yield* contentOf(format, {
-    state,
-    view,
     background,
     chapter: index,
     choice,
+    state,
+    view,
   });
 
   yield* fs.makeDirectory(path.dirname(target), { recursive: true });
 
-  yield* writeAll([{ file: target, content }]);
+  yield* writeAll([{ content, file: target }]);
 
   return yield* Console.log(`Wrote ${target}.`);
 }, Effect.scoped);
 
-const choice = <const Values extends readonly string[]>(
+const choice = <const Values extends ReadonlyArray<string>>(
   name: string,
   values: Values
 ) => Flag.Literals(name, values);
 
+/* oxlint-disable perfectionist/sort-objects -- these keys set the flag order `--help` prints, so they stay in the written order */
 export const exportCommand = Command.make(
   "export",
   {
@@ -375,6 +376,7 @@ export const exportCommand = Command.make(
       )
     ),
   },
+  /* oxlint-enable perfectionist/sort-objects */
   (request) => exportMap(request)
 ).pipe(
   Command.withDescription(

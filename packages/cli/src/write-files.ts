@@ -17,7 +17,6 @@ export class OutputExists extends Schema.TaggedError<
 >()("OutputExists", { file: Schema.String }) {}
 
 export interface Output {
-  readonly file: string;
   /** Text, or the bytes of a binary file such as a PNG. */
   readonly content: string | Uint8Array;
   /**
@@ -27,6 +26,7 @@ export interface Output {
    * keep anyone else from creating the file after that check.
    */
   readonly exclusive?: boolean;
+  readonly file: string;
 }
 
 /**
@@ -80,28 +80,28 @@ const currentContent = (file: string) =>
  * refused one rename may refuse another. Temporary files are always removed.
  */
 export const writeAll = Effect.fnUntraced(function* (
-  outputs: readonly Output[]
+  outputs: ReadonlyArray<Output>
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  const staged = Arr.map(outputs, ({ file, content, exclusive }) => ({
-    file,
+  const staged = Arr.map(outputs, ({ content, exclusive, file }) => ({
     content,
     exclusive: exclusive === true,
+    file,
     temporary: `${file}.${process.pid}.tmp`,
   }));
 
   const removeTemporaries = Effect.forEach(
     staged,
     ({ temporary }) => fs.remove(temporary).pipe(Effect.ignore),
-    { discard: true, concurrency: 1 }
+    { concurrency: 1, discard: true }
   );
 
   yield* Effect.gen(function* () {
     yield* Effect.forEach(
       staged,
-      ({ file, temporary, content }) =>
+      ({ content, file, temporary }) =>
         fs
           .makeDirectory(path.dirname(file), { recursive: true })
           .pipe(
@@ -111,7 +111,7 @@ export const writeAll = Effect.fnUntraced(function* (
                 : fs.writeFile(temporary, content)
             )
           ),
-      { discard: true, concurrency: 1 }
+      { concurrency: 1, discard: true }
     );
 
     const before = yield* Effect.forEach(
@@ -130,7 +130,7 @@ export const writeAll = Effect.fnUntraced(function* (
       onSome: ([{ file }]) => OutputExists.make({ file }),
     });
 
-    const renamed: number[] = [];
+    const renamed: Array<number> = [];
 
     // Built when it runs, so it sees the renames that went through by then.
     const putBack = Effect.suspend(() =>
@@ -152,17 +152,17 @@ export const writeAll = Effect.fnUntraced(function* (
                     ),
               }).pipe(Effect.ignore);
         },
-        { discard: true, concurrency: 1 }
+        { concurrency: 1, discard: true }
       )
     );
 
     yield* Effect.forEach(
       staged,
-      ({ temporary, file }, index) =>
+      ({ file, temporary }, index) =>
         renameInto(temporary, file).pipe(
           Effect.tap(() => Effect.sync(() => renamed.push(index)))
         ),
-      { discard: true, concurrency: 1 }
+      { concurrency: 1, discard: true }
     ).pipe(Effect.onError(() => putBack));
   }).pipe(Effect.onError(() => removeTemporaries));
 });

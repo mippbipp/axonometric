@@ -46,6 +46,7 @@ const repoOnlyFields = ["devDependencies", "scripts"] as const;
 
 // npm's provenance check compares repository.url with the GitHub repo that
 // published the package.
+/* oxlint-disable perfectionist/sort-objects -- the schema checks fields in the written order, which sets the order of the problems the check reports */
 const PublishedManifest = Schema.Struct({
   name: Schema.Literal("axonometric"),
   license: Schema.Literal("MIT"),
@@ -76,6 +77,7 @@ const PublishedManifest = Schema.Struct({
   // in this repo, so the tarball has none.
   scripts: Schema.optionalKey(Schema.Never),
 });
+/* oxlint-enable perfectionist/sort-objects */
 
 const JsonObjectText = Schema.fromJsonString(
   Schema.Record(Schema.String, Schema.Unknown)
@@ -106,7 +108,7 @@ const decodePackResult = Schema.decodeUnknownEffect(
 /** Runs a command and returns its stdout, failing on a non-zero exit. */
 const runText = Effect.fnUntraced(function* (
   command: string,
-  args: readonly string[],
+  args: ReadonlyArray<string>,
   cwd: string
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -129,7 +131,7 @@ const runText = Effect.fnUntraced(function* (
   return stdout;
 }, Effect.scoped);
 
-const sorted = (paths: readonly string[]) =>
+const sorted = (paths: ReadonlyArray<string>) =>
   Arr.join(Arr.sort(paths, Order.String), "\n  ");
 
 /**

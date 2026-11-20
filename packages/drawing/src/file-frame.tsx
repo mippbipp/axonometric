@@ -7,25 +7,25 @@ import type { StructureFrameProps } from "./structure-drawing.ts";
  * full name as a title, since the name tag may show only its short tag.
  */
 export function FileFrame({
+  children,
+  faded,
   id,
+  isNew,
+  look,
   name,
   shape,
   status,
-  isNew,
-  faded,
-  look,
-  children,
 }: StructureFrameProps) {
   const { idOf } = useDrawing();
 
   return (
     <g
-      id={idOf("structure", id) ?? undefined}
-      data-structure={id}
+      data-new={isNew}
       data-shape={shape}
       data-status={status}
-      data-new={isNew}
-      {...frameAttributes({ look, faded })}
+      data-structure={id}
+      id={idOf("structure", id) ?? undefined}
+      {...frameAttributes({ faded, look })}
     >
       <title>{name}</title>
       {children}

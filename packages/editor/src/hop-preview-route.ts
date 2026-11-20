@@ -24,20 +24,20 @@ const probeId = "__hop-preview__";
  */
 export const previewRoute = ({
   data,
+  from,
   layout,
   revealed,
-  from,
   to,
   view,
 }: {
   readonly data: MapData;
+  readonly from: string;
   readonly layout: Layout;
   readonly revealed: ReadonlySet<string>;
-  readonly from: string;
   readonly to: string;
   readonly view: View;
-}): Option.Option<readonly ScreenPoint[]> => {
-  const probe = { id: probeId, from, to, label: probeId };
+}): Option.Option<ReadonlyArray<ScreenPoint>> => {
+  const probe = { from, id: probeId, label: probeId, to };
   const withProbe: MapData = { ...data, hops: [...data.hops, probe] };
   const routes = routeRevealed({ data: withProbe, layout, revealed });
   const route = routes[probeId];
@@ -52,9 +52,9 @@ export const previewRoute = ({
   );
 
   const lines = drawnRoutes({
-    routes,
     hops: shown,
     placements: layout.structures,
+    routes,
     view,
   });
 
@@ -65,11 +65,14 @@ export const previewRoute = ({
 
 /** A straight line from `start` to `end`, for a pointer over empty space. */
 export const straightLine = ({
-  start,
   end,
+  start,
   view,
 }: {
-  readonly start: ScreenPoint;
   readonly end: GridPoint;
+  readonly start: ScreenPoint;
   readonly view: View;
-}): readonly ScreenPoint[] => [start, groundProjections[view].toScreen(end)];
+}): ReadonlyArray<ScreenPoint> => [
+  start,
+  groundProjections[view].toScreen(end),
+];

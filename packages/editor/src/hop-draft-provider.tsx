@@ -15,18 +15,18 @@ export function HopDraftProvider({
 
   const value = useMemo(
     (): HopDrafting => ({
-      draft,
-      stretch,
-      stretchTo: setStretch,
       begin: (from, to) => {
         setDraft({ from, to: to ?? null });
-      },
-      pick: (to) => {
-        setDraft((held) => (held === null ? held : { ...held, to }));
       },
       cancel: () => {
         setDraft(null);
       },
+      draft,
+      pick: (to) => {
+        setDraft((held) => (held === null ? held : { ...held, to }));
+      },
+      stretch,
+      stretchTo: setStretch,
     }),
     [draft, stretch]
   );

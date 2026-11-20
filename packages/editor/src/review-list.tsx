@@ -32,28 +32,28 @@ const verdictLabels = {
 
 /** The agent's verdict on an item, with its reason. */
 export function VerdictBadge({
-  verdict,
   batch,
+  verdict,
 }: {
-  readonly verdict: Verdict;
   readonly batch: number;
+  readonly verdict: Verdict;
 }) {
   const reason = "reason" in verdict ? verdict.reason : null;
 
   return (
     <p
-      data-verdict={verdict.verdict}
       className={cn(
         "border-l-2 pl-2 text-xs",
         verdict.verdict === "rejected" ? "border-refused" : "border-ink"
       )}
+      data-verdict={verdict.verdict}
     >
       <b className="font-medium tracking-wider uppercase">
         {verdictLabels[verdict.verdict]}
       </b>
       <span className="opacity-70"> · batch {batch}</span>
       {reason === null ? null : (
-        <span data-verdict-reason className="block break-words">
+        <span className="block break-words" data-verdict-reason>
           {reason}
         </span>
       )}
@@ -72,8 +72,8 @@ const useItemDescription = () => {
   // the group as the accepted map has it now, so both are told apart. A
   // structure that is only proposed is named from the proposed map.
   const called = namesOf({
-    shown: proposed?.state.data ?? state.data,
     accepted: (exported ?? state).data,
+    shown: proposed?.state.data ?? state.data,
   });
 
   return (item: BatchItem): string => {
@@ -87,8 +87,8 @@ const useItemDescription = () => {
       ? item.id
       : Arr.join(
           describeChange(item.change, editing.accepted, {
-            structure: called.structure,
             hop: called.hop,
+            structure: called.structure,
           }),
           "; "
         );
@@ -147,15 +147,15 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
 
   return (
     <li
+      className="border-pending flex flex-col gap-1.5 border-l-2 pl-2 text-sm"
+      data-review-action={actionOf(item)}
       data-review-item={item.id}
       data-review-kind={item.kind}
-      data-review-action={actionOf(item)}
       data-review-state={status.state}
-      className="border-pending flex flex-col gap-1.5 border-l-2 pl-2 text-sm"
     >
       <span className="min-w-0 break-words">{describe(item)}</span>
       {reopenedFrom === null ? null : (
-        <span data-reopened-from={reopenedFrom} className="text-xs opacity-70">
+        <span className="text-xs opacity-70" data-reopened-from={reopenedFrom}>
           Edited again after a rejection.
         </span>
       )}
@@ -166,30 +166,32 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
           </span>
         )),
         Match.when({ state: "frozen" }, ({ batch }) => (
-          <span data-waiting-for-agent className="text-xs opacity-70">
+          <span className="text-xs opacity-70" data-waiting-for-agent>
             In batch {batch}, waiting for the agent. It can&rsquo;t change until
             the agent commits.
           </span>
         )),
-        Match.when({ state: "reviewed" }, ({ verdict, batch }) => (
-          <VerdictBadge verdict={verdict} batch={batch} />
+        Match.when({ state: "reviewed" }, ({ batch, verdict }) => (
+          <VerdictBadge batch={batch} verdict={verdict} />
         )),
         Match.exhaustive
       )}
       {failure === undefined ? null : (
         <span
-          data-review-failure
           className="border-refused border-l-2 pl-2 text-xs"
+          data-review-failure
         >
           {failure}
         </span>
       )}
       {editing && text !== undefined ? (
         <NoteForm
-          label="Your text, edited again"
           initial={text}
+          label="Your text, edited again"
           limit={specOf(item).textLimit}
-          submit="Send in next batch"
+          onCancel={() => {
+            setEditing(false);
+          }}
           onSubmit={(next, done) => {
             review.ops.reopen(item.id, next, (outcome) => {
               if (Result.isSuccess(outcome)) {
@@ -199,15 +201,12 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
               done(failureOf(outcome));
             });
           }}
-          onCancel={() => {
-            setEditing(false);
-          }}
+          submit="Send in next batch"
         />
       ) : (
         <span className="flex flex-wrap gap-1.5">
           {status.state === "open" && canDiscard(item, editOn) ? (
             <button
-              type="button"
               className={controlClass}
               disabled={!review.canWrite}
               onClick={() => {
@@ -215,32 +214,33 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
                   setFailure(failureOf(outcome));
                 });
               }}
+              type="button"
             >
               Discard
             </button>
           ) : null}
           {editOn && isRejected ? (
             <button
-              type="button"
-              data-reopen={item.id}
               className={controlClass}
+              data-reopen={item.id}
               disabled={!review.canWrite}
               onClick={reopen}
+              type="button"
             >
               Edit again
             </button>
           ) : null}
           {editOn && status.state === "reviewed" ? (
             <button
-              type="button"
-              data-dismiss={item.id}
               className={controlClass}
+              data-dismiss={item.id}
               disabled={!review.canWrite}
               onClick={() => {
                 review.ops.dismiss(item.id, (outcome) => {
                   setFailure(failureOf(outcome));
                 });
               }}
+              type="button"
             >
               Dismiss
             </button>
@@ -275,13 +275,13 @@ export function ReviewList() {
 
   return (
     <>
-      {Arr.map(sections, ({ section, items }) => (
+      {Arr.map(sections, ({ items, section }) => (
         <ReviewSection
-          key={section}
-          section={section}
           entries={Arr.filter(entries, ({ item }) =>
             items.some((held) => held.id === item.id)
           )}
+          key={section}
+          section={section}
         />
       ))}
     </>
@@ -290,24 +290,24 @@ export function ReviewList() {
 
 /** One section of the review list: a heading and its rows. */
 function ReviewSection({
-  section,
   entries,
+  section,
 }: {
+  readonly entries: ReadonlyArray<ReviewEntry>;
   readonly section: Section;
-  readonly entries: readonly ReviewEntry[];
 }) {
   return (
     <section
+      className="flex flex-col gap-2"
       data-review-list
       data-review-section={section}
-      className="flex flex-col gap-2"
     >
       <h3 className="text-xs tracking-widest uppercase opacity-70">
         {sectionTitles[section]}
       </h3>
       <ul className="flex flex-col gap-2">
         {Arr.map(entries, (entry) => (
-          <ReviewRow key={entry.item.id} entry={entry} />
+          <ReviewRow entry={entry} key={entry.item.id} />
         ))}
       </ul>
     </section>

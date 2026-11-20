@@ -47,7 +47,7 @@ export function AddStructureForm() {
   const placing = usePlacing();
   const proposing = useProposed();
   const { state } = useWalkthrough();
-  const { send, sending, failure, clear, canPropose } = usePropose();
+  const { canPropose, clear, failure, send, sending } = usePropose();
   const drafted = useDraftSpot();
   const spot = drafted?.spot ?? null;
   const id = useId();
@@ -57,7 +57,7 @@ export function AddStructureForm() {
   const draftChange =
     draft === undefined
       ? undefined
-      : addChangeOf({ draft, spot, id: previewId });
+      : addChangeOf({ draft, id: previewId, spot });
 
   useDraftPreview(draftChange);
 
@@ -72,6 +72,7 @@ export function AddStructureForm() {
       placing.setSpot({
         x: spot?.x ?? 0,
         y: spot?.y ?? 0,
+        // The typed axis comes last so it overrides x and y.
         [axis]: snap(value),
       });
     }
@@ -83,16 +84,16 @@ export function AddStructureForm() {
 
   return (
     <form
-      data-add-structure
       aria-label="Add a structure"
       className="flex flex-col gap-2 text-xs"
+      data-add-structure
       onSubmit={(event) => {
         event.preventDefault();
 
         const made =
           draft === undefined
             ? undefined
-            : addChangeOf({ draft, spot, id: sentId });
+            : addChangeOf({ draft, id: sentId, spot });
 
         if (made !== undefined && !sending) {
           send(made, close);
@@ -102,26 +103,25 @@ export function AddStructureForm() {
       <label className="flex flex-col gap-1" htmlFor={`${id}-name`}>
         <span className="opacity-70">Name</span>
         <input
-          id={`${id}-name`}
-          data-add="name"
-          type="text"
-          value={draft.name}
-          maxLength={maxStructureNameLength}
           autoComplete="off"
           className={fieldClass}
+          data-add="name"
+          id={`${id}-name`}
+          maxLength={maxStructureNameLength}
           onChange={(event) => {
             clear();
             placing.setDraft({ ...draft, name: event.target.value });
           }}
+          type="text"
+          value={draft.name}
         />
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1">
           <span className="opacity-70">Shape</span>
           <select
-            data-add="shape"
             className={fieldClass}
-            value={draft.shape}
+            data-add="shape"
             onChange={(event) => {
               Option.map(
                 Arr.findFirst(
@@ -133,8 +133,9 @@ export function AddStructureForm() {
                 }
               );
             }}
+            value={draft.shape}
           >
-            {Arr.map(shapeChoices, ({ value, label }) => (
+            {Arr.map(shapeChoices, ({ label, value }) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -144,9 +145,8 @@ export function AddStructureForm() {
         <label className="flex flex-col gap-1">
           <span className="opacity-70">Status</span>
           <select
-            data-add="status"
             className={fieldClass}
-            value={draft.status}
+            data-add="status"
             onChange={(event) => {
               Option.map(
                 Arr.findFirst(
@@ -158,8 +158,9 @@ export function AddStructureForm() {
                 }
               );
             }}
+            value={draft.status}
           >
-            {Arr.map(statusChoices, ({ value, label }) => (
+            {Arr.map(statusChoices, ({ label, value }) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -170,12 +171,12 @@ export function AddStructureForm() {
       <label className="flex flex-col gap-1">
         <span className="opacity-70">Group</span>
         <select
-          data-add="group"
           className={fieldClass}
-          value={draft.group}
+          data-add="group"
           onChange={(event) => {
             placing.setDraft({ ...draft, group: event.target.value });
           }}
+          value={draft.group}
         >
           {Arr.map(state.data.groups, ({ id: groupId, title }) => (
             <option key={groupId} value={groupId}>
@@ -190,68 +191,68 @@ export function AddStructureForm() {
           <label className="flex w-14 flex-col gap-1">
             <span className="opacity-70">x</span>
             <input
-              data-add="x"
-              type="number"
-              step={0.5}
-              value={spot?.x ?? ""}
               className={fieldClass}
+              data-add="x"
               onChange={(event) => {
                 setCoordinate("x", event.target.value);
               }}
+              step={0.5}
+              type="number"
+              value={spot?.x ?? ""}
             />
           </label>
           <label className="flex w-14 flex-col gap-1">
             <span className="opacity-70">y</span>
             <input
-              data-add="y"
-              type="number"
-              step={0.5}
-              value={spot?.y ?? ""}
               className={fieldClass}
+              data-add="y"
               onChange={(event) => {
                 setCoordinate("y", event.target.value);
               }}
+              step={0.5}
+              type="number"
+              value={spot?.y ?? ""}
             />
           </label>
           <button
-            type="button"
-            data-add="pick"
             aria-pressed={placing.picking}
             className={controlClass}
+            data-add="pick"
             onClick={() => {
               placing.pick(!placing.picking);
             }}
+            type="button"
           >
             {placing.picking ? "Click the map…" : "Pick on map"}
           </button>
         </div>
-        <p data-add-hint className="opacity-70">
+        <p className="opacity-70" data-add-hint>
           {spotHint(placing.spot, drafted)}
         </p>
       </fieldset>
       {failure === undefined ? null : (
         <p
-          role="alert"
-          data-add-failure
           className="border-refused border-l-2 pl-2"
+          data-add-failure
+          role="alert"
         >
           {failure}
         </p>
       )}
       <div className="flex gap-1.5">
         <button
-          type="submit"
-          data-add="submit"
           className={controlClass}
+          data-add="submit"
           disabled={!canPropose || sending || draftChange === undefined}
+          type="submit"
         >
           {sending ? "Saving…" : "Propose"}
         </button>
         <button
-          type="button"
-          data-add="cancel"
           className={controlClass}
+          data-add="cancel"
           onClick={close}
+          type="button"
         >
           Cancel
         </button>

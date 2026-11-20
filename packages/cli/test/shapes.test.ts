@@ -17,7 +17,7 @@ const builtPage = Effect.gen(function* () {
 // package has no DOM types.
 
 const attributeOfAll = (page: Page, selector: string, name: string) =>
-  inPage<string[]>(
+  inPage<Array<string>>(
     page,
     `Array.from(document.querySelectorAll(${JSON.stringify(selector)}), (element) => element.getAttribute(${JSON.stringify(name)}) ?? "")`
   );
@@ -46,14 +46,14 @@ const hatchOf = (page: Page, id: string) =>
 const lookOf = Effect.fnUntraced(function* (page: Page, id: string) {
   return {
     dashes: yield* styleOf(page, id, "strokeDasharray"),
-    stroke: yield* styleOf(page, id, "stroke"),
-    opacity: yield* styleOf(page, id, "opacity"),
     face: yield* faceFillOf(page, id),
     hatch: yield* hatchOf(page, id),
     offMarks: yield* inPage<number>(
       page,
       `document.querySelectorAll('[data-structure="${id}"] [data-off-mark]').length`
     ),
+    opacity: yield* styleOf(page, id, "opacity"),
+    stroke: yield* styleOf(page, id, "stroke"),
   };
 });
 
@@ -61,7 +61,7 @@ describe("shapes and statuses", () => {
   it.live("draws one structure of each shape", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, errors } = yield* builtPage;
+        const { errors, page } = yield* builtPage;
 
         const drawn = yield* attributeOfAll(
           page,
@@ -85,7 +85,7 @@ describe("shapes and statuses", () => {
 
         // Compare the drawings with their positions taken out: the element
         // names, in order, plus the attributes that aren't coordinates.
-        const outlines = yield* inPage<string[]>(
+        const outlines = yield* inPage<Array<string>>(
           page,
           `Array.from(document.querySelectorAll("[data-structure]"), (element) =>
             Array.from(element.querySelectorAll("*"), (child) =>

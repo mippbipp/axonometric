@@ -58,19 +58,19 @@ export const summarizeHop: {
 /** `review`'s before and after for a hop change, given the map as data.mjs has it. */
 export const factsOfHop: {
   (data: Pick<MapData, "hops" | "flows"> | undefined): (change: HopChange) => {
-    readonly before: Facts;
     readonly after: Facts;
+    readonly before: Facts;
   };
   (
     change: HopChange,
     data: Pick<MapData, "hops" | "flows"> | undefined
-  ): { readonly before: Facts; readonly after: Facts };
+  ): { readonly after: Facts; readonly before: Facts };
 } = dual(
   2,
   (
     change: HopChange,
     data: Pick<MapData, "hops" | "flows"> | undefined
-  ): { readonly before: Facts; readonly after: Facts } => {
+  ): { readonly after: Facts; readonly before: Facts } => {
     const id = hopOf(change);
 
     const current: Option.Option<Hop> =
@@ -90,14 +90,17 @@ export const factsOfHop: {
 export const referencesToHop: {
   (
     id: string
-  ): (data: Pick<MapData, "flows" | "chapters">) => readonly string[];
-  (data: Pick<MapData, "flows" | "chapters">, id: string): readonly string[];
+  ): (data: Pick<MapData, "flows" | "chapters">) => ReadonlyArray<string>;
+  (
+    data: Pick<MapData, "flows" | "chapters">,
+    id: string
+  ): ReadonlyArray<string>;
 } = dual(
   2,
   (
     data: Pick<MapData, "flows" | "chapters">,
     id: string
-  ): readonly string[] => [
+  ): ReadonlyArray<string> => [
     ...Arr.flatMap(data.flows, (flow) =>
       flow.hops.includes(id)
         ? [`flow ${flow.id} (${quoteText(flow.name)}) lists it`]
@@ -113,11 +116,11 @@ export const referencesToHop: {
 
 /** What `hopBreakage` needs to know about the map. */
 export interface HopLanding {
-  readonly structureIds: ReadonlySet<string>;
-  /** The hops the map has: data.mjs's, and at review the proposed ones too. */
-  readonly hopIds: ReadonlySet<string>;
   /** The map's data, which a deletion is checked against. */
   readonly data: Pick<MapData, "flows" | "chapters"> | undefined;
+  /** The hops the map has: data.mjs's, and at review the proposed ones too. */
+  readonly hopIds: ReadonlySet<string>;
+  readonly structureIds: ReadonlySet<string>;
 }
 
 /**
@@ -135,7 +138,7 @@ export const hopBreakage: {
   2,
   (
     change: HopChange,
-    { structureIds, hopIds, data }: HopLanding
+    { data, hopIds, structureIds }: HopLanding
   ): Option.Option<string> => {
     if (change.action === "add") {
       const { hop } = change;
@@ -185,7 +188,7 @@ export const hopCandidateProblems = ({
   /** The map as proposed now. */
   readonly before: Checkable;
   readonly change: HopChange;
-}): readonly DraggedProblem[] =>
+}): ReadonlyArray<DraggedProblem> =>
   changedProblems(
     { data: hopChangeToData(before.data, change), layout: before.layout },
     before

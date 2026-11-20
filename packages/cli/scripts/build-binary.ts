@@ -16,20 +16,20 @@ class BuildFailed extends Schema.TaggedError<
 >()("BuildFailed", { message: Schema.String }) {}
 
 const osNames: Partial<Record<NodeJS.Platform, string>> = {
-  linux: "linux",
   darwin: "darwin",
+  linux: "linux",
   win32: "windows",
 };
 
 /** Runs a command with the terminal as its output, failing on a non-zero exit. */
 const run = Effect.fnUntraced(function* (
   command: string,
-  args: readonly string[]
+  args: ReadonlyArray<string>
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
   const exitCode = yield* spawner.exitCode(
-    ChildProcess.make(command, args, { stdout: "inherit", stderr: "inherit" })
+    ChildProcess.make(command, args, { stderr: "inherit", stdout: "inherit" })
   );
 
   if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
@@ -64,7 +64,7 @@ const buildBinary = Effect.gen(function* () {
     `${target}${os === "windows" ? ".zip" : ".tar.gz"}`
   );
 
-  yield* fs.remove(targetDir, { recursive: true, force: true });
+  yield* fs.remove(targetDir, { force: true, recursive: true });
   yield* fs.remove(archive, { force: true });
   yield* fs.makeDirectory(targetDir, { recursive: true });
 

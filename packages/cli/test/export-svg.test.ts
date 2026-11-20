@@ -36,7 +36,7 @@ const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
 });
 
 /** The flake pipeline's chapters to compare, with their numbers from 1. */
-const chapters: readonly (readonly [id: string, number: number])[] = [
+const chapters: ReadonlyArray<readonly [id: string, number: number]> = [
   ["c-monday", 1],
   // Plays one of the two hops it draws, so the other one fades.
   ["c-pr", 2],
@@ -50,7 +50,7 @@ const sizeOf = (text: string) => {
       text
     )?.groups;
 
-  return { width: Number(header?.width), height: Number(header?.height) };
+  return { height: Number(header?.height), width: Number(header?.width) };
 };
 
 describe("export --format svg", () => {
@@ -73,7 +73,7 @@ describe("export --format svg", () => {
           );
 
           yield* Effect.promise(() =>
-            page.setViewportSize({ width: 1280, height: 800 })
+            page.setViewportSize({ height: 800, width: 1280 })
           );
 
           for (const view of ["iso", "plan"] as const) {
@@ -304,7 +304,7 @@ describe("export --format png", () => {
           );
 
           yield* Effect.promise(() =>
-            page.setViewportSize({ width: 1280, height: 800 })
+            page.setViewportSize({ height: 800, width: 1280 })
           );
 
           const target = path.join(home, "cli.png");
@@ -330,8 +330,8 @@ describe("export --format png", () => {
           const fromCli = yield* decodePng(cliBytes);
 
           assert.deepStrictEqual(
-            { width: fromPage.width, height: fromPage.height },
-            { width: fromCli.width, height: fromCli.height }
+            { height: fromPage.height, width: fromPage.width },
+            { height: fromCli.height, width: fromCli.width }
           );
 
           const share = differingShare(fromPage, fromCli);
@@ -394,8 +394,8 @@ describe("export --format png", () => {
           const image = yield* decodePng(pngBytes);
 
           assert.deepStrictEqual(
-            { width: image.width, height: image.height },
-            { width: size.width * 2, height: size.height * 2 }
+            { height: image.height, width: image.width },
+            { height: size.height * 2, width: size.width * 2 }
           );
 
           return image.pixel(2, 2);

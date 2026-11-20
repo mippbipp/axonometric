@@ -32,57 +32,61 @@ import type { HomeFiles } from "./harness.ts";
 const at = "2026-11-01T09:00:00.000Z";
 
 const moveItem: BatchItem = {
-  id: "move-engineer",
-  kind: "layout",
   change: {
     id: "move-engineer",
     kind: "move",
     moves: [
       {
-        target: { kind: "structure", id: "engineer" },
         position: { x: 0, y: 4 },
+        target: { id: "engineer", kind: "structure" },
       },
     ],
   },
+  id: "move-engineer",
+  kind: "layout",
 };
 
 const resizeItem = (w: number): BatchItem => ({
-  id: "resize-page",
-  kind: "layout",
   change: {
+    footprint: { d: 2, w },
     id: "resize-page",
     kind: "resize",
-    target: { kind: "structure", id: "page" },
-    footprint: { w, d: 2 },
+    target: { id: "page", kind: "structure" },
   },
+  id: "resize-page",
+  kind: "layout",
 });
 
 const noteItem: BatchItem = {
   id: "note-server",
   kind: "note",
-  target: { kind: "structure", id: "server" },
+  target: { id: "server", kind: "structure" },
   text: "Why does the server push, not the page poll?",
 };
 
 const batchOf = (
   number: number,
-  items: readonly BatchItem[],
+  items: ReadonlyArray<BatchItem>,
   verdicts: Batch["verdicts"] = {}
-): Batch => ({ number, frozenAt: at, items, verdicts });
+): Batch => ({ frozenAt: at, items, number, verdicts });
 
 const fileOf = (proposals: Proposals) =>
   `${JSON.stringify(proposals, null, 2)}\n`;
 
 /** A proposals file at revision 4 holding `batches`. */
-const withBatches = (batches: readonly Batch[]): Proposals => ({
+const withBatches = (batches: ReadonlyArray<Batch>): Proposals => ({
+  batches,
   format: 1,
-  revision: 4,
   layout: [],
   notes: [],
-  batches,
+  revision: 4,
 });
 
-const firstBatch: readonly BatchItem[] = [moveItem, resizeItem(3), noteItem];
+const firstBatch: ReadonlyArray<BatchItem> = [
+  moveItem,
+  resizeItem(3),
+  noteItem,
+];
 
 /** The first batch with the given verdicts, as a file's text. */
 const proposalsWith = (
@@ -98,11 +102,11 @@ const proposalsWith = (
 
 const decided: Batch["verdicts"] = {
   "move-engineer": { verdict: "accepted" },
+  "note-server": { reason: "Added to the overview.", verdict: "changed" },
   "resize-page": {
-    verdict: "rejected",
     reason: "A 3 × 2 page covers the hop.",
+    verdict: "rejected",
   },
-  "note-server": { verdict: "changed", reason: "Added to the overview." },
 };
 
 const homeWith = (proposals: string, more: HomeFiles = {}) =>
@@ -115,7 +119,7 @@ const homeWith = (proposals: string, more: HomeFiles = {}) =>
       ...more,
     });
 
-    return { root, home: path.join(root, "review", "map") };
+    return { home: path.join(root, "review", "map"), root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
@@ -210,7 +214,7 @@ describe("review", () => {
 
   it.effect("says so when no batch is waiting, and writes nothing", () =>
     Effect.gen(function* () {
-      const proposals = fileOf({ format: 1, revision: 0, layout: [] });
+      const proposals = fileOf({ format: 1, layout: [], revision: 0 });
       const { home } = yield* homeWith(proposals);
 
       const result = yield* runCli(home, ["review", home]);
@@ -258,8 +262,8 @@ describe("verdict", () => {
 
       assert.deepStrictEqual(proposals.batches?.[0]?.verdicts, {
         "resize-page": {
-          verdict: "rejected",
           reason: "A 3 × 2 page covers the hop.",
+          verdict: "rejected",
         },
       });
       assert.strictEqual(proposals.revision, 5);
@@ -382,17 +386,17 @@ describe("commit", () => {
         const layout = yield* decodeLayout(result.files["layout.json"] ?? "");
 
         assert.deepStrictEqual(layout.structures.engineer, {
+          d: 2,
+          w: 2,
           x: 0,
           y: 4,
-          w: 2,
-          d: 2,
         });
         // The rejected resize did not land.
         assert.deepStrictEqual(layout.structures.page, {
+          d: 2,
+          w: 2,
           x: 4,
           y: 0,
-          w: 2,
-          d: 2,
         });
         assert.deepStrictEqual(revision.layout, layout);
 
@@ -425,10 +429,10 @@ describe("commit", () => {
       const state = yield* pageState(reviewHtml);
 
       assert.deepStrictEqual(state.layout.structures.engineer, {
+        d: 2,
+        w: 2,
         x: 0,
         y: 4,
-        w: 2,
-        d: 2,
       });
     })
   );
@@ -542,7 +546,7 @@ describe("the commands and a running server", () => {
           (state) => state.proposals?.batches?.[0]?.committed?.revision === 1,
           () => "the server has not read the commit yet"
         ),
-        Effect.retry({ times: 100, schedule: Schedule.spaced("100 millis") }),
+        Effect.retry({ schedule: Schedule.spaced("100 millis"), times: 100 }),
         Effect.orDie
       );
 
@@ -551,10 +555,10 @@ describe("the commands and a running server", () => {
         decided
       );
       assert.deepStrictEqual(committed.layout.structures.engineer, {
+        d: 2,
+        w: 2,
         x: 0,
         y: 4,
-        w: 2,
-        d: 2,
       });
     })
   );
@@ -606,17 +610,17 @@ describe("a changed layout item", () => {
 
         // The agent's position wins; the proposal's y 4 was not applied.
         assert.deepStrictEqual(layout.structures.engineer, {
+          d: 2,
+          w: 2,
           x: 0,
           y: 6,
-          w: 2,
-          d: 2,
         });
         // The accepted resize was applied.
         assert.deepStrictEqual(layout.structures.page, {
+          d: 2,
+          w: 3,
           x: 4,
           y: 0,
-          w: 3,
-          d: 2,
         });
 
         const revision = yield* decodeRevision(

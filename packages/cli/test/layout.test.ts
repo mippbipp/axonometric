@@ -25,7 +25,7 @@ const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 /** Runs `layout` on the minimal map, whose structures are updater and gate. */
 const layoutWith = Effect.fnUntraced(function* (
-  args: readonly string[],
+  args: ReadonlyArray<string>,
   files: Readonly<Record<string, string>> = {}
 ) {
   const home = yield* makeHome({ ...(yield* minimalMap), ...files });
@@ -50,8 +50,8 @@ const savedLayout = Effect.fnUntraced(function* (
  */
 const lockOf = (pid: number) =>
   JSON.stringify({
-    pid,
     command: "serve",
+    pid,
     since: "2026-10-31T09:00:00.000Z",
   });
 
@@ -84,16 +84,16 @@ describe("layout", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       assert.deepStrictEqual(layout.structures.gate, {
+        d: 1.5,
+        w: 2,
         x: 8,
         y: 0.5,
-        w: 2,
-        d: 1.5,
       });
       assert.deepStrictEqual(layout.structures.updater, {
+        d: 2,
+        w: 2,
         x: 0,
         y: 4,
-        w: 2,
-        d: 2,
       });
       assert.strictEqual(layout.revision, 1);
       assert.strictEqual(
@@ -118,10 +118,10 @@ describe("layout", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       assert.deepStrictEqual(layout.structures.updater, {
+        d: 2.5,
+        w: 3,
         x: 0,
         y: 4,
-        w: 3,
-        d: 2.5,
       });
       assert.include(result.stdout, "updater: w 2 → 3, d 2 → 2.5.");
     })
@@ -137,7 +137,7 @@ describe("layout", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       assert.deepStrictEqual(layout.structures, {
-        gate: { x: 6, y: 0, w: 2, d: 2 },
+        gate: { d: 2, w: 2, x: 6, y: 0 },
       });
       assert.strictEqual(layout.revision, 3);
       assert.include(result.stdout, "gate: placed at x 6, y 0, w 2, d 2.");

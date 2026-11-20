@@ -66,7 +66,7 @@ describe("the chapter walkthrough", () => {
   it.live("lists every chapter in the rail and opens on the first", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+        const { errors, page } = yield* reviewPage;
 
         const rail = yield* Effect.promise(() =>
           page.locator("[data-chapter-rail] button").allTextContents()

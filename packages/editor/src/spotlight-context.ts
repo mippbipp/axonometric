@@ -7,20 +7,20 @@ import { createContext, use } from "react";
  * moves, so read this only where the drawing needs them.
  */
 export interface SpotlightState {
+  readonly hoveredHop: string | null;
   /** The spotlight, or `null` when nothing fades. */
   readonly spotlight: Spotlight | null;
-  readonly hoveredHop: string | null;
 }
 
 /** What doesn't change as the pointer moves. */
 export interface SpotlightActions {
-  /** Called with the hop's id while the pointer is on its line, else null. */
-  readonly hoverHop: (hop: string | null) => void;
   /**
    * The spotlight as it is when called, for what acts on a press, such as
    * an export. Reading it doesn't redraw the reader as the pointer moves.
    */
   readonly current: () => Spotlight | null;
+  /** Called with the hop's id while the pointer is on its line, else null. */
+  readonly hoverHop: (hop: string | null) => void;
 }
 
 export const SpotlightContext = createContext<SpotlightState | null>(null);

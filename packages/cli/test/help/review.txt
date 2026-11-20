@@ -1,0 +1,18 @@
+DESCRIPTION
+  Print the oldest batch that has no commit: each item's id, kind, target, before and after, and whether accepting it would break the map. Writes nothing.
+
+USAGE
+  axonometric review [flags] <home>
+
+ARGUMENTS
+  home directory    The map's home folder, holding data.mjs and proposals.json
+
+FLAGS
+  --json    Print { home, batch } as JSON instead of text
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)

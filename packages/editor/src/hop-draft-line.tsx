@@ -26,14 +26,14 @@ import { previewRoute, straightLine } from "./hop-preview-route.ts";
  * includes it.
  */
 export function HopDraftLine({
-  view,
-  state,
   revealed,
+  state,
+  view,
 }: {
-  readonly view: View;
+  readonly revealed: ReadonlySet<string>;
   /** The map as shown, proposals included. */
   readonly state: MapState;
-  readonly revealed: ReadonlySet<string>;
+  readonly view: View;
 }) {
   const drafting = useHopDraft();
   const { texts, zoom } = use(EditorSceneContext);
@@ -47,12 +47,12 @@ export function HopDraftLine({
   const routed = useMemo(
     () =>
       from === null || to === null
-        ? Option.none<readonly ScreenPoint[]>()
+        ? Option.none<ReadonlyArray<ScreenPoint>>()
         : previewRoute({
             data: state.data,
+            from,
             layout: state.layout,
             revealed,
-            from,
             to,
             view,
           }),
@@ -66,7 +66,7 @@ export function HopDraftLine({
   const straight =
     stretch === null
       ? undefined
-      : straightLine({ start: stretch.start, end: stretch.end, view });
+      : straightLine({ end: stretch.end, start: stretch.start, view });
 
   const line = Option.isSome(routed) ? routed.value : straight;
 
@@ -90,18 +90,18 @@ export function HopDraftLine({
           ? "stroke-pending pointer-events-none opacity-60"
           : "stroke-pending pointer-events-none"
       }
-      strokeWidth={2.2}
       strokeDasharray="6 3"
+      strokeWidth={2.2}
     >
-      {Arr.map(pieces, ({ start, end }) => (
+      {Arr.map(pieces, ({ end, start }) => (
         <line
-          key={`${start.sx},${start.sy},${end.sx},${end.sy}`}
           data-hop-preview={from}
           data-over={to ?? ""}
           data-routed={Option.isSome(routed)}
+          key={`${start.sx},${start.sy},${end.sx},${end.sy}`}
           x1={start.sx}
-          y1={start.sy}
           x2={end.sx}
+          y1={start.sy}
           y2={end.sy}
         />
       ))}

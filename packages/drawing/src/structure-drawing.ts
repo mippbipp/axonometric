@@ -9,31 +9,31 @@ import type { Look } from "./look.ts";
  * a title.
  */
 export interface StructureFrameProps {
-  readonly id: string;
-  /** The structure's full name. */
-  readonly name: string;
-  readonly shape: Shape;
-  readonly status: Status;
-  /** Whether the chapter reveals the structure, so it's drawn as new. */
-  readonly isNew: boolean;
+  readonly children: ReactNode;
   /**
    * Whether the spotlight fades the structure, or `undefined` when there is
    * no spotlight.
    */
   readonly faded: boolean | undefined;
+  readonly id: string;
+  /** Whether the chapter reveals the structure, so it's drawn as new. */
+  readonly isNew: boolean;
   /** The paint the frame gives every part by inheritance. */
   readonly look: Look;
-  readonly children: ReactNode;
+  /** The structure's full name. */
+  readonly name: string;
+  readonly shape: Shape;
+  readonly status: Status;
 }
 
 /** What a view's drawing of one structure takes. */
 export interface StructureDrawingProps {
-  /** The structure as the scene lays it out for the view. */
-  readonly placed: SceneStructure;
+  /** As `StructureFrameProps.faded`. */
+  readonly faded: boolean | undefined;
   /** The id of the hatch pattern the drawing fills faces with. */
   readonly hatch: string;
   /** Whether the chapter reveals the structure, so it's drawn as new. */
   readonly isNew: boolean;
-  /** As `StructureFrameProps.faded`. */
-  readonly faded: boolean | undefined;
+  /** The structure as the scene lays it out for the view. */
+  readonly placed: SceneStructure;
 }

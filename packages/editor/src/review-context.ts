@@ -17,15 +17,15 @@ export interface Review {
   /** Whether writes can be sent now. False while the server is down. */
   readonly canWrite: boolean;
   /** Every item with a status: open, frozen in a batch, or reviewed. */
-  readonly entries: readonly ReviewEntry[];
+  readonly entries: ReadonlyArray<ReviewEntry>;
   /**
    * How many notes, text suggestions, answers and raised questions are open:
    * not in a batch yet.
    */
   readonly openText: number;
+  readonly ops: ReviewOps;
   /** For an item reopened after a rejection, the rejected item's id. */
   readonly replaces: Readonly<Record<string, string>>;
-  readonly ops: ReviewOps;
 }
 
 export const ReviewContext = createContext<Review | null>(null);
@@ -47,18 +47,18 @@ export const isDismissed = ({ status }: ReviewEntry): boolean =>
 export const entriesOfKind: {
   <K extends BatchItem["kind"]>(
     kind: K
-  ): (entries: readonly ReviewEntry[]) => readonly KindEntry<K>[];
+  ): (entries: ReadonlyArray<ReviewEntry>) => ReadonlyArray<KindEntry<K>>;
   <K extends BatchItem["kind"]>(
-    entries: readonly ReviewEntry[],
+    entries: ReadonlyArray<ReviewEntry>,
     kind: K
-  ): readonly KindEntry<K>[];
+  ): ReadonlyArray<KindEntry<K>>;
 } = dual(
   2,
   <K extends BatchItem["kind"]>(
-    entries: readonly ReviewEntry[],
+    entries: ReadonlyArray<ReviewEntry>,
     kind: K
-  ): readonly KindEntry<K>[] =>
-    Arr.flatMap(entries, (entry): readonly KindEntry<K>[] =>
+  ): ReadonlyArray<KindEntry<K>> =>
+    Arr.flatMap(entries, (entry): ReadonlyArray<KindEntry<K>> =>
       entry.item.kind === kind && !isDismissed(entry)
         ? // SAFETY: `kind` was just checked, and `item` is a member of the union tagged `K`.
           [
@@ -78,8 +78,8 @@ export const entriesOfKind: {
  * buttons that accept them, so only their batches and verdicts show here.
  */
 export const listedEntries = (
-  entries: readonly ReviewEntry[]
-): readonly ReviewEntry[] =>
+  entries: ReadonlyArray<ReviewEntry>
+): ReadonlyArray<ReviewEntry> =>
   Arr.filter(
     entries,
     ({ item, status }) =>

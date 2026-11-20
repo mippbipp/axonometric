@@ -13,12 +13,12 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 interface Stored {
   /** The chapter the selection was made in. Another chapter clears it. */
   readonly chapter: string;
-  readonly selected: string | null;
-  readonly hop: string | null;
   /** The group whose panel is open, from a click on its zone's title. */
   readonly group: string | null;
+  readonly hop: string | null;
   readonly inside: string | null;
   readonly multiSelection: ReadonlySet<string>;
+  readonly selected: string | null;
 }
 
 const nobody: ReadonlySet<string> = new Set();
@@ -30,11 +30,11 @@ const inChapter = (before: Stored, chapter: string): Stored =>
 /** Nothing selected, in `chapter`. */
 const nothingIn = (chapter: string): Stored => ({
   chapter,
-  selected: null,
-  hop: null,
   group: null,
+  hop: null,
   inside: null,
   multiSelection: nobody,
+  selected: null,
 });
 
 /**
@@ -47,7 +47,7 @@ export function SelectionProvider({
 }: {
   readonly children: ReactNode;
 }) {
-  const { stop, state } = useWalkthrough();
+  const { state, stop } = useWalkthrough();
   const { closePacket } = usePlayback();
   const byId = useStructuresById();
   const renames = useRenames();
@@ -89,7 +89,7 @@ export function SelectionProvider({
     storedHop !== null &&
     Arr.some(
       state.data.hops,
-      ({ id, from, to }) =>
+      ({ from, id, to }) =>
         id === storedHop && stop.revealed.has(from) && stop.revealed.has(to)
     )
       ? storedHop
@@ -117,22 +117,49 @@ export function SelectionProvider({
 
   const value = useMemo(
     (): Selection => ({
-      selected,
-      selectedHop,
-      selectedGroup,
+      clearMultiSelection: () => {
+        setStored((before) =>
+          before.multiSelection.size === 0
+            ? before
+            : { ...before, multiSelection: nobody }
+        );
+      },
+      comeOut: () => {
+        setStored((before) => ({ ...before, inside: null }));
+      },
+      goInside: (id) => {
+        closePacket();
+        setStored({
+          chapter,
+          group: null,
+          hop: null,
+          inside: hasSteps(byId.get(id)) ? id : null,
+          multiSelection: nobody,
+          selected: id,
+        });
+      },
       inside,
       multiSelection,
       select: (id) => {
         closePacket();
         setStored({ ...nothingIn(chapter), selected: id });
       },
+      selected,
+      selectedGroup,
+      selectedHop,
+      selectGroup: (id) => {
+        closePacket();
+        setStored({ ...nothingIn(chapter), group: id });
+      },
       selectHop: (id) => {
         closePacket();
         setStored({ ...nothingIn(chapter), hop: id });
       },
-      selectGroup: (id) => {
-        closePacket();
-        setStored({ ...nothingIn(chapter), group: id });
+      setMultiSelection: (ids) => {
+        setStored((before) => ({
+          ...inChapter(before, chapter),
+          multiSelection: new Set(ids),
+        }));
       },
       toggleMultiSelected: (id) => {
         setStored((before) => {
@@ -149,33 +176,6 @@ export function SelectionProvider({
 
           return { ...here, multiSelection: new Set(next) };
         });
-      },
-      setMultiSelection: (ids) => {
-        setStored((before) => ({
-          ...inChapter(before, chapter),
-          multiSelection: new Set(ids),
-        }));
-      },
-      clearMultiSelection: () => {
-        setStored((before) =>
-          before.multiSelection.size === 0
-            ? before
-            : { ...before, multiSelection: nobody }
-        );
-      },
-      goInside: (id) => {
-        closePacket();
-        setStored({
-          chapter,
-          selected: id,
-          hop: null,
-          group: null,
-          inside: hasSteps(byId.get(id)) ? id : null,
-          multiSelection: nobody,
-        });
-      },
-      comeOut: () => {
-        setStored((before) => ({ ...before, inside: null }));
       },
     }),
     [
