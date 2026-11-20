@@ -207,7 +207,7 @@ describe("the How it's built page", () => {
         yield* openOverview(page);
 
         const expanded = yield* Effect.promise(() =>
-          page.locator(overviewButton).getAttribute("aria-expanded")
+          page.locator(overviewButton).getAttribute("aria-pressed")
         );
 
         assert.strictEqual(expanded, "true");

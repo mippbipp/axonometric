@@ -1,4 +1,5 @@
 import type { Overview } from "@axonometric/contracts";
+import { Toggle } from "@axonometric/ui/components/toggle";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import {
@@ -12,7 +13,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { MapLink } from "./map-link.tsx";
 import { OverviewPageContext, useOverviewPage } from "./overview-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -55,17 +56,16 @@ export function OverviewButton() {
   const { buttonRef, open, pageId, toggle } = useOverviewPage();
 
   return (
-    <button
+    <Toggle
       aria-controls={open ? pageId : undefined}
-      aria-expanded={open}
-      className={cn(controlClass, open && "bg-ink text-paper")}
+      className={uiControlClass}
       data-control="overview"
-      onClick={toggle}
+      onPressedChange={toggle}
+      pressed={open}
       ref={buttonRef}
-      type="button"
     >
       {pageTitle}
-    </button>
+    </Toggle>
   );
 }
 

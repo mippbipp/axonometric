@@ -8,3 +8,11 @@ export const controlClass =
  * empty string, so the variant is written `data-[pressed]:`.
  */
 export const uiControlClass = `${controlClass} h-auto min-w-0 rounded-none font-normal transition-none hover:bg-paper hover:text-ink data-[pressed]:bg-ink data-[pressed]:text-paper aria-disabled:cursor-default aria-disabled:opacity-40`;
+
+/**
+ * The same look for an option of a ui-sdk SegmentedControl. The chosen option
+ * is ui-sdk's `data-checked`, set as an empty string, so the variant is
+ * written `data-[checked]:`. A chosen option keeps its colours under the
+ * pointer.
+ */
+export const uiSegmentClass = `${controlClass} h-auto min-w-0 rounded-none font-normal transition-none hover:bg-paper hover:text-ink data-[checked]:bg-ink data-[checked]:text-paper data-[checked]:hover:bg-ink data-[checked]:hover:text-paper data-[disabled]:cursor-default data-[disabled]:opacity-40`;

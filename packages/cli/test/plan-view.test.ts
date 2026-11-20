@@ -110,7 +110,7 @@ describe("Plan view", () => {
           const planPressed = yield* Effect.promise(() =>
             page
               .locator('[data-view-toggle] [data-view="plan"]')
-              .getAttribute("aria-pressed")
+              .getAttribute("aria-checked")
           );
 
           assert.strictEqual(planPressed, "true");
@@ -143,6 +143,28 @@ describe("Plan view", () => {
         })
       ),
     30_000
+  );
+
+  it.live(
+    "the view picker moves with the arrow keys, without changing chapter",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* reviewPage;
+
+          yield* goToChapter(page, "c-save");
+          yield* Effect.promise(() =>
+            page.locator('[data-view-toggle] [data-view="iso"]').focus()
+          );
+          yield* press(page, "ArrowRight");
+          yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
+          yield* waitFor(
+            page,
+            '[data-view-toggle] [data-view="plan"][aria-checked="true"]'
+          );
+          yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
+        })
+      )
   );
 
   it.live("pins a structure on click, and opens a packet's payload", () =>
