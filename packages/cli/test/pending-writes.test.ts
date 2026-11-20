@@ -399,6 +399,31 @@ describe("writing pending layout changes over HTTP", () => {
   );
 
   it.live(
+    "refuses an agent's change sent back as the engineer's under the same id, and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const pending = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Proposals)
+        )({ format: 1, layout: [{ ...pageAt(4), by: "agent" }], revision: 1 });
+
+        const { home, url } = yield* serveReviewMap(
+          { [mapKeys("review").proposalsFile]: `${pending}\n` },
+          []
+        );
+
+        const sentBack = toJson({ baseFileRevision: 1, layout: [pageAt(4)] });
+
+        const refused = yield* assertRefused(
+          home,
+          422,
+          put(url, ownOrigin(url), sentBack)
+        );
+
+        assert.include(refused.body, "cannot change who made a change");
+      }).pipe(Effect.provide(NodeServices.layer))
+  );
+
+  it.live(
     "keeps an agent's change as the agent's when the page saves another beside it",
     () =>
       Effect.gen(function* () {

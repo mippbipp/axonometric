@@ -12,6 +12,7 @@ import type {
   Accepted,
   AcceptWrite,
   HistoryList,
+  LayoutChange,
   MapState,
   Proposals,
   Revision,
@@ -34,6 +35,8 @@ import { writeAll } from "./write-files.ts";
 
 /** What accepting changes leaves the server holding. */
 export interface AcceptedState {
+  /** The pending changes this accept applied. */
+  readonly accepted: ReadonlyArray<LayoutChange>;
   /**
    * Every revision that reads, newest first, read from `history/` once the
    * new revision is saved and still under the lock. Taking it from disk
@@ -188,7 +191,12 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
   ]);
 
   // Still under the lock, so quick writes tell the pages in order.
-  yield* written({ history: yield* loadHistory(paths, []), proposals, state });
+  yield* written({
+    accepted,
+    history: yield* loadHistory(paths, []),
+    proposals,
+    state,
+  });
 
   return {
     layout,

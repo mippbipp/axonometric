@@ -342,6 +342,7 @@ export type { Author, Clash, Placing, PlacingRoute } from "./proposals.ts";
 
 export {
   agentHeldWriteRefusal,
+  authorChangeRefusal,
   agentTargetRefusal,
   engineerTakesOver,
   pendingRows,
@@ -353,6 +354,7 @@ export type { AgentProposal, PendingRow } from "./agent-changes.ts";
 export {
   Accepted,
   AcceptWrite,
+  AgentDecision,
   HistoryEntry,
   historyEntryOf,
   HistoryList,
@@ -369,6 +371,7 @@ export {
   ServerEvent,
   serverPaths,
   ServerState,
+  ServerStatus,
 } from "./server.ts";
 
 export {
