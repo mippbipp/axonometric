@@ -242,6 +242,154 @@ describe("layout", () => {
     })
   );
 
+  it.effect("saves a route override for a hop, and bumps the revision", () =>
+    Effect.gen(function* () {
+      const { result } = yield* layoutWith([
+        "--hop",
+        "h-update",
+        "--route",
+        "2,5 3,5 3,1 4,1",
+      ]);
+
+      const layout = yield* savedLayout(result.files);
+
+      assert.strictEqual(result.exitCode, 0, result.stderr);
+      assert.deepStrictEqual(layout.routes, {
+        "h-update": [
+          { x: 2, y: 5 },
+          { x: 3, y: 5 },
+          { x: 3, y: 1 },
+          { x: 4, y: 1 },
+        ],
+      });
+      assert.strictEqual(layout.revision, 1);
+      assert.strictEqual(layout.structures.gate?.x, 4);
+      assert.include(result.stdout, "h-update: route saved through 2,5 3,5");
+      assert.include(result.stdout, "layout.json is at revision 1.");
+      assert.isUndefined(result.files[lockFile]);
+    })
+  );
+
+  it.effect("clears a hop's route override with --route auto", () =>
+    Effect.gen(function* () {
+      const saved = yield* layoutWith([
+        "--hop",
+        "h-update",
+        "--route",
+        "2,5 3,5 3,1 4,1",
+      ]);
+
+      const { result } = yield* layoutWith(
+        ["--hop", "h-update", "--route", "auto"],
+        { [layoutFile]: saved.result.files[layoutFile] ?? "" }
+      );
+
+      const layout = yield* savedLayout(result.files);
+
+      assert.strictEqual(result.exitCode, 0, result.stderr);
+      assert.isUndefined(layout.routes);
+      assert.strictEqual(layout.revision, 2);
+      assert.include(result.stdout, "h-update: route override cleared");
+    })
+  );
+
+  it.effect("says so when --route auto has nothing to clear", () =>
+    Effect.gen(function* () {
+      const before = yield* minimalMap;
+
+      const { result } = yield* layoutWith([
+        "--hop",
+        "h-update",
+        "--route",
+        "auto",
+      ]);
+
+      assert.strictEqual(result.exitCode, 0, result.stderr);
+      assert.strictEqual(result.files[layoutFile], before[layoutFile]);
+      assert.include(result.stdout, "already routes itself. Nothing changed.");
+    })
+  );
+
+  it.effect.each([
+    [
+      "a route that doesn't start on the source's edge",
+      "3,5 3,1 4,1",
+      "starts at 3,5, which isn't on the edge of \"updater\" at x 0–2, y 4–6. Start on that footprint's edge.",
+    ],
+    [
+      "a route that doesn't end on the target's edge",
+      "2,5 3,5 3,1",
+      "ends at 3,1, which isn't on the edge of \"gate\" at x 4–6, y 0–1.5. End on that footprint's edge.",
+    ],
+    [
+      "a route with a diagonal leg",
+      "2,5 4,1",
+      "runs diagonally from 2,5 to 4,1. Every leg must run along x or y, so add a corner point that shares x with one and y with the other, such as 2,1.",
+    ],
+    ["a route of one point", "2,5", "needs at least two points"],
+    ["a point that isn't x,y", "2,5 oops", 'point "oops" isn\'t x,y.'],
+    [
+      "a point off the half-unit grid",
+      "2,5 2.25,5",
+      "2.25,5 isn't on the half-unit grid.",
+    ],
+  ] as const)("refuses %s, and writes nothing", ([, route, message]) =>
+    Effect.gen(function* () {
+      const before = yield* minimalMap;
+
+      const { result } = yield* layoutWith([
+        "--hop",
+        "h-update",
+        "--route",
+        route,
+      ]);
+
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(result.stderr, message);
+      assert.include(result.stderr, "layout wrote nothing.");
+      assert.strictEqual(result.files[layoutFile], before[layoutFile]);
+    })
+  );
+
+  it.effect("refuses an unknown hop, listing the valid ids", () =>
+    Effect.gen(function* () {
+      const before = yield* minimalMap;
+
+      const { result } = yield* layoutWith([
+        "--hop",
+        "h-nope",
+        "--route",
+        "2,5 3,5 3,1 4,1",
+      ]);
+
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(
+        result.stderr,
+        'No hop in data.mjs has the id "h-nope". Use one of: h-update.'
+      );
+      assert.strictEqual(result.files[layoutFile], before[layoutFile]);
+    })
+  );
+
+  it.effect.each([
+    [["--hop", "h-update"], "Rerouting needs both --hop and --route."],
+    [["--route", "auto"], "Rerouting needs both --hop and --route."],
+    [
+      ["gate", "--hop", "h-update", "--route", "auto"],
+      "Rerouting a hop takes --hop and --route alone.",
+    ],
+    [[], "Name a structure to move or resize, or give --hop and --route"],
+  ] as const)("refuses the arguments %j", ([args, message]) =>
+    Effect.gen(function* () {
+      const before = yield* minimalMap;
+      const { result } = yield* layoutWith(args);
+
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(result.stderr, message);
+      assert.strictEqual(result.files[layoutFile], before[layoutFile]);
+    })
+  );
+
   it.effect.each([
     ["layout", ["gate", "--x", "8"]],
     ["export", ["--format", "excalidraw"]],
