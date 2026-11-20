@@ -94,7 +94,7 @@ _Avoid_: layout warning, visual warning
 
 **Chapter**:
 One stop in the walkthrough. It reveals some structures and plays some hops.
-_Avoid_: step, scene, slide
+_Avoid_: step, slide, scene (a scene is a drawing, not a stop)
 
 **Packet**:
 A dot that carries one hop's example payload along the hop while a chapter plays.
@@ -106,6 +106,14 @@ The isometric drawing of the map's layout.
 **Plan view**:
 The same layout drawn straight from above.
 _Avoid_: 2D view, flat view
+
+**Scene**:
+One view's drawing of the structures a chapter has revealed, at one zoom. It holds every box, route, name tag and zone, placed at the size it is drawn.
+_Avoid_: frame, render
+
+**Zoom to fit**:
+The zoom and pan that put what a chapter reveals in the middle of the canvas with room round it. It zooms in no further than 1.5 times, and out no further than name tags need to stay clear of each other.
+_Avoid_: auto zoom, reset view
 
 **Name tag**:
 The label that names a structure on the map: its tag, or its name when it has no tag. A tag only shortens a long name and isn't a second name. In the Iso view it sits under the structure's front corner; in Plan view, inside the box or beside it.
