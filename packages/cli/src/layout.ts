@@ -185,10 +185,10 @@ const layout = Effect.fn("layout")(function* (
 const gridFlag = (name: Field, description: string) =>
   Flag.Finite(name).pipe(Flag.withDescription(description), Flag.optional);
 
+/* oxlint-disable perfectionist/sort-objects -- these keys set the argument and flag order `--help` prints, so they stay in the written order */
 export const layoutCommand = Command.make(
   "layout",
   {
-    d: gridFlag("d", "Footprint depth along y, in grid units"),
     home: Argument.Directory("home", { mustExist: true }).pipe(
       Argument.withDescription(
         "The map's home folder, holding data.mjs and layout.json"
@@ -197,10 +197,12 @@ export const layoutCommand = Command.make(
     structure: Argument.String("structure").pipe(
       Argument.withDescription("The id of the structure to move or resize")
     ),
-    w: gridFlag("w", "Footprint width along x, in grid units"),
     x: gridFlag("x", "Position along the grid's x axis, in grid units"),
     y: gridFlag("y", "Position along the grid's y axis, in grid units"),
+    w: gridFlag("w", "Footprint width along x, in grid units"),
+    d: gridFlag("d", "Footprint depth along y, in grid units"),
   },
+  /* oxlint-enable perfectionist/sort-objects */
   ({ d, home, structure, w, x, y }) => layout(home, structure, { d, w, x, y })
 ).pipe(
   Command.withDescription(

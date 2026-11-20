@@ -1,0 +1,18 @@
+DESCRIPTION
+  Print the URL and process ID of the server running for the map, if any
+
+USAGE
+  axonometric status [flags] <home>
+
+ARGUMENTS
+  home directory    The map's home folder, holding data.mjs and layout.json
+
+FLAGS
+  --json    Print { home, running, url, pid, since } as JSON instead of text
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)

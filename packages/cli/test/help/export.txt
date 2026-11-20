@@ -1,0 +1,33 @@
+DESCRIPTION
+  Write the map as an SVG, a PNG or an Excalidraw file, like the page's Export menu. Validates the map first, and writes nothing if it has an error.
+
+USAGE
+  axonometric export [flags] <home>
+
+ARGUMENTS
+  home directory    The map's home folder, holding data.mjs and layout.json
+
+FLAGS
+  --format choice        The file to write: an SVG or PNG of one view and chapter, like the page's Export menu, or an Excalidraw file of the whole map at Plan view's positions (choices: svg, png, excalidraw)
+  --view choice          The view to draw. Excalidraw files ignore it. (choices: iso, plan)
+  --chapter string       The chapter to draw, by its number from 1 or its id. Without it, the last chapter, which shows the whole map. Excalidraw files ignore it.
+  --flow string          In the last chapter, the flow to play: a flow's id, or all. The spotlight holds that flow's hops and fades the rest; all fades nothing. Without it, the chapter's own hops.
+  --background choice    The background colour (choices: paper, white)
+  --output, -o string    The file to write. Without it, the page's file name, next to SYSTEM.md. Missing folders are created.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+EXAMPLES
+  # Write pipeline.excalidraw next to SYSTEM.md
+  axonometric export docs/pipeline/map --format excalidraw
+
+  # Draw the last chapter with one flow's hops in the spotlight
+  axonometric export docs/pipeline/map --flow f-repair
+
+  # Draw chapter 3 in Plan view on white as a PNG
+  axonometric export docs/pipeline/map --format png --view plan --chapter 3 --background white

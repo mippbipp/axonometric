@@ -1,0 +1,15 @@
+DESCRIPTION
+  Validate the map, place structures that have no position yet and save them to layout.json, then write SYSTEM.md and <system>.html to the home folder's parent
+
+USAGE
+  axonometric build [flags] <home>
+
+ARGUMENTS
+  home directory    The map's home folder, holding data.mjs and layout.json
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)

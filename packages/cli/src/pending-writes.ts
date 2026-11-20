@@ -197,13 +197,17 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
 ) {
   const path = yield* Path.Path;
 
+  // The files are read in this order, one at a time, so when both are
+  // unreadable the error names proposals.json.
+  /* oxlint-disable perfectionist/sort-objects -- Effect.all runs the fields in key order, which picks the error shown when both files fail */
   const readFiles = Effect.all(
     {
-      accepted: Effect.flatMap(loadLayout(home), unreadable),
       proposals: Effect.flatMap(loadProposals(home), unreadable),
+      accepted: Effect.flatMap(loadLayout(home), unreadable),
     },
     { concurrency: 1 }
   );
+  /* oxlint-enable perfectionist/sort-objects */
 
   const { accepted, proposals: current } = yield* loadForWrite(
     home,

@@ -1,0 +1,29 @@
+DESCRIPTION
+  Move or resize one structure in layout.json, under the map's lock. Values land on half units, such as 4 or 4.5. Fields you leave out keep their value.
+
+USAGE
+  axonometric layout [flags] <home> <structure>
+
+ARGUMENTS
+  home directory      The map's home folder, holding data.mjs and layout.json
+  structure string    The id of the structure to move or resize
+
+FLAGS
+  --x number    Position along the grid's x axis, in grid units
+  --y number    Position along the grid's y axis, in grid units
+  --w number    Footprint width along x, in grid units
+  --d number    Footprint depth along y, in grid units
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
+
+EXAMPLES
+  # Move the gate structure
+  axonometric layout docs/pipeline/map gate --x 4 --y 2
+
+  # Resize its footprint
+  axonometric layout docs/pipeline/map gate --w 3 --d 2

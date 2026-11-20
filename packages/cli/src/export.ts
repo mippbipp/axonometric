@@ -333,12 +333,24 @@ const choice = <const Values extends ReadonlyArray<string>>(
   values: Values
 ) => Flag.Literals(name, values);
 
+/* oxlint-disable perfectionist/sort-objects -- these keys set the flag order `--help` prints, so they stay in the written order */
 export const exportCommand = Command.make(
   "export",
   {
-    background: choice("background", backgrounds).pipe(
-      Flag.withDefault("paper"),
-      Flag.withDescription("The background colour")
+    home: Argument.Directory("home", { mustExist: true }).pipe(
+      Argument.withDescription(
+        "The map's home folder, holding data.mjs and layout.json"
+      )
+    ),
+    format: choice("format", formats).pipe(
+      Flag.withDefault("svg"),
+      Flag.withDescription(
+        "The file to write: an SVG or PNG of one view and chapter, like the page's Export menu, or an Excalidraw file of the whole map at Plan view's positions"
+      )
+    ),
+    view: choice("view", views).pipe(
+      Flag.withDefault("iso"),
+      Flag.withDescription("The view to draw. Excalidraw files ignore it.")
     ),
     chapter: Flag.String("chapter").pipe(
       Flag.optional,
@@ -352,16 +364,9 @@ export const exportCommand = Command.make(
         "In the last chapter, the flow to play: a flow's id, or all. The spotlight holds that flow's hops and fades the rest; all fades nothing. Without it, the chapter's own hops."
       )
     ),
-    format: choice("format", formats).pipe(
-      Flag.withDefault("svg"),
-      Flag.withDescription(
-        "The file to write: an SVG or PNG of one view and chapter, like the page's Export menu, or an Excalidraw file of the whole map at Plan view's positions"
-      )
-    ),
-    home: Argument.Directory("home", { mustExist: true }).pipe(
-      Argument.withDescription(
-        "The map's home folder, holding data.mjs and layout.json"
-      )
+    background: choice("background", backgrounds).pipe(
+      Flag.withDefault("paper"),
+      Flag.withDescription("The background colour")
     ),
     output: Flag.String("output").pipe(
       Flag.optional,
@@ -370,11 +375,8 @@ export const exportCommand = Command.make(
         "The file to write. Without it, the page's file name, next to SYSTEM.md. Missing folders are created."
       )
     ),
-    view: choice("view", views).pipe(
-      Flag.withDefault("iso"),
-      Flag.withDescription("The view to draw. Excalidraw files ignore it.")
-    ),
   },
+  /* oxlint-enable perfectionist/sort-objects */
   (request) => exportMap(request)
 ).pipe(
   Command.withDescription(

@@ -46,9 +46,10 @@ const repoOnlyFields = ["devDependencies", "scripts"] as const;
 
 // npm's provenance check compares repository.url with the GitHub repo that
 // published the package.
+/* oxlint-disable perfectionist/sort-objects -- the schema checks fields in the written order, which sets the order of the problems the check reports */
 const PublishedManifest = Schema.Struct({
-  license: Schema.Literal("MIT"),
   name: Schema.Literal("axonometric"),
+  license: Schema.Literal("MIT"),
   repository: Schema.Struct({
     type: Schema.Literal("git"),
     url: Schema.Literal("git+https://github.com/mippbipp/axonometric.git"),
@@ -62,20 +63,21 @@ const PublishedManifest = Schema.Struct({
     )
   ),
   engines: Schema.Struct({
-    bun: Schema.Literal(">=1.4.4"),
     node: Schema.Literal(">=24.22.1"),
+    bun: Schema.Literal(">=1.4.4"),
   }),
   // Everything is bundled into dist/bin.mjs, so installing the package
   // installs nothing else.
-  bundleDependencies: Schema.optionalKey(Schema.Never),
   dependencies: Schema.optionalKey(Schema.Never),
-  devDependencies: Schema.optionalKey(Schema.Never),
   optionalDependencies: Schema.optionalKey(Schema.Never),
   peerDependencies: Schema.optionalKey(Schema.Never),
+  bundleDependencies: Schema.optionalKey(Schema.Never),
+  devDependencies: Schema.optionalKey(Schema.Never),
   // npm runs install scripts on the user's machine, and the rest only work
   // in this repo, so the tarball has none.
   scripts: Schema.optionalKey(Schema.Never),
 });
+/* oxlint-enable perfectionist/sort-objects */
 
 const JsonObjectText = Schema.fromJsonString(
   Schema.Record(Schema.String, Schema.Unknown)

@@ -146,15 +146,10 @@ const verdict = Effect.fn("verdict")(function* ({
   );
 }, Effect.scoped);
 
+/* oxlint-disable perfectionist/sort-objects -- these keys set the argument and flag order `--help` prints, so they stay in the written order */
 export const verdictCommand = Command.make(
   "verdict",
   {
-    as: Flag.String("as").pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "For a new structure, hop, flow or group you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes a structure's position under it."
-      )
-    ),
     home: Argument.Directory("home", { mustExist: true }).pipe(
       Argument.withDescription(
         "The map's home folder, holding data.mjs and proposals.json"
@@ -174,7 +169,14 @@ export const verdictCommand = Command.make(
         "Why. Required for changed and rejected; the engineer reads it on the page."
       )
     ),
+    as: Flag.String("as").pipe(
+      Flag.optional,
+      Flag.withDescription(
+        "For a new structure, hop, flow or group you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes a structure's position under it."
+      )
+    ),
   },
+  /* oxlint-enable perfectionist/sort-objects */
   verdict
 ).pipe(
   Command.withDescription(

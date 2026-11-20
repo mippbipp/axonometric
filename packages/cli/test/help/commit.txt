@@ -1,0 +1,18 @@
+DESCRIPTION
+  Commit the oldest batch that has no commit: refuses while an item has no verdict, validates data.mjs, applies the accepted layout changes to layout.json (a changed item is not applied: you set the layout yourself first), saves a revision with the reasons, and rebuilds SYSTEM.md and the page. Open pages update on their own.
+
+USAGE
+  axonometric commit [flags] <home>
+
+ARGUMENTS
+  home directory    The map's home folder, holding data.mjs and proposals.json
+
+FLAGS
+  --message string    The revision's message, up to 500 characters. Without it, commit writes one from the verdicts.
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
