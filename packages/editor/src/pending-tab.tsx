@@ -6,14 +6,16 @@ import {
   structuresOf,
 } from "@axonometric/contracts";
 import type { ChangeId, LayoutChange } from "@axonometric/contracts";
+import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Record as Rec } from "effect";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import { useAccepting } from "./accepting-context.ts";
 import { controlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditOn } from "./edit-context.ts";
 import { useEditingIgnoringEdit } from "./editing-context.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { listedEntries, useReview } from "./review-context.ts";
 import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
@@ -35,7 +37,6 @@ export function PendingTab() {
   const { state } = useWalkthrough();
   const [refusal, setRefusal] = useState<string | undefined>();
   const [message, setMessage] = useState("");
-  const messageId = useId();
 
   if (editing === null) {
     return null;
@@ -105,22 +106,18 @@ export function PendingTab() {
         <>
           {acceptable ? (
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs opacity-70" htmlFor={messageId}>
-                Revision message (optional)
-              </label>
-              <input
-                className="border-ink bg-paper text-ink focus-visible:outline-ink border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
-                data-accept-message
+              <LabelledField
                 disabled={accepting.busy}
-                id={messageId}
-                maxLength={maxMessageLength}
-                onChange={(event) => {
-                  setMessage(event.target.value);
-                }}
-                placeholder="Leave empty to write one from the changes"
-                type="text"
-                value={message}
-              />
+                label="Revision message (optional)"
+              >
+                <Input
+                  data-accept-message
+                  maxLength={maxMessageLength}
+                  onValueChange={setMessage}
+                  placeholder="Leave empty to write one from the changes"
+                  value={message}
+                />
+              </LabelledField>
               <button
                 className={`${controlClass} self-start`}
                 data-accept-all

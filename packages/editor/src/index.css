@@ -195,10 +195,14 @@
    colours, with the ink for their borders and the checked box. */
 [data-slot="select-trigger"],
 [data-slot="number-input-control"],
+[data-slot="input"],
+[data-slot="textarea"],
 [data-slot="checkbox"] {
   --background: var(--paper);
   --foreground: var(--ink);
   --input: var(--ink);
   --primary: var(--ink);
   --primary-foreground: var(--paper);
+  --ring: var(--ink);
+  --destructive: var(--refused);
 }

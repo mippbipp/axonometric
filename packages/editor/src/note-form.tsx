@@ -1,7 +1,9 @@
 import { maxNoteLength } from "@axonometric/contracts";
-import { useId, useState } from "react";
+import { Textarea } from "@axonometric/ui/components/textarea";
+import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
+import { LabelledField } from "./labelled-field.tsx";
 
 const always = () => true;
 
@@ -45,7 +47,6 @@ export function NoteForm({
   readonly rows?: number;
   readonly submit: string;
 }) {
-  const id = useId();
   const [text, setText] = useState(initial);
   const [failure, setFailure] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
@@ -71,44 +72,32 @@ export function NoteForm({
         send();
       }}
     >
-      <label
-        className={
-          hideLabel ? "sr-only" : "text-xs tracking-widest uppercase opacity-70"
-        }
-        htmlFor={id}
-      >
-        {label}
-      </label>
-      <textarea
-        autoComplete="off"
-        className="border-ink bg-paper text-ink focus-visible:outline-ink resize-y border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
-        data-note-text
+      <LabelledField
+        className="gap-1.5"
         disabled={sending}
-        id={id}
-        maxLength={limit}
-        name="note"
-        onChange={(event) => {
-          setText(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            send();
-          }
-        }}
-        placeholder={placeholder}
-        rows={rows}
-        value={text}
-      />
-      {failure === undefined ? null : (
-        <p
-          className="border-refused border-l-2 pl-2 text-xs"
-          data-note-failure
-          role="alert"
-        >
-          {failure}
-        </p>
-      )}
+        failure={failure}
+        failureProps={{ "data-note-failure": "" }}
+        hideLabel={hideLabel}
+        label={label}
+        labelClassName="tracking-widest uppercase"
+      >
+        <Textarea
+          autoComplete="off"
+          data-note-text
+          maxLength={limit}
+          name="note"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              send();
+            }
+          }}
+          onValueChange={setText}
+          placeholder={placeholder}
+          rows={rows}
+          value={text}
+        />
+      </LabelledField>
       <div className="flex gap-1.5">
         <button
           className={controlClass}
