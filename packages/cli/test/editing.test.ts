@@ -532,6 +532,93 @@ describe("the side panel's tab list", () => {
   );
 });
 
+/** Where focus is after Tab from the selected tab: the element's role, whether the tab panel holds it, and its tag. */
+const afterTab = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<{
+      readonly inPanel: boolean;
+      readonly role: string | null;
+      readonly tag: string;
+    }>(
+      `(() => {
+          const element = document.activeElement;
+          return {
+            inPanel: element?.closest('[role="tabpanel"]') !== null && element?.getAttribute("role") !== "tabpanel",
+            role: element?.getAttribute("role") ?? null,
+            tag: element?.tagName.toLowerCase() ?? "",
+          };
+        })()`
+    )
+  );
+
+const chooseAndFocus = Effect.fnUntraced(function* (page: Page, tab: string) {
+  const selector = `[role="tab"][data-tab="${tab}"]`;
+
+  yield* waitFor(page, selector);
+  yield* Effect.promise(() => page.locator(selector).click());
+  yield* waitFor(page, `${selector}[aria-selected="true"]`);
+  yield* Effect.promise(() => page.locator(selector).focus());
+});
+
+describe("the side panel's tab panel", () => {
+  it.live(
+    "is not a Tab stop when it holds no control, so Tab leaves the panel",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
+
+        yield* chooseAndFocus(page, "pending");
+        yield* waitFor(page, "[data-pending-empty]");
+        yield* press(page, "Tab");
+
+        const focus = yield* afterTab(page);
+
+        assert.notStrictEqual(focus.role, "tabpanel");
+        assert.isFalse(focus.inPanel);
+      }),
+    60_000
+  );
+
+  it.live(
+    "sends Tab from the selected tab to the panel's first control, not the panel",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
+
+        yield* chooseAndFocus(page, "questions");
+        yield* waitFor(page, "[data-questions-tab] button");
+
+        const first = yield* Effect.promise(() =>
+          page.evaluate(
+            `(() => {
+              const panel = document.querySelector('[data-side-panel] [role="tabpanel"]');
+              const control = panel?.querySelector("button, a[href], input, select, textarea");
+              return control === null || control === undefined ? null : control.outerHTML.slice(0, 120);
+            })()`
+          )
+        );
+
+        assert.isNotNull(first);
+
+        yield* press(page, "Tab");
+
+        const focus = yield* afterTab(page);
+
+        assert.notStrictEqual(focus.role, "tabpanel");
+        assert.isTrue(focus.inPanel);
+
+        const landed = yield* Effect.promise(() =>
+          page.evaluate(
+            "document.activeElement?.outerHTML.slice(0, 120) ?? null"
+          )
+        );
+
+        assert.strictEqual(landed, first);
+      }),
+    60_000
+  );
+});
+
 describe("the pending list", () => {
   it.live(
     "keeps pending changes across a reload, lists them, and discards one back to the accepted position",

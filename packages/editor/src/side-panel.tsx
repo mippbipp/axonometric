@@ -7,6 +7,7 @@ import {
 } from "@axonometric/ui/components/tabs";
 import { Array as Arr, Match, Option } from "effect";
 import { useMemo } from "react";
+import type { ComponentProps } from "react";
 
 import { AddStructureForm } from "./add-structure.tsx";
 import { ChapterEditor } from "./chapter-editor.tsx";
@@ -237,6 +238,17 @@ const tabClass =
 const panelClass =
   "focus-visible:outline-ink min-h-0 flex-1 overflow-y-auto p-4 focus-visible:outline-2 focus-visible:-outline-offset-2";
 
+/**
+ * One tab's panel. ui-sdk makes a panel with nothing to focus a Tab stop of
+ * its own, which is the WAI-ARIA tabs pattern, so a screen reader user can
+ * reach text. This panel is full of its own controls, and an extra stop
+ * before them is noise. `tabIndex={-1}` is an authored attribute ui-sdk
+ * leaves alone, and the panel still takes focus from a click.
+ */
+function Panel(props: Omit<ComponentProps<typeof TabsPanel>, "className">) {
+  return <TabsPanel className={panelClass} tabIndex={-1} {...props} />;
+}
+
 /** The tabs to show: Pending only while the page can edit, History only when served. */
 const tabsOf = ({
   flowsOff,
@@ -453,7 +465,7 @@ export function SidePanel() {
             </TabsTab>
           ))}
         </TabsList>
-        <TabsPanel className={panelClass} value="details">
+        <Panel value="details">
           {renderContent(
             panelContentOf({
               group: Arr.findFirst(
@@ -467,28 +479,28 @@ export function SidePanel() {
               spot,
             })
           )}
-        </TabsPanel>
-        <TabsPanel className={panelClass} value="questions">
+        </Panel>
+        <Panel value="questions">
           <QuestionsTab
             onPicked={() => {
               choose("details");
             }}
           />
-        </TabsPanel>
+        </Panel>
         {connections === null ? null : (
-          <TabsPanel className={panelClass} value="flows">
+          <Panel value="flows">
             <FlowsTab />
-          </TabsPanel>
+          </Panel>
         )}
         {editing === null ? null : (
-          <TabsPanel className={panelClass} value="pending">
+          <Panel value="pending">
             <PendingTab />
-          </TabsPanel>
+          </Panel>
         )}
         {history === null ? null : (
-          <TabsPanel className={panelClass} value="history">
+          <Panel value="history">
             <HistoryTab />
-          </TabsPanel>
+          </Panel>
         )}
       </Tabs>
       <DockedForms />
