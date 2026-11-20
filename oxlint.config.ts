@@ -216,6 +216,26 @@ export default defineConfig({
       },
     },
     {
+      // Component tests drive the DOM through Testing Library, which is
+      // Promise-based. There is no Effect code under test here.
+      files: ["packages/ui/test/**/*.ts", "packages/ui/test/**/*.tsx"],
+      rules: {
+        "effecttsgo/async-function": "off",
+        "effecttsgo/global-timers": "off",
+        "effecttsgo/new-promise": "off",
+        "effecttsgo/prefer-effect-array": "off",
+        "promise/avoid-new": "off",
+        // the default Vitest timeout applies to every test in the package
+        "vitest/no-importing-vitest-globals": "off",
+        "vitest/require-test-timeout": "off",
+        // ui-sdk reads this global to turn development warnings into errors
+        "eslint/no-underscore-dangle": [
+          "error",
+          { allow: ["_id", "__UI_SDK_STRICT__"] },
+        ],
+      },
+    },
+    {
       files: ["**/*.tsx"],
       rules: {
         "eslint/func-style": "off",

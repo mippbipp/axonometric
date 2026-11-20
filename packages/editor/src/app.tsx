@@ -267,9 +267,12 @@ function WalkthroughPage({ notices }: Notices) {
             </div>
           )}
           <StructureTooltip />
-          <StructureMenu />
-          <HopMenu />
         </MapSurface>
+        {/* Beside the surface, not in it: ui-sdk renders a menu where it is
+            placed, and a click on an item would reach the surface's
+            click-to-deselect listener. */}
+        <StructureMenu />
+        <HopMenu />
         <SidePanel />
         <OverviewPage />
       </div>

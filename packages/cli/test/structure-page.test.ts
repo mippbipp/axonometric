@@ -16,6 +16,7 @@ import {
   count,
   goToChapterPaused,
   inPage,
+  press,
   showViewFitted,
   strokeOf,
   waitFor,
@@ -457,6 +458,59 @@ describe("deleting a structure", () => {
 });
 
 describe("the context menu on a structure", () => {
+  it.live(
+    "opens from the keyboard on a focused structure, and Escape gives focus back to it",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+
+        const focusedStructure = `document.activeElement?.getAttribute("data-structure")`;
+        const focusedMenuEntry = `document.activeElement?.closest("[data-structure-menu]") !== null && document.activeElement?.getAttribute("role") === "menuitem"`;
+
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="engineer"]').focus()
+        );
+        yield* press(page, "Shift+F10");
+        yield* waitFor(page, '[data-structure-menu="engineer"]');
+        yield* Effect.promise(() =>
+          page.waitForFunction(focusedMenuEntry, undefined, waitTimeout)
+        );
+        yield* press(page, "ArrowDown");
+        yield* press(page, "Escape");
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-structure-menu]")
+            .waitFor({ state: "detached", ...waitTimeout })
+        );
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `${focusedStructure} === "engineer"`,
+            undefined,
+            waitTimeout
+          )
+        );
+
+        yield* rightClick(page, "server");
+        yield* waitFor(page, '[data-structure-menu="server"]');
+        yield* press(page, "Escape");
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-structure-menu]")
+            .waitFor({ state: "detached", ...waitTimeout })
+        );
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `${focusedStructure} === "server"`,
+            undefined,
+            waitTimeout
+          )
+        );
+      }),
+    60_000
+  );
+
   it.live(
     "offers a rename, a shape, a group, a status and a deletion in both views, and proposes each",
     () =>
