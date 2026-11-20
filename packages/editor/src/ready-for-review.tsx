@@ -7,11 +7,13 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@axonometric/ui/components/dialog";
+import { Textarea } from "@axonometric/ui/components/textarea";
 import { Array as Arr, Result } from "effect";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useEditingIgnoringEdit } from "./editing-context.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { useReview } from "./review-context.ts";
 
 /** What the dialog shows once a batch is frozen. */
@@ -60,7 +62,6 @@ function PromptBox({
   readonly selectOnOpen: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  const id = useId();
 
   useEffect(() => {
     if (selectOnOpen) {
@@ -70,17 +71,13 @@ function PromptBox({
   }, [selectOnOpen]);
 
   return (
-    <div className="flex flex-col gap-1">
-      <label
-        className="text-xs tracking-widest uppercase opacity-70"
-        htmlFor={id}
-      >
-        Prompt for your agent
-      </label>
-      <textarea
-        className="border-ink bg-face text-ink focus-visible:outline-ink resize-y border p-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
+    <LabelledField
+      label="Prompt for your agent"
+      labelClassName="tracking-widest uppercase"
+    >
+      <Textarea
+        className="bg-face p-2"
         data-review-prompt
-        id={id}
         onFocus={(event) => {
           event.currentTarget.select();
         }}
@@ -90,7 +87,7 @@ function PromptBox({
         spellCheck={false}
         value={prompt}
       />
-    </div>
+    </LabelledField>
   );
 }
 

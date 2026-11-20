@@ -781,5 +781,3 @@ export { lineBreak, oneLineText } from "./text-schemas.ts";
 export { hopActionOf, hopActions } from "./hop-actions.ts";
 
 export { flowActionOf, hopsWith } from "./flow-actions.ts";
-
-export { moveItem } from "./reorder.ts";

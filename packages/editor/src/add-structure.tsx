@@ -1,20 +1,20 @@
 import { maxStructureNameLength } from "@axonometric/contracts";
 import type { GridPoint } from "@axonometric/contracts";
 import { Field, FieldLabel } from "@axonometric/ui/components/field";
+import { Input } from "@axonometric/ui/components/input";
 import {
   NumberInput,
   NumberInputControl,
 } from "@axonometric/ui/components/number-input";
 import { Toggle } from "@axonometric/ui/components/toggle";
 import { Array as Arr, Option } from "effect";
-import { useId } from "react";
 
 import { addChangeOf, previewId, sentId } from "./add-change.ts";
 import { ChoiceSelect } from "./choice-select.tsx";
 import { controlClass, uiControlClass } from "./control-class.ts";
 import { useDraftSpot } from "./draft-spot.ts";
 import type { DraftSpot } from "./draft-spot.ts";
-import { fieldClass } from "./field-class.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { newStructureFootprint } from "./new-structure.ts";
 import { usePlacing } from "./place-context.ts";
 import { useProposed } from "./proposed-context.ts";
@@ -57,7 +57,6 @@ export function AddStructureForm() {
   const { canPropose, clear, failure, send, sending } = usePropose();
   const drafted = useDraftSpot();
   const spot = drafted?.spot ?? null;
-  const id = useId();
 
   const draft = placing?.draft;
 
@@ -105,22 +104,18 @@ export function AddStructureForm() {
         }
       }}
     >
-      <label className="flex flex-col gap-1" htmlFor={`${id}-name`}>
-        <span className="opacity-70">Name</span>
-        <input
+      <LabelledField label="Name">
+        <Input
           autoComplete="off"
-          className={fieldClass}
           data-add="name"
-          id={`${id}-name`}
           maxLength={maxStructureNameLength}
-          onChange={(event) => {
+          onValueChange={(next) => {
             clear();
-            placing.setDraft({ ...draft, name: event.target.value });
+            placing.setDraft({ ...draft, name: next });
           }}
-          type="text"
           value={draft.name}
         />
-      </label>
+      </LabelledField>
       <div className="grid grid-cols-2 gap-2">
         <ChoiceSelect
           choices={shapeChoices}
