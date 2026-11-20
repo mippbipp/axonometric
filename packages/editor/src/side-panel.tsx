@@ -1,7 +1,12 @@
 import type { GridPoint, Group, Structure } from "@axonometric/contracts";
+import {
+  Tabs,
+  TabsList,
+  TabsPanel,
+  TabsTab,
+} from "@axonometric/ui/components/tabs";
 import { Array as Arr, Match, Option } from "effect";
-import { useId, useMemo, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import { useMemo, useState } from "react";
 
 import { AddStructureForm } from "./add-structure.tsx";
 import { ChapterEditor } from "./chapter-editor.tsx";
@@ -223,8 +228,14 @@ const renderContent = Match.type<PanelContent>().pipe(
 
 type Tab = "details" | "questions" | "flows" | "pending" | "history";
 
+const tabListClass =
+  "border-ink h-auto w-full min-w-0 flex-wrap justify-start gap-1 border-b bg-transparent px-3 py-2 group-data-[orientation=horizontal]/tabs:h-auto";
+
 const tabClass =
-  "focus-visible:outline-ink cursor-pointer border border-transparent px-2 py-0.5 text-xs whitespace-nowrap uppercase hover:border-ink focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-40 disabled:hover:border-transparent aria-selected:border-ink aria-selected:bg-ink aria-selected:text-paper";
+  "border-ink focus-visible:border-transparent focus-visible:outline-ink h-auto transition-none flex-none px-2 py-0.5 font-normal text-ink uppercase hover:border-ink hover:text-ink focus-visible:ring-0 focus-visible:outline-2 focus-visible:-outline-offset-2 data-disabled:hover:border-transparent data-[selected]:bg-ink data-[selected]:text-paper";
+
+const panelClass =
+  "focus-visible:outline-ink min-h-0 flex-1 overflow-y-auto p-4 focus-visible:outline-2 focus-visible:-outline-offset-2";
 
 /** The tabs to show: Pending only while the page can edit, History only when served. */
 const tabsOf = ({
@@ -268,34 +279,6 @@ const tabsOf = ({
     ? [{ disabled: false, id: "history" as const, label: "History" }]
     : []),
 ];
-
-/**
- * One tab's panel. Its content is only rendered while the tab is open, so a
- * closed tab does no work.
- */
-function TabPanel({
-  children,
-  id,
-  open,
-  prefix,
-}: {
-  readonly children: ReactNode;
-  readonly id: Tab;
-  readonly open: Tab;
-  readonly prefix: string;
-}) {
-  return (
-    <div
-      aria-labelledby={`${prefix}-${id}-tab`}
-      className="min-h-0 flex-1 overflow-y-auto p-4"
-      hidden={open !== id}
-      id={`${prefix}-${id}`}
-      role="tabpanel"
-    >
-      {open === id ? children : null}
-    </div>
-  );
-}
 
 /**
  * How many review items the Pending tab counts beside the pending layout
@@ -432,7 +415,6 @@ export function SidePanel() {
 
   const openCount = openQuestionCount(open);
 
-  const idPrefix = useId();
   const editing = useEditingIgnoringEdit();
   const editOn = useEditOn();
   const history = useHistory();
@@ -475,103 +457,76 @@ export function SidePanel() {
     setOtherTab(next === "details" ? null : { selected: picked, tab: next });
   };
 
-  const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
-      return;
-    }
-
-    // The tab list owns ← and → while it has focus.
-    event.preventDefault();
-    event.stopPropagation();
-
-    const usable = Arr.filter(tabs, ({ disabled }) => !disabled);
-    const at = usable.findIndex(({ id }) => id === tab);
-    const step = event.key === "ArrowRight" ? 1 : -1;
-
-    const next =
-      usable[(at + step + usable.length) % usable.length]?.id ?? "details";
-
-    choose(next);
-    event.currentTarget
-      .querySelector<HTMLElement>(`[data-tab="${next}"]`)
-      ?.focus();
-  };
-
   return (
     <aside
       className="border-ink flex w-80 min-w-0 shrink-0 flex-col border-l"
       data-side-panel
     >
-      <div
-        aria-label="Side panel"
-        className="border-ink flex min-w-0 flex-wrap gap-1 border-b px-3 py-2"
-        onKeyDown={onTabKeyDown}
-        role="tablist"
-        tabIndex={0}
+      <Tabs<Tab>
+        className="min-h-0 flex-1 gap-0"
+        onValueChange={(next) => {
+          if (next !== null) {
+            choose(next);
+          }
+        }}
+        value={tab}
       >
-        {Arr.map(tabs, ({ disabled, id, label }) => (
-          <button
-            aria-controls={`${idPrefix}-${id}`}
-            aria-disabled={disabled}
-            aria-selected={tab === id}
-            className={tabClass}
-            data-tab={id}
-            disabled={disabled}
-            id={`${idPrefix}-${id}-tab`}
-            key={id}
-            onClick={() => {
-              choose(id);
+        <TabsList aria-label="Side panel" className={tabListClass}>
+          {Arr.map(tabs, ({ disabled, id, label }) => (
+            <TabsTab
+              className={tabClass}
+              data-tab={id}
+              disabled={disabled}
+              key={id}
+              title={
+                disabled
+                  ? "Editing is off while a past revision is open"
+                  : undefined
+              }
+              value={id}
+            >
+              {label}
+            </TabsTab>
+          ))}
+        </TabsList>
+        <TabsPanel className={panelClass} value="details">
+          {renderContent(
+            panelContentOf({
+              group: Arr.findFirst(
+                state.data.groups,
+                ({ id }) => id === selectedGroup
+              ).pipe(Option.getOrUndefined),
+              hop: selectedHop,
+              inside: inside === null ? undefined : byId.get(inside),
+              packet,
+              pinned: selected === null ? undefined : byId.get(selected),
+              spot,
+            })
+          )}
+        </TabsPanel>
+        <TabsPanel className={panelClass} value="questions">
+          <QuestionsTab
+            onPicked={() => {
+              choose("details");
             }}
-            role="tab"
-            tabIndex={tab === id ? 0 : -1}
-            title={
-              disabled
-                ? "Editing is off while a past revision is open"
-                : undefined
-            }
-            type="button"
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <TabPanel id="details" open={tab} prefix={idPrefix}>
-        {renderContent(
-          panelContentOf({
-            group: Arr.findFirst(
-              state.data.groups,
-              ({ id }) => id === selectedGroup
-            ).pipe(Option.getOrUndefined),
-            hop: selectedHop,
-            inside: inside === null ? undefined : byId.get(inside),
-            packet,
-            pinned: selected === null ? undefined : byId.get(selected),
-            spot,
-          })
+          />
+        </TabsPanel>
+        {connections === null ? null : (
+          <TabsPanel className={panelClass} value="flows">
+            <FlowsTab />
+          </TabsPanel>
         )}
-      </TabPanel>
-      <TabPanel id="questions" open={tab} prefix={idPrefix}>
-        <QuestionsTab
-          onPicked={() => {
-            choose("details");
-          }}
-        />
-      </TabPanel>
-      {connections === null ? null : (
-        <TabPanel id="flows" open={tab} prefix={idPrefix}>
-          <FlowsTab />
-        </TabPanel>
-      )}
-      {editing === null ? null : (
-        <TabPanel id="pending" open={tab} prefix={idPrefix}>
-          <PendingTab />
-        </TabPanel>
-      )}
-      {history === null ? null : (
-        <TabPanel id="history" open={tab} prefix={idPrefix}>
-          <HistoryTab />
-        </TabPanel>
-      )}
+        {editing === null ? null : (
+          <TabsPanel className={panelClass} value="pending">
+            <PendingTab />
+          </TabsPanel>
+        )}
+        {history === null ? null : (
+          <TabsPanel className={panelClass} value="history">
+            <HistoryTab />
+          </TabsPanel>
+        )}
+      </Tabs>
       <DockedForms />
       <DragWarnings className="border-x-0 border-b-0" />
     </aside>
