@@ -41,6 +41,7 @@ import { useSelectionKeys } from "./selection-keys.ts";
 import { SelectionProvider } from "./selection.tsx";
 import { SideIndex } from "./side-index.tsx";
 import { SidePanel } from "./side-panel.tsx";
+import { SideTabProvider } from "./side-tab.tsx";
 import { SpotlightProvider } from "./spotlight.tsx";
 import { StructureMenu } from "./structure-menu.tsx";
 import { hasSteps, useStructuresById } from "./structures.ts";
@@ -325,11 +326,13 @@ export function App({
                 <SpotlightProvider>
                   <OverviewPageProvider>
                     <NoteToolProvider>
-                      <PlacingProvider>
-                        <NewGroupProvider>
-                          <WalkthroughPage notices={notices} />
-                        </NewGroupProvider>
-                      </PlacingProvider>
+                      <SideTabProvider>
+                        <PlacingProvider>
+                          <NewGroupProvider>
+                            <WalkthroughPage notices={notices} />
+                          </NewGroupProvider>
+                        </PlacingProvider>
+                      </SideTabProvider>
                     </NoteToolProvider>
                   </OverviewPageProvider>
                 </SpotlightProvider>

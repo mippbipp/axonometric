@@ -6,7 +6,7 @@ import {
   TabsTab,
 } from "@axonometric/ui/components/tabs";
 import { Array as Arr, Match, Option } from "effect";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { AddStructureForm } from "./add-structure.tsx";
 import { ChapterEditor } from "./chapter-editor.tsx";
@@ -33,6 +33,8 @@ import { QuestionsTab } from "./questions.tsx";
 import { useRevealedQuestions } from "./revealed-questions.ts";
 import { useReview } from "./review-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { useSideTab } from "./side-tab-context.ts";
+import type { Tab } from "./side-tab-context.ts";
 import { SpotPanel } from "./spot-panel.tsx";
 import { InsidePanel, StructurePanel } from "./structure-panel.tsx";
 import { useStructuresById } from "./structures.ts";
@@ -226,8 +228,6 @@ const renderContent = Match.type<PanelContent>().pipe(
   })
 );
 
-type Tab = "details" | "questions" | "flows" | "pending" | "history";
-
 const tabListClass =
   "border-ink h-auto w-full min-w-0 flex-wrap justify-start gap-1 border-b bg-transparent px-3 py-2 group-data-[orientation=horizontal]/tabs:h-auto";
 
@@ -351,33 +351,6 @@ function DockedForms() {
   );
 }
 
-/** What the selection is called, so a tab other than Details knows when it changed. */
-const pickedKey = ({
-  selected,
-  selectedGroup,
-  selectedHop,
-  spot,
-}: {
-  readonly selected: string | null;
-  readonly selectedGroup: string | null;
-  readonly selectedHop: string | null;
-  readonly spot: GridPoint | null;
-}): string | null => {
-  if (selected !== null) {
-    return selected;
-  }
-
-  if (selectedGroup !== null) {
-    return `group:${selectedGroup}`;
-  }
-
-  if (selectedHop !== null) {
-    return `hop:${selectedHop}`;
-  }
-
-  return spot === null ? null : `spot:${spot.x},${spot.y}`;
-};
-
 /** How many questions are open across the groups. */
 const openQuestionCount = (
   groups: ReadonlyArray<{ readonly questions: ReadonlyArray<unknown> }>
@@ -421,14 +394,6 @@ export function SidePanel() {
   const waiting = useWaitingCount();
   const connections = useConnections();
 
-  // A tab other than Details stays open until the selection changes.
-  const picked = pickedKey({ selected, selectedGroup, selectedHop, spot });
-
-  const [otherTab, setOtherTab] = useState<{
-    readonly selected: string | null;
-    readonly tab: Tab;
-  } | null>(null);
-
   // While a past revision is open there is no editing, but the tab strip
   // keeps its Pending tab and count, so it doesn't move.
   const pendingCount = pendingCountOf({
@@ -446,16 +411,15 @@ export function SidePanel() {
     pendingOff: editing === null,
   });
 
-  const tab: Tab =
-    otherTab !== null &&
-    otherTab.selected === picked &&
-    Arr.some(tabs, ({ disabled, id }) => id === otherTab.tab && !disabled)
-      ? otherTab.tab
-      : "details";
+  // A tab other than Details stays open until the selection changes.
+  const { choose, chosen } = useSideTab();
 
-  const choose = (next: Tab) => {
-    setOtherTab(next === "details" ? null : { selected: picked, tab: next });
-  };
+  const tab: Tab = Arr.some(
+    tabs,
+    ({ disabled, id }) => id === chosen && !disabled
+  )
+    ? chosen
+    : "details";
 
   return (
     <aside
