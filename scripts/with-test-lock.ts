@@ -15,7 +15,6 @@ import {
   existsSync,
   linkSync,
   readFileSync,
-  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -72,7 +71,7 @@ const skipsLock = (): boolean => {
  * exists. A hard link fails if the target exists, and a reader never sees a
  * half-written file.
  */
-const tryCreate = (lockPath: string, holder: Holder): boolean => {
+export const tryCreate = (lockPath: string, holder: Holder): boolean => {
   const draft = `${lockPath}.${holder.pid}.draft`;
   writeFileSync(draft, JSON.stringify(holder));
 
@@ -91,36 +90,6 @@ const tryCreate = (lockPath: string, holder: Holder): boolean => {
   }
 };
 
-/**
- * Removes the lock of a dead process. The lock moves aside before it is
- * deleted, so a waiter that was slow cannot delete a lock another waiter has
- * just taken. If the moved file turns out to belong to someone else, it goes
- * back.
- */
-const takeOverStale = (lockPath: string, stale: Holder): void => {
-  const aside = `${lockPath}.${process.pid}.stale`;
-
-  try {
-    renameSync(lockPath, aside);
-  } catch {
-    return;
-  }
-
-  const moved = readHolder(aside);
-
-  if (moved?.pid === stale.pid && moved.startedAt === stale.startedAt) {
-    unlinkSync(aside);
-
-    return;
-  }
-
-  try {
-    linkSync(aside, lockPath);
-  } finally {
-    unlinkSync(aside);
-  }
-};
-
 const describeHolder = (holder: Holder): string => {
   const minutes = Math.max(
     0,
@@ -130,18 +99,66 @@ const describeHolder = (holder: Holder): string => {
   return `process ${holder.pid} (${holder.command}) since ${holder.startedAt}, ${minutes} min ago`;
 };
 
+const sameHolder = (a: Holder | null, b: Holder): boolean =>
+  a?.pid === b.pid && a.startedAt === b.startedAt;
+
+/**
+ * Removes `stale`, the lock of a dead process, unless another run is removing
+ * it. Returns that run's claim, or null when this run is done.
+ *
+ * Only two things remove a lock: its holder on exit, and the one run that
+ * holds the takeover claim, a second file created the same way as the lock.
+ * So while this run holds the claim, a dead holder's lock can't leave the path
+ * by any other hand, and the lock it reads is the lock it removes. A claim
+ * left by a run that died holding it is not cleared here, since clearing it
+ * safely would need a claim of its own.
+ */
+export const takeOverStale = (
+  lockPath: string,
+  stale: Holder,
+  me: Holder
+): Holder | null => {
+  const claimPath = `${lockPath}.takeover`;
+
+  if (!tryCreate(claimPath, me)) {
+    return readHolder(claimPath);
+  }
+
+  try {
+    if (sameHolder(readHolder(lockPath), stale)) {
+      process.stderr.write(
+        `Taking over the test lock from ${describeHolder(stale)}, which has exited.\n`
+      );
+      unlinkSync(lockPath);
+    }
+  } finally {
+    unlinkSync(claimPath);
+  }
+
+  return null;
+};
+
 const acquire = async (lockPath: string, me: Holder): Promise<void> => {
   let announced = -1;
   let announcedUnreadable = false;
+  let announcedClaim = false;
 
   while (!tryCreate(lockPath, me)) {
     const holder = readHolder(lockPath);
 
     if (holder !== null && !isAlive(holder.pid)) {
-      process.stderr.write(
-        `Taking over the test lock from ${describeHolder(holder)}, which has exited.\n`
-      );
-      takeOverStale(lockPath, holder);
+      const claimant = takeOverStale(lockPath, holder, me);
+
+      if (claimant !== null) {
+        if (!announcedClaim && !isAlive(claimant.pid)) {
+          announcedClaim = true;
+          process.stderr.write(
+            `Waiting for the test lock. Process ${claimant.pid} exited while taking over a stale lock and left ${lockPath}.takeover. If no run holds the lock, delete that file.\n`
+          );
+        }
+
+        await sleep(pollMs);
+      }
     } else {
       if (holder === null && !announcedUnreadable && existsSync(lockPath)) {
         announcedUnreadable = true;
@@ -163,9 +180,7 @@ const acquire = async (lockPath: string, me: Holder): Promise<void> => {
 };
 
 const release = (lockPath: string, me: Holder): void => {
-  const holder = readHolder(lockPath);
-
-  if (holder?.pid === me.pid && holder.startedAt === me.startedAt) {
+  if (sameHolder(readHolder(lockPath), me)) {
     try {
       unlinkSync(lockPath);
     } catch {
@@ -251,4 +266,6 @@ const main = async (): Promise<number> => {
   return run(command, args);
 };
 
-process.exitCode = await main();
+if (import.meta.main) {
+  process.exitCode = await main();
+}
