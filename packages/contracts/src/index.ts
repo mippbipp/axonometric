@@ -165,7 +165,28 @@ export {
 
 export { detourAllowance, detourOf, isDetour } from "./detours.ts";
 
-export { fitFloorOf, textZoomOf } from "./fit-floor.ts";
+export {
+  drawnIn,
+  fitFloorOf,
+  fitKeyOf,
+  fitPadding,
+  fittedViewOf,
+  maxFitZoom,
+  sceneExtentOf,
+  settledScale,
+  structureExtentOf,
+  textZoomOf,
+} from "./fitted-view.ts";
+
+export type {
+  Camera,
+  CanvasSize,
+  Drawn,
+  FittedView,
+  FittedViewSource,
+} from "./fitted-view.ts";
+
+export { cachedRoutesOf, cachedSceneOf } from "./scene-cache.ts";
 
 export { textGrowthAt, textSizes } from "./text-size.ts";
 
