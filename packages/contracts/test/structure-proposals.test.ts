@@ -1325,7 +1325,6 @@ describe("the default spot, on the row map and the review map", () => {
             );
           }
         }
-      }),
-    30_000
+      })
   );
 });

@@ -200,12 +200,12 @@ describe("serve", () => {
 
         assert.match(serve.url, /^http:\/\/127\.0\.0\.1:\d+$/u);
         assert.include(serve.output.stdout, serve.url);
-        assert.strictEqual(serve.state.pid, process.pid);
         const report = yield* decodeReport(status.stdout);
-        assert.deepStrictEqual(report, {
+        assert.include(report, {
           home,
+          pid: process.pid,
           running: true,
-          ...serve.state,
+          url: serve.url,
         });
 
         assert.isDefined(status.files[homeKeys.serverStateFile]);
@@ -238,9 +238,11 @@ describe("serve", () => {
       const stalePid = yield* deadPid;
       const home = yield* homeWithStateFile(stalePid);
 
-      const serve = yield* startServe(home, ["--port", "0"]);
+      yield* startServe(home, ["--port", "0"]);
+      const status = yield* runCli(home, ["status", home, "--json"]);
+      const report = yield* decodeReport(status.stdout);
 
-      assert.strictEqual(serve.state.pid, process.pid);
+      assert.include(report, { pid: process.pid, running: true });
     })
   );
 

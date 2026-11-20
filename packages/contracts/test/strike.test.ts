@@ -44,8 +44,7 @@ describe("the cross through a deleted structure", () => {
 
       assert.isAtLeast(count, 2);
       assert.deepStrictEqual(crossing, []);
-    },
-    5000
+    }
   );
 
   it("is the two whole diagonals when there is no text", () => {

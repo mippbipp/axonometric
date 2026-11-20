@@ -6,10 +6,13 @@
 //
 // The lock is a file in the temp folder that holds the holder's process id,
 // command and start time. A run that finds it held waits and says who holds it.
-// A lock whose process is gone is taken over. `CI=true` skips the lock.
+// A lock whose process is gone is taken over. A lock file that can't be read
+// is waited on, with a message that says how to clear it. `CI=true` skips the
+// lock.
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import {
+  existsSync,
   linkSync,
   readFileSync,
   renameSync,
@@ -129,6 +132,7 @@ const describeHolder = (holder: Holder): string => {
 
 const acquire = async (lockPath: string, me: Holder): Promise<void> => {
   let announced = -1;
+  let announcedUnreadable = false;
 
   while (!tryCreate(lockPath, me)) {
     const holder = readHolder(lockPath);
@@ -139,6 +143,13 @@ const acquire = async (lockPath: string, me: Holder): Promise<void> => {
       );
       takeOverStale(lockPath, holder);
     } else {
+      if (holder === null && !announcedUnreadable && existsSync(lockPath)) {
+        announcedUnreadable = true;
+        process.stderr.write(
+          `Waiting for the test lock. The lock file at ${lockPath} can't be read and names no holder. If no run holds it, delete the file.\n`
+        );
+      }
+
       if (holder !== null && holder.pid !== announced) {
         announced = holder.pid;
         process.stderr.write(

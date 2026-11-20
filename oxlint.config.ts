@@ -96,6 +96,20 @@ export default defineConfig({
       },
     },
     {
+      // A strobe bench is a plain Node script that strobe loads in its own
+      // Bun process, outside the Effect runtime, like the test lock.
+      files: ["perf/*.bench.ts"],
+      rules: {
+        "effecttsgo/async-function": "off",
+        "effecttsgo/global-date": "off",
+        "effecttsgo/global-json": "off",
+        "effecttsgo/node-builtin-import": "off",
+        "node/no-sync": "off",
+        "unicorn/import-style": "off",
+        "vitest/require-hook": "off",
+      },
+    },
+    {
       // An ambient module declaration has no imports or exports.
       files: ["**/*.d.ts"],
       rules: {
@@ -193,8 +207,8 @@ export default defineConfig({
       },
     },
     {
-      // The contracts tests take one timeout from vitest.config.ts, so no
-      // test sets its own.
+      // Every contracts test takes the timeout in vitest.config.ts and passes
+      // none of its own, so the rule that requires one has nothing to check.
       files: ["packages/contracts/test/**/*.ts"],
       rules: {
         "vitest/require-test-timeout": "off",

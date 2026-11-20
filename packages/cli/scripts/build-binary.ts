@@ -5,7 +5,7 @@
 //
 // `bun build --compile` embeds the Bun runtime. The editor page, the docs, the
 // PNG renderer's WASM and its fonts are already strings inside `dist/bin.mjs`
-// (see tsdown.config.ts), so nothing rides beside the bundle.
+// (see tsdown.config.ts), so the binary needs no files next to it.
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Array as Arr, Effect, FileSystem, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";

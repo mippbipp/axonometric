@@ -128,8 +128,7 @@ describe("detours", () => {
         const { data, layout } = yield* placedFixture("update-pipeline");
 
         assert.deepStrictEqual(detoursIn(data, layout), []);
-      }),
-    60_000
+      })
   );
 
   it.effect(
@@ -155,7 +154,6 @@ describe("detours", () => {
         });
 
         assert.deepStrictEqual(across, []);
-      }),
-    60_000
+      })
   );
 });
