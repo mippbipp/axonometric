@@ -6,6 +6,7 @@ import type {
   Alignment,
   Axis,
   GridPoint,
+  Layout,
   LayoutChange,
   PendingEdit,
 } from "../src/index.ts";
@@ -346,6 +347,151 @@ describe("pending changes on a served page", () => {
         });
         assert.deepStrictEqual(page.view().pending, []);
         assert.strictEqual(page.view().state.layout.revision, 1);
+      })
+  );
+});
+
+const moveOf = (
+  id: string,
+  structure: string,
+  position: GridPoint
+): LayoutChange => ({
+  id,
+  kind: "move",
+  moves: [{ position, target: { id: structure, kind: "structure" } }],
+});
+
+describe("pending changes with writes in flight", () => {
+  it.effect(
+    "a restore issued while a layout write is in flight is written after it and wins",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("review");
+        const page = inMemoryPage({ data, layout, system: "review" });
+
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3 })));
+
+        const refusal = page.dispatch(
+          apply({ _tag: "Restore", revision: { data, layout } })
+        );
+
+        assert.isUndefined(refusal);
+        assert.deepStrictEqual(page.server.sent(), []);
+        page.settle();
+
+        assert.deepStrictEqual(
+          Arr.map(page.server.sent(), ({ baseFileRevision, layout: sent }) => [
+            baseFileRevision,
+            idsOf(sent),
+          ]),
+          [
+            [0, ["c1"]],
+            [1, []],
+          ]
+        );
+        assert.deepStrictEqual(page.server.state().proposals?.layout, []);
+        assert.deepStrictEqual(page.view().pending, []);
+        assert.isNull(page.view().notice);
+      })
+  );
+
+  it.effect(
+    "discarding a change a carried reroute was added for is refused and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout: saved } = yield* fixture("review");
+
+        // h-store takes a detour right of the server and the proposals.
+        const layout: Layout = {
+          ...saved,
+          routes: {
+            "h-store": [
+              { x: 9, y: 2 },
+              { x: 9, y: 4 },
+              { x: 13, y: 4 },
+              { x: 13, y: 7 },
+              { x: 10, y: 7 },
+            ],
+          },
+        };
+
+        const page = inMemoryPage({ data, layout, system: "review" });
+
+        page.dispatch(apply(nudge(["server", "proposals"], { x: 0, y: 2 })));
+        page.settle();
+
+        const [move, reroute] = page.view().pending;
+
+        assert.strictEqual(move?.kind, "move");
+        assert.strictEqual(reroute?.kind, "reroute");
+
+        const refusal = page.dispatch(
+          apply({ _tag: "Discard", change: move?.id ?? "" })
+        );
+
+        page.settle();
+
+        assert.include(refusal ?? "", 'Reset the route of hop "h-store" first');
+        assert.strictEqual(page.server.sent().length, 1);
+        assert.deepStrictEqual(idsOf(page.view().pending), [
+          move?.id,
+          reroute?.id,
+        ]);
+      })
+  );
+
+  it.effect(
+    "two edits in flight when another writer gets in are both kept, and one undo takes back the later",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3 })));
+        page.dispatch(apply(nudge(["server"], { x: 0, y: 3 })));
+        page.server.writeLayout([moveOf("other", "upstream", { x: 18, y: 4 })]);
+        page.settle();
+
+        assert.deepStrictEqual(idsOf(page.view().pending), [
+          "other",
+          "c1",
+          "c2",
+        ]);
+        assert.deepStrictEqual(
+          idsOf(page.server.state().proposals?.layout ?? []),
+          ["other", "c1", "c2"]
+        );
+
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.deepStrictEqual(idsOf(page.view().pending), ["other", "c1"]);
+        assert.isTrue(page.view().canRedo);
+        assert.isNull(page.view().notice);
+      })
+  );
+
+  it.effect(
+    "a review that arrives while a write is in flight leaves the page's changes showing until the write lands",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3 })));
+        page.dispatch({
+          _tag: "Reviewed",
+          endsUndo: false,
+          proposals: { format: 1, layout: [], notes: [], revision: 1 },
+        });
+
+        assert.deepStrictEqual(idsOf(page.view().pending), ["c1"]);
+
+        page.settle();
+
+        assert.deepStrictEqual(idsOf(page.view().pending), ["c1"]);
+        assert.deepStrictEqual(
+          idsOf(page.server.state().proposals?.layout ?? []),
+          ["c1"]
+        );
       })
   );
 });
