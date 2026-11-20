@@ -1,6 +1,6 @@
 import { Proposals } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema, String as Str } from "effect";
+import { Array as Arr, Effect, Schema, String as Str } from "effect";
 
 import { proposalsText, readHome, serveReviewMap, mapKeys } from "./harness.ts";
 import { ownOrigin, writeText } from "./revisions.ts";
@@ -71,6 +71,19 @@ const put = (...[url, target, headers, body]: Args) =>
 
 const json = (value: Readonly<Record<string, Schema.Json>>) =>
   JSON.stringify(value);
+
+/** A pending move of `structure` by `by`, as proposals.json holds it. */
+const moveTo = (id: string, by: string, structure: string) => ({
+  by,
+  id,
+  kind: "move",
+  moves: [
+    {
+      position: { x: 0, y: 9 },
+      target: { id: structure, kind: "structure" },
+    },
+  ],
+});
 
 const FrozenAnswer = Schema.Struct({
   batch: Schema.Struct({ number: Schema.Int }),
@@ -263,6 +276,49 @@ describe("the review routes", () => {
         const saved = yield* decodeProposals(proposalsJson);
 
         assert.deepStrictEqual(saved, answer.proposals);
+      })
+  );
+
+  it.live(
+    "freeze leaves the agent's layout changes open and freezes the engineer's",
+    () =>
+      Effect.gen(function* () {
+        const agents = {
+          ...moveTo("agent-move", "agent", "page"),
+          reason: "Tidy",
+        };
+
+        const { home, url } = yield* serveReviewMap(
+          {
+            [mapKeys("review").proposalsFile]: `${json({
+              format: 1,
+              layout: [agents, moveTo("engineer-move", "engineer", "upstream")],
+              revision: 1,
+            })}\n`,
+          },
+          []
+        );
+
+        const frozen = yield* post(
+          url,
+          "/api/review/freeze",
+          ownOrigin(url),
+          json({ baseFileRevision: 1 })
+        );
+
+        assert.strictEqual(frozen.status, 200, frozen.body);
+
+        const text = yield* proposalsText(home);
+        const saved = yield* decodeProposals(text);
+
+        assert.deepStrictEqual(
+          Arr.map(saved.batches?.[0]?.items ?? [], ({ id }) => id),
+          ["engineer-move"]
+        );
+        assert.deepStrictEqual(
+          Arr.map(saved.layout, ({ by, id, reason }) => [id, by, reason]),
+          [["agent-move", "agent", "Tidy"]]
+        );
       })
   );
 
