@@ -78,7 +78,7 @@ Iso heights follow the shape. You can't set them.
 
 ## Hops
 
-Hops route themselves at right angles around boxes. Two hops between the same pair draw side by side, so a request and its reply never sit on top of each other. A hop that passes behind a taller box in the Iso view is drawn faintly over it. If the router can't find a clear route, `check` warns. Move the structures apart, or write a route override (see `process`).
+Hops route themselves at right angles around boxes. Two hops between the same pair draw side by side, so a request and its reply never sit on top of each other. A hop that passes behind a taller box in the Iso view is drawn faintly over it. If the router can't find a clear route, `check` warns. Move the structures apart, or write a route override with `layout --hop` (see `process`).
 
 ## Exports
 

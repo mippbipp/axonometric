@@ -1221,7 +1221,7 @@ export const engineerTextNotice =
 
 /** Said in the prompt and in `review`'s output. */
 export const changedLayoutNotice =
-  "To change a layout item, set the layout yourself with axonometric layout, then give it the verdict changed. A reroute has no command: edit the hop's entry under routes in layout.json, then give it the verdict changed.";
+  "To change a layout item, set the layout yourself with axonometric layout, then give it the verdict changed. To change a reroute, run axonometric layout with --hop and --route, then give it the verdict changed. Never edit layout.json by hand.";
 
 /**
  * One line for each kind of item the batch holds, telling the agent how to

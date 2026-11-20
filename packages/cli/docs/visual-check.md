@@ -42,7 +42,7 @@ Zoom to fit (`0`) before you judge.
 
 ## Fix what you find
 
-For overlaps and crowding, change the layout: `axonometric layout <home> <structure> --x ... --y ...`, or edit `layout.json`. For wrong content, edit `data.mjs`. Then run `axonometric check <home>`, and look again. A running server updates the page, but the page you have open may hold an old state, so reload it.
+For overlaps and crowding, change the layout: `axonometric layout <home> <structure> --x ... --y ...`, or reroute a hop with `axonometric layout <home> --hop <hop> --route auto`. Never edit `layout.json` by hand. For wrong content, edit `data.mjs`. Then run `axonometric check <home>`, and look again. A running server updates the page, but the page you have open may hold an old state, so reload it.
 
 ## No browser
 
