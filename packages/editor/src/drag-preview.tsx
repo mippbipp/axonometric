@@ -33,6 +33,12 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 /** How long a drag rests before its warnings are worked out. */
 const settle = Duration.millis(120);
 
+/**
+ * A browser test sets this global before the page loads to measure a drag
+ * with no check. Nothing on the page, in its URL or in its storage sets it.
+ */
+const checkOffGlobal = "axonometricDragCheckOff";
+
 const none: ReadonlyArray<LayoutChange> = [];
 
 /**
@@ -113,7 +119,7 @@ const startChecker = (answer: (found: CheckAnswer) => void): DragChecker => {
 /**
  * Holds what the drag in progress would leave. A refused drop is reported at
  * once, with its reason. Otherwise the check is the one `check` runs
- * (`draggedProblems`), on the layout the page shows with the drag's changes
+ * (`dragCheckOf`), on the layout the page shows with the drag's changes
  * applied.
  *
  * The check routes and draws every chapter, which takes seconds on a big map,
@@ -141,7 +147,8 @@ export function DragPreviewProvider({
   const steps = useRef(0);
   // Only a page that can edit drags, so only it starts the worker. The
   // read-only file loads nothing.
-  const live = useEditing()?.canEdit === true;
+  const live =
+    useEditing()?.canEdit === true && !Reflect.has(globalThis, checkOffGlobal);
 
   useEffect(() => {
     const started = live

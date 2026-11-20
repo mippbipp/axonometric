@@ -10,32 +10,34 @@ import type { TestSpecification } from "vitest/node";
 
 /**
  * Seconds a test file takes on a CI runner, averaged over Linux, macOS and
- * Windows, from two sharded CI runs, 44635861872 and 44637425745.
+ * Windows, from two sharded CI runs, 44635861872 and 44637425745. The
+ * connection-page and structure-page entries are scaled by their ubuntu change
+ * in #160 (run 44682017583). export-svg and export are scaled by their ubuntu change in #165 (run 44684926905).
  * Files not listed take `defaultSeconds`.
  * A file that grows or a new slow one only skews the split until someone
  * updates this table, and `shard-sequencer.test.ts` fails when a shard
  * holds more than 60% of the weight.
  */
 export const fileSeconds = {
-  "connection-page.test.ts": 75,
+  "connection-page.test.ts": 57,
   "drag-warnings-big-map.test.ts": 11,
   "edit-toggle.test.ts": 8,
   "editing.test.ts": 29,
   "export-command.test.ts": 27,
-  "export-svg.test.ts": 48,
-  "export.test.ts": 49,
+  "export-svg.test.ts": 5,
+  "export.test.ts": 23,
   "font-width.test.ts": 12,
   "group-chapter-page.test.ts": 23,
   "history-panel.test.ts": 15,
   "live-reload.test.ts": 16,
   "note-targets-page.test.ts": 17,
   "plan-view.test.ts": 9,
-  "readable-text-page.test.ts": 73,
+  "readable-text-page.test.ts": 11,
   "rerouting.test.ts": 50,
   "review-page.test.ts": 12,
   "selection-edit.test.ts": 56,
   "structure-follow.test.ts": 24,
-  "structure-page.test.ts": 20,
+  "structure-page.test.ts": 15,
   "structures.test.ts": 19,
   "text-page.test.ts": 19,
   "viewport.test.ts": 11,

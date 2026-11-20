@@ -1,7 +1,7 @@
 import {
+  cachedRoutesOf,
   groundProjections,
   drawnRoutes,
-  routeRevealed,
 } from "@axonometric/contracts";
 import type {
   GridPoint,
@@ -13,7 +13,7 @@ import type {
   ScreenPoint,
   View,
 } from "@axonometric/contracts";
-import { Array as Arr, Order } from "effect";
+import { Array as Arr } from "effect";
 
 export {
   corners,
@@ -96,53 +96,6 @@ export const routeHop = ({ from, to }: HopEnds): ReadonlyArray<GridPoint> => {
   return [toEdge(start, bend, from), bend, toEdge(end, bend, to)];
 };
 
-const routeCache = new WeakMap<
-  MapData,
-  WeakMap<Layout, Map<string, Readonly<Record<string, HopRoute>>>>
->();
-
-const keyOf = (revealed: ReadonlySet<string>) =>
-  Arr.join(Arr.sort([...revealed], Order.String), "\n");
-
-/**
- * Every revealed hop's route on the ground, routed around the revealed
- * structures only, from the contracts router. Routing the same data, layout
- * and set again returns the same object, so the Iso view and the packets
- * share one routing pass.
- */
-export const routesOf = ({
-  data,
-  layout,
-  revealed,
-}: {
-  readonly data: MapData;
-  readonly layout: Layout;
-  readonly revealed: ReadonlySet<string>;
-}): Readonly<Record<string, HopRoute>> => {
-  const byLayout =
-    routeCache.get(data) ??
-    new WeakMap<Layout, Map<string, Readonly<Record<string, HopRoute>>>>();
-
-  const bySet =
-    byLayout.get(layout) ??
-    new Map<string, Readonly<Record<string, HopRoute>>>();
-
-  const key = keyOf(revealed);
-  const cached = bySet.get(key);
-
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const routes = routeRevealed({ data, layout, revealed });
-
-  bySet.set(key, routes);
-  byLayout.set(layout, bySet);
-  routeCache.set(data, byLayout);
-
-  return routes;
-};
-
 const lineCache = new WeakMap<
   Readonly<Record<string, HopRoute>>,
   Map<View, Readonly<Record<string, ReadonlyArray<GridPosition>>>>
@@ -201,7 +154,7 @@ export const screenRouteOf = ({
   readonly revealed: ReadonlySet<string>;
   readonly view: View;
 }): ReadonlyArray<ScreenPoint> | undefined => {
-  const routes = routesOf({ data, layout, revealed });
+  const routes = cachedRoutesOf({ data, layout, revealed });
   const line = linesOf({ data, layout, routes, view })[hop.id];
 
   return line === undefined

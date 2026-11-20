@@ -1,10 +1,19 @@
-import type { GridPoint, Placement, View } from "@axonometric/contracts";
+import {
+  edgeSpotsOf,
+  handleRadius,
+  handleStroke,
+} from "@axonometric/contracts";
+import type {
+  EdgeSpot,
+  GridPoint,
+  Placement,
+  View,
+} from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { use, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useConnections } from "./connections-context.ts";
-import { edgeSpots, handleRadius, handleStroke } from "./edge-handle-spots.ts";
 import { EditorSceneContext, EditorViewContext } from "./editor-view.ts";
 import { groundAt } from "./ground-at.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
@@ -19,7 +28,7 @@ interface Press {
   readonly from: string;
   readonly origin: { readonly x: number; readonly y: number };
   readonly pointer: number;
-  readonly start: ReturnType<typeof edgeSpots>[number];
+  readonly start: EdgeSpot;
 }
 
 /** The structure whose footprint holds `point`, other than `except`. */
@@ -64,7 +73,7 @@ const structureAt = ({
  */
 export function EdgeHandles({ view }: { readonly view: View }) {
   const editor = use(EditorViewContext);
-  const { texts, zoom } = use(EditorSceneContext);
+  const scene = use(EditorSceneContext);
   const connections = useConnections();
   const drafting = useHopDraft();
   const { selected } = useSelection();
@@ -96,19 +105,13 @@ export function EdgeHandles({ view }: { readonly view: View }) {
     };
   }, []);
 
-  if (editor === null || !live || owner === null) {
+  if (editor === null || scene === null || !live || owner === null) {
     return <g data-edge-handles="off" ref={root} />;
   }
 
-  const placement = editor.placements[owner];
+  const spots = edgeSpotsOf({ scene, structure: owner });
 
-  const spots =
-    placement === undefined ? [] : edgeSpots({ placement, texts, view, zoom });
-
-  const onDown = (
-    event: ReactPointerEvent,
-    start: ReturnType<typeof edgeSpots>[number]
-  ) => {
+  const onDown = (event: ReactPointerEvent, start: EdgeSpot) => {
     const element = root.current;
 
     if (event.button !== 0 || event.shiftKey || element === null) {
