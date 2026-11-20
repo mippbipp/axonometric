@@ -198,6 +198,7 @@ describe("pending changes on a served page", () => {
 
         const mine = page.server.state().proposals?.layout ?? [];
         const other: LayoutChange = {
+          by: "engineer",
           id: "other-writer",
           kind: "move",
           moves: [
@@ -239,6 +240,7 @@ describe("pending changes on a served page", () => {
         // Another writer gets in before the page's write is sent.
         page.server.writeLayout([
           {
+            by: "engineer",
             id: "other-writer",
             kind: "move",
             moves: [
@@ -275,6 +277,7 @@ describe("pending changes on a served page", () => {
         page.dispatch(apply(nudge(["engineer"], { x: 0, y: 4 })));
         page.server.writeLayout([
           {
+            by: "engineer",
             id: "other-writer",
             kind: "move",
             moves: [
@@ -356,9 +359,50 @@ const moveOf = (
   structure: string,
   position: GridPoint
 ): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "move",
   moves: [{ position, target: { id: structure, kind: "structure" } }],
+});
+
+describe("who made the pending changes", () => {
+  it.effect(
+    "the page's edits are the engineer's, and an agent change already pending stays the agent's",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.server.writeLayout([
+          {
+            by: "agent",
+            id: "agent-1",
+            kind: "move",
+            moves: [
+              {
+                position: { x: 18, y: 6 },
+                target: { id: "upstream", kind: "structure" },
+              },
+            ],
+          },
+        ]);
+
+        const nudged = nudge(["engineer", "page"], { x: 0, y: 0.5 });
+
+        assert.isUndefined(page.dispatch(apply(nudged)));
+        page.settle();
+
+        const saved = page.server.state().proposals?.layout ?? [];
+
+        assert.deepStrictEqual(
+          Arr.map(saved, ({ by, id }) => `${id} ${by}`),
+          ["agent-1 agent", "c1 engineer"]
+        );
+        assert.deepStrictEqual(
+          Arr.map(page.view().pending, ({ by }) => by),
+          ["agent", "engineer"]
+        );
+      })
+  );
 });
 
 describe("pending changes with writes in flight", () => {

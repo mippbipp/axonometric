@@ -10,6 +10,22 @@ import { useSelection } from "./selection-context.ts";
 const itemsText = (count: number) =>
   `${count} ${count === 1 ? "item" : "items"}`;
 
+/** Who made the accepted layout changes, such as "2 by you, 1 by the agent". */
+const authorsText = ({
+  agent,
+  engineer,
+}: {
+  readonly agent: number;
+  readonly engineer: number;
+}) =>
+  Arr.join(
+    [
+      ...(engineer === 0 ? [] : [`${engineer} by you`]),
+      ...(agent === 0 ? [] : [`${agent} by the agent`]),
+    ],
+    ", "
+  );
+
 /**
  * One difference as text. When it names a structure, choosing it selects
  * that structure on the map, which shows its panel.
@@ -79,7 +95,7 @@ export function HistoryTab() {
         </p>
       ) : (
         <ol className="flex flex-col gap-1.5">
-          {Arr.map(entries, ({ items, message, revision, savedAt }) => {
+          {Arr.map(entries, ({ by, items, message, revision, savedAt }) => {
             const isOpen = opened === revision;
 
             return (
@@ -109,6 +125,12 @@ export function HistoryTab() {
                     </time>
                     <span>·</span>
                     <span data-revision-items>{itemsText(items)}</span>
+                    {by.engineer + by.agent === 0 ? null : (
+                      <>
+                        <span>·</span>
+                        <span data-revision-authors>{authorsText(by)}</span>
+                      </>
+                    )}
                   </span>
                 </button>
               </li>

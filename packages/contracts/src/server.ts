@@ -1,5 +1,5 @@
 /* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
-import { Schema, SchemaTransformation } from "effect";
+import { Array as Arr, Schema, SchemaTransformation } from "effect";
 
 import { Layout } from "./layout.ts";
 import { MapState } from "./map-state.ts";
@@ -175,6 +175,8 @@ export const HistoryEntry = Schema.Struct({
   savedAt: Schema.String,
   /** How many items the revision decided on: those it accepted and rejected. */
   items: Schema.Int,
+  /** How many of the revision's accepted layout changes each author made. */
+  by: Schema.Struct({ engineer: Schema.Int, agent: Schema.Int }),
 });
 
 export type HistoryEntry = typeof HistoryEntry.Type;
@@ -184,12 +186,22 @@ export const HistoryList = Schema.Array(HistoryEntry);
 
 export type HistoryList = typeof HistoryList.Type;
 
+const countBy = (revision: Revision, who: "engineer" | "agent") =>
+  Arr.filter(
+    revision.accepted,
+    (item) => item.kind === "layout" && item.change.by === who
+  ).length;
+
 /** The History panel's line for `revision`. */
 export const historyEntryOf = (revision: Revision): HistoryEntry => ({
   revision: revision.revision,
   message: revision.message,
   savedAt: revision.savedAt,
   items: revision.accepted.length + revision.rejected.length,
+  by: {
+    engineer: countBy(revision, "engineer"),
+    agent: countBy(revision, "agent"),
+  },
 });
 
 /** No revision has this number. */

@@ -394,6 +394,7 @@ describe("the proposed map, for each structure action", () => {
       ...withStructures(["p1", add]),
       layout: [
         {
+          by: "engineer",
           id: "m1",
           kind: "move",
           moves: [

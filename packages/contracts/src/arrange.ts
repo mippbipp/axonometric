@@ -234,5 +234,5 @@ export const appendMove = ({
   readonly moves: ReadonlyArray<StructureMove>;
 }): ReadonlyArray<LayoutChange> =>
   Arr.isReadonlyArrayNonEmpty(moves)
-    ? [...changes, { id, kind: "move", moves }]
+    ? [...changes, { by: "engineer", id, kind: "move", moves }]
     : changes;

@@ -376,6 +376,7 @@ describe("nudging a selection", () => {
 
           assert.strictEqual(second.layout.length, 2);
           assert.deepStrictEqual(withoutIds(second.layout)[1], {
+            by: "engineer",
             kind: "move",
             moves: [
               {

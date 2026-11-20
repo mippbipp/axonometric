@@ -228,6 +228,7 @@ describe("the drag preview and the layout a drop saves", () => {
         // when a drop is saved.
         const changes: ReadonlyArray<LayoutChange> = [
           {
+            by: "engineer",
             id: "group",
             kind: "move",
             moves: [

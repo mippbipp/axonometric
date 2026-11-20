@@ -205,6 +205,7 @@ export function RouteEditor({
     preview?.show({
       changes: [
         {
+          by: "engineer",
           id: "preview",
           kind: "reroute",
           points: drag.points,

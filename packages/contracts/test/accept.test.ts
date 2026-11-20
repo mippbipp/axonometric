@@ -28,6 +28,7 @@ const move = (
   structureId: string,
   to: readonly [number, number]
 ): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "move",
   moves: [
@@ -43,6 +44,7 @@ const resize = (
   structureId: string,
   size: readonly [number, number]
 ): LayoutChange => ({
+  by: "engineer",
   footprint: { d: size[1], w: size[0] },
   id,
   kind: "resize",
@@ -50,6 +52,7 @@ const resize = (
 });
 
 const groupMove = (id: string): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "move",
   moves: [
@@ -215,6 +218,7 @@ describe("accepting layout changes", () => {
 
     assert.deepStrictEqual(result.remaining, [
       {
+        by: "engineer",
         id: "g1",
         kind: "move",
         moves: [
@@ -387,6 +391,7 @@ const reroute = (
       : never
     : never
 ): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "reroute",
   points,

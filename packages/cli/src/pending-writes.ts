@@ -1,4 +1,5 @@
 import {
+  agentChangeRefusal,
   frozenWriteRefusal,
   layoutUnderProposals,
   LayoutChangeRefused,
@@ -221,6 +222,20 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
     layout: accepted,
     proposals: current,
   });
+
+  // Only the CLI acts as the agent. The page may send an agent change back
+  // as it stands, never make or change one.
+  const forged = agentChangeRefusal({
+    after: write.layout,
+    before: current.layout,
+  });
+
+  if (Option.isSome(forged)) {
+    return yield* LayoutChangeRefused.make({
+      proposals: current,
+      reason: forged.value,
+    });
+  }
 
   // The server holds this line for every client, the page's undo included:
   // a write can't touch what a frozen item acts on.

@@ -318,6 +318,7 @@ export {
   layoutAfterChanges,
   layoutChangeKey,
   LayoutChanges,
+  agentChangeRefusal,
   layoutRefusal,
   MoveChange,
   newChangeId,

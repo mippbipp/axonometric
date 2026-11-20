@@ -249,6 +249,53 @@ describe("the History panel", () => {
   );
 
   it.live(
+    "shows who made the accepted layout changes, the agent's included",
+    () =>
+      Effect.gen(function* () {
+        const pending = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Proposals)
+        )({
+          format: 1,
+          layout: [
+            {
+              ...moveOf("agent-moves-page", "page", { x: 4, y: 4 }),
+              by: "agent",
+            },
+          ],
+          revision: 1,
+        });
+
+        const { serve, url } = yield* serveReviewMap(
+          { [mapKeys("review").proposalsFile]: `${pending}\n` },
+          []
+        );
+
+        yield* acceptChanges(serve, {
+          base: 1,
+          changes: [
+            {
+              ...moveOf("agent-moves-page", "page", { x: 4, y: 4 }),
+              by: "agent",
+            },
+            moveOf("engineer-down", "engineer", { x: 0, y: 4 }),
+          ],
+          message: "Tidy up",
+        });
+
+        const { errors, page } = yield* openUrl(url);
+
+        yield* openHistory(page);
+        yield* assertTextIncludes(
+          page,
+          '[data-revision="1"] [data-revision-authors]',
+          "1 by you, 1 by the agent"
+        );
+        assert.deepStrictEqual(errors, []);
+      }),
+    60_000
+  );
+
+  it.live(
     "adds a line when a revision is saved, without a reload",
     () =>
       Effect.gen(function* () {

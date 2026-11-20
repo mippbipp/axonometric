@@ -1,6 +1,7 @@
 /* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
   Array as Arr,
+  Effect,
   Match,
   Option,
   Record as Rec,
@@ -91,6 +92,20 @@ export const ChangeId = Schema.String.annotate({
 
 export type ChangeId = typeof ChangeId.Type;
 
+const byMessage = 'expected "engineer" or "agent".';
+
+/**
+ * Who made a layout change: the engineer, in the page, or the agent, through
+ * the CLI. A file written before changes recorded this has none, and reads as
+ * the engineer's. It always encodes, so every change written from now on
+ * carries it.
+ */
+export const ChangedBy = Schema.Literals(["engineer", "agent"])
+  .annotate({ message: byMessage })
+  .pipe(Schema.withDecodingDefaultKey(Effect.succeed("engineer" as const)));
+
+export type ChangedBy = typeof ChangedBy.Type;
+
 /** One structure's new position, in a move. */
 export const StructureMove = Schema.Struct({
   target: StructureTarget,
@@ -107,10 +122,11 @@ export type StructureMove = typeof StructureMove.Type;
 export const MoveChange = Schema.Struct({
   id: ChangeId,
   kind: Schema.Literal("move"),
+  by: ChangedBy,
   moves: Schema.NonEmptyArray(StructureMove).annotate({
     message: "expected a list of at least one structure to move.",
   }),
-}).annotate(objectMessages("A move has only id, kind and moves."));
+}).annotate(objectMessages("A move has only id, kind, by and moves."));
 
 export type MoveChange = typeof MoveChange.Type;
 
@@ -118,10 +134,11 @@ export type MoveChange = typeof MoveChange.Type;
 export const ResizeChange = Schema.Struct({
   id: ChangeId,
   kind: Schema.Literal("resize"),
+  by: ChangedBy,
   target: StructureTarget,
   footprint: Footprint,
 }).annotate(
-  objectMessages("A resize has only id, kind, target and footprint.")
+  objectMessages("A resize has only id, kind, by, target and footprint.")
 );
 
 export type ResizeChange = typeof ResizeChange.Type;
@@ -134,9 +151,12 @@ export type ResizeChange = typeof ResizeChange.Type;
 export const RerouteChange = Schema.Struct({
   id: ChangeId,
   kind: Schema.Literal("reroute"),
+  by: ChangedBy,
   target: HopTarget,
   points: Schema.NullOr(RouteOverride),
-}).annotate(objectMessages("A reroute has only id, kind, target and points."));
+}).annotate(
+  objectMessages("A reroute has only id, kind, by, target and points.")
+);
 
 export type RerouteChange = typeof RerouteChange.Type;
 
@@ -151,7 +171,7 @@ export const LayoutChange = Schema.Union([
   RerouteChange,
 ]).annotate({
   message:
-    'expected a layout change: { id, kind: "move", moves: [{ target, position: { x, y } }] }, { id, kind: "resize", target, footprint: { w, d } } or { id, kind: "reroute", target: { kind: "hop", id }, points: [{ x, y }, ...] or null }.',
+    'expected a layout change: { id, kind: "move", by, moves: [{ target, position: { x, y } }] }, { id, kind: "resize", by, target, footprint: { w, d } } or { id, kind: "reroute", by, target: { kind: "hop", id }, points: [{ x, y }, ...] or null }.',
 });
 
 export type LayoutChange = typeof LayoutChange.Type;
@@ -983,6 +1003,7 @@ export const placeStructure = ({
               onSome: (change) => change.id,
             }),
             kind: "move",
+            by: "engineer",
             moves: [{ target, position: { x: next.x, y: next.y } }],
           },
         ];
@@ -997,6 +1018,7 @@ export const placeStructure = ({
               onSome: (change) => change.id,
             }),
             kind: "resize",
+            by: "engineer",
             target,
             footprint: { w: next.w, d: next.d },
           },
@@ -1070,6 +1092,7 @@ export const placeRoute = ({
     {
       id: Option.match(old, { onNone: newId, onSome: (change) => change.id }),
       kind: "reroute",
+      by: "engineer",
       target: { kind: "hop", id: hop },
       points,
     },
@@ -1082,7 +1105,9 @@ const shiftedRoutes = ({
   hops,
   moves,
   id,
+  by,
 }: {
+  readonly by: ChangedBy;
   readonly hops: ReadonlyArray<HopEnds>;
   readonly id: (hop: string) => ChangeId;
   readonly layout: Layout;
@@ -1125,6 +1150,7 @@ const shiftedRoutes = ({
         {
           id: id(hop),
           kind: "reroute",
+          by,
           target: { kind: "hop", id: hop },
           points: Arr.map(points, ({ x, y }) => ({
             x: x + start.x,
@@ -1164,7 +1190,13 @@ export const withCarriedRoutes = ({
     ({ now, out }, change) => {
       const carried =
         change.kind === "move"
-          ? shiftedRoutes({ hops, id, layout: now, moves: change.moves })
+          ? shiftedRoutes({
+              by: change.by,
+              hops,
+              id,
+              layout: now,
+              moves: change.moves,
+            })
           : [];
 
       const next = [change, ...carried];
@@ -1393,6 +1425,30 @@ export const layoutRefusal = ({
     )
   );
 };
+
+/**
+ * Why a write from the page is refused for marking a change as the agent's,
+ * or nothing when it isn't. Only the CLI acts as the agent, so the page may
+ * send an agent change back only as it already stands in `before`, such as
+ * when it saves a list that keeps the agent's changes beside its own edit.
+ */
+export const agentChangeRefusal = ({
+  before,
+  after,
+}: {
+  readonly after: ReadonlyArray<LayoutChange>;
+  readonly before: ReadonlyArray<LayoutChange>;
+}): Option.Option<string> =>
+  Option.map(
+    Arr.findFirst(
+      after,
+      (change) =>
+        change.by === "agent" &&
+        !Arr.some(before, (kept) => sameChange(kept, change))
+    ),
+    ({ id }) =>
+      `Change ${id} is marked as the agent's. Only the CLI can make the agent's changes, so the page's changes are the engineer's.`
+  );
 
 /** One thing a change names, and where its id sits in the change. */
 interface NamedTarget {

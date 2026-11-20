@@ -31,6 +31,7 @@ const detour = [
 
 const rerouteItem: BatchItem = {
   change: {
+    by: "engineer",
     id: "reroute-store",
     kind: "reroute",
     points: detour,
@@ -43,6 +44,7 @@ const rerouteItem: BatchItem = {
 /** The loop group (page, server, proposals, pull request) moved down 10. */
 const groupItem: BatchItem = {
   change: {
+    by: "engineer",
     id: "move-loop",
     kind: "move",
     moves: [
@@ -138,6 +140,7 @@ describe("review shows a reroute", () => {
         // right-angled, so only the footprint check can object.
         const off: BatchItem = {
           change: {
+            by: "engineer",
             id: "reroute-store",
             kind: "reroute",
             points: [{ x: 9, y: 1 }, { x: 9, y: 2.5 }, ...detour.slice(2)],
