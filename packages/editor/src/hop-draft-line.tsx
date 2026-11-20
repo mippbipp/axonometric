@@ -1,17 +1,14 @@
 import type { MapState, ScreenPoint, View } from "@axonometric/contracts";
 import {
-  gapAt,
-  growRect as grown,
-  outsideHoles,
-  rectPolygon,
-  segmentsOf,
+  previewPieces,
+  previewRoute,
+  straightLine,
 } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { use, useMemo } from "react";
 
 import { EditorSceneContext } from "./editor-view.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
-import { previewRoute, straightLine } from "./hop-preview-route.ts";
 
 /**
  * The dashed line of a hop being drawn: while a drag from an edge handle is
@@ -36,8 +33,7 @@ export function HopDraftLine({
   readonly view: View;
 }) {
   const drafting = useHopDraft();
-  const { texts, zoom } = use(EditorSceneContext);
-  const gap = gapAt(zoom);
+  const scene = use(EditorSceneContext);
   const stretch = drafting?.stretch ?? null;
   const draft = drafting?.draft ?? null;
 
@@ -59,7 +55,7 @@ export function HopDraftLine({
     [from, to, state.data, state.layout, revealed, view]
   );
 
-  if (from === null) {
+  if (from === null || scene === null) {
     return null;
   }
 
@@ -74,13 +70,7 @@ export function HopDraftLine({
     return null;
   }
 
-  // The scene placed no text around a hop that does not exist yet, so the
-  // line is cut where it meets a name tag, chip or label, and clear of them.
-  const holes = Arr.map(texts, (rect) => rectPolygon(grown(rect, gap)));
-
-  const pieces = Arr.flatMap(segmentsOf(line), (segment) =>
-    outsideHoles(segment, holes, 1)
-  );
+  const pieces = previewPieces({ line, scene });
 
   return (
     <g

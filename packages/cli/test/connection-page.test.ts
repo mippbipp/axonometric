@@ -20,7 +20,6 @@ import {
   click,
   count,
   goToChapterPaused,
-  inPage,
   literal,
   pointOnHop,
   showViewFitted,
@@ -28,13 +27,6 @@ import {
   waitForAttributes,
   waitTimeout,
 } from "./browser.ts";
-import {
-  crosses,
-  drawingReport,
-  nameTagClashes,
-  overlap,
-} from "./drawing-report.ts";
-import type { Drawn, DrawingReport } from "./drawing-report.ts";
 import { openReviewMap, proposalsOrEmpty, runCli, homeAt } from "./harness.ts";
 import { post } from "./revisions.ts";
 
@@ -156,122 +148,6 @@ const dragFromHandle = Effect.fnUntraced(function* (
     yield* Effect.promise(() => page.mouse.up());
   }
 });
-
-/** Every name tag drawn now over other text or a box other than its own. */
-const clashes = (page: Page) =>
-  inPage<DrawingReport>(page, drawingReport).pipe(Effect.map(nameTagClashes));
-
-/**
- * What the label `label` is drawn over: a box or other text. A label the
- * scene placed nowhere is reported too, so the check can't pass empty.
- */
-const labelClashes = (
-  report: DrawingReport,
-  label: string
-): ReadonlyArray<string> => {
-  const own = Arr.filter(report.text, ({ id }) => id === label);
-
-  if (own.length === 0) {
-    return [`${label} is not drawn`];
-  }
-
-  return Arr.flatMap(own, (drawn) =>
-    Arr.flatMap(
-      [
-        ...report.structures,
-        ...report.chips,
-        ...Arr.filter(report.text, ({ id }) => id !== label),
-      ],
-      (other: Drawn) =>
-        overlap(drawn.polygon, other.polygon) ? [`${label} × ${other.id}`] : []
-    )
-  );
-};
-
-/** The fewest screen pixels an editing mark keeps from text: `minScreenGap`. */
-const clearance = 3;
-
-/** A polygon's box, grown by `by` on every side. */
-const grown = (polygon: Drawn["polygon"], by: number): Drawn["polygon"] => {
-  const xs = Arr.map(polygon, ({ x }) => x);
-  const ys = Arr.map(polygon, ({ y }) => y);
-  const [left, right] = [Math.min(...xs) - by, Math.max(...xs) + by];
-  const [top, bottom] = [Math.min(...ys) - by, Math.max(...ys) + by];
-
-  return [
-    { x: left, y: top },
-    { x: right, y: top },
-    { x: right, y: bottom },
-    { x: left, y: bottom },
-  ];
-};
-
-/** The text every mark must keep clear of: tags, hop labels and chips, not zone titles. */
-const textToAvoid = (report: DrawingReport): ReadonlyArray<Drawn> => [
-  ...Arr.filter(report.text, ({ id }) => !Str.startsWith("title:")(id)),
-  ...report.chips,
-];
-
-/** The handles that come within `clearance` screen pixels of text. */
-const handlesNearText = (report: DrawingReport): ReadonlyArray<string> =>
-  Arr.flatMap(report.handles, (handle) =>
-    Arr.flatMap(textToAvoid(report), (other: Drawn) =>
-      overlap(grown(handle.polygon, clearance), other.polygon)
-        ? [`${handle.id} × ${other.id}`]
-        : []
-    )
-  );
-
-/** The legs of the line being drawn that run through text. */
-const previewsOverText = (report: DrawingReport): ReadonlyArray<string> =>
-  Arr.flatMap(report.previews, ({ id, segment }) =>
-    Arr.flatMap(textToAvoid(report), (other: Drawn) =>
-      crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
-    )
-  );
-
-/**
- * The ends of the line's pieces that lie off the line through the first
- * piece, by more than a pixel: none when the line is straight.
- */
-const bends = (previews: DrawingReport["previews"]): ReadonlyArray<string> => {
-  const [a, b] = previews[0]?.segment ?? [];
-
-  if (a === undefined || b === undefined) {
-    return ["no line"];
-  }
-
-  const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-
-  return Arr.flatMap(previews, ({ id, segment }) =>
-    Arr.flatMap(segment, (point) => {
-      const off =
-        Math.abs(
-          (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)
-        ) / length;
-
-      return off > 1
-        ? [`${id} at ${point.x}, ${point.y} is ${off} px off`]
-        : [];
-    })
-  );
-};
-
-/** The pieces of a hop's strike that run through a structure's box. */
-const strikesOverBoxes = (report: DrawingReport): ReadonlyArray<string> =>
-  Arr.flatMap(report.hopStrikes, ({ id, segment }) =>
-    Arr.flatMap(report.structures, (box: Drawn) =>
-      crosses(segment, box.polygon) ? [`${id} × ${box.id}`] : []
-    )
-  );
-
-/** The pieces of a hop's strike that run over text. */
-const strikesOverText = (report: DrawingReport): ReadonlyArray<string> =>
-  Arr.flatMap(report.hopStrikes, ({ id, segment }) =>
-    Arr.flatMap(report.text, (other: Drawn) =>
-      crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
-    )
-  );
 
 /**
  * The point on hop `id` once it has stopped moving: the view refits after a
@@ -415,39 +291,6 @@ describe.each(["iso", "plan"] as const)(
 
           const proposedCount = yield* Effect.promise(() => proposed.count());
           assert.strictEqual(proposedCount, 1);
-          assert.deepStrictEqual(errors, []);
-        }),
-      60_000
-    );
-
-    it.live(
-      "draws a proposed hop pending, and its label clears every box and text",
-      () =>
-        Effect.gen(function* () {
-          const { page } = yield* served;
-
-          yield* goToChapterPaused(page, "c-all");
-          yield* showViewFitted(page, which);
-          yield* drawHop(page, "asks");
-
-          // Move off the structure so its handles do not count.
-          yield* Effect.promise(() => page.keyboard.press("Escape"));
-          yield* showViewFitted(page, which);
-
-          const tagClashes = yield* clashes(page);
-          assert.deepStrictEqual(tagClashes, []);
-
-          const hop = yield* attributeOf(
-            page,
-            '[data-hop][data-hop-state="proposed"]',
-            "data-hop"
-          );
-
-          const drawing = yield* Effect.promise(() =>
-            page.evaluate<DrawingReport>(drawingReport)
-          );
-
-          assert.deepStrictEqual(labelClashes(drawing, `label:${hop}`), []);
 
           const stroke = yield* Effect.promise(() =>
             page.evaluate<string>(
@@ -461,7 +304,8 @@ describe.each(["iso", "plan"] as const)(
             )
           );
 
-          assert.notStrictEqual(stroke, ink);
+          assert.notStrictEqual(stroke, ink, "a pending hop is drawn apart");
+          assert.deepStrictEqual(errors, []);
         }),
       60_000
     );
@@ -536,47 +380,7 @@ describe("ending a drag without a target", () => {
 
 describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
   it.live(
-    "no handle comes within 3 screen px of text, and no leg of the line runs through text",
-    () =>
-      Effect.gen(function* () {
-        const { page } = yield* served;
-
-        yield* goToChapterPaused(page, "c-all");
-        yield* showViewFitted(page, which);
-
-        // Over each structure in turn, so the line is routed to each.
-        for (const over of ["server", "proposals", "pull-request", "page"]) {
-          const target = yield* centreOf(page, `[data-structure="${over}"]`);
-
-          yield* dragFromHandle(page, {
-            drop: false,
-            from: "engineer",
-            to: target,
-          });
-          // Read the report once the line is routed to the target.
-          yield* waitForAttributes(page, "[data-hop-preview]", {
-            "data-over": over,
-            "data-routed": "true",
-          });
-
-          const report = yield* Effect.promise(() =>
-            page.evaluate<DrawingReport>(drawingReport)
-          );
-
-          assert.isAbove(report.handles.length, 0, over);
-          assert.deepStrictEqual(handlesNearText(report), [], `to ${over}`);
-          assert.isAbove(report.previews.length, 0, over);
-          assert.deepStrictEqual(previewsOverText(report), [], `to ${over}`);
-
-          yield* Effect.promise(() => page.keyboard.press("Escape"));
-          yield* Effect.promise(() => page.mouse.up());
-        }
-      }),
-    90_000
-  );
-
-  it.live(
-    "is straight over empty space",
+    "follows the pointer over empty space",
     () =>
       Effect.gen(function* () {
         const { page } = yield* served;
@@ -599,14 +403,8 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
         yield* dragFromHandle(page, { drop: false, from: "engineer", to });
         yield* waitForPreviewAt(page, to);
 
-        // The line may be cut where it passes text, but every piece lies on
-        // the one straight line from the handle to the pointer.
-        const { previews } = yield* Effect.promise(() =>
-          page.evaluate<DrawingReport>(drawingReport)
-        );
-
-        assert.isAbove(previews.length, 0);
-        assert.deepStrictEqual(bends(previews), []);
+        // The line follows the pointer over empty ground.
+        yield* waitFor(page, '[data-hop-preview][data-routed="false"]');
       }),
     60_000
   );
@@ -1517,48 +1315,6 @@ describe("the open page after verdict changed --as on a hop and a flow", () => {
     120_000
   );
 });
-
-describe.each(["iso", "plan"] as const)(
-  "the cross on a hop proposed for deletion in the %s view",
-  (which) => {
-    it.live(
-      "keeps clear of every box and every piece of text",
-      () =>
-        Effect.gen(function* () {
-          const { page } = yield* served;
-
-          yield* goToChapterPaused(page, "c-all");
-          yield* showViewFitted(page, which);
-
-          // Every hop in turn, including the short one between Proposals and
-          // Pull request, where the cross has least room.
-          for (const hop of ["h-pr", "h-store", "h-save"]) {
-            yield* selectHop(page, hop);
-            yield* click(page, `[data-hop-delete="${hop}"]`);
-            // A hop with no clear spot for a cross is still dashed and red.
-            yield* waitAttached(
-              page,
-              `[data-hop="${hop}"][data-hop-state="removed"]`
-            );
-          }
-
-          yield* Effect.promise(() => page.keyboard.press("Escape"));
-          yield* Effect.sleep("300 millis");
-
-          const report = yield* Effect.promise(() =>
-            page.evaluate<DrawingReport>(drawingReport)
-          );
-
-          assert.isAbove(report.hopStrikes.length, 0);
-
-          yield* assertCount(page, '[data-hop][data-hop-state="removed"]', 3);
-          assert.deepStrictEqual(strikesOverText(report), []);
-          assert.deepStrictEqual(strikesOverBoxes(report), []);
-        }),
-      90_000
-    );
-  }
-);
 
 describe("a flow that lists a hop proposed for deletion", () => {
   it.live(

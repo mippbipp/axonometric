@@ -356,7 +356,33 @@ export {
   splitProblems,
 } from "./problems.ts";
 
-export { outsideHoles, strikeSegments } from "./strike.ts";
+export {
+  hopStrikeOf,
+  outsideHoles,
+  strikeSegments,
+  structureStrikeOf,
+} from "./strike.ts";
+
+export type { HopStrike } from "./strike.ts";
+
+export { sceneFactsOf } from "./scene-facts.ts";
+
+export type { SceneFacts } from "./scene-facts.ts";
+
+export {
+  edgeSpotsOf,
+  handleRadius,
+  handleStroke,
+  sides,
+} from "./edge-handle-spots.ts";
+
+export type { EdgeSpot, Side } from "./edge-handle-spots.ts";
+
+export {
+  previewPieces,
+  previewRoute,
+  straightLine,
+} from "./hop-preview-route.ts";
 
 export { clearOfText, outlineClearance, textBoxesOf } from "./clear-of-text.ts";
 
