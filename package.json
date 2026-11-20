@@ -6,7 +6,6 @@
       "packages/*"
     ],
     "catalog": {
-      "@base-ui/react": "^1.9.0",
       "@effect/tsgo": "^0.70.0",
       "@oxlint/plugins": "^1.94.0",
       "@shadcn/lint": "^0.2.5",

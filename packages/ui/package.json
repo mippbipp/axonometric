@@ -9,10 +9,12 @@
     "./components/*": "./src/components/*.tsx"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@base-ui/react": "catalog:",
+    "@ui-sdk/core": "0.1.0-beta.13",
+    "@ui-sdk/react": "0.1.0-beta.13",
     "class-variance-authority": "catalog:",
     "cn": "catalog:",
     "react": "catalog:",
@@ -21,9 +23,14 @@
   },
   "devDependencies": {
     "@axonometric/config": "workspace:*",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.10",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "jsdom": "^31.0.0",
     "tailwindcss": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

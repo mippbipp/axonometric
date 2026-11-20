@@ -1,74 +1,68 @@
 import { cn } from "@axonometric/ui/lib/utils";
-import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import type { ComponentProps } from "react";
+import {
+  MenuCheckboxItem as MenuCheckboxItemPrimitive,
+  MenuContent as MenuContentPrimitive,
+  MenuItem as MenuItemPrimitive,
+  MenuItemIcon,
+  MenuItemIndicator,
+  MenuRadioItem as MenuRadioItemPrimitive,
+  MenuSeparator as MenuSeparatorPrimitive,
+  MenuSubContent as MenuSubContentPrimitive,
+  MenuSubTrigger as MenuSubTriggerPrimitive,
+} from "@ui-sdk/react/menu";
+import type { ComponentProps, ReactNode } from "react";
 
-const Menu = MenuPrimitive.Root;
+type WithClassName<Props> = Omit<Props, "className"> & {
+  readonly className?: string;
+};
+
+type WithNodeChildren<Props> = Omit<WithClassName<Props>, "children"> & {
+  readonly children?: ReactNode;
+};
+
+const popupClass =
+  "z-50 flex min-w-44 flex-col border border-border bg-popover p-1 font-mono text-xs text-popover-foreground shadow-none outline-none";
 
 /**
- * The menu's popup, positioned against `anchor`. The caller picks the
- * anchor, so a menu can open at a point, such as where a right-click landed.
+ * The menu's popup. Opened from a controller it sits at the point the
+ * controller was given, so a menu can open where a right-click landed.
  */
-function MenuContent({
-  anchor,
-  children,
+function MenuContent<Payload = unknown>({
   className,
+  sideOffset = 2,
   ...props
-}: MenuPrimitive.Popup.Props & {
-  readonly anchor?: ComponentProps<typeof MenuPrimitive.Positioner>["anchor"];
-}) {
+}: WithClassName<ComponentProps<typeof MenuContentPrimitive<Payload>>>) {
   return (
-    <MenuPrimitive.Portal>
-      <MenuPrimitive.Positioner
-        align="start"
-        anchor={anchor}
-        className="z-50 outline-none"
-        side="bottom"
-        sideOffset={2}
-      >
-        <MenuPrimitive.Popup
-          className={cn(
-            "flex min-w-44 flex-col border border-border bg-popover p-1 font-mono text-xs text-popover-foreground shadow-none outline-none",
-            className
-          )}
-          data-slot="menu-content"
-          {...props}
-        >
-          {children}
-        </MenuPrimitive.Popup>
-      </MenuPrimitive.Positioner>
-    </MenuPrimitive.Portal>
+    <MenuContentPrimitive<Payload>
+      className={cn(popupClass, className)}
+      sideOffset={sideOffset}
+      {...props}
+    />
   );
 }
 
 const itemClass =
-  "flex cursor-pointer items-center gap-2 px-2 py-1 text-left outline-none select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:cursor-default data-[disabled]:opacity-40";
+  "flex cursor-pointer items-center gap-2 px-2 py-1 text-left outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:cursor-default data-disabled:opacity-40";
 
-function MenuItem({ className, ...props }: MenuPrimitive.Item.Props) {
-  return (
-    <MenuPrimitive.Item
-      className={cn(itemClass, className)}
-      data-slot="menu-item"
-      {...props}
-    />
-  );
+function MenuItem({
+  className,
+  ...props
+}: WithClassName<ComponentProps<typeof MenuItemPrimitive>>) {
+  return <MenuItemPrimitive className={cn(itemClass, className)} {...props} />;
 }
 
 function MenuRadioItem({
   children,
   className,
   ...props
-}: MenuPrimitive.RadioItem.Props) {
+}: WithNodeChildren<ComponentProps<typeof MenuRadioItemPrimitive>>) {
   return (
-    <MenuPrimitive.RadioItem
-      className={cn(itemClass, className)}
-      data-slot="menu-radio-item"
-      {...props}
-    >
+    <MenuRadioItemPrimitive className={cn(itemClass, className)} {...props}>
       <span aria-hidden="true" className="w-3 shrink-0">
-        <MenuPrimitive.RadioItemIndicator>•</MenuPrimitive.RadioItemIndicator>
+        <MenuItemIndicator>•</MenuItemIndicator>
       </span>
       {children}
-    </MenuPrimitive.RadioItem>
+    </MenuRadioItemPrimitive>
   );
 }
 
@@ -76,79 +70,52 @@ function MenuCheckboxItem({
   children,
   className,
   ...props
-}: MenuPrimitive.CheckboxItem.Props) {
+}: WithNodeChildren<ComponentProps<typeof MenuCheckboxItemPrimitive>>) {
   return (
-    <MenuPrimitive.CheckboxItem
-      className={cn(itemClass, className)}
-      data-slot="menu-checkbox-item"
-      {...props}
-    >
+    <MenuCheckboxItemPrimitive className={cn(itemClass, className)} {...props}>
       <span aria-hidden="true" className="w-3 shrink-0">
-        <MenuPrimitive.CheckboxItemIndicator>
-          ✓
-        </MenuPrimitive.CheckboxItemIndicator>
+        <MenuItemIndicator>✓</MenuItemIndicator>
       </span>
       {children}
-    </MenuPrimitive.CheckboxItem>
+    </MenuCheckboxItemPrimitive>
   );
-}
-
-function MenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
-  return <MenuPrimitive.SubmenuRoot {...props} />;
 }
 
 function MenuSubTrigger({
   children,
   className,
   ...props
-}: MenuPrimitive.SubmenuTrigger.Props) {
+}: WithNodeChildren<ComponentProps<typeof MenuSubTriggerPrimitive>>) {
   return (
-    <MenuPrimitive.SubmenuTrigger
-      className={cn(itemClass, className)}
-      data-slot="menu-sub-trigger"
-      {...props}
-    >
+    <MenuSubTriggerPrimitive className={cn(itemClass, className)} {...props}>
       {children}
-      <span aria-hidden="true" className="ml-auto">
+      <MenuItemIcon className="ml-auto" mirror>
         ▸
-      </span>
-    </MenuPrimitive.SubmenuTrigger>
+      </MenuItemIcon>
+    </MenuSubTriggerPrimitive>
   );
 }
 
 function MenuSubContent({
-  children,
   className,
   ...props
-}: MenuPrimitive.Popup.Props) {
+}: WithClassName<ComponentProps<typeof MenuSubContentPrimitive>>) {
   return (
-    <MenuPrimitive.Portal>
-      <MenuPrimitive.Positioner
-        align="start"
-        className="z-50 outline-none"
-        side="inline-end"
-        sideOffset={2}
-      >
-        <MenuPrimitive.Popup
-          className={cn(
-            "flex min-w-36 flex-col border border-border bg-popover p-1 font-mono text-xs text-popover-foreground outline-none",
-            className
-          )}
-          data-slot="menu-sub-content"
-          {...props}
-        >
-          {children}
-        </MenuPrimitive.Popup>
-      </MenuPrimitive.Positioner>
-    </MenuPrimitive.Portal>
+    <MenuSubContentPrimitive
+      className={cn(popupClass, "min-w-36", className)}
+      sideOffset={2}
+      {...props}
+    />
   );
 }
 
-function MenuSeparator({ className, ...props }: MenuPrimitive.Separator.Props) {
+function MenuSeparator({
+  className,
+  ...props
+}: WithClassName<ComponentProps<typeof MenuSeparatorPrimitive>>) {
   return (
-    <MenuPrimitive.Separator
+    <MenuSeparatorPrimitive
       className={cn("my-1 h-px bg-border", className)}
-      data-slot="menu-separator"
       {...props}
     />
   );
@@ -168,18 +135,21 @@ function MenuLabel({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-const MenuRadioGroup = MenuPrimitive.RadioGroup;
-
 export {
   Menu,
+  MenuRadioGroup,
+  MenuSub,
+  MenuTrigger,
+  createMenuController,
+} from "@ui-sdk/react/menu";
+export type { MenuController } from "@ui-sdk/react/menu";
+export {
   MenuCheckboxItem,
   MenuContent,
   MenuItem,
   MenuLabel,
-  MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
-  MenuSub,
   MenuSubContent,
   MenuSubTrigger,
 };

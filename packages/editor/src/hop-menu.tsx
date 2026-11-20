@@ -10,20 +10,18 @@ import {
   MenuSub,
   MenuSubContent,
   MenuSubTrigger,
+  createMenuController,
 } from "@axonometric/ui/components/menu";
 import { Array as Arr, Option } from "effect";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
+import { useContextMenu } from "./open-context-menu.ts";
 import { useSelection } from "./selection-context.ts";
 import { useHopFlowToggle } from "./use-hop-flow-toggle.ts";
 
-/** Where the menu opened: a point on the page, and the hop under it. */
-interface Opened {
-  readonly id: string;
-  readonly x: number;
-  readonly y: number;
-}
+const idOfSegment = (target: Element) =>
+  target.closest<SVGElement>("[data-route-segment]")?.dataset.hopId;
 
 /**
  * The context menu on a hop: a right-click on one of its segments opens a
@@ -31,77 +29,76 @@ interface Opened {
  * works in both views and every chapter, because a hop's segment carries its
  * id and the menu listens for the right-click on the whole page.
  *
- * The hop is selected too, so its panel shows the same actions and the
- * result of the proposal.
+ * The menu opens at the pointer, or at the focused segment for Shift+F10 and
+ * the context-menu key, which the browser reports as the same event. The hop
+ * is selected too, so its panel shows the same actions and the result of the
+ * proposal.
  */
 export function HopMenu() {
   const connections = useConnections();
   const { selectHop } = useSelection();
-  const [opened, setOpened] = useState<Opened | null>(null);
+  // oxlint-disable-next-line react/hook-use-state -- the controller is made once and never replaced.
+  const [menu] = useState(() => createMenuController());
+  const [opened, setOpened] = useState<string | null>(null);
+  const [handOffFocus, setHandOffFocus] = useState(false);
 
   const canPropose = connections?.canPropose === true;
 
-  useEffect(() => {
-    const onContextMenu = (event: MouseEvent) => {
-      if (!canPropose) {
-        return;
-      }
-
-      const id =
-        event.target instanceof Element
-          ? event.target.closest<SVGElement>("[data-route-segment]")?.dataset
-              .hopId
-          : undefined;
-
-      if (id === undefined) {
-        return;
-      }
-
-      event.preventDefault();
+  useContextMenu({
+    enabled: canPropose,
+    idOf: idOfSegment,
+    menu,
+    onOpen: (id) => {
       selectHop(id);
-      setOpened({ id, x: event.clientX, y: event.clientY });
-    };
-
-    document.addEventListener("contextmenu", onContextMenu);
-
-    return () => {
-      document.removeEventListener("contextmenu", onContextMenu);
-    };
-  }, [canPropose, selectHop]);
+      setOpened(id);
+    },
+  });
 
   const hop =
     opened === null || connections === null
       ? undefined
       : Arr.findFirst(
           connections.proposed.state.data.hops,
-          ({ id }) => id === opened.id
+          ({ id }) => id === opened
         ).pipe(Option.getOrUndefined);
 
-  if (opened === null || hop === undefined || connections === null) {
-    return null;
-  }
-
   return (
-    <OpenedHopMenu
-      hop={hop}
-      key={opened.id}
-      onClose={() => {
-        setOpened(null);
+    <Menu
+      controller={menu}
+      onOpenChange={(open) => {
+        if (open) {
+          setHandOffFocus(false);
+        } else {
+          setOpened(null);
+        }
       }}
-      opened={opened}
-    />
+    >
+      <MenuContent
+        aria-label={hop?.label}
+        data-hop-menu={hop?.id}
+        finalFocus={handOffFocus ? "none" : "trigger"}
+      >
+        {hop === undefined ? null : (
+          <HopMenuItems
+            handOffFocus={() => {
+              setHandOffFocus(true);
+            }}
+            hop={hop}
+            key={hop.id}
+          />
+        )}
+      </MenuContent>
+    </Menu>
   );
 }
 
-/** The menu for one hop, open at the point it was asked for. */
-function OpenedHopMenu({
+/** The entries for one hop, rendered while the menu is open on it. */
+function HopMenuItems({
+  handOffFocus,
   hop,
-  onClose,
-  opened,
 }: {
+  readonly handOffFocus: () => void;
   readonly hop: Hop;
-  readonly onClose: () => void;
-  readonly opened: Opened;
 }) {
   const connections = useConnections();
   const { failure: flowFailure, toggle } = useHopFlowToggle(hop.id);
@@ -115,88 +112,77 @@ function OpenedHopMenu({
   const inFlows = flowsOfHop(connections.proposed.state.data, hop.id);
   const deleted = marked(connections.proposed, removedHopMark).has(hop.id);
 
-  const anchor = {
-    getBoundingClientRect: () => new DOMRect(opened.x, opened.y, 0, 0),
-  };
-
   return (
-    <Menu
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-      open
-    >
-      <MenuContent anchor={anchor} data-hop-menu={hop.id}>
-        <MenuLabel>{hop.label}</MenuLabel>
-        <MenuItem
-          data-menu="relabel"
-          disabled={deleted}
-          onClick={() => {
-            // The panel is open for the selected hop; its label field takes
-            // the typing.
-            requestAnimationFrame(() => {
-              document
-                .querySelector<HTMLInputElement>(
-                  "[data-hop-panel] [data-hop-label-field]"
-                )
-                ?.select();
-            });
-          }}
+    <>
+      <MenuLabel>{hop.label}</MenuLabel>
+      <MenuItem
+        data-menu="relabel"
+        disabled={deleted}
+        onSelect={() => {
+          // The panel is open for the selected hop; its label field takes
+          // the focus, so the menu doesn't give it back to the trigger.
+          handOffFocus();
+          requestAnimationFrame(() => {
+            document
+              .querySelector<HTMLInputElement>(
+                "[data-hop-panel] [data-hop-label-field]"
+              )
+              ?.select();
+          });
+        }}
+      >
+        Relabel…
+      </MenuItem>
+      {flows.length === 0 ? null : (
+        <MenuSub>
+          <MenuSubTrigger data-menu="flows" disabled={deleted}>
+            Flows
+          </MenuSubTrigger>
+          <MenuSubContent>
+            {Arr.map(flows, ({ id, name }) => (
+              <MenuCheckboxItem
+                checked={inFlows.includes(id)}
+                data-menu-flow={id}
+                key={id}
+                onCheckedChange={(wanted) => {
+                  toggle(id, wanted);
+                }}
+                value={id}
+              >
+                {name}
+              </MenuCheckboxItem>
+            ))}
+          </MenuSubContent>
+        </MenuSub>
+      )}
+      <MenuSeparator />
+      <MenuItem
+        data-menu="delete-hop"
+        disabled={deleted}
+        onSelect={() => {
+          const change = { action: "delete" as const, hop: hop.id };
+          const refusal = connections.refusalOfHop(change);
+
+          if (refusal !== undefined) {
+            setFailure(refusal);
+
+            return;
+          }
+
+          connections.proposeHop(change, () => {});
+        }}
+      >
+        Propose deleting
+      </MenuItem>
+      {(failure ?? flowFailure) === undefined ? null : (
+        <p
+          className="border-refused max-w-56 border-l-2 px-2 py-1"
+          data-menu-failure
+          role="alert"
         >
-          Relabel…
-        </MenuItem>
-        {flows.length === 0 ? null : (
-          <MenuSub>
-            <MenuSubTrigger data-menu="flows" disabled={deleted}>
-              Flows
-            </MenuSubTrigger>
-            <MenuSubContent>
-              {Arr.map(flows, ({ id, name }) => (
-                <MenuCheckboxItem
-                  checked={inFlows.includes(id)}
-                  data-menu-flow={id}
-                  key={id}
-                  onCheckedChange={(wanted) => {
-                    toggle(id, wanted);
-                  }}
-                >
-                  {name}
-                </MenuCheckboxItem>
-              ))}
-            </MenuSubContent>
-          </MenuSub>
-        )}
-        <MenuSeparator />
-        <MenuItem
-          data-menu="delete-hop"
-          disabled={deleted}
-          onClick={() => {
-            const change = { action: "delete" as const, hop: hop.id };
-            const refusal = connections.refusalOfHop(change);
-
-            if (refusal !== undefined) {
-              setFailure(refusal);
-
-              return;
-            }
-
-            connections.proposeHop(change, () => {});
-          }}
-        >
-          Propose deleting
-        </MenuItem>
-        {(failure ?? flowFailure) === undefined ? null : (
-          <p
-            className="border-refused max-w-56 border-l-2 px-2 py-1"
-            data-menu-failure
-            role="alert"
-          >
-            {failure ?? flowFailure}
-          </p>
-        )}
-      </MenuContent>
-    </Menu>
+          {failure ?? flowFailure}
+        </p>
+      )}
+    </>
   );
 }
