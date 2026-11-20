@@ -1,12 +1,12 @@
 /* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
-  chapterViews,
-  draggedProblemsIn,
+  dragCheckOf,
   Layout,
   MapData,
   MapProblem,
 } from "@axonometric/contracts";
-import { Array as Arr, Effect, Fiber, Schema } from "effect";
+import type { DragCheck } from "@axonometric/contracts";
+import { Effect, Fiber, Schema } from "effect";
 
 /**
  * The map a drag is checked against: its data and the layout before the
@@ -59,47 +59,22 @@ export const CheckAnswer = Schema.Struct({
 
 export type CheckAnswer = typeof CheckAnswer.Type;
 
-/** The chapters as `check` draws them, the one on screen first. */
-const checkOrder = (
-  data: MapData,
-  onScreen: string
-): ReadonlyArray<string | undefined> => {
-  const ids = Arr.map(chapterViews(data), ({ id }) => id);
-
-  return [
-    ...Arr.filter(ids, (id) => id === onScreen),
-    ...Arr.filter(ids, (id) => id !== onScreen),
-  ];
-};
-
 /**
- * Checks a drag step a chapter at a time, the chapter on screen first, and
- * hands `answer` what it has found after each. It yields between chapters,
- * so a newer step can interrupt it. The last answer is every problem `check`
- * would report for the layout, as `draggedProblems` lists them.
+ * Passes a drag step to the map's check and hands `answer` what it finds
+ * after each chapter. It yields between chapters, so a newer step can
+ * interrupt it.
  */
-export const checkDrag = Effect.fnUntraced(function* ({
-  map: { data, before },
-  step: { step, after, onScreen },
+const checkDrag = Effect.fnUntraced(function* ({
   answer,
+  check,
+  step: { after, onScreen, step },
 }: {
   readonly answer: (found: CheckAnswer) => void;
-  readonly map: CheckMap;
+  readonly check: DragCheck;
   readonly step: CheckStep;
 }) {
-  const order = checkOrder(data, onScreen);
-  const done = new Set<string | undefined>();
-
-  for (const [index, chapter] of order.entries()) {
-    done.add(chapter);
-
-    const complete = index === order.length - 1;
-
-    answer({
-      step,
-      problems: draggedProblemsIn({ data, before, after, chapters: done }),
-      complete,
-    });
+  for (const { complete, problems } of check.step({ after, onScreen })) {
+    answer({ complete, problems, step });
 
     if (!complete) {
       yield* Effect.yieldNow;
@@ -107,25 +82,16 @@ export const checkDrag = Effect.fnUntraced(function* ({
   }
 });
 
-/**
- * Checks the layout before any drag a chapter at a time, yielding between
- * chapters. A drag's answers compare with it, and remembering its chapters
- * here spares the first drag step from drawing them.
- */
-const warmUp = Effect.fnUntraced(function* ({ data, before }: CheckMap) {
-  const seen = new Set<string | undefined>();
-
-  for (const { id } of chapterViews(data)) {
-    seen.add(id);
-    draggedProblemsIn({ data, before, after: before, chapters: seen });
+const warmUp = Effect.fnUntraced(function* (check: DragCheck) {
+  for (const _ of check.warmUp()) {
     yield* Effect.yieldNow;
   }
 });
 
-/** What a checker holds between messages: the map, and the step it checks. */
+/** What a checker holds between messages: the map's check, and the step it checks. */
 interface Held {
+  check: { readonly check: DragCheck; readonly map: number } | undefined;
   checking: Fiber.Fiber<void> | undefined;
-  map: CheckMap | undefined;
 }
 
 /**
@@ -134,7 +100,7 @@ interface Held {
  * worker runs one, and so does the page where there are no workers.
  */
 export const dragChecker = (answer: (found: CheckAnswer) => void) => {
-  const held: Held = { map: undefined, checking: undefined };
+  const held: Held = { check: undefined, checking: undefined };
 
   const stop = () => {
     if (held.checking !== undefined) {
@@ -146,17 +112,17 @@ export const dragChecker = (answer: (found: CheckAnswer) => void) => {
   return {
     map: (map: CheckMap) => {
       stop();
-      held.map = map;
+      held.check = { check: dragCheckOf(map), map: map.id };
       // Draw the layout before the drag now, while nothing is dragged, so a
       // drag's first answer waits on its own layout alone.
-      held.checking = Effect.runFork(warmUp(map));
+      held.checking = Effect.runFork(warmUp(held.check.check));
     },
     step: (step: CheckStep) => {
       stop();
 
-      if (held.map?.id === step.map) {
+      if (held.check?.map === step.map) {
         held.checking = Effect.runFork(
-          checkDrag({ map: held.map, step, answer })
+          checkDrag({ answer, check: held.check.check, step })
         );
       }
     },

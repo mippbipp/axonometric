@@ -73,13 +73,9 @@ export {
 export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 
 export {
-  changedChapterProblems,
   changedProblems,
   chapterViews,
-  checkChapter,
   checkLayout,
-  draggedProblems,
-  draggedProblemsIn,
   drawingProblems,
   footprintsOverlap,
   offEndFindings,
@@ -88,9 +84,14 @@ export {
   spanOf,
 } from "./layout-checks.ts";
 
+export { dragCheckOf } from "./drag-check.ts";
+
+export type { DragAnswer, DragCheck, DragStep } from "./drag-check.ts";
+
 export type {
   ChapterView,
   Checkable,
+  CheckScope,
   DraggedProblem,
   HopEnds,
   OffEnd,
@@ -538,8 +539,6 @@ export type { Mappable, MarkQuery, ProposedMap } from "./proposed-map.ts";
 export { namesOf } from "./review-names.ts";
 
 export { proposalProblems } from "./proposal-problems.ts";
-
-export type { CheckScope } from "./proposal-problems.ts";
 
 export {
   FinalId,

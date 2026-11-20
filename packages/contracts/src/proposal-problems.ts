@@ -1,7 +1,7 @@
 import { Array as Arr, Order } from "effect";
 
-import { changedChapterProblems, changedProblems } from "./layout-checks.ts";
-import type { Checkable, DraggedProblem } from "./layout-checks.ts";
+import { changedProblems } from "./layout-checks.ts";
+import type { Checkable, CheckScope, DraggedProblem } from "./layout-checks.ts";
 import type { Placement } from "./layout.ts";
 import type { BatchItem } from "./proposals.ts";
 import { applyOrder, specOf } from "./review-kinds.ts";
@@ -10,11 +10,6 @@ import type { MapShape } from "./review-kinds.ts";
 const byKind = Order.mapInput(Order.Number, (item: BatchItem) =>
   applyOrder.indexOf(item.kind)
 );
-
-/** Where a proposal's layout checks look: the whole map, or one chapter's drawing. */
-export type CheckScope =
-  | { readonly of: "map" }
-  | { readonly chapter: string | undefined; readonly of: "chapter" };
 
 /**
  * Everything `check` would report for the map as proposed with `items` taken
@@ -64,7 +59,5 @@ export const proposalProblems = ({
     }
   );
 
-  return scope.of === "map"
-    ? changedProblems(after, from)
-    : changedChapterProblems({ after, before: from, chapter: scope.chapter });
+  return changedProblems({ after, before: from, scope });
 };
