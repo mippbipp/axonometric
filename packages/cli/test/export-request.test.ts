@@ -13,12 +13,7 @@ import { svgRequestOfExport } from "../src/export.ts";
 import { pipelineMap } from "./fixtures.ts";
 import { makeHome, mapIn, pageState, runCli } from "./harness.ts";
 
-// The page's Export menu and `export` build the SVG request with one
-// function, `svgRequestOf`. The menu fills theme, hovered and pinned from the
-// page, and `export` passes the light theme with nothing hovered or pinned.
-// Here the menu's inputs, as the page has them on opening a chapter with
-// nothing under the pointer in the light theme, must give the request
-// `export` builds, and the same file. No browser is needed.
+// The page and `export` share svgRequestOf, so only the inputs each fills in can drift apart. This runs in Node, where a browser export per case was slow.
 
 describe("the SVG export request", () => {
   it.live(
