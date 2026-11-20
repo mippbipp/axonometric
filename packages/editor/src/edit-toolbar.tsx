@@ -6,6 +6,7 @@ import {
   ToolbarButton,
   ToolbarSeparator,
 } from "@axonometric/ui/components/toolbar";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useState } from "react";
@@ -263,56 +264,76 @@ export function EditToolbar({
         className="gap-1.5"
         data-history-toolbar
       >
-        <ToolbarButton
-          aria-label="Undo"
-          className={uiControlClass}
-          data-control="undo"
-          disabled={!canUndo}
-          onClick={() => {
-            setRefusal(undefined);
-            undo();
-          }}
-          title="Undo (Ctrl+Z)"
+        <WithTooltip
+          control={
+            <ToolbarButton
+              aria-label="Undo"
+              className={uiControlClass}
+              data-control="undo"
+              disabled={!canUndo}
+              onClick={() => {
+                setRefusal(undefined);
+                undo();
+              }}
+            >
+              <span aria-hidden="true">↶ Undo</span>
+            </ToolbarButton>
+          }
         >
-          <span aria-hidden="true">↶ Undo</span>
-        </ToolbarButton>
-        <Toggle
-          className={uiControlClass}
-          data-control="add-structure"
-          disabled={proposing === null || !proposing.canPropose}
-          onPressedChange={(open) => {
-            placing?.setOpen(open);
-          }}
-          pressed={placing?.open === true}
-          title="Propose a new structure"
+          Undo (Ctrl+Z)
+        </WithTooltip>
+        <WithTooltip
+          control={
+            <Toggle
+              className={uiControlClass}
+              data-control="add-structure"
+              disabled={proposing === null || !proposing.canPropose}
+              onPressedChange={(open) => {
+                placing?.setOpen(open);
+              }}
+              pressed={placing?.open === true}
+            >
+              + Structure
+            </Toggle>
+          }
         >
-          + Structure
-        </Toggle>
-        <Toggle
-          className={uiControlClass}
-          data-control="add-group"
-          disabled={proposing === null || !proposing.canPropose}
-          onPressedChange={(open) => {
-            newGroup?.setOpen(open);
-          }}
-          pressed={newGroup?.open === true}
-          title="Create a group, from the selected structures or empty"
+          Propose a new structure
+        </WithTooltip>
+        <WithTooltip
+          control={
+            <Toggle
+              className={uiControlClass}
+              data-control="add-group"
+              disabled={proposing === null || !proposing.canPropose}
+              onPressedChange={(open) => {
+                newGroup?.setOpen(open);
+              }}
+              pressed={newGroup?.open === true}
+            >
+              + Group
+            </Toggle>
+          }
         >
-          + Group
-        </Toggle>
-        <ToolbarButton
-          aria-label="Redo"
-          className={uiControlClass}
-          data-control="redo"
-          disabled={!canRedo}
-          onClick={() => {
-            setRefusal(undefined);
-            redo();
-          }}
-          title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+          Create a group, from the selected structures or empty
+        </WithTooltip>
+        <WithTooltip
+          control={
+            <ToolbarButton
+              aria-label="Redo"
+              className={uiControlClass}
+              data-control="redo"
+              disabled={!canRedo}
+              onClick={() => {
+                setRefusal(undefined);
+                redo();
+              }}
+            >
+              <span aria-hidden="true">Redo ↷</span>
+            </ToolbarButton>
+          }
         >
-          <span aria-hidden="true">Redo ↷</span>
-        </ToolbarButton>
+          Redo (Ctrl+Shift+Z or Ctrl+Y)
+        </WithTooltip>
         <NoteToolButton />
       </Toolbar>
       <NoteToolHint />
@@ -329,38 +350,48 @@ export function EditToolbar({
               {ids.length} selected
             </span>
             {Arr.map(alignments, ({ how, icon, label }) => (
-              <ToolbarButton
-                aria-label={label[view]}
-                className={iconButton}
-                data-align={how}
+              <WithTooltip
+                control={
+                  <ToolbarButton
+                    aria-label={label[view]}
+                    className={iconButton}
+                    data-align={how}
+                    {...hintFor(label[view])}
+                    onClick={() => {
+                      run((placements) => alignMoves({ how, ids, placements }));
+                    }}
+                  >
+                    <Icon view={view}>{icon}</Icon>
+                  </ToolbarButton>
+                }
                 key={how}
-                title={label[view]}
-                {...hintFor(label[view])}
-                onClick={() => {
-                  run((placements) => alignMoves({ how, ids, placements }));
-                }}
               >
-                <Icon view={view}>{icon}</Icon>
-              </ToolbarButton>
+                {label[view]}
+              </WithTooltip>
             ))}
             <ToolbarSeparator className="bg-ink h-4 opacity-40" />
             {Arr.map(distributions, ({ axis, icon, label }) => (
-              <ToolbarButton
-                aria-label={label[view]}
-                className={iconButton}
-                data-distribute={axis}
-                disabled={!canDistribute}
+              <WithTooltip
+                control={
+                  <ToolbarButton
+                    aria-label={label[view]}
+                    className={iconButton}
+                    data-distribute={axis}
+                    disabled={!canDistribute}
+                    {...hintFor(label[view])}
+                    onClick={() => {
+                      run((placements) =>
+                        distributeMoves({ axis, ids, placements })
+                      );
+                    }}
+                  >
+                    <Icon view={view}>{icon}</Icon>
+                  </ToolbarButton>
+                }
                 key={axis}
-                title={canDistribute ? label[view] : distributeNeedsThree}
-                {...hintFor(label[view])}
-                onClick={() => {
-                  run((placements) =>
-                    distributeMoves({ axis, ids, placements })
-                  );
-                }}
               >
-                <Icon view={view}>{icon}</Icon>
-              </ToolbarButton>
+                {canDistribute ? label[view] : distributeNeedsThree}
+              </WithTooltip>
             ))}
           </Toolbar>
           {(hint ?? (canDistribute ? "" : distributeNeedsThree)) ===

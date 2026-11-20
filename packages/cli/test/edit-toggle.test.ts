@@ -4,6 +4,7 @@ import type { Page } from "playwright";
 
 import {
   assertCount,
+  attributeOf,
   attributesOf,
   boxesOf,
   centreOf,
@@ -12,6 +13,7 @@ import {
   press,
   showView,
   textOf,
+  tooltipOn,
   unitOnScreen,
   waitFor,
   waitGone,
@@ -317,6 +319,49 @@ describe("turning Edit on", () => {
         }
       }
     })
+  );
+});
+
+describe("the toolbar's tooltips", () => {
+  it.live(
+    "name each control on hover, and explain a disabled Undo without letting it run",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* openReviewMap({});
+
+        yield* goToChapter(page, "c-all");
+
+        const note = yield* tooltipOn(page, '[data-control="note-tool"]');
+        const edit = yield* tooltipOn(page, editButton);
+        const group = yield* tooltipOn(page, '[data-control="add-group"]');
+        const undo = yield* tooltipOn(page, '[data-control="undo"]');
+
+        assert.include(note, "Pin a note");
+        assert.include(edit, "Stop editing");
+        assert.include(group, "Create a group");
+        assert.include(undo, "Undo (Ctrl+Z)");
+        const disabledBefore = yield* attributeOf(
+          page,
+          '[data-control="undo"]',
+          "aria-disabled"
+        );
+
+        assert.strictEqual(disabledBefore, "true");
+
+        // Playwright won't click an aria-disabled button without force.
+        yield* Effect.promise(() =>
+          page.locator('[data-control="undo"]').click({ force: true })
+        );
+
+        const disabledAfter = yield* attributeOf(
+          page,
+          '[data-control="undo"]',
+          "aria-disabled"
+        );
+
+        assert.strictEqual(disabledAfter, "true");
+      }),
+    60_000
   );
 });
 

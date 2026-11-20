@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@axonometric/ui/components/dialog";
 import { Textarea } from "@axonometric/ui/components/textarea";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { Array as Arr, Result } from "effect";
 import { useEffect, useRef, useState } from "react";
 
@@ -152,20 +153,27 @@ export function ReadyForReview() {
   return (
     <>
       {showButton ? (
-        <button
-          className={controlClass}
-          data-ready-for-review
-          disabled={!review.canWrite || busy || open === 0}
-          onClick={press}
-          title={
-            open === 0
-              ? "Add a note, a suggestion or an answer, or move a structure first"
-              : "Freeze these into a batch and copy a prompt for your agent"
+        <WithTooltip
+          control={
+            <button
+              aria-disabled={!review.canWrite || busy || open === 0}
+              className={controlClass}
+              data-ready-for-review
+              onClick={() => {
+                if (review.canWrite && !busy && open > 0) {
+                  press();
+                }
+              }}
+              type="button"
+            >
+              {busy ? "Saving…" : `Ready for review · ${open}`}
+            </button>
           }
-          type="button"
         >
-          {busy ? "Saving…" : `Ready for review · ${open}`}
-        </button>
+          {open === 0
+            ? "Add a note, a suggestion or an answer, or move a structure first"
+            : "Freeze these into a batch and copy a prompt for your agent"}
+        </WithTooltip>
       ) : null}
       {failure === undefined ? null : (
         <output

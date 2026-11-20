@@ -203,6 +203,30 @@ export const press = (page: Page, key: string) =>
 export const count = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).count());
 
+/**
+ * What the tooltip says when the pointer rests on the element matching
+ * `selector`: moves the pointer away first so a tooltip left open by an
+ * earlier hover is gone, hovers the element, waits for ui-sdk to open its
+ * tooltip, and returns the text. Fails if none opens.
+ */
+export const tooltipOn = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string
+) {
+  const open = page.locator("[role=tooltip][data-open]").first();
+
+  yield* Effect.promise(() => page.mouse.move(0, 0));
+  yield* Effect.promise(() =>
+    open.waitFor({ state: "detached", ...waitTimeout })
+  );
+  yield* Effect.promise(() => page.locator(selector).first().hover());
+  yield* Effect.promise(() => open.waitFor(waitTimeout));
+
+  return yield* Effect.promise(() =>
+    open.textContent().then((text) => text ?? "")
+  );
+});
+
 /** The text of the first element matching `selector`, or "" when it has none. */
 export const textOf = (page: Page, selector: string) =>
   Effect.promise(() =>

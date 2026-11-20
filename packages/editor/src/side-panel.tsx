@@ -5,6 +5,7 @@ import {
   TabsPanel,
   TabsTab,
 } from "@axonometric/ui/components/tabs";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { Array as Arr, Match, Option } from "effect";
 import { useMemo } from "react";
 import type { ComponentProps } from "react";
@@ -449,20 +450,22 @@ export function SidePanel() {
       >
         <TabsList aria-label="Side panel" className={tabListClass}>
           {Arr.map(tabs, ({ disabled, id, label }) => (
-            <TabsTab
-              className={tabClass}
-              data-tab={id}
-              disabled={disabled}
-              key={id}
-              title={
-                disabled
-                  ? "Editing is off while a past revision is open"
-                  : undefined
+            <WithTooltip
+              control={
+                <TabsTab
+                  className={tabClass}
+                  data-tab={id}
+                  disabled={disabled}
+                  value={id}
+                >
+                  {label}
+                </TabsTab>
               }
-              value={id}
+              disabled={!disabled}
+              key={id}
             >
-              {label}
-            </TabsTab>
+              Editing is off while a past revision is open
+            </WithTooltip>
           ))}
         </TabsList>
         <Panel value="details">

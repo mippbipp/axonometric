@@ -1,4 +1,5 @@
 import { marked as marksOf, removedMark } from "@axonometric/contracts";
+import { TooltipTrigger } from "@axonometric/ui/components/tooltip";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
@@ -39,7 +40,7 @@ export function StructureTarget({
   const { goInside, multiSelection, select, selected, toggleMultiSelected } =
     useSelection();
 
-  const { hide, show } = useTooltipActions();
+  const { controller, hide, show } = useTooltipActions();
   const name = useStructuresById().get(id)?.name ?? id;
   const isSelected = selected === id;
   const editing = useEditing();
@@ -71,6 +72,9 @@ export function StructureTarget({
   const kinds = marks?.structures.get(id);
   const marked = spokenMarks({ id, marks });
 
+  // ui-sdk opens the tooltip. The structure also says where the pointer is,
+  // or where the focused box is, so the tooltip is placed clear of the others.
+  // The spotlight and edge handles follow the same hovered structure.
   const showAtPointer = (event: PointerEvent) => {
     show({ id, x: event.clientX, y: event.clientY });
   };
@@ -101,56 +105,62 @@ export function StructureTarget({
   };
 
   return (
-    <g
-      {...rest}
-      aria-label={Arr.join(
-        [
-          isMultiSelected ? `${name}, in the multi-selection` : name,
-          ...(isPending
-            ? [
-                pendingBy === "agent"
-                  ? "pending change by the agent"
-                  : "pending change",
-              ]
-            : []),
-          ...(isRemoved ? ["proposed for deletion"] : []),
-          ...(marked === undefined ? [] : [marked]),
-        ],
-        ", "
-      )}
-      aria-pressed={isSelected}
-      className={cn(
-        "focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-dashed",
-        className
-      )}
-      data-compare={kinds?.join(" ")}
-      data-multi-selected={isMultiSelected}
-      data-pending={isPending}
-      data-pending-by={pendingBy}
-      data-removed={isRemoved}
-      data-selected={isSelected}
-      data-structure={id}
-      onBlur={() => {
-        hide(id);
-      }}
-      onClick={(event) => {
-        activate(event.shiftKey);
-      }}
-      onDoubleClick={() => {
-        goInside(id);
-      }}
-      onFocus={showOnKeyboardFocus}
-      onKeyDown={onKeyDown}
-      onPointerEnter={showAtPointer}
-      onPointerLeave={() => {
-        hide(id);
-      }}
-      onPointerMove={showAtPointer}
-      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
-      role="button"
-      tabIndex={0}
+    <TooltipTrigger
+      controller={controller}
+      payload={id}
+      render={
+        <g
+          {...rest}
+          aria-label={Arr.join(
+            [
+              isMultiSelected ? `${name}, in the multi-selection` : name,
+              ...(isPending
+                ? [
+                    pendingBy === "agent"
+                      ? "pending change by the agent"
+                      : "pending change",
+                  ]
+                : []),
+              ...(isRemoved ? ["proposed for deletion"] : []),
+              ...(marked === undefined ? [] : [marked]),
+            ],
+            ", "
+          )}
+          aria-pressed={isSelected}
+          className={cn(
+            "focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-dashed",
+            className
+          )}
+          data-compare={kinds?.join(" ")}
+          data-multi-selected={isMultiSelected}
+          data-pending={isPending}
+          data-pending-by={pendingBy}
+          data-removed={isRemoved}
+          data-selected={isSelected}
+          data-structure={id}
+          onBlur={() => {
+            hide(id);
+          }}
+          onClick={(event) => {
+            activate(event.shiftKey);
+          }}
+          onDoubleClick={() => {
+            goInside(id);
+          }}
+          onFocus={showOnKeyboardFocus}
+          onKeyDown={onKeyDown}
+          onPointerEnter={showAtPointer}
+          onPointerLeave={() => {
+            hide(id);
+          }}
+          onPointerMove={showAtPointer}
+          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
+          role="button"
+          tabIndex={0}
+        />
+      }
     >
       {children}
-    </g>
+    </TooltipTrigger>
   );
 }

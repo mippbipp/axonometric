@@ -343,7 +343,7 @@ describe("zoom to fit", () => {
           yield* goToChapterPaused(page, "c-all");
           yield* showView(page, view);
           yield* waitFor(page, '[data-note-marker^="spot:"]');
-          yield* click(page, 'button[title="Zoom to fit (0)"]');
+          yield* click(page, 'button:has-text("Zoom to fit")');
           yield* Effect.promise(() => page.waitForTimeout(500));
 
           const ringsShown = yield* ringsOnScreen(page);
@@ -587,7 +587,7 @@ describe("hop rings at fit", () => {
             yield* Effect.promise(() => page.keyboard.press("Escape"));
           }
 
-          yield* click(page, 'button[title="Zoom to fit (0)"]');
+          yield* click(page, 'button:has-text("Zoom to fit")');
           yield* Effect.promise(() => page.waitForTimeout(500));
 
           const gaps = yield* ringToLinePixels(page);

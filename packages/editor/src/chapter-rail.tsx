@@ -2,6 +2,7 @@ import {
   RovingList,
   RovingListItem,
 } from "@axonometric/ui/components/roving-list";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
@@ -25,25 +26,30 @@ export function ChapterRail({ className }: { readonly className?: string }) {
       value={stop.id}
     >
       {Arr.map(stops, (chapter, position) => (
-        <RovingListItem
-          aria-current={position === index ? "step" : undefined}
-          aria-label={`Chapter ${position + 1}: ${chapter.title}`}
-          className={cn(
-            controlClass,
-            "size-6 p-0 leading-none",
-            position === index && "bg-ink text-paper",
-            position < index && "bg-face"
-          )}
-          data-chapter={chapter.id}
+        <WithTooltip
+          control={
+            <RovingListItem
+              aria-current={position === index ? "step" : undefined}
+              aria-label={`Chapter ${position + 1}: ${chapter.title}`}
+              className={cn(
+                controlClass,
+                "size-6 p-0 leading-none",
+                position === index && "bg-ink text-paper",
+                position < index && "bg-face"
+              )}
+              data-chapter={chapter.id}
+              onClick={() => {
+                goTo(position);
+              }}
+              value={chapter.id}
+            >
+              {position + 1}
+            </RovingListItem>
+          }
           key={chapter.id}
-          onClick={() => {
-            goTo(position);
-          }}
-          title={chapter.title}
-          value={chapter.id}
         >
-          {position + 1}
-        </RovingListItem>
+          {chapter.title}
+        </WithTooltip>
       ))}
       <span className="ml-1.5 text-xs tracking-widest uppercase opacity-70">
         Chapter {index + 1} ·{" "}

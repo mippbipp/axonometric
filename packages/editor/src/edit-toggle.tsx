@@ -1,4 +1,5 @@
 import { Toggle } from "@axonometric/ui/components/toggle";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 
 import { uiControlClass } from "./control-class.ts";
 import { useEditSwitch } from "./edit-context.ts";
@@ -17,16 +18,19 @@ export function EditToggle() {
   }
 
   return (
-    <Toggle
-      className={uiControlClass}
-      data-edit-toggle=""
-      onPressedChange={switchEdit}
-      pressed={edit.on}
-      title={
-        edit.on ? `Stop editing (${editKey})` : `Edit the map (${editKey})`
+    <WithTooltip
+      control={
+        <Toggle
+          className={uiControlClass}
+          data-edit-toggle=""
+          onPressedChange={switchEdit}
+          pressed={edit.on}
+        >
+          Edit
+        </Toggle>
       }
     >
-      Edit
-    </Toggle>
+      {edit.on ? `Stop editing (${editKey})` : `Edit the map (${editKey})`}
+    </WithTooltip>
   );
 }

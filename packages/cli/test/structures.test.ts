@@ -146,6 +146,47 @@ describe("the tooltip", () => {
   );
 });
 
+describe("the tooltip on keyboard focus and Escape", () => {
+  it.live(
+    "opens when Tab reaches a structure, describes it, and Escape closes it without unpinning",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* reviewPage;
+
+          yield* goToChapter(page, "c-all");
+          yield* pin(page, "page");
+
+          yield* Effect.promise(() => page.mouse.move(0, 0));
+          yield* press(page, "Tab");
+          yield* waitFor(page, "[role=tooltip][data-open]");
+
+          const focused = yield* focusedOn(page);
+          const said = yield* textOf(page, "[role=tooltip][data-open]");
+
+          const describedBy = yield* Effect.promise(() =>
+            page.evaluate<boolean>(
+              "document.activeElement?.getAttribute('aria-describedby') === document.querySelector('[role=tooltip][data-open]')?.id"
+            )
+          );
+
+          assert.isTrue(describedBy);
+          assert.include(said, "·");
+          assert.notStrictEqual(focused, "page");
+
+          // Escape closes the tooltip first. The pin is the next Escape's.
+          yield* press(page, "Escape");
+          yield* waitGone(page, "[role=tooltip][data-open]");
+          yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
+
+          yield* press(page, "Escape");
+          yield* waitGone(page, '[data-structure-panel="page"][data-pinned]');
+        })
+      ),
+    60_000
+  );
+});
+
 describe("the tooltip's placement", () => {
   it.live("keeps clear of the other structures where it can", () =>
     Effect.scoped(

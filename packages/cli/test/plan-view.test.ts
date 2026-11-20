@@ -12,7 +12,9 @@ import {
   openPage,
   press,
   showView,
+  tooltipOn,
   waitFor,
+  waitGone,
 } from "./browser.ts";
 import { fullMap, pipelineMap, shapesMap } from "./fixtures.ts";
 import { buildAndOpen, makeHome, runCli, mapIn, homeAt } from "./harness.ts";
@@ -236,11 +238,16 @@ describe("Plan view", () => {
 
         const toggleDisabled = yield* Effect.promise(() => toggle.isDisabled());
         assert.isTrue(toggleDisabled);
-        assert.include(
-          (yield* Effect.promise(() => toggle.getAttribute("title"))) ?? "",
-          "inside view"
+        const blockedBecause = yield* tooltipOn(
+          page,
+          '[data-view-toggle] [data-view="iso"]'
         );
 
+        assert.include(blockedBecause, "inside view");
+
+        // The tooltip the pointer opened would take the first Escape.
+        yield* Effect.promise(() => page.mouse.move(0, 0));
+        yield* waitGone(page, "[role=tooltip][data-open]");
         yield* press(page, "Escape");
         yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
         yield* waitFor(page, '[data-structure="updater"] [data-plan-icon]');

@@ -1,6 +1,7 @@
 import { groundProjections, maxRouteReach } from "@axonometric/contracts";
 import type { GridPoint, Placement, View } from "@axonometric/contracts";
 import { Toggle } from "@axonometric/ui/components/toggle";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { Array as Arr } from "effect";
 import {
   useCallback,
@@ -201,18 +202,23 @@ export function NoteToolButton() {
   }
 
   return (
-    <Toggle
-      className={uiControlClass}
-      data-control="note-tool"
-      disabled={!review.canWrite}
-      onPressedChange={(on) => {
-        tool.arm(on);
-      }}
-      pressed={tool.armed}
-      title="Pin a note to an empty spot on the map"
+    <WithTooltip
+      control={
+        <Toggle
+          className={uiControlClass}
+          data-control="note-tool"
+          disabled={!review.canWrite}
+          onPressedChange={(on) => {
+            tool.arm(on);
+          }}
+          pressed={tool.armed}
+        >
+          Note
+        </Toggle>
+      }
     >
-      Note
-    </Toggle>
+      Pin a note to an empty spot on the map
+    </WithTooltip>
   );
 }
 

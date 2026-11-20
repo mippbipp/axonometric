@@ -9,6 +9,7 @@ import {
   click,
   goToChapter,
   press,
+  tooltipOn,
   waitFor,
 } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
@@ -230,16 +231,15 @@ describe("packets", () => {
             .isDisabled()
         );
 
-        const playTitle = yield* attributeOf(
+        const playTooltip = yield* tooltipOn(
           page,
-          '[data-playback-controls] [data-control="play"]',
-          "title"
+          '[data-playback-controls] [data-control="play"]'
         );
 
         assert.deepStrictEqual(after, before);
         assert.isTrue(playDisabled);
-        assert.include(playTitle ?? "", "reduced motion");
-        assert.include(playTitle ?? "", "Step");
+        assert.include(playTooltip, "reduced motion");
+        assert.include(playTooltip, "Step");
         const restingPacketIds = yield* packetIds(page);
         // At rest, the packet waits on the chapter's first hop.
         assert.deepStrictEqual(restingPacketIds, ["h-note"]);

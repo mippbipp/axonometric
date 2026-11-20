@@ -11,6 +11,7 @@ import type {
   Structure,
 } from "@axonometric/contracts";
 import { BoxShape, DrawingContext } from "@axonometric/drawing";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { Array as Arr, String as Str } from "effect";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
@@ -419,15 +420,25 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
               ‖ Pause
             </button>
           ) : (
-            <button
-              className={controlClass}
-              disabled={reducedMotion}
-              onClick={play}
-              title={reducedMotion ? reducedMotionNote : undefined}
-              type="button"
+            <WithTooltip
+              control={
+                <button
+                  aria-disabled={reducedMotion}
+                  className={controlClass}
+                  onClick={() => {
+                    if (!reducedMotion) {
+                      play();
+                    }
+                  }}
+                  type="button"
+                >
+                  ▸ Play
+                </button>
+              }
+              disabled={!reducedMotion}
             >
-              ▸ Play
-            </button>
+              {reducedMotionNote}
+            </WithTooltip>
           )}
           <button className={controlClass} onClick={step} type="button">
             Step

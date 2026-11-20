@@ -1,4 +1,5 @@
 import type { Structure } from "@axonometric/contracts";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 
 import { useRevealToggle } from "./chapter-reveal.ts";
 import { controlClass } from "./control-class.ts";
@@ -29,18 +30,26 @@ export function ChapterReveal({
         In this chapter
       </h3>
       <div className="flex flex-col items-start gap-1.5">
-        <button
-          className={controlClass}
-          data-chapter-toggle={toggle.change.action}
-          disabled={!canPropose || toggle.unavailable !== undefined}
-          onClick={() => {
-            send(toggle.change);
-          }}
-          title={toggle.unavailable}
-          type="button"
+        <WithTooltip
+          control={
+            <button
+              aria-disabled={!canPropose || toggle.unavailable !== undefined}
+              className={controlClass}
+              data-chapter-toggle={toggle.change.action}
+              onClick={() => {
+                if (canPropose && toggle.unavailable === undefined) {
+                  send(toggle.change);
+                }
+              }}
+              type="button"
+            >
+              {toggle.label}
+            </button>
+          }
+          disabled={toggle.unavailable === undefined}
         >
-          {toggle.label}
-        </button>
+          {toggle.unavailable}
+        </WithTooltip>
         {toggle.unavailable === undefined ? null : (
           <p className="text-xs opacity-70" data-chapter-toggle-note>
             {toggle.unavailable}

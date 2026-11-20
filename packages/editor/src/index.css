@@ -185,10 +185,12 @@
 }
 
 /* The menu comes from the UI package, which paints with shadcn's tokens.
-   Inside a menu they take the map's colours, so it reads as part of the page. */
+   Inside a menu or a tooltip they take the map's colours, so it reads as part
+   of the page. */
 [data-slot="menu-content"],
 [data-slot="menu-sub-content"],
-[data-slot="select-content"] {
+[data-slot="select-content"],
+[data-slot="tooltip-content"] {
   --popover: var(--paper);
   --popover-foreground: var(--ink);
   --border: var(--ink);

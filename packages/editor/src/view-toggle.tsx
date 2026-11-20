@@ -4,6 +4,7 @@ import {
   SegmentedControl,
   SegmentedControlItem,
 } from "@axonometric/ui/components/segmented-control";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
@@ -40,15 +41,20 @@ export function ViewToggle({
       value={view}
     >
       {Arr.map(views, (option, index) => (
-        <SegmentedControlItem
-          className={cn(uiSegmentClass, index > 0 && "-ml-px")}
-          data-view={option}
+        <WithTooltip
+          control={
+            <SegmentedControlItem
+              className={cn(uiSegmentClass, index > 0 && "-ml-px")}
+              data-view={option}
+              value={option}
+            >
+              {names[option]}
+            </SegmentedControlItem>
+          }
           key={option}
-          title={disabledBecause ?? `${names[option]} view (${viewKey})`}
-          value={option}
         >
-          {names[option]}
-        </SegmentedControlItem>
+          {disabledBecause ?? `${names[option]} view (${viewKey})`}
+        </WithTooltip>
       ))}
     </SegmentedControl>
   );
