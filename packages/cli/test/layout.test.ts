@@ -1,7 +1,9 @@
-import { LayoutFile } from "@axonometric/contracts";
+import { LayoutFile, ProposalsFile } from "@axonometric/contracts";
+import type { LayoutChange } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
+  Array as Arr,
   Clock,
   Effect,
   Fiber,
@@ -13,6 +15,7 @@ import {
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { withLock } from "../src/lock.ts";
+import { encodeProposals } from "../src/map-files.ts";
 import { minimalMap } from "./fixtures.ts";
 import {
   homeAt,
@@ -23,11 +26,11 @@ import {
   mapKeys,
 } from "./harness.ts";
 
-const { layoutFile } = mapKeys("pipeline");
-
-const { lockFile } = mapKeys("pipeline");
+const { layoutFile, lockFile, proposalsFile } = mapKeys("pipeline");
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
+
+const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
 
 /** Runs `layout` on the minimal map, whose structures are updater and gate. */
 const layoutWith = Effect.fnUntraced(function* (
@@ -49,6 +52,19 @@ const savedLayout = Effect.fnUntraced(function* (
   files: Readonly<Partial<Record<string, string>>>
 ) {
   return yield* decodeLayout(files[layoutFile] ?? "");
+});
+
+/** Changes with their ids left out: the CLI makes them at random. */
+const withoutIds = (changes: ReadonlyArray<LayoutChange>) =>
+  Arr.map(changes, ({ id: _, ...rest }) => rest);
+
+/** A change as `withoutIds` gives it. */
+type Unnamed = ReturnType<typeof withoutIds>[number];
+
+const savedProposals = Effect.fnUntraced(function* (
+  files: Readonly<Partial<Record<string, string>>>
+) {
+  return yield* decodeProposals(files[proposalsFile] ?? "");
 });
 
 /**
@@ -527,5 +543,254 @@ describe("layout", () => {
         assert.strictEqual(lockText, lockOf(pid));
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     15_000
+  );
+});
+
+/** An engineer's pending move of gate, as the page saves it. */
+const engineersGate: LayoutChange = {
+  by: "engineer",
+  id: "c3",
+  kind: "move",
+  moves: [
+    { position: { x: 8, y: 0 }, target: { id: "gate", kind: "structure" } },
+  ],
+};
+
+/** Runs `layout ... --propose --reason <reason>` on the minimal map. */
+const proposeWith = (
+  args: ReadonlyArray<string>,
+  files: Readonly<Record<string, string>> = {}
+) => layoutWith([...args, "--propose", "--reason", "Tidy the row"], files);
+
+describe("layout --propose", () => {
+  it.effect.each<
+    readonly [string, ReadonlyArray<string>, ReadonlyArray<Unnamed>, string]
+  >([
+    [
+      "a move",
+      ["gate", "--x", "8"],
+      [
+        {
+          by: "agent",
+          kind: "move",
+          moves: [
+            {
+              position: { x: 8, y: 0 },
+              target: { id: "gate", kind: "structure" },
+            },
+          ],
+          reason: "Tidy the row",
+        },
+      ],
+      'gate: proposed x 4 → 8, for "Tidy the row". proposals.json is at revision 1.',
+    ],
+    [
+      "a resize",
+      ["gate", "--w", "3"],
+      [
+        {
+          by: "agent",
+          footprint: { d: 1.5, w: 3 },
+          kind: "resize",
+          reason: "Tidy the row",
+          target: { id: "gate", kind: "structure" },
+        },
+      ],
+      'gate: proposed w 2 → 3, for "Tidy the row". proposals.json is at revision 1.',
+    ],
+    [
+      "a reroute",
+      ["--hop", "h-update", "--route", "2,5 3,5 3,1 4,1"],
+      [
+        {
+          by: "agent",
+          kind: "reroute",
+          points: [
+            { x: 2, y: 5 },
+            { x: 3, y: 5 },
+            { x: 3, y: 1 },
+            { x: 4, y: 1 },
+          ],
+          reason: "Tidy the row",
+          target: { id: "h-update", kind: "hop" },
+        },
+      ],
+      'h-update: proposed route through 2,5 3,5 3,1 4,1, for "Tidy the row". proposals.json is at revision 1.',
+    ],
+  ])(
+    "writes %s to proposals.json as the agent's, and leaves layout.json as it was",
+    ([, args, changes, line]) =>
+      Effect.gen(function* () {
+        const before = yield* minimalMap;
+        const { result } = yield* proposeWith(args);
+        const proposals = yield* savedProposals(result.files);
+
+        assert.strictEqual(result.exitCode, 0, result.stderr);
+        assert.deepStrictEqual(withoutIds(proposals.layout), changes);
+        assert.strictEqual(proposals.revision, 1);
+        assert.strictEqual(result.files[layoutFile], before[layoutFile]);
+        assert.include(result.stdout, line);
+        assert.include(
+          result.stdout,
+          "The engineer accepts or discards it in the Pending tab."
+        );
+        assert.isUndefined(result.files[lockFile]);
+      })
+  );
+
+  it.effect(
+    "proposes automatic routing for a hop with an accepted override",
+    () =>
+      Effect.gen(function* () {
+        const routed = yield* layoutWith([
+          "--hop",
+          "h-update",
+          "--route",
+          "2,5 3,5 3,1 4,1",
+        ]);
+
+        const accepted = routed.result.files[layoutFile] ?? "";
+
+        const { result } = yield* proposeWith(
+          ["--hop", "h-update", "--route", "auto"],
+          { [layoutFile]: accepted }
+        );
+
+        const proposals = yield* savedProposals(result.files);
+
+        assert.strictEqual(result.exitCode, 0, result.stderr);
+        assert.deepStrictEqual(withoutIds(proposals.layout), [
+          {
+            by: "agent",
+            kind: "reroute",
+            points: null,
+            reason: "Tidy the row",
+            target: { id: "h-update", kind: "hop" },
+          },
+        ]);
+        assert.strictEqual(result.files[layoutFile], accepted);
+        assert.include(result.stdout, "h-update: proposed automatic routing");
+      })
+  );
+
+  it.effect(
+    "replaces the agent's earlier proposal for the same structure",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* proposeWith(["gate", "--x", "8"]);
+
+        const { result } = yield* layoutWith(
+          ["gate", "--y", "2.5", "--propose", "--reason", "Make room"],
+          { [proposalsFile]: first.result.files[proposalsFile] ?? "" }
+        );
+
+        const proposals = yield* savedProposals(result.files);
+
+        assert.strictEqual(result.exitCode, 0, result.stderr);
+        assert.deepStrictEqual(withoutIds(proposals.layout), [
+          {
+            by: "agent",
+            kind: "move",
+            moves: [
+              {
+                position: { x: 8, y: 2.5 },
+                target: { id: "gate", kind: "structure" },
+              },
+            ],
+            reason: "Make room",
+          },
+        ]);
+        assert.strictEqual(proposals.revision, 2);
+      })
+  );
+
+  it.effect(
+    "gives the agent's proposal a new reason when only the reason changes",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* proposeWith(["gate", "--x", "8"]);
+
+        const { result } = yield* layoutWith(
+          ["gate", "--x", "8", "--propose", "--reason", "Make room"],
+          { [proposalsFile]: first.result.files[proposalsFile] ?? "" }
+        );
+
+        const proposals = yield* savedProposals(result.files);
+
+        assert.strictEqual(result.exitCode, 0, result.stderr);
+        assert.deepStrictEqual(
+          Arr.map(proposals.layout, ({ reason }) => reason),
+          ["Make room"]
+        );
+        assert.strictEqual(proposals.revision, 2);
+        assert.include(
+          result.stdout,
+          'gate: proposed as before, for "Make room"'
+        );
+      })
+  );
+
+  it.effect(
+    "refuses a structure the engineer has pending, naming their change, and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const before = yield* minimalMap;
+
+        const pending = yield* encodeProposals({
+          format: 1,
+          layout: [engineersGate],
+          revision: 4,
+        });
+
+        const { result } = yield* proposeWith(["gate", "--w", "3"], {
+          [proposalsFile]: pending,
+        });
+
+        assert.strictEqual(result.exitCode, 1);
+        assert.include(
+          result.stderr,
+          'The engineer has a pending move of "gate" (change c3). Propose changes to other structures, or wait until they accept or discard change c3. layout wrote nothing.'
+        );
+        assert.strictEqual(result.files[proposalsFile], pending);
+        assert.strictEqual(result.files[layoutFile], before[layoutFile]);
+      })
+  );
+
+  it.effect.each([
+    [["gate", "--x", "8", "--propose"], "--propose needs --reason"],
+    [["gate", "--x", "8", "--reason", "Tidy"], "--reason goes with --propose."],
+    [["gate", "--x", "8", "--propose", "--reason", "  "], "--reason is empty."],
+    [
+      ["gate", "--x", "8", "--propose", "--reason", Str.repeat(1001)("x")],
+      "The reason is 1001 characters, over the limit of 1000.",
+    ],
+    [
+      ["gate", "--propose", "--reason", "Tidy"],
+      "Give at least one of --x, --y, --w and --d.",
+    ],
+  ] as const)("refuses %j and writes nothing", ([args, message]) =>
+    Effect.gen(function* () {
+      const before = yield* minimalMap;
+      const { result } = yield* layoutWith(args);
+
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(result.stderr, message);
+      assert.include(result.stderr, "layout wrote nothing.");
+      assert.strictEqual(result.files[layoutFile], before[layoutFile]);
+      assert.isUndefined(result.files[proposalsFile]);
+    })
+  );
+
+  it.effect("prints the drawing warnings of the proposed layout", () =>
+    Effect.gen(function* () {
+      // Gate just above the updater puts gate's name tag on it.
+      const { result } = yield* proposeWith(["gate", "--x", "0", "--y", "2.5"]);
+
+      assert.strictEqual(result.exitCode, 0, result.stderr);
+      assert.include(
+        result.stderr,
+        'warning layout.json structures.gate: name tag is drawn on top of "updater".'
+      );
+    })
   );
 });

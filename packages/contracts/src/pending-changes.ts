@@ -1,6 +1,7 @@
 import { Array as Arr, Match, Option, Predicate, String as Str } from "effect";
 import { dual } from "effect/Function";
 
+import { engineerTakesOver } from "./agent-changes.ts";
 import { appendMove } from "./arrange.ts";
 import type { Placements } from "./arrange.ts";
 import { restoreChanges } from "./diff.ts";
@@ -9,8 +10,9 @@ import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { MapState } from "./map-state.ts";
 import type { MapProblem } from "./problems.ts";
 import {
+  agentChangeMade,
   applyLayoutChanges,
-  discardChange,
+  discardChanges,
   emptyProposals,
   layoutRefusal,
   placeRoute,
@@ -70,8 +72,11 @@ export type PendingEdit =
       readonly hop: string;
       readonly points: ReadonlyArray<GridPoint> | null;
     }
-  /** Removes one pending change. */
-  | { readonly _tag: "Discard"; readonly change: ChangeId }
+  /** Removes pending changes, such as one change or an agent group, as one step. */
+  | {
+      readonly _tag: "Discard";
+      readonly changes: Arr.NonEmptyReadonlyArray<ChangeId>;
+    }
   /** Puts every structure where a past revision has it. */
   | { readonly _tag: "Restore"; readonly revision: MapSnapshot };
 
@@ -802,6 +807,43 @@ const restoring = (session: PendingSession, revision: MapSnapshot): Edit => {
 };
 
 /**
+ * Change ids made by `newId` the first time an edit asks for them and kept,
+ * so each run of the edit is given the same ids in the same order.
+ */
+const reservedIds = (newId: () => ChangeId) => {
+  const made: Array<ChangeId> = [];
+
+  return () => {
+    let used = 0;
+
+    return () => {
+      const id = made[used] ?? newId();
+
+      made[used] = id;
+      used += 1;
+
+      return id;
+    };
+  };
+};
+
+/**
+ * `edit`, after which the engineer takes over the agent's changes on what it
+ * touched. Rerun on a fresher list, it takes over again, with the same ids.
+ */
+const takingOver = (session: PendingSession, edit: Edit): Edit => {
+  const ids = reservedIds(session.newId);
+
+  return (changes, base) =>
+    engineerTakesOver({
+      after: edit(changes, base),
+      base,
+      before: changes,
+      newId: ids(),
+    });
+};
+
+/**
  * How an edit runs: the list it makes, whether one that changes nothing is
  * still written, and whether a refusal is also a notice.
  */
@@ -815,28 +857,28 @@ interface EditPlan {
 const planOf = (session: PendingSession, input: PendingEdit): EditPlan =>
   Match.valueTags(input, {
     Arrange: ({ plan }) => ({
-      edit: arranging(session, plan),
+      edit: takingOver(session, arranging(session, plan)),
       showsRefusal: true,
       skipUnchanged: true,
     }),
-    Discard: ({ change }) => ({
+    Discard: ({ changes: ids }) => ({
       edit: (changes: ReadonlyArray<LayoutChange>) =>
-        discardChange(changes, change),
+        discardChanges(changes, ids),
       showsRefusal: false,
       skipUnchanged: false,
     }),
     Place: ({ next, structure }) => ({
-      edit: placing(session, structure, next),
+      edit: takingOver(session, placing(session, structure, next)),
       showsRefusal: false,
       skipUnchanged: false,
     }),
     Reroute: ({ hop, points }) => ({
-      edit: rerouting(session, hop, points),
+      edit: takingOver(session, rerouting(session, hop, points)),
       showsRefusal: true,
       skipUnchanged: true,
     }),
     Restore: ({ revision }) => ({
-      edit: restoring(session, revision),
+      edit: takingOver(session, restoring(session, revision)),
       showsRefusal: false,
       skipUnchanged: true,
     }),
@@ -885,7 +927,9 @@ const tryEdit = (session: PendingSession, edit: Edit) => {
 /** Why a discard can't touch a change: it waits in a batch for the agent. */
 const frozenOf = (session: PendingSession, edit: PendingEdit) =>
   Predicate.isTagged(edit, "Discard")
-    ? frozenRefusal(proposalsOf(session.state), edit.change)
+    ? Arr.findFirst(edit.changes, (id) =>
+        frozenRefusal(proposalsOf(session.state), id)
+      )
     : Option.none();
 
 /**
@@ -1014,11 +1058,26 @@ const stepThrough = (
 
   const { history: next, target } = stepped.value;
 
-  const refusal = refusalOfList(session, {
-    accepted: baseLayout(session),
+  // The server refuses an agent change from the page, so a step that would
+  // bring one back is refused here, and nothing is sent.
+  const broughtBack = agentChangeMade({
     after: target,
-    before,
+    before: savedLayout(session.state),
   });
+
+  const refusal = Option.orElse(
+    Option.map(
+      broughtBack,
+      ({ id }) =>
+        `This step would bring back the agent's change ${id}, which only the agent can propose. Nothing was undone or redone.`
+    ),
+    () =>
+      refusalOfList(session, {
+        accepted: baseLayout(session),
+        after: target,
+        before,
+      })
+  );
 
   if (Option.isSome(refusal)) {
     return settled(

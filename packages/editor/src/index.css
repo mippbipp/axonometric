@@ -96,6 +96,12 @@
   fill: color-mix(in oklab, var(--face), var(--pending) 14%);
 }
 
+/* The agent's pending change is told from the engineer's by a dashed
+   outline, so it reads as proposed, not made. The face tint stays. */
+[data-structure][data-pending-by="agent"] {
+  stroke-dasharray: 5 3;
+}
+
 /* A hop a proposal draws or relabels: the pending blue, line and head. One
    proposed for deletion is dashed in the refused red; the strike across it
    is drawn by the page's editing layer (see RemovedHopMarks). */

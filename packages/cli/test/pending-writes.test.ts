@@ -446,6 +446,43 @@ describe("writing pending layout changes over HTTP", () => {
       }).pipe(Effect.provide(NodeServices.layer))
   );
 
+  it.live(
+    "refuses an engineer change on a structure an agent change holds, and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const agents: LayoutChange = {
+          ...pageAt(4),
+          by: "agent",
+          reason: "Tidy",
+        };
+
+        const pending = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Proposals)
+        )({ format: 1, layout: [agents], revision: 1 });
+
+        const { home, url } = yield* serveReviewMap(
+          { [mapKeys("review").proposalsFile]: `${pending}\n` },
+          []
+        );
+
+        const beside = yield* toJson({
+          baseFileRevision: 1,
+          layout: [agents, { ...pageAt(6), id: "m2" }],
+        });
+
+        const refused = yield* assertRefused(
+          home,
+          422,
+          put(url, ownOrigin(url), Effect.succeed(beside))
+        );
+
+        assert.include(
+          refused.body,
+          String.raw`The engineer has a pending move of \"page\" (change m2).`
+        );
+      })
+  );
+
   it.live("refuses a move onto another footprint", () =>
     Effect.gen(function* () {
       const { home, url } = yield* served;

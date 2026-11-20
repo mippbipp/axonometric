@@ -1,5 +1,6 @@
 import {
   agentChangeRefusal,
+  agentHeldWriteRefusal,
   frozenWriteRefusal,
   layoutUnderProposals,
   LayoutChangeRefused,
@@ -188,7 +189,9 @@ const usedElsewhere = (
  * written, when `write.baseFileRevision` isn't the file's revision, or when a
  * new or changed change would leave footprints overlapping in the layout
  * the page shows, name a hop `hops` lacks, or leave a route override off its
- * footprints. `written` runs under the lock, once the file is saved, to
+ * footprints. It is refused too when it makes or changes an agent change, or
+ * leaves an engineer change it adds beside an agent change on one target.
+ * `written` runs under the lock, once the file is saved, to
  * tell the open pages. Returns what `proposals.json` holds after the write.
  */
 export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
@@ -224,11 +227,13 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   });
 
   // Only the CLI acts as the agent. The page may send an agent change back
-  // as it stands, never make or change one.
-  const forged = agentChangeRefusal({
-    after: write.layout,
-    before: current.layout,
-  });
+  // as it stands, never make or change one, and takes over an agent change
+  // before it edits the same target.
+  const listed = { after: write.layout, before: current.layout };
+
+  const forged = Option.orElse(agentChangeRefusal(listed), () =>
+    agentHeldWriteRefusal(listed)
+  );
 
   if (Option.isSome(forged)) {
     return yield* LayoutChangeRefused.make({

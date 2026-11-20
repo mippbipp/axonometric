@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@axonometric/ui/components/dialog";
 import { Textarea } from "@axonometric/ui/components/textarea";
-import { Result } from "effect";
+import { Array as Arr, Result } from "effect";
 import { useEffect, useRef, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
@@ -109,7 +109,10 @@ export function ReadyForReview() {
     return null;
   }
 
-  const open = (editing?.pending.length ?? 0) + review.openText;
+  // The agent's layout changes stay open when the batch freezes.
+  const open =
+    Arr.filter(editing?.pending ?? [], ({ by }) => by === "engineer").length +
+    review.openText;
 
   const press = () => {
     setBusy(true);
