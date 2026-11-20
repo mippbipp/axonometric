@@ -30,13 +30,16 @@ export const docsContent: Effect.Effect<
 
   const files = Arr.filter(names, Str.endsWith(".md"));
 
-  const texts = yield* Effect.forEach(files, (file) =>
-    fs.readFileString(path.join(folder, file)).pipe(
-      Effect.mapBoth({
-        onSuccess: (text) => [Str.slice(0, -3)(file), text] as const,
-        onFailure: () => DocsNotFound.make({ file: folder }),
-      })
-    )
+  const texts = yield* Effect.forEach(
+    files,
+    (file) =>
+      fs.readFileString(path.join(folder, file)).pipe(
+        Effect.mapBoth({
+          onFailure: () => DocsNotFound.make({ file: folder }),
+          onSuccess: (text) => [Str.slice(0, -3)(file), text] as const,
+        })
+      ),
+    { concurrency: 1 }
   );
 
   return Rec.fromEntries(texts);

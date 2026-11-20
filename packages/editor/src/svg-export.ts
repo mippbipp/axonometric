@@ -7,9 +7,9 @@ import { dual } from "effect/Function";
 
 /** An SVG file's text and its size in pixels. */
 export interface SvgFile {
+  readonly height: number;
   readonly text: string;
   readonly width: number;
-  readonly height: number;
 }
 
 /** An export couldn't be made, for a reason the engineer can read. */
@@ -37,9 +37,9 @@ export const pngOf: {
     image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.text)}`;
 
     yield* Effect.tryPromise({
-      try: () => image.decode(),
       catch: () =>
         ExportFailed.make({ reason: "The browser couldn't draw the SVG." }),
+      try: () => image.decode(),
     });
 
     const canvas = document.createElement("canvas");

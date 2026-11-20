@@ -54,7 +54,7 @@ const verdictOf = (
     return Result.succeed(
       Option.match(text, {
         onNone: (): Verdict => ({ verdict: "accepted" }),
-        onSome: (given): Verdict => ({ verdict: "accepted", reason: given }),
+        onSome: (given): Verdict => ({ reason: given, verdict: "accepted" }),
       })
     );
   }
@@ -69,24 +69,24 @@ const verdictOf = (
     onSome: (given) =>
       Result.succeed(
         kind === "changed" && Option.isSome(finalId)
-          ? { verdict: kind, reason: given, as: finalId.value }
-          : { verdict: kind, reason: given }
+          ? { as: finalId.value, reason: given, verdict: kind }
+          : { reason: given, verdict: kind }
       ),
   });
 };
 
 const verdict = Effect.fn("verdict")(function* ({
+  as,
   home,
   item,
   kind,
   reason,
-  as,
 }: {
+  readonly as: Option.Option<string>;
   readonly home: string;
   readonly item: string;
   readonly kind: Verdict["verdict"];
   readonly reason: Option.Option<string>;
-  readonly as: Option.Option<string>;
 }) {
   const path = yield* Path.Path;
   const decided = verdictOf(kind, reason, as);
@@ -104,17 +104,17 @@ const verdict = Effect.fn("verdict")(function* ({
 
   if (Result.isFailure(loaded)) {
     return yield* MapInvalid.make({
-      home,
       command: "verdict",
+      home,
       problems: loaded.failure,
     });
   }
 
   const recorded = recordVerdict({
-    proposals: loaded.success,
-    id: item,
-    verdict: decided.success,
     accepted: yield* acceptedIds(home),
+    id: item,
+    proposals: loaded.success,
+    verdict: decided.success,
   });
 
   if (Result.isFailure(recorded)) {
@@ -126,8 +126,8 @@ const verdict = Effect.fn("verdict")(function* ({
 
   yield* writeAll([
     {
-      file: path.join(home, "proposals.json"),
       content: yield* encodeProposals(recorded.success),
+      file: path.join(home, "proposals.json"),
     },
   ]);
 
@@ -146,6 +146,7 @@ const verdict = Effect.fn("verdict")(function* ({
   );
 }, Effect.scoped);
 
+/* oxlint-disable perfectionist/sort-objects -- these keys set the argument and flag order `--help` prints, so they stay in the written order */
 export const verdictCommand = Command.make(
   "verdict",
   {
@@ -175,6 +176,7 @@ export const verdictCommand = Command.make(
       )
     ),
   },
+  /* oxlint-enable perfectionist/sort-objects */
   verdict
 ).pipe(
   Command.withDescription(

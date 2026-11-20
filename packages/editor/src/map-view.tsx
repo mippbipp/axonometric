@@ -57,21 +57,21 @@ function NewMarker({
   readonly placed: SceneStructure;
   readonly view: View;
 }) {
-  const { x, y, w, d } = placed.placement;
+  const { d, w, x, y } = placed.placement;
 
   return (
     <polygon
+      className="stroke-ink motion-safe:animate-pulse"
       data-new-marker={placed.structure.id}
+      fill="none"
       points={toPoints(
         groundOutline(
-          { x: x - 0.2, y: y - 0.2, w: w + 0.4, d: d + 0.4 },
+          { d: d + 0.4, w: w + 0.4, x: x - 0.2, y: y - 0.2 },
           groundProjections[view]
         )
       )}
-      fill="none"
-      className="stroke-ink motion-safe:animate-pulse"
-      strokeWidth={1.4}
       strokeDasharray={dashes.fresh}
+      strokeWidth={1.4}
     />
   );
 }
@@ -98,39 +98,39 @@ const useSelectedHop = () => use(PlaybackContext)?.selected?.hop.id;
  * and zoom with the drawing.
  */
 export function MapView({
-  view,
-  state,
-  revealed,
-  newlyRevealed = none,
-  fitTo = revealed,
-  fitKey,
-  labelFirst,
   children,
+  fitKey,
+  revealed,
+  fitTo = revealed,
+  labelFirst,
+  newlyRevealed = none,
+  state,
+  view,
 }: {
-  readonly view: View;
-  readonly state: MapState;
-  /** The structures to draw. */
-  readonly revealed: ReadonlySet<string>;
-  /** The structures to mark as new. */
-  readonly newlyRevealed?: ReadonlySet<string>;
-  /** The structures to zoom to fit. Defaults to every revealed one. */
-  readonly fitTo?: ReadonlySet<string>;
+  readonly children?: ReactNode;
   /**
    * Names what `fit` holds, such as the chapter. A new key refits the view;
    * other changes, such as a moved structure, keep the zoom. Defaults to the
    * set of ids in `fitTo`.
    */
   readonly fitKey?: string;
+  /** The structures to zoom to fit. Defaults to every revealed one. */
+  readonly fitTo?: ReadonlySet<string>;
   /** Hops whose labels get the first pick of spots, such as the chapter's. */
-  readonly labelFirst?: readonly string[];
-  readonly children?: ReactNode;
+  readonly labelFirst?: ReadonlyArray<string>;
+  /** The structures to mark as new. */
+  readonly newlyRevealed?: ReadonlySet<string>;
+  /** The structures to draw. */
+  readonly revealed: ReadonlySet<string>;
+  readonly state: MapState;
+  readonly view: View;
 }) {
   // useId's output can hold characters that don't belong in url(#...).
   const idPrefix = Str.replaceAll(/\W/gu, "")(useId());
   const hatch = `${idPrefix}hatch`;
   const selectedHop = useSelectedHop();
   const marks = useCompare();
-  const { spotlight: chapterSpotlight, hoveredHop } = useSpotlight();
+  const { hoveredHop, spotlight: chapterSpotlight } = useSpotlight();
   const { hoverHop } = useSpotlightActions();
   // The zoom the text is sized for, which the viewport reports as it zooms.
   const [textZoom, setTextZoom] = useState(1);
@@ -162,10 +162,10 @@ export function MapView({
     (zoom: number) =>
       cachedSceneOf({
         data: state.data,
+        labelFirst,
         layout: state.layout,
         revealed,
         routes: routesOf({ data: state.data, layout: state.layout, revealed }),
-        labelFirst,
         view,
         zoom,
       }),
@@ -221,7 +221,7 @@ export function MapView({
       // fit. It is the page's editing layer, so an export's extent, which
       // `drawnIn` alone gives, leaves it out.
       const drawn = [
-        ...drawnIn({ scene: fitted, drawing }),
+        ...drawnIn({ drawing, scene: fitted }),
         ...spotDrawn(fitted, bearers, fitIds),
         ...(candidateCorners.length === 0
           ? []
@@ -267,7 +267,7 @@ export function MapView({
   const facts = stableFactsOf(scene);
 
   const editorView = useMemo(
-    () => ({ view, placements: state.layout.structures, revealed }),
+    () => ({ placements: state.layout.structures, revealed, view }),
     [view, state.layout.structures, revealed]
   );
 
@@ -276,31 +276,54 @@ export function MapView({
       <EditorViewContext value={editorView}>
         <EditorSceneContext value={facts}>
           <Viewport
-            title={`${drawing.title} of ${state.data.overview.title}`}
             fitAt={fitAt}
-            fitKey={key}
             fitFloor={fitFloor}
-            onTextZoom={setTextZoom}
+            fitKey={key}
             ground={groundProjections[view]}
+            onTextZoom={setTextZoom}
+            title={`${drawing.title} of ${state.data.overview.title}`}
           >
             <MapDrawing
-              scene={scene}
-              hatch={hatch}
-              newlyRevealed={newlyRevealed}
-              spotlight={spotlight}
               ground={
                 <>
                   <DragOutlines view={view} />
                   <SpotPicker view={view} />
                 </>
               }
+              hatch={hatch}
+              hopsOverlay={
+                <>
+                  <HopDraftLine revealed={revealed} state={state} view={view} />
+                  <RouteEditor
+                    hops={scene.hops}
+                    onHover={hoverHop}
+                    placements={state.layout.structures}
+                    view={view}
+                  />
+                  <ChapterPendingLook scene={scene} view={view} />
+                </>
+              }
+              hopStates={hopStates}
+              labelShown={(hop) => hop === selectedHop || hop === hoveredHop}
+              newlyRevealed={newlyRevealed}
+              onHopHover={hoverHop}
+              overlay={
+                <>
+                  <NoteMarkers scene={scene} />
+                  <RemovedMarks structures={scene.structures} view={view} />
+                  <RemovedHopMarks hops={scene.hops} />
+                  <SpotCursor view={view} />
+                </>
+              }
+              scene={scene}
+              spotlight={spotlight}
               underlay={
                 <>
                   <PendingZones scene={scene} />
                   <GroupEditor
-                    view={view}
                     data={state.data}
                     layout={state.layout}
+                    view={view}
                     zones={scene.zones}
                   />
                   <g>
@@ -321,37 +344,14 @@ export function MapView({
                     />
                     <NewStructureSpot view={view} />
                     <CompareRings
+                      marks={marks}
                       structures={scene.structures}
                       view={view}
-                      marks={marks}
                     />
                     <CompareHops hops={scene.hops} marks={marks} />
                   </g>
                 </>
               }
-              hopsOverlay={
-                <>
-                  <HopDraftLine view={view} state={state} revealed={revealed} />
-                  <RouteEditor
-                    view={view}
-                    hops={scene.hops}
-                    placements={state.layout.structures}
-                    onHover={hoverHop}
-                  />
-                  <ChapterPendingLook scene={scene} view={view} />
-                </>
-              }
-              overlay={
-                <>
-                  <NoteMarkers scene={scene} />
-                  <RemovedMarks structures={scene.structures} view={view} />
-                  <RemovedHopMarks hops={scene.hops} />
-                  <SpotCursor view={view} />
-                </>
-              }
-              onHopHover={hoverHop}
-              labelShown={(hop) => hop === selectedHop || hop === hoveredHop}
-              hopStates={hopStates}
             />
             {children}
           </Viewport>

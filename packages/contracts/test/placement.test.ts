@@ -24,51 +24,51 @@ const hiddenLabel = (id: string, chapter: string) =>
   `the label of hop "${id}" has no clear spot beside its route in chapter "${chapter}" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`;
 
 const structure = (id: string, group = "main", name = id): Structure => ({
-  id,
   code: "S",
-  name,
-  shape: "box",
   group,
-  status: "live",
-  oneLiner: "One line.",
-  whatItDoes: "Does.",
   howItsBuilt: "Built.",
+  id,
+  name,
+  oneLiner: "One line.",
+  shape: "box",
+  status: "live",
+  whatItDoes: "Does.",
 });
 
 const hop = (from: string, to: string): Hop => ({
-  id: `${from}-${to}`,
   from,
-  to,
+  id: `${from}-${to}`,
   label: "calls",
+  to,
 });
 
 const mapOf = (
-  structures: readonly Structure[],
-  hops: readonly Hop[] = []
+  structures: ReadonlyArray<Structure>,
+  hops: ReadonlyArray<Hop> = []
 ): MapData => ({
+  chapters: [],
+  flows: [],
   format: 1,
-  revision: 0,
-  overview: { title: "Map", summary: "A map." },
   groups: Arr.map(Arr.dedupe(Arr.map(structures, (s) => s.group)), (id) => ({
     id,
     title: id,
   })),
-  structures,
   hops,
-  flows: [],
-  chapters: [],
+  overview: { summary: "A map.", title: "Map" },
+  revision: 0,
+  structures,
 });
 
 const layoutOf = (
   structures: Readonly<Record<string, Placement>> = {}
 ): Layout => ({ format: 1, revision: 3, structures });
 
-const at = (x: number, y: number): Placement => ({ x, y, w: 2, d: 2 });
+const at = (x: number, y: number): Placement => ({ d: 2, w: 2, x, y });
 
 const sized = (placement: Placement): Placement => placement;
 
 /** The highest screen point of an outline. Screen y grows downwards. */
-const topOf = (outline: readonly ScreenPoint[]) =>
+const topOf = (outline: ReadonlyArray<ScreenPoint>) =>
   Math.min(...Arr.map(outline, (point) => point.sy));
 
 /** The highest screen point of `shape`'s outline at 0, 0 in the Iso view. */
@@ -90,17 +90,17 @@ const centre = (placement: Placement) => ({
 const gap = (a: Placement, b: Placement) =>
   Math.abs(centre(a).x - centre(b).x) + Math.abs(centre(a).y - centre(b).y);
 
-const zoneOf = (layout: Layout, ids: readonly string[]) => {
+const zoneOf = (layout: Layout, ids: ReadonlyArray<string>) => {
   const boxes = Arr.map(ids, (id) => placementOf(layout, id));
 
   const left = Math.min(...Arr.map(boxes, (box) => box.x));
   const top = Math.min(...Arr.map(boxes, (box) => box.y));
 
   return {
+    d: Math.max(...Arr.map(boxes, (box) => box.y + box.d)) - top,
+    w: Math.max(...Arr.map(boxes, (box) => box.x + box.w)) - left,
     x: left,
     y: top,
-    w: Math.max(...Arr.map(boxes, (box) => box.x + box.w)) - left,
-    d: Math.max(...Arr.map(boxes, (box) => box.y + box.d)) - top,
   };
 };
 
@@ -127,7 +127,7 @@ const crowded = mapOf(
  * Groups a, b, c and d, listed in that order, with structures a1, a2 and so
  * on up to `size` in each, and `hops` between them.
  */
-const fourGroupsOf = (size: number, hops: readonly Hop[]) =>
+const fourGroupsOf = (size: number, hops: ReadonlyArray<Hop>) =>
   mapOf(
     Arr.flatMap(["a", "b", "c", "d"], (group) =>
       Arr.map(Arr.range(1, size), (n) => structure(`${group}${n}`, group))
@@ -177,41 +177,35 @@ describe("placement", () => {
     })
   );
 
-  it.effect(
-    "gives the update pipeline the same layout each time",
-    () =>
-      Effect.gen(function* () {
-        const first = yield* placedFixture("update-pipeline");
-        const second = yield* placedFixture("update-pipeline");
+  it.effect("gives the update pipeline the same layout each time", () =>
+    Effect.gen(function* () {
+      const first = yield* placedFixture("update-pipeline");
+      const second = yield* placedFixture("update-pipeline");
 
-        assert.deepStrictEqual(first.layout, second.layout);
-      }),
-    30_000
+      assert.deepStrictEqual(first.layout, second.layout);
+    })
   );
 
-  it.effect(
-    "places 40 one-member groups in under 750 ms",
-    () =>
-      Effect.sync(() => {
-        const ids = Arr.map(Arr.range(0, 39), (index) => `s${index}`);
+  it.effect("places 40 one-member groups in under 750 ms", () =>
+    Effect.sync(() => {
+      const ids = Arr.map(Arr.range(0, 39), (index) => `s${index}`);
 
-        const data = mapOf(
-          Arr.map(ids, (id) => structure(id, `g-${id}`)),
-          Arr.map(Arr.range(0, 59), (index) => ({
-            ...hop(`s${(index * 7) % 40}`, `s${(index * 13 + 5) % 40}`),
-            id: `h${index}`,
-          }))
-        );
+      const data = mapOf(
+        Arr.map(ids, (id) => structure(id, `g-${id}`)),
+        Arr.map(Arr.range(0, 59), (index) => ({
+          ...hop(`s${(index * 7) % 40}`, `s${(index * 13 + 5) % 40}`),
+          id: `h${index}`,
+        }))
+      );
 
-        // Each one-member group draws a few of its slots to compare them.
-        // Locally this takes about 0.4 s.
-        const started = performance.now();
-        const { layout } = placeStructures(data, layoutOf());
+      // Each one-member group draws a few of its slots to compare them.
+      // Locally this takes about 0.4 s.
+      const started = performance.now();
+      const { layout } = placeStructures(data, layoutOf());
 
-        assert.isBelow(performance.now() - started, 750);
-        assert.lengthOf(Rec.keys(layout.structures), 40);
-      }),
-    30_000
+      assert.isBelow(performance.now() - started, 750);
+      assert.lengthOf(Rec.keys(layout.structures), 40);
+    })
   );
 
   it.effect(
@@ -227,14 +221,13 @@ describe("placement", () => {
             hiddenLabel("h-merge", "c-watchdog"),
           ]
         );
-      }),
-    30_000
+      })
   );
 
   it.effect("never moves a placed structure, and keeps the revision", () =>
     Effect.sync(() => {
       const fixed = {
-        a1: sized({ x: 10, y: 10, w: 3, d: 2.5 }),
+        a1: sized({ d: 2.5, w: 3, x: 10, y: 10 }),
         b2: at(-6.5, 0),
       };
 
@@ -394,7 +387,7 @@ describe("placement", () => {
 
       const { layout, pruned } = placeStructures(
         data,
-        layoutOf({ kept: at(0, 0), gone: at(4, 0) })
+        layoutOf({ gone: at(4, 0), kept: at(0, 0) })
       );
 
       assert.deepStrictEqual(pruned, ["gone"]);
@@ -495,7 +488,7 @@ describe("placement", () => {
 
       const { layout } = placeStructures(
         data,
-        layoutOf({ a: at(0, 0), b: sized({ x: 3.5, y: -0.5, w: 3, d: 3 }) })
+        layoutOf({ a: at(0, 0), b: sized({ d: 3, w: 3, x: 3.5, y: -0.5 }) })
       );
 
       assertTidy(data, layout);
@@ -577,8 +570,8 @@ describe("placement", () => {
         // Next to: no other zone nearer, and no structure of another group
         // in the ground between the two.
         const zones = Arr.map(["a", "b", "c", "d"], (group) => ({
-          group,
           gap: gap(lone, zoneOf(layout, idsIn(data, group))),
+          group,
         }));
 
         const nearest = Arr.reduce(zones, zones[0], (best, zone) =>
@@ -659,12 +652,12 @@ describe("layout checks", () => {
       );
 
       assert.deepStrictEqual(
-        Arr.map(problems, ({ severity, file, path }) => ({
-          severity,
+        Arr.map(problems, ({ file, path, severity }) => ({
           file,
           path,
+          severity,
         })),
-        [{ severity: "warning", file: "layout.json", path: "structures.gone" }]
+        [{ file: "layout.json", path: "structures.gone", severity: "warning" }]
       );
       assert.include(
         Arr.join(
@@ -682,7 +675,7 @@ describe("layout checks", () => {
       Effect.sync(() => {
         const problems = checkLayout(
           mapOf([structure("a"), structure("b")]),
-          layoutOf({ a: sized({ x: 0, y: 0, w: 4, d: 4 }), b: at(3, 3) })
+          layoutOf({ a: sized({ d: 4, w: 4, x: 0, y: 0 }), b: at(3, 3) })
         );
 
         const overlaps = Arr.filter(problems, ({ message }) =>
@@ -690,16 +683,16 @@ describe("layout checks", () => {
         );
 
         assert.deepStrictEqual(
-          Arr.map(overlaps, ({ path, message, hint }) => ({
-            path,
-            message,
+          Arr.map(overlaps, ({ hint, message, path }) => ({
             hint,
+            message,
+            path,
           })),
           [
             {
-              path: "structures.b",
-              message: 'footprint overlaps "a".',
               hint: "Move one of them, for example with axonometric layout <home> b --x <x> --y <y>.",
+              message: 'footprint overlaps "a".',
+              path: "structures.b",
             },
           ]
         );
@@ -726,12 +719,12 @@ describe("layout checks", () => {
       );
 
       assert.deepStrictEqual(
-        Arr.map(problems, ({ path, message }) => ({ path, message })),
+        Arr.map(problems, ({ message, path }) => ({ message, path })),
         [
           {
-            path: "structures.a",
             message:
               'name tag is drawn on top of "b". Move one of them apart, so the tag under the front corner has room.',
+            path: "structures.a",
           },
         ]
       );
@@ -775,7 +768,7 @@ describe("layout checks", () => {
           assert.strictEqual(
             Arr.some(
               problems,
-              ({ path, message }) =>
+              ({ message, path }) =>
                 path === "structures.a" &&
                 Str.includes('name tag is drawn on top of "b"')(message)
             ),

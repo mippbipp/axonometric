@@ -15,6 +15,8 @@ import {
 import type { Page } from "playwright";
 
 import {
+  assertAttribute,
+  assertCount,
   attributeOf,
   count,
   goToChapter,
@@ -111,7 +113,7 @@ const screenDelta = (view: View, unit: number, ground: Point): Point =>
 /** The segments of hop `hop` on the page, in route order, with their axes. */
 const segmentsOf = (page: Page, hop: string) =>
   Effect.promise(() =>
-    page.evaluate<readonly { segment: number; axis: string }[]>(
+    page.evaluate<ReadonlyArray<{ axis: string; segment: number }>>(
       `[...document.querySelectorAll(${literal(`[data-route-segment][data-hop-id="${hop}"]`)})].map((line) => ({ segment: Number(line.getAttribute("data-segment")), axis: line.getAttribute("data-axis") }))`
     )
   );
@@ -151,7 +153,7 @@ const segmentSelector = (hop: string, segment: number) =>
 const warningsOf = (page: Page) =>
   Effect.promise(() =>
     page.evaluate<
-      readonly { message: string; where: string; isNew: boolean }[]
+      ReadonlyArray<{ isNew: boolean; message: string; where: string }>
     >(
       `[...document.querySelectorAll("[data-drag-warning]")].map((item) => ({ message: item.querySelector("[data-warning-message]").textContent, where: item.querySelector("[data-warning-where]").textContent, isNew: item.getAttribute("data-warning-new") === "true" }))`
     )
@@ -166,13 +168,13 @@ const placed = (item: { message: string; where: string }) =>
   `${item.where}|${item.message}`;
 
 /** What the warnings list shows, as sorted strings. */
-const asShown = (shown: readonly { message: string; where: string }[]) =>
+const asShown = (shown: ReadonlyArray<{ message: string; where: string }>) =>
   Arr.sort(Arr.map(shown, placed), Order.String);
 
 /** Whether any two visible texts on the page share ground, as pairs of names. */
 const overlappingTexts = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<readonly string[]>(`(() => {
+    page.evaluate<ReadonlyArray<string>>(`(() => {
       const visible = (element) => {
         const style = getComputedStyle(element);
 
@@ -224,7 +226,7 @@ describe("rerouting a hop by dragging a segment", () => {
       `drags the h-store segment in ${view} view, snapped to half units, and both views then draw the new route`,
       () =>
         Effect.gen(function* () {
-          const { home, page, errors } = yield* servedReview;
+          const { errors, home, page } = yield* servedReview;
 
           yield* showView(page, view);
 
@@ -232,7 +234,7 @@ describe("rerouting a hop by dragging a segment", () => {
           const segments = yield* segmentsOf(page, "h-store");
 
           // h-store is one straight leg down along y, from (9, 2) to (9, 6).
-          assert.deepStrictEqual(segments, [{ segment: 0, axis: "y" }]);
+          assert.deepStrictEqual(segments, [{ axis: "y", segment: 0 }]);
 
           const from = yield* middleOf(page, segmentSelector("h-store", 0));
 
@@ -246,8 +248,8 @@ describe("rerouting a hop by dragging a segment", () => {
           assert.strictEqual(saved.layout.length, 1);
           assert.strictEqual(change?.kind, "reroute");
           assert.deepStrictEqual(change?.target, {
-            kind: "hop",
             id: "h-store",
+            kind: "hop",
           });
 
           const points = change?.points ?? [];
@@ -299,7 +301,7 @@ describe("rerouting a hop by dragging a segment", () => {
           yield* showView(page, view);
 
           const cursors = yield* Effect.promise(() =>
-            page.evaluate<readonly { cursor: string; axis: string }[]>(
+            page.evaluate<ReadonlyArray<{ axis: string; cursor: string }>>(
               `[...document.querySelectorAll('[data-route-segment][data-hop-id="h-store"]')].map((line) => ({ cursor: getComputedStyle(line).cursor, axis: line.getAttribute("data-axis") }))`
             )
           );
@@ -309,8 +311,8 @@ describe("rerouting a hop by dragging a segment", () => {
             cursors,
             [
               {
-                cursor: view === "plan" ? "ew-resize" : "nwse-resize",
                 axis: "y",
+                cursor: view === "plan" ? "ew-resize" : "nwse-resize",
               },
             ],
             view
@@ -324,9 +326,13 @@ describe("rerouting a hop by dragging a segment", () => {
         const middle = yield* middleOf(page, segmentSelector("h-store", 0));
         const unit = yield* unitOnScreen(page, "plan");
 
-        const scale = Number(
-          yield* attributeOf(page, "svg[data-scale]", "data-scale")
+        const scaleText = yield* attributeOf(
+          page,
+          "svg[data-scale]",
+          "data-scale"
         );
+
+        const scale = Number(scaleText);
 
         yield* pressAndMove(
           page,
@@ -473,12 +479,10 @@ describe("a reroute in the review loop", () => {
           from,
           screenDelta("plan", unit, { x: 1, y: 0 })
         );
-        assert.strictEqual(
-          yield* attributeOf(
-            page,
-            '[data-route-preview="h-store"]',
-            "data-refused"
-          ),
+
+        yield* assertAttribute(
+          page,
+          { name: "data-refused", selector: '[data-route-preview="h-store"]' },
           "true"
         );
         assert.include(
@@ -505,8 +509,9 @@ describe("a reroute in the review loop", () => {
           "waiting for the agent"
         );
 
+        const savedProposals = yield* proposalsIn(home);
         // Nothing but the freeze was written.
-        const saved = Option.getOrThrow(yield* proposalsIn(home));
+        const saved = Option.getOrThrow(savedProposals);
 
         assert.deepStrictEqual(saved.layout, []);
         assert.strictEqual(saved.batches?.length, 1);
@@ -544,8 +549,9 @@ describe("a reroute in the review loop", () => {
 
         yield* Effect.promise(() => page.mouse.up());
 
+        const savedProposals = yield* proposalsIn(home);
         // The drop wrote nothing but the freeze.
-        const saved = Option.getOrThrow(yield* proposalsIn(home));
+        const saved = Option.getOrThrow(savedProposals);
 
         assert.deepStrictEqual(saved.layout, []);
       }),
@@ -557,7 +563,8 @@ describe("a reroute in the review loop", () => {
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* frozenReroute;
-        const batch = Option.getOrThrow(yield* proposalsIn(home)).batches?.[0];
+        const savedProposals = yield* proposalsIn(home);
+        const batch = Option.getOrThrow(savedProposals).batches?.[0];
         const itemId = batch?.items[0]?.id ?? "";
 
         for (const args of [
@@ -602,7 +609,7 @@ describe("moving a group by its zone title", () => {
       `drags the loop zone's title in ${view} view and moves every member as one change, snapped to half units`,
       () =>
         Effect.gen(function* () {
-          const { home, page, errors } = yield* servedReview;
+          const { errors, home, page } = yield* servedReview;
 
           yield* showView(page, view);
 
@@ -626,7 +633,7 @@ describe("moving a group by its zone title", () => {
           assert.strictEqual(saved.layout.length, 1);
           assert.strictEqual(change?.kind, "move");
 
-          const moved: readonly StructureMove[] =
+          const moved: ReadonlyArray<StructureMove> =
             change?.kind === "move" ? change.moves : [];
 
           // One change covers every member of the group, including those
@@ -671,15 +678,15 @@ describe("text while dragging", () => {
   // The proposals store has hops at both ends whose labels the last chapter
   // draws, so they would lie on the tags and zone around it.
   const spots = {
-    structure: () =>
-      ({
-        selector: '[data-structure="proposals"]',
-        by: { x: -1.5, y: -2 },
-      }) as const,
     group: () =>
       ({
-        selector: '[data-zone-title-hit="loop"]',
         by: { x: 0.5, y: 2 },
+        selector: '[data-zone-title-hit="loop"]',
+      }) as const,
+    structure: () =>
+      ({
+        by: { x: -1.5, y: -2 },
+        selector: '[data-structure="proposals"]',
       }) as const,
   };
 
@@ -717,19 +724,22 @@ describe("text while dragging", () => {
             yield* pressAndMove(page, from, screenDelta(view, unit, spot.by));
             yield* Effect.sleep("300 millis");
 
-            assert.deepStrictEqual(yield* added, [], `${view} view`);
+            const addedWhileDragging = yield* added;
+            assert.deepStrictEqual(addedWhileDragging, [], `${view} view`);
+
+            const hopLabelDragHiddenCount = yield* count(
+              page,
+              "[data-hop-label][data-drag-hidden]"
+            );
 
             // Labels of hops with an end on what moves are hidden.
-            assert.isAbove(
-              yield* count(page, "[data-hop-label][data-drag-hidden]"),
-              0,
-              `${view} view`
-            );
+            assert.isAbove(hopLabelDragHiddenCount, 0, `${view} view`);
 
             yield* Effect.promise(() => page.mouse.up());
             yield* waitForRevision(home, revision);
             yield* waitGone(page, "[data-drag-hidden]");
-            assert.deepStrictEqual(yield* added, [], `${view} view, dropped`);
+            const addedAfterDrop = yield* added;
+            assert.deepStrictEqual(addedAfterDrop, [], `${view} view, dropped`);
           }
         }),
       120_000
@@ -755,7 +765,7 @@ describe("text while dragging", () => {
         yield* Effect.sleep("300 millis");
 
         const hiddenFor = yield* Effect.promise(() =>
-          page.evaluate<readonly string[]>(
+          page.evaluate<ReadonlyArray<string>>(
             `[...document.querySelectorAll("[data-hop-label][data-drag-hidden]")].map((label) => label.getAttribute("data-hop-label"))`
           )
         );
@@ -775,13 +785,13 @@ describe("text while dragging", () => {
 const drawingBoxes = (page: Page) =>
   Effect.promise(() =>
     page.evaluate<
-      readonly {
-        name: string;
-        left: number;
-        top: number;
-        right: number;
+      ReadonlyArray<{
         bottom: number;
-      }[]
+        left: number;
+        name: string;
+        right: number;
+        top: number;
+      }>
     >(`(() => {
       const rect = (name, element) => {
         const box = element.getBoundingClientRect();
@@ -829,8 +839,8 @@ describe("the warnings panel", () => {
             ...saved,
             structures: {
               ...saved.structures,
-              "pull-request": { x: 12, y: 3, w: 2, d: 1.5 },
-              proposals: { x: 8, y: 3, w: 2, d: 2 },
+              proposals: { d: 2, w: 2, x: 8, y: 3 },
+              "pull-request": { d: 1.5, w: 2, x: 12, y: 3 },
             },
           }),
         });
@@ -841,7 +851,7 @@ describe("the warnings panel", () => {
 
         // A short window, so the warnings outgrow the panel's cap.
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1280, height: 480 })
+          page.setViewportSize({ height: 480, width: 1280 })
         );
         yield* Effect.promise(() =>
           page
@@ -863,16 +873,16 @@ describe("the warnings panel", () => {
         const measure = () =>
           Effect.promise(() =>
             page.evaluate<{
-              panel: { top: number; bottom: number };
-              aside: { top: number; bottom: number };
-              heading: { top: number; bottom: number };
+              aside: { bottom: number; top: number };
+              heading: { bottom: number; top: number };
+              last: { bottom: number; top: number };
               list: {
-                top: number;
                 bottom: number;
                 scrolls: boolean;
                 scrollTop: number;
+                top: number;
               };
-              last: { top: number; bottom: number };
+              panel: { bottom: number; top: number };
             }>(`(() => {
               const box = (element) => { const b = element.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; };
               const panel = document.querySelector("[data-drag-warnings]");
@@ -1008,9 +1018,8 @@ describe("the panel for what a drag would leave", () => {
         const { home, page } = yield* servedReview;
         const layoutPath = path.join(home, "layout.json");
 
-        const accepted = yield* decodeLayout(
-          yield* fs.readFileString(layoutPath)
-        );
+        const layoutPathText = yield* fs.readFileString(layoutPath);
+        const accepted = yield* decodeLayout(layoutPathText);
 
         yield* showView(page, "plan");
 
@@ -1065,7 +1074,7 @@ describe("the panel for what a drag would leave", () => {
               return Arr.reduce(
                 change.moves,
                 structures,
-                (all, { target, position }) => {
+                (all, { position, target }) => {
                   const at = all[target.id];
 
                   return at === undefined
@@ -1094,21 +1103,22 @@ describe("the panel for what a drag would leave", () => {
         const checkedAfter = Effect.fnUntraced(function* (
           changes: Proposals["layout"]
         ) {
-          yield* fs.writeFileString(
-            layoutPath,
-            yield* Schema.encodeEffect(LayoutFile)({
-              ...accepted,
-              structures: placedAfter(changes),
-            })
-          );
-          yield* fs.writeFileString(
-            path.join(home, "proposals.json"),
-            yield* Schema.encodeEffect(Schema.fromJsonString(Proposals))({
-              format: 1,
-              revision: resized.revision + 1,
-              layout: [],
-            })
-          );
+          const encoded = yield* Schema.encodeEffect(LayoutFile)({
+            ...accepted,
+            structures: placedAfter(changes),
+          });
+
+          yield* fs.writeFileString(layoutPath, encoded);
+
+          const emptied = yield* Schema.encodeEffect(
+            Schema.fromJsonString(Proposals)
+          )({
+            format: 1,
+            layout: [],
+            revision: resized.revision + 1,
+          });
+
+          yield* fs.writeFileString(path.join(home, "proposals.json"), emptied);
 
           const printed = yield* runCli(home, ["check", "--json", home]);
 
@@ -1128,14 +1138,10 @@ describe("the panel for what a drag would leave", () => {
 
         assert.isNotEmpty(whileMoving);
         assert.isNotEmpty(whileResizing);
-        assert.deepStrictEqual(
-          asShown(whileMoving),
-          yield* checkedAfter(moved.layout)
-        );
-        assert.deepStrictEqual(
-          asShown(whileResizing),
-          yield* checkedAfter(resized.layout)
-        );
+        const checkedMoved = yield* checkedAfter(moved.layout);
+        const checkedResized = yield* checkedAfter(resized.layout);
+        assert.deepStrictEqual(asShown(whileMoving), checkedMoved);
+        assert.deepStrictEqual(asShown(whileResizing), checkedResized);
       }).pipe(Effect.provide(NodeServices.layer)),
     120_000
   );
@@ -1182,7 +1188,7 @@ describe("the panel for what a drag would leave", () => {
 
         // The panel says it in the open, not in a tooltip, and nothing is
         // listed as a warning meanwhile.
-        assert.strictEqual(yield* count(page, "[data-drag-warning]"), 0);
+        yield* assertCount(page, "[data-drag-warning]", 0);
         yield* Effect.promise(() => page.mouse.up());
         yield* waitGone(page, "[data-drag-warnings]");
       }),
@@ -1211,8 +1217,10 @@ describe("the panel for what a drag would leave", () => {
 
         assert.isNotNull(panel);
 
+        const boxes = yield* drawingBoxes(page);
+
         const covered = Arr.filter(
-          yield* drawingBoxes(page),
+          boxes,
           (box) =>
             panel !== null &&
             box.left < panel.x + panel.width &&
@@ -1253,35 +1261,32 @@ describe("a group drag's hops", () => {
         /** The hops or packets matching `selector` that paint now. */
         const painted = (selector: string) =>
           Effect.promise(() =>
-            page.evaluate<readonly string[]>(
+            page.evaluate<ReadonlyArray<string>>(
               `[...document.querySelectorAll(${literal(selector)})].filter((element) => getComputedStyle(element).visibility !== "hidden").map((element) => element.getAttribute("data-hop") ?? element.getAttribute("data-packet") ?? "")`
             )
           );
 
+        const hopsPainted = yield* painted("[data-hop]");
         // Every hop has an end in the loop group, so no hop line or head
         // paints while it moves: h-note ends at the page.
-        assert.deepStrictEqual(yield* painted("[data-hop]"), []);
-        assert.deepStrictEqual(
-          yield* painted("[data-hop] [data-arrowhead]"),
-          []
-        );
+        assert.deepStrictEqual(hopsPainted, []);
+        const arrowheadsPainted = yield* painted("[data-hop] [data-arrowhead]");
+        assert.deepStrictEqual(arrowheadsPainted, []);
 
         // A packet walks the old route, so it goes with its hop. It moves
         // from hop to hop as its run goes on, so look at a few moments of
         // the drag, not one.
         for (let look = 0; look < 3; look++) {
-          assert.deepStrictEqual(
-            yield* painted("[data-packet]"),
-            [],
-            `look ${look}`
-          );
+          const moving = yield* painted("[data-packet]");
+          assert.deepStrictEqual(moving, [], `look ${look}`);
           yield* Effect.sleep("350 millis");
         }
 
         yield* Effect.promise(() => page.mouse.up());
         yield* waitForRevision(home, 1);
         yield* waitGone(page, "[data-drag-hidden]");
-        assert.lengthOf(yield* painted("[data-hop]"), 4);
+        const hopsPaintedAfterDrop = yield* painted("[data-hop]");
+        assert.lengthOf(hopsPaintedAfterDrop, 4);
       }),
     120_000
   );
@@ -1331,19 +1336,20 @@ describe("the warnings while dragging", () => {
         const saved = yield* waitForRevision(home, 1);
         const [change] = reroutesIn(saved);
 
-        // Write that route into layout.json, as accepting it would, and run
-        // check on the result.
-        const layout = yield* decodeLayout(
-          yield* fs.readFileString(path.join(home, "layout.json"))
+        const layoutText = yield* fs.readFileString(
+          path.join(home, "layout.json")
         );
 
-        yield* fs.writeFileString(
-          path.join(home, "layout.json"),
-          yield* Schema.encodeEffect(LayoutFile)({
-            ...layout,
-            routes: { "h-store": change?.points ?? [] },
-          })
-        );
+        // Write that route into layout.json, as accepting it would, and run
+        // check on the result.
+        const layout = yield* decodeLayout(layoutText);
+
+        const rerouted = yield* Schema.encodeEffect(LayoutFile)({
+          ...layout,
+          routes: { "h-store": change?.points ?? [] },
+        });
+
+        yield* fs.writeFileString(path.join(home, "layout.json"), rerouted);
 
         const printed = yield* runCli(home, ["check", "--json", home]);
 
@@ -1396,7 +1402,7 @@ describe("the warnings while dragging", () => {
         );
         yield* Effect.sleep("600 millis");
 
-        assert.strictEqual(yield* count(page, "[data-drag-warnings]"), 0);
+        yield* assertCount(page, "[data-drag-warnings]", 0);
         yield* Effect.promise(() => page.mouse.up());
       })
   );

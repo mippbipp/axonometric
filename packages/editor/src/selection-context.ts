@@ -10,28 +10,17 @@ import { createContext, use } from "react";
  * distribute as one. It never opens a panel.
  */
 export interface Selection {
-  /**
-   * The selected structure's id, or `null`. It is always revealed in the
-   * current chapter: a chapter that hides it clears the selection.
-   */
-  readonly selected: string | null;
+  /** Empties the multi-selection. The selection stays. */
+  readonly clearMultiSelection: () => void;
+  /** Closes the inside view. The structure stays selected. */
+  readonly comeOut: () => void;
+  /** Selects a structure and opens its inside view, if it has steps. */
+  readonly goInside: (id: string) => void;
   /**
    * The structure whose inside view is open, or `null`. While it's set, it's
    * also `selected`.
    */
   readonly inside: string | null;
-  /**
-   * The selected hop's id, or `null`. A hop and a structure are never
-   * selected together, and the hop's ends are both revealed in the current
-   * chapter. Its panel is pinned in the side panel, with "Reset route".
-   */
-  readonly selectedHop: string | null;
-  /**
-   * The selected group's id, or `null`. A group is never selected together
-   * with a structure or a hop. Its panel, with the rename form, is pinned in
-   * the side panel.
-   */
-  readonly selectedGroup: string | null;
   /**
    * The structures in the multi-selection, all revealed in the current
    * chapter. A chapter that hides one drops it.
@@ -42,24 +31,35 @@ export interface Selection {
    * multi-selection too.
    */
   readonly select: (id: string | null) => void;
-  /** Selects a hop, or clears the selection with `null`. */
-  readonly selectHop: (id: string | null) => void;
+  /**
+   * The selected structure's id, or `null`. It is always revealed in the
+   * current chapter: a chapter that hides it clears the selection.
+   */
+  readonly selected: string | null;
+  /**
+   * The selected group's id, or `null`. A group is never selected together
+   * with a structure or a hop. Its panel, with the rename form, is pinned in
+   * the side panel.
+   */
+  readonly selectedGroup: string | null;
+  /**
+   * The selected hop's id, or `null`. A hop and a structure are never
+   * selected together, and the hop's ends are both revealed in the current
+   * chapter. Its panel is pinned in the side panel, with "Reset route".
+   */
+  readonly selectedHop: string | null;
   /** Selects a group, or clears the selection with `null`. */
   readonly selectGroup: (id: string | null) => void;
+  /** Selects a hop, or clears the selection with `null`. */
+  readonly selectHop: (id: string | null) => void;
+  /** Makes the multi-selection exactly `ids`. */
+  readonly setMultiSelection: (ids: ReadonlyArray<string>) => void;
   /**
    * Adds structure `id` to the multi-selection, or takes it out when it's
    * there. When the multi-selection is empty and another structure is
    * selected, that one joins it first.
    */
   readonly toggleMultiSelected: (id: string) => void;
-  /** Makes the multi-selection exactly `ids`. */
-  readonly setMultiSelection: (ids: readonly string[]) => void;
-  /** Empties the multi-selection. The selection stays. */
-  readonly clearMultiSelection: () => void;
-  /** Selects a structure and opens its inside view, if it has steps. */
-  readonly goInside: (id: string) => void;
-  /** Closes the inside view. The structure stays selected. */
-  readonly comeOut: () => void;
 }
 
 export const SelectionContext = createContext<Selection | null>(null);

@@ -32,10 +32,10 @@ const flowNotice =
 
 /** What the flow kind adds under a provisional id, and how it says so. */
 const provisional = provisionalOf<FlowItem>({
-  entity: "flow",
-  noun: "flow",
   adds: ({ change }) =>
     change.action === "add" ? Option.some(change.flow.id) : Option.none(),
+  entity: "flow",
+  noun: "flow",
 });
 
 const finalIdOf = (item: FlowItem, verdict: Verdict): string =>
@@ -45,58 +45,86 @@ const finalIdOf = (item: FlowItem, verdict: Verdict): string =>
 
 export const flowKind: KindSpec<FlowItem> = {
   ...plain<FlowItem>(),
-  textLimit: maxFlowNameLength,
+  describe: ({ change }, called) =>
+    Option.some(describeFlow(change, { flow: (id) => id, hop: called.hop })),
   listKey: "flows",
   text: ({ change }) => flowActionOf(change).text(),
+  textLimit: maxFlowNameLength,
   textRefusal: ({ change }, text) =>
     Option.isNone(flowActionOf(change).text())
       ? Option.none()
       : refusalOf(FlowName, text),
-  describe: ({ change }, called) =>
-    Option.some(describeFlow(change, { hop: called.hop, flow: (id) => id })),
   // Whether a flow or its hops exist depends on what other proposals add, so
   // `checkConnectionProposals` words these.
-  dangling: () => Option.none(),
-  notice: flowNotice,
-  open: (proposals) =>
-    Arr.map(proposals.flows ?? [], (proposal): FlowItem => ({
-      id: proposal.id,
-      kind: "flow",
-      change: proposal.change,
-    })),
-  clear: (proposals) => ({ ...proposals, flows: [] }),
-  add: (proposals, { id, change }) => ({
+  accepted: (item, verdict) => {
+    const base = { change: item.change, id: item.id, kind: "flow" } as const;
+    const final = finalIdOf(item, verdict);
+
+    return decorate(
+      item.change.action === "add" && final !== item.change.flow.id
+        ? { ...base, as: final }
+        : base,
+      verdict
+    );
+  },
+  add: (proposals, { change, id }) => ({
     ...proposals,
-    flows: [...(proposals.flows ?? []), { id, change }],
+    flows: [...(proposals.flows ?? []), { change, id }],
   }),
-  name: ({ change }) => flowLabel(change),
-  targets: ({ change }): readonly Pointer[] =>
-    Arr.map(flowActionOf(change).hops(), (id): Pointer => ({
-      kind: "hop",
-      id,
-    })),
-  summary: ({ id, change }, called) =>
-    summarizeFlow(change, id, { hop: called.hop, flow: (flow) => flow }),
-  facts: ({ change }, _layout, data) => factsOfFlow(change, data),
+  applies: () => [],
   appliesToData: ({ change }, map) => ({
     ...map,
     data: flowChangeToData(map.data, change),
   }),
-  touches: ({ change }) => ({
-    structures: [],
-    hops: [],
-    marks: [{ name: changedFlowMark, ids: flowActionOf(change).flows() }],
-  }),
-  breakage: ({ change }, { hops, data }) =>
+  breakage: ({ change }, { data, hops }) =>
     flowBreakage(change, {
-      hopIds: new Set(Arr.map(hops, ({ id }) => id)),
       flowIds:
         data === undefined
           ? undefined
           : new Set(Arr.map(data.flows, ({ id }) => id)),
+      hopIds: new Set(Arr.map(hops, ({ id }) => id)),
     }),
-  verdictRefusal: provisional.verdictRefusal,
+  clear: (proposals) => ({ ...proposals, flows: [] }),
+  commitRefusal: (item, verdict, { data }) => {
+    const { change } = item;
+
+    if (verdict.verdict === "rejected" || change.action !== "add") {
+      return Option.none();
+    }
+
+    const id = finalIdOf(item, verdict);
+
+    return Arr.some(data.flows, (flow) => flow.id === id)
+      ? Option.none()
+      : Option.some(
+          `data.mjs has no flow with the id "${id}", so item ${item.id} can't be taken. Add the flow to data.mjs${id === change.flow.id ? `, or give the id you used with: verdict ... changed --as <id>` : ""}. Or reject the item.`
+        );
+  },
+  dangling: () => Option.none(),
+  facts: ({ change }, _layout, data) => factsOfFlow(change, data),
+  name: ({ change }) => flowLabel(change),
+  notice: flowNotice,
+  open: (proposals) =>
+    Arr.map(proposals.flows ?? [], (proposal): FlowItem => ({
+      change: proposal.change,
+      id: proposal.id,
+      kind: "flow",
+    })),
+  rejected: (item, reason) => ({
+    change: item.change,
+    id: item.id,
+    kind: "flow",
+    reason,
+  }),
   renames: provisional.renames,
+  reopened: (item, newId, text) => ({
+    ...item,
+    change:
+      text === undefined
+        ? item.change
+        : flowActionOf(item.change).withText(text),
+    id: newId,
+  }),
   retargeted: (item, renames) => {
     const { change } = item;
     const hop = (id: string) => followed(renames, "hop", id);
@@ -134,45 +162,17 @@ export const flowKind: KindSpec<FlowItem> = {
       ? item
       : { ...item, change: { ...change, flows } };
   },
-  applies: () => [],
-  commitRefusal: (item, verdict, { data }) => {
-    const { change } = item;
-
-    if (verdict.verdict === "rejected" || change.action !== "add") {
-      return Option.none();
-    }
-
-    const id = finalIdOf(item, verdict);
-
-    return Arr.some(data.flows, (flow) => flow.id === id)
-      ? Option.none()
-      : Option.some(
-          `data.mjs has no flow with the id "${id}", so item ${item.id} can't be taken. Add the flow to data.mjs${id === change.flow.id ? `, or give the id you used with: verdict ... changed --as <id>` : ""}. Or reject the item.`
-        );
-  },
-  accepted: (item, verdict) => {
-    const base = { kind: "flow", id: item.id, change: item.change } as const;
-    const final = finalIdOf(item, verdict);
-
-    return decorate(
-      item.change.action === "add" && final !== item.change.flow.id
-        ? { ...base, as: final }
-        : base,
-      verdict
-    );
-  },
-  rejected: (item, reason) => ({
-    kind: "flow",
-    id: item.id,
-    change: item.change,
-    reason,
+  summary: ({ change, id }, called) =>
+    summarizeFlow(change, id, { flow: (flow) => flow, hop: called.hop }),
+  targets: ({ change }): ReadonlyArray<Pointer> =>
+    Arr.map(flowActionOf(change).hops(), (id): Pointer => ({
+      id,
+      kind: "hop",
+    })),
+  touches: ({ change }) => ({
+    hops: [],
+    marks: [{ ids: flowActionOf(change).flows(), name: changedFlowMark }],
+    structures: [],
   }),
-  reopened: (item, newId, text) => ({
-    ...item,
-    id: newId,
-    change:
-      text === undefined
-        ? item.change
-        : flowActionOf(item.change).withText(text),
-  }),
+  verdictRefusal: provisional.verdictRefusal,
 };

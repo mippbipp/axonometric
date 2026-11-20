@@ -82,8 +82,7 @@ describe("text placed at the size it's drawn", () => {
               );
             }
           }
-        }),
-      60_000
+        })
     );
   }
 
@@ -112,8 +111,7 @@ describe("text placed at the size it's drawn", () => {
               }
             }
           }
-        }),
-      60_000
+        })
     );
   }
 });
@@ -139,26 +137,22 @@ describe("route ends", () => {
   // A paused packet may sit over a tag, but no route may start or end on
   // one. Bends may pass under a tag, which has a paper fill.
   for (const name of names) {
-    it.effect(
-      `stay off name tags on the ${name} fixture`,
-      () =>
-        Effect.gen(function* () {
-          for (const view of ["iso", "plan"] as const) {
-            const source = yield* sourceOf(name, view);
+    it.effect(`stay off name tags on the ${name} fixture`, () =>
+      Effect.gen(function* () {
+        for (const view of ["iso", "plan"] as const) {
+          const source = yield* sourceOf(name, view);
 
-            for (const zoom of [1, 0.6, 0.39]) {
-              const scene = sceneOf({ ...source, zoom: textZoomOf(zoom) });
+          for (const zoom of [1, 0.6, 0.39]) {
+            const scene = sceneOf({ ...source, zoom: textZoomOf(zoom) });
 
-              assert.deepStrictEqual(
-                endsOnTags(scene),
-                [],
-                `${view} view at ${zoom}`
-              );
-            }
+            assert.deepStrictEqual(
+              endsOnTags(scene),
+              [],
+              `${view} view at ${zoom}`
+            );
           }
-        }),
-      // Six scenes of a 29-hop map, each placing every hop's label.
-      30_000
+        }
+      })
     );
   }
 });
@@ -166,45 +160,43 @@ describe("route ends", () => {
 describe("name tags at full size", () => {
   // The exemption in `fitFloorOf` for clashes that exist at full size is
   // safe only if `check` warns about them.
-  it.effect(
-    "clash only where `check` already warns",
-    () =>
-      Effect.gen(function* () {
-        for (const name of names) {
-          const { data, layout } = yield* fixture(name);
+  it.effect("clash only where `check` already warns", () =>
+    Effect.gen(function* () {
+      for (const name of names) {
+        const { data, layout } = yield* fixture(name);
 
-          const warned = new Set(
-            Arr.map(
-              checkLayout(data, layout),
-              ({ path, message }) => `${path}: ${message}`
-            )
-          );
+        const warned = new Set(
+          Arr.map(
+            checkLayout(data, layout),
+            ({ message, path }) => `${path}: ${message}`
+          )
+        );
 
-          for (const view of ["iso", "plan"] as const) {
-            const scene = sceneOf(yield* sourceOf(name, view));
+        for (const view of ["iso", "plan"] as const) {
+          const sceneSource = yield* sourceOf(name, view);
+          const scene = sceneOf(sceneSource);
 
-            for (const { between, parts } of sceneClashes(scene)) {
-              const kinds = Arr.map(parts, ({ kind }) => kind);
-              const tag = Arr.findFirst(parts, ({ kind }) => kind === "tag");
-              const box = Arr.findFirst(parts, ({ kind }) => kind === "box");
-              const where = `${name} ${view}: ${Arr.join(between, " × ")}`;
+          for (const { between, parts } of sceneClashes(scene)) {
+            const kinds = Arr.map(parts, ({ kind }) => kind);
+            const tag = Arr.findFirst(parts, ({ kind }) => kind === "tag");
+            const box = Arr.findFirst(parts, ({ kind }) => kind === "box");
+            const where = `${name} ${view}: ${Arr.join(between, " × ")}`;
 
-              if (Option.isSome(tag) && !kinds.includes("route")) {
-                // `check` warns only about a tag on a box.
-                assert.isTrue(Option.isSome(box), where);
-                assert.isTrue(
-                  Option.isSome(box) &&
-                    warned.has(
-                      `structures.${tag.value.id}: name tag is drawn on top of "${box.value.id}". Move one of them apart, so the tag under the front corner has room.`
-                    ),
-                  `${where}, with no warning`
-                );
-              }
+            if (Option.isSome(tag) && !kinds.includes("route")) {
+              // `check` warns only about a tag on a box.
+              assert.isTrue(Option.isSome(box), where);
+              assert.isTrue(
+                Option.isSome(box) &&
+                  warned.has(
+                    `structures.${tag.value.id}: name tag is drawn on top of "${box.value.id}". Move one of them apart, so the tag under the front corner has room.`
+                  ),
+                `${where}, with no warning`
+              );
             }
           }
         }
-      }),
-    60_000
+      }
+    })
   );
 });
 
@@ -239,7 +231,6 @@ describe("the fit floor", () => {
         assert.isEmpty(tagsOn(textZoomOf(floor)));
         // One text size step below the floor, the tags land on boxes.
         assert.isNotEmpty(tagsOn(textZoomOf(floor / 1.1)));
-      }),
-    60_000
+      })
   );
 });

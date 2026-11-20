@@ -105,35 +105,35 @@ const at = "2026-11-01T09:00:00.000Z";
 
 /** A structure the page proposed, waiting in batch 1 with a verdict. */
 const proposed: BatchItem = {
-  id: "p1",
-  kind: "structure",
   change: {
     action: "add",
+    at: { d: 2, w: 2, x: 12, y: 12 },
     structure: {
+      group: "loop",
       id: "new-1",
       name: "Build cache",
       shape: "store",
-      group: "loop",
       status: "planned",
     },
-    at: { x: 12, y: 12, w: 2, d: 2 },
   },
+  id: "p1",
+  kind: "structure",
 };
 
 const batch: Batch = {
-  number: 1,
   frozenAt: at,
   items: [proposed],
+  number: 1,
   // commit refuses an item with no verdict, and verdict records over it.
-  verdicts: { p1: { verdict: "rejected", reason: "Not needed yet." } },
+  verdicts: { p1: { reason: "Not needed yet.", verdict: "rejected" } },
 };
 
 const proposals: Proposals = {
+  batches: [batch],
   format: 1,
-  revision: 4,
   layout: [],
   notes: [],
-  batches: [batch],
+  revision: 4,
 };
 
 const encodeProposals = Schema.encodeEffect(ProposalsFile);
@@ -144,26 +144,26 @@ type EveryOf<K extends string, A> = Readonly<Record<K, A>>;
 const structureChanges: EveryOf<StructureChange["action"], StructureChange> = {
   add: {
     action: "add",
+    at: { d: 2, w: 2, x: 12, y: 12 },
     structure: {
+      group: "loop",
       id: "new-1",
       name: "Build cache",
       shape: "store",
-      group: "loop",
       status: "planned",
     },
-    at: { x: 12, y: 12, w: 2, d: 2 },
   },
   delete: { action: "delete", structure: "upstream" },
-  rename: { action: "rename", structure: "page", name: "Pager" },
-  shape: { action: "shape", structure: "page", shape: "slab" },
-  group: { action: "group", structure: "page", group: "people" },
-  status: { action: "status", structure: "page", status: "planned" },
+  group: { action: "group", group: "people", structure: "page" },
+  rename: { action: "rename", name: "Pager", structure: "page" },
+  shape: { action: "shape", shape: "slab", structure: "page" },
+  status: { action: "status", status: "planned", structure: "page" },
 };
 
 const hopChanges: EveryOf<HopChange["action"], HopChange> = {
   add: {
     action: "add",
-    hop: { id: "new-hop", from: "engineer", to: "server", label: "asks" },
+    hop: { from: "engineer", id: "new-hop", label: "asks", to: "server" },
   },
   delete: { action: "delete", hop: "h-pr" },
   relabel: { action: "relabel", hop: "h-note", label: "pins" },
@@ -175,8 +175,8 @@ const flowChanges: EveryOf<FlowChange["action"], FlowChange> = {
     flow: { id: "new-flow", name: "Round trip" },
     hops: ["h-note"],
   },
-  rename: { action: "rename", flow: "f-note", name: "Notes" },
   hops: { action: "hops", flow: "f-note", hops: ["h-note"] },
+  rename: { action: "rename", flow: "f-note", name: "Notes" },
   reorder: { action: "reorder", flows: ["f-note"] },
 };
 
@@ -186,15 +186,15 @@ const groupChanges: EveryOf<GroupChange["action"], GroupChange> = {
 };
 
 const chapterChanges: EveryOf<ChapterChange["action"], ChapterChange> = {
-  reveal: { action: "reveal", chapter: "c-page", structure: "server" },
   hide: { action: "hide", chapter: "c-all", structure: "upstream" },
-  play: { action: "play", chapter: "c-save", hop: "h-pr" },
-  unplay: { action: "unplay", chapter: "c-page", hop: "h-note" },
   order: {
     action: "order",
     chapter: "c-save",
     plays: ["h-store", "h-save", "h-note"],
   },
+  play: { action: "play", chapter: "c-save", hop: "h-pr" },
+  reveal: { action: "reveal", chapter: "c-page", structure: "server" },
+  unplay: { action: "unplay", chapter: "c-page", hop: "h-note" },
 };
 
 const layoutChanges: EveryOf<LayoutChange["kind"], LayoutChange> = {
@@ -203,32 +203,32 @@ const layoutChanges: EveryOf<LayoutChange["kind"], LayoutChange> = {
     kind: "move",
     moves: [
       {
-        target: { kind: "structure", id: "engineer" },
         position: { x: 0, y: 4 },
+        target: { id: "engineer", kind: "structure" },
       },
     ],
-  },
-  resize: {
-    id: "x-resize",
-    kind: "resize",
-    target: { kind: "structure", id: "page" },
-    footprint: { w: 3, d: 2 },
   },
   reroute: {
     id: "x-reroute",
     kind: "reroute",
-    target: { kind: "hop", id: "h-store" },
     points: null,
+    target: { id: "h-store", kind: "hop" },
+  },
+  resize: {
+    footprint: { d: 2, w: 3 },
+    id: "x-resize",
+    kind: "resize",
+    target: { id: "page", kind: "structure" },
   },
 };
 
 /** `items`, which must hold every kind of item; a missing kind won't compile. */
-const satisfiesEveryKind = <const I extends readonly BatchItem[]>(
+const satisfiesEveryKind = <const I extends ReadonlyArray<BatchItem>>(
   items: I &
     ([BatchItem["kind"]] extends [I[number]["kind"]]
       ? unknown
       : "a kind of item is missing")
-): readonly BatchItem[] => items;
+): ReadonlyArray<BatchItem> => items;
 
 const itemsOf = <A>(
   kind: string,
@@ -241,76 +241,76 @@ const itemsOf = <A>(
 
 /** A batch holding one item of every kind, and of every action each has. */
 const everyKind: Proposals = {
-  format: 1,
-  revision: 4,
-  layout: [],
   batches: [
     {
-      number: 1,
       frozenAt: at,
-      verdicts: {},
       items: satisfiesEveryKind([
         ...Arr.map(Rec.values(layoutChanges), (change): BatchItem => ({
+          change,
           id: change.id,
           kind: "layout",
-          change,
         })),
         {
           id: "x-note",
           kind: "note",
-          target: { kind: "structure", id: "server" },
+          target: { id: "server", kind: "structure" },
           text: "Why?",
         },
         {
+          after: "Shows the map.",
+          before: "Shows the map and records notes.",
+          field: "oneLiner",
           id: "x-suggestion",
           kind: "suggestion",
-          target: { kind: "structure", id: "page" },
-          field: "oneLiner",
-          before: "Shows the map and records notes.",
-          after: "Shows the map.",
+          target: { id: "page", kind: "structure" },
         },
         {
+          answeredOn: "2026-11-02",
           id: "x-answer",
           kind: "answer",
-          target: { kind: "structure", id: "page" },
           question: "Q-P1",
+          target: { id: "page", kind: "structure" },
           text: "Yes.",
-          answeredOn: "2026-11-02",
         },
         {
           id: "x-question",
           kind: "question",
-          target: { kind: "structure", id: "server" },
+          target: { id: "server", kind: "structure" },
           text: "Does it retry?",
         },
         ...itemsOf("structure", structureChanges, (id, change) => ({
+          change,
           id,
           kind: "structure",
-          change,
         })),
         ...itemsOf("hop", hopChanges, (id, change) => ({
+          change,
           id,
           kind: "hop",
-          change,
         })),
         ...itemsOf("flow", flowChanges, (id, change) => ({
+          change,
           id,
           kind: "flow",
-          change,
         })),
         ...itemsOf("group", groupChanges, (id, change) => ({
+          change,
           id,
           kind: "group",
-          change,
         })),
         ...itemsOf("chapter", chapterChanges, (id, change) => ({
+          change,
           id,
           kind: "chapter",
-          change,
         })),
       ]),
+      number: 1,
+      verdicts: {},
     },
   ],
+  format: 1,
+  layout: [],
+  revision: 4,
 };
 
 /** The review fixture with a batch waiting, and its home folder. */
@@ -322,7 +322,7 @@ const reviewHome = Effect.gen(function* () {
     "review/map/proposals.json": yield* encodeProposals(proposals),
   });
 
-  return { root, home: path.join(root, "review", "map") };
+  return { home: path.join(root, "review", "map"), root };
 }).pipe(Effect.provide(NodeServices.layer));
 
 /** What `axonometric docs [topic]` prints, asserting that it succeeds. */
@@ -340,15 +340,15 @@ export const printed = Effect.fnUntraced(function* (topic?: string) {
 export const allDocs = Effect.gen(function* () {
   const overview = yield* printed();
   const topics = listedTopics(overview);
-  const texts = yield* Effect.forEach(topics, printed);
+  const texts = yield* Effect.forEach(topics, printed, { concurrency: 1 });
 
   return {
     overview,
-    topics,
     texts: Rec.fromEntries([
       ["overview", overview] as const,
       ...Arr.zip(topics, texts),
     ]),
+    topics,
   };
 });
 
@@ -357,7 +357,7 @@ export const allDocs = Effect.gen(function* () {
  * a command, so a stray non-axonometric line fails the test instead of going
  * unchecked.
  */
-const commandsIn = (text: string): readonly string[] =>
+const commandsIn = (text: string): ReadonlyArray<string> =>
   Arr.flatMap(
     Arr.fromIterable(Str.matchAll(/```sh\n(?<block>[\s\S]*?)```/gu)(text)),
     (found) => {
@@ -437,7 +437,10 @@ describe("axonometric docs", () => {
       const overview = yield* printed();
       const listed = listedTopics(overview);
 
-      const texts = yield* Effect.forEach([undefined, ...listed], printed);
+      const texts = yield* Effect.forEach([undefined, ...listed], printed, {
+        concurrency: 1,
+      });
+
       const everything = Arr.join(texts, "\n");
 
       const subcommands = subcommandsIn(help.stdout);
@@ -458,8 +461,12 @@ describe("axonometric docs", () => {
     Effect.gen(function* () {
       const home = yield* makeHome({});
       const help = yield* runCli(home, ["--help"]);
-      const listed = listedTopics(yield* printed());
-      const texts = yield* Effect.forEach([undefined, ...listed], printed);
+      const printedHelp = yield* printed();
+      const listed = listedTopics(printedHelp);
+
+      const texts = yield* Effect.forEach([undefined, ...listed], printed, {
+        concurrency: 1,
+      });
 
       const known = new Set(subcommandsIn(help.stdout));
 
@@ -484,18 +491,20 @@ describe("axonometric docs", () => {
     Effect.gen(function* () {
       const overview = yield* printed();
       const topics = listedTopics(overview);
-      const shown: string[] = [];
+      const shown: Array<string> = [];
 
       for (const topic of topics) {
-        for (const line of commandsIn(yield* printed(topic))) {
-          const { root, home } = yield* reviewHome;
+        const printedTopic = yield* printed(topic);
+
+        for (const line of commandsIn(printedTopic)) {
+          const { home, root } = yield* reviewHome;
           const path = yield* Path.Path;
           const fresh = path.join(root, "fresh", "map");
 
           const substitutions = {
             "<home>": Str.startsWith("axonometric init ")(line) ? fresh : home,
-            "<structure>": "page",
             "<item>": "p1",
+            "<structure>": "page",
           } satisfies Record<string, string>;
 
           // `export` writes relative to the test's working directory, so
@@ -578,8 +587,10 @@ describe("axonometric docs", () => {
       const root = yield* runCli(home, ["--help"]);
       const { texts } = yield* allDocs;
 
-      const helps = yield* Effect.forEach(subcommandsIn(root.stdout), (name) =>
-        runCli(home, [name, "--help"])
+      const helps = yield* Effect.forEach(
+        subcommandsIn(root.stdout),
+        (name) => runCli(home, [name, "--help"]),
+        { concurrency: 1 }
       );
 
       const known = new Set(
@@ -603,21 +614,21 @@ describe("axonometric docs", () => {
       const mentioned = codeWordsIn(data);
 
       const types = {
-        MapData: Rec.keys(MapData.fields),
-        Overview: Rec.keys(Overview.fields),
-        Structure: Rec.keys(Structure.fields),
-        Hop: Rec.keys(Hop.fields),
-        Flow: Rec.keys(Flow.fields),
         Chapter: Rec.keys(Chapter.fields),
-        Group: Rec.keys(Group.fields),
-        Stat: Rec.keys(Stat.fields),
-        Step: Rec.keys(Step.fields),
-        Source: Rec.keys(Source.fields),
         Decision: Rec.keys(Decision.fields),
         DeepDive: Rec.keys(DeepDive.fields),
+        Flow: Rec.keys(Flow.fields),
+        Group: Rec.keys(Group.fields),
+        Hop: Rec.keys(Hop.fields),
+        MapData: Rec.keys(MapData.fields),
         OpenQuestion: Rec.keys(OpenQuestion.fields),
+        Overview: Rec.keys(Overview.fields),
         ResolvedQuestion: Rec.keys(ResolvedQuestion.fields),
-      } satisfies Record<string, readonly string[]>;
+        Source: Rec.keys(Source.fields),
+        Stat: Rec.keys(Stat.fields),
+        Step: Rec.keys(Step.fields),
+        Structure: Rec.keys(Structure.fields),
+      } satisfies Record<string, ReadonlyArray<string>>;
 
       for (const [name, fields] of Rec.toEntries(types)) {
         for (const field of fields) {
@@ -705,7 +716,7 @@ describe("axonometric docs", () => {
 
   it.effect("every topic the docs point to exists", () =>
     Effect.gen(function* () {
-      const { topics, texts } = yield* allDocs;
+      const { texts, topics } = yield* allDocs;
       let pointers = 0;
 
       for (const [topic, text] of Rec.toEntries(texts)) {

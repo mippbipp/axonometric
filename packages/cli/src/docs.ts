@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import { Array as Arr, Console, Effect, Option, Record as Rec } from "effect";
 import { Argument, Command } from "effect/cli";
 

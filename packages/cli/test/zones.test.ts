@@ -7,7 +7,9 @@ import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMapFiles = yield* fullMap;
+
+  return yield* buildAndOpen(fullMapFiles, "review");
 });
 
 const drawnZones = (page: Page) =>
@@ -64,9 +66,9 @@ interface Spot {
 }
 
 interface TitleReport {
-  readonly zone: string;
   readonly insideOwn: boolean;
-  readonly overOtherZones: readonly string[];
+  readonly overOtherZones: ReadonlyArray<string>;
+  readonly zone: string;
 }
 
 /**
@@ -155,15 +157,12 @@ describe("zones in the Iso view", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors } = yield* reviewPage;
+          const { errors, page } = yield* reviewPage;
 
           yield* goToLast(page);
 
-          assert.deepStrictEqual(yield* drawnZones(page), [
-            "loop",
-            "outside",
-            "people",
-          ]);
+          const zonesAtLast = yield* drawnZones(page);
+          assert.deepStrictEqual(zonesAtLast, ["loop", "outside", "people"]);
 
           const titles = yield* Effect.promise(() =>
             page.locator("[data-zone] [data-zone-title]").allTextContents()
@@ -184,16 +183,16 @@ describe("zones in the Iso view", () => {
         yield* goToLast(page);
 
         const reports = yield* Effect.promise(() =>
-          page.evaluate<readonly TitleReport[]>(titleReports)
+          page.evaluate<ReadonlyArray<TitleReport>>(titleReports)
         );
 
         assert.lengthOf(reports, 3);
         assert.deepStrictEqual(
           reports,
           Arr.map(reports, ({ zone }) => ({
-            zone,
             insideOwn: true,
             overOtherZones: [],
+            zone,
           }))
         );
       })
@@ -205,8 +204,9 @@ describe("zones in the Iso view", () => {
       Effect.gen(function* () {
         const { page } = yield* reviewPage;
 
+        const zonesAtFirst = yield* drawnZones(page);
         // Chapter 1 reveals the engineer (people) and the page (loop).
-        assert.deepStrictEqual(yield* drawnZones(page), ["loop", "people"]);
+        assert.deepStrictEqual(zonesAtFirst, ["loop", "people"]);
       })
     )
   );
@@ -219,7 +219,7 @@ describe("zones in the Iso view", () => {
         yield* goToLast(page);
 
         const spots = yield* Effect.promise(() =>
-          page.evaluate<readonly Spot[]>(stacksOverZones)
+          page.evaluate<ReadonlyArray<Spot>>(stacksOverZones)
         );
 
         // Every structure, and every hop, stands on a zone in this chapter.

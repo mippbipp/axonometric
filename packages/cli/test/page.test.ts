@@ -6,7 +6,9 @@ import { minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const builtPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* minimalMap, "pipeline");
+  const minimalMapFiles = yield* minimalMap;
+
+  return yield* buildAndOpen(minimalMapFiles, "pipeline");
 });
 
 const documentProperty = (page: Page, name: "compatMode" | "characterSet") =>
@@ -16,7 +18,7 @@ describe("the built page", () => {
   it.live("opens from disk in standards mode with no network requests", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, requests, errors } = yield* builtPage;
+        const { errors, page, requests } = yield* builtPage;
 
         const compatMode = yield* documentProperty(page, "compatMode");
         const characterSet = yield* documentProperty(page, "characterSet");

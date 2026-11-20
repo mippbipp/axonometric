@@ -15,10 +15,10 @@ import { HoveredIdContext } from "./tooltip-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 const hopTarget = (id: string | null | undefined): SpotlightTarget | null =>
-  id === null || id === undefined ? null : { kind: "hop", id };
+  id === null || id === undefined ? null : { id, kind: "hop" };
 
 const structureTarget = (id: string | null): SpotlightTarget | null =>
-  id === null ? null : { kind: "structure", id };
+  id === null ? null : { id, kind: "structure" };
 
 /**
  * Works out the spotlight once, for the map and the Export menu to read. It
@@ -34,7 +34,7 @@ export function SpotlightProvider({
 }: {
   readonly children: ReactNode;
 }) {
-  const { state, stop, flowChoice } = useWalkthrough();
+  const { flowChoice, state, stop } = useWalkthrough();
   const hoveredStructure = use(HoveredIdContext);
   const pinnedStructure = use(SelectionContext)?.selected ?? null;
   const pinnedHop = use(PlaybackContext)?.selected?.hop.id;
@@ -59,12 +59,12 @@ export function SpotlightProvider({
   const spotlight = useMemo(
     () =>
       chapterSpotlightOf({
-        data: state.data,
-        stop,
         choice: flowChoice,
+        data: state.data,
+        drawing,
         hovered: hopTarget(hoveredHop) ?? structureTarget(hoveredStructure),
         pinned: hopTarget(pinnedHop) ?? structureTarget(pinnedStructure),
-        drawing,
+        stop,
       }),
     [
       state.data,
@@ -85,14 +85,14 @@ export function SpotlightProvider({
   }, [spotlight]);
 
   const shown = useMemo(
-    (): SpotlightState => ({ spotlight, hoveredHop }),
+    (): SpotlightState => ({ hoveredHop, spotlight }),
     [spotlight, hoveredHop]
   );
 
   const actions = useMemo(
     (): SpotlightActions => ({
-      hoverHop: setHoveredHop,
       current: () => latest.current,
+      hoverHop: setHoveredHop,
     }),
     []
   );

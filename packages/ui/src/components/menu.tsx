@@ -9,9 +9,9 @@ const Menu = MenuPrimitive.Root;
  * anchor, so a menu can open at a point, such as where a right-click landed.
  */
 function MenuContent({
-  className,
   anchor,
   children,
+  className,
   ...props
 }: MenuPrimitive.Popup.Props & {
   readonly anchor?: ComponentProps<typeof MenuPrimitive.Positioner>["anchor"];
@@ -19,18 +19,18 @@ function MenuContent({
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner
-        anchor={anchor}
-        side="bottom"
         align="start"
-        sideOffset={2}
+        anchor={anchor}
         className="z-50 outline-none"
+        side="bottom"
+        sideOffset={2}
       >
         <MenuPrimitive.Popup
-          data-slot="menu-content"
           className={cn(
             "flex min-w-44 flex-col border border-border bg-popover p-1 font-mono text-xs text-popover-foreground shadow-none outline-none",
             className
           )}
+          data-slot="menu-content"
           {...props}
         >
           {children}
@@ -46,22 +46,22 @@ const itemClass =
 function MenuItem({ className, ...props }: MenuPrimitive.Item.Props) {
   return (
     <MenuPrimitive.Item
-      data-slot="menu-item"
       className={cn(itemClass, className)}
+      data-slot="menu-item"
       {...props}
     />
   );
 }
 
 function MenuRadioItem({
-  className,
   children,
+  className,
   ...props
 }: MenuPrimitive.RadioItem.Props) {
   return (
     <MenuPrimitive.RadioItem
-      data-slot="menu-radio-item"
       className={cn(itemClass, className)}
+      data-slot="menu-radio-item"
       {...props}
     >
       <span aria-hidden="true" className="w-3 shrink-0">
@@ -73,14 +73,14 @@ function MenuRadioItem({
 }
 
 function MenuCheckboxItem({
-  className,
   children,
+  className,
   ...props
 }: MenuPrimitive.CheckboxItem.Props) {
   return (
     <MenuPrimitive.CheckboxItem
-      data-slot="menu-checkbox-item"
       className={cn(itemClass, className)}
+      data-slot="menu-checkbox-item"
       {...props}
     >
       <span aria-hidden="true" className="w-3 shrink-0">
@@ -98,14 +98,14 @@ function MenuSub({ ...props }: MenuPrimitive.SubmenuRoot.Props) {
 }
 
 function MenuSubTrigger({
-  className,
   children,
+  className,
   ...props
 }: MenuPrimitive.SubmenuTrigger.Props) {
   return (
     <MenuPrimitive.SubmenuTrigger
-      data-slot="menu-sub-trigger"
       className={cn(itemClass, className)}
+      data-slot="menu-sub-trigger"
       {...props}
     >
       {children}
@@ -117,24 +117,24 @@ function MenuSubTrigger({
 }
 
 function MenuSubContent({
-  className,
   children,
+  className,
   ...props
 }: MenuPrimitive.Popup.Props) {
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner
-        side="inline-end"
         align="start"
-        sideOffset={2}
         className="z-50 outline-none"
+        side="inline-end"
+        sideOffset={2}
       >
         <MenuPrimitive.Popup
-          data-slot="menu-sub-content"
           className={cn(
             "flex min-w-36 flex-col border border-border bg-popover p-1 font-mono text-xs text-popover-foreground outline-none",
             className
           )}
+          data-slot="menu-sub-content"
           {...props}
         >
           {children}
@@ -147,8 +147,8 @@ function MenuSubContent({
 function MenuSeparator({ className, ...props }: MenuPrimitive.Separator.Props) {
   return (
     <MenuPrimitive.Separator
-      data-slot="menu-separator"
       className={cn("my-1 h-px bg-border", className)}
+      data-slot="menu-separator"
       {...props}
     />
   );
@@ -158,11 +158,11 @@ function MenuSeparator({ className, ...props }: MenuPrimitive.Separator.Props) {
 function MenuLabel({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      data-slot="menu-label"
       className={cn(
         "px-2 py-1 text-xs tracking-widest uppercase opacity-70",
         className
       )}
+      data-slot="menu-label"
       {...props}
     />
   );

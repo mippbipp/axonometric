@@ -15,26 +15,26 @@ const decodeStructure = Schema.decodeUnknownResult(Structure, {
 });
 
 const base = {
-  id: "api",
   code: "A",
-  name: "API",
-  shape: "gate",
   group: "service",
-  status: "live",
-  oneLiner: "One line.",
-  whatItDoes: "Does.",
   howItsBuilt: "Built.",
+  id: "api",
+  name: "API",
+  oneLiner: "One line.",
+  shape: "gate",
+  status: "live",
+  whatItDoes: "Does.",
 };
 
 /** The problems decoding a structure with `sources` gives, as `path: message`. */
-const sourceProblems = (sources: readonly object[]) =>
+const sourceProblems = (sources: ReadonlyArray<object>) =>
   Result.match(decodeStructure({ ...base, sources }), {
-    onSuccess: () => [],
     onFailure: (error) =>
       Arr.map(
         problemsFromIssue("data.mjs", error.issue),
-        ({ path, message }) => `${path}: ${message}`
+        ({ message, path }) => `${path}: ${message}`
       ),
+    onSuccess: () => [],
   });
 
 describe("structure sources", () => {
@@ -42,7 +42,7 @@ describe("structure sources", () => {
     Effect.sync(() => {
       assert.deepStrictEqual(
         sourceProblems([
-          { path: "src/server.ts", commit: "3f2a9c1" },
+          { commit: "3f2a9c1", path: "src/server.ts" },
           { path: "docs/../README.md" },
         ]),
         []
@@ -98,7 +98,7 @@ describe("structure sources", () => {
   it.effect("rejects a commit that isn't a hex hash", () =>
     Effect.sync(() => {
       const problems = sourceProblems([
-        { path: "src/server.ts", commit: "main; rm -rf" },
+        { commit: "main; rm -rf", path: "src/server.ts" },
       ]);
 
       assert.lengthOf(problems, 1);
@@ -111,7 +111,7 @@ describe("structure sources", () => {
 
   it.effect("names the fields a source has", () =>
     Effect.sync(() => {
-      const problems = sourceProblems([{ path: "src/a.ts", lines: "1-4" }]);
+      const problems = sourceProblems([{ lines: "1-4", path: "src/a.ts" }]);
 
       assert.include(
         problems[0],
@@ -123,25 +123,25 @@ describe("structure sources", () => {
 
 const layout: Layout = { format: 1, revision: 0, structures: {} };
 
-const mapWith = (sources: readonly Source[]): MapData => ({
+const mapWith = (sources: ReadonlyArray<Source>): MapData => ({
+  chapters: [],
+  flows: [],
   format: 1,
-  revision: 0,
-  overview: { title: "T", summary: "S" },
   groups: [{ id: "service", title: "Service" }],
+  hops: [],
+  overview: { summary: "S", title: "T" },
+  revision: 0,
   structures: [
     {
       ...base,
       shape: "gate",
-      status: "live",
       sources,
+      status: "live",
     },
   ],
-  hops: [],
-  flows: [],
-  chapters: [],
 });
 
-const pinned = { path: "src/server.ts", commit: "3f2a9c1" };
+const pinned = { commit: "3f2a9c1", path: "src/server.ts" };
 
 /** Checks one structure whose only source has `fact`, as `severity path: message`. */
 const check = (source: Source, fact?: SourceFact) => {
@@ -153,7 +153,7 @@ const check = (source: Source, fact?: SourceFact) => {
       { data: mapWith([source]), layout },
       { linkExists: () => true, sourceFacts: facts }
     ),
-    ({ severity, path, message }) => `${severity} ${path}: ${message}`
+    ({ message, path, severity }) => `${severity} ${path}: ${message}`
   );
 };
 
@@ -164,10 +164,10 @@ describe("checkMap's source checks", () => {
         check(
           pinned,
           SourceFact.cases.Pinned.make({
-            commit: "3f2a9c1",
             atCommit: true,
             atHead: true,
             changed: false,
+            commit: "3f2a9c1",
           })
         ),
         []
@@ -180,10 +180,10 @@ describe("checkMap's source checks", () => {
       const [problem, ...rest] = check(
         pinned,
         SourceFact.cases.Pinned.make({
-          commit: "3f2a9c1",
           atCommit: false,
           atHead: false,
           changed: false,
+          commit: "3f2a9c1",
         })
       );
 
@@ -249,10 +249,10 @@ describe("checkMap's source checks", () => {
         const [problem] = check(
           pinned,
           SourceFact.cases.Pinned.make({
-            commit: "3f2a9c1",
             atCommit: true,
             atHead: true,
             changed: true,
+            commit: "3f2a9c1",
           })
         );
 
@@ -268,10 +268,10 @@ describe("checkMap's source checks", () => {
       const [problem] = check(
         pinned,
         SourceFact.cases.Pinned.make({
-          commit: "3f2a9c1",
           atCommit: true,
           atHead: false,
           changed: false,
+          commit: "3f2a9c1",
         })
       );
 
@@ -299,7 +299,7 @@ describe("checkMap's source checks", () => {
             sourceFacts: () => SourceFact.cases.Unpinned.make({ atHead: true }),
           }
         ),
-        ({ severity, path, message }) => `${severity} ${path}: ${message}`
+        ({ message, path, severity }) => `${severity} ${path}: ${message}`
       );
 
       assert.lengthOf(problems, 1);

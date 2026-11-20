@@ -28,8 +28,8 @@ const rerouteOf = (
 ): LayoutChange => ({
   id,
   kind: "reroute",
-  target: { kind: "hop", id: hop },
   points,
+  target: { id: hop, kind: "hop" },
 });
 
 const reroute = (id: string, points: typeof detour | null) =>
@@ -38,24 +38,24 @@ const reroute = (id: string, points: typeof detour | null) =>
 /** A batch holding a reroute of h-store, and the structure `engineer`'s move. */
 const frozenFile = `${JSON.stringify(
   {
-    format: 1,
-    revision: 3,
-    layout: [],
-    notes: [],
     batches: [
       {
-        number: 1,
         frozenAt: at,
         items: [
           {
+            change: reroute("frozen-route", detour),
             id: "frozen-route",
             kind: "layout",
-            change: reroute("frozen-route", detour),
           },
         ],
+        number: 1,
         verdicts: {},
       },
     ],
+    format: 1,
+    layout: [],
+    notes: [],
+    revision: 3,
   },
   null,
   2
@@ -73,12 +73,12 @@ const encodeWrite = Schema.encodeEffect(Schema.fromJsonString(LayoutWrite));
 const putLayout = (
   url: string,
   baseFileRevision: number,
-  layout: readonly LayoutChange[]
+  layout: ReadonlyArray<LayoutChange>
 ) =>
   encodeWrite({ baseFileRevision, layout }).pipe(
     Effect.orDie,
     Effect.flatMap((body) =>
-      writeText(url, { method: "put", target: "/api/proposals/layout", body })
+      writeText(url, { body, method: "put", target: "/api/proposals/layout" })
     )
   );
 
@@ -112,7 +112,8 @@ describe("a reroute frozen in a batch, written over HTTP", () => {
           assert.include(sent.body, "h-store", why);
         }
 
-        assert.strictEqual(yield* proposalsText(home), before);
+        const proposalsAfter = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfter, before);
       })
   );
 
@@ -126,7 +127,8 @@ describe("a reroute frozen in a batch, written over HTTP", () => {
 
       assert.strictEqual(sent.status, 200, sent.body);
 
-      const saved = yield* decodeProposals(yield* proposalsText(home));
+      const proposalsJson = yield* proposalsText(home);
+      const saved = yield* decodeProposals(proposalsJson);
 
       assert.deepStrictEqual(
         Arr.map(saved.layout, ({ id }) => id),

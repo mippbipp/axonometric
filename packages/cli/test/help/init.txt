@@ -1,0 +1,15 @@
+DESCRIPTION
+  Write a starter data.mjs. Refuses to overwrite a map, and warns when a .scratch/ home isn't ignored by git.
+
+USAGE
+  axonometric init [flags] <home>
+
+ARGUMENTS
+  home directory    The folder to create the map in, such as .scratch/<system>/map or docs/<system>/map
+
+GLOBAL FLAGS
+  --help, -h                                                          Show help information
+  --version, -v                                                       Show version information
+  --wizard                                                            Start wizard mode for a command
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
+  --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)

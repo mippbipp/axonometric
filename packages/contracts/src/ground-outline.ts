@@ -6,7 +6,7 @@ import type { Placement } from "./layout.ts";
 import type { GroundProjection } from "./plan.ts";
 
 /** Formats screen points for an SVG `points` attribute. */
-export const toPoints = (points: readonly ScreenPoint[]) =>
+export const toPoints = (points: ReadonlyArray<ScreenPoint>) =>
   Arr.join(
     Arr.map(points, (point) => `${point.sx},${point.sy}`),
     " "
@@ -17,14 +17,16 @@ export const toPoints = (points: readonly ScreenPoint[]) =>
  * the smallest x and y round to the opposite corner.
  */
 export const groundOutline: {
-  (ground: GroundProjection): (placement: Placement) => readonly ScreenPoint[];
-  (placement: Placement, ground: GroundProjection): readonly ScreenPoint[];
+  (
+    ground: GroundProjection
+  ): (placement: Placement) => ReadonlyArray<ScreenPoint>;
+  (placement: Placement, ground: GroundProjection): ReadonlyArray<ScreenPoint>;
 } = dual(
   2,
   (
-    { x, y, w, d }: Placement,
+    { d, w, x, y }: Placement,
     ground: GroundProjection
-  ): readonly ScreenPoint[] => [
+  ): ReadonlyArray<ScreenPoint> => [
     ground.toScreen({ x, y }),
     ground.toScreen({ x: x + w, y }),
     ground.toScreen({ x: x + w, y: y + d }),

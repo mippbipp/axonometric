@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
   Array as Arr,
   Match,
@@ -161,7 +162,7 @@ const sameChange = Schema.toEquivalence(LayoutChange);
 export const layoutChangeKey = (change: LayoutChange) => change.id;
 
 /** The ids of the structures a change acts on. A reroute acts on none. */
-export const structuresOf = (change: LayoutChange): readonly string[] =>
+export const structuresOf = (change: LayoutChange): ReadonlyArray<string> =>
   Match.value(change).pipe(
     Match.discriminatorsExhaustive("kind")({
       move: ({ moves }) => Arr.map(moves, ({ target }) => target.id),
@@ -171,7 +172,7 @@ export const structuresOf = (change: LayoutChange): readonly string[] =>
   );
 
 /** The ids of the hops a change acts on. Only a reroute acts on one. */
-export const hopsOf = (change: LayoutChange): readonly string[] =>
+export const hopsOf = (change: LayoutChange): ReadonlyArray<string> =>
   Match.value(change).pipe(
     Match.discriminatorsExhaustive("kind")({
       move: () => [],
@@ -184,7 +185,7 @@ export const hopsOf = (change: LayoutChange): readonly string[] =>
  * The ids of everything a change acts on, structures first and then hops.
  * They may repeat across kinds; `targetKeysOf` tells those apart.
  */
-export const targetIdsOf = (change: LayoutChange): readonly string[] => [
+export const targetIdsOf = (change: LayoutChange): ReadonlyArray<string> => [
   ...structuresOf(change),
   ...hopsOf(change),
 ];
@@ -194,7 +195,7 @@ export const targetIdsOf = (change: LayoutChange): readonly string[] => [
  * `hop:engineer` are different targets, so a structure and a hop that share
  * an id never collide.
  */
-const targetKeysOf = (change: LayoutChange): readonly string[] => [
+const targetKeysOf = (change: LayoutChange): ReadonlyArray<string> => [
   ...Arr.map(structuresOf(change), (id) => `structure:${id}`),
   ...Arr.map(hopsOf(change), (id) => `hop:${id}`),
 ];
@@ -209,17 +210,17 @@ export const idOfTargetKey = (key: string): string =>
  */
 export const sharedTarget: {
   (
-    held: readonly LayoutChange[]
-  ): (candidates: readonly LayoutChange[]) => Option.Option<string>;
+    held: ReadonlyArray<LayoutChange>
+  ): (candidates: ReadonlyArray<LayoutChange>) => Option.Option<string>;
   (
-    candidates: readonly LayoutChange[],
-    held: readonly LayoutChange[]
+    candidates: ReadonlyArray<LayoutChange>,
+    held: ReadonlyArray<LayoutChange>
   ): Option.Option<string>;
 } = dual(
   2,
   (
-    candidates: readonly LayoutChange[],
-    held: readonly LayoutChange[]
+    candidates: ReadonlyArray<LayoutChange>,
+    held: ReadonlyArray<LayoutChange>
   ): Option.Option<string> => {
     const taken = new Set(Arr.flatMap(held, targetKeysOf));
 
@@ -231,11 +232,11 @@ export const sharedTarget: {
 
 /** Whether two lists make the same changes in the same order. */
 export const sameLayoutChanges: {
-  (b: readonly LayoutChange[]): (a: readonly LayoutChange[]) => boolean;
-  (a: readonly LayoutChange[], b: readonly LayoutChange[]): boolean;
+  (b: ReadonlyArray<LayoutChange>): (a: ReadonlyArray<LayoutChange>) => boolean;
+  (a: ReadonlyArray<LayoutChange>, b: ReadonlyArray<LayoutChange>): boolean;
 } = dual(
   2,
-  (a: readonly LayoutChange[], b: readonly LayoutChange[]) =>
+  (a: ReadonlyArray<LayoutChange>, b: ReadonlyArray<LayoutChange>) =>
     a.length === b.length &&
     Arr.every(a, (change, index) => {
       const other = b[index];
@@ -244,7 +245,7 @@ export const sameLayoutChanges: {
     })
 );
 
-const uniqueIds = (changes: readonly LayoutChange[]) =>
+const uniqueIds = (changes: ReadonlyArray<LayoutChange>) =>
   new Set(Arr.map(changes, layoutChangeKey)).size === changes.length;
 
 /**
@@ -548,7 +549,7 @@ export type ItemKind = keyof typeof itemFields;
 export const itemKinds = Rec.keys(itemFields);
 
 /** The names of the fields an item of `kind` holds besides its id and kind. */
-const fieldNamesOf = (kind: ItemKind): readonly string[] => {
+const fieldNamesOf = (kind: ItemKind): ReadonlyArray<string> => {
   const fields: Readonly<Record<string, Schema.Constraint>> = itemFields[kind];
 
   return Rec.keys(fields);
@@ -559,7 +560,7 @@ const itemName = (kind: ItemKind, what = "item"): string =>
   `${/^[aeiou]/u.test(kind) ? "An" : "A"} ${kind} ${what}`;
 
 /** `a, b and c`, or with `or`, for a message that lists parts. */
-const listOf = (parts: readonly string[], word: "and" | "or"): string =>
+const listOf = (parts: ReadonlyArray<string>, word: "and" | "or"): string =>
   parts.length < 2
     ? Arr.join(parts, "")
     : `${Arr.join(Arr.dropRight(parts, 1), ", ")} ${word} ${Arr.join(Arr.takeRight(parts, 1), "")}`;
@@ -574,7 +575,7 @@ const listOf = (parts: readonly string[], word: "and" | "or"): string =>
 export const itemMessages = (
   kind: ItemKind,
   what = "item",
-  more: readonly string[] = []
+  more: ReadonlyArray<string> = []
 ) =>
   objectMessages(
     `${itemName(kind, what)} has only ${listOf(["id", "kind", ...fieldNamesOf(kind), ...more], "and")}.`
@@ -585,7 +586,10 @@ export const itemMessages = (
  * or { ... }.`, one form per kind from the table. `more` names the fields a
  * revision's item adds.
  */
-export const itemUnionMessage = (noun: string, more: readonly string[] = []) =>
+export const itemUnionMessage = (
+  noun: string,
+  more: ReadonlyArray<string> = []
+) =>
   `expected ${/^[aeiou]/u.test(noun) ? "an" : "a"} ${noun}: ${listOf(
     Arr.map(
       itemKinds,
@@ -714,17 +718,17 @@ export const Batch = Schema.Struct({
 export type Batch = typeof Batch.Type;
 
 const allIds = (proposals: {
-  readonly layout: readonly LayoutChange[];
-  readonly notes?: readonly Note[] | undefined;
-  readonly structures?: readonly StructureProposal[] | undefined;
-  readonly hops?: readonly HopProposal[] | undefined;
-  readonly flows?: readonly FlowProposal[] | undefined;
-  readonly groups?: readonly GroupProposal[] | undefined;
-  readonly chapters?: readonly ChapterProposal[] | undefined;
-  readonly suggestions?: readonly Suggestion[] | undefined;
-  readonly answers?: readonly Answer[] | undefined;
-  readonly raised?: readonly RaisedQuestion[] | undefined;
-  readonly batches?: readonly Batch[] | undefined;
+  readonly answers?: ReadonlyArray<Answer> | undefined;
+  readonly batches?: ReadonlyArray<Batch> | undefined;
+  readonly chapters?: ReadonlyArray<ChapterProposal> | undefined;
+  readonly flows?: ReadonlyArray<FlowProposal> | undefined;
+  readonly groups?: ReadonlyArray<GroupProposal> | undefined;
+  readonly hops?: ReadonlyArray<HopProposal> | undefined;
+  readonly layout: ReadonlyArray<LayoutChange>;
+  readonly notes?: ReadonlyArray<Note> | undefined;
+  readonly raised?: ReadonlyArray<RaisedQuestion> | undefined;
+  readonly structures?: ReadonlyArray<StructureProposal> | undefined;
+  readonly suggestions?: ReadonlyArray<Suggestion> | undefined;
 }) => [
   ...Arr.map(proposals.layout, layoutChangeKey),
   ...Arr.map(proposals.notes ?? [], ({ id }) => id),
@@ -828,14 +832,14 @@ export const newChangeId = (): ChangeId => {
 /** One thing a change sets on the layout. */
 type Setting =
   | {
-      readonly what: "place";
       readonly id: string;
       readonly placement: Partial<Placement>;
+      readonly what: "place";
     }
   | {
-      readonly what: "route";
       readonly id: string;
-      readonly points: readonly GridPoint[] | null;
+      readonly points: ReadonlyArray<GridPoint> | null;
+      readonly what: "route";
     };
 
 /**
@@ -845,9 +849,9 @@ type Setting =
  * removes it when its points are `null`.
  */
 export const applyLayoutChanges: {
-  (changes: readonly LayoutChange[]): (layout: Layout) => Layout;
-  (layout: Layout, changes: readonly LayoutChange[]): Layout;
-} = dual(2, (layout: Layout, changes: readonly LayoutChange[]): Layout => {
+  (changes: ReadonlyArray<LayoutChange>): (layout: Layout) => Layout;
+  (layout: Layout, changes: ReadonlyArray<LayoutChange>): Layout;
+} = dual(2, (layout: Layout, changes: ReadonlyArray<LayoutChange>): Layout => {
   if (changes.length === 0) {
     return layout;
   }
@@ -863,7 +867,7 @@ export const applyLayoutChanges: {
     }
   };
 
-  const setRoute = (hop: string, points: readonly GridPoint[] | null) => {
+  const setRoute = (hop: string, points: ReadonlyArray<GridPoint> | null) => {
     if (points === null) {
       routes.delete(hop);
     } else {
@@ -875,16 +879,16 @@ export const applyLayoutChanges: {
   const settings = Arr.flatMap(changes, (change) =>
     Match.value(change).pipe(
       Match.discriminatorsExhaustive("kind")({
-        move: ({ moves }): readonly Setting[] =>
+        move: ({ moves }): ReadonlyArray<Setting> =>
           Arr.map(moves, ({ target, position }) => ({
             what: "place",
             id: target.id,
             placement: position,
           })),
-        resize: ({ target, footprint }): readonly Setting[] => [
+        resize: ({ target, footprint }): ReadonlyArray<Setting> => [
           { what: "place", id: target.id, placement: footprint },
         ],
-        reroute: ({ target, points }): readonly Setting[] => [
+        reroute: ({ target, points }): ReadonlyArray<Setting> => [
           { what: "route", id: target.id, points },
         ],
       })
@@ -910,18 +914,18 @@ export const applyLayoutChanges: {
 /** Where the accepted layout, with `changes`, puts structure `id`. */
 const placementIn = (
   accepted: Layout,
-  changes: readonly LayoutChange[],
+  changes: ReadonlyArray<LayoutChange>,
   id: string
 ) => Rec.get(applyLayoutChanges(accepted, changes).structures, id);
 
 /** What `placeStructure` takes. */
 export interface Placing {
-  readonly changes: readonly LayoutChange[];
   readonly accepted: Layout;
+  readonly changes: ReadonlyArray<LayoutChange>;
   readonly id: string;
-  readonly next: Placement;
   /** Makes the id of a change that has to be added. */
   readonly newId: () => ChangeId;
+  readonly next: Placement;
 }
 
 const movesOnly = (id: string) => (change: LayoutChange) =>
@@ -946,7 +950,7 @@ export const placeStructure = ({
   id,
   next,
   newId,
-}: Placing): readonly LayoutChange[] => {
+}: Placing): ReadonlyArray<LayoutChange> => {
   if (!Rec.has(accepted.structures, id)) {
     return changes;
   }
@@ -969,7 +973,7 @@ export const placeStructure = ({
   const oldMove = Arr.findLast(changes, isMove);
   const oldResize = Arr.findLast(changes, isResize);
 
-  const move: readonly LayoutChange[] =
+  const move: ReadonlyArray<LayoutChange> =
     movedFrom?.x === next.x && movedFrom.y === next.y
       ? []
       : [
@@ -983,7 +987,7 @@ export const placeStructure = ({
           },
         ];
 
-  const resize: readonly LayoutChange[] =
+  const resize: ReadonlyArray<LayoutChange> =
     resizedFrom?.w === next.w && resizedFrom.d === next.d
       ? []
       : [
@@ -1005,12 +1009,14 @@ export const placeStructure = ({
   ];
 };
 
-const routeOf = (layout: Layout, hop: string): readonly GridPoint[] | null =>
-  layout.routes?.[hop] ?? null;
+const routeOf = (
+  layout: Layout,
+  hop: string
+): ReadonlyArray<GridPoint> | null => layout.routes?.[hop] ?? null;
 
 const samePoints = (
-  a: readonly GridPoint[] | null,
-  b: readonly GridPoint[] | null
+  a: ReadonlyArray<GridPoint> | null,
+  b: ReadonlyArray<GridPoint> | null
 ) =>
   a === null || b === null
     ? a === b
@@ -1025,13 +1031,13 @@ const samePoints = (
 
 /** What `placeRoute` takes. */
 export interface PlacingRoute {
-  readonly changes: readonly LayoutChange[];
   readonly accepted: Layout;
+  readonly changes: ReadonlyArray<LayoutChange>;
   readonly hop: string;
-  /** The route override to set, or `null` to go back to automatic routing. */
-  readonly points: readonly GridPoint[] | null;
   /** Makes the id of a change that has to be added. */
   readonly newId: () => ChangeId;
+  /** The route override to set, or `null` to go back to automatic routing. */
+  readonly points: ReadonlyArray<GridPoint> | null;
 }
 
 /**
@@ -1046,7 +1052,7 @@ export const placeRoute = ({
   hop,
   points,
   newId,
-}: PlacingRoute): readonly LayoutChange[] => {
+}: PlacingRoute): ReadonlyArray<LayoutChange> => {
   const own = (change: LayoutChange) =>
     change.kind === "reroute" && change.target.id === hop;
 
@@ -1084,11 +1090,11 @@ export const shiftedRoutes = ({
   moves,
   id,
 }: {
-  readonly layout: Layout;
-  readonly hops: readonly HopEnds[];
-  readonly moves: readonly StructureMove[];
+  readonly hops: ReadonlyArray<HopEnds>;
   readonly id: (hop: string) => ChangeId;
-}): readonly LayoutChange[] => {
+  readonly layout: Layout;
+  readonly moves: ReadonlyArray<StructureMove>;
+}): ReadonlyArray<LayoutChange> => {
   const deltas = new Map(
     Arr.flatMap(moves, ({ target, position }) => {
       const at = layout.structures[target.id];
@@ -1104,43 +1110,54 @@ export const shiftedRoutes = ({
     })
   );
 
-  return Arr.flatMap(hops, ({ id: hop, from, to }): readonly LayoutChange[] => {
-    const points = layout.routes?.[hop];
-    const start = deltas.get(from);
-    const end = deltas.get(to);
+  return Arr.flatMap(
+    hops,
+    ({ id: hop, from, to }): ReadonlyArray<LayoutChange> => {
+      const points = layout.routes?.[hop];
+      const start = deltas.get(from);
+      const end = deltas.get(to);
 
-    if (
-      points === undefined ||
-      start === undefined ||
-      end === undefined ||
-      start.x !== end.x ||
-      start.y !== end.y ||
-      (start.x === 0 && start.y === 0)
-    ) {
-      return [];
+      if (
+        points === undefined ||
+        start === undefined ||
+        end === undefined ||
+        start.x !== end.x ||
+        start.y !== end.y ||
+        (start.x === 0 && start.y === 0)
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          id: id(hop),
+          kind: "reroute",
+          target: { kind: "hop", id: hop },
+          points: Arr.map(points, ({ x, y }) => ({
+            x: x + start.x,
+            y: y + start.y,
+          })),
+        },
+      ];
     }
-
-    return [
-      {
-        id: id(hop),
-        kind: "reroute",
-        target: { kind: "hop", id: hop },
-        points: Arr.map(points, ({ x, y }) => ({
-          x: x + start.x,
-          y: y + start.y,
-        })),
-      },
-    ];
-  });
+  );
 };
 
 /** `changes` without the change that has `id`. */
 export const discardChange: {
-  (id: ChangeId): (changes: readonly LayoutChange[]) => readonly LayoutChange[];
-  (changes: readonly LayoutChange[], id: ChangeId): readonly LayoutChange[];
+  (
+    id: ChangeId
+  ): (changes: ReadonlyArray<LayoutChange>) => ReadonlyArray<LayoutChange>;
+  (
+    changes: ReadonlyArray<LayoutChange>,
+    id: ChangeId
+  ): ReadonlyArray<LayoutChange>;
 } = dual(
   2,
-  (changes: readonly LayoutChange[], id: ChangeId): readonly LayoutChange[] =>
+  (
+    changes: ReadonlyArray<LayoutChange>,
+    id: ChangeId
+  ): ReadonlyArray<LayoutChange> =>
     Arr.filter(changes, (change) => change.id !== id)
 );
 
@@ -1160,10 +1177,10 @@ export const clashOf = ({
   placement,
   among,
 }: {
-  readonly layout: Layout;
-  readonly id: string;
-  readonly placement: Placement;
   readonly among?: ReadonlySet<string>;
+  readonly id: string;
+  readonly layout: Layout;
+  readonly placement: Placement;
 }): Option.Option<Clash> =>
   Option.map(
     Arr.findFirst(
@@ -1180,18 +1197,18 @@ const describePlacement = ({ x, y, w, d }: Placement) =>
   `x ${x}, y ${y}, w ${w}, d ${d}`;
 
 /** The structures that a list of changes acts on. */
-const structuresIn = (changes: readonly LayoutChange[]) =>
+const structuresIn = (changes: ReadonlyArray<LayoutChange>) =>
   Arr.dedupe(Arr.flatMap(changes, structuresOf));
 
 /** The hops that a list of changes acts on. */
-const hopsIn = (changes: readonly LayoutChange[]) =>
+const hopsIn = (changes: ReadonlyArray<LayoutChange>) =>
   Arr.dedupe(Arr.flatMap(changes, hopsOf));
 
 /**
  * The ends of route overrides in `layout` that aren't on their hops'
  * footprints, such as `h-save first`.
  */
-const offEndKeys = (hops: readonly HopEnds[], layout: Layout) =>
+const offEndKeys = (hops: ReadonlyArray<HopEnds>, layout: Layout) =>
   new Set(
     Arr.map(offEndFindings(hops, layout), ({ hop, end }) => `${hop.id} ${end}`)
   );
@@ -1223,9 +1240,9 @@ export const layoutRefusal = ({
   hops,
 }: {
   readonly accepted: Layout;
-  readonly before: readonly LayoutChange[];
-  readonly after: readonly LayoutChange[];
-  readonly hops: readonly HopEnds[];
+  readonly after: ReadonlyArray<LayoutChange>;
+  readonly before: ReadonlyArray<LayoutChange>;
+  readonly hops: ReadonlyArray<HopEnds>;
 }): Option.Option<string> => {
   const added = Arr.filter(
     after,
@@ -1328,25 +1345,25 @@ export const layoutRefusal = ({
 
 /** One thing a change names, and where its id sits in the change. */
 interface NamedTarget {
-  readonly what: "structure" | "hop";
   readonly id: string;
-  readonly path: readonly (string | number)[];
+  readonly path: ReadonlyArray<string | number>;
+  readonly what: "structure" | "hop";
 }
 
 /** Each thing a change names, with where its id sits in the change. */
-const targetPaths = (change: LayoutChange): readonly NamedTarget[] =>
+const targetPaths = (change: LayoutChange): ReadonlyArray<NamedTarget> =>
   Match.value(change).pipe(
     Match.discriminatorsExhaustive("kind")({
-      move: ({ moves }): readonly NamedTarget[] =>
+      move: ({ moves }): ReadonlyArray<NamedTarget> =>
         Arr.map(moves, ({ target }, index) => ({
           what: "structure",
           id: target.id,
           path: ["moves", index, "target", "id"],
         })),
-      resize: ({ target }): readonly NamedTarget[] => [
+      resize: ({ target }): ReadonlyArray<NamedTarget> => [
         { what: "structure", id: target.id, path: ["target", "id"] },
       ],
-      reroute: ({ target }): readonly NamedTarget[] => [
+      reroute: ({ target }): ReadonlyArray<NamedTarget> => [
         { what: "hop", id: target.id, path: ["target", "id"] },
       ],
     })
@@ -1364,15 +1381,19 @@ export const checkProposals: {
   (
     layout: Layout,
     proposals: Proposals
-  ): (data: MapData) => readonly MapProblem[];
-  (data: MapData, layout: Layout, proposals: Proposals): readonly MapProblem[];
+  ): (data: MapData) => ReadonlyArray<MapProblem>;
+  (
+    data: MapData,
+    layout: Layout,
+    proposals: Proposals
+  ): ReadonlyArray<MapProblem>;
 } = dual(
   3,
   (
     data: MapData,
     layout: Layout,
     proposals: Proposals
-  ): readonly MapProblem[] => {
+  ): ReadonlyArray<MapProblem> => {
     // A structure the engineer proposed is known to the changes that follow.
     const proposed = addedIds([
       ...openStructureChanges(proposals),

@@ -14,7 +14,7 @@ const byKind = Order.mapInput(Order.Number, (item: BatchItem) =>
 /** Where a proposal's layout checks look: the whole map, or one chapter's drawing. */
 export type CheckScope =
   | { readonly of: "map" }
-  | { readonly of: "chapter"; readonly chapter: string | undefined };
+  | { readonly chapter: string | undefined; readonly of: "chapter" };
 
 /**
  * Everything `check` would report for the map as proposed with `items` taken
@@ -34,16 +34,16 @@ export type CheckScope =
 export const proposalProblems = ({
   before,
   items,
-  scope = { of: "map" },
   moved = {},
+  scope = { of: "map" },
 }: {
   /** The map as proposed now. */
   readonly before: Checkable;
-  readonly items: readonly BatchItem[];
-  readonly scope?: CheckScope;
+  readonly items: ReadonlyArray<BatchItem>;
   /** Structures a drop has just moved, by id. */
   readonly moved?: Readonly<Record<string, Placement>>;
-}): readonly DraggedProblem[] => {
+  readonly scope?: CheckScope;
+}): ReadonlyArray<DraggedProblem> => {
   const from: Checkable = {
     data: before.data,
     layout: {

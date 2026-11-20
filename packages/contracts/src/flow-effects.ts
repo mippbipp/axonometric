@@ -53,28 +53,28 @@ export const summarizeFlow: {
 /** `review`'s before and after for a flow change, given the map as data.mjs has it. */
 export const factsOfFlow: {
   (data: Pick<MapData, "flows"> | undefined): (change: FlowChange) => {
-    readonly before: Facts;
     readonly after: Facts;
+    readonly before: Facts;
   };
   (
     change: FlowChange,
     data: Pick<MapData, "flows"> | undefined
-  ): { readonly before: Facts; readonly after: Facts };
+  ): { readonly after: Facts; readonly before: Facts };
 } = dual(
   2,
   (
     change: FlowChange,
     data: Pick<MapData, "flows"> | undefined
-  ): { readonly before: Facts; readonly after: Facts } =>
+  ): { readonly after: Facts; readonly before: Facts } =>
     flowActionOf(change).facts(data)
 );
 
 /** What `flowBreakage` needs to know about the map. */
 export interface FlowLanding {
-  /** The hops the map has: data.mjs's, and at review the proposed ones too. */
-  readonly hopIds: ReadonlySet<string>;
   /** The flows data.mjs has, or nothing when the caller has only ids of hops. */
   readonly flowIds: ReadonlySet<string> | undefined;
+  /** The hops the map has: data.mjs's, and at review the proposed ones too. */
+  readonly hopIds: ReadonlySet<string>;
 }
 
 /**
@@ -88,7 +88,7 @@ export const flowBreakage: {
   2,
   (
     change: FlowChange,
-    { hopIds, flowIds }: FlowLanding
+    { flowIds, hopIds }: FlowLanding
   ): Option.Option<string> => {
     const action = flowActionOf(change);
 

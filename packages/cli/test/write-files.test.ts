@@ -28,10 +28,12 @@ describe("writing outputs", () => {
           Effect.forkScoped
         );
 
-        yield* writeAll([{ file, content: "new" }]);
+        yield* writeAll([{ content: "new", file }]);
 
-        assert.strictEqual(yield* fs.readFileString(file), "new");
-        assert.isFalse(yield* fs.exists(`${file}.${process.pid}.tmp`));
+        const fileText = yield* fs.readFileString(file);
+        assert.strictEqual(fileText, "new");
+        const tmpExists = yield* fs.exists(`${file}.${process.pid}.tmp`);
+        assert.isFalse(tmpExists);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     10_000
   );
@@ -60,19 +62,23 @@ describe("writing outputs", () => {
         };
 
         const exit = yield* writeAll([
-          { file: one, content: "new one" },
-          { file: two, content: "new two" },
-          { file: three, content: "new three" },
+          { content: "new one", file: one },
+          { content: "new two", file: two },
+          { content: "new three", file: three },
         ]).pipe(
           Effect.provideService(FileSystem.FileSystem, failing),
           Effect.exit
         );
 
         assert.isTrue(Exit.isFailure(exit));
-        assert.strictEqual(yield* fs.readFileString(one), "old one");
-        assert.isFalse(yield* fs.exists(two));
-        assert.isFalse(yield* fs.exists(three));
-        assert.sameMembers(yield* fs.readDirectory(home), ["one.json"]);
+        const oneText = yield* fs.readFileString(one);
+        assert.strictEqual(oneText, "old one");
+        const twoExists = yield* fs.exists(two);
+        assert.isFalse(twoExists);
+        const threeExists = yield* fs.exists(three);
+        assert.isFalse(threeExists);
+        const entries = yield* fs.readDirectory(home);
+        assert.sameMembers(entries, ["one.json"]);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
   );
 
@@ -85,14 +91,17 @@ describe("writing outputs", () => {
       const b = path.join(home, "b.json");
 
       const exit = yield* writeAll([
-        { file: a, content: "new a" },
-        { file: b, content: "new b", exclusive: true },
+        { content: "new a", file: a },
+        { content: "new b", exclusive: true, file: b },
       ]).pipe(Effect.exit);
 
       assert.isTrue(Exit.isFailure(exit));
-      assert.strictEqual(yield* fs.readFileString(a), "old a");
-      assert.strictEqual(yield* fs.readFileString(b), "old b");
-      assert.sameMembers(yield* fs.readDirectory(home), ["a.json", "b.json"]);
+      const aText = yield* fs.readFileString(a);
+      assert.strictEqual(aText, "old a");
+      const bText = yield* fs.readFileString(b);
+      assert.strictEqual(bText, "old b");
+      const entries = yield* fs.readDirectory(home);
+      assert.sameMembers(entries, ["a.json", "b.json"]);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
   );
 });

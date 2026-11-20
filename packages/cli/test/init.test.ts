@@ -1,4 +1,4 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- see noGit
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- Vitest decides skips before any test runs, so the git check calls spawnSync from node:child_process outside Effect
 import { spawnSync } from "node:child_process";
 
 import { NodeServices } from "@effect/platform-node";
@@ -9,7 +9,10 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { makeHome, runCli } from "./harness.ts";
 
 /** Runs git in `cwd` and returns its exit code. */
-const git = Effect.fnUntraced(function* (cwd: string, args: readonly string[]) {
+const git = Effect.fnUntraced(function* (
+  cwd: string,
+  args: ReadonlyArray<string>
+) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
   return yield* spawner.exitCode(ChildProcess.make("git", args, { cwd }));
@@ -19,7 +22,7 @@ const git = Effect.fnUntraced(function* (cwd: string, args: readonly string[]) {
  * The .scratch tests need a real git repo, so they skip without git. Vitest
  * decides skips before any test runs, so this check is synchronous.
  */
-// oxlint-disable-next-line node/no-sync -- see above
+// oxlint-disable-next-line node/no-sync -- a skip is decided before any test runs, so the git check cannot be an Effect
 const noGit = spawnSync("git", ["--version"]).error !== undefined;
 
 describe("init", () => {

@@ -23,11 +23,11 @@ import { SuggestableText } from "./suggestable-text.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 function Section({
-  title,
   children,
+  title,
 }: {
-  readonly title: string;
   readonly children: ReactNode;
+  readonly title: string;
 }) {
   return (
     <section className="flex flex-col gap-1">
@@ -49,16 +49,16 @@ function StepList({
     <ol className="flex flex-col gap-1.5 text-sm">
       {Arr.map(structure.steps ?? [], (step, index) => (
         <li
-          key={step.name}
           className={
             suggestable ? undefined : "grid grid-cols-[1.5rem_1fr] gap-1"
           }
+          key={step.name}
         >
           {suggestable ? (
             <SuggestableStep
-              structure={structure.id}
               index={index}
               step={step}
+              structure={structure.id}
             />
           ) : (
             <>
@@ -78,7 +78,7 @@ function StepList({
  * The files behind a structure. `build` worked out each one's web address
  * from the repo's remote; a source without one shows as a plain path.
  */
-function SourceList({ sources }: { readonly sources: readonly Source[] }) {
+function SourceList({ sources }: { readonly sources: ReadonlyArray<Source> }) {
   const { state } = useWalkthrough();
   const links = state.sourceLinks ?? {};
 
@@ -90,7 +90,7 @@ function SourceList({ sources }: { readonly sources: readonly Source[] }) {
         const file = normalSourcePath(source.path);
 
         return (
-          <li key={file} data-source={file}>
+          <li data-source={file} key={file}>
             <MapLink href={links[sourceKey(source)]}>{file}</MapLink>
             {source.commit === undefined ? null : (
               <span className="opacity-70">
@@ -111,7 +111,7 @@ export function StructurePanel({
 }: {
   readonly structure: Structure;
 }) {
-  const { select, goInside } = useSelection();
+  const { goInside, select } = useSelection();
   const { newlyRevealed } = useWalkthrough();
   const questions = structure.questions ?? [];
   const sources = structure.sources ?? [];
@@ -119,9 +119,9 @@ export function StructurePanel({
 
   return (
     <section
-      data-structure-panel={structure.id}
-      data-pinned
       className="flex flex-col gap-3"
+      data-pinned
+      data-structure-panel={structure.id}
     >
       <p className="text-xs tracking-widest uppercase opacity-70">
         {structure.code} · Pinned
@@ -130,32 +130,32 @@ export function StructurePanel({
       <h2 className="text-lg leading-tight font-medium">{structure.name}</h2>
       <p>
         <span
-          data-status-label={structure.status}
           className="border-ink border px-1.5 py-0.5 text-xs tracking-wider uppercase"
+          data-status-label={structure.status}
         >
           {statusLabels[structure.status]}
         </span>
       </p>
       <SuggestableText
-        structure={structure.id}
-        field="oneLiner"
-        text={structure.oneLiner}
         className="text-sm"
+        field="oneLiner"
+        structure={structure.id}
+        text={structure.oneLiner}
       />
       <Section title="What it does">
         <SuggestableText
-          structure={structure.id}
-          field="whatItDoes"
-          text={structure.whatItDoes}
           className="text-sm"
+          field="whatItDoes"
+          structure={structure.id}
+          text={structure.whatItDoes}
         />
       </Section>
       <Section title="How it's built">
         <SuggestableText
-          structure={structure.id}
-          field="howItsBuilt"
-          text={structure.howItsBuilt}
           className="text-sm"
+          field="howItsBuilt"
+          structure={structure.id}
+          text={structure.howItsBuilt}
         />
       </Section>
       {sources.length === 0 ? null : (
@@ -173,15 +173,15 @@ export function StructurePanel({
           <ul className="flex flex-col gap-1.5 text-xs">
             {Arr.map(questions, (question) => (
               <li
-                key={question.id}
                 data-panel-question={question.id}
                 data-state={question.state}
+                key={question.id}
               >
                 <QuestionBody question={question} />
                 {question.state === "open" ? (
                   <QuestionAnswer
-                    structure={structure.id}
                     question={question.id}
+                    structure={structure.id}
                   />
                 ) : null}
               </li>
@@ -190,29 +190,29 @@ export function StructurePanel({
         </Section>
       )}
       <RaisedQuestions structure={structure.id} />
-      <NotesSection target={{ kind: "structure", id: structure.id }} />
+      <NotesSection target={{ id: structure.id, kind: "structure" }} />
       <ChangeStructure structure={structure} />
       <ChapterReveal structure={structure} />
       <div className="flex gap-1.5">
         {hasSteps(structure) ? (
           <button
-            type="button"
-            data-control="go-inside"
             className={controlClass}
+            data-control="go-inside"
             onClick={() => {
               goInside(structure.id);
             }}
+            type="button"
           >
             → Go inside
           </button>
         ) : null}
         <button
-          type="button"
-          data-control="unpin"
           className={controlClass}
+          data-control="unpin"
           onClick={() => {
             select(null);
           }}
+          type="button"
         >
           Unpin
         </button>
@@ -224,7 +224,7 @@ export function StructurePanel({
 /** The open inside view's structure and every step in order. */
 export function InsidePanel({ structure }: { readonly structure: Structure }) {
   return (
-    <section data-inside-panel={structure.id} className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" data-inside-panel={structure.id}>
       <p className="text-xs tracking-widest uppercase opacity-70">
         Inside {structure.code} · {structure.steps?.length ?? 0} steps
       </p>

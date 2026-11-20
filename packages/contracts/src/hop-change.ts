@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import { Schema } from "effect";
 import { dual } from "effect/Function";
 
@@ -13,7 +14,7 @@ export const FlowRef = idText("flow");
 
 const eachOnce = (what: string) =>
   Schema.makeFilter(
-    (ids: readonly string[]) => new Set(ids).size === ids.length,
+    (ids: ReadonlyArray<string>) => new Set(ids).size === ids.length,
     { message: `expected each ${what} id once.` }
   );
 

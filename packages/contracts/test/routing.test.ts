@@ -26,27 +26,27 @@ import {
 import type { Leg } from "./route-geometry.ts";
 
 const structure = (id: string): Structure => ({
-  id,
   code: "S",
-  name: id,
-  shape: "box",
   group: "main",
-  status: "live",
-  oneLiner: "One line.",
-  whatItDoes: "Does.",
   howItsBuilt: "Built.",
+  id,
+  name: id,
+  oneLiner: "One line.",
+  shape: "box",
+  status: "live",
+  whatItDoes: "Does.",
 });
 
 const hop = (from: string, to: string, id = `${from}-${to}`): Hop => ({
-  id,
   from,
-  to,
+  id,
   label: "calls",
+  to,
 });
 
-const at = (x: number, y: number): Placement => ({ x, y, w: 2, d: 2 });
+const at = (x: number, y: number): Placement => ({ d: 2, w: 2, x, y });
 
-const sized = (x: number, y: number, size: { w: number; d: number }) => ({
+const sized = (x: number, y: number, size: { d: number; w: number }) => ({
   x,
   y,
   ...size,
@@ -59,24 +59,24 @@ interface RoutedMap {
 
 const mapOf = (
   placements: Readonly<Record<string, Placement>>,
-  hops: readonly Hop[],
+  hops: ReadonlyArray<Hop>,
   routes: NonNullable<Layout["routes"]> = {}
 ): RoutedMap => ({
   data: {
-    format: 1,
-    revision: 0,
-    overview: { title: "Map", summary: "A map." },
-    groups: [{ id: "main", title: "Main" }],
-    structures: Arr.map(Rec.keys(placements), structure),
-    hops,
-    flows: [],
     chapters: [],
+    flows: [],
+    format: 1,
+    groups: [{ id: "main", title: "Main" }],
+    hops,
+    overview: { summary: "A map.", title: "Map" },
+    revision: 0,
+    structures: Arr.map(Rec.keys(placements), structure),
   },
   layout: {
     format: 1,
     revision: 0,
-    structures: placements,
     routes,
+    structures: placements,
   },
 });
 
@@ -92,7 +92,7 @@ const routeOf = (
 };
 
 /** Whether a leg runs through the inside of a footprint. */
-const legCrosses = ({ start, end }: Leg, box: Placement) => {
+const legCrosses = ({ end, start }: Leg, box: Placement) => {
   const left = Math.min(start.x, end.x);
   const right = Math.max(start.x, end.x);
   const top = Math.min(start.y, end.y);
@@ -110,7 +110,7 @@ const legCrosses = ({ start, end }: Leg, box: Placement) => {
 };
 
 /** A between two connected structures, with M in the way. */
-const blocked = mapOf({ a: at(0, 0), m: at(4, 0), b: at(8, 0) }, [
+const blocked = mapOf({ a: at(0, 0), b: at(8, 0), m: at(4, 0) }, [
   hop("a", "b"),
 ]);
 
@@ -148,7 +148,7 @@ describe("routing", () => {
       );
 
       for (const route of Rec.values(routeHops(data, layout))) {
-        for (const { start, end } of legsOf(route.points)) {
+        for (const { end, start } of legsOf(route.points)) {
           assert.isTrue(start.x === end.x || start.y === end.y, "diagonal leg");
         }
 
@@ -214,7 +214,7 @@ describe("routing", () => {
 
       const routes = routeHops(data, layout);
 
-      for (const { id, from, to } of data.hops) {
+      for (const { from, id, to } of data.hops) {
         const route = routeOf(routes, id);
         const source = layout.structures[from];
         const target = layout.structures[to];
@@ -276,7 +276,7 @@ describe("routing", () => {
     Effect.sync(() => {
       // z sits between a and b in its own group, so its zone, one unit past
       // its footprint, blocks the straight route.
-      const base = mapOf({ a: at(0, 0), z: at(4, 0), b: at(8, 0) }, [
+      const base = mapOf({ a: at(0, 0), b: at(8, 0), z: at(4, 0) }, [
         hop("a", "b"),
       ]);
 
@@ -289,7 +289,7 @@ describe("routing", () => {
       };
 
       const route = routeOf(routeHops(data, base.layout), "a-b");
-      const zone = { x: 3, y: -1, w: 4, d: 4 };
+      const zone = { d: 4, w: 4, x: 3, y: -1 };
 
       for (const leg of legsOf(route.points)) {
         assert.isFalse(legCrosses(leg, zone), "runs through z's zone");
@@ -302,7 +302,7 @@ describe("routing", () => {
     () =>
       Effect.sync(() => {
         const { data, layout } = mapOf(
-          { a: at(0, 0), m: at(4, 0), b: at(8, 0), c: at(4, 5) },
+          { a: at(0, 0), b: at(8, 0), c: at(4, 5), m: at(4, 0) },
           [hop("a", "b"), hop("b", "a"), hop("c", "a"), hop("b", "c")]
         );
 
@@ -331,7 +331,7 @@ describe("routing", () => {
       ];
 
       const { data, layout } = mapOf(
-        { a: at(0, 0), m: at(4, 0), b: at(8, 0) },
+        { a: at(0, 0), b: at(8, 0), m: at(4, 0) },
         [hop("a", "b")],
         { "a-b": override }
       );
@@ -347,7 +347,7 @@ describe("routing", () => {
   it.effect("names the structures an override runs under", () =>
     Effect.sync(() => {
       const { data, layout } = mapOf(
-        { a: at(0, 0), m: at(4, 0), b: at(8, 0) },
+        { a: at(0, 0), b: at(8, 0), m: at(4, 0) },
         [hop("a", "b")],
         {
           "a-b": [
@@ -370,12 +370,12 @@ describe("routing", () => {
         // t is walled in on every side, half a unit away.
         const { data, layout } = mapOf(
           {
+            e: sized(4.5, 1.5, { d: 3, w: 2 }),
+            n: sized(1.5, -0.5, { d: 2, w: 3 }),
             s: at(-6, 2),
+            south: sized(1.5, 4.5, { d: 2, w: 3 }),
             t: at(2, 2),
-            n: sized(1.5, -0.5, { w: 3, d: 2 }),
-            w: sized(-0.5, 1.5, { w: 2, d: 3 }),
-            e: sized(4.5, 1.5, { w: 2, d: 3 }),
-            south: sized(1.5, 4.5, { w: 3, d: 2 }),
+            w: sized(-0.5, 1.5, { d: 3, w: 2 }),
           },
           [hop("s", "t")]
         );
@@ -395,7 +395,7 @@ describe("route checks", () => {
       Effect.sync(() => {
         // The override turns on m's corner at (4, 0), which both views draw.
         const { data, layout } = mapOf(
-          { a: at(0, 0), m: at(4, 0), b: at(8, 0) },
+          { a: at(0, 0), b: at(8, 0), m: at(4, 0) },
           [hop("a", "b", "h")],
           {
             h: [
@@ -425,12 +425,12 @@ describe("route checks", () => {
     Effect.sync(() => {
       const { data, layout } = mapOf(
         {
+          e: sized(4.5, 1.5, { d: 3, w: 2 }),
+          n: sized(1.5, -0.5, { d: 2, w: 3 }),
           s: at(-6, 2),
+          south: sized(1.5, 4.5, { d: 2, w: 3 }),
           t: at(2, 2),
-          n: sized(1.5, -0.5, { w: 3, d: 2 }),
-          w: sized(-0.5, 1.5, { w: 2, d: 3 }),
-          e: sized(4.5, 1.5, { w: 2, d: 3 }),
-          south: sized(1.5, 4.5, { w: 3, d: 2 }),
+          w: sized(-0.5, 1.5, { d: 3, w: 2 }),
         },
         [hop("s", "t")]
       );
@@ -452,7 +452,7 @@ describe("route checks", () => {
   it.effect("gives an override that runs through a box the same warning", () =>
     Effect.sync(() => {
       const { data, layout } = mapOf(
-        { a: at(0, 0), m: at(4, 0), b: at(8, 0) },
+        { a: at(0, 0), b: at(8, 0), m: at(4, 0) },
         [hop("a", "b")],
         {
           "a-b": [
@@ -463,17 +463,17 @@ describe("route checks", () => {
       );
 
       assert.deepStrictEqual(
-        Arr.map(checkLayout(data, layout), ({ file, path, message }) => ({
+        Arr.map(checkLayout(data, layout), ({ file, message, path }) => ({
           file,
-          path,
           message,
+          path,
         })),
         [
           {
             file: "layout.json",
-            path: 'routes["a-b"]',
             message:
               'hop "a-b" from "a" to "b" runs under "m": its route override passes through that box. Change the override\'s points so it goes around, or delete it so the hop routes itself.',
+            path: 'routes["a-b"]',
           },
         ]
       );
@@ -491,28 +491,28 @@ describe("route checks", () => {
         { a: at(0, 0), b: at(4, 0) },
         [hop("a", "b", "there"), hop("b", "a", "back")],
         {
-          there: along,
           back: [
             { x: 4, y: 1 },
             { x: 3, y: 1 },
             { x: 3, y: 1.5 },
             { x: 2, y: 1.5 },
           ],
+          there: along,
         }
       );
 
       assert.deepStrictEqual(
-        Arr.map(checkLayout(data, layout), ({ severity, path, message }) => ({
-          severity,
-          path,
+        Arr.map(checkLayout(data, layout), ({ message, path, severity }) => ({
           message,
+          path,
+          severity,
         })),
         [
           {
-            severity: "warning",
-            path: "routes.there",
             message:
               'hop "there"\'s route override runs along the same segment as hop "back", so the two read as one line. Move the override\'s points off the other route.',
+            path: "routes.there",
+            severity: "warning",
           },
         ]
       );
@@ -525,13 +525,13 @@ describe("route checks", () => {
         { a: at(0, 0), b: at(4, 0) },
         [hop("a", "b", "there"), hop("b", "a", "back")],
         {
-          there: [
-            { x: 2, y: 0.5 },
-            { x: 4, y: 0.5 },
-          ],
           back: [
             { x: 4, y: 1.5 },
             { x: 2, y: 1.5 },
+          ],
+          there: [
+            { x: 2, y: 0.5 },
+            { x: 4, y: 0.5 },
           ],
         }
       );
@@ -559,12 +559,12 @@ describe("route checks", () => {
       );
 
       assert.deepStrictEqual(
-        Arr.map(errors, ({ path, message }) => ({ path, message })),
+        Arr.map(errors, ({ message, path }) => ({ message, path })),
         [
           {
-            path: 'routes["a-b"]',
             message:
               'hop "a-b"\'s route override ends at (6, 1), which isn\'t on the edge of "b" at x 8–10, y 0–2. Move its last point onto that footprint\'s edge.',
+            path: 'routes["a-b"]',
           },
         ]
       );
@@ -610,15 +610,15 @@ describe("route checks", () => {
       });
 
       assert.deepStrictEqual(
-        Arr.map(checkLayout(data, layout), ({ path, message }) => ({
-          path,
+        Arr.map(checkLayout(data, layout), ({ message, path }) => ({
           message,
+          path,
         })),
         [
           {
-            path: "routes.gone",
             message:
               'no hop in data.mjs has the id "gone". build removes this route override.',
+            path: "routes.gone",
           },
         ]
       );

@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Option, Result, Schema, String as Str } from "effect";
-import { vi } from "vitest";
 
 import {
   AcceptedItem,
@@ -33,14 +32,12 @@ import type {
 } from "../src/index.ts";
 import { unwrap } from "./review-helpers.ts";
 
-vi.setConfig({ testTimeout: 5000 });
-
 const layout: Layout = {
   format: 1,
   revision: 2,
   structures: {
-    a: { x: 0, y: 0, w: 2, d: 2 },
-    b: { x: 4, y: 0, w: 2, d: 2 },
+    a: { d: 2, w: 2, x: 0, y: 0 },
+    b: { d: 2, w: 2, x: 4, y: 0 },
   },
 };
 
@@ -49,15 +46,15 @@ const move = (id: string, to: readonly [number, number]): LayoutChange => ({
   kind: "move",
   moves: [
     {
-      target: { kind: "structure", id: "a" },
       position: { x: to[0], y: to[1] },
+      target: { id: "a", kind: "structure" },
     },
   ],
 });
 
 const note = (id: string, text: string) => ({
   id,
-  target: { kind: "structure" as const, id: "b" },
+  target: { id: "b", kind: "structure" as const },
   text,
 });
 
@@ -67,37 +64,37 @@ const known: ReadonlySet<string> = new Set(["a", "b"]);
 
 /** Adds a note the way the server does, on a map with structures a and b. */
 const addNote = ({
-  proposals,
   note: held,
+  proposals,
 }: {
-  readonly proposals: P;
-  readonly note: ReturnType<typeof note>;
   readonly known: ReadonlySet<string>;
+  readonly note: ReturnType<typeof note>;
+  readonly proposals: P;
 }) =>
   addItem({
-    proposals,
     item: { kind: "note", ...held },
     known: { structureIds: known },
+    proposals,
   });
 
-const hops = [{ id: "h-ab", from: "a", to: "b" }];
+const hops = [{ from: "a", id: "h-ab", to: "b" }];
 
 const data: MapData = {
-  format: 1,
-  revision: 0,
-  overview: { title: "T", summary: "S" },
-  groups: [{ id: "g", title: "G" }],
-  structures: [],
-  hops: [],
-  flows: [],
   chapters: [],
+  flows: [],
+  format: 1,
+  groups: [{ id: "g", title: "G" }],
+  hops: [],
+  overview: { summary: "S", title: "T" },
+  revision: 0,
+  structures: [],
 };
 
 const open: P = {
   format: 1,
-  revision: 4,
   layout: [move("m1", [0, 6])],
   notes: [note("n1", "Why is this a tall box?")],
+  revision: 4,
 };
 
 const decode = Schema.decodeUnknownResult(Proposals, {
@@ -110,7 +107,7 @@ const encode = Schema.encodeResult(Proposals);
 const firstBatch = (proposals: P): Batch =>
   Option.getOrThrow(Arr.head(proposals.batches ?? []));
 
-const frozen = () => unwrap(freezeOpen({ proposals: open, at })).proposals;
+const frozen = () => unwrap(freezeOpen({ at, proposals: open })).proposals;
 
 const withBatch = (batch: Partial<Batch>): P => ({
   ...frozen(),
@@ -119,18 +116,18 @@ const withBatch = (batch: Partial<Batch>): P => ({
 
 describe("proposals.json with batches", () => {
   it("still reads a file written before notes and batches existed", () => {
-    const old = { format: 1, revision: 3, layout: [] };
+    const old = { format: 1, layout: [], revision: 3 };
 
     assert.deepStrictEqual(unwrap(decode(old)), old);
   });
 
   it("round-trips a frozen batch with verdicts and a commit", () => {
     const proposals = withBatch({
+      committed: { at, revision: 1 },
       verdicts: {
         m1: { verdict: "accepted" },
-        n1: { verdict: "rejected", reason: "It is tall for a reason." },
+        n1: { reason: "It is tall for a reason.", verdict: "rejected" },
       },
-      committed: { revision: 1, at },
     });
 
     const encoded = Result.getOrThrow(encode(proposals));
@@ -148,7 +145,7 @@ describe("proposals.json with batches", () => {
 
     assert.isTrue(Result.isFailure(result));
     assert.include(
-      Result.match(result, { onSuccess: () => "", onFailure: String }),
+      Result.match(result, { onFailure: String, onSuccess: () => "" }),
       "Say why"
     );
   });
@@ -161,7 +158,7 @@ describe("proposals.json with batches", () => {
 
     assert.isTrue(Result.isFailure(result));
     assert.include(
-      Result.match(result, { onSuccess: () => "", onFailure: String }),
+      Result.match(result, { onFailure: String, onSuccess: () => "" }),
       "its own id"
     );
   });
@@ -169,7 +166,7 @@ describe("proposals.json with batches", () => {
 
 describe("freezing", () => {
   it("moves open changes and notes into batch 1, keeping their ids", () => {
-    const { proposals, batch } = unwrap(freezeOpen({ proposals: open, at }));
+    const { batch, proposals } = unwrap(freezeOpen({ at, proposals: open }));
 
     assert.strictEqual(batch.number, 1);
     assert.deepStrictEqual(
@@ -189,8 +186,8 @@ describe("freezing", () => {
 
     const second = unwrap(
       freezeOpen({
-        proposals: { ...first, layout: [move("m2", [8, 8])] },
         at,
+        proposals: { ...first, layout: [move("m2", [8, 8])] },
       })
     );
 
@@ -200,8 +197,8 @@ describe("freezing", () => {
 
   it("refuses when nothing is open", () => {
     const result = freezeOpen({
-      proposals: { format: 1, revision: 0, layout: [] },
       at,
+      proposals: { format: 1, layout: [], revision: 0 },
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -229,22 +226,22 @@ describe("verdicts", () => {
   it("records a verdict on an item in the oldest open batch", () => {
     const next = unwrap(
       recordVerdict({
-        proposals: frozen(),
         id: "n1",
-        verdict: { verdict: "changed", reason: "Folded into the overview." },
+        proposals: frozen(),
+        verdict: { reason: "Folded into the overview.", verdict: "changed" },
       })
     );
 
     assert.deepStrictEqual(next.batches?.[0]?.verdicts.n1, {
-      verdict: "changed",
       reason: "Folded into the overview.",
+      verdict: "changed",
     });
   });
 
   it("fails on an unknown item and names the ones that exist", () => {
     const result = recordVerdict({
-      proposals: frozen(),
       id: "nope",
+      proposals: frozen(),
       verdict: { verdict: "accepted" },
     });
 
@@ -254,8 +251,8 @@ describe("verdicts", () => {
 
   it("fails when no batch is waiting", () => {
     const result = recordVerdict({
-      proposals: open,
       id: "n1",
+      proposals: open,
       verdict: { verdict: "accepted" },
     });
 
@@ -269,13 +266,13 @@ const decided = (verdicts: Record<string, Verdict>): P =>
 describe("applying a batch with its verdicts to a map state", () => {
   it("refuses while an item has no verdict", () => {
     const result = commitBatch({
-      proposals: decided({ m1: { verdict: "accepted" } }),
-      layout,
-      hops,
-      saved: layout,
-      data,
-      revision: 1,
       at,
+      data,
+      hops,
+      layout,
+      proposals: decided({ m1: { verdict: "accepted" } }),
+      revision: 1,
+      saved: layout,
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -285,24 +282,24 @@ describe("applying a batch with its verdicts to a map state", () => {
   it("applies accepted layout changes and sorts items by verdict", () => {
     const committing = unwrap(
       commitBatch({
+        at,
+        data,
+        hops,
+        layout,
         proposals: decided({
           m1: { verdict: "accepted" },
-          n1: { verdict: "rejected", reason: "No." },
+          n1: { reason: "No.", verdict: "rejected" },
         }),
-        layout,
-        hops,
-        saved: layout,
-        data,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
     assert.deepStrictEqual(committing.layout.structures.a, {
+      d: 2,
+      w: 2,
       x: 0,
       y: 6,
-      w: 2,
-      d: 2,
     });
     assert.strictEqual(committing.layout.revision, 3);
     assert.deepStrictEqual(
@@ -311,32 +308,32 @@ describe("applying a batch with its verdicts to a map state", () => {
     );
     assert.deepStrictEqual(committing.rejected, [
       {
-        kind: "note",
         id: "n1",
-        target: { kind: "structure", id: "b" },
-        text: "Why is this a tall box?",
+        kind: "note",
         reason: "No.",
+        target: { id: "b", kind: "structure" },
+        text: "Why is this a tall box?",
       },
     ]);
     assert.deepStrictEqual(committing.proposals.batches?.[0]?.committed, {
-      revision: 1,
       at,
+      revision: 1,
     });
   });
 
   it("leaves a rejected layout change out of the layout", () => {
     const committing = unwrap(
       commitBatch({
+        at,
+        data,
+        hops,
+        layout,
         proposals: decided({
-          m1: { verdict: "rejected", reason: "Too close." },
+          m1: { reason: "Too close.", verdict: "rejected" },
           n1: { verdict: "accepted" },
         }),
-        layout,
-        hops,
-        saved: layout,
-        data,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
@@ -346,16 +343,16 @@ describe("applying a batch with its verdicts to a map state", () => {
   it("takes a changed item as accepted and keeps the reason", () => {
     const committing = unwrap(
       commitBatch({
+        at,
+        data,
+        hops,
+        layout,
         proposals: decided({
-          m1: { verdict: "changed", reason: "Moved to y 6 as asked." },
+          m1: { reason: "Moved to y 6 as asked.", verdict: "changed" },
           n1: { verdict: "accepted" },
         }),
-        layout,
-        hops,
-        saved: layout,
-        data,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
@@ -374,22 +371,22 @@ describe("applying a batch with its verdicts to a map state", () => {
       revision: layout.revision + 1,
       structures: {
         ...layout.structures,
-        a: { x: 0, y: 9, w: 2, d: 2 },
+        a: { d: 2, w: 2, x: 0, y: 9 },
       },
     };
 
     const committing = unwrap(
       commitBatch({
+        at,
+        data,
+        hops,
+        layout: agents,
         proposals: decided({
-          m1: { verdict: "changed", reason: "Put it at y 9, clear of b." },
+          m1: { reason: "Put it at y 9, clear of b.", verdict: "changed" },
           n1: { verdict: "accepted" },
         }),
-        layout: agents,
-        hops,
-        saved: layout,
-        data,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
@@ -401,16 +398,16 @@ describe("applying a batch with its verdicts to a map state", () => {
   it("makes accepted and rejected lists that a revision file takes", () => {
     const committing = unwrap(
       commitBatch({
-        proposals: decided({
-          m1: { verdict: "changed", reason: "Moved as asked." },
-          n1: { verdict: "rejected", reason: "No." },
-        }),
-        layout,
-        hops,
-        saved: layout,
-        data,
-        revision: 1,
         at,
+        data,
+        hops,
+        layout,
+        proposals: decided({
+          m1: { reason: "Moved as asked.", verdict: "changed" },
+          n1: { reason: "No.", verdict: "rejected" },
+        }),
+        revision: 1,
+        saved: layout,
       })
     );
 
@@ -432,26 +429,26 @@ describe("applying a batch with its verdicts to a map state", () => {
   it("makes the next open batch the oldest once the first is committed", () => {
     const committing = unwrap(
       commitBatch({
+        at,
+        data,
+        hops,
+        layout,
         proposals: decided({
           m1: { verdict: "accepted" },
           n1: { verdict: "accepted" },
         }),
-        layout,
-        hops,
-        saved: layout,
-        data,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
     const second = unwrap(
       freezeOpen({
+        at,
         proposals: {
           ...committing.proposals,
           layout: [move("m2", [8, 8])],
         },
-        at,
       })
     );
 
@@ -464,16 +461,16 @@ describe("applying a batch with its verdicts to a map state", () => {
 const reviewed = (): P =>
   unwrap(
     commitBatch({
+      at,
+      data,
+      hops,
+      layout,
       proposals: decided({
         m1: { verdict: "accepted" },
-        n1: { verdict: "rejected", reason: "No." },
+        n1: { reason: "No.", verdict: "rejected" },
       }),
-      layout,
-      hops,
-      saved: layout,
-      data,
       revision: 1,
-      at,
+      saved: layout,
     })
   ).proposals;
 
@@ -481,8 +478,8 @@ describe("what the page lists", () => {
   it("gives each item an open, frozen or reviewed status", () => {
     const second = unwrap(
       freezeOpen({
-        proposals: { ...reviewed(), notes: [note("n2", "Sent in batch 2")] },
         at,
+        proposals: { ...reviewed(), notes: [note("n2", "Sent in batch 2")] },
       })
     ).proposals;
 
@@ -505,13 +502,13 @@ describe("what the page lists", () => {
   });
 
   it("dismisses a reviewed item, and refuses one still waiting", () => {
-    const dismissed = unwrap(dismissItem({ proposals: reviewed(), id: "n1" }));
+    const dismissed = unwrap(dismissItem({ id: "n1", proposals: reviewed() }));
 
     assert.deepStrictEqual(dismissed.batches?.[0]?.dismissed, ["n1"]);
-    const waiting = dismissItem({ proposals: frozen(), id: "n1" });
+    const waiting = dismissItem({ id: "n1", proposals: frozen() });
 
     assert.strictEqual(
-      Result.match(waiting, { onSuccess: () => "", onFailure: String }),
+      Result.match(waiting, { onFailure: String, onSuccess: () => "" }),
       `"n1" is in batch 1, which is waiting for the agent. It can be dismissed once the agent commits.`
     );
   });
@@ -520,7 +517,7 @@ describe("what the page lists", () => {
 describe("notes", () => {
   it("adds a note to the open notes", () => {
     const next = unwrap(
-      addNote({ proposals: open, note: note("n2", "A second one"), known })
+      addNote({ known, note: note("n2", "A second one"), proposals: open })
     );
 
     const ids = Arr.map(
@@ -534,13 +531,13 @@ describe("notes", () => {
 
   it("refuses an id used again for a different note", () => {
     const once = unwrap(
-      addNote({ proposals: open, note: note("n2", "A second one"), known })
+      addNote({ known, note: note("n2", "A second one"), proposals: open })
     );
 
     const result = addNote({
-      proposals: once,
-      note: note("n2", "Different words"),
       known,
+      note: note("n2", "Different words"),
+      proposals: once,
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -549,19 +546,19 @@ describe("notes", () => {
   it("refuses a note on a structure the map doesn't have", () => {
     const bad = {
       ...note("n2", "x"),
-      target: { kind: "structure" as const, id: "zzz" },
+      target: { id: "zzz", kind: "structure" as const },
     };
 
-    const result = addNote({ proposals: open, note: bad, known });
+    const result = addNote({ known, note: bad, proposals: open });
 
     assert.isTrue(Result.isFailure(result));
   });
 
   it("refuses an id that is already taken, even by a frozen item", () => {
     const result = addNote({
-      proposals: frozen(),
-      note: note("n1", "again"),
       known,
+      note: note("n1", "again"),
+      proposals: frozen(),
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -569,12 +566,12 @@ describe("notes", () => {
 
   it("edits and discards an open note", () => {
     const edited = unwrap(
-      editProposal({ proposals: open, id: "n1", text: "New words" })
+      editProposal({ id: "n1", proposals: open, text: "New words" })
     );
 
     assert.strictEqual(edited.notes?.[0]?.text, "New words");
 
-    const gone = unwrap(discardProposal({ proposals: open, id: "n1" }));
+    const gone = unwrap(discardProposal({ id: "n1", proposals: open }));
 
     assert.deepStrictEqual(gone.notes, []);
   });
@@ -584,20 +581,20 @@ describe("editing a rejected item", () => {
   it("opens a new note that links to the rejected one and leaves it dismissed", () => {
     const next = unwrap(
       reopenItem({
-        proposals: reviewed(),
-        id: "n1",
-        newId: "n9",
-        layout,
-        known,
-        hops,
         data,
+        hops,
+        id: "n1",
+        known,
+        layout,
+        newId: "n9",
+        proposals: reviewed(),
       })
     );
 
     assert.deepStrictEqual(next.notes, [
       {
         id: "n9",
-        target: { kind: "structure", id: "b" },
+        target: { id: "b", kind: "structure" },
         text: "Why is this a tall box?",
       },
     ]);
@@ -608,17 +605,17 @@ describe("editing a rejected item", () => {
   it("lands in the next batch, which keeps the link", () => {
     const next = unwrap(
       reopenItem({
-        proposals: reviewed(),
-        id: "n1",
-        newId: "n9",
-        layout,
-        known,
-        hops,
         data,
+        hops,
+        id: "n1",
+        known,
+        layout,
+        newId: "n9",
+        proposals: reviewed(),
       })
     );
 
-    const second = unwrap(freezeOpen({ proposals: next, at })).proposals;
+    const second = unwrap(freezeOpen({ at, proposals: next })).proposals;
 
     const batches = Option.getOrElse(
       Option.fromNullishOr(second.batches),
@@ -638,28 +635,28 @@ describe("editing a rejected item", () => {
   it("reopens a rejected layout change as an open change with a new id", () => {
     const rejected = unwrap(
       commitBatch({
+        at,
+        data,
+        hops,
+        layout,
         proposals: decided({
-          m1: { verdict: "rejected", reason: "Too close." },
+          m1: { reason: "Too close.", verdict: "rejected" },
           n1: { verdict: "accepted" },
         }),
-        layout,
-        hops,
-        saved: layout,
-        data,
         revision: 1,
-        at,
+        saved: layout,
       })
     ).proposals;
 
     const next = unwrap(
       reopenItem({
-        proposals: rejected,
-        id: "m1",
-        newId: "m7",
-        layout,
-        known,
-        hops,
         data,
+        hops,
+        id: "m1",
+        known,
+        layout,
+        newId: "m7",
+        proposals: rejected,
       })
     );
 
@@ -671,13 +668,13 @@ describe("editing a rejected item", () => {
 
   it("refuses to reopen an item that wasn't rejected", () => {
     const result = reopenItem({
-      proposals: reviewed(),
-      id: "m1",
-      newId: "m7",
-      layout,
-      known,
-      hops,
       data,
+      hops,
+      id: "m1",
+      known,
+      layout,
+      newId: "m7",
+      proposals: reviewed(),
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -685,13 +682,13 @@ describe("editing a rejected item", () => {
 
   it("refuses to reopen an item still waiting for the agent", () => {
     const result = reopenItem({
-      proposals: frozen(),
-      id: "n1",
-      newId: "n9",
-      layout,
-      known,
-      hops,
       data,
+      hops,
+      id: "n1",
+      known,
+      layout,
+      newId: "n9",
+      proposals: frozen(),
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -711,7 +708,7 @@ describe("accepting while a batch is frozen", () => {
       layout: [move("open", [0, 12])],
     };
 
-    const refusal = acceptRefusal({ proposals, layout, ids: "all", hops });
+    const refusal = acceptRefusal({ hops, ids: "all", layout, proposals });
 
     assert.isTrue(Option.isSome(refusal));
     assert.include(
@@ -725,15 +722,15 @@ describe("accepting while a batch is frozen", () => {
       id: "open",
       kind: "move",
       moves: [
-        { target: { kind: "structure", id: "b" }, position: { x: 4, y: 12 } },
+        { position: { x: 4, y: 12 }, target: { id: "b", kind: "structure" } },
       ],
     };
 
     const refusal = acceptRefusal({
-      proposals: { ...frozenMove(), layout: [other] },
-      layout,
-      ids: "all",
       hops,
+      ids: "all",
+      layout,
+      proposals: { ...frozenMove(), layout: [other] },
     });
 
     assert.isTrue(Option.isNone(refusal));
@@ -746,15 +743,15 @@ describe("accepting while a batch is frozen", () => {
       id: "open",
       kind: "move",
       moves: [
-        { target: { kind: "structure", id: "b" }, position: { x: 0, y: 6 } },
+        { position: { x: 0, y: 6 }, target: { id: "b", kind: "structure" } },
       ],
     };
 
     const refusal = acceptRefusal({
-      proposals: { ...frozenMove(), layout: [onto] },
-      layout,
-      ids: "all",
       hops,
+      ids: "all",
+      layout,
+      proposals: { ...frozenMove(), layout: [onto] },
     });
 
     assert.isTrue(Option.isSome(refusal));
@@ -768,21 +765,21 @@ describe("accepting while a batch is frozen", () => {
 
     assert.isTrue(
       Option.isNone(
-        acceptRefusal({ proposals, layout, ids: ["nothing"], hops })
+        acceptRefusal({ hops, ids: ["nothing"], layout, proposals })
       )
     );
   });
 });
 
 describe("the prompt", () => {
-  const { batch } = unwrap(freezeOpen({ proposals: open, at }));
+  const { batch } = unwrap(freezeOpen({ at, proposals: open }));
 
   const prompt = reviewPrompt({
-    home: "/work/flake/map",
     batch,
+    home: "/work/flake/map",
     names: {
-      structure: (id) => (id === "a" ? "Alpha" : "Beta"),
       hop: (id) => id,
+      structure: (id) => (id === "a" ? "Alpha" : "Beta"),
     },
   });
 
@@ -829,26 +826,26 @@ describe("a reroute in the prompt", () => {
 
   const rerouted: P = {
     format: 1,
-    revision: 1,
     layout: [
       {
         id: "r1",
         kind: "reroute",
-        target: { kind: "hop", id: "h-ab" },
         points: route,
+        target: { id: "h-ab", kind: "hop" },
       },
       move("m1", [0, 6]),
     ],
+    revision: 1,
   };
 
-  const { batch } = unwrap(freezeOpen({ proposals: rerouted, at }));
+  const { batch } = unwrap(freezeOpen({ at, proposals: rerouted }));
 
   const prompt = reviewPrompt({
-    home: "/work/map",
     batch,
+    home: "/work/map",
     names: {
-      structure: (id) => (id === "a" ? "Alpha" : "Beta"),
       hop: () => 'save "it"\n- note n9 on Z',
+      structure: (id) => (id === "a" ? "Alpha" : "Beta"),
     },
   });
 
@@ -863,24 +860,24 @@ describe("a reroute in the prompt", () => {
 
   it("freezes a reroute with the rest, and applies it on commit", () => {
     const committed = commitBatch({
+      at,
+      data,
+      hops,
+      layout,
       proposals: {
-        ...unwrap(freezeOpen({ proposals: rerouted, at })).proposals,
+        ...unwrap(freezeOpen({ at, proposals: rerouted })).proposals,
         batches: [
           {
             ...batch,
             verdicts: {
+              m1: { reason: "No.", verdict: "rejected" },
               r1: { verdict: "accepted" },
-              m1: { verdict: "rejected", reason: "No." },
             },
           },
         ],
       },
-      layout,
-      hops,
-      saved: layout,
-      data,
       revision: 1,
-      at,
+      saved: layout,
     });
 
     assert.deepStrictEqual(unwrap(committed).layout.routes, {
@@ -890,22 +887,22 @@ describe("a reroute in the prompt", () => {
 
   it("holds an accept of the same hop until the agent commits", () => {
     const frozenRoute: P = {
-      ...unwrap(freezeOpen({ proposals: rerouted, at })).proposals,
+      ...unwrap(freezeOpen({ at, proposals: rerouted })).proposals,
       layout: [
         {
           id: "r2",
           kind: "reroute",
-          target: { kind: "hop", id: "h-ab" },
           points: null,
+          target: { id: "h-ab", kind: "hop" },
         },
       ],
     };
 
     const refusal = acceptRefusal({
-      proposals: frozenRoute,
-      layout,
-      ids: "all",
       hops,
+      ids: "all",
+      layout,
+      proposals: frozenRoute,
     });
 
     assert.include(

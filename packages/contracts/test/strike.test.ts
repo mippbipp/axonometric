@@ -9,22 +9,22 @@ import {
 import type { View } from "../src/index.ts";
 import { crossesPolygon, rectCorners } from "./screen-geometry.ts";
 
-const placement = { x: 0, y: 0, w: 2, d: 2 };
+const placement = { d: 2, w: 2, x: 0, y: 0 };
 
 /** A chip's box just inside the first corner of the footprint in `view`. */
 const chipAt = (view: View) => {
   const [corner] = groundOutline(placement, groundProjections[view]);
   const { sx, sy } = corner ?? { sx: 0, sy: 0 };
 
-  return { left: sx + 2, top: sy + 2, right: sx + 18, bottom: sy + 17 };
+  return { bottom: sy + 17, left: sx + 2, right: sx + 18, top: sy + 2 };
 };
 
 const crossingChip = (view: View) => {
   const chip = chipAt(view);
 
   const pieces = strikeSegments({
-    placement,
     ground: groundProjections[view],
+    placement,
     text: [chip],
   });
 
@@ -44,14 +44,13 @@ describe("the cross through a deleted structure", () => {
 
       assert.isAtLeast(count, 2);
       assert.deepStrictEqual(crossing, []);
-    },
-    5000
+    }
   );
 
   it("is the two whole diagonals when there is no text", () => {
     const pieces = strikeSegments({
-      placement,
       ground: groundProjections.plan,
+      placement,
       text: [undefined],
     });
 
@@ -59,11 +58,11 @@ describe("the cross through a deleted structure", () => {
 
     // Each piece runs from one corner to the opposite one.
     assert.sameDeepMembers(
-      Arr.map(pieces, ({ start, end }) => [start, end]),
+      Arr.map(pieces, ({ end, start }) => [start, end]),
       [
         [a, c],
         [b, d],
       ]
     );
-  }, 5000);
+  });
 });

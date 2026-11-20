@@ -7,7 +7,7 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 
 const nothing: ReadonlySet<string> = new Set();
 
-const noPlays: readonly string[] = [];
+const noPlays: ReadonlyArray<string> = [];
 
 /**
  * The ids a chapter's proposals mark for `action`: the structures a reveal or
@@ -24,7 +24,7 @@ export const useChapterMarks = (
 
   return shown === undefined
     ? nothing
-    : marked(shown, { name: chapterMarkName, scope: chapter, kind: action });
+    : marked(shown, { kind: action, name: chapterMarkName, scope: chapter });
 };
 
 /**
@@ -33,7 +33,7 @@ export const useChapterMarks = (
  * proposals applied, so the order a proposal changes is told by comparing the
  * two.
  */
-export const useAcceptedPlays = (chapter: string): readonly string[] =>
+export const useAcceptedPlays = (chapter: string): ReadonlyArray<string> =>
   useChapterProposalsIgnoringEdit()?.acceptedChapters.find(
     ({ id }) => id === chapter
   )?.plays ?? noPlays;

@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
   DateTime,
   Duration,
@@ -88,10 +89,10 @@ export const processIsAlive = (pid: number) => {
 
 /** How long a command waits for a held lock before giving up. */
 export interface LockWait {
-  /** How long to keep retrying in total. */
-  readonly timeout: Duration.Input;
   /** How long to wait between tries. */
   readonly interval: Duration.Input;
+  /** How long to keep retrying in total. */
+  readonly timeout: Duration.Input;
 }
 
 export const defaultLockWait: LockWait = {
@@ -180,9 +181,11 @@ export const withLock = Effect.fnUntraced(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const file = path.join(yield* stateFolder(home), "lock");
+  const stateDir = yield* stateFolder(home);
+  const file = path.join(stateDir, "lock");
 
-  const since = DateTime.formatIso(yield* DateTime.now);
+  const currentTime = yield* DateTime.now;
+  const since = DateTime.formatIso(currentTime);
   const content = yield* encodeHolder({ pid: process.pid, command, since });
 
   // Only remove the lock while it's still ours.

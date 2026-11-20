@@ -8,11 +8,11 @@ const maxFrameSeconds = 0.05;
  * frame, while `playing` is true. Packet playback and the inside view share it.
  */
 export const useFrameClock = ({
-  playing,
   advance,
+  playing,
 }: {
-  readonly playing: boolean;
   readonly advance: (seconds: number) => void;
+  readonly playing: boolean;
 }) => {
   const onFrame = useEffectEvent(advance);
 

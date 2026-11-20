@@ -27,10 +27,10 @@ const firstGap = 0.25;
 const ringStep = 0.3;
 
 const grown = (placement: Placement, gap: number): Placement => ({
+  d: placement.d + gap * 2,
+  w: placement.w + gap * 2,
   x: placement.x - gap,
   y: placement.y - gap,
-  w: placement.w + gap * 2,
-  d: placement.d + gap * 2,
 });
 
 /**
@@ -40,13 +40,13 @@ const grown = (placement: Placement, gap: number): Placement => ({
  * under the structures.
  */
 export function CompareRings({
+  marks,
   structures,
   view,
-  marks,
 }: {
-  readonly structures: readonly SceneStructure[];
-  readonly view: View;
   readonly marks: CompareMarks | null;
+  readonly structures: ReadonlyArray<SceneStructure>;
+  readonly view: View;
 }) {
   if (marks === null) {
     return null;
@@ -56,7 +56,7 @@ export function CompareRings({
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
-      {Arr.flatMap(structures, ({ structure, placement }) => {
+      {Arr.flatMap(structures, ({ placement, structure }) => {
         const kinds = marks.structures.get(structure.id) ?? [];
         const origin = marks.origins.get(structure.id);
 
@@ -65,29 +65,29 @@ export function CompareRings({
             ? []
             : [
                 <polygon
-                  key={`${structure.id}-origin`}
-                  data-compare-origin={structure.id}
-                  points={toPoints(groundOutline(origin, ground))}
                   className={`${looks.origin.stroke} fill-none`}
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
+                  data-compare-origin={structure.id}
+                  key={`${structure.id}-origin`}
+                  points={toPoints(groundOutline(origin, ground))}
                   strokeDasharray={looks.origin.dash}
+                  strokeLinecap="round"
+                  strokeWidth={1.6}
                 />,
               ]),
           ...Arr.map(kinds, (kind, index) => (
             <polygon
-              key={`${structure.id}-${kind}`}
+              className={`${looks[kind].stroke} fill-none`}
               data-compare-ring={kind}
               data-compare-structure={structure.id}
+              key={`${structure.id}-${kind}`}
               points={toPoints(
                 groundOutline(
                   grown(placement, firstGap + ringStep * index),
                   ground
                 )
               )}
-              className={`${looks[kind].stroke} fill-none`}
-              strokeWidth={2}
               strokeDasharray={looks[kind].dash}
+              strokeWidth={2}
             />
           )),
         ];
@@ -106,7 +106,7 @@ export function CompareHops({
   hops,
   marks,
 }: {
-  readonly hops: readonly SceneHop[];
+  readonly hops: ReadonlyArray<SceneHop>;
   readonly marks: CompareMarks | null;
 }) {
   if (marks === null) {
@@ -123,24 +123,24 @@ export function CompareHops({
           ? []
           : [
               <g
-                key={hop.id}
-                data-compare-hop={hop.id}
-                data-compare-kind={kind}
-                role="graphics-symbol"
                 aria-label={`Hop ${hop.label}, ${looks[kind].spoken}`}
                 className={`${looks[kind].stroke} fill-none`}
+                data-compare-hop={hop.id}
+                data-compare-kind={kind}
+                key={hop.id}
+                role="graphics-symbol"
               >
                 <polyline
                   points={toPoints(points)}
-                  strokeWidth={6}
-                  strokeLinejoin="round"
                   strokeDasharray={looks[kind].dash}
+                  strokeLinejoin="round"
+                  strokeWidth={6}
                 />
                 {head === undefined ? null : (
                   <polygon
                     points={toPoints(head)}
-                    strokeWidth={4}
                     strokeLinejoin="round"
+                    strokeWidth={4}
                   />
                 )}
               </g>,

@@ -3,7 +3,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Schema } from "effect";
 import type { Locator, Page } from "playwright";
 
-import { click, count, textOf, waitFor, waitTimeout } from "./browser.ts";
+import {
+  assertCount,
+  assertTextIncludes,
+  click,
+  textOf,
+  waitFor,
+  waitTimeout,
+} from "./browser.ts";
 import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // Words on the page, against a real serve: a text suggestion shown beside the
@@ -33,7 +40,7 @@ describe("a text suggestion", () => {
     "shows next to the original, which is marked current, and saves with the field, original and new text",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* pin(page, "server");
         yield* click(page, `${panel} [data-suggest="oneLiner"]`);
@@ -50,20 +57,20 @@ describe("a text suggestion", () => {
 
         const field = `${panel} [data-suggestable="oneLiner"]`;
 
-        assert.include(
-          yield* textOf(page, `${field} [data-current]`),
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-current]`,
           "Saves edits and pushes changes to pages."
         );
-        assert.include(
-          yield* textOf(page, `${field} [data-current]`),
-          "Current"
-        );
-        assert.include(
-          yield* textOf(page, `${field} [data-suggested]`),
+        yield* assertTextIncludes(page, `${field} [data-current]`, "Current");
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-suggested]`,
           "Saves edits and tells every open page."
         );
-        assert.include(
-          yield* textOf(page, `${field} [data-suggested]`),
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-suggested]`,
           "goes in the next batch"
         );
 
@@ -123,21 +130,17 @@ describe("a text suggestion", () => {
         );
 
         // One Edit for each step, not two.
-        assert.strictEqual(
-          yield* count(
-            page,
-            `${panel} [data-suggestable-step="1"] [data-suggest]`
-          ),
+        yield* assertCount(
+          page,
+          `${panel} [data-suggestable-step="1"] [data-suggest]`,
           1
         );
-        assert.strictEqual(
-          yield* count(page, `${panel} [data-suggest^="steps."]`),
-          2
-        );
+        yield* assertCount(page, `${panel} [data-suggest^="steps."]`, 2);
 
         const edit = page.getByRole("button", { name: "Edit: step 2" });
 
-        assert.strictEqual(yield* Effect.promise(() => edit.count()), 1);
+        const editCount = yield* Effect.promise(() => edit.count());
+        assert.strictEqual(editCount, 1);
         yield* Effect.promise(() => edit.click());
         yield* fill(
           page,
@@ -162,7 +165,7 @@ describe("a text suggestion", () => {
         const proposals = yield* readProposals(home);
 
         assert.deepStrictEqual(
-          Arr.map(proposals.suggestions ?? [], ({ field, before, after }) => [
+          Arr.map(proposals.suggestions ?? [], ({ after, before, field }) => [
             field,
             before,
             after,
@@ -182,17 +185,16 @@ describe("a text suggestion", () => {
           ]
         );
 
-        // Each open suggestion has a Discard that names its field.
-        assert.isAtLeast(
-          yield* Effect.promise(() =>
-            page
-              .getByRole("button", {
-                name: "Discard suggestion: step 2 detail",
-              })
-              .count()
-          ),
-          1
+        const discardCount = yield* Effect.promise(() =>
+          page
+            .getByRole("button", {
+              name: "Discard suggestion: step 2 detail",
+            })
+            .count()
         );
+
+        // Each open suggestion has a Discard that names its field.
+        assert.isAtLeast(discardCount, 1);
       })
   );
 
@@ -256,7 +258,7 @@ describe("a question", () => {
     "is answered from the Questions tab, and the answer saves with today's date",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* pin(page, "server");
         yield* click(page, '[role="tab"][data-tab="questions"]');
@@ -283,12 +285,16 @@ describe("a question", () => {
         assert.strictEqual(saved?.target.id, "server");
         assert.strictEqual(saved?.text, "5178 first, then the next free one.");
         assert.strictEqual(saved?.answeredOn, today);
-        assert.include(
-          yield* textOf(page, '[data-question="Q-S1"] [data-answer]'),
+
+        yield* assertTextIncludes(
+          page,
+          '[data-question="Q-S1"] [data-answer]',
           `Answered ${today}`
         );
-        assert.strictEqual(
-          yield* count(page, '[data-question="Q-S1"] [data-answer-open]'),
+
+        yield* assertCount(
+          page,
+          '[data-question="Q-S1"] [data-answer-open]',
           0
         );
         assert.deepStrictEqual(errors, []);
@@ -324,19 +330,18 @@ describe("a question", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, row);
 
-        assert.include(
-          yield* textOf(page, row),
+        yield* assertTextIncludes(
+          page,
+          row,
           "New question on Save server: Should writes retry?"
         );
-        assert.strictEqual(
-          yield* count(page, `${row} button:has-text("Discard")`),
-          1
-        );
-        assert.include(
-          yield* textOf(page, '[role="tab"][data-tab="pending"]'),
+        yield* assertCount(page, `${row} button:has-text("Discard")`, 1);
+        yield* assertTextIncludes(
+          page,
+          '[role="tab"][data-tab="pending"]',
           "Pending · 1"
         );
-        assert.include(yield* textOf(page, "[data-ready-for-review]"), "· 1");
+        yield* assertTextIncludes(page, "[data-ready-for-review]", "· 1");
 
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
@@ -354,16 +359,16 @@ describe("a question", () => {
         assert.notInclude(reviewed.stdout, '"Q-');
 
         assert.deepStrictEqual(
-          Arr.map(report.batch?.items ?? [], ({ kind, before, after }) => ({
-            kind,
-            before,
+          Arr.map(report.batch?.items ?? [], ({ after, before, kind }) => ({
             after,
+            before,
+            kind,
           })),
           [
             {
-              kind: "question",
-              before: null,
               after: { text: "Should writes retry?" },
+              before: null,
+              kind: "question",
             },
           ]
         );
@@ -396,9 +401,11 @@ describe("the Pending tab with proposals", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-item][data-review-kind="note"]');
 
-        assert.strictEqual(yield* count(page, "[data-pending-empty]"), 0);
-        assert.include(
-          yield* textOf(page, '[role="tab"][data-tab="pending"]'),
+        yield* assertCount(page, "[data-pending-empty]", 0);
+
+        yield* assertTextIncludes(
+          page,
+          '[role="tab"][data-tab="pending"]',
           "Pending · 1"
         );
 
@@ -407,8 +414,9 @@ describe("the Pending tab with proposals", () => {
         assert.include(intro, "Layout changes");
         assert.include(intro, "Proposals");
         assert.include(intro, "agent");
-        assert.include(
-          yield* textOf(page, "[data-review-list] h3"),
+        yield* assertTextIncludes(
+          page,
+          "[data-review-list] h3",
           "Diagram changes"
         );
       }),
@@ -464,7 +472,7 @@ describe("the Pending tab with proposals", () => {
         );
 
         const names = yield* Effect.promise(() =>
-          page.evaluate<string[]>(
+          page.evaluate<Array<string>>(
             "[...document.querySelectorAll('[data-structure-panel] button[aria-label]')].map((button) => button.ariaLabel)"
           )
         );
@@ -482,20 +490,25 @@ describe("the Pending tab with proposals", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-kind="question"]');
 
-        assert.strictEqual(yield* count(page, "[data-pending-empty]"), 0);
-        assert.strictEqual(yield* count(page, "[data-review-list]"), 1);
-        assert.include(
-          yield* textOf(page, "[data-review-list] h3"),
+        yield* assertCount(page, "[data-pending-empty]", 0);
+        yield* assertCount(page, "[data-review-list]", 1);
+        yield* assertTextIncludes(
+          page,
+          "[data-review-list] h3",
           "Diagram changes"
         );
-        assert.sameMembers(
-          yield* Effect.promise(() =>
-            page.evaluate<string[]>(
-              "[...document.querySelectorAll('[data-review-list] [data-review-item]')].map((item) => item.dataset.reviewKind)"
-            )
-          ),
-          ["suggestion", "answer", "question"]
+
+        const reviewItemKinds = yield* Effect.promise(() =>
+          page.evaluate<Array<string>>(
+            "[...document.querySelectorAll('[data-review-list] [data-review-item]')].map((item) => item.dataset.reviewKind)"
+          )
         );
+
+        assert.sameMembers(reviewItemKinds, [
+          "suggestion",
+          "answer",
+          "question",
+        ]);
       }),
     60_000
   );
@@ -535,12 +548,13 @@ describe("a frozen suggestion", () => {
 
         yield* waitFor(page, `${field}[data-suggestion-state="frozen"]`);
 
-        assert.include(
-          yield* textOf(page, `${field} [data-suggested]`),
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-suggested]`,
           "In batch 1, waiting for the agent"
         );
-        assert.strictEqual(yield* count(page, `${field} button`), 0);
-        assert.strictEqual(yield* count(page, `${field} [data-suggest]`), 0);
+        yield* assertCount(page, `${field} button`, 0);
+        yield* assertCount(page, `${field} [data-suggest]`, 0);
 
         // The server still refuses a write the page can't make.
         const proposals = yield* readProposals(home);
@@ -577,8 +591,9 @@ describe("a frozen suggestion", () => {
         yield* waitFor(page, `${field}[data-suggestion-state="reviewed"]`);
         yield* waitFor(page, `${field} [data-suggest]`);
 
-        assert.include(
-          yield* textOf(page, `${field} [data-suggest]`),
+        yield* assertTextIncludes(
+          page,
+          `${field} [data-suggest]`,
           "Suggest again"
         );
       }),
@@ -589,13 +604,13 @@ describe("a frozen suggestion", () => {
 /** The on-screen box of the first element `locator` matches. */
 const boxOf = (locator: Locator) =>
   Effect.promise(() => locator.first().boundingBox()).pipe(
-    Effect.map((box) => box ?? { x: 0, y: 0, width: 0, height: 0 })
+    Effect.map((box) => box ?? { height: 0, width: 0, x: 0, y: 0 })
   );
 
 /** Each button's height and font size in pixels, by its accessible name. */
 const sizesOf = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<Record<string, { height: number; font: number }>>(`(() => {
+    page.evaluate<Record<string, { font: number; height: number }>>(`(() => {
       const sizes = {};
 
       for (const button of document.querySelectorAll("[data-structure-panel] button[aria-label], [data-structure-panel] [data-note-send]")) {
@@ -704,19 +719,18 @@ describe("the panel's buttons and headings", () => {
             .locator(`${panel} section`)
             .filter({ has: page.getByRole("heading", { name: heading }) });
 
-          assert.strictEqual(
-            yield* Effect.promise(() => section.count()),
-            1,
-            heading
-          );
+          const sectionCount = yield* Effect.promise(() => section.count());
+          assert.strictEqual(sectionCount, 1, heading);
 
           // The box's label takes no room on screen: the heading says it.
           const labels = yield* Effect.promise(() =>
             section.locator("label").all()
           );
 
-          const boxes = yield* Effect.forEach(labels, (label) =>
-            Effect.promise(() => label.boundingBox())
+          const boxes = yield* Effect.forEach(
+            labels,
+            (label) => Effect.promise(() => label.boundingBox()),
+            { concurrency: 1 }
           );
 
           const shown = Arr.filter(
@@ -725,13 +739,12 @@ describe("the panel's buttons and headings", () => {
           ).length;
 
           assert.strictEqual(shown, 0, heading);
-          assert.strictEqual(
-            yield* Effect.promise(() =>
-              section.getByRole("textbox", { name }).count()
-            ),
-            1,
-            heading
+
+          const textboxCount = yield* Effect.promise(() =>
+            section.getByRole("textbox", { name }).count()
           );
+
+          assert.strictEqual(textboxCount, 1, heading);
         }
       })
   );

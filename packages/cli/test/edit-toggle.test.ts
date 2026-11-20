@@ -3,11 +3,11 @@ import { Effect } from "effect";
 import type { Page } from "playwright";
 
 import {
+  assertCount,
   attributesOf,
   boxesOf,
   centreOf,
   click,
-  count,
   goToChapter,
   press,
   showView,
@@ -39,8 +39,8 @@ const pressed = (page: Page) =>
 
 /** The page's boxes for `a` and `b` do not overlap. */
 const apart = (
-  a: { x: number; y: number; width: number; height: number },
-  b: { x: number; y: number; width: number; height: number }
+  a: { height: number; width: number; x: number; y: number },
+  b: { height: number; width: number; x: number; y: number }
 ) =>
   a.x + a.width <= b.x ||
   b.x + b.width <= a.x ||
@@ -52,22 +52,23 @@ describe("edit, off by default", () => {
     "hides the toolbar, dragging, edge handles and the chapter panel's editing controls",
     () =>
       Effect.gen(function* () {
-        const { page, home, errors } = yield* firstVisit;
+        const { errors, home, page } = yield* firstVisit;
 
-        assert.strictEqual(yield* pressed(page), "false");
-        assert.strictEqual(yield* count(page, toolbar), 0);
-        assert.strictEqual(yield* count(page, "[data-ready-for-review]"), 0);
-        assert.strictEqual(yield* count(page, '[data-tab="flows"]'), 0);
-        assert.strictEqual(yield* count(page, "[data-add-play]"), 0);
-        assert.strictEqual(yield* count(page, "[data-reveal]"), 0);
-        assert.strictEqual(yield* count(page, "[data-play-up]"), 0);
-        assert.strictEqual(yield* count(page, '[data-layout-editor="on"]'), 0);
-        assert.strictEqual(yield* count(page, '[data-group-editor="on"]'), 0);
-        assert.strictEqual(yield* count(page, '[data-route-editor="on"]'), 0);
+        const pressedAtStart = yield* pressed(page);
+        assert.strictEqual(pressedAtStart, "false");
+        yield* assertCount(page, toolbar, 0);
+        yield* assertCount(page, "[data-ready-for-review]", 0);
+        yield* assertCount(page, '[data-tab="flows"]', 0);
+        yield* assertCount(page, "[data-add-play]", 0);
+        yield* assertCount(page, "[data-reveal]", 0);
+        yield* assertCount(page, "[data-play-up]", 0);
+        yield* assertCount(page, '[data-layout-editor="on"]', 0);
+        yield* assertCount(page, '[data-group-editor="on"]', 0);
+        yield* assertCount(page, '[data-route-editor="on"]', 0);
 
         // Pending and History stay, since they are part of reading.
-        assert.strictEqual(yield* count(page, '[data-tab="pending"]'), 1);
-        assert.strictEqual(yield* count(page, '[data-tab="history"]'), 1);
+        yield* assertCount(page, '[data-tab="pending"]', 1);
+        yield* assertCount(page, '[data-tab="history"]', 1);
 
         yield* goToChapter(page, "c-all");
         yield* showView(page, "plan");
@@ -82,9 +83,10 @@ describe("edit, off by default", () => {
         );
         yield* Effect.promise(() => page.mouse.up());
 
-        assert.strictEqual(yield* count(page, '[data-pending="true"]'), 0);
-        assert.strictEqual(yield* count(page, "[data-edge-handles] circle"), 0);
-        assert.strictEqual(yield* proposalsText(home), "");
+        yield* assertCount(page, '[data-pending="true"]', 0);
+        yield* assertCount(page, "[data-edge-handles] circle", 0);
+        const proposalsOnDisk = yield* proposalsText(home);
+        assert.strictEqual(proposalsOnDisk, "");
 
         assert.deepStrictEqual(errors, []);
       })
@@ -106,17 +108,17 @@ describe("edit, off by default", () => {
 
   it.live("hides a structure's editing controls but keeps Answer", () =>
     Effect.gen(function* () {
-      const { page, home } = yield* firstVisit;
+      const { home, page } = yield* firstVisit;
 
       yield* goToChapter(page, "c-all");
       yield* click(page, '[data-structure="server"]');
       yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
 
-      assert.strictEqual(yield* count(page, "[data-change-structure]"), 0);
-      assert.strictEqual(yield* count(page, "[data-chapter-reveal]"), 0);
-      assert.strictEqual(yield* count(page, "[data-notes-section]"), 0);
-      assert.strictEqual(yield* count(page, "[data-raised-section]"), 0);
-      assert.strictEqual(yield* count(page, "[data-suggest]"), 0);
+      yield* assertCount(page, "[data-change-structure]", 0);
+      yield* assertCount(page, "[data-chapter-reveal]", 0);
+      yield* assertCount(page, "[data-notes-section]", 0);
+      yield* assertCount(page, "[data-raised-section]", 0);
+      yield* assertCount(page, "[data-suggest]", 0);
 
       yield* click(page, '[role="tab"][data-tab="questions"]');
       yield* click(page, '[data-question="Q-S1"] [data-answer-open="Q-S1"]');
@@ -132,18 +134,16 @@ describe("edit, off by default", () => {
 
       assert.strictEqual(proposals.answers?.[0]?.text, "5178 first.");
 
+      const readyForReviewText = yield* textOf(page, "[data-ready-for-review]");
       // Ready for review shows once something waits to be sent.
-      assert.strictEqual(
-        yield* textOf(page, "[data-ready-for-review]"),
-        "Ready for review · 1"
-      );
+      assert.strictEqual(readyForReviewText, "Ready for review · 1");
 
       // The answer is reading, so it can be discarded from Pending too, while
       // a note or a suggestion could not be.
       yield* click(page, '[role="tab"][data-tab="pending"]');
       yield* click(page, "[data-review-item] button:has-text('Discard')");
       yield* waitGone(page, "[data-review-item]");
-      assert.strictEqual(yield* count(page, "[data-ready-for-review]"), 0);
+      yield* assertCount(page, "[data-ready-for-review]", 0);
     })
   );
 });
@@ -157,22 +157,25 @@ describe("turning Edit on", () => {
 
         yield* click(page, editButton);
         yield* waitFor(page, toolbar);
-        assert.strictEqual(yield* pressed(page), "true");
+        const pressedAfterClick = yield* pressed(page);
+        assert.strictEqual(pressedAfterClick, "true");
 
         // Nothing waits, so there is nothing to send, with Edit on or off.
-        assert.strictEqual(yield* count(page, "[data-ready-for-review]"), 0);
+        yield* assertCount(page, "[data-ready-for-review]", 0);
 
         yield* Effect.promise(() => page.reload());
         yield* waitFor(page, toolbar);
-        assert.strictEqual(yield* pressed(page), "true");
+        const pressedAfterReload = yield* pressed(page);
+        assert.strictEqual(pressedAfterReload, "true");
 
         yield* press(page, "e");
         yield* waitGone(page, toolbar);
-        assert.strictEqual(yield* pressed(page), "false");
+        const pressedAfterKey = yield* pressed(page);
+        assert.strictEqual(pressedAfterKey, "false");
 
         yield* Effect.promise(() => page.reload());
         yield* waitFor(page, editButton);
-        assert.strictEqual(yield* count(page, toolbar), 0);
+        yield* assertCount(page, toolbar, 0);
 
         yield* press(page, "e");
         yield* waitFor(page, toolbar);
@@ -191,7 +194,8 @@ describe("turning Edit on", () => {
         page.locator('[data-question="Q-S1"] [data-note-text]').press("e")
       );
 
-      assert.strictEqual(yield* pressed(page), "false");
+      const pressedAfterTyping = yield* pressed(page);
+      assert.strictEqual(pressedAfterTyping, "false");
     })
   );
 
@@ -246,13 +250,14 @@ describe("turning Edit on", () => {
 describe("the read-only file", () => {
   it.live("has no Edit button and no editing controls", () =>
     Effect.gen(function* () {
-      const opened = yield* buildAndOpen(yield* fullMap, "review");
+      const fullMapFiles = yield* fullMap;
+      const opened = yield* buildAndOpen(fullMapFiles, "review");
 
-      assert.strictEqual(yield* count(opened.page, editButton), 0);
-      assert.strictEqual(yield* count(opened.page, toolbar), 0);
+      yield* assertCount(opened.page, editButton, 0);
+      yield* assertCount(opened.page, toolbar, 0);
 
       yield* press(opened.page, "e");
-      assert.strictEqual(yield* count(opened.page, toolbar), 0);
+      yield* assertCount(opened.page, toolbar, 0);
 
       const hints = yield* Effect.promise(() =>
         opened.page.locator("[data-hint]").allTextContents()

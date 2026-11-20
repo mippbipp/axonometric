@@ -66,9 +66,9 @@ export class MapApiGroup extends HttpApiGroup.make("map").add(
 export class HistoryApiGroup extends HttpApiGroup.make("history").add(
   HttpApiEndpoint.get("list", serverPaths.history, { success: HistoryList }),
   HttpApiEndpoint.get("revision", serverPaths.revision, {
+    error: RevisionNotFound,
     params: { n: RevisionNumber },
     success: Revision,
-    error: RevisionNotFound,
   })
 ) {}
 
@@ -94,14 +94,14 @@ export class WriteGuard extends HttpApiMiddleware.Service<WriteGuard>()(
 export class ProposalsApiGroup extends HttpApiGroup.make("proposals")
   .add(
     HttpApiEndpoint.put("putLayout", serverPaths.pendingLayout, {
+      error: [StaleProposals, LayoutChangeRefused, MapFilesUnreadable],
       payload: PendingLayoutWrite,
       success: Proposals,
-      error: [StaleProposals, LayoutChangeRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("accept", serverPaths.accept, {
+      error: [StaleProposals, LayoutChangeRefused, MapFilesUnreadable],
       payload: AcceptWrite,
       success: Accepted,
-      error: [StaleProposals, LayoutChangeRefused, MapFilesUnreadable],
     })
   )
   .middleware(WriteGuard) {}
@@ -115,74 +115,74 @@ export class ProposalsApiGroup extends HttpApiGroup.make("proposals")
 export class ReviewApiGroup extends HttpApiGroup.make("review")
   .add(
     HttpApiEndpoint.post("addNote", serverPaths.notes, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: NoteAdd,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("editItem", serverPaths.editItem, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: ItemEdit,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("discardItem", serverPaths.discardItem, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: ItemWrite,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("addSuggestion", serverPaths.suggestions, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: SuggestionAdd,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("addAnswer", serverPaths.answers, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: AnswerAdd,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("addQuestion", serverPaths.questions, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: QuestionAdd,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("setStructure", serverPaths.structure, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: StructureWrite,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("setHop", serverPaths.hop, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: HopWrite,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("setFlow", serverPaths.flow, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: FlowWrite,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("setGroup", serverPaths.group, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: GroupWrite,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("setChapter", serverPaths.chapter, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: ChapterWrite,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("freeze", serverPaths.freeze, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: FreezeWrite,
       success: FreezeAnswer,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("dismiss", serverPaths.dismiss, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: ItemWrite,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     }),
     HttpApiEndpoint.post("reopen", serverPaths.reopen, {
+      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
       payload: ReopenWrite,
       success: Proposals,
-      error: [StaleProposals, ProposalRefused, MapFilesUnreadable],
     })
   )
   .middleware(WriteGuard) {}

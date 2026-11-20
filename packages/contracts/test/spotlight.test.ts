@@ -1,20 +1,17 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Order } from "effect";
-import { vi } from "vitest";
 
 import { chapterSpotlightOf, defaultFlowChoice } from "../src/index.ts";
 import type { FlowChoice, SpotlightTarget } from "../src/index.ts";
-
-vi.setConfig({ testTimeout: 5000 });
 
 // Seam 3: the spotlight, from the map's hops, what's revealed, the chapter's
 // play and the hovered and pinned items.
 
 const hop = (id: string, from: string, to: string) => ({
-  id,
   from,
-  to,
+  id,
   label: id,
+  to,
 });
 
 // a → b → c → d, a second hop from a to b, and a hop to e, which isn't
@@ -33,25 +30,25 @@ const data = {
 const revealed = new Set(["a", "b", "c", "d", "f"]);
 
 interface Choice {
-  /** The hops the chapter plays, or `"all"` for all flows. */
-  readonly play: readonly string[] | "all";
-  readonly hovered: SpotlightTarget | null;
-  readonly pinned: SpotlightTarget | null;
   readonly drawing?: {
     readonly from: string;
     readonly over: string | null;
   } | null;
+  readonly hovered: SpotlightTarget | null;
+  readonly pinned: SpotlightTarget | null;
+  /** The hops the chapter plays, or `"all"` for all flows. */
+  readonly play: ReadonlyArray<string> | "all";
 }
 
-const nothing: Choice = { play: [], hovered: null, pinned: null };
+const nothing: Choice = { hovered: null, pinned: null, play: [] };
 
 const spotlight = (picked: Partial<Choice>) => {
   const { play, ...rest } = { ...nothing, ...picked };
 
   const result = chapterSpotlightOf({
-    data,
-    stop: { revealed, plays: play === "all" ? [] : play },
     choice: play === "all" ? { kind: "all" } : { kind: "chapter" },
+    data,
+    stop: { plays: play === "all" ? [] : play, revealed },
     ...rest,
   });
 
@@ -63,11 +60,11 @@ const spotlight = (picked: Partial<Choice>) => {
       };
 };
 
-const hopTarget = (id: string): SpotlightTarget => ({ kind: "hop", id });
+const hopTarget = (id: string): SpotlightTarget => ({ id, kind: "hop" });
 
 const structureTarget = (id: string): SpotlightTarget => ({
-  kind: "structure",
   id,
+  kind: "structure",
 });
 
 describe("the spotlight of a chapter's play", () => {
@@ -139,13 +136,13 @@ describe("which spotlight wins", () => {
 
   it("takes the hovered item over the pinned one and the play", () => {
     assert.deepStrictEqual(
-      spotlight({ play, pinned, hovered: hopTarget("ab") }),
+      spotlight({ hovered: hopTarget("ab"), pinned, play }),
       { hops: ["ab"], structures: ["a", "b"] }
     );
   });
 
   it("takes the pinned item over the play when nothing is hovered", () => {
-    assert.deepStrictEqual(spotlight({ play, pinned }), {
+    assert.deepStrictEqual(spotlight({ pinned, play }), {
       hops: ["ab", "ab2", "bc"],
       structures: ["a", "b", "c"],
     });
@@ -160,14 +157,14 @@ describe("which spotlight wins", () => {
 
   it("skips a hovered item that isn't drawn and takes the pinned one", () => {
     assert.deepStrictEqual(
-      spotlight({ play, pinned, hovered: structureTarget("e") }),
+      spotlight({ hovered: structureTarget("e"), pinned, play }),
       { hops: ["ab", "ab2", "bc"], structures: ["a", "b", "c"] }
     );
   });
 
   it("takes a hovered item over all flows", () => {
     assert.deepStrictEqual(
-      spotlight({ play: "all", hovered: hopTarget("cd") }),
+      spotlight({ hovered: hopTarget("cd"), play: "all" }),
       { hops: ["cd"], structures: ["c", "d"] }
     );
   });
@@ -175,20 +172,20 @@ describe("which spotlight wins", () => {
 
 describe("the spotlight of a chapter and flow choice", () => {
   const flows = [
-    { id: "f-one", name: "One", hops: ["ab", "bc"] },
-    { id: "f-two", name: "Two", hops: ["cd"] },
+    { hops: ["ab", "bc"], id: "f-one", name: "One" },
+    { hops: ["cd"], id: "f-two", name: "Two" },
   ];
 
   const flowData = { ...data, flows };
-  const chapter = { revealed, plays: ["ab2"] };
+  const chapter = { plays: ["ab2"], revealed };
 
   const choose = (choice: FlowChoice) =>
     chapterSpotlightOf({
-      data: flowData,
-      stop: chapter,
       choice,
+      data: flowData,
       hovered: null,
       pinned: null,
+      stop: chapter,
     });
 
   it("plays the chapter's hops for the chapter choice", () => {
@@ -197,18 +194,18 @@ describe("the spotlight of a chapter and flow choice", () => {
 
   it("plays one flow's hops, and fades nothing for all flows", () => {
     assert.deepStrictEqual(
-      choose({ kind: "flow", id: "f-one" })?.hops,
+      choose({ id: "f-one", kind: "flow" })?.hops,
       new Set(["ab", "bc"])
     );
     assert.isNull(choose({ kind: "all" }));
   });
 
   it("fades nothing for a flow that doesn't exist", () => {
-    assert.isNull(choose({ kind: "flow", id: "f-nope" }));
+    assert.isNull(choose({ id: "f-nope", kind: "flow" }));
   });
 
-  const start = (plays: readonly string[], isLast: boolean) =>
-    defaultFlowChoice({ data: flowData, stop: { plays }, isLast }).kind;
+  const start = (plays: ReadonlyArray<string>, isLast: boolean) =>
+    defaultFlowChoice({ data: flowData, isLast, stop: { plays } }).kind;
 
   it("starts the last chapter on all flows only when it plays nothing", () => {
     assert.strictEqual(start([], true), "all");
@@ -220,9 +217,9 @@ describe("the spotlight of a chapter and flow choice", () => {
 describe("a hop being drawn", () => {
   it("lights its start and the structure under the pointer, over the hover and the pin", () => {
     const lit = spotlight({
+      drawing: { from: "a", over: "d" },
       hovered: hopTarget("ab"),
       pinned: structureTarget("c"),
-      drawing: { from: "a", over: "d" },
     });
 
     assert.deepStrictEqual(lit, { hops: [], structures: ["a", "d"] });
@@ -236,7 +233,7 @@ describe("a hop being drawn", () => {
 
   it("changes nothing when no hop is being drawn", () => {
     assert.deepStrictEqual(
-      spotlight({ pinned: structureTarget("c"), drawing: null }),
+      spotlight({ drawing: null, pinned: structureTarget("c") }),
       spotlight({ pinned: structureTarget("c") })
     );
   });

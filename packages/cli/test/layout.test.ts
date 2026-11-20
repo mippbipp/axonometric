@@ -25,7 +25,7 @@ const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
 /** Runs `layout` on the minimal map, whose structures are updater and gate. */
 const layoutWith = Effect.fnUntraced(function* (
-  args: readonly string[],
+  args: ReadonlyArray<string>,
   files: Readonly<Record<string, string>> = {}
 ) {
   const home = yield* makeHome({ ...(yield* minimalMap), ...files });
@@ -50,8 +50,8 @@ const savedLayout = Effect.fnUntraced(function* (
  */
 const lockOf = (pid: number) =>
   JSON.stringify({
-    pid,
     command: "serve",
+    pid,
     since: "2026-10-31T09:00:00.000Z",
   });
 
@@ -84,16 +84,16 @@ describe("layout", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       assert.deepStrictEqual(layout.structures.gate, {
+        d: 1.5,
+        w: 2,
         x: 8,
         y: 0.5,
-        w: 2,
-        d: 1.5,
       });
       assert.deepStrictEqual(layout.structures.updater, {
+        d: 2,
+        w: 2,
         x: 0,
         y: 4,
-        w: 2,
-        d: 2,
       });
       assert.strictEqual(layout.revision, 1);
       assert.strictEqual(
@@ -118,10 +118,10 @@ describe("layout", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       assert.deepStrictEqual(layout.structures.updater, {
+        d: 2.5,
+        w: 3,
         x: 0,
         y: 4,
-        w: 3,
-        d: 2.5,
       });
       assert.include(result.stdout, "updater: w 2 → 3, d 2 → 2.5.");
     })
@@ -137,7 +137,7 @@ describe("layout", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       assert.deepStrictEqual(layout.structures, {
-        gate: { x: 6, y: 0, w: 2, d: 2 },
+        gate: { d: 2, w: 2, x: 6, y: 0 },
       });
       assert.strictEqual(layout.revision, 3);
       assert.include(result.stdout, "gate: placed at x 6, y 0, w 2, d 2.");
@@ -324,7 +324,8 @@ describe("layout", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const home = yield* makeHome(yield* minimalMap);
+      const minimalMapFiles = yield* minimalMap;
+      const home = yield* makeHome(minimalMapFiles);
       const map = path.join(home, "pipeline", "map");
       const lock = path.join(map, ".axonometric", "lock");
 
@@ -344,7 +345,8 @@ describe("layout", () => {
       ]);
 
       assert.notStrictEqual(result.exitCode, 0);
-      assert.isFalse(yield* fs.exists(lock));
+      const lockExists = yield* fs.exists(lock);
+      assert.isFalse(lockExists);
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -370,7 +372,8 @@ describe("layout", () => {
         yield* Fiber.interrupt(waiting);
 
         assert.isBelow((yield* Clock.currentTimeMillis) - started, 1000);
-        assert.strictEqual(yield* fs.readFileString(lock), lockOf(pid));
+        const lockText = yield* fs.readFileString(lock);
+        assert.strictEqual(lockText, lockOf(pid));
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     15_000
   );

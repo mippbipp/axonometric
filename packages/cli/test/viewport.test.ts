@@ -13,7 +13,9 @@ import { shapesMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const builtPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* shapesMap, "shapes");
+  const shapesMapFiles = yield* shapesMap;
+
+  return yield* buildAndOpen(shapesMapFiles, "shapes");
 });
 
 const transformExpression =
@@ -40,10 +42,10 @@ const drawingOf = Effect.fnUntraced(function* (page: Page) {
   );
 
   return {
-    left: Math.min(...Arr.map(drawn, (box) => box.x)),
-    top: Math.min(...Arr.map(drawn, (box) => box.y)),
-    right: Math.max(...Arr.map(drawn, (box) => box.x + box.width)),
     bottom: Math.max(...Arr.map(drawn, (box) => box.y + box.height)),
+    left: Math.min(...Arr.map(drawn, (box) => box.x)),
+    right: Math.max(...Arr.map(drawn, (box) => box.x + box.width)),
+    top: Math.min(...Arr.map(drawn, (box) => box.y)),
   };
 });
 
@@ -52,7 +54,7 @@ const canvasOf = Effect.fnUntraced(function* (page: Page) {
 
   assert.isDefined(svg);
 
-  return svg ?? { x: 0, y: 0, width: 0, height: 0 };
+  return svg ?? { height: 0, width: 0, x: 0, y: 0 };
 });
 
 /** Asserts that every structure and name tag is inside the canvas. */
@@ -65,7 +67,7 @@ const assertFitted = Effect.fnUntraced(function* (page: Page) {
   assert.isAtMost(drawing.right, svg.x + svg.width);
   assert.isAtMost(drawing.bottom, svg.y + svg.height);
 
-  return { svg, drawing };
+  return { drawing, svg };
 });
 
 /** Moves the mouse to the middle of the canvas and turns the wheel. */
@@ -102,7 +104,7 @@ const clickedOf = Effect.fnUntraced(function* (page: Page, count = 1) {
   );
 
   return yield* Effect.promise(() =>
-    page.evaluate<readonly (string | null)[]>("window.clicked")
+    page.evaluate<ReadonlyArray<string | null>>("window.clicked")
   );
 });
 
@@ -180,10 +182,8 @@ describe("the viewport", () => {
                     undefined,
                     { timeout: 1000 }
                   )
-                  .then(
-                    () => true,
-                    () => false
-                  )
+                  .then(() => true)
+                  .catch(() => false)
               );
 
               const now = yield* scaleOf(page);
@@ -266,8 +266,10 @@ describe("the viewport", () => {
         yield* Effect.promise(() => page.mouse.move(x, y, { steps: 4 }));
         yield* Effect.promise(() => page.mouse.up());
 
-        assert.deepStrictEqual(yield* drawingOf(page), before);
-        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
+        const drawingAfterDrag = yield* drawingOf(page);
+        assert.deepStrictEqual(drawingAfterDrag, before);
+        const clicked = yield* clickedOf(page);
+        assert.deepStrictEqual(clicked, ["box"]);
       })
     )
   );
@@ -294,9 +296,9 @@ describe("the viewport", () => {
         ) =>
           Effect.promise(() =>
             cdp.send("Input.dispatchTouchEvent", {
-              type,
               touchPoints:
                 type === "touchEnd" ? [] : [{ x: svg.x + x, y: svg.y + y }],
+              type,
             })
           );
 
@@ -328,7 +330,8 @@ describe("the viewport", () => {
         );
 
         assert.closeTo(after.left - before.left, -100, 1);
-        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
+        const clicked = yield* clickedOf(page);
+        assert.deepStrictEqual(clicked, ["box"]);
       })
     )
   );
@@ -363,8 +366,9 @@ describe("the viewport", () => {
           page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
         );
 
+        const clicked = yield* clickedOf(page);
         // The drag's own click is swallowed; the real one lands.
-        assert.deepStrictEqual(yield* clickedOf(page), ["box"]);
+        assert.deepStrictEqual(clicked, ["box"]);
       })
     )
   );
@@ -382,7 +386,8 @@ describe("the viewport", () => {
         );
         yield* waitForScale(page, `=== ${fitted}`);
 
-        assert.closeTo(yield* scaleOf(page), fitted, 1e-6);
+        const scaleNow = yield* scaleOf(page);
+        assert.closeTo(scaleNow, fitted, 1e-6);
         yield* assertFitted(page);
       })
     )
@@ -397,13 +402,13 @@ describe("the viewport", () => {
         const before = yield* scaleOf(page);
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1600, height: 1000 })
+          page.setViewportSize({ height: 1000, width: 1600 })
         );
         yield* Effect.promise(() =>
           page.waitForFunction(`${scaleExpression} > ${before * 1.2}`)
         );
 
-        const { svg, drawing } = yield* assertFitted(page);
+        const { drawing, svg } = yield* assertFitted(page);
 
         // Fitted, not just shrunk: the drawing fills most of one dimension.
         const share = Math.max(

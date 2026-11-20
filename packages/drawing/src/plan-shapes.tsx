@@ -33,6 +33,7 @@ function BoxIcon() {
     <>
       <polygon
         data-face=""
+        fill={face}
         points={toPoints([
           { sx: 0, sy: -s },
           { sx: s, sy: -s / 2 },
@@ -41,17 +42,16 @@ function BoxIcon() {
           { sx: -s, sy: s / 2 },
           { sx: -s, sy: -s / 2 },
         ])}
-        fill={face}
       />
       <polyline
+        fill="none"
         points={toPoints([
           { sx: -s, sy: -s / 2 },
           { sx: 0, sy: 0 },
           { sx: s, sy: -s / 2 },
         ])}
-        fill="none"
       />
-      <line x1={0} y1={0} x2={0} y2={s} />
+      <line x1={0} x2={0} y1={0} y2={s} />
     </>
   );
 }
@@ -66,14 +66,14 @@ function TallIcon() {
     <>
       <rect
         data-face=""
+        fill={face}
+        height={s * 2.2}
+        width={s * 1.2}
         x={-s * 0.6}
         y={-s * 1.1}
-        width={s * 1.2}
-        height={s * 2.2}
-        fill={face}
       />
       {Arr.map(floors, (at) => (
-        <line key={at} x1={-s * 0.6} y1={s * at} x2={s * 0.6} y2={s * at} />
+        <line key={at} x1={-s * 0.6} x2={s * 0.6} y1={s * at} y2={s * at} />
       ))}
     </>
   );
@@ -94,14 +94,14 @@ function StoreIcon() {
 
         return (
           <path
-            key={index}
-            data-face=""
             d={`M${-rx},${y} L${-rx},${y + layer} A${rx},${ry} 0 0 0 ${rx},${y + layer} L${rx},${y} Z`}
+            data-face=""
             fill={face}
+            key={index}
           />
         );
       })}
-      <ellipse data-face="" cx={0} cy={top} rx={rx} ry={ry} fill={face} />
+      <ellipse cx={0} cy={top} data-face="" fill={face} rx={rx} ry={ry} />
     </>
   );
 }
@@ -115,13 +115,13 @@ function CardsIcon() {
     <>
       {Arr.map([0, 1, 2], (index) => (
         <rect
-          key={index}
           data-face=""
+          fill={face}
+          height={s * 2 - 8}
+          key={index}
+          width={s * 2 - 8}
           x={-s + index * 4}
           y={-s + index * 4}
-          width={s * 2 - 8}
-          height={s * 2 - 8}
-          fill={face}
         />
       ))}
     </>
@@ -133,7 +133,7 @@ function SlabIcon({ hatch }: IconProps) {
   const hatching = useHatching(hatch);
   // A wide, flat block, hatched across its top like the Iso view's slab.
   const s = iconSize;
-  const top = { x: -s * 2, y: -s * 0.55, width: s * 4, height: s * 0.8 };
+  const top = { height: s * 0.8, width: s * 4, x: -s * 2, y: -s * 0.55 };
 
   return (
     <>
@@ -141,11 +141,11 @@ function SlabIcon({ hatch }: IconProps) {
       {hatching === undefined ? null : <rect {...top} {...hatching} />}
       <rect
         data-face=""
+        fill={face}
+        height={s * 0.35}
+        width={top.width}
         x={top.x}
         y={top.y + top.height}
-        width={top.width}
-        height={s * 0.35}
-        fill={face}
       />
     </>
   );
@@ -160,28 +160,28 @@ function ScreenIcon() {
     <>
       <rect
         data-face=""
+        fill={face}
+        height={s * 1.7}
+        width={s * 2.4}
         x={-s * 1.2}
         y={-s * 0.85}
-        width={s * 2.4}
-        height={s * 1.7}
-        fill={face}
       />
       <rect
+        fill={paint.paper}
+        height={s * 1.2}
+        strokeWidth={0.9}
+        width={s * 1.9}
         x={-s * 0.95}
         y={-s * 0.6}
-        width={s * 1.9}
-        height={s * 1.2}
-        fill={paint.paper}
-        strokeWidth={0.9}
       />
       {Arr.map([-0.3, 0, 0.3], (at, index) => (
         <line
           key={at}
-          x1={-s * 0.7}
-          y1={s * at}
-          x2={s * (index === 2 ? 0.1 : 0.7)}
-          y2={s * at}
           opacity={0.7}
+          x1={-s * 0.7}
+          x2={s * (index === 2 ? 0.1 : 0.7)}
+          y1={s * at}
+          y2={s * at}
         />
       ))}
     </>
@@ -197,13 +197,13 @@ function GateIcon() {
     <>
       <rect
         data-face=""
+        fill={face}
+        height={s * 2}
+        width={s * 2}
         x={-s}
         y={-s}
-        width={s * 2}
-        height={s * 2}
-        fill={face}
       />
-      <rect x={-s} y={-s * 0.25} width={s * 2} height={s * 0.5} fill={solid} />
+      <rect fill={solid} height={s * 0.5} width={s * 2} x={-s} y={-s * 0.25} />
     </>
   );
 }
@@ -215,7 +215,7 @@ function JobIcon() {
 
   return (
     <>
-      <circle data-face="" r={s} fill={face} />
+      <circle data-face="" fill={face} r={s} />
       <path
         d={`M0,${-s * 0.65} L0,0 L${s * 0.5},0`}
         fill="none"
@@ -233,11 +233,11 @@ function PersonIcon() {
   return (
     <>
       <path
-        data-face=""
         d={`M${-s},${s} A${s},${s * 0.9} 0 0 1 ${s},${s} Z`}
+        data-face=""
         fill={face}
       />
-      <circle data-face="" cy={-s * 0.35} r={s * 0.5} fill={face} />
+      <circle cy={-s * 0.35} data-face="" fill={face} r={s * 0.5} />
     </>
   );
 }
@@ -254,6 +254,7 @@ function DocumentIcon() {
     <>
       <polygon
         data-face=""
+        fill={face}
         points={toPoints([
           { sx: left, sy: -s },
           { sx: right - fold, sy: -s },
@@ -261,27 +262,26 @@ function DocumentIcon() {
           { sx: right, sy: s },
           { sx: left, sy: s },
         ])}
-        fill={face}
       />
       <g data-fold="">
         <polygon
           data-face=""
+          fill={face}
           points={toPoints([
             { sx: right - fold, sy: -s },
             { sx: right - fold, sy: -s + fold },
             { sx: right, sy: -s + fold },
           ])}
-          fill={face}
         />
       </g>
       {Arr.map([0, 0.35, 0.7], (at, index) => (
         <line
           key={at}
-          x1={left + s * 0.3}
-          y1={s * at - s * 0.1}
-          x2={index === 2 ? 0 : right - s * 0.3}
-          y2={s * at - s * 0.1}
           opacity={0.7}
+          x1={left + s * 0.3}
+          x2={index === 2 ? 0 : right - s * 0.3}
+          y1={s * at - s * 0.1}
+          y2={s * at - s * 0.1}
         />
       ))}
     </>
@@ -296,19 +296,19 @@ function ExternalIcon() {
   return (
     <>
       <rect
-        strokeWidth={1}
         data-face=""
+        fill={face}
+        height={s * 1.6}
+        strokeWidth={1}
+        width={s * 1.2}
         x={-s * 0.2}
         y={-s * 0.8}
-        width={s * 1.2}
-        height={s * 1.6}
-        fill={face}
       />
       <path
         d={`M${-s},0 L${s * 0.4},0 M${s * 0.05},${-s * 0.35} L${s * 0.4},0 L${s * 0.05},${s * 0.35}`}
         fill="none"
-        strokeWidth={1}
         strokeLinecap="round"
+        strokeWidth={1}
       />
     </>
   );
@@ -316,16 +316,16 @@ function ExternalIcon() {
 
 const icons = {
   box: BoxIcon,
-  tall: TallIcon,
-  store: StoreIcon,
   cards: CardsIcon,
-  slab: SlabIcon,
-  screen: ScreenIcon,
+  document: DocumentIcon,
+  external: ExternalIcon,
   gate: GateIcon,
   job: JobIcon,
   person: PersonIcon,
-  document: DocumentIcon,
-  external: ExternalIcon,
+  screen: ScreenIcon,
+  slab: SlabIcon,
+  store: StoreIcon,
+  tall: TallIcon,
 } as const satisfies Record<Shape, (props: IconProps) => ReactNode>;
 
 /** How far inside its outline an external box is drawn: its halo. */
@@ -336,11 +336,11 @@ const ringGap = 4;
 
 /** A box from above, with the hatched strip along its bottom edge. */
 function Box({
-  rect,
   hatch,
+  rect,
 }: {
-  readonly rect: ScreenRect;
   readonly hatch: string;
+  readonly rect: ScreenRect;
 }) {
   const { face } = useLook();
   const hatching = useHatching(hatch);
@@ -351,27 +351,27 @@ function Box({
     <>
       <rect
         data-face=""
+        fill={face}
+        height={height}
+        width={width}
         x={rect.left}
         y={rect.top}
-        width={width}
-        height={height}
-        fill={face}
       />
       {hatching === undefined ? null : (
         <rect
+          height={stripHeight}
+          width={width}
           x={rect.left}
           y={rect.bottom - stripHeight}
-          width={width}
-          height={stripHeight}
           {...hatching}
         />
       )}
       <line
-        x1={rect.left}
-        y1={rect.bottom - stripHeight}
-        x2={rect.right}
-        y2={rect.bottom - stripHeight}
         strokeWidth={0.9}
+        x1={rect.left}
+        x2={rect.right}
+        y1={rect.bottom - stripHeight}
+        y2={rect.bottom - stripHeight}
       />
     </>
   );
@@ -390,12 +390,12 @@ const offMarkAt = (rect: ScreenRect): ScreenPoint => ({
  * outline, a gap away. A structure the chapter reveals is tinted.
  */
 export function PlanStructure({
-  placed: { structure, bounds, chip },
+  faded,
   hatch,
   isNew,
-  faded,
+  placed: { bounds, chip, structure },
 }: StructureDrawingProps) {
-  const { paint, Frame } = useDrawing();
+  const { Frame, paint } = useDrawing();
   const look = looksOf(paint)[structure.status];
   const Icon = icons[structure.shape];
   const external = structure.shape === "external";
@@ -404,38 +404,38 @@ export function PlanStructure({
 
   return (
     <Frame
+      faded={faded}
       id={structure.id}
+      isNew={isNew}
+      look={look}
       name={structure.name}
       shape={structure.shape}
       status={structure.status}
-      isNew={isNew}
-      faded={faded}
-      look={look}
     >
       <LookContext value={look}>
         {external ? (
           <rect
             data-external-ring=""
+            fill={paint.paper}
+            height={ring.bottom - ring.top}
+            strokeWidth={0.9}
+            width={ring.right - ring.left}
             x={ring.left}
             y={ring.top}
-            width={ring.right - ring.left}
-            height={ring.bottom - ring.top}
-            fill={paint.paper}
-            strokeWidth={0.9}
           />
         ) : null}
-        <Box rect={box} hatch={hatch} />
+        <Box hatch={hatch} rect={box} />
         {isNew ? (
           <rect
             data-new-marker={structure.id}
-            x={box.left}
-            y={box.top}
-            width={box.right - box.left}
-            height={box.bottom - box.top}
             fill={paint.ink}
             fillOpacity={0.15}
+            height={box.bottom - box.top}
             pointerEvents="none"
             stroke="none"
+            width={box.right - box.left}
+            x={box.left}
+            y={box.top}
           />
         ) : null}
         <g

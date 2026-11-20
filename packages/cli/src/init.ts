@@ -26,8 +26,8 @@ const gitIgnores = Effect.fnUntraced(function* (folder: string) {
     .exitCode(
       ChildProcess.make("git", ["check-ignore", "--quiet", folder], {
         cwd: folder,
-        stdout: "ignore",
         stderr: "ignore",
+        stdout: "ignore",
       })
     )
     .pipe(Effect.asSome, Effect.orElseSucceed(Option.none));

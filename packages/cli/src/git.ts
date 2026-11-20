@@ -22,16 +22,16 @@ export type NoRepo = "git-missing" | "not-a-repo";
 
 /** The git repo that holds a home folder. */
 export interface Repo {
-  /** The repo's root folder. */
-  readonly root: string;
+  /** What git knows about every source in `data`. */
+  readonly factsOf: (data: MapData) => Effect.Effect<SourceFacts>;
   /**
    * The web address of the file at `path` and `commit`, or at the current
    * branch without a commit. None when `origin` isn't a host axonometric
    * knows.
    */
   readonly linkOf: (source: Source) => Option.Option<string>;
-  /** What git knows about every source in `data`. */
-  readonly factsOf: (data: MapData) => Effect.Effect<SourceFacts>;
+  /** The repo's root folder. */
+  readonly root: string;
 }
 
 const githubRemote = [
@@ -59,11 +59,11 @@ const githubBlobBase = (remote: string): Option.Option<string> =>
 const encodePath = (path: string) =>
   Arr.join(Arr.map(Str.split(path, "/"), encodeURIComponent), "/");
 
-const command = (cwd: string, args: readonly string[]) =>
+const command = (cwd: string, args: ReadonlyArray<string>) =>
   ChildProcess.make("git", ["--literal-pathspecs", ...args], {
     cwd,
-    stdin: "ignore",
     stderr: "ignore",
+    stdin: "ignore",
   });
 
 /** Runs git in a repo. Arguments go to git as an array, never via a shell. */
@@ -86,7 +86,7 @@ export class Git extends Context.Service<
       const path = yield* Path.Path;
 
       /** Whether git exits 0. False when it can't start. */
-      const succeeds = (cwd: string, args: readonly string[]) =>
+      const succeeds = (cwd: string, args: ReadonlyArray<string>) =>
         spawner.exitCode(command(cwd, args)).pipe(
           Effect.map((code) => code === 0),
           Effect.orElseSucceed(() => false)
@@ -95,7 +95,7 @@ export class Git extends Context.Service<
       /** git's output, trimmed, when it exits 0. */
       const output = Effect.fnUntraced(function* (
         cwd: string,
-        args: readonly string[]
+        args: ReadonlyArray<string>
       ) {
         const handle = yield* spawner.spawn(command(cwd, args));
 
@@ -159,10 +159,10 @@ export class Git extends Context.Service<
             : false;
 
         return SourceFact.cases.Pinned.make({
-          commit,
           atCommit,
           atHead,
           changed,
+          commit,
         });
       });
 
@@ -214,7 +214,7 @@ export class Git extends Context.Service<
           );
 
         const factsOf = Effect.fnUntraced(function* (data: MapData) {
-          const listed: readonly Source[] = Arr.flatMap(
+          const listed: ReadonlyArray<Source> = Arr.flatMap(
             data.structures,
             (structure) => structure.sources ?? []
           );
@@ -249,7 +249,7 @@ export class Git extends Context.Service<
           };
         });
 
-        return Result.succeed<Repo>({ root, linkOf, factsOf });
+        return Result.succeed<Repo>({ factsOf, linkOf, root });
       });
 
       return Git.of({ repoOf });

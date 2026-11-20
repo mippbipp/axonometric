@@ -13,21 +13,21 @@ const previewId = "preview";
 
 /** The structure item for `change`. */
 export const structureItem = (change: StructureChange): BatchItem => ({
+  change,
   id: previewId,
   kind: "structure",
-  change,
 });
 
 /** The group item for `change`. */
 export const groupItem = (change: GroupChange): BatchItem => ({
+  change,
   id: previewId,
   kind: "group",
-  change,
 });
 
 /** The chapter item for `change`. */
 export const chapterItem = (change: ChapterChange): BatchItem => ({
+  change,
   id: previewId,
   kind: "chapter",
-  change,
 });

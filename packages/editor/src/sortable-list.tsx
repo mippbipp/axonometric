@@ -13,14 +13,14 @@ export interface SortableRow {
   readonly id: string;
   /** What the row is called, for its text and its buttons' names. */
   readonly name: string;
-  /** Text before the name, such as its place in the list. */
-  readonly prefix?: string;
   /**
    * A note after the name, such as "proposed for deletion". It is drawn muted,
    * the row gets the refused dashed border, and the note joins the name in the
    * row's buttons, so it is heard as well as seen.
    */
   readonly note?: string | undefined;
+  /** Text before the name, such as its place in the list. */
+  readonly prefix?: string;
 }
 
 /** A row's name as a screen reader says it, with its note. */
@@ -35,20 +35,20 @@ const spoken = ({ name, note }: SortableRow) =>
  * to move.
  */
 export function SortableList({
-  label,
-  rows,
-  disabled,
-  onMove,
   dataList,
+  disabled,
+  label,
+  onMove,
+  rows,
 }: {
-  readonly label: string;
-  readonly rows: readonly SortableRow[];
-  /** Whether reordering is off, such as while the server is down. */
-  readonly disabled: boolean;
-  /** Called with the ids in their new order. */
-  readonly onMove: (order: readonly string[]) => void;
   /** Names the list for tests and for styling. */
   readonly dataList: string;
+  /** Whether reordering is off, such as while the server is down. */
+  readonly disabled: boolean;
+  readonly label: string;
+  /** Called with the ids in their new order. */
+  readonly onMove: (order: ReadonlyArray<string>) => void;
+  readonly rows: ReadonlyArray<SortableRow>;
 }) {
   const list = useRef<HTMLOListElement>(null);
 
@@ -143,26 +143,34 @@ export function SortableList({
 
   return (
     <ol
-      ref={list}
       aria-label={label}
-      data-sortable={dataList}
       className="flex flex-col gap-1"
+      data-sortable={dataList}
+      ref={list}
     >
       {Arr.map(rows, (row, index) => (
         <li
-          key={row.id}
-          data-sort-row={row.id}
-          data-sort-over={dragging?.over === index && dragging.from !== index}
+          className="border-ink/40 data-[sort-over=true]:border-pending data-[sort-marked=true]:border-refused flex items-center gap-1.5 border px-1.5 py-1 text-sm data-[sort-dragging=true]:opacity-50 data-[sort-marked=true]:border-dashed"
           data-sort-dragging={dragging?.from === index}
           data-sort-marked={row.note !== undefined}
-          className="border-ink/40 data-[sort-over=true]:border-pending data-[sort-marked=true]:border-refused flex items-center gap-1.5 border px-1.5 py-1 text-sm data-[sort-dragging=true]:opacity-50 data-[sort-marked=true]:border-dashed"
+          data-sort-over={dragging?.over === index && dragging.from !== index}
+          data-sort-row={row.id}
+          key={row.id}
         >
           <button
-            type="button"
-            data-sort-grip={row.id}
             aria-label={`Drag ${spoken(row)} to reorder. Alt plus arrow keys also move it.`}
-            disabled={disabled}
             className="focus-visible:outline-ink cursor-grab touch-none px-1 select-none focus-visible:outline-2 disabled:cursor-default disabled:opacity-40"
+            data-sort-grip={row.id}
+            disabled={disabled}
+            onKeyDown={(event) => {
+              onKeyDown(event, index);
+            }}
+            onLostPointerCapture={(event) => {
+              end(event, false);
+            }}
+            onPointerCancel={(event) => {
+              end(event, false);
+            }}
             onPointerDown={(event) => {
               onDown(event, index);
             }}
@@ -170,53 +178,45 @@ export function SortableList({
             onPointerUp={(event) => {
               end(event, true);
             }}
-            onPointerCancel={(event) => {
-              end(event, false);
-            }}
-            onLostPointerCapture={(event) => {
-              end(event, false);
-            }}
-            onKeyDown={(event) => {
-              onKeyDown(event, index);
-            }}
+            type="button"
           >
             ⠿
           </button>
           <span
-            data-sort-content={row.id}
             className="min-w-0 flex-1 break-words"
+            data-sort-content={row.id}
           >
             {row.prefix === undefined ? null : (
               <span className="opacity-60">{row.prefix}</span>
             )}
             {row.name}
             {row.note === undefined ? null : (
-              <span data-sort-note={row.id} className="opacity-60">
+              <span className="opacity-60" data-sort-note={row.id}>
                 {` · ${row.note}`}
               </span>
             )}
           </span>
           <button
-            type="button"
-            data-sort-up={row.id}
             aria-label={`Move ${spoken(row)} up`}
-            disabled={disabled || index === 0}
             className={controlClass}
+            data-sort-up={row.id}
+            disabled={disabled || index === 0}
             onClick={() => {
               moveTo(index, index - 1);
             }}
+            type="button"
           >
             ↑
           </button>
           <button
-            type="button"
-            data-sort-down={row.id}
             aria-label={`Move ${spoken(row)} down`}
-            disabled={disabled || index === rows.length - 1}
             className={controlClass}
+            data-sort-down={row.id}
+            disabled={disabled || index === rows.length - 1}
             onClick={() => {
               moveTo(index, index + 1);
             }}
+            type="button"
           >
             ↓
           </button>

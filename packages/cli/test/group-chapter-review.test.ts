@@ -43,36 +43,36 @@ const newGroup: GroupChange = {
 
 const intoGroup = (structure: string): StructureChange => ({
   action: "group",
-  structure,
   group: "data-1",
+  structure,
 });
 
 const groupItem = (id: string, change: GroupChange): BatchItem => ({
+  change,
   id,
   kind: "group",
-  change,
 });
 
 const structureItem = (id: string, change: StructureChange): BatchItem => ({
+  change,
   id,
   kind: "structure",
-  change,
 });
 
 const chapterItem = (id: string, change: ChapterChange): BatchItem => ({
+  change,
   id,
   kind: "chapter",
-  change,
 });
 
 const fileOf = (proposals: Proposals) =>
   `${JSON.stringify(proposals, null, 2)}\n`;
 
-const batchOf = (items: readonly BatchItem[]): Batch => ({
-  number: 1,
+const batchOf = (items: ReadonlyArray<BatchItem>): Batch => ({
   frozenAt: at,
+  groups: ["people", "loop", "outside"],
   items,
-  verdicts: {},
+  number: 1,
   structures: [
     "engineer",
     "page",
@@ -81,11 +81,11 @@ const batchOf = (items: readonly BatchItem[]): Batch => ({
     "pull-request",
     "upstream",
   ],
-  groups: ["people", "loop", "outside"],
+  verdicts: {},
 });
 
 const homeWith = (
-  items: readonly BatchItem[],
+  items: ReadonlyArray<BatchItem>,
   dataEdit: (data: string) => string = (data) => data
 ) =>
   Effect.gen(function* () {
@@ -96,14 +96,14 @@ const homeWith = (
       ...files,
       "review/map/data.mjs": dataEdit(files["review/map/data.mjs"] ?? ""),
       "review/map/proposals.json": fileOf({
-        format: 1,
-        revision: 4,
-        layout: [],
         batches: [batchOf(items)],
+        format: 1,
+        layout: [],
+        revision: 4,
       }),
     });
 
-    return { root, home: path.join(root, "review", "map") };
+    return { home: path.join(root, "review", "map"), root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 /**
@@ -112,7 +112,7 @@ const homeWith = (
  * unless its entry sets another, so a member's entry gets a `group` field.
  */
 const withGroup =
-  (id: string, members: readonly string[]) =>
+  (id: string, members: ReadonlyArray<string>) =>
   (data: string): string =>
     Arr.reduce(
       members,
@@ -142,7 +142,7 @@ const decodeReview = Schema.decodeUnknownEffect(
 );
 
 /** A batch the agent has rejected and committed, so its items can be edited again. */
-const rejectedHome = (items: readonly BatchItem[]) =>
+const rejectedHome = (items: ReadonlyArray<BatchItem>) =>
   Effect.gen(function* () {
     const path = yield* Path.Path;
     const files = yield* fullMap;
@@ -150,27 +150,27 @@ const rejectedHome = (items: readonly BatchItem[]) =>
     const reasons = Rec.fromEntries(
       Arr.map(items, ({ id }) => [
         id,
-        { verdict: "rejected", reason: "No." } as const,
+        { reason: "No.", verdict: "rejected" } as const,
       ])
     );
 
     const root = yield* makeHome({
       ...files,
       "review/map/proposals.json": fileOf({
-        format: 1,
-        revision: 4,
-        layout: [],
         batches: [
           {
             ...batchOf(items),
+            committed: { at, revision: 1 },
             verdicts: reasons,
-            committed: { revision: 1, at },
           },
         ],
+        format: 1,
+        layout: [],
+        revision: 4,
       }),
     });
 
-    return { root, home: path.join(root, "review", "map") };
+    return { home: path.join(root, "review", "map"), root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 /** A write the page could send: a JSON object of known fields. */
@@ -343,7 +343,7 @@ describe("a chapter change through review", () => {
         );
 
         assert.deepStrictEqual(
-          Arr.map(revision.accepted, ({ kind, id }) => [kind, id]),
+          Arr.map(revision.accepted, ({ id, kind }) => [kind, id]),
           [["chapter", "c1"]]
         );
 
@@ -363,14 +363,15 @@ describe("group and chapter writes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const root = yield* makeHome(yield* fullMap);
+        const fullMapFiles = yield* fullMap;
+        const root = yield* makeHome(fullMapFiles);
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 
         const made = yield* post(serve.url, "/api/groups", {
           baseFileRevision: 0,
-          id: "g1",
           change: newGroup,
+          id: "g1",
           members: [
             { id: "s1", structure: "server" },
             { id: "s2", structure: "proposals" },
@@ -392,12 +393,12 @@ describe("group and chapter writes over HTTP", () => {
 
         const chapter = yield* post(serve.url, "/api/chapters", {
           baseFileRevision: proposals.revision,
-          id: "c1",
           change: {
             action: "reveal",
             chapter: "c-page",
             structure: "server",
           },
+          id: "c1",
         });
 
         assert.strictEqual(chapter.status, 200, chapter.body);
@@ -429,28 +430,29 @@ describe("group and chapter writes over HTTP", () => {
   it.live("guards a frozen group and chapter change", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
-      const root = yield* makeHome(yield* fullMap);
+      const fullMapFiles = yield* fullMap;
+      const root = yield* makeHome(fullMapFiles);
       const home = path.join(root, "review", "map");
       const serve = yield* startServe(home, ["--port", "0"]);
 
       yield* post(serve.url, "/api/groups", {
         baseFileRevision: 0,
-        id: "g1",
         change: newGroup,
+        id: "g1",
       });
 
       yield* post(serve.url, "/api/chapters", {
         baseFileRevision: 1,
-        id: "c1",
         change: { action: "reveal", chapter: "c-page", structure: "server" },
+        id: "c1",
       });
 
       yield* post(serve.url, "/api/review/freeze", { baseFileRevision: 2 });
 
       const group = yield* post(serve.url, "/api/groups", {
         baseFileRevision: 3,
-        id: "g1",
         change: { action: "add", group: { id: "data-1", title: "Other" } },
+        id: "g1",
       });
 
       assert.strictEqual(group.status, 422);
@@ -458,8 +460,8 @@ describe("group and chapter writes over HTTP", () => {
 
       const chapter = yield* post(serve.url, "/api/chapters", {
         baseFileRevision: 3,
-        id: "c1",
         change: { action: "hide", chapter: "c-page", structure: "server" },
+        id: "c1",
       });
 
       assert.strictEqual(chapter.status, 422);
@@ -519,8 +521,8 @@ describe("editing a rejected group or chapter item again", () => {
           groupItem("g1", newGroup),
           structureItem("s1", {
             action: "rename",
-            structure: "server",
             name: "Server",
+            structure: "server",
           }),
         ]);
 

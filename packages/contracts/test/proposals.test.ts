@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Option, Result, Schema } from "effect";
-import { vi } from "vitest";
 
 import {
   acceptRefusal,
@@ -25,14 +24,12 @@ import type {
   Structure,
 } from "../src/index.ts";
 
-vi.setConfig({ testTimeout: 5000 });
-
 const accepted: Layout = {
   format: 1,
   revision: 3,
   structures: {
-    a: { x: 0, y: 0, w: 2, d: 2 },
-    b: { x: 4, y: 0, w: 2, d: 2 },
+    a: { d: 2, w: 2, x: 0, y: 0 },
+    b: { d: 2, w: 2, x: 4, y: 0 },
   },
 };
 
@@ -48,8 +45,8 @@ const move = (
   kind: "move",
   moves: [
     {
-      target: { kind: "structure", id: structureId },
       position: at(to[0], to[1]),
+      target: { id: structureId, kind: "structure" },
     },
   ],
 });
@@ -60,25 +57,25 @@ const resize = (
   structureId: string,
   size: readonly [number, number]
 ): LayoutChange => ({
+  footprint: { d: size[1], w: size[0] },
   id,
   kind: "resize",
-  target: { kind: "structure", id: structureId },
-  footprint: { w: size[0], d: size[1] },
+  target: { id: structureId, kind: "structure" },
 });
 
 const structure = (id: string): Structure => ({
-  id,
   code: id,
-  name: id,
-  shape: "box",
   group: "main",
-  status: "live",
-  oneLiner: "One line.",
-  whatItDoes: "Does.",
   howItsBuilt: "Built.",
+  id,
+  name: id,
+  oneLiner: "One line.",
+  shape: "box",
+  status: "live",
+  whatItDoes: "Does.",
 });
 
-const hops = [{ id: "h-ab", from: "a", to: "b" }];
+const hops = [{ from: "a", id: "h-ab", to: "b" }];
 
 /** Ids the layout doesn't place: one it lacks, and prototype keys. */
 const unplacedIds = [
@@ -95,22 +92,22 @@ const decode = Schema.decodeUnknownResult(Proposals, {
 
 /** Whether `layoutRefusal` refuses going from `before` to `after`. */
 const refused = (
-  before: readonly LayoutChange[],
-  after: readonly LayoutChange[],
+  before: ReadonlyArray<LayoutChange>,
+  after: ReadonlyArray<LayoutChange>,
   layout: Layout = accepted
-) => Option.isSome(layoutRefusal({ accepted: layout, before, after, hops }));
+) => Option.isSome(layoutRefusal({ accepted: layout, after, before, hops }));
 
-const file = (layout: readonly LayoutChange[], format = 1) => ({
+const file = (layout: ReadonlyArray<LayoutChange>, format = 1) => ({
   format,
-  revision: 0,
   layout,
+  revision: 0,
 });
 
 /** Whether a file holding `layout`, any JSON, decodes. */
-const decodesRaw = (layout: readonly object[]) =>
-  Result.isSuccess(decode({ format: 1, revision: 0, layout }));
+const decodesRaw = (layout: ReadonlyArray<object>) =>
+  Result.isSuccess(decode({ format: 1, layout, revision: 0 }));
 
-const decodes = (layout: readonly LayoutChange[]) =>
+const decodes = (layout: ReadonlyArray<LayoutChange>) =>
   Result.isSuccess(decode(file(layout)));
 
 let counter = 0;
@@ -122,10 +119,10 @@ const newId = () => {
 };
 
 const place = (
-  changes: readonly LayoutChange[],
+  changes: ReadonlyArray<LayoutChange>,
   id: string,
-  next: { x: number; y: number; w: number; d: number }
-) => placeStructure({ changes, accepted, id, next, newId });
+  next: { d: number; w: number; x: number; y: number }
+) => placeStructure({ accepted, changes, id, newId, next });
 
 describe("applying pending layout changes", () => {
   it("moves and resizes structures, and leaves the rest as accepted", () => {
@@ -135,8 +132,8 @@ describe("applying pending layout changes", () => {
     ]);
 
     assert.deepStrictEqual(shown.structures, {
-      a: { x: 0.5, y: 6, w: 3, d: 1.5 },
-      b: { x: 4, y: 0, w: 2, d: 2 },
+      a: { d: 1.5, w: 3, x: 0.5, y: 6 },
+      b: { d: 2, w: 2, x: 4, y: 0 },
     });
     assert.strictEqual(shown.revision, 3);
   });
@@ -159,8 +156,8 @@ describe("applying pending layout changes", () => {
       id: "g",
       kind: "move",
       moves: [
-        { target: { kind: "structure", id: "a" }, position: at(0, 10) },
-        { target: { kind: "structure", id: "b" }, position: at(4, 10) },
+        { position: at(0, 10), target: { id: "a", kind: "structure" } },
+        { position: at(4, 10), target: { id: "b", kind: "structure" } },
       ],
     };
 
@@ -171,9 +168,9 @@ describe("applying pending layout changes", () => {
       group,
     ]);
 
-    assert.deepStrictEqual(later.structures.a, { x: 1, y: 1, w: 2, d: 2 });
-    assert.deepStrictEqual(later.structures.b, { x: 4, y: 10, w: 2, d: 2 });
-    assert.deepStrictEqual(earlier.structures.a, { x: 0, y: 10, w: 2, d: 2 });
+    assert.deepStrictEqual(later.structures.a, { d: 2, w: 2, x: 1, y: 1 });
+    assert.deepStrictEqual(later.structures.b, { d: 2, w: 2, x: 4, y: 10 });
+    assert.deepStrictEqual(earlier.structures.a, { d: 2, w: 2, x: 0, y: 10 });
   });
 });
 
@@ -188,12 +185,12 @@ const via = [
 
 const reroute = (
   id: string,
-  points: readonly { x: number; y: number }[] | null
+  points: ReadonlyArray<{ x: number; y: number }> | null
 ): LayoutChange => ({
   id,
   kind: "reroute",
-  target: { kind: "hop", id: "h-ab" },
   points,
+  target: { id: "h-ab", kind: "hop" },
 });
 
 /** A staircase: right half a unit, down half a unit, and so on. */
@@ -237,11 +234,11 @@ describe("rerouting", () => {
     const shown = applyLayoutChanges(routed, [reroute("r1", via)]);
 
     assert.deepStrictEqual(shown.routes, {
+      "h-ab": via,
       "h-other": [
         { x: 0, y: 0 },
         { x: 0, y: 5 },
       ],
-      "h-ab": via,
     });
   });
 
@@ -290,8 +287,8 @@ describe("rerouting", () => {
   it("refuses a route that starts off the source footprint, with the message check gives", () => {
     const refusal = layoutRefusal({
       accepted,
-      before: [],
       after: [reroute("r1", [{ x: 1, y: 1 }, ...via.slice(1)])],
+      before: [],
       hops,
     });
 
@@ -304,15 +301,15 @@ describe("rerouting", () => {
   it("refuses a reroute of a hop the map doesn't have", () => {
     const refusal = layoutRefusal({
       accepted,
-      before: [],
       after: [
         {
           id: "r1",
           kind: "reroute",
-          target: { kind: "hop", id: "h-gone" },
           points: via,
+          target: { id: "h-gone", kind: "hop" },
         },
       ],
+      before: [],
       hops,
     });
 
@@ -352,17 +349,17 @@ describe("rerouting", () => {
   it("warns about a reroute of a hop data.mjs doesn't have", () => {
     const problems = checkProposals(
       {
-        format: 1,
-        revision: 0,
-        overview: { title: "Map", summary: "A map." },
-        groups: [{ id: "main", title: "Main" }],
-        structures: [structure("a"), structure("b")],
-        hops: [],
-        flows: [],
         chapters: [],
+        flows: [],
+        format: 1,
+        groups: [{ id: "main", title: "Main" }],
+        hops: [],
+        overview: { summary: "A map.", title: "Map" },
+        revision: 0,
+        structures: [structure("a"), structure("b")],
       },
       accepted,
-      { format: 1, revision: 1, layout: [reroute("r1", via)] }
+      { format: 1, layout: [reroute("r1", via)], revision: 1 }
     );
 
     assert.deepStrictEqual(
@@ -375,15 +372,15 @@ describe("rerouting", () => {
 });
 
 const route = (
-  changes: readonly LayoutChange[],
-  points: readonly { x: number; y: number }[] | null = via
+  changes: ReadonlyArray<LayoutChange>,
+  points: ReadonlyArray<{ x: number; y: number }> | null = via
 ) =>
   placeRoute({
-    changes,
     accepted,
+    changes,
     hop: "h-ab",
-    points,
     newId: () => "fresh",
+    points,
   });
 
 describe("placing a route", () => {
@@ -411,11 +408,11 @@ describe("placing a route", () => {
     const routed: Layout = { ...accepted, routes: { "h-ab": via } };
 
     const changes = placeRoute({
-      changes: [],
       accepted: routed,
+      changes: [],
       hop: "h-ab",
-      points: null,
       newId: () => "fresh",
+      points: null,
     });
 
     assert.deepStrictEqual(changes, [reroute("fresh", null)]);
@@ -425,11 +422,11 @@ describe("placing a route", () => {
     const routed: Layout = { ...accepted, routes: { "h-ab": via } };
 
     const changes = placeRoute({
-      changes: [],
       accepted: routed,
+      changes: [],
       hop: "h-ab",
-      points: via,
       newId: () => "fresh",
+      points: via,
     });
 
     assert.deepStrictEqual(changes, []);
@@ -441,15 +438,15 @@ describe("carrying routes along with a move", () => {
 
   const shift = (moves: Parameters<typeof shiftedRoutes>[0]["moves"]) =>
     shiftedRoutes({
-      layout: routed,
       hops,
-      moves,
       id: (hop) => `r-${hop}`,
+      layout: routed,
+      moves,
     });
 
   const both = [
-    { target: { kind: "structure" as const, id: "a" }, position: at(0, 6) },
-    { target: { kind: "structure" as const, id: "b" }, position: at(4, 6) },
+    { position: at(0, 6), target: { id: "a", kind: "structure" as const } },
+    { position: at(4, 6), target: { id: "b", kind: "structure" as const } },
   ] as const;
 
   it("shifts an override whose two ends move by the same amount", () => {
@@ -457,8 +454,8 @@ describe("carrying routes along with a move", () => {
       {
         id: "r-h-ab",
         kind: "reroute",
-        target: { kind: "hop", id: "h-ab" },
         points: Arr.map(via, ({ x, y }) => ({ x, y: y + 6 })),
+        target: { id: "h-ab", kind: "hop" },
       },
     ]);
   });
@@ -470,22 +467,22 @@ describe("carrying routes along with a move", () => {
   it("leaves an override alone when its ends move apart", () => {
     assert.deepStrictEqual(
       shift([
-        { target: { kind: "structure", id: "a" }, position: at(0, 6) },
-        { target: { kind: "structure", id: "b" }, position: at(4, 8) },
+        { position: at(0, 6), target: { id: "a", kind: "structure" } },
+        { position: at(4, 8), target: { id: "b", kind: "structure" } },
       ]),
       []
     );
   });
 
   it("makes a group move that the refusal accepts", () => {
-    const changes: LayoutChange[] = [
+    const changes: Array<LayoutChange> = [
       { id: "g", kind: "move", moves: [both[0], both[1]] },
       ...shift(both),
     ];
 
     assert.isFalse(
       Option.isSome(
-        layoutRefusal({ accepted: routed, before: [], after: changes, hops })
+        layoutRefusal({ accepted: routed, after: changes, before: [], hops })
       )
     );
   });
@@ -504,11 +501,11 @@ describe("a group's members", () => {
     assert.deepStrictEqual(
       groupMembers({
         data,
+        group: "one",
         layout: {
           ...accepted,
-          structures: { ...accepted.structures, c: { x: 8, y: 0, w: 2, d: 2 } },
+          structures: { ...accepted.structures, c: { d: 2, w: 2, x: 8, y: 0 } },
         },
-        group: "one",
       }),
       ["a", "c"]
     );
@@ -516,7 +513,7 @@ describe("a group's members", () => {
 
   it("leaves out a structure the layout doesn't place", () => {
     assert.deepStrictEqual(
-      groupMembers({ data, layout: accepted, group: "one" }),
+      groupMembers({ data, group: "one", layout: accepted }),
       ["a"]
     );
   });
@@ -526,10 +523,10 @@ const groupMoveTo = (to: readonly [number, number]): LayoutChange => ({
   id: "g",
   kind: "move",
   moves: [
-    { target: { kind: "structure", id: "a" }, position: at(to[0], to[1]) },
+    { position: at(to[0], to[1]), target: { id: "a", kind: "structure" } },
     {
-      target: { kind: "structure", id: "b" },
       position: at(to[0] + 4, to[1]),
+      target: { id: "b", kind: "structure" },
     },
   ],
 });
@@ -539,36 +536,36 @@ const groupMoveTo = (to: readonly [number, number]): LayoutChange => ({
  * shares its id with structure "a".
  */
 const waitingOn = (frozen: LayoutChange, open: LayoutChange): P => ({
-  format: 1,
-  revision: 1,
-  layout: [open],
   batches: [
     {
-      number: 1,
       frozenAt: "2026-11-01T09:00:00.000Z",
-      items: [{ id: frozen.id, kind: "layout", change: frozen }],
+      items: [{ change: frozen, id: frozen.id, kind: "layout" }],
+      number: 1,
       verdicts: {},
     },
   ],
+  format: 1,
+  layout: [open],
+  revision: 1,
 });
 
-const hopA = [{ id: "a", from: "a", to: "b" }];
+const hopA = [{ from: "a", id: "a", to: "b" }];
 
 const rerouteA = (id: string): LayoutChange => ({
   id,
   kind: "reroute",
-  target: { kind: "hop", id: "a" },
   points: via,
+  target: { id: "a", kind: "hop" },
 });
 
 describe("accepting next to a frozen change of the same id", () => {
   it("tells a structure and a hop with the same id apart", () => {
     // The frozen move keeps a's +x edge under the route's start at (2, 1).
     const refusal = acceptRefusal({
-      proposals: waitingOn(move("m", "a", [0, 0.5]), rerouteA("r")),
-      layout: accepted,
-      ids: "all",
       hops: hopA,
+      ids: "all",
+      layout: accepted,
+      proposals: waitingOn(move("m", "a", [0, 0.5]), rerouteA("r")),
     });
 
     assert.deepStrictEqual(refusal, Option.none());
@@ -576,10 +573,10 @@ describe("accepting next to a frozen change of the same id", () => {
 
   it("waits for a frozen change of the same hop, and names the hop", () => {
     const refusal = acceptRefusal({
-      proposals: waitingOn(rerouteA("r1"), rerouteA("r2")),
-      layout: accepted,
-      ids: "all",
       hops: hopA,
+      ids: "all",
+      layout: accepted,
+      proposals: waitingOn(rerouteA("r1"), rerouteA("r2")),
     });
 
     assert.deepStrictEqual(
@@ -596,7 +593,7 @@ describe("moving a group", () => {
     ...accepted,
     structures: {
       ...accepted.structures,
-      c: { x: 8, y: 0, w: 2, d: 2 },
+      c: { d: 2, w: 2, x: 8, y: 0 },
     },
   };
 
@@ -612,14 +609,14 @@ describe("moving a group", () => {
 
 describe("placing a structure", () => {
   it("adds a move with a new id", () => {
-    const changes = place([], "a", { x: 0, y: 6, w: 2, d: 2 });
+    const changes = place([], "a", { d: 2, w: 2, x: 0, y: 6 });
 
     assert.deepStrictEqual(changes, [move("new1", "a", [0, 6])]);
   });
 
   it("updates a structure's own move, keeping its id", () => {
-    const first = place([], "a", { x: 0, y: 6, w: 2, d: 2 });
-    const second = place(first, "a", { x: 0, y: 8, w: 2, d: 2 });
+    const first = place([], "a", { d: 2, w: 2, x: 0, y: 6 });
+    const second = place(first, "a", { d: 2, w: 2, x: 0, y: 8 });
 
     assert.deepStrictEqual(
       Arr.map(second, ({ id }) => id),
@@ -632,8 +629,8 @@ describe("placing a structure", () => {
   });
 
   it("keeps a resize's id as the corner moves, and a corner can add a move too", () => {
-    const first = place([], "a", { x: 0, y: 0, w: 3, d: 2 });
-    const second = place(first, "a", { x: -0.5, y: 0, w: 3.5, d: 2 });
+    const first = place([], "a", { d: 2, w: 3, x: 0, y: 0 });
+    const second = place(first, "a", { d: 2, w: 3.5, x: -0.5, y: 0 });
     const resizes = Arr.filter(second, ({ kind }) => kind === "resize");
 
     assert.strictEqual(second.length, 2);
@@ -644,9 +641,9 @@ describe("placing a structure", () => {
   });
 
   it("drops a change that puts the structure back where it was accepted", () => {
-    const first = place([], "a", { x: 0, y: 6, w: 2, d: 2 });
+    const first = place([], "a", { d: 2, w: 2, x: 0, y: 6 });
 
-    assert.deepStrictEqual(place(first, "a", { x: 0, y: 0, w: 2, d: 2 }), []);
+    assert.deepStrictEqual(place(first, "a", { d: 2, w: 2, x: 0, y: 0 }), []);
   });
 
   it("puts the structure's own change after a group move, so it wins", () => {
@@ -654,25 +651,25 @@ describe("placing a structure", () => {
       id: "g",
       kind: "move",
       moves: [
-        { target: { kind: "structure", id: "a" }, position: at(0, 10) },
-        { target: { kind: "structure", id: "b" }, position: at(4, 10) },
+        { position: at(0, 10), target: { id: "a", kind: "structure" } },
+        { position: at(4, 10), target: { id: "b", kind: "structure" } },
       ],
     };
 
-    const changes = place([group], "a", { x: 1, y: 10, w: 2, d: 2 });
+    const changes = place([group], "a", { d: 2, w: 2, x: 1, y: 10 });
 
     assert.deepStrictEqual(Arr.map(changes, ({ id }) => id).slice(0, 1), ["g"]);
     assert.strictEqual(changes.length, 2);
     assert.deepStrictEqual(applyLayoutChanges(accepted, changes).structures.a, {
+      d: 2,
+      w: 2,
       x: 1,
       y: 10,
-      w: 2,
-      d: 2,
     });
   });
 
   it.each(unplacedIds)("ignores %s, which the layout doesn't place", (id) => {
-    assert.deepStrictEqual(place([], id, { x: 0, y: 0, w: 1, d: 1 }), []);
+    assert.deepStrictEqual(place([], id, { d: 1, w: 1, x: 0, y: 0 }), []);
   });
 
   it("discards a change by id", () => {
@@ -688,8 +685,8 @@ describe("refusing layout changes", () => {
   it("refuses a move that makes footprints overlap", () => {
     const refusal = layoutRefusal({
       accepted,
-      before: [],
       after: [move("m1", "a", [3, 0])],
+      before: [],
       hops,
     });
 
@@ -714,8 +711,8 @@ describe("refusing layout changes", () => {
       id: "g",
       kind: "move",
       moves: [
-        { target: { kind: "structure", id: "a" }, position: at(0, 10) },
-        { target: { kind: "structure", id: "b" }, position: at(1, 10) },
+        { position: at(0, 10), target: { id: "a", kind: "structure" } },
+        { position: at(1, 10), target: { id: "b", kind: "structure" } },
       ],
     };
 
@@ -741,7 +738,7 @@ describe("refusing layout changes", () => {
   it("allows a discard onto an overlap the accepted layout already had", () => {
     const crowded: Layout = {
       ...accepted,
-      structures: { ...accepted.structures, c: { x: 0, y: 1, w: 2, d: 2 } },
+      structures: { ...accepted.structures, c: { d: 2, w: 2, x: 0, y: 1 } },
     };
 
     assert.isFalse(refused([move("m1", "a", [0, 8])], [], crowded));
@@ -754,8 +751,8 @@ describe("refusing layout changes", () => {
 
     const refusal = layoutRefusal({
       accepted,
-      before,
       after: [move("m2", "b", [0, 0])],
+      before,
       hops,
     });
 
@@ -793,8 +790,8 @@ describe("the proposals.json schema", () => {
           id: "g",
           kind: "move",
           moves: [
-            { target: { kind: "structure", id: "a" }, position: at(0, 10) },
-            { target: { kind: "structure", id: "b" }, position: at(4, 10) },
+            { position: at(0, 10), target: { id: "a", kind: "structure" } },
+            { position: at(4, 10), target: { id: "b", kind: "structure" } },
           ],
         },
       ])
@@ -817,7 +814,7 @@ describe("the proposals.json schema", () => {
         {
           kind: "move",
           moves: [
-            { target: { kind: "structure", id: "a" }, position: at(0, 6) },
+            { position: at(0, 6), target: { id: "a", kind: "structure" } },
           ],
         },
       ])
@@ -835,8 +832,8 @@ describe("the proposals.json schema", () => {
 
   it("tells you to upgrade when the format is newer than this one", () => {
     const message = Result.match(decode(file([], 2)), {
-      onSuccess: () => "",
       onFailure: (error) => error.message,
+      onSuccess: () => "",
     });
 
     assert.include(message, "Upgrade axonometric");
@@ -846,30 +843,30 @@ describe("the proposals.json schema", () => {
 
 describe("checking proposals", () => {
   const data: MapData = {
-    format: 1,
-    revision: 0,
-    overview: { title: "Map", summary: "A map." },
-    groups: [{ id: "main", title: "Main" }],
-    structures: [structure("a"), structure("b")],
-    hops: [],
-    flows: [],
     chapters: [],
+    flows: [],
+    format: 1,
+    groups: [{ id: "main", title: "Main" }],
+    hops: [],
+    overview: { summary: "A map.", title: "Map" },
+    revision: 0,
+    structures: [structure("a"), structure("b")],
   };
 
   it("warns about a change for a structure data.mjs doesn't have", () => {
     const problems = checkProposals(data, accepted, {
       format: 1,
-      revision: 1,
       layout: [move("m1", "gone", [9, 9])],
+      revision: 1,
     });
 
     assert.deepStrictEqual(problems, [
       {
-        severity: "warning",
         file: "proposals.json",
-        path: "layout[0].moves[0].target.id",
         message:
           'no structure in data.mjs has the id "gone", so this move does nothing. Discard it from the page\'s Pending list.',
+        path: "layout[0].moves[0].target.id",
+        severity: "warning",
       },
     ]);
   });
@@ -877,8 +874,8 @@ describe("checking proposals", () => {
   it("warns when a pending footprint overlaps another", () => {
     const problems = checkProposals(data, accepted, {
       format: 1,
-      revision: 1,
       layout: [move("m1", "a", [4, 1])],
+      revision: 1,
     });
 
     assert.strictEqual(problems.length, 1);
@@ -887,7 +884,7 @@ describe("checking proposals", () => {
 });
 
 describe("a hop's name", () => {
-  const named = [{ id: "h1", from: "a", to: "b", label: "pins a note" }];
+  const named = [{ from: "a", id: "h1", label: "pins a note", to: "b" }];
 
   it("is its label, whichever way round it's called, and its id when unknown", () => {
     assert.strictEqual(hopLabelOf(named, "h1"), "pins a note");

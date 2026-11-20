@@ -32,16 +32,16 @@ export function NotesSection({ target }: { readonly target: NoteTarget }) {
   }
 
   return (
-    <section data-notes-section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-notes-section>
       <h3 className="text-xs tracking-widest uppercase opacity-70">Notes</h3>
       {notes.length === 0 ? null : (
         <ul className="flex flex-col gap-2">
           {Arr.map(notes, ({ item, status }) => (
             <li
-              key={item.id}
-              data-panel-note={item.id}
-              data-note-state={status.state}
               className="border-pending flex flex-col gap-1 border-l-2 pl-2 text-sm"
+              data-note-state={status.state}
+              data-panel-note={item.id}
+              key={item.id}
             >
               <span className="break-words">{item.text}</span>
               <ItemStatusLine status={status} />
@@ -51,14 +51,14 @@ export function NotesSection({ target }: { readonly target: NoteTarget }) {
       )}
       {editOn && review.canWrite ? (
         <NoteForm
-          label="Pin a note"
           hideLabel
-          submit="Pin note"
+          label="Pin a note"
           onSubmit={(text, done) => {
             review.ops.add({ kind: "note", target, text }, (outcome) => {
               done(Option.getOrUndefined(Result.getFailure(outcome)));
             });
           }}
+          submit="Pin note"
         />
       ) : null}
     </section>

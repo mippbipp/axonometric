@@ -14,6 +14,7 @@ import {
 import type { Page } from "playwright";
 
 import {
+  assertCount,
   attributeOf,
   centreOf,
   click,
@@ -63,7 +64,7 @@ const waitAttached = (page: Page, selector: string) =>
  */
 const waitForFlowProposal = Effect.fnUntraced(function* (
   home: string,
-  wanted: (hops: readonly string[]) => boolean
+  wanted: (hops: ReadonlyArray<string>) => boolean
 ) {
   for (let tries = 0; tries < 150; tries += 1) {
     const found = Arr.findFirst(
@@ -91,7 +92,11 @@ const openFlows = Effect.fnUntraced(function* (page: Page) {
 });
 
 /** Waits until flow `flow` lists exactly `hops`, in that order. */
-const waitForFlowHops = (page: Page, flow: string, hops: readonly string[]) =>
+const waitForFlowHops = (
+  page: Page,
+  flow: string,
+  hops: ReadonlyArray<string>
+) =>
   Effect.promise(() =>
     page.waitForFunction(
       `[...document.querySelectorAll(${literal(`[data-sortable="hops:${flow}"] [data-sort-content]`)})].map((e) => e.getAttribute("data-sort-content")).join(",") === ${literal(Arr.join(hops, ","))}`,
@@ -132,12 +137,12 @@ const select = Effect.fnUntraced(function* (page: Page, id: string) {
 const dragFromHandle = Effect.fnUntraced(function* (
   page: Page,
   drag: {
+    readonly drop: boolean;
     readonly from: string;
     readonly to: { readonly x: number; readonly y: number };
-    readonly drop: boolean;
   }
 ) {
-  const { from, to, drop } = drag;
+  const { drop, from, to } = drag;
 
   yield* select(page, from);
 
@@ -163,7 +168,7 @@ const clashes = (page: Page) =>
 const labelClashes = (
   report: DrawingReport,
   label: string
-): readonly string[] => {
+): ReadonlyArray<string> => {
   const own = Arr.filter(report.text, ({ id }) => id === label);
 
   if (own.length === 0) {
@@ -202,13 +207,13 @@ const grown = (polygon: Drawn["polygon"], by: number): Drawn["polygon"] => {
 };
 
 /** The text every mark must keep clear of: tags, hop labels and chips, not zone titles. */
-const textToAvoid = (report: DrawingReport): readonly Drawn[] => [
+const textToAvoid = (report: DrawingReport): ReadonlyArray<Drawn> => [
   ...Arr.filter(report.text, ({ id }) => !Str.startsWith("title:")(id)),
   ...report.chips,
 ];
 
 /** The handles that come within `clearance` screen pixels of text. */
-const handlesNearText = (report: DrawingReport): readonly string[] =>
+const handlesNearText = (report: DrawingReport): ReadonlyArray<string> =>
   Arr.flatMap(report.handles, (handle) =>
     Arr.flatMap(textToAvoid(report), (other: Drawn) =>
       overlap(grown(handle.polygon, clearance), other.polygon)
@@ -218,7 +223,7 @@ const handlesNearText = (report: DrawingReport): readonly string[] =>
   );
 
 /** The legs of the line being drawn that run through text. */
-const previewsOverText = (report: DrawingReport): readonly string[] =>
+const previewsOverText = (report: DrawingReport): ReadonlyArray<string> =>
   Arr.flatMap(report.previews, ({ id, segment }) =>
     Arr.flatMap(textToAvoid(report), (other: Drawn) =>
       crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
@@ -229,7 +234,7 @@ const previewsOverText = (report: DrawingReport): readonly string[] =>
  * The ends of the line's pieces that lie off the line through the first
  * piece, by more than a pixel: none when the line is straight.
  */
-const bends = (previews: DrawingReport["previews"]): readonly string[] => {
+const bends = (previews: DrawingReport["previews"]): ReadonlyArray<string> => {
   const [a, b] = previews[0]?.segment ?? [];
 
   if (a === undefined || b === undefined) {
@@ -253,7 +258,7 @@ const bends = (previews: DrawingReport["previews"]): readonly string[] => {
 };
 
 /** The pieces of a hop's strike that run through a structure's box. */
-const strikesOverBoxes = (report: DrawingReport): readonly string[] =>
+const strikesOverBoxes = (report: DrawingReport): ReadonlyArray<string> =>
   Arr.flatMap(report.hopStrikes, ({ id, segment }) =>
     Arr.flatMap(report.structures, (box: Drawn) =>
       crosses(segment, box.polygon) ? [`${id} × ${box.id}`] : []
@@ -261,7 +266,7 @@ const strikesOverBoxes = (report: DrawingReport): readonly string[] =>
   );
 
 /** The pieces of a hop's strike that run over text. */
-const strikesOverText = (report: DrawingReport): readonly string[] =>
+const strikesOverText = (report: DrawingReport): ReadonlyArray<string> =>
   Arr.flatMap(report.hopStrikes, ({ id, segment }) =>
     Arr.flatMap(report.text, (other: Drawn) =>
       crosses(segment, other.polygon) ? [`${id} × ${other.id}`] : []
@@ -309,7 +314,7 @@ const drawHop = Effect.fnUntraced(function* (page: Page, label: string) {
   const target = yield* centreOf(page, '[data-structure="server"]');
 
   // The drop reads the target the page last drew, so wait for it first.
-  yield* dragFromHandle(page, { from: "engineer", to: target, drop: false });
+  yield* dragFromHandle(page, { drop: false, from: "engineer", to: target });
   yield* waitForAttributes(page, "[data-hop-preview]", {
     "data-over": "server",
   });
@@ -333,7 +338,7 @@ describe.each(["iso", "plan"] as const)(
       "draws a dashed preview mid-drag, then opens the label field on a drop on a structure",
       () =>
         Effect.gen(function* () {
-          const { page, home } = yield* served;
+          const { home, page } = yield* served;
 
           yield* goToChapterPaused(page, "c-all");
           yield* showViewFitted(page, which);
@@ -341,9 +346,9 @@ describe.each(["iso", "plan"] as const)(
           const target = yield* centreOf(page, '[data-structure="server"]');
 
           yield* dragFromHandle(page, {
+            drop: false,
             from: "engineer",
             to: target,
-            drop: false,
           });
           // The preview shows from the first step of the drag, before the
           // pointer reaches the server, so wait for the target.
@@ -367,17 +372,14 @@ describe.each(["iso", "plan"] as const)(
           yield* Effect.promise(() => page.mouse.up());
           yield* waitFor(page, "[data-draw-hop]");
 
-          assert.strictEqual(
-            yield* Effect.promise(() =>
-              page.locator("[data-draw-to]").textContent()
-            ),
-            "Save server"
+          const drawTargetText = yield* Effect.promise(() =>
+            page.locator("[data-draw-to]").textContent()
           );
+
+          assert.strictEqual(drawTargetText, "Save server");
+
           // The form is in the side panel, never over the drawing.
-          assert.strictEqual(
-            yield* count(page, "[data-side-panel] [data-draw-hop]"),
-            1
-          );
+          yield* assertCount(page, "[data-side-panel] [data-draw-hop]", 1);
           // Nothing is saved until a label is sent.
           assert.deepStrictEqual(
             (yield* proposalsOrEmpty(home)).hops ?? [],
@@ -391,7 +393,7 @@ describe.each(["iso", "plan"] as const)(
       "creates the proposal with its label and draws the hop pending",
       () =>
         Effect.gen(function* () {
-          const { page, home, errors } = yield* served;
+          const { errors, home, page } = yield* served;
 
           yield* goToChapterPaused(page, "c-all");
           yield* showViewFitted(page, which);
@@ -404,14 +406,15 @@ describe.each(["iso", "plan"] as const)(
             saved?.change.action === "add"
               ? { ...saved.change.hop, id: "" }
               : undefined,
-            { id: "", from: "engineer", to: "server", label: "asks for a map" }
+            { from: "engineer", id: "", label: "asks for a map", to: "server" }
           );
 
           const proposed = page.locator(
             '[data-hop][data-hop-state="proposed"]'
           );
 
-          assert.strictEqual(yield* Effect.promise(() => proposed.count()), 1);
+          const proposedCount = yield* Effect.promise(() => proposed.count());
+          assert.strictEqual(proposedCount, 1);
           assert.deepStrictEqual(errors, []);
         }),
       60_000
@@ -431,7 +434,8 @@ describe.each(["iso", "plan"] as const)(
           yield* Effect.promise(() => page.keyboard.press("Escape"));
           yield* showViewFitted(page, which);
 
-          assert.deepStrictEqual(yield* clashes(page), []);
+          const tagClashes = yield* clashes(page);
+          assert.deepStrictEqual(tagClashes, []);
 
           const hop = yield* attributeOf(
             page,
@@ -439,15 +443,11 @@ describe.each(["iso", "plan"] as const)(
             "data-hop"
           );
 
-          assert.deepStrictEqual(
-            labelClashes(
-              yield* Effect.promise(() =>
-                page.evaluate<DrawingReport>(drawingReport)
-              ),
-              `label:${hop}`
-            ),
-            []
+          const drawing = yield* Effect.promise(() =>
+            page.evaluate<DrawingReport>(drawingReport)
           );
+
+          assert.deepStrictEqual(labelClashes(drawing, `label:${hop}`), []);
 
           const stroke = yield* Effect.promise(() =>
             page.evaluate<string>(
@@ -473,7 +473,7 @@ describe("ending a drag without a target", () => {
     "creates nothing when the drop is on empty space, or when Escape ends the drag",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
 
@@ -486,37 +486,48 @@ describe("ending a drag without a target", () => {
 
         // Empty ground at the right edge of the fitted map.
         yield* dragFromHandle(page, {
+          drop: true,
           from: "engineer",
           to: {
             x: (surface?.x ?? 0) + (surface?.width ?? 0) * 0.92,
             y: (surface?.y ?? 0) + (surface?.height ?? 0) * 0.9,
           },
-          drop: true,
         });
         yield* Effect.sleep("400 millis");
 
-        assert.strictEqual(yield* count(page, "[data-draw-hop]"), 0, "drop");
-        assert.strictEqual(yield* count(page, "[data-hop-preview]"), 0, "drop");
+        const drawHopCountAfterDrop = yield* count(page, "[data-draw-hop]");
+
+        assert.strictEqual(drawHopCountAfterDrop, 0, "drop");
+
+        const hopPreviewCountAfterDrop = yield* count(
+          page,
+          "[data-hop-preview]"
+        );
+
+        assert.strictEqual(hopPreviewCountAfterDrop, 0, "drop");
         assert.deepStrictEqual((yield* proposalsOrEmpty(home)).hops ?? [], []);
 
         const target = yield* centreOf(page, '[data-structure="server"]');
 
         yield* dragFromHandle(page, {
+          drop: false,
           from: "engineer",
           to: target,
-          drop: false,
         });
         yield* waitAttached(page, "[data-hop-preview]");
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* Effect.promise(() => page.mouse.up());
         yield* Effect.sleep("400 millis");
 
-        assert.strictEqual(
-          yield* count(page, "[data-hop-preview]"),
-          0,
-          "Escape"
+        const hopPreviewCountAfterEscape = yield* count(
+          page,
+          "[data-hop-preview]"
         );
-        assert.strictEqual(yield* count(page, "[data-draw-hop]"), 0, "Escape");
+
+        assert.strictEqual(hopPreviewCountAfterEscape, 0, "Escape");
+        const drawHopCountAfterEscape = yield* count(page, "[data-draw-hop]");
+
+        assert.strictEqual(drawHopCountAfterEscape, 0, "Escape");
         assert.deepStrictEqual((yield* proposalsOrEmpty(home)).hops ?? [], []);
       }),
     60_000
@@ -538,9 +549,9 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
           const target = yield* centreOf(page, `[data-structure="${over}"]`);
 
           yield* dragFromHandle(page, {
+            drop: false,
             from: "engineer",
             to: target,
-            drop: false,
           });
           // Read the report once the line is routed to the target.
           yield* waitForAttributes(page, "[data-hop-preview]", {
@@ -585,7 +596,7 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
           y: (surface?.y ?? 0) + (surface?.height ?? 0) * 0.9,
         };
 
-        yield* dragFromHandle(page, { from: "engineer", to, drop: false });
+        yield* dragFromHandle(page, { drop: false, from: "engineer", to });
         yield* waitForPreviewAt(page, to);
 
         // The line may be cut where it passes text, but every piece lies on
@@ -621,9 +632,9 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
         const target = yield* centreOf(page, '[data-structure="pull-request"]');
 
         yield* dragFromHandle(page, {
+          drop: false,
           from: "engineer",
           to: target,
-          drop: false,
         });
         yield* faded("pull-request", "false");
         yield* faded("engineer", "false");
@@ -645,18 +656,18 @@ describe("the keyboard path to drawing a hop", () => {
     "starts from the structure's panel, picks the target from a list and proposes",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* select(page, "engineer");
         yield* click(page, '[data-change="draw-hop"]');
         yield* waitFor(page, "[data-draw-hop]");
 
-        assert.isTrue(
-          yield* Effect.promise(() =>
-            page.locator('[data-draw="submit"]').isDisabled()
-          )
+        const drawSubmitDisabled = yield* Effect.promise(() =>
+          page.locator('[data-draw="submit"]').isDisabled()
         );
+
+        assert.isTrue(drawSubmitDisabled);
 
         yield* Effect.promise(() =>
           page.locator('[data-draw="to"]').selectOption("proposals")
@@ -679,7 +690,7 @@ describe("the keyboard path to drawing a hop", () => {
           saved?.change.action === "add"
             ? { ...saved.change.hop, id: "" }
             : undefined,
-          { id: "", from: "engineer", to: "proposals", label: "looks at" }
+          { from: "engineer", id: "", label: "looks at", to: "proposals" }
         );
       }),
     60_000
@@ -689,7 +700,7 @@ describe("the keyboard path to drawing a hop", () => {
     "starts from the structure's context menu, and Escape cancels",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* Effect.promise(() =>
@@ -703,7 +714,7 @@ describe("the keyboard path to drawing a hop", () => {
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* Effect.sleep("300 millis");
 
-        assert.strictEqual(yield* count(page, "[data-draw-hop]"), 0);
+        yield* assertCount(page, "[data-draw-hop]", 0);
         assert.deepStrictEqual((yield* proposalsOrEmpty(home)).hops ?? [], []);
       }),
     60_000
@@ -715,7 +726,7 @@ describe("the hop panel and menu", () => {
     "relabels a hop from its panel",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-save");
@@ -746,16 +757,16 @@ describe("the hop panel and menu", () => {
     "puts a hop in one more flow, and takes it out of another, from its panel",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-pr");
 
-        assert.isFalse(
-          yield* Effect.promise(() =>
-            page.locator('[data-hop-flow="f-note"]').isChecked()
-          )
+        const noteFlowChecked = yield* Effect.promise(() =>
+          page.locator('[data-hop-flow="f-note"]').isChecked()
         );
+
+        assert.isFalse(noteFlowChecked);
 
         yield* Effect.promise(() =>
           page.locator('[data-hop-flow="f-note"]').click()
@@ -804,7 +815,7 @@ describe("the hop panel and menu", () => {
     "deletes a hop from its panel: dashed, with a strike that holds no text",
     () =>
       Effect.gen(function* () {
-        const { page, home, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-pr");
@@ -826,13 +837,12 @@ describe("the hop panel and menu", () => {
 
         assert.notStrictEqual(dash, "none");
 
-        // The strike holds no text of its own.
-        assert.strictEqual(
-          yield* Effect.promise(() =>
-            page.locator('[data-removed-hop-mark="h-pr"]').textContent()
-          ),
-          ""
+        const strikeText = yield* Effect.promise(() =>
+          page.locator('[data-removed-hop-mark="h-pr"]').textContent()
         );
+
+        // The strike holds no text of its own.
+        assert.strictEqual(strikeText, "");
         assert.deepStrictEqual(errors, []);
       }),
     60_000
@@ -842,7 +852,7 @@ describe("the hop panel and menu", () => {
     "opens a context menu on a hop with its flows and a delete",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         const at = yield* settledPointOnHop(page, "h-pr");
@@ -852,16 +862,22 @@ describe("the hop panel and menu", () => {
         );
         yield* waitFor(page, '[data-hop-menu="h-pr"]');
 
-        assert.strictEqual(yield* count(page, '[data-menu="relabel"]'), 1);
-        assert.strictEqual(yield* count(page, '[data-menu="delete-hop"]'), 1);
+        yield* assertCount(page, '[data-menu="relabel"]', 1);
+        yield* assertCount(page, '[data-menu="delete-hop"]', 1);
 
         yield* click(page, '[data-menu="flows"]');
         yield* click(page, '[data-menu-flow="f-note"]');
 
-        assert.deepStrictEqual(
-          yield* waitForFlowProposal(home, (hops) => hops.includes("h-pr")),
-          ["h-note", "h-save", "h-store", "h-pr"]
+        const flowHops = yield* waitForFlowProposal(home, (hops) =>
+          hops.includes("h-pr")
         );
+
+        assert.deepStrictEqual(flowHops, [
+          "h-note",
+          "h-save",
+          "h-store",
+          "h-pr",
+        ]);
       }),
     60_000
   );
@@ -872,7 +888,7 @@ describe("the flows editor", () => {
     "reorders the hops in a flow with the move buttons",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -894,7 +910,7 @@ describe("the flows editor", () => {
     "reorders the hops in a flow from the keyboard with Alt and the arrow keys",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -920,7 +936,7 @@ describe("the flows editor", () => {
     "reorders the hops in a flow by dragging a grip",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -953,7 +969,7 @@ describe("the flows editor", () => {
     "creates a flow, renames it, and the proposal follows both",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -1015,7 +1031,7 @@ describe("the flows editor", () => {
     "renames a flow that data.mjs has",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
@@ -1094,7 +1110,7 @@ describe("a hop proposal in the Pending tab and in exports", () => {
     "is listed in the Pending tab with a Discard, and discarding removes the hop",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* drawHop(page, "asks");
@@ -1102,8 +1118,9 @@ describe("a hop proposal in the Pending tab and in exports", () => {
         yield* waitFor(page, '[data-review-section="diagram"]');
 
         // Listed once, in its section, with the Discard the review list gives.
-        assert.strictEqual(
-          yield* count(page, '[data-review-item][data-review-kind="hop"]'),
+        yield* assertCount(
+          page,
+          '[data-review-item][data-review-kind="hop"]',
           1
         );
 
@@ -1128,11 +1145,12 @@ describe("a hop proposal in the Pending tab and in exports", () => {
     "is left out of the exported SVG, with every other kind of proposal, and the SVG equals the CLI's",
     () =>
       Effect.gen(function* () {
-        const { home, serve, page } = yield* served;
+        const { home, page, serve } = yield* served;
 
+        const farSpotNote = yield* farSpot(0);
         // A note far off the map, which a fit to the notes would take in
         // and an export must not.
-        const far = yield* post(serve.url, "/api/notes", yield* farSpot(0));
+        const far = yield* post(serve.url, "/api/notes", farSpotNote);
 
         assert.strictEqual(far.status, 200, far.body);
 
@@ -1212,9 +1230,9 @@ describe("a hop proposal in the Pending tab and in exports", () => {
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
 
-          const fromPage = new TextDecoder().decode(
-            yield* fs.readFile(yield* Effect.promise(() => download.path()))
-          );
+          const downloadPath = yield* Effect.promise(() => download.path());
+          const downloadedBytes = yield* fs.readFile(downloadPath);
+          const fromPage = new TextDecoder().decode(downloadedBytes);
 
           for (const proposed of [
             "asks for a map",
@@ -1246,9 +1264,10 @@ describe("a hop proposal in the Pending tab and in exports", () => {
           ]);
 
           assert.strictEqual(exported.exitCode, 0, exported.stderr);
+          const fromCli = yield* fs.readFileString(target);
           assert.strictEqual(
             fromPage,
-            yield* fs.readFileString(target),
+            fromCli,
             `${which}: the page's SVG differs from the CLI's`
           );
         }
@@ -1262,7 +1281,7 @@ describe("a hop proposed for deletion", () => {
     "can't be edited, says it waits on the agent, is left out of the new flow's checklist, and withdraws while the proposal is open",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-save");
@@ -1270,35 +1289,30 @@ describe("a hop proposed for deletion", () => {
         yield* waitFor(page, '[data-removed-hop-mark="h-save"]');
         yield* waitFor(page, "[data-hop-panel] [data-deleting]");
 
+        const flowDisabledWhileDeleting = yield* Effect.promise(() =>
+          page.locator('[data-hop-flow="f-note"]').isDisabled()
+        );
+
         // Its flows and label can't change, and the reroute hint is gone.
-        assert.isTrue(
-          yield* Effect.promise(() =>
-            page.locator('[data-hop-flow="f-note"]').isDisabled()
-          )
+        assert.isTrue(flowDisabledWhileDeleting);
+
+        const hopLabelFieldDisabled = yield* Effect.promise(() =>
+          page.locator("[data-hop-label-field]").isDisabled()
         );
-        assert.isTrue(
-          yield* Effect.promise(() =>
-            page.locator("[data-hop-label-field]").isDisabled()
-          )
+
+        assert.isTrue(hopLabelFieldDisabled);
+
+        const hopPanelText = yield* Effect.promise(() =>
+          page.locator("[data-hop-panel]").textContent()
         );
-        assert.notInclude(
-          yield* Effect.promise(() =>
-            page.locator("[data-hop-panel]").textContent()
-          ),
-          "Drag a segment"
-        );
-        assert.strictEqual(yield* count(page, "[data-withdraw-deletion]"), 1);
+
+        assert.notInclude(hopPanelText, "Drag a segment");
+        yield* assertCount(page, "[data-withdraw-deletion]", 1);
 
         // The new flow's checklist leaves it out, and keeps the others.
         yield* openFlows(page);
-        assert.strictEqual(
-          yield* count(page, '[data-new-flow-hop="h-save"]'),
-          0
-        );
-        assert.strictEqual(
-          yield* count(page, '[data-new-flow-hop="h-store"]'),
-          1
-        );
+        yield* assertCount(page, '[data-new-flow-hop="h-save"]', 0);
+        yield* assertCount(page, '[data-new-flow-hop="h-store"]', 1);
         yield* click(page, '[data-tab="details"]');
         yield* waitFor(page, "[data-hop-panel] [data-withdraw-deletion]");
 
@@ -1312,11 +1326,12 @@ describe("a hop proposed for deletion", () => {
         );
 
         assert.deepStrictEqual((yield* proposalsOrEmpty(home)).hops ?? [], []);
-        assert.isFalse(
-          yield* Effect.promise(() =>
-            page.locator('[data-hop-flow="f-note"]').isDisabled()
-          )
+
+        const flowDisabledAfterWithdraw = yield* Effect.promise(() =>
+          page.locator('[data-hop-flow="f-note"]').isDisabled()
         );
+
+        assert.isFalse(flowDisabledAfterWithdraw);
       }),
     60_000
   );
@@ -1336,8 +1351,8 @@ describe("a hop proposed for deletion", () => {
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* waitFor(page, "[data-hop-panel] [data-deletion-waiting]");
 
-        assert.strictEqual(yield* count(page, "[data-withdraw-deletion]"), 0);
-        assert.strictEqual(yield* count(page, "[data-hop-delete]"), 0);
+        yield* assertCount(page, "[data-withdraw-deletion]", 0);
+        yield* assertCount(page, "[data-hop-delete]", 0);
       }),
     60_000
   );
@@ -1348,7 +1363,7 @@ describe("a structure proposed for deletion", () => {
     "says it waits on the agent, and withdraws while the proposal is open",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-structure="upstream"]');
@@ -1380,14 +1395,14 @@ describe("a structure proposed for deletion", () => {
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* waitFor(page, "[data-change-structure] [data-deletion-waiting]");
 
-        assert.strictEqual(yield* count(page, "[data-withdraw-deletion]"), 0);
+        yield* assertCount(page, "[data-withdraw-deletion]", 0);
       }),
     90_000
   );
 });
 
 /** data.mjs with hop `hop` (engineer to server) and flow `flow` added. */
-const withHopAndFlow = (data: string, ids: { hop: string; flow: string }) =>
+const withHopAndFlow = (data: string, ids: { flow: string; hop: string }) =>
   pipe(
     data,
     Str.replace(
@@ -1447,11 +1462,12 @@ describe("the open page after verdict changed --as on a hop and a flow", () => {
         const path = yield* Path.Path;
         const dataFile = path.join(home, "data.mjs");
 
+        const dataFileText = yield* fs.readFileString(dataFile);
         yield* fs.writeFileString(
           dataFile,
-          withHopAndFlow(yield* fs.readFileString(dataFile), {
-            hop: "asks-map",
+          withHopAndFlow(dataFileText, {
             flow: "storage",
+            hop: "asks-map",
           })
         );
 
@@ -1487,10 +1503,7 @@ describe("the open page after verdict changed --as on a hop and a flow", () => {
 
         // The pinned hop is now the hop under its final id.
         yield* waitFor(page, '[data-hop-panel="asks-map"]');
-        assert.strictEqual(
-          yield* count(page, `[data-hop-panel="${hopId}"]`),
-          0
-        );
+        yield* assertCount(page, `[data-hop-panel="${hopId}"]`, 0);
 
         // And the flow is listed under its final id.
         yield* openFlows(page);
@@ -1538,10 +1551,8 @@ describe.each(["iso", "plan"] as const)(
           );
 
           assert.isAbove(report.hopStrikes.length, 0);
-          assert.strictEqual(
-            yield* count(page, '[data-hop][data-hop-state="removed"]'),
-            3
-          );
+
+          yield* assertCount(page, '[data-hop][data-hop-state="removed"]', 3);
           assert.deepStrictEqual(strikesOverText(report), []);
           assert.deepStrictEqual(strikesOverBoxes(report), []);
         }),
@@ -1555,7 +1566,7 @@ describe("a flow that lists a hop proposed for deletion", () => {
     "can still be reordered with the move buttons",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* served;
+        const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* selectHop(page, "h-save");
@@ -1568,7 +1579,7 @@ describe("a flow that lists a hop proposed for deletion", () => {
         yield* click(page, '[data-sort-down="h-note"]');
         yield* waitForFlowHops(page, "f-note", ["h-save", "h-note", "h-store"]);
 
-        assert.strictEqual(yield* count(page, "[data-flow-failure]"), 0);
+        yield* assertCount(page, "[data-flow-failure]", 0);
 
         // The row says so in words, and the buttons carry it in their names.
         // The hop is still reorderable.
@@ -1585,7 +1596,7 @@ describe("a flow that lists a hop proposed for deletion", () => {
         );
 
         assert.include(label ?? "", "proposed for deletion");
-        assert.strictEqual(yield* count(page, '[data-sort-note="h-note"]'), 0);
+        yield* assertCount(page, '[data-sort-note="h-note"]', 0);
 
         const [saved] = (yield* proposalsOrEmpty(home)).flows ?? [];
 

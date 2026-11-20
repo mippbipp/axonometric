@@ -16,6 +16,8 @@ import {
 import type { Locator, Page } from "playwright";
 
 import {
+  assertCount,
+  assertTextIncludes,
   click,
   count,
   goToChapterPaused,
@@ -81,14 +83,14 @@ const boxOf = Effect.fnUntraced(function* (page: Page, selector: string) {
 
   assert.isNotNull(box, selector);
 
-  return box ?? { x: 0, y: 0, width: 0, height: 0 };
+  return box ?? { height: 0, width: 0, x: 0, y: 0 };
 });
 
 const rectPolygon = (box: {
+  readonly height: number;
+  readonly width: number;
   readonly x: number;
   readonly y: number;
-  readonly width: number;
-  readonly height: number;
 }) => [
   { x: box.x, y: box.y },
   { x: box.x + box.width, y: box.y },
@@ -112,8 +114,8 @@ const openForm = Effect.fnUntraced(function* (page: Page) {
 
 /** One warning in the panel: its words, and whether the change made it. */
 interface Warning {
-  readonly text: string;
   readonly isNew: boolean;
+  readonly text: string;
 }
 
 /** The attribute `name` of `item`, read in the page. */
@@ -121,13 +123,16 @@ const attributeOf = (item: Locator, name: string) =>
   Effect.promise(() => item.getAttribute(name));
 
 const warningOf = (item: Locator) =>
-  Effect.all({
-    text: Effect.promise(() => item.textContent()),
-    isNew: attributeOf(item, "data-warning-new"),
-  }).pipe(
-    Effect.map(({ text, isNew }): Warning => ({
-      text: text ?? "",
+  Effect.all(
+    {
+      isNew: attributeOf(item, "data-warning-new"),
+      text: Effect.promise(() => item.textContent()),
+    },
+    { concurrency: 1 }
+  ).pipe(
+    Effect.map(({ isNew, text }): Warning => ({
       isNew: isNew === "true",
+      text: text ?? "",
     }))
   );
 
@@ -137,7 +142,7 @@ const warnings = Effect.fnUntraced(function* (page: Page) {
     page.locator("[data-drag-warning]").all()
   );
 
-  return yield* Effect.forEach(items, warningOf);
+  return yield* Effect.forEach(items, warningOf, { concurrency: 1 });
 });
 
 /** Whether the candidate footprint's outline is inside the drawing canvas. */
@@ -178,12 +183,15 @@ describe("the add form", () => {
             yield* Effect.promise(() => page.waitForTimeout(600));
             yield* waitFor(page, "[data-spot-outline]");
 
-            assert.isTrue(yield* outlineOnCanvas(page), `${view} ${group}`);
-            assert.strictEqual(
-              yield* count(page, "[data-drag-warning][data-warning-new=true]"),
-              0,
-              `${view} ${group}`
+            const outlineDrawn = yield* outlineOnCanvas(page);
+            assert.isTrue(outlineDrawn, `${view} ${group}`);
+
+            const newDragWarningCount = yield* count(
+              page,
+              "[data-drag-warning][data-warning-new=true]"
             );
+
+            assert.strictEqual(newDragWarningCount, 0, `${view} ${group}`);
           }
         }),
       90_000
@@ -198,9 +206,11 @@ describe("the add form", () => {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
 
-        const { structures } = yield* decodeLayout(
-          yield* fs.readFileString(path.join(home, "layout.json"))
+        const layoutText = yield* fs.readFileString(
+          path.join(home, "layout.json")
         );
+
+        const { structures } = yield* decodeLayout(layoutText);
 
         // The review map's groups: people holds the engineer, outside the
         // upstream, and loop the rest.
@@ -223,11 +233,14 @@ describe("the add form", () => {
 
         /** The candidate is clear of every box, and nearest one of `group`. */
         const assertBeside = Effect.fnUntraced(function* (group: string) {
+          const spotX = yield* x();
+          const spotY = yield* y();
+
           const spot = {
-            x: Number(yield* x()),
-            y: Number(yield* y()),
-            w: 2,
             d: 2,
+            w: 2,
+            x: Number(spotX),
+            y: Number(spotY),
           };
 
           const placed = Rec.toEntries(structures);
@@ -247,7 +260,7 @@ describe("the add form", () => {
             group
           );
 
-          const gap = (box: { x: number; y: number; w: number; d: number }) =>
+          const gap = (box: { d: number; w: number; x: number; y: number }) =>
             Math.hypot(
               box.x + box.w / 2 - (spot.x + spot.w / 2),
               box.y + box.d / 2 - (spot.y + spot.d / 2)
@@ -267,13 +280,15 @@ describe("the add form", () => {
           );
         });
 
-        assert.notStrictEqual(yield* x(), "");
+        const suggestedX = yield* x();
+        assert.notStrictEqual(suggestedX, "");
         yield* assertBeside("people");
-        assert.isFalse(
-          yield* Effect.promise(() =>
-            page.locator('[data-add="submit"]').isDisabled()
-          )
+
+        const addSubmitDisabled = yield* Effect.promise(() =>
+          page.locator('[data-add="submit"]').isDisabled()
         );
+
+        assert.isFalse(addSubmitDisabled);
 
         const first = yield* x();
 
@@ -294,7 +309,8 @@ describe("the add form", () => {
         yield* Effect.promise(() =>
           page.locator('[data-add="group"]').selectOption("people")
         );
-        assert.strictEqual(yield* x(), "30");
+        const typedX = yield* x();
+        assert.strictEqual(typedX, "30");
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
@@ -366,8 +382,9 @@ describe("the add form", () => {
           Arr.every(fromForm, ({ isNew }) => isNew),
           "add form"
         );
-        assert.include(
-          yield* textOf(page, "[data-drag-warnings]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-drag-warnings]",
           "New from this change"
         );
 
@@ -448,7 +465,7 @@ describe("a group change", () => {
         );
         assert.deepStrictEqual(
           Arr.map(proposals.structures ?? [], ({ change }) => change),
-          [{ action: "group", structure: "engineer", group: "loop" }]
+          [{ action: "group", group: "loop", structure: "engineer" }]
         );
       }),
     60_000
@@ -520,10 +537,12 @@ describe("the open page after verdict changed --as and commit", () => {
 
         const note = Arr.findFirst(items, ({ kind }) => kind === "note");
 
-        const verdicts: readonly (readonly [
-          Option.Option<{ readonly id: string }>,
-          readonly string[],
-        ])[] = [
+        const verdicts: ReadonlyArray<
+          readonly [
+            Option.Option<{ readonly id: string }>,
+            ReadonlyArray<string>,
+          ]
+        > = [
           [
             add,
             [
@@ -563,10 +582,7 @@ describe("the open page after verdict changed --as and commit", () => {
             .first()
             .waitFor({ ...waitTimeout, state: "detached" })
         );
-        assert.strictEqual(
-          yield* count(page, `[data-structure="${provisional}"]`),
-          0
-        );
+        yield* assertCount(page, `[data-structure="${provisional}"]`, 0);
         yield* waitFor(
           page,
           '[data-structure-panel="build-cache"][data-pinned]'

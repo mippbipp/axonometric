@@ -11,6 +11,7 @@ import {
 import type { Page } from "playwright";
 
 import {
+  assertCount,
   click,
   count,
   goToChapterPaused,
@@ -41,7 +42,7 @@ const savedStructures = (home: string, expected: number) =>
       (saved) => saved.length === expected,
       () => `proposals.json never held ${expected} structure proposals`
     ),
-    Effect.retry({ times: 100, schedule: Schedule.spaced("100 millis") }),
+    Effect.retry({ schedule: Schedule.spaced("100 millis"), times: 100 }),
     Effect.orDie
   );
 
@@ -104,7 +105,7 @@ const addStructure = Effect.fnUntraced(function* (
 });
 
 /** The pieces of the cross that run over a code chip or a name tag. */
-const strikesOverText = (report: DrawingReport): readonly string[] => {
+const strikesOverText = (report: DrawingReport): ReadonlyArray<string> => {
   // The chip's rendered box, with 3 pixels of air round it.
   const aired = Arr.map(report.chips, ({ id, polygon }): Drawn => {
     const xs = Arr.map(polygon, ({ x }) => x);
@@ -123,7 +124,7 @@ const strikesOverText = (report: DrawingReport): readonly string[] => {
     };
   });
 
-  const text: readonly Drawn[] = [
+  const text: ReadonlyArray<Drawn> = [
     ...aired,
     ...Arr.filter(report.text, ({ id }) => Str.startsWith("tag:")(id)),
   ];
@@ -144,25 +145,23 @@ describe("adding a structure from the toolbar", () => {
     "asks for name, shape, group, status and position, and saves a proposal",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-control="add-structure"]');
         yield* waitFor(page, "[data-add-structure]");
 
         for (const field of ["name", "shape", "group", "status", "x", "y"]) {
-          assert.strictEqual(
-            yield* count(page, `[data-add="${field}"]`),
-            1,
-            field
-          );
+          const addFieldCount = yield* count(page, `[data-add="${field}"]`);
+
+          assert.strictEqual(addFieldCount, 1, field);
         }
 
-        assert.isTrue(
-          yield* Effect.promise(() =>
-            page.locator('[data-add="submit"]').isDisabled()
-          )
+        const addSubmitDisabled = yield* Effect.promise(() =>
+          page.locator('[data-add="submit"]').isDisabled()
         );
+
+        assert.isTrue(addSubmitDisabled);
 
         yield* Effect.promise(() => page.locator('[data-add="x"]').fill("12"));
         yield* Effect.promise(() => page.locator('[data-add="y"]').fill("12"));
@@ -196,15 +195,15 @@ describe("adding a structure from the toolbar", () => {
           assert.deepStrictEqual(
             { ...saved.change.structure, id: "" },
             {
+              group: "outside",
               id: "",
               name: "Build cache",
               shape: "store",
-              group: "outside",
               status: "planned",
             }
           );
           assert.match(saved.change.structure.id, /^build-cache-[0-9a-f]{4}$/u);
-          assert.deepStrictEqual(saved.change.at, { x: 12, y: 12, w: 2, d: 2 });
+          assert.deepStrictEqual(saved.change.at, { d: 2, w: 2, x: 12, y: 12 });
         }
 
         assert.deepStrictEqual(errors, []);
@@ -289,11 +288,8 @@ describe.each(["iso", "plan"] as const)(
               '[data-structure][data-pending="true"]'
             );
 
-            assert.strictEqual(
-              yield* Effect.promise(() => proposed.count()),
-              1,
-              `chapter ${id}`
-            );
+            const proposedCount = yield* Effect.promise(() => proposed.count());
+            assert.strictEqual(proposedCount, 1, `chapter ${id}`);
 
             const stroke = yield* strokeOf(
               page,
@@ -308,10 +304,12 @@ describe.each(["iso", "plan"] as const)(
             assert.notStrictEqual(stroke, ink);
 
             // No text badge on the map: the look is outlines and tints.
-            assert.strictEqual(yield* count(page, "[data-pending-badge]"), 0);
+            yield* assertCount(page, "[data-pending-badge]", 0);
 
-            assert.isAbove(yield* count(page, "[data-name-tag]"), 0);
-            assert.deepStrictEqual(yield* clashes(page), [], `chapter ${id}`);
+            const nameTagCount = yield* count(page, "[data-name-tag]");
+            assert.isAbove(nameTagCount, 0);
+            const tagClashes = yield* clashes(page);
+            assert.deepStrictEqual(tagClashes, [], `chapter ${id}`);
           }
         }),
       90_000
@@ -337,7 +335,8 @@ describe("deleting a structure", () => {
 
           const mark = page.locator('[data-removed-mark="upstream"]');
 
-          assert.strictEqual(yield* Effect.promise(() => mark.count()), 1);
+          const markCount = yield* Effect.promise(() => mark.count());
+          assert.strictEqual(markCount, 1);
 
           // The cross keeps clear of every chip and tag, wherever it is cut.
           const report = yield* Effect.promise(() =>
@@ -346,7 +345,8 @@ describe("deleting a structure", () => {
 
           assert.isAtLeast(report.strikes.length, 2);
           assert.deepStrictEqual(strikesOverText(report), []);
-          assert.deepStrictEqual(yield* clashes(page), []);
+          const tagClashes = yield* clashes(page);
+          assert.deepStrictEqual(tagClashes, []);
         }
 
         const [saved] = (yield* readProposals(home)).structures ?? [];
@@ -355,12 +355,12 @@ describe("deleting a structure", () => {
           action: "delete",
           structure: "upstream",
         });
-        assert.include(
-          yield* Effect.promise(() =>
-            page.locator("[data-deleting]").textContent()
-          ),
-          "crossed out"
+
+        const deletingText = yield* Effect.promise(() =>
+          page.locator("[data-deleting]").textContent()
         );
+
+        assert.include(deletingText, "crossed out");
       }),
     90_000
   );
@@ -419,9 +419,9 @@ describe("deleting a structure", () => {
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
 
-          const fromPage = new TextDecoder().decode(
-            yield* fs.readFile(yield* Effect.promise(() => download.path()))
-          );
+          const downloadPath = yield* Effect.promise(() => download.path());
+          const downloadedBytes = yield* fs.readFile(downloadPath);
+          const fromPage = new TextDecoder().decode(downloadedBytes);
 
           assert.notInclude(fromPage, "BUILD CACHE");
           assert.notInclude(fromPage, "Build cache");
@@ -444,9 +444,10 @@ describe("deleting a structure", () => {
           ]);
 
           assert.strictEqual(exported.exitCode, 0, exported.stderr);
+          const cliText = yield* fs.readFileString(target);
           assert.strictEqual(
             fromPage,
-            yield* fs.readFileString(target),
+            cliText,
             `${which}: the page's SVG differs from the CLI's`
           );
         }
@@ -472,15 +473,13 @@ describe("the context menu on a structure", () => {
           yield* waitFor(page, '[data-structure-menu="server"]');
 
           for (const entry of ["shape", "group", "status"]) {
-            assert.strictEqual(
-              yield* count(page, `[data-menu="${entry}"]`),
-              1,
-              entry
-            );
+            const menuEntryCount = yield* count(page, `[data-menu="${entry}"]`);
+
+            assert.strictEqual(menuEntryCount, 1, entry);
           }
 
-          assert.strictEqual(yield* count(page, '[data-menu="delete"]'), 1);
-          assert.strictEqual(yield* count(page, '[data-menu="rename"]'), 1);
+          yield* assertCount(page, '[data-menu="delete"]', 1);
+          yield* assertCount(page, '[data-menu="rename"]', 1);
 
           yield* Effect.promise(() => page.keyboard.press("Escape"));
         }
@@ -521,18 +520,16 @@ describe("the context menu on a structure", () => {
         yield* click(page, '[data-menu="delete"]');
         yield* waitFor(page, '[data-removed-mark="upstream"]');
 
-        const changes = Arr.map(
-          yield* savedStructures(home, 5),
-          ({ change }) => change
-        );
+        const savedChanges = yield* savedStructures(home, 5);
+        const changes = Arr.map(savedChanges, ({ change }) => change);
 
         assert.sameDeepMembers(
           [...changes],
           [
-            { action: "status", structure: "server", status: "off" },
-            { action: "group", structure: "proposals", group: "outside" },
-            { action: "shape", structure: "engineer", shape: "box" },
-            { action: "rename", structure: "page", name: "Map view" },
+            { action: "status", status: "off", structure: "server" },
+            { action: "group", group: "outside", structure: "proposals" },
+            { action: "shape", shape: "box", structure: "engineer" },
+            { action: "rename", name: "Map view", structure: "page" },
             { action: "delete", structure: "upstream" },
           ]
         );

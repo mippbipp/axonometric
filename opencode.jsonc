@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": ["~/.agents/matt"],
+  // Commit hooks (lefthook.yml) are the gate every commit passes. Agents may
+  // not skip them; fix the hook failure instead.
+  "policies": [
+    {
+      "action": "tool.use",
+      "resource": "shell:*--no-verify*",
+      "effect": "deny",
+    },
+    {
+      "action": "tool.use",
+      "resource": "shell:*LEFTHOOK=0*",
+      "effect": "deny",
+    },
+    {
+      "action": "tool.use",
+      "resource": "shell:*LEFTHOOK=false*",
+      "effect": "deny",
+    },
+  ],
+}

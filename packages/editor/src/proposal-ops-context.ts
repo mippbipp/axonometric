@@ -20,8 +20,10 @@ export interface GroupMember {
 
 /** Proposing groups. */
 export interface GroupOps {
+  /** Removes an open group proposal, and the moves into it. */
+  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /** The open group proposals: those not in a batch yet. */
-  readonly open: readonly GroupProposal[];
+  readonly open: ReadonlyArray<GroupProposal>;
   /**
    * Proposes a new group, or a new title for one. `members` are the
    * structures that go into a new group, each moved by a group change the
@@ -29,21 +31,19 @@ export interface GroupOps {
    */
   readonly propose: (
     change: GroupChange,
-    members: readonly GroupMember[],
+    members: ReadonlyArray<GroupMember>,
     done: ReviewDone<ChangeId>
   ) => void;
-  /** Removes an open group proposal, and the moves into it. */
-  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
 }
 
 /** Proposing changes to what a chapter reveals and plays. */
 export interface ChapterOps {
-  /** The open chapter proposals: those not in a batch yet. */
-  readonly open: readonly ChapterProposal[];
-  /** Proposes `change`; `done` gets the proposal's id, or why it was refused. */
-  readonly propose: (change: ChapterChange, done: ReviewDone<ChangeId>) => void;
   /** Removes an open chapter proposal. */
   readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+  /** The open chapter proposals: those not in a batch yet. */
+  readonly open: ReadonlyArray<ChapterProposal>;
+  /** Proposes `change`; `done` gets the proposal's id, or why it was refused. */
+  readonly propose: (change: ChapterChange, done: ReviewDone<ChangeId>) => void;
 }
 
 /**
@@ -52,17 +52,17 @@ export interface ChapterOps {
  * file and a past revision have none, so nothing here reaches an export.
  */
 export interface ProposalOps {
-  /** Whether writes can be sent now. False while the server is down. */
-  readonly canPropose: boolean;
-  readonly groups: GroupOps;
-  readonly chapters: ChapterOps;
-  /** The map as proposed, whose marks say which chapter a proposal looks pending in. */
-  readonly proposed: Pick<ProposedMap, "marks">;
   /**
    * The accepted map's chapters, before any proposal reorders or changes
    * them, to tell which rows of a chapter's plays a proposal moved.
    */
-  readonly acceptedChapters: readonly Pick<Chapter, "id" | "plays">[];
+  readonly acceptedChapters: ReadonlyArray<Pick<Chapter, "id" | "plays">>;
+  /** Whether writes can be sent now. False while the server is down. */
+  readonly canPropose: boolean;
+  readonly chapters: ChapterOps;
+  readonly groups: GroupOps;
+  /** The map as proposed, whose marks say which chapter a proposal looks pending in. */
+  readonly proposed: Pick<ProposedMap, "marks">;
 }
 
 export const ProposalOpsContext = createContext<ProposalOps | null>(null);

@@ -24,10 +24,10 @@ describe("what the Iso view fits to the window", () => {
   it.effect("fits everything when fitTo is left out", () =>
     Effect.sync(() => {
       assert.deepStrictEqual(fitOf({ drawn }).bounds, {
-        minX: 0,
-        minY: -40,
         maxX: 300,
         maxY: 300,
+        minX: 0,
+        minY: -40,
       });
     })
   );
@@ -35,10 +35,10 @@ describe("what the Iso view fits to the window", () => {
   it.effect("fits only the structures in fitTo, and hops between them", () =>
     Effect.sync(() => {
       assert.deepStrictEqual(fitOf({ drawn, fitTo: ["a", "b"] }).bounds, {
-        minX: 0,
-        minY: -40,
         maxX: 110,
         maxY: 10,
+        minX: 0,
+        minY: -40,
       });
     })
   );

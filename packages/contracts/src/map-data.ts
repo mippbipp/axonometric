@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import { Array as Arr, Option, Schema, String as Str } from "effect";
 
 import {
@@ -420,10 +421,10 @@ export type MapData = typeof MapData.Type;
  * no such hop. The review prompt, `review`, the commit message and the page
  * all call a hop this.
  */
-export function hopLabelOf(hops: readonly Hop[]): (id: string) => string;
-export function hopLabelOf(hops: readonly Hop[], id: string): string;
+export function hopLabelOf(hops: ReadonlyArray<Hop>): (id: string) => string;
+export function hopLabelOf(hops: ReadonlyArray<Hop>, id: string): string;
 export function hopLabelOf(
-  hops: readonly Hop[],
+  hops: ReadonlyArray<Hop>,
   ...rest: readonly [] | readonly [string]
 ): string | ((id: string) => string) {
   const labelOf = (id: string) =>

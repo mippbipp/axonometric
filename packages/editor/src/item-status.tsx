@@ -23,5 +23,5 @@ export function ItemStatusLine({ status }: { readonly status: ItemStatus }) {
     );
   }
 
-  return <VerdictBadge verdict={status.verdict} batch={status.batch} />;
+  return <VerdictBadge batch={status.batch} verdict={status.verdict} />;
 }

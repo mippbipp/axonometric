@@ -21,8 +21,8 @@ export type TextField =
 
 /** What a field names: a plain text, or a step's name or detail by index. */
 export type FieldPath =
-  | { readonly of: "plain"; readonly field: (typeof plainFields)[number] }
-  | { readonly of: "step"; readonly index: number; readonly part: StepPart };
+  | { readonly field: (typeof plainFields)[number]; readonly of: "plain" }
+  | { readonly index: number; readonly of: "step"; readonly part: StepPart };
 
 const stepField = /^steps\.(?<index>0|[1-9]\d*)\.(?<part>name|detail)$/u;
 
@@ -42,14 +42,14 @@ export const parseTextField = (field: string): Option.Option<FieldPath> => {
   const plain = Arr.findFirst(plainFields, (name) => name === field);
 
   if (Option.isSome(plain)) {
-    return Option.some({ of: "plain", field: plain.value });
+    return Option.some({ field: plain.value, of: "plain" });
   }
 
   const found = stepField.exec(field)?.groups;
   const part = found?.part;
 
   return found?.index !== undefined && (part === "name" || part === "detail")
-    ? Option.some({ of: "step", index: Number(found.index), part })
+    ? Option.some({ index: Number(found.index), of: "step", part })
     : Option.none();
 };
 
@@ -77,9 +77,9 @@ export const textOfField: {
 );
 
 const plainLabels = {
+  howItsBuilt: "how it's built",
   oneLiner: "one-liner",
   whatItDoes: "what it does",
-  howItsBuilt: "how it's built",
 } as const;
 
 /** What a field is called to the engineer: "one-liner" or "step 2 detail". */

@@ -26,7 +26,7 @@ import { buildAndOpen } from "./harness.ts";
  * included. Text that's hidden isn't listed.
  */
 const sizesOf = (page: Page, selector: string) =>
-  inPage<readonly number[]>(
+  inPage<ReadonlyArray<number>>(
     page,
     `[...document.querySelectorAll(${JSON.stringify(selector)})]
       .filter((text) => getComputedStyle(text).visibility !== "hidden")
@@ -48,7 +48,7 @@ const openAt1280 = Effect.fnUntraced(function* (
   const { page } = yield* buildAndOpen(files, system);
 
   yield* Effect.promise(() =>
-    page.setViewportSize({ width: 1280, height: 800 })
+    page.setViewportSize({ height: 800, width: 1280 })
   );
 
   return page;
@@ -72,17 +72,16 @@ describe("text on the pipeline map at 1280×800", () => {
       () =>
         Effect.scoped(
           Effect.gen(function* () {
-            const page = yield* openAt1280(
-              yield* pipelineMap,
-              "flake-pipeline"
-            );
+            const pipelineMapFiles = yield* pipelineMap;
+            const page = yield* openAt1280(pipelineMapFiles, "flake-pipeline");
 
             yield* goToChapterPaused(page, "c-all");
             yield* showViewFitted(page, view);
 
             const tags = yield* sizesOf(page, "[data-name-tag] text");
 
-            assert.lengthOf(tags, yield* countOf(page, "[data-structure]"));
+            const structureCount = yield* countOf(page, "[data-structure]");
+            assert.lengthOf(tags, structureCount);
             assert.isAtLeast(Math.min(...tags), 9.95);
 
             const labels = yield* sizesOf(page, "[data-hop-label]");
@@ -92,9 +91,10 @@ describe("text on the pipeline map at 1280×800", () => {
               assert.isAtLeast(size, 8.95);
             }
 
+            const hopCount = yield* countOf(page, "[data-hop]");
             // At fit the pipeline map has more hops than readable labels.
             // Zoomed in, the hidden ones come back.
-            assert.isBelow(labels.length, yield* countOf(page, "[data-hop]"));
+            assert.isBelow(labels.length, hopCount);
 
             for (let step = 0; step < 4; step += 1) {
               yield* zoomIn(page);
@@ -113,7 +113,8 @@ describe("text on the pipeline map at 1280×800", () => {
   it.live("keeps the Flake fixer's 9 step names at 10 px inside it", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const page = yield* openAt1280(yield* pipelineMap, "flake-pipeline");
+        const pipelineMapFiles = yield* pipelineMap;
+        const page = yield* openAt1280(pipelineMapFiles, "flake-pipeline");
 
         yield* goToChapterPaused(page, "c-all");
         yield* Effect.promise(() =>
@@ -129,11 +130,11 @@ describe("text on the pipeline map at 1280×800", () => {
         // Each step tag clears every other step's box, and sits nearer its
         // own step than any other.
         const tags = yield* inPage<
-          readonly {
-            readonly step: number;
-            readonly onOthers: readonly number[];
+          ReadonlyArray<{
             readonly nearest: number;
-          }[]
+            readonly onOthers: ReadonlyArray<number>;
+            readonly step: number;
+          }>
         >(
           page,
           `(() => {
@@ -183,12 +184,12 @@ const clashesNow = Effect.fnUntraced(function* (page: Page) {
 
   const firstLegs =
     view === "iso"
-      ? yield* inPage<readonly FirstLeg[]>(page, firstLegsReport)
+      ? yield* inPage<ReadonlyArray<FirstLeg>>(page, firstLegsReport)
       : [];
 
   return [
     ...textClashes(report),
-    ...Arr.flatMap(firstLegs, ({ hop, from, leg }) =>
+    ...Arr.flatMap(firstLegs, ({ from, hop, leg }) =>
       Arr.some(
         report.text,
         (tag) => tag.id === `tag:${from}` && crosses(leg, tag.polygon)
@@ -208,7 +209,7 @@ const zoomInToBaseSize = Effect.fnUntraced(function* (page: Page) {
 
 /** Whether every structure, tag, zone and label is inside the canvas. */
 const outsideCanvas = (page: Page) =>
-  inPage<readonly string[]>(
+  inPage<ReadonlyArray<string>>(
     page,
     `(() => {
       const box = document.querySelector("svg[data-scale]").getBoundingClientRect();
@@ -224,27 +225,27 @@ const outsideCanvas = (page: Page) =>
   );
 
 describe("grown text at 1280×800", () => {
-  for (const { name, map, system, fits, isoChapters } of [
+  for (const { fits, isoChapters, map, name, system } of [
     {
-      name: "review",
+      fits: false,
+      isoChapters: ["c-all"],
       map: fullMap,
+      name: "review",
       system: "review",
-      fits: false,
-      isoChapters: ["c-all"],
     },
     {
-      name: "crowded",
+      fits: false,
+      isoChapters: ["c-all"],
       map: crowdedMap,
+      name: "crowded",
       system: "crowded",
-      fits: false,
-      isoChapters: ["c-all"],
     },
     {
-      name: "pipeline",
-      map: pipelineMap,
-      system: "flake-pipeline",
       fits: true,
       isoChapters: ["c-monday", "c-pr", "c-all"],
+      map: pipelineMap,
+      name: "pipeline",
+      system: "flake-pipeline",
     },
   ]) {
     it.live(
@@ -252,7 +253,8 @@ describe("grown text at 1280×800", () => {
       () =>
         Effect.scoped(
           Effect.gen(function* () {
-            const page = yield* openAt1280(yield* map, system);
+            const mapFiles = yield* map;
+            const page = yield* openAt1280(mapFiles, system);
 
             const chapters = yield* attributesOf(
               page,
@@ -270,30 +272,29 @@ describe("grown text at 1280×800", () => {
 
                 const where = `${chapter} in the ${view} view`;
 
-                assert.deepStrictEqual(
-                  yield* clashesNow(page),
-                  [],
-                  `${where} at fit`
-                );
+                const clashesAtFit = yield* clashesNow(page);
+                assert.deepStrictEqual(clashesAtFit, [], `${where} at fit`);
 
                 if (fits && chapter === "c-all") {
-                  assert.deepStrictEqual(yield* outsideCanvas(page), [], where);
+                  const outside = yield* outsideCanvas(page);
+                  assert.deepStrictEqual(outside, [], where);
                 }
 
                 if (view === "plan") {
                   // At fit, hop labels may be too small to show. Zoomed in to
                   // where text draws at its own size, the hidden ones show.
                   yield* zoomInToBaseSize(page);
-                  assert.isNotEmpty(
-                    yield* attributesOf(
-                      page,
-                      "[data-hop-label]",
-                      "data-hop-label"
-                    ),
-                    `no hop labels in ${where}`
+
+                  const labels = yield* attributesOf(
+                    page,
+                    "[data-hop-label]",
+                    "data-hop-label"
                   );
+
+                  assert.isNotEmpty(labels, `no hop labels in ${where}`);
+                  const clashesZoomedIn = yield* clashesNow(page);
                   assert.deepStrictEqual(
-                    yield* clashesNow(page),
+                    clashesZoomedIn,
                     [],
                     `${where} zoomed in`
                   );
@@ -311,18 +312,21 @@ describe("grown text at 1280×800", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
+          const pipelineMapFiles = yield* pipelineMap;
+
           const { page } = yield* buildAndOpen(
-            yield* pipelineMap,
+            pipelineMapFiles,
             "flake-pipeline"
           );
 
           yield* Effect.promise(() =>
-            page.setViewportSize({ width: 1780, height: 1020 })
+            page.setViewportSize({ height: 1020, width: 1780 })
           );
 
           for (const chapter of ["c-monday", "c-pr", "c-all"]) {
             yield* goToChapterPaused(page, chapter);
-            assert.deepStrictEqual(yield* clashesNow(page), [], chapter);
+            const clashesInChapter = yield* clashesNow(page);
+            assert.deepStrictEqual(clashesInChapter, [], chapter);
           }
         })
       ),
@@ -335,10 +339,8 @@ describe("grown text at 1280×800", () => {
       () =>
         Effect.scoped(
           Effect.gen(function* () {
-            const page = yield* openAt1280(
-              yield* pipelineMap,
-              "flake-pipeline"
-            );
+            const pipelineMapFiles = yield* pipelineMap;
+            const page = yield* openAt1280(pipelineMapFiles, "flake-pipeline");
 
             yield* goToChapterPaused(page, "c-all");
             yield* showViewFitted(page, view);
@@ -357,10 +359,8 @@ describe("grown text at 1280×800", () => {
               assert.isAtLeast(size, 8.95);
             }
 
-            const hidden = Arr.filter(
-              yield* attributesOf(page, "[data-hop]", "data-hop"),
-              (hop) => !shown.includes(hop)
-            );
+            const hopIds = yield* attributesOf(page, "[data-hop]", "data-hop");
+            const hidden = Arr.filter(hopIds, (hop) => !shown.includes(hop));
 
             // At fit the pipeline map's labels grow to reach 9 px, and some
             // no longer have room beside their hop.
@@ -387,13 +387,14 @@ describe("hidden hop labels on the pipeline map at fit", () => {
   it.live("can be read in the panel of a packet on the hop", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const page = yield* openAt1280(yield* pipelineMap, "flake-pipeline");
+        const pipelineMapFiles = yield* pipelineMap;
+        const page = yield* openAt1280(pipelineMapFiles, "flake-pipeline");
 
         yield* goToChapterPaused(page, "c-all");
 
         // A packet on a hop whose label the scene hid, and that hop's label
         // from the map state.
-        const hidden = yield* inPage<{ hop: string; label: string }[]>(
+        const hidden = yield* inPage<Array<{ hop: string; label: string }>>(
           page,
           `(() => {
             const state = JSON.parse(document.getElementById("axonometric-map-state").textContent);
@@ -417,12 +418,11 @@ describe("hidden hop labels on the pipeline map at fit", () => {
           );
           yield* waitFor(page, `[data-packet-panel="${hop}"]`);
 
-          assert.strictEqual(
-            yield* Effect.promise(() =>
-              page.locator("[data-packet-label]").textContent()
-            ),
-            label
+          const packetLabelText = yield* Effect.promise(() =>
+            page.locator("[data-packet-label]").textContent()
           );
+
+          assert.strictEqual(packetLabelText, label);
         }
       })
     )

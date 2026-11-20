@@ -40,18 +40,18 @@ const margin = 56;
  * down, as system-atlas drew them.
  */
 const placementOf = (index: number): Placement => ({
+  d: 2,
+  w: 2,
   x: 2 + index * 3.4,
   y: 2 + index * 0.6,
-  w: 2,
-  d: 2,
 });
 
 function StepBox({
-  index,
   hatch,
+  index,
 }: {
-  readonly index: number;
   readonly hatch: string;
+  readonly index: number;
 }) {
   const placement = placementOf(index);
 
@@ -63,17 +63,17 @@ function StepBox({
 
   return (
     <g
-      data-step={index + 1}
       className="stroke-ink"
-      strokeWidth={1.2}
+      data-step={index + 1}
       strokeLinejoin="round"
+      strokeWidth={1.2}
     >
-      <BoxShape placement={placement} height={boxHeight} hatch={hatch} />
+      <BoxShape hatch={hatch} height={boxHeight} placement={placement} />
       <text
+        className="fill-ink stroke-none font-mono text-sm font-medium"
+        textAnchor="middle"
         x={centre.sx}
         y={centre.sy + 5}
-        textAnchor="middle"
-        className="fill-ink stroke-none font-mono text-sm font-medium"
       >
         {index + 1}
       </text>
@@ -99,21 +99,21 @@ function StepTag({
   const grow = (rect.bottom - rect.top) / textSizes.tag.height;
 
   return (
-    <g data-step-tag={index + 1} className="stroke-ink pointer-events-none">
+    <g className="stroke-ink pointer-events-none" data-step-tag={index + 1}>
       <rect
+        className="fill-paper"
+        height={rect.bottom - rect.top}
+        strokeWidth={0.9}
+        width={rect.right - rect.left}
         x={rect.left}
         y={rect.top}
-        width={rect.right - rect.left}
-        height={rect.bottom - rect.top}
-        className="fill-paper"
-        strokeWidth={0.9}
       />
       <text
+        className="fill-ink stroke-none font-mono"
+        fontSize={textSizes.tag.font * grow}
+        textAnchor="middle"
         x={(rect.left + rect.right) / 2}
         y={rect.top + textSizes.tag.baseline * grow}
-        textAnchor="middle"
-        fontSize={textSizes.tag.font * grow}
-        className="fill-ink stroke-none font-mono"
       >
         {label}
       </text>
@@ -143,18 +143,18 @@ const stepOutline = (index: number) => {
  * front corner, or the nearest spot clear of every step's box and the
  * tags before it.
  */
-const stepTagsAt = (steps: readonly Step[], zoom: number) =>
+const stepTagsAt = (steps: ReadonlyArray<Step>, zoom: number) =>
   placeMovingNameTags({
     boxes: Arr.map(steps, (step, index) => ({
-      placement: placementOf(index),
       outline: stepOutline(index),
+      placement: placementOf(index),
       text: labelOf(step, index),
     })),
     zoom,
   });
 
 /** The routes between consecutive steps, on screen. */
-const routesOf = (steps: readonly Step[]) =>
+const routesOf = (steps: ReadonlyArray<Step>) =>
   Arr.map(steps.slice(1), (_, index) =>
     Arr.map(
       routeHop({ from: placementOf(index), to: placementOf(index + 1) }),
@@ -163,28 +163,31 @@ const routesOf = (steps: readonly Step[]) =>
   );
 
 interface ViewBox {
+  readonly height: number;
   readonly minX: number;
   readonly minY: number;
   readonly width: number;
-  readonly height: number;
 }
 
-const viewBoxOf = (points: readonly ScreenPoint[]): ViewBox => {
+const viewBoxOf = (points: ReadonlyArray<ScreenPoint>): ViewBox => {
   const xs = Arr.map(points, (point) => point.sx);
   const ys = Arr.map(points, (point) => point.sy);
   const minX = Math.min(...xs) - margin;
   const minY = Math.min(...ys) - margin;
 
   return {
+    height: Math.max(...ys) + margin - minY,
     minX,
     minY,
     width: Math.max(...xs) + margin - minX,
-    height: Math.max(...ys) + margin - minY,
   };
 };
 
 /** Every point the steps' boxes and `tags` reach. */
-const extentOf = (steps: readonly Step[], tags: readonly ScreenRect[]) => [
+const extentOf = (
+  steps: ReadonlyArray<Step>,
+  tags: ReadonlyArray<ScreenRect>
+) => [
   ...Arr.flatMap(steps, (_, index) => {
     const top = corners(placementOf(index), boxHeight);
     const ground = corners(placementOf(index), 0);
@@ -204,13 +207,13 @@ const extentOf = (steps: readonly Step[], tags: readonly ScreenRect[]) => [
  * one the way a viewport's fit does (see `settledScale`).
  */
 const insideLayoutOf = (
-  steps: readonly Step[],
-  size: { readonly width: number; readonly height: number }
+  steps: ReadonlyArray<Step>,
+  size: { readonly height: number; readonly width: number }
 ) => {
   const layoutAt = (zoom: number) => {
     const tags = stepTagsAt(steps, textZoomOf(zoom));
 
-    return { tags, box: viewBoxOf(extentOf(steps, tags)) };
+    return { box: viewBoxOf(extentOf(steps, tags)), tags };
   };
 
   const scaleAt = (zoom: number) => {
@@ -226,7 +229,7 @@ const insideLayoutOf = (
 
 /** The size of `element` on screen, kept up to date as it's resized. */
 const useSizeOf = (element: RefObject<Element | null>) => {
-  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [size, setSize] = useState({ height: 0, width: 0 });
 
   useLayoutEffect(() => {
     const target = element.current;
@@ -240,7 +243,7 @@ const useSizeOf = (element: RefObject<Element | null>) => {
         current.width === target.clientWidth &&
         current.height === target.clientHeight
           ? current
-          : { width: target.clientWidth, height: target.clientHeight }
+          : { height: target.clientHeight, width: target.clientWidth }
       );
     };
 
@@ -274,22 +277,22 @@ const useInsideClock = (hops: number) => {
   const playing = stored.playing && !reducedMotion && hops > 0;
 
   useFrameClock({
-    playing,
     advance: (seconds) => {
       setStored((current) => ({ ...current, clock: current.clock + seconds }));
     },
+    playing,
   });
 
   return {
     clock: stored.clock,
-    playing,
-    reducedMotion,
-    play: () => {
-      setStored((current) => ({ ...current, playing: true }));
-    },
     pause: () => {
       setStored((current) => ({ ...current, playing: false }));
     },
+    play: () => {
+      setStored((current) => ({ ...current, playing: true }));
+    },
+    playing,
+    reducedMotion,
     step: () => {
       setStored((current) => ({
         clock: clockAtNextHop({ clock: current.clock, hops }),
@@ -318,7 +321,7 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
     [steps, size]
   );
 
-  const { clock, playing, reducedMotion, play, pause, step } = useInsideClock(
+  const { clock, pause, play, playing, reducedMotion, step } = useInsideClock(
     routes.length
   );
 
@@ -329,81 +332,81 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
     route === undefined ? undefined : pointAlong({ points: route, t: at.t });
 
   return (
-    <div data-inside-view={structure.id} className="relative size-full">
+    <div className="relative size-full" data-inside-view={structure.id}>
       <DrawingContext value={pageDrawing}>
         <svg
-          ref={svgRef}
           aria-labelledby={`${idPrefix}title`}
           className="text-ink block size-full"
-          viewBox={`${box.minX} ${box.minY} ${box.width} ${box.height}`}
           preserveAspectRatio="xMidYMid meet"
+          ref={svgRef}
           textRendering="geometricPrecision"
+          viewBox={`${box.minX} ${box.minY} ${box.width} ${box.height}`}
         >
           <title id={`${idPrefix}title`}>{`Inside ${structure.name}`}</title>
           <defs>
             <pattern
-              id={hatch}
-              width={6}
               height={6}
-              patternUnits="userSpaceOnUse"
+              id={hatch}
               patternTransform="rotate(45)"
+              patternUnits="userSpaceOnUse"
+              width={6}
             >
               <line
-                x1={0}
-                y1={0}
-                x2={0}
-                y2={6}
                 stroke="currentColor"
                 strokeWidth={1.1}
+                x1={0}
+                x2={0}
+                y1={0}
+                y2={6}
               />
             </pattern>
             <marker
               id={arrowhead}
-              viewBox="0 0 10 10"
+              markerHeight={7}
+              markerWidth={7}
+              orient="auto-start-reverse"
               refX={9}
               refY={5}
-              markerWidth={7}
-              markerHeight={7}
-              orient="auto-start-reverse"
+              viewBox="0 0 10 10"
             >
-              <path d="M0,0 L10,5 L0,10 z" className="fill-ink stroke-none" />
+              <path className="fill-ink stroke-none" d="M0,0 L10,5 L0,10 z" />
             </marker>
           </defs>
           <g>
             {Arr.map(routes, (points, index) => (
               <polyline
-                key={index}
-                points={toPoints(points)}
-                fill="none"
                 className="stroke-ink"
-                strokeWidth={1.4}
+                fill="none"
+                key={index}
                 markerEnd={`url(#${arrowhead})`}
+                points={toPoints(points)}
+                strokeWidth={1.4}
               />
             ))}
           </g>
           <g>
             {Arr.map(steps, (item, index) => (
-              <StepBox key={item.name} index={index} hatch={hatch} />
+              <StepBox hatch={hatch} index={index} key={item.name} />
             ))}
           </g>
           <g>
             {Arr.map(steps, (item, index) => (
               <StepTag
-                key={item.name}
                 index={index}
+                key={item.name}
                 label={labelOf(item, index)}
-                rect={tags[index] ?? { left: 0, top: 0, right: 0, bottom: 0 }}
+                rect={tags[index] ?? { bottom: 0, left: 0, right: 0, top: 0 }}
               />
             ))}
           </g>
           {packet === undefined ? null : (
             <circle
-              data-inside-packet
-              data-playing={playing}
+              className="fill-ink stroke-paper pointer-events-none"
               cx={packet.sx}
               cy={packet.sy}
+              data-inside-packet
+              data-playing={playing}
               r={5.5}
-              className="fill-ink stroke-paper pointer-events-none"
               strokeWidth={1.6}
             />
           )}
@@ -412,21 +415,21 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
       {routes.length === 0 ? null : (
         <div className="absolute bottom-3 left-3 flex gap-1.5">
           {playing ? (
-            <button type="button" className={controlClass} onClick={pause}>
+            <button className={controlClass} onClick={pause} type="button">
               ‖ Pause
             </button>
           ) : (
             <button
-              type="button"
               className={controlClass}
               disabled={reducedMotion}
-              title={reducedMotion ? reducedMotionNote : undefined}
               onClick={play}
+              title={reducedMotion ? reducedMotionNote : undefined}
+              type="button"
             >
               ▸ Play
             </button>
           )}
-          <button type="button" className={controlClass} onClick={step}>
+          <button className={controlClass} onClick={step} type="button">
             Step
           </button>
         </div>

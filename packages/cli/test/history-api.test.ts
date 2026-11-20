@@ -37,8 +37,8 @@ const decodeEvent = Schema.decodeUnknownEffect(
 
 interface Move {
   readonly base: number;
-  readonly to: GridPoint;
   readonly message: string;
+  readonly to: GridPoint;
 }
 
 /**
@@ -54,20 +54,20 @@ const acceptMove = (serve: RunningServe, move: Move) =>
 
 /** The review map served on a free port, with two revisions saved. */
 const servedWithTwo = Effect.gen(function* () {
-  const { root, home, serve } = yield* serveReviewMap({}, []);
+  const { home, root, serve } = yield* serveReviewMap({}, []);
 
   yield* acceptMove(serve, {
     base: 0,
-    to: { x: 4, y: 4 },
     message: "Drop the page",
+    to: { x: 4, y: 4 },
   });
   yield* acceptMove(serve, {
     base: 2,
-    to: { x: 4, y: 8 },
     message: "Drop it further",
+    to: { x: 4, y: 8 },
   });
 
-  return { root, home, url: serve.url, serve };
+  return { home, root, serve, url: serve.url };
 }).pipe(Effect.provide(NodeServices.layer));
 
 describe("gET /api/history", () => {
@@ -83,14 +83,14 @@ describe("gET /api/history", () => {
         const list = yield* decodeList(sent.body);
 
         assert.deepStrictEqual(
-          Arr.map(list, ({ revision, message, items }) => ({
-            revision,
-            message,
+          Arr.map(list, ({ items, message, revision }) => ({
             items,
+            message,
+            revision,
           })),
           [
-            { revision: 2, message: "Drop it further", items: 1 },
-            { revision: 1, message: "Drop the page", items: 1 },
+            { items: 1, message: "Drop it further", revision: 2 },
+            { items: 1, message: "Drop the page", revision: 1 },
           ]
         );
 
@@ -103,7 +103,8 @@ describe("gET /api/history", () => {
   it.live("lists nothing for a map with no revisions", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
-      const root = yield* makeHome(yield* fullMap);
+      const fullMapFiles = yield* fullMap;
+      const root = yield* makeHome(fullMapFiles);
 
       const serve = yield* startServe(path.join(root, "review", "map"), [
         "--port",
@@ -113,7 +114,8 @@ describe("gET /api/history", () => {
       const sent = yield* get(serve.url, "/api/history");
 
       assert.strictEqual(sent.status, 200, sent.body);
-      assert.deepStrictEqual(yield* decodeList(sent.body), []);
+      const emptyList = yield* decodeList(sent.body);
+      assert.deepStrictEqual(emptyList, []);
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
@@ -155,9 +157,11 @@ describe("gET /api/history/:n", () => {
 
       const revision = yield* decodeRevision(sent.body);
 
-      const onDisk = yield* decodeRevision(
-        yield* fs.readFileString(path.join(home, "history", "0001.json"))
+      const firstRevisionText = yield* fs.readFileString(
+        path.join(home, "history", "0001.json")
       );
+
+      const onDisk = yield* decodeRevision(firstRevisionText);
 
       assert.deepStrictEqual(revision, onDisk);
       assert.strictEqual(revision.layout.structures.page?.y, 4);
@@ -244,7 +248,7 @@ describe("the events stream", () => {
     "sends HistoryUpdated when it opens, and again when a revision is saved",
     () =>
       Effect.gen(function* () {
-        const { url, serve } = yield* servedWithTwo;
+        const { serve, url } = yield* servedWithTwo;
         const open = yield* Latch.make();
 
         const response = yield* HttpClient.HttpClient.use((client) =>
@@ -260,12 +264,12 @@ describe("the events stream", () => {
           ),
           Stream.flatMap((event) =>
             ServerEvent.match(event, {
+              Heartbeat: () => Stream.empty,
               HistoryUpdated: ({ history }) =>
                 Stream.make(Arr.map(history, ({ revision }) => revision)),
-              MapUpdated: () => Stream.empty,
               MapRejected: () => Stream.empty,
+              MapUpdated: () => Stream.empty,
               PendingUpdated: () => Stream.empty,
-              Heartbeat: () => Stream.empty,
             })
           ),
           Stream.tap(() => open.open),
@@ -278,11 +282,12 @@ describe("the events stream", () => {
         yield* open.await;
         yield* acceptMove(serve, {
           base: 4,
-          to: { x: 4, y: 10 },
           message: "Third",
+          to: { x: 4, y: 10 },
         });
 
-        assert.deepStrictEqual(yield* Fiber.join(seen), [
+        const listedRevisions = yield* Fiber.join(seen);
+        assert.deepStrictEqual(listedRevisions, [
           [2, 1],
           [3, 2, 1],
         ]);

@@ -36,22 +36,20 @@ const itemClass =
   "focus-visible:outline-ink flex w-full cursor-pointer items-baseline gap-2 px-2 py-0.5 text-left text-xs focus-visible:outline-2 focus-visible:-outline-offset-2 hover:bg-face";
 
 function IndexItem({
-  structure,
-  isSelected,
   isNew,
+  isSelected,
   onKeyDown,
+  structure,
 }: {
-  readonly structure: Structure;
-  readonly isSelected: boolean;
   readonly isNew: boolean;
+  readonly isSelected: boolean;
   readonly onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
+  readonly structure: Structure;
 }) {
   const { select } = useSelection();
 
   return (
     <button
-      type="button"
-      data-index-structure={structure.id}
       aria-current={isSelected ? "true" : undefined}
       className={cn(
         itemClass,
@@ -60,10 +58,12 @@ function IndexItem({
           !isSelected &&
           "outline-ink outline-1 -outline-offset-1 outline-dashed"
       )}
+      data-index-structure={structure.id}
       onClick={() => {
         select(structure.id);
       }}
       onKeyDown={onKeyDown}
+      type="button"
     >
       <span className="w-6 shrink-0 font-medium">{structure.code}</span>
       <span>{structure.name}</span>
@@ -72,24 +72,24 @@ function IndexItem({
 }
 
 function LaterItem({
-  structure,
   chapter,
+  structure,
 }: {
-  readonly structure: Structure;
   readonly chapter: number;
+  readonly structure: Structure;
 }) {
   const { goTo } = useWalkthrough();
 
   return (
     <button
-      type="button"
-      data-index-structure={structure.id}
-      data-revealed-in={chapter}
       aria-label={`${structure.name}, revealed in chapter ${chapter}`}
       className={cn(itemClass, "opacity-50")}
+      data-index-structure={structure.id}
+      data-revealed-in={chapter}
       onClick={() => {
         goTo(chapter - 1);
       }}
+      type="button"
     >
       <span className="w-6 shrink-0 font-medium">{structure.code}</span>
       <span>{structure.name}</span>
@@ -106,8 +106,8 @@ function LaterItem({
  * its room.
  */
 export function SideIndex({ className }: { readonly className?: string }) {
-  const { state, revealed, newlyRevealed } = useWalkthrough();
-  const { selected, select } = useSelection();
+  const { newlyRevealed, revealed, state } = useWalkthrough();
+  const { select, selected } = useSelection();
   const revealedIn = useRevealedIn();
   const { groups, structures } = state.data;
 
@@ -143,11 +143,11 @@ export function SideIndex({ className }: { readonly className?: string }) {
   return (
     <nav
       aria-label="Structures"
-      data-side-index
       className={cn(
         "border-ink hidden w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r py-3 xl:flex",
         className
       )}
+      data-side-index
     >
       {Arr.map(groups, (group) => {
         const members = Arr.filter(
@@ -156,7 +156,7 @@ export function SideIndex({ className }: { readonly className?: string }) {
         );
 
         return members.length === 0 ? null : (
-          <section key={group.id} data-index-group={group.id}>
+          <section data-index-group={group.id} key={group.id}>
             <h2 className="px-2 pb-1 text-xs tracking-widest uppercase opacity-70">
               {group.title}
             </h2>
@@ -165,15 +165,15 @@ export function SideIndex({ className }: { readonly className?: string }) {
                 <li key={structure.id}>
                   {revealed.has(structure.id) ? (
                     <IndexItem
-                      structure={structure}
-                      isSelected={selected === structure.id}
                       isNew={newlyRevealed.has(structure.id)}
+                      isSelected={selected === structure.id}
                       onKeyDown={onKeyDown}
+                      structure={structure}
                     />
                   ) : (
                     <LaterItem
-                      structure={structure}
                       chapter={revealedIn.get(structure.id) ?? 0}
+                      structure={structure}
                     />
                   )}
                 </li>

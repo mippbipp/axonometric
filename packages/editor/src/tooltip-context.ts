@@ -9,9 +9,9 @@ export interface Hovered {
 }
 
 export interface TooltipActions {
-  readonly show: (hovered: Hovered) => void;
   /** Hides the tooltip if it's showing structure `id`. */
   readonly hide: (id: string) => void;
+  readonly show: (hovered: Hovered) => void;
 }
 
 export const HoveredContext = createContext<Hovered | null>(null);

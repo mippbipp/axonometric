@@ -1,7 +1,9 @@
 pre-commit:
   parallel: true
   jobs:
-    - run: pnpm ox:fix
+    - run: gh actions-lock --verify-local
+      glob: ".github/workflows/*.{yml,yaml,lock}"
+    - run: bun run ox:fix
       glob:
         - "*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}"
         - "**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}"
@@ -10,4 +12,4 @@ pre-commit:
     - name: react-doctor
       glob:
         - "packages/editor/**/*.{ts,tsx,js,jsx,mjs,cjs}"
-      run: pnpm exec react-doctor packages/editor --staged --blocking warning --no-score --yes
+      run: bunx react-doctor packages/editor --staged --blocking warning --no-score --yes

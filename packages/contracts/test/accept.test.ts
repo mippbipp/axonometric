@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option, Result, Schema } from "effect";
-import { vi } from "vitest";
 
 import {
   acceptanceMessage,
@@ -12,17 +11,15 @@ import {
 import type { Layout, LayoutChange } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
 
-vi.setConfig({ testTimeout: 5000 });
-
 const layout: Layout = {
   format: 1,
   revision: 3,
   structures: {
-    a: { x: 0, y: 0, w: 2, d: 2 },
-    b: { x: 4, y: 0, w: 2, d: 2 },
-    c: { x: 8, y: 0, w: 2, d: 2 },
-    d: { x: 12, y: 0, w: 2, d: 2 },
-    e: { x: 16, y: 0, w: 2, d: 2 },
+    a: { d: 2, w: 2, x: 0, y: 0 },
+    b: { d: 2, w: 2, x: 4, y: 0 },
+    c: { d: 2, w: 2, x: 8, y: 0 },
+    d: { d: 2, w: 2, x: 12, y: 0 },
+    e: { d: 2, w: 2, x: 16, y: 0 },
   },
 };
 
@@ -35,8 +32,8 @@ const move = (
   kind: "move",
   moves: [
     {
-      target: { kind: "structure", id: structureId },
       position: { x: to[0], y: to[1] },
+      target: { id: structureId, kind: "structure" },
     },
   ],
 });
@@ -46,31 +43,36 @@ const resize = (
   structureId: string,
   size: readonly [number, number]
 ): LayoutChange => ({
+  footprint: { d: size[1], w: size[0] },
   id,
   kind: "resize",
-  target: { kind: "structure", id: structureId },
-  footprint: { w: size[0], d: size[1] },
+  target: { id: structureId, kind: "structure" },
 });
 
 const groupMove = (id: string): LayoutChange => ({
   id,
   kind: "move",
   moves: [
-    { target: { kind: "structure", id: "a" }, position: { x: 0, y: 10 } },
-    { target: { kind: "structure", id: "b" }, position: { x: 4, y: 10 } },
+    { position: { x: 0, y: 10 }, target: { id: "a", kind: "structure" } },
+    { position: { x: 4, y: 10 }, target: { id: "b", kind: "structure" } },
   ],
 });
 
 const hops = [
-  { id: "h-ab", from: "a", to: "b" },
-  { id: "h-bc", from: "b", to: "c" },
+  { from: "a", id: "h-ab", to: "b" },
+  { from: "b", id: "h-bc", to: "c" },
 ];
 
-const accept = (pending: readonly LayoutChange[], ids: "all" | string[]) =>
-  acceptLayoutChanges({ layout, pending, ids, hops });
+const accept = (
+  pending: ReadonlyArray<LayoutChange>,
+  ids: "all" | Array<string>
+) => acceptLayoutChanges({ hops, ids, layout, pending });
 
 /** The acceptance, or a failed assertion carrying the refusal. */
-const accepted = (pending: readonly LayoutChange[], ids: "all" | string[]) => {
+const accepted = (
+  pending: ReadonlyArray<LayoutChange>,
+  ids: "all" | Array<string>
+) => {
   const result = accept(pending, ids);
 
   if (Result.isFailure(result)) {
@@ -81,7 +83,10 @@ const accepted = (pending: readonly LayoutChange[], ids: "all" | string[]) => {
 };
 
 /** The refusal, or a failed assertion when the acceptance went ahead. */
-const refusal = (pending: readonly LayoutChange[], ids: "all" | string[]) => {
+const refusal = (
+  pending: ReadonlyArray<LayoutChange>,
+  ids: "all" | Array<string>
+) => {
   const result = accept(pending, ids);
 
   if (Result.isSuccess(result)) {
@@ -100,10 +105,10 @@ describe("accepting layout changes", () => {
     assert.deepStrictEqual(result.accepted, [first]);
     assert.deepStrictEqual(result.remaining, [second]);
     assert.deepStrictEqual(result.layout.structures.a, {
+      d: 2,
+      w: 2,
       x: 0,
       y: 6,
-      w: 2,
-      d: 2,
     });
     assert.deepStrictEqual(result.layout.structures.c, layout.structures.c);
     assert.strictEqual(result.layout.revision, 4);
@@ -116,10 +121,10 @@ describe("accepting layout changes", () => {
     assert.deepStrictEqual(result.accepted, pending);
     assert.deepStrictEqual(result.remaining, []);
     assert.deepStrictEqual(result.layout.structures.c, {
+      d: 3,
+      w: 3,
       x: 8,
       y: 0,
-      w: 3,
-      d: 3,
     });
   });
 
@@ -174,15 +179,15 @@ describe("accepting layout changes", () => {
       ...layout,
       structures: {
         ...layout.structures,
-        b: { x: 1, y: 0, w: 2, d: 2 },
+        b: { d: 2, w: 2, x: 1, y: 0 },
       },
     };
 
     const result = acceptLayoutChanges({
+      hops,
+      ids: ["m1"],
       layout: crowded,
       pending: [move("m1", "e", [16, 6])],
-      ids: ["m1"],
-      hops,
     });
 
     assert.isTrue(Result.isSuccess(result));
@@ -194,13 +199,13 @@ describe("accepting layout changes", () => {
 
     assert.deepStrictEqual(result.remaining, []);
     assert.deepStrictEqual(result.dropped, [
-      { id: "m1", kind: "move", structures: ["a"], hops: [] },
+      { hops: [], id: "m1", kind: "move", structures: ["a"] },
     ]);
     assert.deepStrictEqual(result.layout.structures.a, {
+      d: 2,
+      w: 2,
       x: 0,
       y: 30,
-      w: 2,
-      d: 2,
     });
   });
 
@@ -213,12 +218,12 @@ describe("accepting layout changes", () => {
         id: "g1",
         kind: "move",
         moves: [
-          { target: { kind: "structure", id: "b" }, position: { x: 4, y: 10 } },
+          { position: { x: 4, y: 10 }, target: { id: "b", kind: "structure" } },
         ],
       },
     ]);
     assert.deepStrictEqual(result.dropped, [
-      { id: "g1", kind: "move", structures: ["a"], hops: [] },
+      { hops: [], id: "g1", kind: "move", structures: ["a"] },
     ]);
   });
 
@@ -228,7 +233,7 @@ describe("accepting layout changes", () => {
 
     assert.deepStrictEqual(result.remaining, []);
     assert.deepStrictEqual(result.dropped, [
-      { id: "g1", kind: "move", structures: ["a", "b"], hops: [] },
+      { hops: [], id: "g1", kind: "move", structures: ["a", "b"] },
     ]);
   });
 
@@ -267,10 +272,10 @@ describe("accepting layout changes", () => {
     const result = accepted(pending, ["r1"]);
 
     assert.deepStrictEqual(result.layout.structures.a, {
+      d: 3,
+      w: 3,
       x: 0,
       y: 0,
-      w: 3,
-      d: 3,
     });
   });
 });
@@ -350,8 +355,8 @@ describe("the message for an acceptance", () => {
     assert.strictEqual(
       acceptanceMessage([move("m2", "a", [0, 30])], nameOf, {
         dropped: [
-          { id: "m1", kind: "move", structures: ["a", "b"], hops: [] },
-          { id: "r1", kind: "resize", structures: ["c"], hops: [] },
+          { hops: [], id: "m1", kind: "move", structures: ["a", "b"] },
+          { hops: [], id: "r1", kind: "resize", structures: ["c"] },
         ],
       }),
       "Move Save server; replaces earlier pending changes to Save server, Map page and Proposals"
@@ -384,8 +389,8 @@ const reroute = (
 ): LayoutChange => ({
   id,
   kind: "reroute",
-  target: { kind: "hop", id: hop },
   points,
+  target: { id: hop, kind: "hop" },
 });
 
 /** A route from a's +x face to b's -x face. */
@@ -410,10 +415,10 @@ describe("accepting reroutes", () => {
     const routed: Layout = { ...layout, routes: { "h-ab": route } };
 
     const result = acceptLayoutChanges({
+      hops,
+      ids: "all",
       layout: routed,
       pending: [reroute("r1", "h-ab", null)],
-      ids: "all",
-      hops,
     });
 
     assert.isUndefined(Result.getOrThrow(result).layout.routes);
@@ -442,7 +447,7 @@ describe("accepting reroutes", () => {
 
     assert.deepStrictEqual(result.remaining, []);
     assert.deepStrictEqual(result.dropped, [
-      { id: "r1", kind: "reroute", structures: [], hops: ["h-ab"] },
+      { hops: ["h-ab"], id: "r1", kind: "reroute", structures: [] },
     ]);
   });
 
@@ -468,10 +473,10 @@ describe("accepting reroutes", () => {
     const routed: Layout = { ...layout, routes: { "h-ab": route } };
 
     const result = acceptLayoutChanges({
+      hops,
+      ids: "all",
       layout: routed,
       pending: [move("m1", "a", [0, 6])],
-      ids: "all",
-      hops,
     });
 
     assert.include(
@@ -501,14 +506,14 @@ describe("the revision file", () => {
     const { data, layout: snapshot } = yield* fixture("review");
 
     return {
+      accepted: [{ change: move("m1", "a", [0, 6]), id: "m1", kind: "layout" }],
+      data,
       format: 1,
+      layout: snapshot,
+      message: "Move Save server",
+      rejected: [],
       revision: 1,
       savedAt: "2026-11-01T09:00:00.000Z",
-      message: "Move Save server",
-      accepted: [{ kind: "layout", id: "m1", change: move("m1", "a", [0, 6]) }],
-      rejected: [],
-      data,
-      layout: snapshot,
     };
   });
 
@@ -558,17 +563,17 @@ describe("the revision file", () => {
           ...revision,
           accepted: [
             {
-              kind: "layout",
-              id: "m1",
               change: move("m1", "a", [0, 6]),
+              id: "m1",
+              kind: "layout",
               reason: "Looks right.",
             },
           ],
           rejected: [
             {
-              kind: "layout",
-              id: "m2",
               change: move("m2", "b", [4, 6]),
+              id: "m2",
+              kind: "layout",
               reason: "Too close.",
             },
           ],
@@ -583,7 +588,7 @@ describe("the revision file", () => {
       const revision = yield* revisionOf;
 
       const rejected = [
-        { kind: "layout", id: "m2", change: move("m2", "b", [4, 6]) },
+        { change: move("m2", "b", [4, 6]), id: "m2", kind: "layout" },
       ];
 
       assert.isTrue(

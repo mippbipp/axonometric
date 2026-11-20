@@ -22,9 +22,9 @@ const proposals = (layout: string) =>
   `{ "format": 1, "revision": 3, "layout": ${layout} }\n`;
 
 const CheckReport = Schema.Struct({
+  errors: Schema.Array(MapProblem),
   home: Schema.String,
   ok: Schema.Boolean,
-  errors: Schema.Array(MapProblem),
   warnings: Schema.Array(MapProblem),
 });
 
@@ -60,14 +60,14 @@ const revisionText = Effect.fnUntraced(function* (
   )(module);
 
   return yield* encodeRevision({
+    accepted: [],
+    data,
     format: 1,
+    layout: yield* decodeLayout(files[layoutFile] ?? ""),
+    message: "Move Save server",
+    rejected: [],
     revision: n,
     savedAt: "2026-11-01T09:00:00.000Z",
-    message: "Move Save server",
-    accepted: [],
-    rejected: [],
-    data,
-    layout: yield* decodeLayout(files[layoutFile] ?? ""),
     ...changes,
   });
 });
@@ -79,7 +79,7 @@ const decodeReport = Schema.decodeUnknownEffect(
 /** Runs `check` on the full map with some of its files replaced. */
 const checkWith = Effect.fnUntraced(function* (
   files: HomeFiles,
-  flags: readonly string[] = []
+  flags: ReadonlyArray<string> = []
 ) {
   const home = yield* makeHome({ ...(yield* fullMap), ...files });
 
@@ -120,23 +120,23 @@ describe("check", () => {
 
   it.effect("prints errors and warnings as JSON", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(
+      const editedMap =
         yield* editData(`data.groups.push({ id: "spare", title: "Spare" });
-data.structures[1].status = "retired";`),
-        ["--json"]
-      );
+data.structures[1].status = "retired";`);
+
+      const result = yield* checkWith(editedMap, ["--json"]);
 
       const report = yield* decodeReport(result.stdout);
 
       assert.strictEqual(result.exitCode, 1);
       assert.isFalse(report.ok);
       assert.deepStrictEqual(
-        Arr.map(report.errors, ({ severity, file, path }) => ({
-          severity,
+        Arr.map(report.errors, ({ file, path, severity }) => ({
           file,
           path,
+          severity,
         })),
-        [{ severity: "error", file: "data.mjs", path: "structures[1].status" }]
+        [{ file: "data.mjs", path: "structures[1].status", severity: "error" }]
       );
       assert.include(report.errors[0]?.message ?? "", "live, planned, off");
       assert.deepStrictEqual(report.warnings, []);
@@ -157,8 +157,8 @@ data.structures[1].status = "retired";`),
       assert.strictEqual(checked.exitCode, 0);
       assert.isTrue(report.ok);
       assert.deepStrictEqual(
-        Arr.map(report.warnings, ({ severity, path }) => ({ severity, path })),
-        [{ severity: "warning", path: "groups[3]" }]
+        Arr.map(report.warnings, ({ path, severity }) => ({ path, severity })),
+        [{ path: "groups[3]", severity: "warning" }]
       );
       assert.strictEqual(built.exitCode, 0, built.stderr);
       assert.include(
@@ -173,8 +173,7 @@ data.structures[1].status = "retired";`),
     "prints each data.mjs problem as text, with its path, and a count, and exits 1",
     () =>
       Effect.gen(function* () {
-        const result = yield* checkWith(
-          yield* editData(`data.structures[0].ghost = true;
+        const editedMap = yield* editData(`data.structures[0].ghost = true;
 data.structures[0].shape = "circle";
 data.structures[2].x = 4;
 data.structures[2].w = 2;
@@ -182,8 +181,9 @@ data.structures[1].questions[0].id = "Q-p1";
 const question = data.structures[1].questions[1];
 delete question.answer;
 delete question.answeredBy;
-delete question.answeredOn;`)
-        );
+delete question.answeredOn;`);
+
+        const result = yield* checkWith(editedMap);
 
         const at = "error data.mjs structures[1].questions[1]";
 
@@ -211,13 +211,14 @@ delete question.answeredOn;`)
     "names a duplicate question id, and where an unknown hop, structure or group is used",
     () =>
       Effect.gen(function* () {
-        const result = yield* checkWith(
+        const editedMap =
           yield* editData(`data.structures[2].questions[0].id = "Q-P1";
 data.flows[0].hops.push("h-gone");
 data.chapters[2].plays.push("h-missing");
 data.chapters[1].reveals.push("nobody");
-data.structures[3].group = "elsewhere";`)
-        );
+data.structures[3].group = "elsewhere";`);
+
+        const result = yield* checkWith(editedMap);
 
         assert.strictEqual(result.exitCode, 1);
         assert.include(
@@ -247,9 +248,11 @@ data.structures[3].group = "elsewhere";`)
     "rejects a chapter that plays a hop to a structure not yet revealed",
     () =>
       Effect.gen(function* () {
-        const result = yield* checkWith(
-          yield* editData('data.chapters[0].plays.push("h-save");')
+        const editedMap = yield* editData(
+          'data.chapters[0].plays.push("h-save");'
         );
+
+        const result = yield* checkWith(editedMap);
 
         assert.strictEqual(result.exitCode, 1);
         assert.include(
@@ -261,9 +264,11 @@ data.structures[3].group = "elsewhere";`)
 
   it.effect("counts structures revealed by earlier chapters", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData('data.chapters[2].plays.push("h-note", "h-pr");')
+      const editedMap = yield* editData(
+        'data.chapters[2].plays.push("h-note", "h-pr");'
       );
+
+      const result = yield* checkWith(editedMap);
 
       assert.strictEqual(result.exitCode, 0, result.stdout);
     })
@@ -271,9 +276,8 @@ data.structures[3].group = "elsewhere";`)
 
   it.effect("rejects a walkthrough that never reveals some structures", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(
-        yield* editData("data.chapters[2].reveals = [];")
-      );
+      const editedMap = yield* editData("data.chapters[2].reveals = [];");
+      const result = yield* checkWith(editedMap);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(
@@ -285,7 +289,8 @@ data.structures[3].group = "elsewhere";`)
 
   it.effect("accepts a map with no chapters", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(yield* editData("data.chapters = [];"));
+      const editedMap = yield* editData("data.chapters = [];");
+      const result = yield* checkWith(editedMap);
 
       assert.strictEqual(result.exitCode, 0, result.stdout);
     })
@@ -293,10 +298,11 @@ data.structures[3].group = "elsewhere";`)
 
   it.effect("reports ADR and deep dive links that don't resolve", () =>
     Effect.gen(function* () {
-      const result = yield* checkWith(
+      const editedMap =
         yield* editData(`data.overview.decisions[0].adr = "docs/adr/0001-local-server.md";
-data.overview.deepDives[0].link = "research/missing.md#top";`)
-      );
+data.overview.deepDives[0].link = "research/missing.md#top";`);
+
+      const result = yield* checkWith(editedMap);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(
@@ -333,12 +339,12 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
             format: 1,
             revision: 0,
             structures: {
-              engineer: { x: 4, y: 4, w: 2, d: 2 },
-              page: { x: 4, y: 6, w: 2, d: 2 },
-              server: { x: 4, y: 2, w: 2, d: 2 },
-              proposals: { x: 6, y: 4, w: 2, d: 2 },
-              "pull-request": { x: 2, y: 4, w: 2, d: 2 },
-              upstream: { x: 16, y: 0, w: 2, d: 2 },
+              engineer: { d: 2, w: 2, x: 4, y: 4 },
+              page: { d: 2, w: 2, x: 4, y: 6 },
+              proposals: { d: 2, w: 2, x: 6, y: 4 },
+              "pull-request": { d: 2, w: 2, x: 2, y: 4 },
+              server: { d: 2, w: 2, x: 4, y: 2 },
+              upstream: { d: 2, w: 2, x: 16, y: 0 },
             },
           }),
         },
@@ -369,13 +375,10 @@ data.overview.deepDives[0].link = "research/missing.md#top";`)
       name: string,
       tag: string
     ) {
-      const result = yield* checkWith(
-        yield* editData(
-          `data.structures[1].name = "${name}";
-data.structures[1].tag = "${tag}";`
-        ),
-        ["--json"]
-      );
+      const editedMap = yield* editData(`data.structures[1].name = "${name}";
+data.structures[1].tag = "${tag}";`);
+
+      const result = yield* checkWith(editedMap, ["--json"]);
 
       const report = yield* decodeReport(result.stdout);
 
@@ -436,7 +439,8 @@ data.structures[1].tag = "${tag}";`
           ["Authentication service", "Auth"],
           ["Amazon S3 bucket", "S3"],
         ] as const) {
-          assert.deepStrictEqual(yield* tagWarnings(name, tag), []);
+          const nameTagWarnings = yield* tagWarnings(name, tag);
+          assert.deepStrictEqual(nameTagWarnings, []);
         }
       })
     );
@@ -447,21 +451,19 @@ data.structures[1].tag = "${tag}";`
       "warns when a chapter other than the last plays more than five hops or reveals more than three structures",
       () =>
         Effect.gen(function* () {
-          const result = yield* checkWith(
-            yield* editData(
-              `data.chapters[1].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];
+          const editedMap =
+            yield* editData(`data.chapters[1].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];
 data.chapters[1].reveals = ["server", "proposals", "pull-request", "upstream"];
 data.chapters[2].reveals = [];
-data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`
-            ),
-            ["--json"]
-          );
+data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`);
+
+          const result = yield* checkWith(editedMap, ["--json"]);
 
           const report = yield* decodeReport(result.stdout);
 
           assert.strictEqual(result.exitCode, 0, result.stdout);
           assert.deepStrictEqual(
-            Arr.map(report.warnings, ({ path, message }) => [path, message]),
+            Arr.map(report.warnings, ({ message, path }) => [path, message]),
             [
               [
                 "chapters[1].reveals",
@@ -478,12 +480,11 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
 
     it.effect("lets the last chapter play every hop", () =>
       Effect.gen(function* () {
-        const result = yield* checkWith(
-          yield* editData(
-            `data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`
-          ),
-          ["--json"]
+        const editedMap = yield* editData(
+          `data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-save"];`
         );
+
+        const result = yield* checkWith(editedMap, ["--json"]);
 
         const report = yield* decodeReport(result.stdout);
 
@@ -704,8 +705,8 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
       () =>
         Effect.gen(function* () {
           const result = yield* checkWith({
-            "review/map/history/notes.txt": "hello",
             "review/map/history/0001.json.1234.tmp": "half a write",
+            "review/map/history/notes.txt": "hello",
           });
 
           assert.strictEqual(result.exitCode, 0, result.stdout);

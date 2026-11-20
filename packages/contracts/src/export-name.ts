@@ -8,13 +8,13 @@ import type { View } from "./plan.ts";
  * A file adds its extension, and the SVG's ids add a dash after it.
  */
 export const exportName = ({
+  chapter,
   system,
   view,
-  chapter,
 }: {
+  readonly chapter: number;
   readonly system: string;
   readonly view: View;
-  readonly chapter: number;
 }) => `${Str.replaceAll(/[^\w-]/gu, "-")(system)}-${view}-chapter-${chapter}`;
 
 /** How much larger than the SVG a PNG export is drawn. */

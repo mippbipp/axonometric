@@ -26,7 +26,7 @@ const throughRect = (
   rect: ScreenRect
 ) =>
   Arr.some(Arr.zip(points, Arr.drop(points, 1)), ([start, end]) =>
-    crossesPolygon({ start, end }, rectCorners(rect))
+    crossesPolygon({ end, start }, rectCorners(rect))
   );
 
 /** How far a rect is from a route: its nearest corner or edge midpoint. */
@@ -35,7 +35,7 @@ const gapTo = (points: Scene["hops"][number]["points"], rect: ScreenRect) => {
     return 0;
   }
 
-  const { left, right, top, bottom } = rect;
+  const { bottom, left, right, top } = rect;
   const middle = { sx: (left + right) / 2, sy: (top + bottom) / 2 };
 
   return Math.min(
@@ -57,7 +57,7 @@ const rectsOverlap = (a: ScreenRect, b: ScreenRect) =>
 
 /** What's wrong with the placed labels of a scene, as readable lines. */
 const labelProblems = (scene: Scene) =>
-  Arr.flatMap(scene.hops, ({ hop, points, label }) => {
+  Arr.flatMap(scene.hops, ({ hop, label, points }) => {
     if (label === undefined) {
       return [];
     }
@@ -107,26 +107,26 @@ const chaptersFor = (data: MapData) =>
     : [{ id: "all", plays: [], revealed: everything(data) }];
 
 const sceneIn = ({
+  chapter,
   data,
   layout,
-  chapter,
   routes = routeRevealed({ data, layout, revealed: chapter.revealed }),
   view,
   zoom,
 }: {
+  readonly chapter: ReturnType<typeof chaptersFor>[number];
   readonly data: MapData;
   readonly layout: Layout;
-  readonly chapter: ReturnType<typeof chaptersFor>[number];
   readonly routes?: ReturnType<typeof routeRevealed>;
   readonly view: View;
   readonly zoom: number;
 }) =>
   sceneOf({
     data,
+    labelFirst: chapter.plays,
     layout,
     revealed: chapter.revealed,
     routes,
-    labelFirst: chapter.plays,
     view,
     zoom,
   });
@@ -136,41 +136,41 @@ const zooms = [1, 0.6, 0.4241];
 
 /** A map of two structures and the hop `h` between them, with `chapters`. */
 const mapWith = (chapters: MapData["chapters"]): MapData => ({
+  chapters,
+  flows: [],
   format: 1,
-  revision: 0,
-  overview: { title: "Map", summary: "A map." },
   groups: [{ id: "main", title: "Main" }],
-  structures: Arr.map(["a", "b"], (id) => ({
-    id,
-    code: "S",
-    name: id,
-    shape: "box" as const,
-    group: "main",
-    status: "live" as const,
-    oneLiner: "One line.",
-    whatItDoes: "Does.",
-    howItsBuilt: "Built.",
-  })),
   hops: [
     {
-      id: "h",
       from: "a",
-      to: "b",
+      id: "h",
       label: "a label too wide for the gap",
       payload: {},
+      to: "b",
     },
   ],
-  flows: [],
-  chapters,
+  overview: { summary: "A map.", title: "Map" },
+  revision: 0,
+  structures: Arr.map(["a", "b"], (id) => ({
+    code: "S",
+    group: "main",
+    howItsBuilt: "Built.",
+    id,
+    name: id,
+    oneLiner: "One line.",
+    shape: "box" as const,
+    status: "live" as const,
+    whatItDoes: "Does.",
+  })),
 });
 
-const chapterOf = (id: string, plays: readonly string[]) => ({
+const chapterOf = (id: string, plays: ReadonlyArray<string>) => ({
   id,
-  title: id,
   lede: "Lede.",
-  story: "Story.",
-  reveals: ["a", "b"],
   plays,
+  reveals: ["a", "b"],
+  story: "Story.",
+  title: id,
 });
 
 /** What `check` says of a hop whose label has no spot, where it is in Plan view. */
@@ -202,9 +202,9 @@ describe("hop labels", () => {
 
               for (const zoom of zooms) {
                 const scene = sceneIn({
+                  chapter,
                   data,
                   layout,
-                  chapter,
                   routes,
                   view,
                   zoom,
@@ -217,8 +217,7 @@ describe("hop labels", () => {
                 );
               }
             }
-          }),
-        60_000
+          })
       );
     }
   }
@@ -228,7 +227,7 @@ describe("hop labels", () => {
       const { data, layout } = yield* fixture("plan-labels");
 
       const chapter = Option.getOrThrow(Arr.head(chaptersFor(data)));
-      const scene = sceneIn({ data, layout, chapter, view: "plan", zoom: 1 });
+      const scene = sceneIn({ chapter, data, layout, view: "plan", zoom: 1 });
 
       const first = Option.getOrThrow(
         Arr.findFirst(scene.hops, ({ label }) => label !== undefined)
@@ -250,10 +249,10 @@ describe("hop labels", () => {
             ? {
                 ...hop,
                 label: {
+                  bottom: at.sy + 7,
                   left: at.sx - 20,
                   right: at.sx + 20,
                   top: at.sy - 7,
-                  bottom: at.sy + 7,
                 },
               }
             : hop
@@ -273,11 +272,11 @@ describe("hop labels", () => {
     const layout: Layout = {
       format: 1,
       revision: 0,
-      structures: {
-        a: { x: 0, y: 0, w: 2, d: 6 },
-        b: { x: 2.5, y: 0, w: 2, d: 6 },
-      },
       routes: {},
+      structures: {
+        a: { d: 6, w: 2, x: 0, y: 0 },
+        b: { d: 6, w: 2, x: 2.5, y: 0 },
+      },
     };
 
     const hiddenLabelWarnings = (data: MapData) =>

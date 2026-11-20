@@ -4,7 +4,7 @@ import { Effect, FileSystem, Path } from "effect";
 import type { HomeFiles } from "./harness.ts";
 
 /** Reads fixture files from `test/fixtures/`, keyed by their path there. */
-const readFixtures = (names: readonly string[]): Effect.Effect<HomeFiles> =>
+const readFixtures = (names: ReadonlyArray<string>): Effect.Effect<HomeFiles> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;

@@ -19,18 +19,18 @@ export const proposedOneLiner =
 
 export const proposedDetails = "Proposed on the page, with no description yet.";
 
-const alphabet: readonly string[] = Arr.map(Arr.range(65, 90), (code) =>
+const alphabet: ReadonlyArray<string> = Arr.map(Arr.range(65, 90), (code) =>
   String.fromCodePoint(code)
 );
 
 /** The Latin capitals in `text`, in order, as single letters. */
-const capitalsIn = (text: string): readonly string[] =>
+const capitalsIn = (text: string): ReadonlyArray<string> =>
   Arr.filter(Arr.fromIterable(Str.toUpperCase(text)), (char) =>
     Arr.contains(alphabet, char)
   );
 
 /** The capitals `text` itself writes as capitals, such as the B and C of "Build Cache". */
-const writtenCapitals = (text: string): readonly string[] =>
+const writtenCapitals = (text: string): ReadonlyArray<string> =>
   Arr.filter(Arr.fromIterable(text), (char) => Arr.contains(alphabet, char));
 
 /**
@@ -69,15 +69,15 @@ export const structureOfNew: {
   (taken: ReadonlySet<string>): (made: NewStructure) => Structure;
   (made: NewStructure, taken: ReadonlySet<string>): Structure;
 } = dual(2, (made: NewStructure, taken: ReadonlySet<string>): Structure => ({
-  id: made.id,
   code: codeOfName(made.name, taken),
-  name: made.name,
-  shape: made.shape,
   group: made.group,
-  status: made.status,
-  oneLiner: proposedOneLiner,
-  whatItDoes: proposedDetails,
   howItsBuilt: proposedDetails,
+  id: made.id,
+  name: made.name,
+  oneLiner: proposedOneLiner,
+  shape: made.shape,
+  status: made.status,
+  whatItDoes: proposedDetails,
 }));
 
 const changeStructure = (
@@ -93,8 +93,8 @@ const changeStructure = (
 
 /** The names a description uses. */
 export interface DescribeNames {
-  readonly structure: (id: string) => string;
   readonly group: (id: string) => string;
+  readonly structure: (id: string) => string;
 }
 
 /** What `review` prints for one structure of the change. */
@@ -107,18 +107,6 @@ type FactFields = Readonly<Record<string, string | number | boolean>>;
  * prompt and the checks all read this table.
  */
 export interface StructureAction<A extends Action> {
-  /** A word for the kind of item, as `review` lists it. */
-  readonly label: string;
-  /** `data` once the change is applied. A deletion leaves the structure in. */
-  readonly toData: (change: Of<A>, data: MapData) => MapData;
-  /** Whether `structure` already has what the change proposes. */
-  readonly isCurrent: (change: Of<A>, structure: Structure) => boolean;
-  /** One line for the prompt; text the engineer wrote goes through `quoteText`. */
-  readonly summary: (
-    change: Of<A>,
-    id: string,
-    names: (id: string) => string
-  ) => string;
   /** What the Pending list says, in plain words. */
   readonly describe: (change: Of<A>, names: DescribeNames) => string;
   /** `review`'s before and after, for the structure the map has, if any. */
@@ -126,7 +114,11 @@ export interface StructureAction<A extends Action> {
     change: Of<A>,
     current: Option.Option<Structure>,
     layout: Layout
-  ) => { readonly before: Facts; readonly after: Facts };
+  ) => { readonly after: Facts; readonly before: Facts };
+  /** Whether `structure` already has what the change proposes. */
+  readonly isCurrent: (change: Of<A>, structure: Structure) => boolean;
+  /** A word for the kind of item, as `review` lists it. */
+  readonly label: string;
   /**
    * The change with its proposed fields set on `made`, for a change to a
    * structure that is only proposed. Nothing when the change removes it.
@@ -135,6 +127,14 @@ export interface StructureAction<A extends Action> {
     change: Of<A>,
     made: NewStructure
   ) => Option.Option<NewStructure>;
+  /** One line for the prompt; text the engineer wrote goes through `quoteText`. */
+  readonly summary: (
+    change: Of<A>,
+    id: string,
+    names: (id: string) => string
+  ) => string;
+  /** `data` once the change is applied. A deletion leaves the structure in. */
+  readonly toData: (change: Of<A>, data: MapData) => MapData;
 }
 
 const structureFacts = (fields: FactFields): Facts => ({ structure: fields });
@@ -144,7 +144,7 @@ const positionOf = (layout: Layout, id: string): FactFields => {
 
   return placement === undefined
     ? {}
-    : { x: placement.x, y: placement.y, w: placement.w, d: placement.d };
+    : { d: placement.d, w: placement.w, x: placement.x, y: placement.y };
 };
 
 /** The one field of `current` that a change sets, as `review` prints it. */
@@ -162,7 +162,27 @@ const placementWords = ({ x, y }: Placement) => `${x}, ${y}`;
 /** The table: one entry for every action of a structure change. */
 const structureActions = {
   add: {
+    describe: ({ at, structure }, names) =>
+      `Add ${structure.name} (${structure.shape}, ${statusLabels[structure.status]}) to ${names.group(structure.group)} at ${placementWords(at)}`,
+    facts: ({ at, structure }, _current, _layout) => ({
+      after: structureFacts({
+        d: at.d,
+        group: structure.group,
+        id: structure.id,
+        name: structure.name,
+        shape: structure.shape,
+        status: structure.status,
+        w: at.w,
+        x: at.x,
+        y: at.y,
+      }),
+      before: null,
+    }),
+    isCurrent: (_change, _structure) => false,
     label: "add structure",
+    onProposed: (_change, _made) => Option.none(),
+    summary: ({ at, structure }, id, _names) =>
+      `add structure ${id}: ${quoteText(structure.name)}, shape ${structure.shape}, status ${structure.status}, group ${quoteText(structure.group)}, at x ${at.x}, y ${at.y}, provisional id ${structure.id}`,
     toData: ({ structure: made }, data) =>
       Arr.some(data.structures, ({ id }) => id === made.id)
         ? data
@@ -176,110 +196,90 @@ const structureActions = {
               ),
             ],
           },
-    isCurrent: (_change, _structure) => false,
-    summary: ({ structure, at }, id, _names) =>
-      `add structure ${id}: ${quoteText(structure.name)}, shape ${structure.shape}, status ${structure.status}, group ${quoteText(structure.group)}, at x ${at.x}, y ${at.y}, provisional id ${structure.id}`,
-    describe: ({ structure, at }, names) =>
-      `Add ${structure.name} (${structure.shape}, ${statusLabels[structure.status]}) to ${names.group(structure.group)} at ${placementWords(at)}`,
-    facts: ({ structure, at }, _current, _layout) => ({
-      before: null,
-      after: structureFacts({
-        id: structure.id,
-        name: structure.name,
-        shape: structure.shape,
-        group: structure.group,
-        status: structure.status,
-        x: at.x,
-        y: at.y,
-        w: at.w,
-        d: at.d,
-      }),
-    }),
-    onProposed: (_change, _made) => Option.none(),
   },
   delete: {
-    label: "delete structure",
-    toData: (_change, data) => data,
-    isCurrent: (_change, _structure) => false,
-    summary: ({ structure }, id, names) =>
-      `delete structure ${id}: ${quoteText(names(structure))}`,
     describe: ({ structure }, names) => `Delete ${names.structure(structure)}`,
     facts: ({ structure }, current, layout) => ({
+      after: structureFacts({ deleted: true }),
       before: Option.match(current, {
         onNone: () => null,
         onSome: (found) =>
           structureFacts({
+            group: found.group,
             id: found.id,
             name: found.name,
             shape: found.shape,
-            group: found.group,
             status: found.status,
             ...positionOf(layout, structure),
           }),
       }),
-      after: structureFacts({ deleted: true }),
     }),
+    isCurrent: (_change, _structure) => false,
+    label: "delete structure",
     onProposed: (_change, _made) => Option.none(),
-  },
-  rename: {
-    label: "rename structure",
-    toData: ({ structure, name }, data) =>
-      changeStructure(data, structure, (found) => ({ ...found, name })),
-    isCurrent: ({ name }, structure) => structure.name === name,
-    summary: ({ structure, name }, id, names) =>
-      `rename structure ${id}: ${quoteText(names(structure))} to ${quoteText(name)}`,
-    describe: ({ structure, name }, names) =>
-      `Rename ${names.structure(structure)} to ${name}`,
-    facts: ({ name }, current, _layout) => ({
-      before: fieldBefore(current, "name"),
-      after: structureFacts({ name }),
-    }),
-    onProposed: ({ name }, made) => Option.some({ ...made, name }),
-  },
-  shape: {
-    label: "change shape",
-    toData: ({ structure, shape }, data) =>
-      changeStructure(data, structure, (found) => ({ ...found, shape })),
-    isCurrent: ({ shape }, structure) => structure.shape === shape,
-    summary: ({ structure, shape }, id, names) =>
-      `change shape ${id}: ${quoteText(names(structure))} to ${shape}`,
-    describe: ({ structure, shape }, names) =>
-      `Change the shape of ${names.structure(structure)} to ${shape}`,
-    facts: ({ shape }, current, _layout) => ({
-      before: fieldBefore(current, "shape"),
-      after: structureFacts({ shape }),
-    }),
-    onProposed: ({ shape }, made) => Option.some({ ...made, shape }),
+    summary: ({ structure }, id, names) =>
+      `delete structure ${id}: ${quoteText(names(structure))}`,
+    toData: (_change, data) => data,
   },
   group: {
-    label: "change group",
-    toData: ({ structure, group }, data) =>
-      changeStructure(data, structure, (found) => ({ ...found, group })),
-    isCurrent: ({ group }, structure) => structure.group === group,
-    summary: ({ structure, group }, id, names) =>
-      `change group ${id}: ${quoteText(names(structure))} to ${quoteText(group)}`,
-    describe: ({ structure, group }, names) =>
+    describe: ({ group, structure }, names) =>
       `Move ${names.structure(structure)} to ${names.group(group)}`,
     facts: ({ group }, current, _layout) => ({
-      before: fieldBefore(current, "group"),
       after: structureFacts({ group }),
+      before: fieldBefore(current, "group"),
     }),
+    isCurrent: ({ group }, structure) => structure.group === group,
+    label: "change group",
     onProposed: ({ group }, made) => Option.some({ ...made, group }),
+    summary: ({ group, structure }, id, names) =>
+      `change group ${id}: ${quoteText(names(structure))} to ${quoteText(group)}`,
+    toData: ({ group, structure }, data) =>
+      changeStructure(data, structure, (found) => ({ ...found, group })),
+  },
+  rename: {
+    describe: ({ name, structure }, names) =>
+      `Rename ${names.structure(structure)} to ${name}`,
+    facts: ({ name }, current, _layout) => ({
+      after: structureFacts({ name }),
+      before: fieldBefore(current, "name"),
+    }),
+    isCurrent: ({ name }, structure) => structure.name === name,
+    label: "rename structure",
+    onProposed: ({ name }, made) => Option.some({ ...made, name }),
+    summary: ({ name, structure }, id, names) =>
+      `rename structure ${id}: ${quoteText(names(structure))} to ${quoteText(name)}`,
+    toData: ({ name, structure }, data) =>
+      changeStructure(data, structure, (found) => ({ ...found, name })),
+  },
+  shape: {
+    describe: ({ shape, structure }, names) =>
+      `Change the shape of ${names.structure(structure)} to ${shape}`,
+    facts: ({ shape }, current, _layout) => ({
+      after: structureFacts({ shape }),
+      before: fieldBefore(current, "shape"),
+    }),
+    isCurrent: ({ shape }, structure) => structure.shape === shape,
+    label: "change shape",
+    onProposed: ({ shape }, made) => Option.some({ ...made, shape }),
+    summary: ({ shape, structure }, id, names) =>
+      `change shape ${id}: ${quoteText(names(structure))} to ${shape}`,
+    toData: ({ shape, structure }, data) =>
+      changeStructure(data, structure, (found) => ({ ...found, shape })),
   },
   status: {
-    label: "change status",
-    toData: ({ structure, status }, data) =>
-      changeStructure(data, structure, (found) => ({ ...found, status })),
-    isCurrent: ({ status }, structure) => structure.status === status,
-    summary: ({ structure, status }, id, names) =>
-      `change status ${id}: ${quoteText(names(structure))} to ${status}`,
-    describe: ({ structure, status }, names) =>
+    describe: ({ status, structure }, names) =>
       `Change the status of ${names.structure(structure)} to ${statusLabels[status]}`,
     facts: ({ status }, current, _layout) => ({
-      before: fieldBefore(current, "status"),
       after: structureFacts({ status }),
+      before: fieldBefore(current, "status"),
     }),
+    isCurrent: ({ status }, structure) => structure.status === status,
+    label: "change status",
     onProposed: ({ status }, made) => Option.some({ ...made, status }),
+    summary: ({ status, structure }, id, names) =>
+      `change status ${id}: ${quoteText(names(structure))} to ${status}`,
+    toData: ({ status, structure }, data) =>
+      changeStructure(data, structure, (found) => ({ ...found, status })),
   },
 } satisfies { readonly [A in Action]: StructureAction<A> };
 
@@ -289,27 +289,27 @@ const structureActions = {
  * two up, so no other code names an action.
  */
 export const actionOf = (change: StructureChange): Entry => ({
-  label: structureActions[change.action].label,
-  toData: (data) => toDataBy(change, data),
-  isCurrent: (structure) => isCurrentBy(change, structure),
-  summary: (id, names) => summaryBy(change, id, names),
   describe: (names) => describeBy(change, names),
   facts: (current, layout) => factsBy(change, current, layout),
+  isCurrent: (structure) => isCurrentBy(change, structure),
+  label: structureActions[change.action].label,
   onProposed: (made) => onProposedBy(change, made),
+  summary: (id, names) => summaryBy(change, id, names),
+  toData: (data) => toDataBy(change, data),
 });
 
 /** The table's entry for one change, bound to it. */
 export interface Entry {
-  readonly label: string;
-  readonly toData: (data: MapData) => MapData;
-  readonly isCurrent: (structure: Structure) => boolean;
-  readonly summary: (id: string, names: (id: string) => string) => string;
   readonly describe: (names: DescribeNames) => string;
   readonly facts: (
     current: Option.Option<Structure>,
     layout: Layout
-  ) => { readonly before: Facts; readonly after: Facts };
+  ) => { readonly after: Facts; readonly before: Facts };
+  readonly isCurrent: (structure: Structure) => boolean;
+  readonly label: string;
   readonly onProposed: (made: NewStructure) => Option.Option<NewStructure>;
+  readonly summary: (id: string, names: (id: string) => string) => string;
+  readonly toData: (data: MapData) => MapData;
 }
 
 const toDataBy = (change: StructureChange, data: MapData): MapData =>
@@ -317,9 +317,9 @@ const toDataBy = (change: StructureChange, data: MapData): MapData =>
     Match.discriminatorsExhaustive("action")({
       add: (found) => structureActions.add.toData(found, data),
       delete: (found) => structureActions.delete.toData(found, data),
+      group: (found) => structureActions.group.toData(found, data),
       rename: (found) => structureActions.rename.toData(found, data),
       shape: (found) => structureActions.shape.toData(found, data),
-      group: (found) => structureActions.group.toData(found, data),
       status: (found) => structureActions.status.toData(found, data),
     })
   );
@@ -329,9 +329,9 @@ const isCurrentBy = (change: StructureChange, structure: Structure): boolean =>
     Match.discriminatorsExhaustive("action")({
       add: (found) => structureActions.add.isCurrent(found, structure),
       delete: (found) => structureActions.delete.isCurrent(found, structure),
+      group: (found) => structureActions.group.isCurrent(found, structure),
       rename: (found) => structureActions.rename.isCurrent(found, structure),
       shape: (found) => structureActions.shape.isCurrent(found, structure),
-      group: (found) => structureActions.group.isCurrent(found, structure),
       status: (found) => structureActions.status.isCurrent(found, structure),
     })
   );
@@ -345,9 +345,9 @@ const summaryBy = (
     Match.discriminatorsExhaustive("action")({
       add: (found) => structureActions.add.summary(found, id, names),
       delete: (found) => structureActions.delete.summary(found, id, names),
+      group: (found) => structureActions.group.summary(found, id, names),
       rename: (found) => structureActions.rename.summary(found, id, names),
       shape: (found) => structureActions.shape.summary(found, id, names),
-      group: (found) => structureActions.group.summary(found, id, names),
       status: (found) => structureActions.status.summary(found, id, names),
     })
   );
@@ -357,9 +357,9 @@ const describeBy = (change: StructureChange, names: DescribeNames): string =>
     Match.discriminatorsExhaustive("action")({
       add: (found) => structureActions.add.describe(found, names),
       delete: (found) => structureActions.delete.describe(found, names),
+      group: (found) => structureActions.group.describe(found, names),
       rename: (found) => structureActions.rename.describe(found, names),
       shape: (found) => structureActions.shape.describe(found, names),
-      group: (found) => structureActions.group.describe(found, names),
       status: (found) => structureActions.status.describe(found, names),
     })
   );
@@ -373,9 +373,9 @@ const factsBy = (
     Match.discriminatorsExhaustive("action")({
       add: (found) => structureActions.add.facts(found, current, layout),
       delete: (found) => structureActions.delete.facts(found, current, layout),
+      group: (found) => structureActions.group.facts(found, current, layout),
       rename: (found) => structureActions.rename.facts(found, current, layout),
       shape: (found) => structureActions.shape.facts(found, current, layout),
-      group: (found) => structureActions.group.facts(found, current, layout),
       status: (found) => structureActions.status.facts(found, current, layout),
     })
   );
@@ -388,9 +388,9 @@ const onProposedBy = (
     Match.discriminatorsExhaustive("action")({
       add: (found) => structureActions.add.onProposed(found, made),
       delete: (found) => structureActions.delete.onProposed(found, made),
+      group: (found) => structureActions.group.onProposed(found, made),
       rename: (found) => structureActions.rename.onProposed(found, made),
       shape: (found) => structureActions.shape.onProposed(found, made),
-      group: (found) => structureActions.group.onProposed(found, made),
       status: (found) => structureActions.status.onProposed(found, made),
     })
   );

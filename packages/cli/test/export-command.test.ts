@@ -27,17 +27,17 @@ const mapFiles = (files: HomeFiles) =>
  * arrow, and a frame per group.
  */
 const SceneElement = Schema.Struct({
-  type: Schema.String,
-  originalText: Schema.optionalKey(Schema.String),
   name: Schema.optionalKey(Schema.String),
+  originalText: Schema.optionalKey(Schema.String),
+  type: Schema.String,
 });
 
 const ExcalidrawScene = Schema.fromJsonString(
   Schema.Struct({
+    appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
+    elements: Schema.Array(SceneElement),
     type: Schema.Literal("excalidraw"),
     version: Schema.Literal(2),
-    elements: Schema.Array(SceneElement),
-    appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
   })
 );
 
@@ -73,7 +73,8 @@ describe("export", () => {
     it.effect("writes the map as an Excalidraw scene, next to SYSTEM.md", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* pipelineMap);
+        const pipelineMapFiles = yield* pipelineMap;
+        const home = yield* makeHome(pipelineMapFiles);
         const map = path.join(home, "flake-pipeline", "map");
 
         const result = yield* runCli(home, [
@@ -93,10 +94,10 @@ describe("export", () => {
         // The pipeline map has 15 structures, 29 hops and 4 groups. Each
         // structure and hop carries its name or label as a text element.
         assert.deepStrictEqual(countsOf(scene), {
-          rectangle: 15,
           arrow: 29,
-          text: 44,
           frame: 4,
+          rectangle: 15,
+          text: 44,
         });
 
         const texts = textsOf(scene);
@@ -120,7 +121,8 @@ describe("export", () => {
     it.effect("--background white sets the canvas colour like the page", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* crowdedMap);
+        const crowdedMapFiles = yield* crowdedMap;
+        const home = yield* makeHome(crowdedMapFiles);
         const map = path.join(home, "crowded", "map");
 
         const result = yield* runCli(home, [
@@ -186,7 +188,8 @@ describe("export", () => {
     it.effect("--output wins and its folders are created", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* minimalMap);
+        const minimalMapFiles = yield* minimalMap;
+        const home = yield* makeHome(minimalMapFiles);
         const map = path.join(home, "pipeline", "map");
 
         const result = yield* runCli(home, [
@@ -215,7 +218,8 @@ describe("export", () => {
       ([flag, value, valid]) =>
         Effect.gen(function* () {
           const path = yield* Path.Path;
-          const home = yield* makeHome(yield* minimalMap);
+          const minimalMapFiles = yield* minimalMap;
+          const home = yield* makeHome(minimalMapFiles);
           const map = path.join(home, "pipeline", "map");
 
           const result = yield* runCli(home, ["export", map, flag, value]);
@@ -240,7 +244,8 @@ describe("export", () => {
     it.effect("an unknown chapter lists the chapters, by number and id", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* crowdedMap);
+        const crowdedMapFiles = yield* crowdedMap;
+        const home = yield* makeHome(crowdedMapFiles);
         const map = path.join(home, "crowded", "map");
 
         for (const chapter of ["c-nope", "0", "3"]) {
@@ -269,7 +274,8 @@ describe("export", () => {
       () =>
         Effect.gen(function* () {
           const path = yield* Path.Path;
-          const home = yield* makeHome(yield* pipelineMap);
+          const pipelineMapFiles = yield* pipelineMap;
+          const home = yield* makeHome(pipelineMapFiles);
           const map = path.join(home, "flake-pipeline", "map");
           const file = "flake-pipeline/flake-pipeline-iso-chapter-8.svg";
 
@@ -309,7 +315,8 @@ describe("export", () => {
     it.effect("--flow names a flow of the map, in the last chapter", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* pipelineMap);
+        const pipelineMapFiles = yield* pipelineMap;
+        const home = yield* makeHome(pipelineMapFiles);
         const map = path.join(home, "flake-pipeline", "map");
 
         const unknown = yield* runCli(home, [
@@ -345,7 +352,8 @@ describe("export", () => {
     it.effect("finds a chapter by id or by number before drawing", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* crowdedMap);
+        const crowdedMapFiles = yield* crowdedMap;
+        const home = yield* makeHome(crowdedMapFiles);
         const map = path.join(home, "crowded", "map");
 
         for (const chapter of ["c-edge", "1"]) {
@@ -369,7 +377,8 @@ describe("export", () => {
     it.effect("takes and releases the lock", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* minimalMap);
+        const minimalMapFiles = yield* minimalMap;
+        const home = yield* makeHome(minimalMapFiles);
         const map = path.join(home, "pipeline", "map");
 
         const result = yield* runCli(home, [

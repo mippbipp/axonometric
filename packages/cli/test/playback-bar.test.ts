@@ -7,14 +7,16 @@ import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 interface Box {
+  readonly height: number;
+  readonly width: number;
   readonly x: number;
   readonly y: number;
-  readonly width: number;
-  readonly height: number;
 }
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMapFiles = yield* fullMap;
+
+  return yield* buildAndOpen(fullMapFiles, "review");
 });
 
 const goToLastChapter = Effect.fnUntraced(function* (page: Page) {
@@ -27,13 +29,13 @@ const goToLastChapter = Effect.fnUntraced(function* (page: Page) {
 });
 
 /** The smallest box around every box in `boxes`. */
-const unionOf = (boxes: readonly Box[]) => {
+const unionOf = (boxes: ReadonlyArray<Box>) => {
   const left = Math.min(...Arr.map(boxes, (box) => box.x));
   const top = Math.min(...Arr.map(boxes, (box) => box.y));
   const right = Math.max(...Arr.map(boxes, (box) => box.x + box.width));
   const bottom = Math.max(...Arr.map(boxes, (box) => box.y + box.height));
 
-  return { x: left, y: top, width: right - left, height: bottom - top };
+  return { height: bottom - top, width: right - left, x: left, y: top };
 };
 
 const intersects = (a: Box, b: Box) =>
@@ -47,8 +49,9 @@ const zoomControlsBox = Effect.fnUntraced(function* (page: Page) {
     ["Zoom in", "Zoom out", "Zoom to fit"],
     (name) =>
       Effect.promise(() =>
-        page.getByRole("button", { name, exact: true }).boundingBox()
-      )
+        page.getByRole("button", { exact: true, name }).boundingBox()
+      ),
+    { concurrency: 1 }
   );
 
   const boxes = Arr.filter(buttons, (box) => box !== null);
@@ -62,7 +65,7 @@ describe("the playback bar", () => {
   it.live("holds Play, Step and the flow choices in one container", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+        const { errors, page } = yield* reviewPage;
 
         yield* goToLastChapter(page);
 
@@ -71,19 +74,22 @@ describe("the playback bar", () => {
             page.locator(`[data-playback-bar] ${selector}`).count()
           );
 
+        const playOrPauseCount = yield* inBar(
+          '[data-control="play"], [data-control="pause"]'
+        );
+
         // The last chapter starts playing, so Pause stands in for Play.
-        assert.strictEqual(
-          yield* inBar('[data-control="play"], [data-control="pause"]'),
-          1
+        assert.strictEqual(playOrPauseCount, 1);
+        const stepCount = yield* inBar('[data-control="step"]');
+        assert.strictEqual(stepCount, 1);
+        const flowButtonCount = yield* inBar("[data-flow-picker] [data-flow]");
+        assert.isAbove(flowButtonCount, 0);
+
+        const playbackControlsCount = yield* Effect.promise(() =>
+          page.locator("header [data-playback-controls]").count()
         );
-        assert.strictEqual(yield* inBar('[data-control="step"]'), 1);
-        assert.isAbove(yield* inBar("[data-flow-picker] [data-flow]"), 0);
-        assert.strictEqual(
-          yield* Effect.promise(() =>
-            page.locator("header [data-playback-controls]").count()
-          ),
-          0
-        );
+
+        assert.strictEqual(playbackControlsCount, 0);
         assert.deepStrictEqual(errors, []);
       })
     )
@@ -96,7 +102,7 @@ describe("the playback bar", () => {
           const { page } = yield* reviewPage;
 
           yield* Effect.promise(() =>
-            page.setViewportSize({ width, height: 800 })
+            page.setViewportSize({ height: 800, width })
           );
           yield* goToLastChapter(page);
 
@@ -118,7 +124,7 @@ describe("the hint footer", () => {
         const { page } = yield* reviewPage;
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 900, height: 800 })
+          page.setViewportSize({ height: 800, width: 900 })
         );
 
         const [footer] = yield* boxesOf(page, "[data-hints]");
@@ -128,7 +134,7 @@ describe("the hint footer", () => {
         assert.isDefined(footer);
         assert.isDefined(list);
 
-        const footerBox = footer ?? { x: 0, y: 0, width: 0, height: 0 };
+        const footerBox = footer ?? { height: 0, width: 0, x: 0, y: 0 };
         const listBox = list ?? footerBox;
 
         // A hint that doesn't fit wraps below the list, where it's clipped

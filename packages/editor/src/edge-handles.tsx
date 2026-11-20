@@ -17,22 +17,22 @@ const dragThreshold = 4;
 /** One press on an edge handle, until it is released. */
 interface Press {
   readonly from: string;
-  readonly start: ReturnType<typeof edgeSpots>[number];
-  readonly pointer: number;
   readonly origin: { readonly x: number; readonly y: number };
+  readonly pointer: number;
+  readonly start: ReturnType<typeof edgeSpots>[number];
 }
 
 /** The structure whose footprint holds `point`, other than `except`. */
 const structureAt = ({
-  placements,
-  revealed,
-  point,
   except,
+  placements,
+  point,
+  revealed,
 }: {
-  readonly placements: Readonly<Partial<Record<string, Placement>>>;
-  readonly revealed: ReadonlySet<string>;
-  readonly point: GridPoint;
   readonly except: string;
+  readonly placements: Readonly<Partial<Record<string, Placement>>>;
+  readonly point: GridPoint;
+  readonly revealed: ReadonlySet<string>;
 }): string | null =>
   Option.getOrNull(
     Arr.findFirst(
@@ -97,13 +97,13 @@ export function EdgeHandles({ view }: { readonly view: View }) {
   }, []);
 
   if (editor === null || !live || owner === null) {
-    return <g ref={root} data-edge-handles="off" />;
+    return <g data-edge-handles="off" ref={root} />;
   }
 
   const placement = editor.placements[owner];
 
   const spots =
-    placement === undefined ? [] : edgeSpots({ placement, view, texts, zoom });
+    placement === undefined ? [] : edgeSpots({ placement, texts, view, zoom });
 
   const onDown = (
     event: ReactPointerEvent,
@@ -119,9 +119,9 @@ export function EdgeHandles({ view }: { readonly view: View }) {
     element.setPointerCapture(event.pointerId);
     press.current = {
       from: owner,
-      start,
-      pointer: event.pointerId,
       origin: { x: event.clientX, y: event.clientY },
+      pointer: event.pointerId,
+      start,
     };
   };
 
@@ -150,15 +150,15 @@ export function EdgeHandles({ view }: { readonly view: View }) {
 
     if (end !== undefined) {
       drafting.stretchTo({
-        from: held.from,
-        start: held.start.at,
         end,
+        from: held.from,
         over: structureAt({
-          placements: editor.placements,
-          revealed: editor.revealed,
-          point: end,
           except: held.from,
+          placements: editor.placements,
+          point: end,
+          revealed: editor.revealed,
         }),
+        start: held.start.at,
       });
     }
   };
@@ -182,30 +182,28 @@ export function EdgeHandles({ view }: { readonly view: View }) {
 
   return (
     <g
-      ref={root}
       data-edge-handles={owner}
-      onPointerMove={onMove}
-      onPointerUp={(event) => {
-        finish(event, true);
+      onLostPointerCapture={(event) => {
+        finish(event, false);
       }}
       onPointerCancel={(event) => {
         finish(event, false);
       }}
-      onLostPointerCapture={(event) => {
-        finish(event, false);
+      onPointerMove={onMove}
+      onPointerUp={(event) => {
+        finish(event, true);
       }}
+      ref={root}
     >
       {Arr.map(spots, (spot) => (
         <circle
-          key={spot.side}
-          data-edge-handle={spot.side}
-          data-edge-owner={owner}
           aria-hidden="true"
+          className="fill-paper stroke-pending cursor-crosshair"
           cx={spot.at.sx}
           cy={spot.at.sy}
-          r={handleRadius}
-          className="fill-paper stroke-pending cursor-crosshair"
-          strokeWidth={handleStroke}
+          data-edge-handle={spot.side}
+          data-edge-owner={owner}
+          key={spot.side}
           onPointerDown={(event) => {
             onDown(event, spot);
           }}
@@ -215,6 +213,8 @@ export function EdgeHandles({ view }: { readonly view: View }) {
           onPointerLeave={() => {
             setNear(null);
           }}
+          r={handleRadius}
+          strokeWidth={handleStroke}
         />
       ))}
     </g>

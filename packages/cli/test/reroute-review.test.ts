@@ -30,65 +30,68 @@ const detour = [
 ];
 
 const rerouteItem: BatchItem = {
-  id: "reroute-store",
-  kind: "layout",
   change: {
     id: "reroute-store",
     kind: "reroute",
-    target: { kind: "hop", id: "h-store" },
     points: detour,
+    target: { id: "h-store", kind: "hop" },
   },
+  id: "reroute-store",
+  kind: "layout",
 };
 
 /** The loop group (page, server, proposals, pull request) moved down 10. */
 const groupItem: BatchItem = {
-  id: "move-loop",
-  kind: "layout",
   change: {
     id: "move-loop",
     kind: "move",
     moves: [
-      { target: { kind: "structure", id: "page" }, position: { x: 4, y: 10 } },
+      { position: { x: 4, y: 10 }, target: { id: "page", kind: "structure" } },
       {
-        target: { kind: "structure", id: "server" },
         position: { x: 8, y: 10 },
+        target: { id: "server", kind: "structure" },
       },
       {
-        target: { kind: "structure", id: "proposals" },
         position: { x: 8, y: 16 },
+        target: { id: "proposals", kind: "structure" },
       },
       {
-        target: { kind: "structure", id: "pull-request" },
         position: { x: 12, y: 16 },
+        target: { id: "pull-request", kind: "structure" },
       },
     ],
   },
+  id: "move-loop",
+  kind: "layout",
 };
 
 const batchOf = (
-  items: readonly BatchItem[],
+  items: ReadonlyArray<BatchItem>,
   verdicts: Batch["verdicts"] = {}
-): Batch => ({ number: 1, frozenAt: at, items, verdicts });
+): Batch => ({ frozenAt: at, items, number: 1, verdicts });
 
 const fileOf = (proposals: Proposals) =>
   `${JSON.stringify(proposals, null, 2)}\n`;
 
-const homeWith = (items: readonly BatchItem[], verdicts: Batch["verdicts"]) =>
+const homeWith = (
+  items: ReadonlyArray<BatchItem>,
+  verdicts: Batch["verdicts"]
+) =>
   Effect.gen(function* () {
     const path = yield* Path.Path;
 
     const root = yield* makeHome({
       ...(yield* fullMap),
       "review/map/proposals.json": fileOf({
+        batches: [batchOf(items, verdicts)],
         format: 1,
-        revision: 4,
         layout: [],
         notes: [],
-        batches: [batchOf(items, verdicts)],
+        revision: 4,
       }),
     });
 
-    return { root, home: path.join(root, "review", "map") };
+    return { home: path.join(root, "review", "map"), root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
@@ -136,14 +139,14 @@ describe("review shows a reroute", () => {
         // The first point is off the server's edge, but every leg is
         // right-angled, so only the footprint check can object.
         const off: BatchItem = {
-          id: "reroute-store",
-          kind: "layout",
           change: {
             id: "reroute-store",
             kind: "reroute",
-            target: { kind: "hop", id: "h-store" },
             points: [{ x: 9, y: 1 }, { x: 9, y: 2.5 }, ...detour.slice(2)],
+            target: { id: "h-store", kind: "hop" },
           },
+          id: "reroute-store",
+          kind: "layout",
         };
 
         const { home } = yield* homeWith([off], {});
@@ -210,7 +213,7 @@ describe("committing a reroute", () => {
   it.effect("a rejected reroute leaves the route automatic", () =>
     Effect.gen(function* () {
       const { home } = yield* homeWith([rerouteItem], {
-        "reroute-store": { verdict: "rejected", reason: "Goes round the box." },
+        "reroute-store": { reason: "Goes round the box.", verdict: "rejected" },
       });
 
       const result = yield* runCli(home, ["commit", home]);
@@ -240,17 +243,18 @@ describe("committing a reroute", () => {
 
         const fs = yield* FileSystem.FileSystem;
 
-        const saved = yield* decodeLayout(
-          yield* fs.readFileString(`${root}/review/map/layout.json`)
+        const layoutText = yield* fs.readFileString(
+          `${root}/review/map/layout.json`
         );
 
-        yield* fs.writeFileString(
-          `${root}/review/map/layout.json`,
-          yield* Schema.encodeEffect(LayoutFile)({
-            ...saved,
-            routes: { "h-store": agents },
-          })
-        );
+        const saved = yield* decodeLayout(layoutText);
+
+        const rerouted = yield* Schema.encodeEffect(LayoutFile)({
+          ...saved,
+          routes: { "h-store": agents },
+        });
+
+        yield* fs.writeFileString(`${root}/review/map/layout.json`, rerouted);
 
         const verdict = yield* runCli(home, [
           "verdict",
@@ -309,10 +313,10 @@ describe("committing a reroute", () => {
         ]
       );
       assert.deepStrictEqual(layout.structures.engineer, {
+        d: 2,
+        w: 2,
         x: 0,
         y: 0,
-        w: 2,
-        d: 2,
       });
     })
   );

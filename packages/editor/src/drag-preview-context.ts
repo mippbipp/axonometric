@@ -4,7 +4,7 @@ import { createContext, use } from "react";
 /** What a drag in progress would do, and whether the drop would be refused. */
 export interface DragPreviewInput {
   /** The layout changes the drop would make. */
-  readonly changes: readonly LayoutChange[];
+  readonly changes: ReadonlyArray<LayoutChange>;
   /** Why the drop would be refused, or nothing when it wouldn't. */
   readonly refusal?: string | undefined;
 }
@@ -15,16 +15,16 @@ export interface DragPreviewInput {
  * problems out against the proposed map.
  */
 export interface ChangePreviewInput {
+  /** What `check` would report for the proposed map with the change applied. */
+  readonly problems: ReadonlyArray<DraggedProblem>;
   /** Why the change would be refused, or nothing when it wouldn't. */
   readonly refusal?: string | undefined;
-  /** What `check` would report for the proposed map with the change applied. */
-  readonly problems: readonly DraggedProblem[];
 }
 
 /** Shows and clears what a proposed change would leave, in the same panel. */
 export interface ChangePreview {
-  readonly show: (change: ChangePreviewInput) => void;
   readonly clear: () => void;
+  readonly show: (change: ChangePreviewInput) => void;
 }
 
 /**
@@ -35,28 +35,28 @@ export interface ChangePreview {
  * re-render for the result.
  */
 export interface DragPreview {
-  readonly show: (drag: DragPreviewInput) => void;
   /** Clears what `show` put up. */
   readonly clear: () => void;
+  readonly show: (drag: DragPreviewInput) => void;
 }
 
 /** What the panel shows for the drag in progress. */
 export interface DragReport {
-  /** Why the drop would be refused, or nothing when it wouldn't. */
-  readonly refusal: string | undefined;
-  /**
-   * Every problem `check` would report for the layout the drop would make,
-   * each marked when the layout before the drag didn't have it.
-   */
-  readonly problems: readonly DraggedProblem[];
-  /** What the panel calls the change in its "New from …" mark. */
-  readonly source: "drag" | "change";
   /**
    * Whether every chapter is checked. A drag's check comes in a chapter at a
    * time, so until then `problems` holds the chapters checked so far. True
    * when left out.
    */
   readonly complete?: boolean;
+  /**
+   * Every problem `check` would report for the layout the drop would make,
+   * each marked when the layout before the drag didn't have it.
+   */
+  readonly problems: ReadonlyArray<DraggedProblem>;
+  /** Why the drop would be refused, or nothing when it wouldn't. */
+  readonly refusal: string | undefined;
+  /** What the panel calls the change in its "New from …" mark. */
+  readonly source: "drag" | "change";
 }
 
 export const ChangePreviewContext = createContext<ChangePreview | null>(null);
@@ -68,8 +68,8 @@ export const useChangePreview = (): ChangePreview | null =>
 export const PreviewContext = createContext<DragPreview | null>(null);
 
 export const nothingReported: DragReport = {
-  refusal: undefined,
   problems: [],
+  refusal: undefined,
   source: "drag",
 };
 

@@ -25,7 +25,7 @@ export function GroupPanel({ group }: { readonly group: Group }) {
   const { stop } = useWalkthrough();
   const titleId = useId();
   const [typed, setTyped] = useState<string | undefined>();
-  const { failure, run, clear } = useSending();
+  const { clear, failure, run } = useSending();
 
   const members = Arr.filter(
     state.data.structures,
@@ -39,7 +39,7 @@ export function GroupPanel({ group }: { readonly group: Group }) {
   const wanted = typed?.trim();
 
   const preview = useMemo(
-    (): readonly BatchItem[] =>
+    (): ReadonlyArray<BatchItem> =>
       wanted === undefined || wanted === "" || wanted === group.title
         ? []
         : [groupItem({ action: "rename", group: group.id, title: wanted })],
@@ -47,7 +47,7 @@ export function GroupPanel({ group }: { readonly group: Group }) {
   );
 
   const scope = useMemo(
-    (): CheckScope => ({ of: "chapter", chapter: stop.id }),
+    (): CheckScope => ({ chapter: stop.id, of: "chapter" }),
     [stop.id]
   );
 
@@ -60,9 +60,9 @@ export function GroupPanel({ group }: { readonly group: Group }) {
 
   return (
     <section
+      className="flex flex-col gap-3"
       data-group-panel={group.id}
       data-pinned
-      className="flex flex-col gap-3"
     >
       <p className="text-xs tracking-widest uppercase opacity-70">
         Group · Pinned
@@ -78,8 +78,8 @@ export function GroupPanel({ group }: { readonly group: Group }) {
       </p>
       {ops === null ? null : (
         <form
-          data-rename-group
           className="flex flex-col gap-2"
+          data-rename-group
           onSubmit={(event) => {
             event.preventDefault();
 
@@ -97,38 +97,38 @@ export function GroupPanel({ group }: { readonly group: Group }) {
             });
           }}
         >
-          <label htmlFor={titleId} className="text-xs opacity-70">
+          <label className="text-xs opacity-70" htmlFor={titleId}>
             Title
           </label>
           <div className="flex gap-1.5">
             <input
-              id={titleId}
-              data-group-title
-              type="text"
-              value={title}
-              maxLength={maxGroupTitleLength}
               autoComplete="off"
-              disabled={!ops.canPropose}
               className={`${fieldClass} min-w-0 flex-1`}
+              data-group-title
+              disabled={!ops.canPropose}
+              id={titleId}
+              maxLength={maxGroupTitleLength}
               onChange={(event) => {
                 clear();
                 setTyped(event.target.value);
               }}
+              type="text"
+              value={title}
             />
             <button
-              type="submit"
-              data-group-rename
               className={controlClass}
+              data-group-rename
               disabled={!canSubmit}
+              type="submit"
             >
               Rename
             </button>
           </div>
           {failure === undefined ? null : (
             <p
-              role="alert"
-              data-group-failure
               className="border-refused border-l-2 pl-2 text-xs"
+              data-group-failure
+              role="alert"
             >
               {failure}
             </p>
@@ -137,12 +137,12 @@ export function GroupPanel({ group }: { readonly group: Group }) {
       )}
       <div className="flex gap-1.5">
         <button
-          type="button"
-          data-control="unpin"
           className={controlClass}
+          data-control="unpin"
           onClick={() => {
             selectGroup(null);
           }}
+          type="button"
         >
           Unpin
         </button>

@@ -3,13 +3,13 @@ import { DateTime, Option } from "effect";
 const format = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
 const units = [
-  { unit: "day", seconds: 86_400 },
-  { unit: "hour", seconds: 3600 },
-  { unit: "minute", seconds: 60 },
-] as const satisfies readonly {
-  readonly unit: Intl.RelativeTimeFormatUnit;
+  { seconds: 86_400, unit: "day" },
+  { seconds: 3600, unit: "hour" },
+  { seconds: 60, unit: "minute" },
+] as const satisfies ReadonlyArray<{
   readonly seconds: number;
-}[];
+  readonly unit: Intl.RelativeTimeFormatUnit;
+}>;
 
 /** How long ago a saved date was, such as "5 minutes ago" or "yesterday". */
 export const relativeTime = (iso: string): string => {

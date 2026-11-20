@@ -45,7 +45,7 @@ export const laneWidths: Readonly<Record<View, number>> = {
 };
 
 /** A route's corners in half units, with repeated and straight-through points dropped. */
-export const routeCorners = (points: readonly GridPoint[]) => {
+export const routeCorners = (points: ReadonlyArray<GridPoint>) => {
   const halves = Arr.dedupeAdjacentWith(
     Arr.map(points, ({ x, y }) => ({
       x: Math.round(x * 2),
@@ -72,34 +72,34 @@ interface Cell {
 }
 
 interface Leg {
-  readonly hop: number;
-  readonly index: number;
   /** Whether the leg runs along x. */
   readonly alongX: boolean;
+  readonly high: number;
+  readonly hop: number;
+  readonly index: number;
   /** The grid line it runs on: y for a leg along x, x for one along y. */
   readonly line: number;
   readonly low: number;
-  readonly high: number;
 }
 
 /** One hop's route, as the lanes need it. */
 interface Path {
-  readonly corners: readonly Cell[];
-  readonly legs: readonly Leg[];
-  /** Every half-unit point it passes, in order. */
-  readonly cells: readonly Cell[];
-  /** For each cell, the leg the step from it belongs to. */
-  readonly legOfStep: readonly number[];
   /** The index in `cells` of each point, by key. */
   readonly at: ReadonlyMap<string, number>;
+  /** Every half-unit point it passes, in order. */
+  readonly cells: ReadonlyArray<Cell>;
+  readonly corners: ReadonlyArray<Cell>;
+  /** For each cell, the leg the step from it belongs to. */
+  readonly legOfStep: ReadonlyArray<number>;
+  readonly legs: ReadonlyArray<Leg>;
 }
 
 const cellKey = ({ x, y }: Cell) => `${x},${y}`;
 
-const pathOf = (hop: number, points: readonly GridPoint[]): Path => {
+const pathOf = (hop: number, points: ReadonlyArray<GridPoint>): Path => {
   const corners = routeCorners(points);
 
-  const legs = Arr.flatMap(corners, (start, index): readonly Leg[] => {
+  const legs = Arr.flatMap(corners, (start, index): ReadonlyArray<Leg> => {
     const end = corners[index + 1];
 
     if (end === undefined) {
@@ -111,18 +111,18 @@ const pathOf = (hop: number, points: readonly GridPoint[]): Path => {
 
     return [
       {
+        alongX,
+        high: Math.max(from, to),
         hop,
         index,
-        alongX,
         line: alongX ? start.y : start.x,
         low: Math.min(from, to),
-        high: Math.max(from, to),
       },
     ];
   });
 
-  const cells: Cell[] = [];
-  const legOfStep: number[] = [];
+  const cells: Array<Cell> = [];
+  const legOfStep: Array<number> = [];
 
   Arr.forEach(corners, (start, index) => {
     const end = corners[index + 1];
@@ -145,11 +145,11 @@ const pathOf = (hop: number, points: readonly GridPoint[]): Path => {
   });
 
   return {
-    corners,
-    legs,
-    cells,
-    legOfStep,
     at: new Map(Arr.map(cells, (cell, index) => [cellKey(cell), index])),
+    cells,
+    corners,
+    legOfStep,
+    legs,
   };
 };
 
@@ -324,11 +324,11 @@ const pairOrder = (
   [pi, p]: readonly [number, Path],
   [qi, q]: readonly [number, Path],
   theirs: ReadonlySet<string>
-): readonly Below[] =>
+): ReadonlyArray<Below> =>
   Arr.flatMap(sharedRuns(p, theirs), ({ from, to }) => {
     const left = leftOf(p, q, { from, to });
 
-    return Arr.flatMap(Arr.range(from, to), (step): readonly Below[] => {
+    return Arr.flatMap(Arr.range(from, to), (step): ReadonlyArray<Below> => {
       const a = p.cells[step];
       const b = p.cells[step + 1];
       const qStep = a === undefined ? undefined : q.at.get(cellKey(a));
@@ -351,7 +351,7 @@ const pairOrder = (
  * For every pair of legs that share steps, which sits lower across their
  * line: keyed by `hop:leg`, the legs that must sit below it.
  */
-const orderings = (paths: readonly Path[]) => {
+const orderings = (paths: ReadonlyArray<Path>) => {
   const steps = Arr.map(paths, stepsOfPath);
   const below = new Map<string, Set<string>>();
 
@@ -387,13 +387,13 @@ const meets = (a: Leg, b: Leg) => a.low <= b.high && b.low <= a.high;
 const laneRoom = 0.5;
 
 /** Legs on one grid line that overlap or touch, one after another along it. */
-const touchingGroups = (legs: readonly Leg[]) =>
+const touchingGroups = (legs: ReadonlyArray<Leg>) =>
   Arr.reduce(
     Arr.sort(
       legs,
       Order.mapInput(Order.Number, (leg: Leg) => leg.low)
     ),
-    Arr.empty<readonly Leg[]>(),
+    Arr.empty<ReadonlyArray<Leg>>(),
     (done, leg) => {
       const last = done.at(-1);
 
@@ -409,10 +409,10 @@ const touchingGroups = (legs: readonly Leg[]) =>
  * A cycle, which only overrides can make, falls back to route order.
  */
 const lowestFirst = (
-  group: readonly Leg[],
+  group: ReadonlyArray<Leg>,
   below: ReadonlyMap<string, ReadonlySet<string>>
 ) => {
-  const order: Leg[] = [];
+  const order: Array<Leg> = [];
   const placed = new Set<string>();
 
   const free = (leg: Leg) => !placed.has(legId(leg));
@@ -442,7 +442,7 @@ const lowestFirst = (
  * every leg it must sit above, and apart from every leg it meets.
  */
 const tracksOf = (
-  order: readonly Leg[],
+  order: ReadonlyArray<Leg>,
   below: ReadonlyMap<string, ReadonlySet<string>>
 ) => {
   const tracks = new Map<string, number>();
@@ -479,7 +479,7 @@ const tracksOf = (
  * Lanes are `width` apart, or closer where more lanes share a line than fit
  * in `laneRoom` that far apart.
  */
-const lanesOf = (paths: readonly Path[], width: number) => {
+const lanesOf = (paths: ReadonlyArray<Path>, width: number) => {
   const below = orderings(paths);
   const lanes = new Map<string, number>();
 
@@ -520,17 +520,17 @@ export const laneRoutes: {
     width: number
   ): (
     routes: Readonly<Record<string, HopRoute>>
-  ) => Readonly<Record<string, readonly GridPosition[]>>;
+  ) => Readonly<Record<string, ReadonlyArray<GridPosition>>>;
   (
     routes: Readonly<Record<string, HopRoute>>,
     width: number
-  ): Readonly<Record<string, readonly GridPosition[]>>;
+  ): Readonly<Record<string, ReadonlyArray<GridPosition>>>;
 } = dual(
   2,
   (
     routes: Readonly<Record<string, HopRoute>>,
     width: number
-  ): Readonly<Record<string, readonly GridPosition[]>> => {
+  ): Readonly<Record<string, ReadonlyArray<GridPosition>>> => {
     const entries = Rec.toEntries(routes);
 
     const paths = Arr.map(entries, ([, route], index) =>

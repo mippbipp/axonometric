@@ -33,7 +33,7 @@ const openContext = Effect.acquireRelease(
     browser ??= chromium.launch();
 
     return browser.then((launched) =>
-      launched.newContext({ viewport: { width: 1024, height: 640 } })
+      launched.newContext({ viewport: { height: 640, width: 1024 } })
     );
   }),
   (context) => Effect.promise(() => context.close())
@@ -68,8 +68,8 @@ export const openUrl = Effect.fnUntraced(function* (
     );
   }
 
-  const requests: string[] = [];
-  const errors: string[] = [];
+  const requests: Array<string> = [];
+  const errors: Array<string> = [];
 
   page.on("request", (request) => {
     if (!Str.startsWith("file:")(request.url())) {
@@ -87,7 +87,7 @@ export const openUrl = Effect.fnUntraced(function* (
     page.locator("[data-structure]").first().waitFor({ state: "attached" })
   );
 
-  return { page, requests, errors };
+  return { errors, page, requests };
 });
 
 /** Opens the HTML file `file`, as `openUrl` does. */
@@ -100,8 +100,10 @@ export const boxesOf = Effect.fnUntraced(function* (
 ) {
   const elements = yield* Effect.promise(() => page.locator(selector).all());
 
-  const boxes = yield* Effect.forEach(elements, (element) =>
-    Effect.promise(() => element.boundingBox())
+  const boxes = yield* Effect.forEach(
+    elements,
+    (element) => Effect.promise(() => element.boundingBox()),
+    { concurrency: 1 }
   );
 
   return Arr.filter(boxes, (box) => box !== null);
@@ -111,7 +113,6 @@ export const boxesOf = Effect.fnUntraced(function* (
  * `value` as a JavaScript literal, for building the expression strings that
  * `page.evaluate` and `page.waitForFunction` run in the page.
  */
-// oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- a JSON string is a JavaScript string literal
 export const literal = (value: string | null) => JSON.stringify(value);
 
 /** The `name` attribute of every element matching `selector`, in order. */
@@ -122,8 +123,10 @@ export const attributesOf = Effect.fnUntraced(function* (
 ) {
   const elements = yield* Effect.promise(() => page.locator(selector).all());
 
-  const values = yield* Effect.forEach(elements, (element) =>
-    Effect.promise(() => element.getAttribute(name))
+  const values = yield* Effect.forEach(
+    elements,
+    (element) => Effect.promise(() => element.getAttribute(name)),
+    { concurrency: 1 }
   );
 
   return Arr.filter(values, (value) => value !== null);
@@ -195,6 +198,39 @@ export const textOf = (page: Page, selector: string) =>
 /** The attribute `name` of the first element matching `selector`. */
 export const attributeOf = (page: Page, selector: string, name: string) =>
   Effect.promise(() => page.locator(selector).first().getAttribute(name));
+
+/** Fails the test unless exactly `expected` elements match `selector`. */
+export const assertCount = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string,
+  expected: number
+) {
+  const found = yield* count(page, selector);
+
+  assert.strictEqual(found, expected);
+});
+
+/** Fails the test unless the first element matching `selector` has text containing `expected`. */
+export const assertTextIncludes = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string,
+  expected: string
+) {
+  const text = yield* textOf(page, selector);
+
+  assert.include(text, expected);
+});
+
+/** Fails the test unless attribute `name` of the first element matching `target.selector` is `expected`. */
+export const assertAttribute = Effect.fnUntraced(function* (
+  page: Page,
+  target: { readonly name: string; readonly selector: string },
+  expected: string | null
+) {
+  const found = yield* attributeOf(page, target.selector, target.name);
+
+  assert.strictEqual(found, expected);
+});
 
 /**
  * Waits until the first element matching `selector` has every attribute in

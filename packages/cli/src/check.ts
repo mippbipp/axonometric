@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
   formatCount,
   formatProblem,
@@ -43,15 +44,15 @@ const check = Effect.fn("check")(function* (home: string, json: boolean) {
   const { errors, warnings } = splitProblems(problems);
 
   if (json) {
-    yield* Console.log(
-      yield* encodeReport({
-        home,
-        ok: errors.length === 0,
-        errors,
-        warnings,
-        sourcesSkipped: Option.getOrNull(sourcesSkipped),
-      })
-    );
+    const reportText = yield* encodeReport({
+      home,
+      ok: errors.length === 0,
+      errors,
+      warnings,
+      sourcesSkipped: Option.getOrNull(sourcesSkipped),
+    });
+
+    yield* Console.log(reportText);
   } else {
     yield* Option.match(sourcesSkipped, {
       onNone: () => Effect.void,
@@ -61,7 +62,7 @@ const check = Effect.fn("check")(function* (home: string, json: boolean) {
     yield* Effect.forEach(
       problems,
       (problem) => Console.log(formatProblem(problem)),
-      { discard: true }
+      { discard: true, concurrency: 1 }
     );
 
     yield* Console.log(

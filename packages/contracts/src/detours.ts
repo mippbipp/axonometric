@@ -15,7 +15,7 @@ export const detourAllowance = 2;
  * units: 0 for a route that stays between them. Plan view draws routes
  * straight from above, so this is the distance there too.
  */
-export const detourOf = (points: readonly GridPoint[]) => {
+export const detourOf = (points: ReadonlyArray<GridPoint>) => {
   const [first] = points;
   const last = points.at(-1);
 
@@ -37,5 +37,5 @@ export const detourOf = (points: readonly GridPoint[]) => {
 };
 
 /** Whether a route runs further than `detourAllowance` outside its ends' rectangle. */
-export const isDetour = (points: readonly GridPoint[]) =>
+export const isDetour = (points: ReadonlyArray<GridPoint>) =>
   detourOf(points) > detourAllowance;

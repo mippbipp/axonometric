@@ -44,11 +44,11 @@ const useStructureNames = () => {
 };
 
 function ChapterStory() {
-  const { stop, index, stops, back, next, isLast } = useWalkthrough();
+  const { back, index, isLast, next, stop, stops } = useWalkthrough();
   const names = useStructureNames();
 
   return (
-    <section data-chapter-story className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" data-chapter-story>
       <p className="text-xs tracking-widest uppercase opacity-70">
         Chapter {index + 1} of {stops.length}
       </p>
@@ -63,8 +63,8 @@ function ChapterStory() {
           <ul className="flex flex-wrap gap-1.5">
             {Arr.map(stop.newlyRevealed, (id) => (
               <li
-                key={id}
                 className="border-ink border border-dashed px-1.5 py-0.5 text-xs"
+                key={id}
               >
                 {names.get(id) ?? id}
               </li>
@@ -75,18 +75,18 @@ function ChapterStory() {
       <ChapterEditor />
       <div className="flex gap-1.5">
         <button
-          type="button"
           className={controlClass}
           disabled={index === 0}
           onClick={back}
+          type="button"
         >
           ◂ Back
         </button>
         <button
-          type="button"
           className={controlClass}
           disabled={isLast}
           onClick={next}
+          type="button"
         >
           Next ▸
         </button>
@@ -96,17 +96,17 @@ function ChapterStory() {
 }
 
 function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
-  const { play, step, reducedMotion, closePacket } = usePlayback();
-  const { run, hop, index } = packet;
+  const { closePacket, play, reducedMotion, step } = usePlayback();
+  const { hop, index, run } = packet;
   const names = useStructureNames();
   const nameOf = (id: string) => names.get(id) ?? id;
 
   return (
-    <section data-packet-panel={hop.id} className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" data-packet-panel={hop.id}>
       <p className="text-xs tracking-widest uppercase opacity-70">
         Packet · {run.name} · hop {index + 1} of {run.hops.length}
       </p>
-      <h2 data-packet-label className="text-lg leading-tight font-medium">
+      <h2 className="text-lg leading-tight font-medium" data-packet-label>
         {hop.label}
       </h2>
       <p className="text-sm">
@@ -119,26 +119,27 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
         <p className="text-sm opacity-80">This hop has no example payload.</p>
       ) : (
         <pre
-          data-packet-payload
           className="border-ink bg-face overflow-auto border p-2 text-xs"
+          data-packet-payload
         >
+          {/* oxlint-disable-next-line effecttsgo/global-json -- displays a payload example, which is plain JSON */}
           {JSON.stringify(hop.payload, null, 2)}
         </pre>
       )}
       <div className="flex gap-1.5">
-        <button type="button" className={controlClass} onClick={step}>
+        <button className={controlClass} onClick={step} type="button">
           Step
         </button>
         {reducedMotion ? null : (
-          <button type="button" className={controlClass} onClick={play}>
+          <button className={controlClass} onClick={play} type="button">
             ▸ Play
           </button>
         )}
         <button
-          type="button"
-          data-control="close"
           className={controlClass}
+          data-control="close"
           onClick={closePacket}
+          type="button"
         >
           Close
         </button>
@@ -159,26 +160,26 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
  */
 export type PanelContent =
   | { readonly kind: "chapter" }
-  | { readonly kind: "hop"; readonly hop: string }
-  | { readonly kind: "group"; readonly group: Group }
+  | { readonly hop: string; readonly kind: "hop" }
+  | { readonly group: Group; readonly kind: "group" }
   | { readonly kind: "spot"; readonly spot: GridPoint }
   | { readonly kind: "packet"; readonly packet: SelectedPacket }
   | { readonly kind: "structure"; readonly structure: Structure }
   | { readonly kind: "inside"; readonly structure: Structure };
 
 const panelContentOf = ({
+  group,
+  hop,
+  inside,
   packet,
   pinned,
-  inside,
-  hop,
-  group,
   spot,
 }: {
+  readonly group: Group | undefined;
+  readonly hop: string | null;
+  readonly inside: Structure | undefined;
   readonly packet: SelectedPacket | null;
   readonly pinned: Structure | undefined;
-  readonly inside: Structure | undefined;
-  readonly hop: string | null;
-  readonly group: Group | undefined;
   readonly spot: GridPoint | null;
 }): PanelContent => {
   if (inside !== undefined) {
@@ -190,11 +191,11 @@ const panelContentOf = ({
   }
 
   if (hop !== null) {
-    return { kind: "hop", hop };
+    return { hop, kind: "hop" };
   }
 
   if (group !== undefined) {
-    return { kind: "group", group };
+    return { group, kind: "group" };
   }
 
   if (spot !== null) {
@@ -209,14 +210,14 @@ const panelContentOf = ({
 const renderContent = Match.type<PanelContent>().pipe(
   Match.discriminatorsExhaustive("kind")({
     chapter: () => <ChapterStory />,
-    hop: ({ hop }) => <HopPanel key={hop} id={hop} />,
-    group: ({ group }) => <GroupPanel key={group.id} group={group} />,
-    spot: ({ spot }) => <SpotPanel key={`${spot.x},${spot.y}`} spot={spot} />,
+    group: ({ group }) => <GroupPanel group={group} key={group.id} />,
+    hop: ({ hop }) => <HopPanel id={hop} key={hop} />,
+    inside: ({ structure }) => <InsidePanel structure={structure} />,
     packet: ({ packet }) => <PacketDetails packet={packet} />,
+    spot: ({ spot }) => <SpotPanel key={`${spot.x},${spot.y}`} spot={spot} />,
     structure: ({ structure }) => (
       <StructurePanel key={structure.id} structure={structure} />
     ),
-    inside: ({ structure }) => <InsidePanel structure={structure} />,
   })
 );
 
@@ -227,44 +228,44 @@ const tabClass =
 
 /** The tabs to show: Pending only while the page can edit, History only when served. */
 const tabsOf = ({
+  flowsOff,
+  hasFlows,
+  hasHistory,
   openCount,
   pendingCount,
-  hasHistory,
   pendingOff,
-  hasFlows,
-  flowsOff,
 }: {
-  /** Whether the page shows the Flows tab: it can propose changes to flows and Edit is on, or a past revision is open. */
-  readonly hasFlows: boolean;
   /** Whether the Flows tab is shown but can't be used, as while a past revision is open. */
   readonly flowsOff: boolean;
+  /** Whether the page shows the Flows tab: it can propose changes to flows and Edit is on, or a past revision is open. */
+  readonly hasFlows: boolean;
+  readonly hasHistory: boolean;
   readonly openCount: number;
   /** How many changes are pending, or `undefined` on a page that can't edit. */
   readonly pendingCount: number | undefined;
-  readonly hasHistory: boolean;
   /** Whether the Pending tab is shown but can't be used, as while a past revision is open. */
   readonly pendingOff: boolean;
-}): readonly {
+}): ReadonlyArray<{
+  readonly disabled: boolean;
   readonly id: Tab;
   readonly label: string;
-  readonly disabled: boolean;
-}[] => [
-  { id: "details", label: "Details", disabled: false },
-  { id: "questions", label: `Questions · ${openCount}`, disabled: false },
+}> => [
+  { disabled: false, id: "details", label: "Details" },
+  { disabled: false, id: "questions", label: `Questions · ${openCount}` },
   ...(hasFlows
-    ? [{ id: "flows" as const, label: "Flows", disabled: flowsOff }]
+    ? [{ disabled: flowsOff, id: "flows" as const, label: "Flows" }]
     : []),
   ...(pendingCount === undefined
     ? []
     : [
         {
+          disabled: pendingOff,
           id: "pending" as const,
           label: `Pending · ${pendingCount}`,
-          disabled: pendingOff,
         },
       ]),
   ...(hasHistory
-    ? [{ id: "history" as const, label: "History", disabled: false }]
+    ? [{ disabled: false, id: "history" as const, label: "History" }]
     : []),
 ];
 
@@ -273,23 +274,23 @@ const tabsOf = ({
  * closed tab does no work.
  */
 function TabPanel({
-  id,
-  prefix,
-  open,
   children,
+  id,
+  open,
+  prefix,
 }: {
-  readonly id: Tab;
-  readonly prefix: string;
-  readonly open: Tab;
   readonly children: ReactNode;
+  readonly id: Tab;
+  readonly open: Tab;
+  readonly prefix: string;
 }) {
   return (
     <div
-      role="tabpanel"
-      id={`${prefix}-${id}`}
       aria-labelledby={`${prefix}-${id}-tab`}
-      hidden={open !== id}
       className="min-h-0 flex-1 overflow-y-auto p-4"
+      hidden={open !== id}
+      id={`${prefix}-${id}`}
+      role="tabpanel"
     >
       {open === id ? children : null}
     </div>
@@ -325,9 +326,9 @@ function DockedForms() {
     <>
       {newGroup?.open === true ? (
         <section
-          data-new-group-panel
           aria-label="Create a group"
           className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+          data-new-group-panel
         >
           <h2 className="text-xs tracking-widest uppercase opacity-70">
             Create a group
@@ -341,9 +342,9 @@ function DockedForms() {
       ) : null}
       {placing?.open === true ? (
         <section
-          data-add-structure-panel
           aria-label="Add a structure"
           className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+          data-add-structure-panel
         >
           <h2 className="text-xs tracking-widest uppercase opacity-70">
             Add a structure
@@ -353,9 +354,9 @@ function DockedForms() {
       ) : null}
       {drafting?.draft === null ? null : (
         <section
-          data-draw-hop-panel
           aria-label="Draw a hop"
           className="border-ink bg-paper flex max-h-[55svh] shrink-0 flex-col gap-2 overflow-y-auto border-t p-3"
+          data-draw-hop-panel
         >
           <h2 className="text-xs tracking-widest uppercase opacity-70">
             Draw a hop
@@ -396,7 +397,7 @@ const pickedKey = ({
 
 /** How many questions are open across the groups. */
 const openQuestionCount = (
-  groups: readonly { readonly questions: readonly unknown[] }[]
+  groups: ReadonlyArray<{ readonly questions: ReadonlyArray<unknown> }>
 ): number =>
   Arr.reduce(groups, 0, (sum, group) => sum + group.questions.length);
 
@@ -423,7 +424,7 @@ const pendingCountOf = ({
  */
 export function SidePanel() {
   const { selected: packet } = usePlayback();
-  const { selected, selectedHop, selectedGroup, inside } = useSelection();
+  const { inside, selected, selectedGroup, selectedHop } = useSelection();
   const { state } = useWalkthrough();
   const spot = useNoteTool()?.spot ?? null;
   const byId = useStructuresById();
@@ -442,8 +443,8 @@ export function SidePanel() {
   const picked = pickedKey({ selected, selectedGroup, selectedHop, spot });
 
   const [otherTab, setOtherTab] = useState<{
-    readonly tab: Tab;
     readonly selected: string | null;
+    readonly tab: Tab;
   } | null>(null);
 
   // While a past revision is open there is no editing, but the tab strip
@@ -455,23 +456,23 @@ export function SidePanel() {
   });
 
   const tabs = tabsOf({
+    flowsOff: connections === null,
+    hasFlows: editOn && (connections !== null || history !== null),
+    hasHistory: history !== null,
     openCount,
     pendingCount,
-    hasHistory: history !== null,
     pendingOff: editing === null,
-    hasFlows: editOn && (connections !== null || history !== null),
-    flowsOff: connections === null,
   });
 
   const tab: Tab =
     otherTab !== null &&
     otherTab.selected === picked &&
-    Arr.some(tabs, ({ id, disabled }) => id === otherTab.tab && !disabled)
+    Arr.some(tabs, ({ disabled, id }) => id === otherTab.tab && !disabled)
       ? otherTab.tab
       : "details";
 
   const choose = (next: Tab) => {
-    setOtherTab(next === "details" ? null : { tab: next, selected: picked });
+    setOtherTab(next === "details" ? null : { selected: picked, tab: next });
   };
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -498,58 +499,58 @@ export function SidePanel() {
 
   return (
     <aside
-      data-side-panel
       className="border-ink flex w-80 min-w-0 shrink-0 flex-col border-l"
+      data-side-panel
     >
       <div
-        tabIndex={0}
-        role="tablist"
         aria-label="Side panel"
         className="border-ink flex min-w-0 flex-wrap gap-1 border-b px-3 py-2"
         onKeyDown={onTabKeyDown}
+        role="tablist"
+        tabIndex={0}
       >
-        {Arr.map(tabs, ({ id, label, disabled }) => (
+        {Arr.map(tabs, ({ disabled, id, label }) => (
           <button
-            key={id}
-            type="button"
-            role="tab"
-            id={`${idPrefix}-${id}-tab`}
-            data-tab={id}
-            aria-selected={tab === id}
             aria-controls={`${idPrefix}-${id}`}
             aria-disabled={disabled}
+            aria-selected={tab === id}
+            className={tabClass}
+            data-tab={id}
             disabled={disabled}
+            id={`${idPrefix}-${id}-tab`}
+            key={id}
+            onClick={() => {
+              choose(id);
+            }}
+            role="tab"
+            tabIndex={tab === id ? 0 : -1}
             title={
               disabled
                 ? "Editing is off while a past revision is open"
                 : undefined
             }
-            tabIndex={tab === id ? 0 : -1}
-            className={tabClass}
-            onClick={() => {
-              choose(id);
-            }}
+            type="button"
           >
             {label}
           </button>
         ))}
       </div>
-      <TabPanel id="details" prefix={idPrefix} open={tab}>
+      <TabPanel id="details" open={tab} prefix={idPrefix}>
         {renderContent(
           panelContentOf({
-            packet,
-            pinned: selected === null ? undefined : byId.get(selected),
-            inside: inside === null ? undefined : byId.get(inside),
-            hop: selectedHop,
             group: Arr.findFirst(
               state.data.groups,
               ({ id }) => id === selectedGroup
             ).pipe(Option.getOrUndefined),
+            hop: selectedHop,
+            inside: inside === null ? undefined : byId.get(inside),
+            packet,
+            pinned: selected === null ? undefined : byId.get(selected),
             spot,
           })
         )}
       </TabPanel>
-      <TabPanel id="questions" prefix={idPrefix} open={tab}>
+      <TabPanel id="questions" open={tab} prefix={idPrefix}>
         <QuestionsTab
           onPicked={() => {
             choose("details");
@@ -557,17 +558,17 @@ export function SidePanel() {
         />
       </TabPanel>
       {connections === null ? null : (
-        <TabPanel id="flows" prefix={idPrefix} open={tab}>
+        <TabPanel id="flows" open={tab} prefix={idPrefix}>
           <FlowsTab />
         </TabPanel>
       )}
       {editing === null ? null : (
-        <TabPanel id="pending" prefix={idPrefix} open={tab}>
+        <TabPanel id="pending" open={tab} prefix={idPrefix}>
           <PendingTab />
         </TabPanel>
       )}
       {history === null ? null : (
-        <TabPanel id="history" prefix={idPrefix} open={tab}>
+        <TabPanel id="history" open={tab} prefix={idPrefix}>
           <HistoryTab />
         </TabPanel>
       )}

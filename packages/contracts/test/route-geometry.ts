@@ -15,21 +15,23 @@ import type {
 
 /** One straight stretch of a route, between two of its points. */
 export interface Leg {
-  readonly start: GridPoint;
   readonly end: GridPoint;
+  readonly start: GridPoint;
 }
 
 /** The legs of a route, in order. */
-export const legsOf = (points: readonly GridPoint[]): readonly Leg[] =>
+export const legsOf = (points: ReadonlyArray<GridPoint>): ReadonlyArray<Leg> =>
   Arr.flatMap(points, (start, index) => {
     const end = points[index + 1];
 
-    return end === undefined ? [] : [{ start, end }];
+    return end === undefined ? [] : [{ end, start }];
   });
 
 /** Every half-unit step a route takes, as an order-free key. */
-export const stepsOf = (points: readonly GridPoint[]): readonly string[] =>
-  Arr.flatMap(legsOf(points), ({ start, end }) => {
+export const stepsOf = (
+  points: ReadonlyArray<GridPoint>
+): ReadonlyArray<string> =>
+  Arr.flatMap(legsOf(points), ({ end, start }) => {
     const count = Math.abs(end.x - start.x + end.y - start.y) * 2;
     const dx = Math.sign(end.x - start.x) / 2;
     const dy = Math.sign(end.y - start.y) / 2;
@@ -75,7 +77,7 @@ export const edgeOf = (point: GridPoint, next: GridPoint) => {
 export const facingEdges = (
   box: Placement,
   other: Placement
-): readonly boolean[] => [
+): ReadonlyArray<boolean> => [
   other.x >= box.x + box.w,
   other.y >= box.y + box.d,
   other.x + other.w <= box.x,
@@ -104,10 +106,10 @@ export const routeArea = (from: AreaEnd, to: AreaEnd): ScreenRect => {
   const margin = areaMargin * gridOnScreen;
 
   return {
-    left: Math.min(...Arr.map(points, ({ sx }) => sx)) - margin,
-    top: Math.min(...Arr.map(points, ({ sy }) => sy)) - margin,
-    right: Math.max(...Arr.map(points, ({ sx }) => sx)) + margin,
     bottom: Math.max(...Arr.map(points, ({ sy }) => sy)) + margin,
+    left: Math.min(...Arr.map(points, ({ sx }) => sx)) - margin,
+    right: Math.max(...Arr.map(points, ({ sx }) => sx)) + margin,
+    top: Math.min(...Arr.map(points, ({ sy }) => sy)) - margin,
   };
 };
 
@@ -140,7 +142,7 @@ const cornerMargin = 0.5;
  */
 const fitsOnEdge = (
   length: number,
-  ends: readonly boolean[],
+  ends: ReadonlyArray<boolean>,
   extra: boolean
 ) => {
   const widths = Arr.sort(
@@ -170,13 +172,13 @@ export const facingEdgesFull = (
   box: Placement,
   other: Placement,
   {
-    taken,
     extra,
-  }: { readonly taken: readonly EndOn[]; readonly extra: boolean }
+    taken,
+  }: { readonly extra: boolean; readonly taken: ReadonlyArray<EndOn> }
 ) =>
   Arr.every(
-    Arr.map(facingEdges(box, other), (faces, edge) => ({ faces, edge })),
-    ({ faces, edge }) => {
+    Arr.map(facingEdges(box, other), (faces, edge) => ({ edge, faces })),
+    ({ edge, faces }) => {
       const length = edge % 2 === 0 ? box.d : box.w;
 
       const heads = Arr.map(

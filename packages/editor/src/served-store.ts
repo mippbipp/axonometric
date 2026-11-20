@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
   appendMove,
   applyLayoutChanges,
@@ -176,8 +177,8 @@ export const readServedPage = (document: Document): Option.Option<ServedPage> =>
 
 /** What the server said is wrong with the map files. */
 export interface Rejection {
+  readonly problems: ReadonlyArray<MapProblem>;
   readonly summary: string;
-  readonly problems: readonly MapProblem[];
 }
 
 /** Why the last edit didn't save, as the page tells the engineer. */
@@ -188,39 +189,39 @@ export interface EditNotice {
 
 /** The revision an accept just saved, shown for a few seconds. */
 export interface SavedRevision {
-  readonly revision: number;
   readonly message: string;
+  readonly revision: number;
 }
 
 /** What a served page shows. */
 export interface ServedView {
-  /** The last good map, with what `proposals.json` held at last word. */
-  readonly state: MapState;
-  /** Why the map files on disk don't make a map, or null when they do. */
-  readonly rejection: Rejection | null;
-  /** Whether the page has lost its connection to the server. */
-  readonly stopped: boolean;
-  /**
-   * The pending layout changes the page shows: those saved, with any edit
-   * still on its way to the server.
-   */
-  readonly pending: readonly LayoutChange[];
-  /** Why the last edit didn't save, until the next edit. */
-  readonly notice: EditNotice | null;
-  /** Whether there is an edit to undo. */
-  readonly canUndo: boolean;
-  /** Whether there is an undone edit to redo. */
-  readonly canRedo: boolean;
-  /** The revision the last accept saved, for a few seconds. */
-  readonly saved: SavedRevision | null;
-  /** The revisions, newest first, or null until the server has said. */
-  readonly history: HistoryList | null;
   /**
    * Whether an accept is waiting for the saves before it, or on its way to
    * the server. Edits are refused meanwhile, because they'd be saved over
    * the changes the accept takes.
    */
   readonly accepting: boolean;
+  /** Whether there is an undone edit to redo. */
+  readonly canRedo: boolean;
+  /** Whether there is an edit to undo. */
+  readonly canUndo: boolean;
+  /** The revisions, newest first, or null until the server has said. */
+  readonly history: HistoryList | null;
+  /** Why the last edit didn't save, until the next edit. */
+  readonly notice: EditNotice | null;
+  /**
+   * The pending layout changes the page shows: those saved, with any edit
+   * still on its way to the server.
+   */
+  readonly pending: ReadonlyArray<LayoutChange>;
+  /** Why the map files on disk don't make a map, or null when they do. */
+  readonly rejection: Rejection | null;
+  /** The revision the last accept saved, for a few seconds. */
+  readonly saved: SavedRevision | null;
+  /** The last good map, with what `proposals.json` held at last word. */
+  readonly state: MapState;
+  /** Whether the page has lost its connection to the server. */
+  readonly stopped: boolean;
 }
 
 /**
@@ -229,73 +230,11 @@ export interface ServedView {
  * run, ids included, so it can be run again on a fresher list.
  */
 export type Edit = (
-  changes: readonly LayoutChange[],
+  changes: ReadonlyArray<LayoutChange>,
   accepted: Layout
-) => readonly LayoutChange[];
+) => ReadonlyArray<LayoutChange>;
 
 export interface ServedStore {
-  readonly subscribe: (listener: () => void) => () => void;
-  readonly getSnapshot: () => ServedView;
-  /**
-   * Why putting structure `id` at `next` would be refused, or `undefined`
-   * when it wouldn't.
-   */
-  readonly refusalOf: (id: string, next: Placement) => string | undefined;
-  /**
-   * Puts structure `id` at `next` as pending changes, shown at once and
-   * saved to `proposals.json`. Returns why it was refused, or `undefined`.
-   */
-  readonly place: (id: string, next: Placement) => string | undefined;
-  /**
-   * Removes the pending change with `id`. Returns why it was refused, or
-   * `undefined`.
-   */
-  readonly discard: (id: ChangeId) => string | undefined;
-  /**
-   * Why moving several structures together as `moves` would be refused, or
-   * `undefined` when it wouldn't.
-   */
-  readonly refusalOfMoves: (
-    moves: readonly StructureMove[]
-  ) => string | undefined;
-  /**
-   * Moves, nudges, aligns or distributes a set as one pending change: `plan`
-   * is given where the structures sit once every pending change is applied,
-   * and returns the moves. It runs on the latest list each time, so quick
-   * repeats add up. A refusal also shows as a notice. Returns why it was
-   * refused, or `undefined`.
-   */
-  readonly arrange: (plan: Arrangement) => string | undefined;
-  /**
-   * Gives hop `hop` the route override `points` as a pending change, or puts
-   * it back on automatic routing with `null`. A refusal also shows as a
-   * notice. Returns why it was refused, or `undefined`.
-   */
-  readonly reroute: (
-    hop: string,
-    points: readonly GridPoint[] | null
-  ) => string | undefined;
-  /** Why `reroute` would refuse `points` for `hop`, without saving anything. */
-  readonly refusalOfReroute: (
-    hop: string,
-    points: readonly GridPoint[] | null
-  ) => string | undefined;
-  /**
-   * Puts the pending changes back as they were before the last edit. A
-   * refusal shows as a notice; the step is kept.
-   */
-  readonly undo: () => void;
-  /** Redoes the edit that `undo` took back. */
-  readonly redo: () => void;
-  /**
-   * Runs `edit` on the pending changes as any other edit: shown at once,
-   * saved, and one undo step. An edit that changes nothing is not a step.
-   * Returns why it was refused, or `undefined`. A refusal is not a notice:
-   * the caller says it.
-   */
-  readonly restore: (edit: Edit) => string | undefined;
-  /** Reads revision `n` from the server. */
-  readonly loadRevision: (n: number) => Effect.Effect<LoadedRevision>;
   /**
    * Accepts the pending layout changes with these ids, or all of them, as one
    * revision, once the saves already on their way are done. An empty
@@ -305,22 +244,86 @@ export interface ServedStore {
     ids: "all" | Arr.NonEmptyReadonlyArray<ChangeId>,
     message: string
   ) => void;
+  /**
+   * Moves, nudges, aligns or distributes a set as one pending change: `plan`
+   * is given where the structures sit once every pending change is applied,
+   * and returns the moves. It runs on the latest list each time, so quick
+   * repeats add up. A refusal also shows as a notice. Returns why it was
+   * refused, or `undefined`.
+   */
+  readonly arrange: (plan: Arrangement) => string | undefined;
+  /** Proposals to change what a chapter reveals and plays. */
+  readonly chapters: ChapterStoreOps;
+  /**
+   * Removes the pending change with `id`. Returns why it was refused, or
+   * `undefined`.
+   */
+  readonly discard: (id: ChangeId) => string | undefined;
+  /** Proposals to create and rename flows, and to order their hops and the flows. */
+  readonly flows: FlowOps;
+  readonly getSnapshot: () => ServedView;
+  /** Proposals to create and rename groups. */
+  readonly groups: GroupStoreOps;
+  /** Proposals to draw, delete or relabel hops. */
+  readonly hops: HopOps;
+  /** Reads revision `n` from the server. */
+  readonly loadRevision: (n: number) => Effect.Effect<LoadedRevision>;
+  /**
+   * Puts structure `id` at `next` as pending changes, shown at once and
+   * saved to `proposals.json`. Returns why it was refused, or `undefined`.
+   */
+  readonly place: (id: string, next: Placement) => string | undefined;
+  /** Redoes the edit that `undo` took back. */
+  readonly redo: () => void;
+  /**
+   * Why putting structure `id` at `next` would be refused, or `undefined`
+   * when it wouldn't.
+   */
+  readonly refusalOf: (id: string, next: Placement) => string | undefined;
+  /**
+   * Why moving several structures together as `moves` would be refused, or
+   * `undefined` when it wouldn't.
+   */
+  readonly refusalOfMoves: (
+    moves: ReadonlyArray<StructureMove>
+  ) => string | undefined;
+  /** Why `reroute` would refuse `points` for `hop`, without saving anything. */
+  readonly refusalOfReroute: (
+    hop: string,
+    points: ReadonlyArray<GridPoint> | null
+  ) => string | undefined;
+  /**
+   * Gives hop `hop` the route override `points` as a pending change, or puts
+   * it back on automatic routing with `null`. A refusal also shows as a
+   * notice. Returns why it was refused, or `undefined`.
+   */
+  readonly reroute: (
+    hop: string,
+    points: ReadonlyArray<GridPoint> | null
+  ) => string | undefined;
+  /**
+   * Runs `edit` on the pending changes as any other edit: shown at once,
+   * saved, and one undo step. An edit that changes nothing is not a step.
+   * Returns why it was refused, or `undefined`. A refusal is not a notice:
+   * the caller says it.
+   */
+  readonly restore: (edit: Edit) => string | undefined;
   /** Notes and the review loop. */
   readonly review: ReviewOps;
   /** Proposals to add, delete or change structures. */
   readonly structures: StructureOps;
-  /** Proposals to draw, delete or relabel hops. */
-  readonly hops: HopOps;
-  /** Proposals to create and rename flows, and to order their hops and the flows. */
-  readonly flows: FlowOps;
-  /** Proposals to create and rename groups. */
-  readonly groups: GroupStoreOps;
-  /** Proposals to change what a chapter reveals and plays. */
-  readonly chapters: ChapterStoreOps;
+  readonly subscribe: (listener: () => void) => () => void;
+  /**
+   * Puts the pending changes back as they were before the last edit. A
+   * refusal shows as a notice; the step is kept.
+   */
+  readonly undo: () => void;
 }
 
 /** Proposing groups, sent like the review writes. `done` runs when it ends. */
 export interface GroupStoreOps {
+  /** Removes an open group proposal. */
+  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /**
    * Proposes a new group or a new title. `members` are the structures that
    * go into a new group, each with the id of its group change, which the
@@ -328,18 +331,19 @@ export interface GroupStoreOps {
    */
   readonly propose: (
     change: GroupChange,
-    members: readonly { readonly id: ChangeId; readonly structure: string }[],
+    members: ReadonlyArray<{
+      readonly id: ChangeId;
+      readonly structure: string;
+    }>,
     done: ReviewDone<ChangeId>
   ) => void;
-  /** Removes an open group proposal. */
-  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
 }
 
 /** Proposing chapter changes, sent like the review writes. */
 export interface ChapterStoreOps {
-  readonly propose: (change: ChapterChange, done: ReviewDone<ChangeId>) => void;
   /** Removes an open chapter proposal. */
   readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+  readonly propose: (change: ChapterChange, done: ReviewDone<ChangeId>) => void;
 }
 
 /**
@@ -373,6 +377,20 @@ export interface FlowOps {
  * first. `done` runs when it ends.
  */
 export interface StructureOps {
+  /** Removes an open proposal. */
+  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+  /** Whether structure `id` is a new structure in an open proposal. */
+  readonly isOpenAdd: (id: string) => boolean;
+  /**
+   * Puts a structure the engineer proposed, and has not sent yet, at
+   * `next`. Returns why it was refused, or `undefined`; `done` runs when the
+   * write ends.
+   */
+  readonly place: (
+    id: string,
+    next: Placement,
+    done: ReviewDone<ChangeId>
+  ) => string | undefined;
   /**
    * Proposes `change`: a new structure, a deletion, a rename, or a change of
    * shape, group or status. The server keeps one proposal per structure and
@@ -389,24 +407,10 @@ export interface StructureOps {
    */
   readonly refusalOf: (change: StructureChange) => string | undefined;
   /**
-   * Puts a structure the engineer proposed, and has not sent yet, at
-   * `next`. Returns why it was refused, or `undefined`; `done` runs when the
-   * write ends.
-   */
-  readonly place: (
-    id: string,
-    next: Placement,
-    done: ReviewDone<ChangeId>
-  ) => string | undefined;
-  /** Whether structure `id` is a new structure in an open proposal. */
-  readonly isOpenAdd: (id: string) => boolean;
-  /**
    * Why putting the proposed structure `id` at `next` would be refused, or
    * `undefined` when it wouldn't, or when `id` isn't one the engineer proposed.
    */
   readonly refusalOfPlace: (id: string, next: Placement) => string | undefined;
-  /** Removes an open proposal. */
-  readonly discard: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
 }
 
 /** Why a check failed, or `undefined` when it passed. */
@@ -430,18 +434,18 @@ export type NewItem =
       readonly text: string;
     }
   | {
+      readonly after: string;
+      readonly before: string;
+      readonly field: TextField;
       readonly kind: "suggestion";
       readonly structureId: string;
-      readonly field: TextField;
-      readonly before: string;
-      readonly after: string;
     }
   | {
-      readonly kind: "answer";
-      readonly structureId: string;
-      readonly question: string;
-      readonly text: string;
       readonly answeredOn: string;
+      readonly kind: "answer";
+      readonly question: string;
+      readonly structureId: string;
+      readonly text: string;
     }
   | {
       readonly kind: "question";
@@ -462,18 +466,18 @@ export interface ReviewOps {
    * add it twice.
    */
   readonly add: (item: NewItem, done: ReviewDone<ChangeId>) => void;
+  /** Removes an open note, suggestion, answer or raised question. */
+  readonly discardProposal: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
+  /** Takes a reviewed item off the page. */
+  readonly dismiss: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /** Changes the text of an open note, suggestion, answer or raised question. */
   readonly editProposal: (
     id: ChangeId,
     text: string,
     done: ReviewDone<ChangeId>
   ) => void;
-  /** Removes an open note, suggestion, answer or raised question. */
-  readonly discardProposal: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /** Freezes every open change and note into the next batch. */
   readonly freeze: (done: ReviewDone<FreezeAnswer>) => void;
-  /** Takes a reviewed item off the page. */
-  readonly dismiss: (id: ChangeId, done: ReviewDone<ChangeId>) => void;
   /**
    * Reopens a rejected item as a new open item, and returns its id. For a
    * note, `text` replaces the old text.
@@ -486,10 +490,12 @@ export interface ReviewOps {
 }
 
 /** The moves that arrange a set, given where its structures sit now. */
-export type Arrangement = (placements: Placements) => readonly StructureMove[];
+export type Arrangement = (
+  placements: Placements
+) => ReadonlyArray<StructureMove>;
 
 /** The pending lists the session has been through, for undo and redo. */
-type History = UndoHistory<readonly LayoutChange[]>;
+type History = UndoHistory<ReadonlyArray<LayoutChange>>;
 
 /** How many edits the session remembers. */
 const historyDepth = 100;
@@ -499,16 +505,19 @@ const historyDepth = 100;
  * `trail` holds the list before each edit that went through.
  */
 interface Rerun {
-  readonly layout: readonly LayoutChange[];
+  readonly layout: ReadonlyArray<LayoutChange>;
   readonly reason: Option.Option<string>;
-  readonly trail: readonly (readonly LayoutChange[])[];
+  readonly trail: ReadonlyArray<ReadonlyArray<LayoutChange>>;
 }
 
 /**
  * An edit that arranges a set as one change, with its id fixed up front. The
  * moves are planned from the list the edit runs on.
  */
-const arranging = (plan: Arrangement, hops: readonly HopEnds[] = []): Edit => {
+const arranging = (
+  plan: Arrangement,
+  hops: ReadonlyArray<HopEnds> = []
+): Edit => {
   const id = newChangeId();
   const reroutes = new Map<string, ChangeId>();
 
@@ -550,7 +559,10 @@ const arranging = (plan: Arrangement, hops: readonly HopEnds[] = []): Edit => {
 };
 
 /** An edit that gives `hop` the route override `points`, or none. */
-const rerouting = (hop: string, points: readonly GridPoint[] | null): Edit => {
+const rerouting = (
+  hop: string,
+  points: ReadonlyArray<GridPoint> | null
+): Edit => {
   const id = newChangeId();
 
   return (changes, accepted) =>
@@ -558,8 +570,8 @@ const rerouting = (hop: string, points: readonly GridPoint[] | null): Edit => {
 };
 
 const moving = (
-  moves: readonly StructureMove[],
-  hops: readonly HopEnds[]
+  moves: ReadonlyArray<StructureMove>,
+  hops: ReadonlyArray<HopEnds>
 ): Edit => arranging(() => moves, hops);
 
 /** An edit that puts `id` at `next`, with change ids fixed up front. */
@@ -587,18 +599,18 @@ const placing = (id: string, next: Placement): Edit => {
 
 /** A write waiting its turn to be sent. */
 interface Queued {
-  /** The edit, to run again on a fresher list. */
-  readonly edit: Edit;
   /** The file revision the write is based on, fixed when it was made. */
   readonly base: number;
+  /** The edit, to run again on a fresher list. */
+  readonly edit: Edit;
+  /** The history as it was before this write, to put back if it fails. */
+  readonly historyBefore: History;
   /** The whole list the write sets. */
-  readonly layout: readonly LayoutChange[];
+  readonly layout: ReadonlyArray<LayoutChange>;
   /** Whether this is the write sent again after a conflict. */
   readonly retried: boolean;
   /** Whether this is an undo or redo, whose list is never rebuilt. */
   readonly step: boolean;
-  /** The history as it was before this write, to put back if it fails. */
-  readonly historyBefore: History;
 }
 
 /** How long to wait before reconnecting a stream the browser gave up on. */
@@ -648,7 +660,7 @@ const conflictMessage = (reason: Option.Option<string>) =>
     }
   )}`;
 
-const problemsText = (problems: readonly MapProblem[]) =>
+const problemsText = (problems: ReadonlyArray<MapProblem>) =>
   Arr.join(
     Arr.map(problems, (problem) => problem.message),
     " "
@@ -770,7 +782,7 @@ export const connectServed = ({
    * when the edit was made, so a write can't be sent against a revision it
    * wasn't built on.
    */
-  let queue: readonly Queued[] = [];
+  let queue: ReadonlyArray<Queued> = [];
 
   /** Goes up when the queue is dropped, so waiting writes know to skip. */
   let generation = 0;
@@ -1104,7 +1116,6 @@ export const connectServed = ({
     Effect.runFork(
       writeTurn
         .withPermit(send(queued, turn))
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
         .pipe(Effect.provide(FetchHttpClient.layer))
     );
   };
@@ -1120,8 +1131,8 @@ export const connectServed = ({
     after,
   }: {
     readonly accepted: Layout;
-    readonly before: readonly LayoutChange[];
-    readonly after: readonly LayoutChange[];
+    readonly after: ReadonlyArray<LayoutChange>;
+    readonly before: ReadonlyArray<LayoutChange>;
   }) =>
     Option.orElse(
       frozenWriteRefusal({ proposals: proposalsOf(view.state), after }),
@@ -1150,11 +1161,11 @@ export const connectServed = ({
     step,
     next,
   }: {
+    readonly after: ReadonlyArray<LayoutChange>;
     readonly edit: Edit;
-    readonly after: readonly LayoutChange[];
-    readonly step: boolean;
     /** The history once this write is made. */
     readonly next: History;
+    readonly step: boolean;
   }) => {
     // The next write is built on the one before it, so it's based on the
     // revision that one will make. If someone else writes first, the server
@@ -1360,14 +1371,14 @@ export const connectServed = ({
 
   /** One review write: where it goes, and how to send it and read the answer. */
   interface ReviewCall<A> {
-    readonly url: string;
     readonly encode: (base: number) => Effect.Effect<string>;
-    readonly read: (text: string) => Option.Option<{
-      readonly value: A;
-      readonly proposals: Proposals;
-    }>;
     /** Whether the write moves layout changes, which ends undo. */
     readonly endsUndo: boolean;
+    readonly read: (text: string) => Option.Option<{
+      readonly proposals: Proposals;
+      readonly value: A;
+    }>;
+    readonly url: string;
   }
 
   /** Shows `proposals` as what the server holds, after one of our writes. */
@@ -1469,7 +1480,6 @@ export const connectServed = ({
             done(outcome);
           })
         ),
-        // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
         Effect.provide(FetchHttpClient.layer)
       )
     );
@@ -1836,7 +1846,6 @@ export const connectServed = ({
       Effect.runFork(
         writeTurn
           .withPermit(sendAccept(ids, message))
-          // oxlint-disable-next-line effecttsgo/strict-effect-provide -- each write runs on its own, so this is its entry point.
           .pipe(Effect.provide(FetchHttpClient.layer))
       );
     },

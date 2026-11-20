@@ -13,7 +13,7 @@ import type { SceneFacts } from "./editor-view.ts";
 /** A side of a footprint, by compass point on the ground grid. */
 export type Side = "north" | "east" | "south" | "west";
 
-export const sides: readonly Side[] = ["north", "east", "south", "west"];
+export const sides: ReadonlyArray<Side> = ["north", "east", "south", "west"];
 
 /** How far an edge handle reaches from its centre, in drawing units. */
 export const handleRadius = 5;
@@ -22,11 +22,11 @@ export const handleRadius = 5;
 export const handleStroke = 1.5;
 
 /** Where along a side a handle tries to sit: the middle, then either quarter. */
-const shares: readonly number[] = [0.5, 0.25, 0.75];
+const shares: ReadonlyArray<number> = [0.5, 0.25, 0.75];
 
 /** The ground point at `share` of the way along `side` of `placement`. */
 const pointOn = (
-  { x, y, w, d }: Placement,
+  { d, w, x, y }: Placement,
   side: Side,
   share: number
 ): GridPoint => {
@@ -53,12 +53,12 @@ const reachAt = (zoom: number) => handleRadius + handleStroke / 2 + gapAt(zoom);
 
 const touches = ({
   at,
-  rect,
   reach,
+  rect,
 }: {
   readonly at: ScreenPoint;
-  readonly rect: ScreenRect;
   readonly reach: number;
+  readonly rect: ScreenRect;
 }): boolean =>
   at.sx + reach > rect.left &&
   at.sx - reach < rect.right &&
@@ -67,10 +67,10 @@ const touches = ({
 
 /** One handle: the side it is on, and where it is drawn. */
 export interface EdgeSpot {
-  readonly side: Side;
   readonly at: ScreenPoint;
   /** The ground point it sits on. */
   readonly ground: GridPoint;
+  readonly side: Side;
 }
 
 /**
@@ -82,28 +82,28 @@ export interface EdgeSpot {
  */
 export const edgeSpots = ({
   placement,
-  view,
   texts,
+  view,
   zoom,
 }: {
   readonly placement: Placement;
+  readonly texts: ReadonlyArray<ScreenRect>;
   readonly view: View;
-  readonly texts: readonly ScreenRect[];
   /** The zoom the scene's text is sized for. */
   readonly zoom: number;
-}): readonly EdgeSpot[] => {
+}): ReadonlyArray<EdgeSpot> => {
   const projection = groundProjections[view];
   const reach = reachAt(zoom);
 
-  return Arr.flatMap(sides, (side): readonly EdgeSpot[] =>
+  return Arr.flatMap(sides, (side): ReadonlyArray<EdgeSpot> =>
     Option.match(
       Arr.findFirst(
         Arr.map(shares, (share): EdgeSpot => {
           const ground = pointOn(placement, side, share);
 
-          return { side, at: projection.toScreen(ground), ground };
+          return { at: projection.toScreen(ground), ground, side };
         }),
-        ({ at }) => !Arr.some(texts, (rect) => touches({ at, rect, reach }))
+        ({ at }) => !Arr.some(texts, (rect) => touches({ at, reach, rect }))
       ),
       { onNone: () => [], onSome: (spot) => [spot] }
     )
@@ -112,18 +112,17 @@ export const edgeSpots = ({
 
 /** The pieces of a scene the editing layers keep clear of. */
 export interface Drawn {
-  readonly zoom: number;
-  readonly structures: readonly {
-    readonly tag: ScreenRect;
+  readonly hops: ReadonlyArray<{ readonly label: ScreenRect | undefined }>;
+  readonly structures: ReadonlyArray<{
     readonly chip: ScreenRect | undefined;
-    readonly outline: readonly ScreenPoint[];
-  }[];
-  readonly hops: readonly { readonly label: ScreenRect | undefined }[];
+    readonly outline: ReadonlyArray<ScreenPoint>;
+    readonly tag: ScreenRect;
+  }>;
+  readonly zoom: number;
 }
 
 /** What a scene drew, for `EditorSceneContext`. */
 export const sceneFactsOf = (scene: Drawn): SceneFacts => ({
-  zoom: scene.zoom,
   outlines: Arr.map(scene.structures, ({ outline }) => outline),
   texts: [
     ...Arr.map(scene.structures, ({ tag }) => tag),
@@ -134,6 +133,7 @@ export const sceneFactsOf = (scene: Drawn): SceneFacts => ({
       label === undefined ? [] : [label]
     ),
   ],
+  zoom: scene.zoom,
 });
 
 /** The scenes `sceneFactsOf` has read, so a scene gives the same facts each time. */

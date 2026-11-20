@@ -31,31 +31,31 @@ const itemClass =
 
 /** One row of the menu. A `checked` row is a checkbox, drawn as one. */
 function MenuItem({
+  checked,
+  children,
   item,
   itemRef,
-  checked,
   onChoose,
-  children,
 }: {
-  readonly item: Item;
-  readonly itemRef: Ref<HTMLButtonElement>;
   /** Whether a checkbox row is checked. Leave out for a row that saves. */
   readonly checked?: boolean;
-  readonly onChoose: () => void;
   readonly children: ReactNode;
+  readonly item: Item;
+  readonly itemRef: Ref<HTMLButtonElement>;
+  readonly onChoose: () => void;
 }) {
   const isCheckbox = checked !== undefined;
 
   return (
     <button
-      ref={itemRef}
-      type="button"
-      role={isCheckbox ? "menuitemcheckbox" : "menuitem"}
       aria-checked={checked}
-      tabIndex={-1}
-      data-export-item={item}
       className={itemClass}
+      data-export-item={item}
       onClick={onChoose}
+      ref={itemRef}
+      role={isCheckbox ? "menuitemcheckbox" : "menuitem"}
+      tabIndex={-1}
+      type="button"
     >
       {isCheckbox ? (
         <span aria-hidden="true" className="w-3 text-sm leading-none">
@@ -77,7 +77,7 @@ function MenuItem({
  * nothing.
  */
 export function ExportMenu({ view }: { readonly view: View }) {
-  const { state: shown, index } = useWalkthrough();
+  const { index, state: shown } = useWalkthrough();
   // Proposals are drawn on the page and left out of what it saves.
   const state = useExportState() ?? shown;
   const spotlightNow = useSpotlightActions().current;
@@ -89,7 +89,7 @@ export function ExportMenu({ view }: { readonly view: View }) {
   const itemRefs = useRef(new Map<Item, HTMLElement>());
   const menuId = useId();
   const chapter = index + 1;
-  const name = exportName({ system: state.system, view, chapter });
+  const name = exportName({ chapter, system: state.system, view });
 
   const close = (refocus: boolean) => {
     setOpen(false);
@@ -128,21 +128,44 @@ export function ExportMenu({ view }: { readonly view: View }) {
 
   const svgFile = () =>
     Effect.try({
+      catch: () => ExportFailed.make({ reason: "The map couldn't be drawn." }),
       try: () =>
         svgFileOf({
-          state,
-          view,
-          chapter: index,
           background: onWhite ? "white" : "paper",
-          theme: shownTheme(),
+          chapter: index,
           spotlight: spotlightNow(),
+          state,
+          theme: shownTheme(),
+          view,
         }),
-      catch: () => ExportFailed.make({ reason: "The map couldn't be drawn." }),
     });
 
   const actions: Readonly<
     Record<Export, () => Effect.Effect<void, ExportFailed>>
   > = {
+    excalidraw: () =>
+      Effect.sync(() => {
+        const file = excalidrawOf({
+          background: onWhite ? whiteBackground : undefined,
+          data: state.data,
+          layout: state.layout,
+        });
+
+        download(
+          new Blob([excalidrawText(file)], { type: "application/json" }),
+          `${state.system}.excalidraw`
+        );
+      }),
+    png: () =>
+      svgFile().pipe(
+        Effect.flatMap((file) => pngOf(file, pngScale)),
+        Effect.tap((png) =>
+          Effect.sync(() => {
+            download(png, `${name}.png`);
+          })
+        ),
+        Effect.asVoid
+      ),
     svg: () =>
       svgFile().pipe(
         Effect.tap((file) =>
@@ -155,29 +178,6 @@ export function ExportMenu({ view }: { readonly view: View }) {
         ),
         Effect.asVoid
       ),
-    png: () =>
-      svgFile().pipe(
-        Effect.flatMap((file) => pngOf(file, pngScale)),
-        Effect.tap((png) =>
-          Effect.sync(() => {
-            download(png, `${name}.png`);
-          })
-        ),
-        Effect.asVoid
-      ),
-    excalidraw: () =>
-      Effect.sync(() => {
-        const file = excalidrawOf({
-          data: state.data,
-          layout: state.layout,
-          background: onWhite ? whiteBackground : undefined,
-        });
-
-        download(
-          new Blob([excalidrawText(file)], { type: "application/json" }),
-          `${state.system}.excalidraw`
-        );
-      }),
   };
 
   const run = (item: Export) => {
@@ -255,13 +255,11 @@ export function ExportMenu({ view }: { readonly view: View }) {
   return (
     <div className="relative flex">
       <button
-        ref={buttonRef}
-        type="button"
-        data-control="export"
-        aria-haspopup="menu"
-        aria-expanded={open}
         aria-controls={open ? menuId : undefined}
+        aria-expanded={open}
+        aria-haspopup="menu"
         className={cn(controlClass, open && "bg-ink text-paper")}
+        data-control="export"
         onClick={() => {
           if (open) {
             close(true);
@@ -270,29 +268,31 @@ export function ExportMenu({ view }: { readonly view: View }) {
           }
         }}
         onKeyDown={onButtonKey}
+        ref={buttonRef}
+        type="button"
       >
         Export
       </button>
       <output
         aria-live="polite"
-        data-export-problem=""
         className={cn(
           "border-ink bg-paper text-ink absolute top-full right-0 z-30 mt-1 w-56 border px-3 py-1 text-xs",
           problem === "" && "sr-only"
         )}
+        data-export-problem=""
       >
         {problem}
       </output>
       {open ? (
         <div
-          ref={menuRef}
-          id={menuId}
-          data-export-menu=""
-          role="menu"
           aria-label="Export"
-          tabIndex={-1}
           className="border-ink bg-paper text-ink absolute top-full right-0 z-30 mt-1 flex w-56 flex-col border py-1"
+          data-export-menu=""
+          id={menuId}
           onKeyDown={onMenuKey}
+          ref={menuRef}
+          role="menu"
+          tabIndex={-1}
         >
           <MenuItem
             item="svg"
@@ -323,9 +323,9 @@ export function ExportMenu({ view }: { readonly view: View }) {
           </MenuItem>
           <hr className="border-ink my-1" />
           <MenuItem
+            checked={onWhite}
             item="background"
             itemRef={itemRef("background")}
-            checked={onWhite}
             onChoose={() => {
               setOnWhite((current) => !current);
             }}

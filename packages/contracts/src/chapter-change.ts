@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import { Array as Arr, Match, Option, Order, Schema } from "effect";
 import { dual } from "effect/Function";
 
@@ -15,7 +16,7 @@ export const HopId = idText("hop");
 
 const action = <const A extends string>(name: A) => Schema.Literal(name);
 
-const noRepeats = (hops: readonly string[]) =>
+const noRepeats = (hops: ReadonlyArray<string>) =>
   new Set(hops).size === hops.length;
 
 /** The most hops one chapter proposal orders. */
@@ -86,7 +87,7 @@ type Of<A extends ChapterChange["action"]> = Extract<
   { action: A }
 >;
 
-const withoutHop = (plays: readonly string[], hop: string) =>
+const withoutHop = (plays: ReadonlyArray<string>, hop: string) =>
   Arr.filter(plays, (other) => other !== hop);
 
 /**
@@ -95,11 +96,19 @@ const withoutHop = (plays: readonly string[], hop: string) =>
  * is left out, so an order stays right when a play or unplay lands beside it.
  */
 export const resequenced: {
-  (wanted: readonly string[]): (plays: readonly string[]) => readonly string[];
-  (plays: readonly string[], wanted: readonly string[]): readonly string[];
+  (
+    wanted: ReadonlyArray<string>
+  ): (plays: ReadonlyArray<string>) => ReadonlyArray<string>;
+  (
+    plays: ReadonlyArray<string>,
+    wanted: ReadonlyArray<string>
+  ): ReadonlyArray<string>;
 } = dual(
   2,
-  (plays: readonly string[], wanted: readonly string[]): readonly string[] => [
+  (
+    plays: ReadonlyArray<string>,
+    wanted: ReadonlyArray<string>
+  ): ReadonlyArray<string> => [
     ...Arr.filter(wanted, (hop) => plays.includes(hop)),
     ...Arr.filter(plays, (hop) => !wanted.includes(hop)),
   ]
@@ -107,9 +116,9 @@ export const resequenced: {
 
 /** What a message calls the structures, hops and chapters of the map. */
 export interface Called {
-  readonly structure: (id: string) => string;
-  readonly hop: (id: string) => string;
   readonly chapter: (id: string) => string;
+  readonly hop: (id: string) => string;
+  readonly structure: (id: string) => string;
 }
 
 /**
@@ -119,17 +128,6 @@ export interface Called {
  * and `review` all read this table, as they read `structureActions`.
  */
 export interface ChapterAction<A extends ChapterChange["action"]> {
-  /** A word for the kind of item, as `review` lists it. */
-  readonly label: string;
-  /**
-   * What makes two changes about the same thing, so a second change to it
-   * replaces or undoes the first.
-   */
-  readonly subject: (change: Of<A>) => string;
-  /** The structures the change names. */
-  readonly structures: (change: Of<A>) => readonly string[];
-  /** The hops the change names. */
-  readonly hops: (change: Of<A>) => readonly string[];
   /**
    * `chapter` once the change is taken. With `holdRemovals`, a hide and an
    * unplay leave it as it is, which is how the page draws them: the structure
@@ -141,20 +139,31 @@ export interface ChapterAction<A extends ChapterChange["action"]> {
     chapter: Chapter,
     holdRemovals: boolean
   ) => Chapter;
-  /** Whether the chapter, among `chapters`, already has what the change proposes. */
-  readonly holds: (
-    change: Of<A>,
-    chapter: Chapter,
-    chapters: readonly Chapter[]
-  ) => boolean;
   /** What the Pending list says, in plain words. */
   readonly describe: (change: Of<A>, called: Called) => string;
   /** The chapter's `reveals` or `plays` for `review`'s before and after. */
   readonly facts: (
     chapter: Chapter
-  ) => Readonly<Record<string, readonly string[]>>;
+  ) => Readonly<Record<string, ReadonlyArray<string>>>;
+  /** Whether the chapter, among `chapters`, already has what the change proposes. */
+  readonly holds: (
+    change: Of<A>,
+    chapter: Chapter,
+    chapters: ReadonlyArray<Chapter>
+  ) => boolean;
+  /** The hops the change names. */
+  readonly hops: (change: Of<A>) => ReadonlyArray<string>;
+  /** A word for the kind of item, as `review` lists it. */
+  readonly label: string;
   /** What the change puts a pending look on in its chapter: structures or hops. */
-  readonly marks: (change: Of<A>) => readonly string[];
+  readonly marks: (change: Of<A>) => ReadonlyArray<string>;
+  /** The structures the change names. */
+  readonly structures: (change: Of<A>) => ReadonlyArray<string>;
+  /**
+   * What makes two changes about the same thing, so a second change to it
+   * replaces or undoes the first.
+   */
+  readonly subject: (change: Of<A>) => string;
 }
 
 const revealsOf = (chapter: Chapter) => ({ reveals: chapter.reveals });
@@ -162,7 +171,7 @@ const revealsOf = (chapter: Chapter) => ({ reveals: chapter.reveals });
 const playsOf = (chapter: Chapter) => ({ plays: chapter.plays });
 
 const hasRevealed = (
-  chapters: readonly Chapter[],
+  chapters: ReadonlyArray<Chapter>,
   chapter: string,
   id: string
 ) => revealedUpTo(chapters, chapter).has(id);
@@ -274,17 +283,20 @@ export const actionOf = (change: ChapterChange): BoundAction => ({
 
 /** The table's entry for one change, bound to it. */
 export interface BoundAction {
-  readonly label: string;
-  readonly subject: string;
-  readonly structures: readonly string[];
-  readonly hops: readonly string[];
   readonly apply: (chapter: Chapter, holdRemovals: boolean) => Chapter;
-  readonly holds: (chapter: Chapter, chapters: readonly Chapter[]) => boolean;
   readonly describe: (called: Called) => string;
   readonly facts: (
     chapter: Chapter
-  ) => Readonly<Record<string, readonly string[]>>;
-  readonly marks: readonly string[];
+  ) => Readonly<Record<string, ReadonlyArray<string>>>;
+  readonly holds: (
+    chapter: Chapter,
+    chapters: ReadonlyArray<Chapter>
+  ) => boolean;
+  readonly hops: ReadonlyArray<string>;
+  readonly label: string;
+  readonly marks: ReadonlyArray<string>;
+  readonly structures: ReadonlyArray<string>;
+  readonly subject: string;
 }
 
 const subjectBy = (change: ChapterChange): string =>
@@ -298,7 +310,7 @@ const subjectBy = (change: ChapterChange): string =>
     })
   );
 
-const structuresBy = (change: ChapterChange): readonly string[] =>
+const structuresBy = (change: ChapterChange): ReadonlyArray<string> =>
   Match.value(change).pipe(
     Match.discriminatorsExhaustive("action")({
       reveal: (found) => chapterActions.reveal.structures(found),
@@ -309,7 +321,7 @@ const structuresBy = (change: ChapterChange): readonly string[] =>
     })
   );
 
-const hopsBy = (change: ChapterChange): readonly string[] =>
+const hopsBy = (change: ChapterChange): ReadonlyArray<string> =>
   Match.value(change).pipe(
     Match.discriminatorsExhaustive("action")({
       reveal: (found) => chapterActions.reveal.hops(found),
@@ -341,7 +353,7 @@ const applyBy = (
 const holdsBy = (
   change: ChapterChange,
   chapter: Chapter,
-  chapters: readonly Chapter[]
+  chapters: ReadonlyArray<Chapter>
 ): boolean =>
   Match.value(change).pipe(
     Match.discriminatorsExhaustive("action")({
@@ -375,7 +387,7 @@ const factsBy = (change: ChapterChange, chapter: Chapter) =>
     })
   );
 
-const marksBy = (change: ChapterChange): readonly string[] =>
+const marksBy = (change: ChapterChange): ReadonlyArray<string> =>
   Match.value(change).pipe(
     Match.discriminatorsExhaustive("action")({
       reveal: (found) => chapterActions.reveal.marks(found),
@@ -390,11 +402,12 @@ const marksBy = (change: ChapterChange): readonly string[] =>
 export const subjectOf = (change: ChapterChange): string => subjectBy(change);
 
 /** The structures a change names. */
-export const structuresOfChange = (change: ChapterChange): readonly string[] =>
-  structuresBy(change);
+export const structuresOfChange = (
+  change: ChapterChange
+): ReadonlyArray<string> => structuresBy(change);
 
 /** The hops a change names. */
-export const hopsOfChange = (change: ChapterChange): readonly string[] =>
+export const hopsOfChange = (change: ChapterChange): ReadonlyArray<string> =>
   hopsBy(change);
 
 /**
@@ -409,10 +422,10 @@ export const applyChapterChange = ({
   change,
   holdRemovals = false,
 }: {
-  readonly chapters: readonly Chapter[];
   readonly change: ChapterChange;
+  readonly chapters: ReadonlyArray<Chapter>;
   readonly holdRemovals?: boolean;
-}): readonly Chapter[] =>
+}): ReadonlyArray<Chapter> =>
   Arr.map(chapters, (chapter) =>
     chapter.id === change.chapter
       ? applyBy(change, chapter, holdRemovals)
@@ -425,10 +438,10 @@ export const chaptersAfter = ({
   changes,
   holdRemovals = false,
 }: {
-  readonly chapters: readonly Chapter[];
-  readonly changes: readonly ChapterChange[];
+  readonly changes: ReadonlyArray<ChapterChange>;
+  readonly chapters: ReadonlyArray<Chapter>;
   readonly holdRemovals?: boolean;
-}): readonly Chapter[] =>
+}): ReadonlyArray<Chapter> =>
   Arr.reduce(changes, chapters, (held, change) =>
     applyChapterChange({ chapters: held, change, holdRemovals })
   );
@@ -438,11 +451,11 @@ export const chaptersAfter = ({
  * Reveals are cumulative.
  */
 export const revealedUpTo: {
-  (chapter: string): (chapters: readonly Chapter[]) => ReadonlySet<string>;
-  (chapters: readonly Chapter[], chapter: string): ReadonlySet<string>;
+  (chapter: string): (chapters: ReadonlyArray<Chapter>) => ReadonlySet<string>;
+  (chapters: ReadonlyArray<Chapter>, chapter: string): ReadonlySet<string>;
 } = dual(
   2,
-  (chapters: readonly Chapter[], chapter: string): ReadonlySet<string> => {
+  (chapters: ReadonlyArray<Chapter>, chapter: string): ReadonlySet<string> => {
     const at = Arr.findFirstIndex(chapters, ({ id }) => id === chapter);
 
     return new Set(
@@ -457,16 +470,18 @@ export const revealedUpTo: {
 
 /** Whether `chapters` already hold what `change` proposes. */
 export const chapterHolds: {
-  (change: ChapterChange): (chapters: readonly Chapter[]) => boolean;
-  (chapters: readonly Chapter[], change: ChapterChange): boolean;
-} = dual(2, (chapters: readonly Chapter[], change: ChapterChange): boolean =>
-  Option.match(
-    Arr.findFirst(chapters, ({ id }) => id === change.chapter),
-    {
-      onNone: () => false,
-      onSome: (chapter) => holdsBy(change, chapter, chapters),
-    }
-  )
+  (change: ChapterChange): (chapters: ReadonlyArray<Chapter>) => boolean;
+  (chapters: ReadonlyArray<Chapter>, change: ChapterChange): boolean;
+} = dual(
+  2,
+  (chapters: ReadonlyArray<Chapter>, change: ChapterChange): boolean =>
+    Option.match(
+      Arr.findFirst(chapters, ({ id }) => id === change.chapter),
+      {
+        onNone: () => false,
+        onSome: (chapter) => holdsBy(change, chapter, chapters),
+      }
+    )
 );
 
 /** What a chapter's walkthrough gets wrong once changes are folded in. */
@@ -497,10 +512,10 @@ export const chapterProblems = ({
   hops,
   structures,
 }: {
-  readonly chapters: readonly Chapter[];
-  readonly hops: readonly Pick<Hop, "id" | "from" | "to">[];
-  readonly structures: readonly Pick<Structure, "id">[];
-}): readonly ChapterProblem[] => {
+  readonly chapters: ReadonlyArray<Chapter>;
+  readonly hops: ReadonlyArray<Pick<Hop, "id" | "from" | "to">>;
+  readonly structures: ReadonlyArray<Pick<Structure, "id">>;
+}): ReadonlyArray<ChapterProblem> => {
   if (!Arr.isReadonlyArrayNonEmpty(chapters)) {
     return [];
   }
@@ -513,32 +528,37 @@ export const chapterProblems = ({
       revealed.add(id);
     }
 
-    return Arr.flatMap(chapter.plays, (hopId): readonly ChapterProblem[] => {
-      const hop = byId.get(hopId);
+    return Arr.flatMap(
+      chapter.plays,
+      (hopId): ReadonlyArray<ChapterProblem> => {
+        const hop = byId.get(hopId);
 
-      if (hop === undefined) {
-        return [];
+        if (hop === undefined) {
+          return [];
+        }
+
+        const missing = Arr.dedupe(
+          Arr.filter([hop.from, hop.to], (end) => !revealed.has(end))
+        );
+
+        return missing.length === 0
+          ? []
+          : [
+              {
+                kind: "unrevealed-hop",
+                chapter: chapter.id,
+                hop: hopId,
+                missing,
+              },
+            ];
       }
-
-      const missing = Arr.dedupe(
-        Arr.filter([hop.from, hop.to], (end) => !revealed.has(end))
-      );
-
-      return missing.length === 0
-        ? []
-        : [
-            {
-              kind: "unrevealed-hop",
-              chapter: chapter.id,
-              hop: hopId,
-              missing,
-            },
-          ];
-    });
+    );
   });
 
-  const never = Arr.flatMap(structures, ({ id }): readonly ChapterProblem[] =>
-    revealed.has(id) ? [] : [{ kind: "never-revealed", structure: id }]
+  const never = Arr.flatMap(
+    structures,
+    ({ id }): ReadonlyArray<ChapterProblem> =>
+      revealed.has(id) ? [] : [{ kind: "never-revealed", structure: id }]
   );
 
   return [...unrevealed, ...never];
@@ -546,7 +566,7 @@ export const chapterProblems = ({
 
 const sameProblem = Schema.toEquivalence(ChapterProblem);
 
-const listed = (ids: readonly string[], called: Called): string =>
+const listed = (ids: ReadonlyArray<string>, called: Called): string =>
   Arr.join(
     Arr.map(ids, (id) => `${quoteText(called.structure(id))} (${id})`),
     " and "
@@ -569,15 +589,15 @@ export const chapterBreakage = ({
   data,
   called,
 }: {
+  readonly called: Called;
   readonly change: ChapterChange;
   /** Every chapter change taken together with it, in order. */
-  readonly changes: readonly ChapterChange[];
+  readonly changes: ReadonlyArray<ChapterChange>;
   readonly data: {
-    readonly chapters: readonly Chapter[];
-    readonly hops: readonly Hop[];
-    readonly structures: readonly Pick<Structure, "id">[];
+    readonly chapters: ReadonlyArray<Chapter>;
+    readonly hops: ReadonlyArray<Hop>;
+    readonly structures: ReadonlyArray<Pick<Structure, "id">>;
   };
-  readonly called: Called;
 }): Option.Option<string> => {
   if (change.action !== "play" && change.action !== "hide") {
     return Option.none();
@@ -642,7 +662,7 @@ export const chapterBreakage = ({
 };
 
 /** The order chapters come in, as the walkthrough has them. */
-export const byChapterOrder = (chapters: readonly Chapter[]) =>
+export const byChapterOrder = (chapters: ReadonlyArray<Chapter>) =>
   Order.mapInput(Order.Number, (change: ChapterChange) =>
     Arr.findFirstIndex(chapters, ({ id }) => id === change.chapter).pipe(
       Option.getOrElse(() => Number.POSITIVE_INFINITY)

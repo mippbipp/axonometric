@@ -1,12 +1,11 @@
 // Packs the npm package into the tarball path given as the only argument,
 // then checks what's inside with the system tar. CI runs it on every pull
 // request, and the release workflow stages the tarball it writes, so the
-// check covers exactly what gets published. Run `pnpm build` first.
+// check covers exactly what gets published. Run `bun run build` first.
 //
 // `expectedFiles` is the one list of what the tarball may hold. The editor's
 // HTML is embedded in dist/bin.mjs as a string (see tsdown.config.ts), so it
-// has no file of its own. dist/sea.cjs is only for the single-executable
-// binaries.
+// has no file of its own.
 //
 // The pack runs in a temporary folder that holds only those files: the
 // bundle, the repo's README.md and LICENSE, and package.json without the
@@ -47,6 +46,7 @@ const repoOnlyFields = ["devDependencies", "scripts"] as const;
 
 // npm's provenance check compares repository.url with the GitHub repo that
 // published the package.
+/* oxlint-disable perfectionist/sort-objects -- the schema checks fields in the written order, which sets the order of the problems the check reports */
 const PublishedManifest = Schema.Struct({
   name: Schema.Literal("axonometric"),
   license: Schema.Literal("MIT"),
@@ -62,7 +62,10 @@ const PublishedManifest = Schema.Struct({
         `Expected one command, axonometric, got: ${Arr.join(Rec.keys(bin), ", ")}`
     )
   ),
-  engines: Schema.Struct({ node: Schema.Literal(">=24.22.1") }),
+  engines: Schema.Struct({
+    node: Schema.Literal(">=24.22.1"),
+    bun: Schema.Literal(">=1.4.4"),
+  }),
   // Everything is bundled into dist/bin.mjs, so installing the package
   // installs nothing else.
   dependencies: Schema.optionalKey(Schema.Never),
@@ -74,6 +77,7 @@ const PublishedManifest = Schema.Struct({
   // in this repo, so the tarball has none.
   scripts: Schema.optionalKey(Schema.Never),
 });
+/* oxlint-enable perfectionist/sort-objects */
 
 const JsonObjectText = Schema.fromJsonString(
   Schema.Record(Schema.String, Schema.Unknown)
@@ -88,10 +92,14 @@ const decodeManifest = Schema.decodeUnknownEffect(
   { errors: "all" }
 );
 
-const PackResult = Schema.Struct({
-  filename: Schema.String,
-  files: Schema.Array(Schema.Struct({ path: Schema.String })),
-});
+const PackedFile = Schema.Struct({ path: Schema.String });
+
+const PackResult = Schema.Array(
+  Schema.Struct({
+    filename: Schema.String,
+    files: Schema.Array(PackedFile),
+  })
+);
 
 const decodePackResult = Schema.decodeUnknownEffect(
   Schema.fromJsonString(PackResult)
@@ -100,7 +108,7 @@ const decodePackResult = Schema.decodeUnknownEffect(
 /** Runs a command and returns its stdout, failing on a non-zero exit. */
 const runText = Effect.fnUntraced(function* (
   command: string,
-  args: readonly string[],
+  args: ReadonlyArray<string>,
   cwd: string
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -123,7 +131,7 @@ const runText = Effect.fnUntraced(function* (
   return stdout;
 }, Effect.scoped);
 
-const sorted = (paths: readonly string[]) =>
+const sorted = (paths: ReadonlyArray<string>) =>
   Arr.join(Arr.sort(paths, Order.String), "\n  ");
 
 /**
@@ -152,9 +160,11 @@ const staged = Effect.fnUntraced(function* (
     yield* fs.copyFile(path.join(repoDir, file), path.join(stage, file));
   }
 
-  const manifest = yield* decodeJsonObject(
-    yield* fs.readFileString(path.join(packageDir, "package.json"))
-  ).pipe(
+  const packageText = yield* fs.readFileString(
+    path.join(packageDir, "package.json")
+  );
+
+  const manifest = yield* decodeJsonObject(packageText).pipe(
     Effect.mapError((error) =>
       PackCheckFailed.make({
         message: `Can't read package.json:\n${error.message}`,
@@ -188,30 +198,46 @@ const packNpm = Effect.gen(function* () {
 
   yield* fs.remove(tarball, { force: true });
 
+  // npm names the tarball itself, so it packs into the tarball's folder and
+  // the result is renamed.
   const packOutput = yield* Effect.scoped(
     Effect.flatMap(staged(packageDir, repoDir), (stage) =>
-      runText("pnpm", ["pack", "--json", "--out", tarball], stage)
+      runText(
+        "npm",
+        ["pack", "--json", "--pack-destination", path.dirname(tarball)],
+        stage
+      )
     )
   );
 
   const packed = yield* decodePackResult(packOutput).pipe(
     Effect.mapError((error) =>
       PackCheckFailed.make({
-        message: `Can't read pnpm pack --json output:\n${error.message}`,
+        message: `Can't read npm pack --json output:\n${error.message}`,
       })
     )
   );
 
-  const reported = sorted(Arr.map(packed.files, (file) => file.path));
+  const [result] = packed;
 
-  // pnpm's report must match what tar finds in the tarball it wrote.
+  if (result === undefined) {
+    return yield* PackCheckFailed.make({
+      message: "npm pack --json reported no tarball.",
+    });
+  }
+
+  yield* fs.rename(path.join(path.dirname(tarball), result.filename), tarball);
+
+  const reported = sorted(Arr.map(result.files, (file) => file.path));
+
+  // npm's report must match what tar finds in the tarball it wrote.
   const tarListing = yield* runText("tar", ["-tzf", tarball], packageDir);
   const tarLines = Arr.filter(Str.split(tarListing, "\n"), Str.isNonEmpty);
   const listed = sorted(Arr.map(tarLines, Str.replace(/^package\//u, "")));
 
   if (listed !== reported) {
     return yield* PackCheckFailed.make({
-      message: `pnpm pack reported:\n  ${reported}\nbut ${tarball} holds:\n  ${listed}`,
+      message: `npm pack reported:\n  ${reported}\nbut ${tarball} holds:\n  ${listed}`,
     });
   }
 

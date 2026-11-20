@@ -12,50 +12,52 @@ import { frozenRefusal, reviewEntries } from "./review.ts";
  * the map already satisfies.
  */
 export interface ProposalKind<C> {
-  /** The open proposals of the kind. */
-  readonly open: (
-    proposals: Proposals
-  ) => readonly { readonly id: ChangeId; readonly change: C }[];
-  /** `proposals` with the kind's open list set, and the file revision up by one. */
-  readonly withOpen: (
-    proposals: Proposals,
-    open: readonly { readonly id: ChangeId; readonly change: C }[]
-  ) => Proposals;
-  /** What a change acts on: the provisional id for an add. */
-  readonly targetOf: (change: C) => string;
-  readonly isAdd: (change: C) => boolean;
-  readonly sameChange: (a: C, b: C) => boolean;
-  /** Whether two changes act on the same thing in the same way. */
-  readonly sameSubject: (a: C, b: C) => boolean;
-  /** The provisional ids of the adds waiting in a batch with no commit. */
-  readonly waitingAdds: (proposals: Proposals) => readonly string[];
   /**
    * The open list once `change`, to a thing that is only proposed, is folded
    * into the add that proposes it, or nothing when the change isn't to one.
    */
   readonly edited: (
-    open: readonly { readonly id: ChangeId; readonly change: C }[],
+    open: ReadonlyArray<{ readonly change: C; readonly id: ChangeId }>,
     change: C
-  ) => Option.Option<readonly { readonly id: ChangeId; readonly change: C }[]>;
-  /** Why the map can't take `change`, or nothing. */
-  readonly refusal: (change: C) => Option.Option<string>;
+  ) => Option.Option<
+    ReadonlyArray<{ readonly change: C; readonly id: ChangeId }>
+  >;
+  readonly isAdd: (change: C) => boolean;
   /** Whether the map already has what a change other than an add proposes. */
   readonly isCurrent: (change: C) => boolean;
   /** What the kind's things are called, for a message. */
   readonly noun: string;
+  /** The open proposals of the kind. */
+  readonly open: (
+    proposals: Proposals
+  ) => ReadonlyArray<{ readonly change: C; readonly id: ChangeId }>;
+  /** Why the map can't take `change`, or nothing. */
+  readonly refusal: (change: C) => Option.Option<string>;
+  readonly sameChange: (a: C, b: C) => boolean;
+  /** Whether two changes act on the same thing in the same way. */
+  readonly sameSubject: (a: C, b: C) => boolean;
+  /** What a change acts on: the provisional id for an add. */
+  readonly targetOf: (change: C) => string;
+  /** The provisional ids of the adds waiting in a batch with no commit. */
+  readonly waitingAdds: (proposals: Proposals) => ReadonlyArray<string>;
+  /** `proposals` with the kind's open list set, and the file revision up by one. */
+  readonly withOpen: (
+    proposals: Proposals,
+    open: ReadonlyArray<{ readonly change: C; readonly id: ChangeId }>
+  ) => Proposals;
 }
 
 /** Why `id` can't be used for `change`: a frozen item has it, or another proposal does. */
 export const idRefusal = <C>({
+  change,
+  id,
   kind,
   proposals,
-  id,
-  change,
 }: {
+  readonly change: C;
+  readonly id: ChangeId;
   readonly kind: ProposalKind<C>;
   readonly proposals: Proposals;
-  readonly id: ChangeId;
-  readonly change: C;
 }): Option.Option<string> => {
   const taken = `The id "${id}" is already in use.`;
 
@@ -76,15 +78,15 @@ export const idRefusal = <C>({
 
 /** Why `change` can't name the thing it does: it is added twice, or waits in a batch. */
 const targetRefusal = <C>({
+  change,
+  id,
   kind,
   proposals,
-  id,
-  change,
 }: {
+  readonly change: C;
+  readonly id: ChangeId;
   readonly kind: ProposalKind<C>;
   readonly proposals: Proposals;
-  readonly id: ChangeId;
-  readonly change: C;
 }): Option.Option<string> => {
   const target = kind.targetOf(change);
 
@@ -123,21 +125,21 @@ const targetRefusal = <C>({
  *   batch, or the map can't take the change.
  */
 export const proposeInto = <C>({
+  change,
+  id,
   kind,
   proposals,
-  id,
-  change,
 }: {
+  readonly change: C;
+  readonly id: ChangeId;
   readonly kind: ProposalKind<C>;
   readonly proposals: Proposals;
-  readonly id: ChangeId;
-  readonly change: C;
 }): Result.Result<Proposals, string> => {
   const open = kind.open(proposals);
 
   const refused = Option.orElse(
-    idRefusal({ kind, proposals, id, change }),
-    () => targetRefusal({ kind, proposals, id, change })
+    idRefusal({ change, id, kind, proposals }),
+    () => targetRefusal({ change, id, kind, proposals })
   );
 
   // A retry of a write that landed: the thing it names is on the map now.
@@ -198,9 +200,9 @@ export const proposeInto = <C>({
       proposals,
       Option.isSome(existing)
         ? Arr.map(open, (held) =>
-            held.id === keptId ? { id: keptId, change } : held
+            held.id === keptId ? { change, id: keptId } : held
           )
-        : [...open, { id: keptId, change }]
+        : [...open, { change, id: keptId }]
     )
   );
 };

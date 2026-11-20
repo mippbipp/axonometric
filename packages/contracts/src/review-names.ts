@@ -6,7 +6,7 @@ import type { Names } from "./review-kinds.ts";
 
 /** The title of the entry `id` in `held`, or the id when there is none. */
 const titleIn =
-  (held: readonly { readonly id: string; readonly title: string }[]) =>
+  (held: ReadonlyArray<{ readonly id: string; readonly title: string }>) =>
   (id: string): string =>
     Option.match(
       Arr.findFirst(held, (found) => found.id === id),
@@ -20,21 +20,21 @@ const titleIn =
  * rename changes. Written once, here, so no caller builds its own.
  */
 export const namesOf = ({
-  shown,
   accepted,
+  shown,
 }: {
-  readonly shown: Pick<MapData, "structures" | "hops" | "groups" | "chapters">;
   readonly accepted: Pick<MapData, "groups" | "chapters">;
+  readonly shown: Pick<MapData, "structures" | "hops" | "groups" | "chapters">;
 }): Names => {
   const structures = new Map(
     Arr.map(shown.structures, ({ id, name }) => [id, name] as const)
   );
 
   return {
-    structure: (id) => structures.get(id) ?? id,
-    hop: hopLabelOf(shown.hops),
-    group: titleIn(shown.groups),
     acceptedGroup: titleIn(accepted.groups),
     chapter: titleIn(accepted.chapters),
+    group: titleIn(shown.groups),
+    hop: hopLabelOf(shown.hops),
+    structure: (id) => structures.get(id) ?? id,
   };
 };

@@ -45,15 +45,15 @@ const payloadCell = (payload: Schema.Json | undefined) => {
   return cell(code(json));
 };
 
-const row = (cells: readonly string[]) => `| ${Arr.join(cells, " | ")} |`;
+const row = (cells: ReadonlyArray<string>) => `| ${Arr.join(cells, " | ")} |`;
 
 const table = (
-  header: readonly string[],
-  rows: readonly (readonly string[])[]
+  header: ReadonlyArray<string>,
+  rows: ReadonlyArray<ReadonlyArray<string>>
 ) => [row(header), row(Arr.map(header, () => "---")), ...Arr.map(rows, row)];
 
 /** Drops blank lines from the end of `lines`. */
-const trimBlank = (lines: readonly string[]) => {
+const trimBlank = (lines: ReadonlyArray<string>) => {
   const last = Arr.findLastIndex(lines, (line) => line !== "");
 
   return Option.match(last, {
@@ -66,7 +66,7 @@ const trimBlank = (lines: readonly string[]) => {
  * A section: its heading, its body and one blank line, or nothing when the
  * body is empty.
  */
-const section = (heading: string, body: readonly string[]) => {
+const section = (heading: string, body: ReadonlyArray<string>) => {
   const trimmed = trimBlank(body);
 
   return trimmed.length === 0 ? [] : [heading, "", ...trimmed, ""];
@@ -219,7 +219,7 @@ const structuresLines = (data: MapData, linkOf: LinkOf) =>
         ];
   });
 
-const hopRows = (hops: readonly Hop[], nameOf: (id: string) => string) =>
+const hopRows = (hops: ReadonlyArray<Hop>, nameOf: (id: string) => string) =>
   Arr.map(hops, (hop) => [
     code(hop.id),
     cell(`${nameOf(hop.from)} → ${nameOf(hop.to)}`),
@@ -246,7 +246,7 @@ export const renderSystemMd: {
   const nameOf = (id: string) => names.get(id) ?? id;
   const hops = new Map(Arr.map(data.hops, (hop) => [hop.id, hop]));
 
-  const hopsOf = (ids: readonly string[]) =>
+  const hopsOf = (ids: ReadonlyArray<string>) =>
     Arr.flatMap(ids, (id) => {
       const hop = hops.get(id);
 

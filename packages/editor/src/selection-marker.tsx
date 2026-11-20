@@ -9,10 +9,10 @@ import { useSelection } from "./selection-context.ts";
 const pad = 0.35;
 
 const outlineOf = (placement: Placement) => ({
+  d: placement.d + pad * 2,
+  w: placement.w + pad * 2,
   x: placement.x - pad,
   y: placement.y - pad,
-  w: placement.w + pad * 2,
-  d: placement.d + pad * 2,
 });
 
 /**
@@ -27,7 +27,7 @@ export function SelectionMarker({
   readonly placements: Readonly<Partial<Record<string, Placement>>>;
   readonly view: View;
 }) {
-  const { selected, multiSelection } = useSelection();
+  const { multiSelection, selected } = useSelection();
   const placement = selected === null ? undefined : placements[selected];
   const ground = groundProjections[view];
 
@@ -35,9 +35,9 @@ export function SelectionMarker({
     <>
       {selected === null || placement === undefined ? null : (
         <polygon
+          className="fill-ink/15 stroke-ink pointer-events-none"
           data-selection-marker={selected}
           points={toPoints(groundOutline(outlineOf(placement), ground))}
-          className="fill-ink/15 stroke-ink pointer-events-none"
           strokeWidth={2}
         />
       )}
@@ -48,10 +48,10 @@ export function SelectionMarker({
           ? []
           : [
               <polygon
-                key={id}
-                data-multi-selection-marker={id}
-                points={toPoints(groundOutline(outlineOf(at), ground))}
                 className="fill-multi/15 stroke-multi pointer-events-none"
+                data-multi-selection-marker={id}
+                key={id}
+                points={toPoints(groundOutline(outlineOf(at), ground))}
                 strokeWidth={2.5}
               />,
             ];

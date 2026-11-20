@@ -19,9 +19,9 @@ export const nudgeStep = 0.5;
  * and up to the right.
  */
 const nudges = {
-  ArrowRight: { x: nudgeStep, y: 0 },
-  ArrowLeft: { x: -nudgeStep, y: 0 },
   ArrowDown: { x: 0, y: nudgeStep },
+  ArrowLeft: { x: -nudgeStep, y: 0 },
+  ArrowRight: { x: nudgeStep, y: 0 },
   ArrowUp: { x: 0, y: -nudgeStep },
 } as const satisfies Readonly<Record<string, GridPoint>>;
 
@@ -47,7 +47,7 @@ export type ArrowOwner = "spot" | "nudge" | "selection" | "chapter";
  */
 export const useArrowOwner = (): ArrowOwner => {
   const editing = useEditing();
-  const { selected, multiSelection } = useSelection();
+  const { multiSelection, selected } = useSelection();
   const armed = useNoteTool()?.armed === true;
 
   if (armed) {
@@ -129,7 +129,7 @@ export const useEditKeys = (owner: ArrowOwner) => {
 
     if (!event.repeat) {
       editing.arrange((placements) =>
-        nudgeMoves({ placements, ids: [...multiSelection], delta: step })
+        nudgeMoves({ delta: step, ids: [...multiSelection], placements })
       );
     }
   });

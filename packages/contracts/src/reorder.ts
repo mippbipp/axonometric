@@ -6,11 +6,11 @@ import { dual } from "effect/Function";
  * order. An index out of range leaves the list as it was.
  */
 export const moveItem: {
-  (from: number, to: number): <A>(items: readonly A[]) => readonly A[];
-  <A>(items: readonly A[], from: number, to: number): readonly A[];
+  (from: number, to: number): <A>(items: ReadonlyArray<A>) => ReadonlyArray<A>;
+  <A>(items: ReadonlyArray<A>, from: number, to: number): ReadonlyArray<A>;
 } = dual(
   3,
-  <A>(items: readonly A[], from: number, to: number): readonly A[] => {
+  <A>(items: ReadonlyArray<A>, from: number, to: number): ReadonlyArray<A> => {
     const item = items[from];
 
     if (item === undefined || from === to || to < 0 || to >= items.length) {

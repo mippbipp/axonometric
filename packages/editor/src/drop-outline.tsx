@@ -10,31 +10,31 @@ import { groundOutline, toPoints } from "./projection.ts";
  * filled red with the reason in its title while the drop is refused.
  */
 export function DropOutline({
-  id,
   at,
-  view,
+  id,
   refusal,
+  view,
 }: {
-  readonly id: string;
   readonly at: Placement;
-  readonly view: View;
+  readonly id: string;
   /** Why the drop would be refused, or `undefined` when it wouldn't. */
   readonly refusal: string | undefined;
+  readonly view: View;
 }) {
   const refused = refusal !== undefined;
 
   return (
     <polygon
-      data-drag-outline={id}
-      data-refused={refused}
-      points={toPoints(groundOutline(at, groundProjections[view]))}
       className={
         refused
           ? "fill-refused/15 stroke-refused pointer-events-none"
           : "stroke-pending pointer-events-none fill-none"
       }
-      strokeWidth={refused ? 2.5 : 1.5}
+      data-drag-outline={id}
+      data-refused={refused}
+      points={toPoints(groundOutline(at, groundProjections[view]))}
       strokeDasharray={refused ? undefined : "5 3"}
+      strokeWidth={refused ? 2.5 : 1.5}
     >
       {refused ? <title>{refusal}</title> : null}
     </polygon>
@@ -43,22 +43,22 @@ export function DropOutline({
 
 /** A dashed outline where a structure was before a drag, as a reminder. */
 export function DragOrigin({
-  id,
   at,
+  id,
   view,
 }: {
-  readonly id: string;
   readonly at: Placement;
+  readonly id: string;
   readonly view: View;
 }) {
   return (
     <polygon
-      data-drag-origin={id}
       aria-hidden="true"
-      points={toPoints(groundOutline(at, groundProjections[view]))}
       className="stroke-ink pointer-events-none fill-none opacity-40"
-      strokeWidth={1.2}
+      data-drag-origin={id}
+      points={toPoints(groundOutline(at, groundProjections[view]))}
       strokeDasharray="3 3"
+      strokeWidth={1.2}
     />
   );
 }
@@ -77,11 +77,11 @@ export function DragOutlines({ view }: { readonly view: View }) {
   }
 
   return (
-    <g data-drag-outlines="" className="pointer-events-none">
-      {Arr.map(outlines.moving, ({ id, from, to }) => (
+    <g className="pointer-events-none" data-drag-outlines="">
+      {Arr.map(outlines.moving, ({ from, id, to }) => (
         <g key={id}>
-          <DragOrigin id={id} at={from} view={view} />
-          <DropOutline id={id} at={to} view={view} refusal={outlines.refusal} />
+          <DragOrigin at={from} id={id} view={view} />
+          <DropOutline at={to} id={id} refusal={outlines.refusal} view={view} />
         </g>
       ))}
     </g>

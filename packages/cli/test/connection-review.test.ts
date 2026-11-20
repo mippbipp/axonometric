@@ -22,31 +22,31 @@ const at = "2026-11-01T09:00:00.000Z";
 
 const drawn: HopChange = {
   action: "add",
-  hop: { id: "new-1", from: "engineer", to: "server", label: "calls the API" },
+  hop: { from: "engineer", id: "new-1", label: "calls the API", to: "server" },
 };
 
 const hopItem = (id: string, change: HopChange): BatchItem => ({
+  change,
   id,
   kind: "hop",
-  change,
 });
 
 const flowItem = (id: string, change: FlowChange): BatchItem => ({
+  change,
   id,
   kind: "flow",
-  change,
 });
 
 const fileOf = (proposals: Proposals) =>
   `${JSON.stringify(proposals, null, 2)}\n`;
 
 const batchOf = (
-  items: readonly BatchItem[],
+  items: ReadonlyArray<BatchItem>,
   verdicts: Batch["verdicts"] = {}
-): Batch => ({ number: 1, frozenAt: at, items, verdicts });
+): Batch => ({ frozenAt: at, items, number: 1, verdicts });
 
 const homeWith = (
-  items: readonly BatchItem[],
+  items: ReadonlyArray<BatchItem>,
   verdicts: Batch["verdicts"] = {},
   dataEdit: (data: string) => string = (data) => data
 ) =>
@@ -58,15 +58,15 @@ const homeWith = (
       ...files,
       "review/map/data.mjs": dataEdit(files["review/map/data.mjs"] ?? ""),
       "review/map/proposals.json": fileOf({
+        batches: [batchOf(items, verdicts)],
         format: 1,
-        revision: 4,
         layout: [],
         notes: [],
-        batches: [batchOf(items, verdicts)],
+        revision: 4,
       }),
     });
 
-    return { root, home: path.join(root, "review", "map") };
+    return { home: path.join(root, "review", "map"), root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 /** data.mjs with a hop `id` from the engineer to the server, played by the first chapter's neighbour. */

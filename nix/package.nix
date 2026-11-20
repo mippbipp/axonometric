@@ -1,9 +1,8 @@
 {
   lib,
   stdenvNoCC,
-  fetchPnpmDeps,
-  pnpmConfigHook,
-  pnpm_12,
+  bun,
+  cacert,
   nodejs_24,
   nodejs-slim_24,
   makeBinaryWrapper,
@@ -20,48 +19,89 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     inherit root;
     fileset = lib.fileset.unions [
       ../package.json
-      ../pnpm-lock.yaml
-      ../pnpm-workspace.yaml
-      ../tsconfig.json
+      ../bun.lock
+      ../bunfig.toml
       ../packages
     ];
   };
 
-  # The CLI and the workspace packages it builds from. This skips the root's
-  # dev tools, such as oxlint, lefthook and react-doctor.
-  pnpmWorkspaces = [ "axonometric..." ];
+  # The CLI and the workspace packages it builds from. The filter skips the
+  # root's dev tools, such as oxlint, lefthook and react-doctor.
+  #
+  # A fixed-output derivation can reach the network, so it runs the
+  # install and keeps node_modules. `--os`, `--cpu` and `--libc` fetch every
+  # platform's optional packages, so one hash holds on every system. Install
+  # scripts are skipped because the result is only used to build. Changes
+  # whenever bun.lock changes. See CONTRIBUTING.md.
+  bunDeps = stdenvNoCC.mkDerivation {
+    pname = "${finalAttrs.pname}-bun-deps";
+    inherit (finalAttrs) version src;
 
-  # fetchPnpmDeps already fetches every platform's optional packages. The one
-  # host-specific download is the Node binary that `devEngines.runtime` in
-  # package.json declares, which would change the hash on every system. The
-  # build runs nixpkgs' Node, so skip it.
-  pnpmInstallFlags = [ "--no-runtime" ];
+    nativeBuildInputs = [
+      bun
+      cacert
+    ];
 
-  pnpmDeps = fetchPnpmDeps {
-    inherit (finalAttrs)
-      pname
-      version
-      src
-      pnpmWorkspaces
-      pnpmInstallFlags
-      ;
-    pnpm = pnpm_12;
-    fetcherVersion = 5;
-    # Changes whenever pnpm-lock.yaml changes. See CONTRIBUTING.md.
-    hash = "sha256-3w3LXNwqAsV2Ko7FIh6ztC8yzu4QcAeYl13bO6Z4Hxc=";
+    dontConfigure = true;
+    dontFixup = true;
+
+    buildPhase = ''
+      runHook preBuild
+      export HOME=$TMPDIR
+      export SSL_CERT_FILE=${cacert}/etc/ssl/certs/ca-bundle.crt
+      export BUN_INSTALL_CACHE_DIR=$TMPDIR/bun-cache
+      bun install \
+        --frozen-lockfile \
+        --filter axonometric \
+        --os '*' \
+        --cpu '*' \
+        --libc '*' \
+        --ignore-scripts \
+        --backend copyfile \
+        --no-progress
+      runHook postBuild
+    '';
+
+    installPhase = ''
+      runHook preInstall
+      mkdir $out
+      find . -name node_modules -type d -prune -print0 \
+        | while IFS= read -r -d "" dir; do
+            mkdir -p "$out/$(dirname "$dir")"
+            cp -R "$dir" "$out/$dir"
+          done
+      runHook postInstall
+    '';
+
+    outputHashMode = "recursive";
+    outputHashAlgo = "sha256";
+    outputHash = "sha256-7SDuDm08h0IB+lo8xKfH0F8/iH5Z4+2yTVKXZOamstg=";
   };
 
   nativeBuildInputs = [
+    bun
     nodejs_24
-    pnpm_12
-    pnpmConfigHook
     makeBinaryWrapper
   ];
 
+  configurePhase = ''
+    runHook preConfigure
+    (cd ${finalAttrs.bunDeps} && find . -name node_modules -type d -prune -print0) \
+      | while IFS= read -r -d "" dir; do
+          mkdir -p "$(dirname "$dir")"
+          cp -R ${finalAttrs.bunDeps}/"$dir" "$dir"
+        done
+    chmod -R u+w .
+    # The sandbox has no /usr/bin/env, which the bin scripts' shebangs use.
+    patchShebangs node_modules packages/*/node_modules
+    export HOME=$TMPDIR
+    runHook postConfigure
+  '';
+
   buildPhase = ''
     runHook preBuild
-    pnpm --filter @axonometric/editor run build
-    pnpm --filter axonometric run build
+    bun run --cwd packages/editor build
+    bun run --cwd packages/cli build
     runHook postBuild
   '';
 

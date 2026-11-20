@@ -16,19 +16,19 @@ import { zonesOf } from "./zones.ts";
 
 /** A structure and where the layout puts it. */
 export interface PlacedStructure {
-  readonly structure: Structure;
   readonly placement: Placement;
+  readonly structure: Structure;
 }
 
 /** Every structure that has a placement, in data.mjs order. */
 export const placedStructures: {
-  (layout: Layout): (data: MapData) => readonly PlacedStructure[];
-  (data: MapData, layout: Layout): readonly PlacedStructure[];
-} = dual(2, (data: MapData, layout: Layout): readonly PlacedStructure[] =>
+  (layout: Layout): (data: MapData) => ReadonlyArray<PlacedStructure>;
+  (data: MapData, layout: Layout): ReadonlyArray<PlacedStructure>;
+} = dual(2, (data: MapData, layout: Layout): ReadonlyArray<PlacedStructure> =>
   Arr.flatMap(data.structures, (structure) => {
     const placement = layout.structures[structure.id];
 
-    return placement === undefined ? [] : [{ structure, placement }];
+    return placement === undefined ? [] : [{ placement, structure }];
   })
 );
 
@@ -54,10 +54,10 @@ export const spanOf: {
   const y = Math.min(a.y, b.y);
 
   return {
+    d: Math.max(a.y + a.d, b.y + b.d) - y,
+    w: Math.max(a.x + a.w, b.x + b.w) - x,
     x,
     y,
-    w: Math.max(a.x + a.w, b.x + b.w) - x,
-    d: Math.max(a.y + a.d, b.y + b.d) - y,
   };
 });
 
@@ -74,31 +74,31 @@ export const tagCovers: {
 
 const at = (id: string) => ["structures", id];
 
-const overlaps = (placed: readonly PlacedStructure[]) =>
+const overlaps = (placed: ReadonlyArray<PlacedStructure>) =>
   Arr.flatMap(placed, (first, index) =>
     Arr.flatMap(placed.slice(index + 1), (second) =>
       footprintsOverlap(first.placement, second.placement)
         ? [
             mapWarning({
               file: "layout.json",
-              path: at(second.structure.id),
-              message: `footprint overlaps "${first.structure.id}".`,
               hint: `Move one of them, for example with axonometric layout <home> ${second.structure.id} --x <x> --y <y>.`,
+              message: `footprint overlaps "${first.structure.id}".`,
+              path: at(second.structure.id),
             }),
           ]
         : []
     )
   );
 
-const coveredTags = (placed: readonly PlacedStructure[]) =>
+const coveredTags = (placed: ReadonlyArray<PlacedStructure>) =>
   Arr.flatMap(placed, (tagged) =>
     Arr.flatMap(placed, (other) =>
       other.structure.id !== tagged.structure.id && tagCovers(tagged, other)
         ? [
             mapWarning({
               file: "layout.json",
-              path: at(tagged.structure.id),
               message: `name tag is drawn on top of "${other.structure.id}". Move one of them apart, so the tag under the front corner has room.`,
+              path: at(tagged.structure.id),
             }),
           ]
         : []
@@ -129,9 +129,9 @@ const overlappingZones = ({
         ? [
             mapWarning({
               file: "layout.json",
-              path: [],
-              message: `the zones of groups "${first.group.id}" and "${second.group.id}" overlap${where}.`,
               hint: "Move one group's structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.",
+              message: `the zones of groups "${first.group.id}" and "${second.group.id}" overlap${where}.`,
+              path: [],
             }),
           ]
         : []
@@ -148,14 +148,14 @@ const staleEntries = (data: MapData, layout: Layout) => {
       : [
           mapWarning({
             file: "layout.json",
-            path: at(id),
             message: `no structure in data.mjs has the id "${id}". build removes this entry.`,
+            path: at(id),
           }),
         ]
   );
 };
 
-const quotedList = (ids: readonly string[]) =>
+const quotedList = (ids: ReadonlyArray<string>) =>
   Arr.join(
     Arr.map(ids, (id) => `"${id}"`),
     ", "
@@ -165,7 +165,7 @@ const quotedList = (ids: readonly string[]) =>
 const routeWarnings = (
   hop: MapData["hops"][number],
   route: HopRoute
-): readonly MapProblem[] => {
+): ReadonlyArray<MapProblem> => {
   const one = route.crosses.length === 1;
 
   const why = route.overridden
@@ -176,24 +176,24 @@ const routeWarnings = (
     ? [
         mapWarning({
           file: "layout.json",
-          path: ["routes", hop.id],
           message: `hop "${hop.id}" from "${hop.from}" to "${hop.to}" runs under ${quotedList(route.crosses)}: ${why}`,
+          path: ["routes", hop.id],
         }),
       ]
     : [];
 
-  const { length, distance } = routeLength(route.points);
+  const { distance, length } = routeLength(route.points);
 
   const long = route.tooLong
     ? [
         mapWarning({
           file: "layout.json",
-          path: ["routes", hop.id],
           message: `hop "${hop.id}" from "${hop.from}" to "${hop.to}" takes a long way round: ${length} units for ends ${distance} apart. ${
             route.overridden
               ? "Shorten the route override's points, or delete it so the hop routes itself."
               : "Move the structures so nothing stands between them, or write a route override."
           }`,
+          path: ["routes", hop.id],
         }),
       ]
     : [];
@@ -216,15 +216,15 @@ export const onOutline: {
 
 /** A hop's id and the structures at its ends. */
 export interface HopEnds {
-  readonly id: string;
   readonly from: string;
+  readonly id: string;
   readonly to: string;
 }
 
 /** A route override with an end off its footprint, and the problem it makes. */
 export interface OffEnd {
-  readonly hop: HopEnds;
   readonly end: "first" | "last";
+  readonly hop: HopEnds;
   readonly problem: MapProblem;
 }
 
@@ -236,47 +236,51 @@ export interface OffEnd {
  * both ask this, so they never disagree about what an override may be.
  */
 export const offEndFindings: {
-  (layout: Layout): (hops: readonly HopEnds[]) => readonly OffEnd[];
-  (hops: readonly HopEnds[], layout: Layout): readonly OffEnd[];
-} = dual(2, (hops: readonly HopEnds[], layout: Layout): readonly OffEnd[] =>
-  Arr.flatMap(hops, (hop) => {
-    const points = layout.routes?.[hop.id];
-    const from = layout.structures[hop.from];
-    const to = layout.structures[hop.to];
+  (layout: Layout): (hops: ReadonlyArray<HopEnds>) => ReadonlyArray<OffEnd>;
+  (hops: ReadonlyArray<HopEnds>, layout: Layout): ReadonlyArray<OffEnd>;
+} = dual(
+  2,
+  (hops: ReadonlyArray<HopEnds>, layout: Layout): ReadonlyArray<OffEnd> =>
+    Arr.flatMap(hops, (hop) => {
+      const points = layout.routes?.[hop.id];
+      const from = layout.structures[hop.from];
+      const to = layout.structures[hop.to];
 
-    if (points === undefined || from === undefined || to === undefined) {
-      return [];
-    }
+      if (points === undefined || from === undefined || to === undefined) {
+        return [];
+      }
 
-    const ends = [
-      { end: "first", point: points[0], box: from, structure: hop.from },
-      { end: "last", point: points.at(-1), box: to, structure: hop.to },
-    ] as const;
+      const ends = [
+        { box: from, end: "first", point: points[0], structure: hop.from },
+        { box: to, end: "last", point: points.at(-1), structure: hop.to },
+      ] as const;
 
-    return Arr.flatMap(ends, ({ end, point, box, structure }) =>
-      point === undefined || onOutline(point, box)
-        ? []
-        : [
-            {
-              hop,
-              end,
-              problem: mapError({
-                file: "layout.json",
-                path: ["routes", hop.id],
-                message: `hop "${hop.id}"'s route override ${end === "first" ? "starts" : "ends"} at (${point.x}, ${point.y}), which isn't on the edge of "${structure}" at x ${box.x}–${box.x + box.w}, y ${box.y}–${box.y + box.d}. Move its ${end} point onto that footprint's edge.`,
-              }),
-            },
-          ]
-    );
-  })
+      return Arr.flatMap(ends, ({ box, end, point, structure }) =>
+        point === undefined || onOutline(point, box)
+          ? []
+          : [
+              {
+                end,
+                hop,
+                problem: mapError({
+                  file: "layout.json",
+                  message: `hop "${hop.id}"'s route override ${end === "first" ? "starts" : "ends"} at (${point.x}, ${point.y}), which isn't on the edge of "${structure}" at x ${box.x}–${box.x + box.w}, y ${box.y}–${box.y + box.d}. Move its ${end} point onto that footprint's edge.`,
+                  path: ["routes", hop.id],
+                }),
+              },
+            ]
+      );
+    })
 );
 
 /** The errors `offEndFindings` finds. */
 export const offEndOverrides: {
-  (layout: Layout): (hops: readonly HopEnds[]) => readonly MapProblem[];
-  (hops: readonly HopEnds[], layout: Layout): readonly MapProblem[];
-} = dual(2, (hops: readonly HopEnds[], layout: Layout): readonly MapProblem[] =>
-  Arr.map(offEndFindings(hops, layout), ({ problem }) => problem)
+  (layout: Layout): (hops: ReadonlyArray<HopEnds>) => ReadonlyArray<MapProblem>;
+  (hops: ReadonlyArray<HopEnds>, layout: Layout): ReadonlyArray<MapProblem>;
+} = dual(
+  2,
+  (hops: ReadonlyArray<HopEnds>, layout: Layout): ReadonlyArray<MapProblem> =>
+    Arr.map(offEndFindings(hops, layout), ({ problem }) => problem)
 );
 
 const staleRoutes = (data: MapData, layout: Layout) => {
@@ -288,8 +292,8 @@ const staleRoutes = (data: MapData, layout: Layout) => {
       : [
           mapWarning({
             file: "layout.json",
-            path: ["routes", id],
             message: `no hop in data.mjs has the id "${id}". build removes this route override.`,
+            path: ["routes", id],
           }),
         ]
   );
@@ -301,40 +305,40 @@ const staleRoutes = (data: MapData, layout: Layout) => {
  */
 export interface ChapterView {
   readonly id: string | undefined;
+  readonly plays: ReadonlyArray<string>;
   readonly revealed: ReadonlySet<string>;
-  readonly plays: readonly string[];
 }
 
 /** The chapters `check` draws, in order: one for the whole map when it has none. */
-export const chapterViews = (data: MapData): readonly ChapterView[] => {
+export const chapterViews = (data: MapData): ReadonlyArray<ChapterView> => {
   if (!Arr.isReadonlyArrayNonEmpty(data.chapters)) {
     return [
       {
         id: undefined,
-        revealed: new Set(Arr.map(data.structures, ({ id }) => id)),
         plays: Arr.empty<string>(),
+        revealed: new Set(Arr.map(data.structures, ({ id }) => id)),
       },
     ];
   }
 
   return Arr.map(data.chapters, (chapter, index) => ({
     id: chapter.id,
+    plays: chapter.plays,
     revealed: new Set(
       Arr.flatMap(data.chapters.slice(0, index + 1), ({ reveals }) => reveals)
     ),
-    plays: chapter.plays,
   }));
 };
 
 const thingNames = {
+  arrow: "the arrowhead of hop",
   box: "the box of",
-  tag: "the name tag of",
   chip: "the code chip of",
-  title: "the zone title of",
+  corner: "a corner of",
   label: "the label of hop",
   route: "the route of hop",
-  arrow: "the arrowhead of hop",
-  corner: "a corner of",
+  tag: "the name tag of",
+  title: "the zone title of",
   zone: "the outline of zone",
 } as const satisfies Record<string, string>;
 
@@ -388,7 +392,7 @@ const labelsChecked: Readonly<Record<View, boolean>> = {
 };
 
 /** Every half-unit step a route takes, as order-free keys. */
-const stepKeysOf = (points: readonly GridPoint[]) =>
+const stepKeysOf = (points: ReadonlyArray<GridPoint>) =>
   new Set(
     Arr.flatMap(points, (start, index) => {
       const end = points[index + 1];
@@ -416,15 +420,15 @@ const stepKeysOf = (points: readonly GridPoint[]) =>
  * across chapters.
  */
 const hiddenLabelFindings = ({
-  view,
   scene,
+  view,
   where,
 }: {
-  readonly view: View;
   readonly scene: Scene;
+  readonly view: View;
   /** Where the scene is, such as ` in chapter "c-all"`. */
   readonly where: string;
-}): readonly ChapterFinding[] => {
+}): ReadonlyArray<ChapterFinding> => {
   if (!labelsChecked[view]) {
     return [];
   }
@@ -435,8 +439,8 @@ const hiddenLabelFindings = ({
     key: `label ${view} ${hop.id}`,
     problem: mapWarning({
       file: "layout.json",
-      path: ["structures"],
       message: `the label of hop "${hop.id}" has no clear spot beside its route${where}${viewNames[view]}, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`,
+      path: ["structures"],
     }),
   }));
 };
@@ -477,8 +481,8 @@ const sharedSegments = (
       return [
         mapWarning({
           file: "layout.json",
-          path: ["routes", owner.hop.id],
           message: `hop "${owner.hop.id}"'s route override runs along the same segment as hop "${other.hop.id}", so the two read as one line. Move the override's points off the other route.`,
+          path: ["routes", owner.hop.id],
         }),
       ];
     })
@@ -494,14 +498,14 @@ const clashFindings = ({
   clashes,
   where,
 }: {
-  readonly clashes: readonly {
+  readonly clashes: ReadonlyArray<{
+    readonly clashes: ReadonlyArray<SceneClash>;
     readonly view: View;
-    readonly clashes: readonly SceneClash[];
-  }[];
+  }>;
   /** Where the clashes are, such as ` in chapter "c-all"`. */
   readonly where: string;
-}): readonly ChapterFinding[] =>
-  Arr.flatMap(clashes, ({ view, clashes: drawn }) =>
+}): ReadonlyArray<ChapterFinding> =>
+  Arr.flatMap(clashes, ({ clashes: drawn, view }) =>
     Arr.flatMap(drawn, ({ between: [first, second] }) =>
       coveredElsewhere(view, first, second)
         ? []
@@ -510,8 +514,8 @@ const clashFindings = ({
               key: `${view} ${first} ${second}`,
               problem: mapWarning({
                 file: "layout.json",
-                path: ["structures"],
                 message: `${describeThing(first)} is drawn over ${describeThing(second)}${where}${viewNames[view]}. Move the structures apart, so the drawing has room.`,
+                path: ["structures"],
               }),
             },
           ]
@@ -528,7 +532,7 @@ const clashFindings = ({
 /** Which chapters a drawing check covers: all, or the one being viewed. */
 type Scope =
   | { readonly of: "all" }
-  | { readonly of: "chapter"; readonly chapter: string | undefined };
+  | { readonly chapter: string | undefined; readonly of: "chapter" };
 
 const everyChapter: Scope = { of: "all" };
 
@@ -544,7 +548,7 @@ export interface ChapterFinding {
 
 const keyedBy =
   (key: (problem: MapProblem) => string) =>
-  (problems: readonly MapProblem[]): readonly ChapterFinding[] =>
+  (problems: ReadonlyArray<MapProblem>): ReadonlyArray<ChapterFinding> =>
     Arr.map(problems, (problem) => ({ key: key(problem), problem }));
 
 const byMessage = keyedBy(({ message }) => message);
@@ -555,9 +559,9 @@ const byMessage = keyedBy(({ message }) => message);
  */
 const findingsOf = (
   { data, layout }: Checkable,
-  { id, revealed, plays }: ChapterView,
+  { id, plays, revealed }: ChapterView,
   scope: Scope
-): readonly ChapterFinding[] => {
+): ReadonlyArray<ChapterFinding> => {
   const routes = routeRevealed({ data, layout, revealed });
   const where = id === undefined ? "" : ` in chapter "${id}"`;
 
@@ -570,27 +574,27 @@ const findingsOf = (
   );
 
   const scenes = Arr.map(views, (view) => ({
-    view,
     scene: sceneOf({
       data,
+      labelFirst: plays,
       layout,
       revealed,
       routes,
-      labelFirst: plays,
       view,
     }),
+    view,
   }));
 
   const clashes = clashFindings({
-    clashes: Arr.map(scenes, ({ view, scene }) => ({
-      view,
+    clashes: Arr.map(scenes, ({ scene, view }) => ({
       clashes: sceneClashes(scene),
+      view,
     })),
     where,
   });
 
-  const unlabelled = Arr.flatMap(scenes, ({ view, scene }) =>
-    hiddenLabelFindings({ view, scene, where })
+  const unlabelled = Arr.flatMap(scenes, ({ scene, view }) =>
+    hiddenLabelFindings({ scene, view, where })
   );
 
   const shared = byMessage(sharedSegments(data, routes));
@@ -611,8 +615,8 @@ const findingsOf = (
  * warning once, at the first chapter it shows in.
  */
 export const firstShown = (
-  chapters: readonly (readonly ChapterFinding[])[]
-): readonly MapProblem[] => {
+  chapters: ReadonlyArray<ReadonlyArray<ChapterFinding>>
+): ReadonlyArray<MapProblem> => {
   const seen = new Set<string>();
 
   return Arr.flatMap(chapters, (findings) =>
@@ -644,9 +648,9 @@ const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
  * chapter's drawing. They don't route or draw, so they are quick.
  */
 export const layoutWideProblems: {
-  (layout: Layout): (data: MapData) => readonly MapProblem[];
-  (data: MapData, layout: Layout): readonly MapProblem[];
-} = dual(2, (data: MapData, layout: Layout): readonly MapProblem[] => {
+  (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
+  (data: MapData, layout: Layout): ReadonlyArray<MapProblem>;
+} = dual(2, (data: MapData, layout: Layout): ReadonlyArray<MapProblem> => {
   const placed = placedStructures(data, layout);
 
   return [
@@ -666,7 +670,7 @@ export const layoutWideProblems: {
  * same, so its findings carry over.
  */
 const drawnKeyOf = (layout: Layout, { revealed }: ChapterView) =>
-  // oxlint-disable-next-line effecttsgo/prefer-schema-over-json -- a cache key, never decoded
+  // oxlint-disable-next-line effecttsgo/global-json -- a cache key, never decoded
   JSON.stringify([
     Arr.map(Arr.sort([...revealed], Order.String), (id) => [
       id,
@@ -685,7 +689,7 @@ const findingsKept = 256;
 
 const findingsCache = new WeakMap<
   MapData,
-  Map<string, readonly ChapterFinding[]>
+  Map<string, ReadonlyArray<ChapterFinding>>
 >();
 
 const findingsFor = (data: MapData) => {
@@ -695,7 +699,7 @@ const findingsFor = (data: MapData) => {
     return found;
   }
 
-  const made = new Map<string, readonly ChapterFinding[]>();
+  const made = new Map<string, ReadonlyArray<ChapterFinding>>();
 
   findingsCache.set(data, made);
 
@@ -708,14 +712,14 @@ const findingsFor = (data: MapData) => {
  * don't reveal it alone, so they aren't routed or drawn again.
  */
 export const chapterFindings: {
-  (view: ChapterView): (map: Checkable) => readonly ChapterFinding[];
-  (map: Checkable, view: ChapterView): readonly ChapterFinding[];
+  (view: ChapterView): (map: Checkable) => ReadonlyArray<ChapterFinding>;
+  (map: Checkable, view: ChapterView): ReadonlyArray<ChapterFinding>;
 } = dual(
   2,
   (
     { data, layout }: Checkable,
     view: ChapterView
-  ): readonly ChapterFinding[] => {
+  ): ReadonlyArray<ChapterFinding> => {
     const cache = findingsFor(data);
     const key = `${view.id ?? ""}\n${drawnKeyOf(layout, view)}`;
     const cached = cache.get(key);
@@ -752,9 +756,9 @@ export const chapterFindings: {
  * `build` places it.
  */
 export const checkLayout: {
-  (layout: Layout): (data: MapData) => readonly MapProblem[];
-  (data: MapData, layout: Layout): readonly MapProblem[];
-} = dual(2, (data: MapData, layout: Layout): readonly MapProblem[] => [
+  (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
+  (data: MapData, layout: Layout): ReadonlyArray<MapProblem>;
+} = dual(2, (data: MapData, layout: Layout): ReadonlyArray<MapProblem> => [
   ...layoutWideProblems(data, layout),
   ...firstShown(
     Arr.map(chapterViews(data), (view) =>
@@ -770,11 +774,11 @@ export const checkLayout: {
  * here against the chapter the engineer is viewing, not every chapter at once.
  */
 export const checkChapter: {
-  (chapter: string | undefined): (map: Checkable) => readonly MapProblem[];
-  (map: Checkable, chapter: string | undefined): readonly MapProblem[];
+  (chapter: string | undefined): (map: Checkable) => ReadonlyArray<MapProblem>;
+  (map: Checkable, chapter: string | undefined): ReadonlyArray<MapProblem>;
 } = dual(
   2,
-  (map: Checkable, chapter: string | undefined): readonly MapProblem[] => {
+  (map: Checkable, chapter: string | undefined): ReadonlyArray<MapProblem> => {
     const { data, layout } = map;
     const placed = placedStructures(data, layout);
 
@@ -784,7 +788,7 @@ export const checkChapter: {
       ...offEndOverrides(data.hops, layout),
       ...overlaps(placed),
       ...coveredTags(placed),
-      ...chapterWarnings(data, layout, { of: "chapter", chapter }),
+      ...chapterWarnings(data, layout, { chapter, of: "chapter" }),
     ];
   }
 );
@@ -794,12 +798,15 @@ const lineOf = (problem: MapProblem) =>
 
 /** A problem `checkLayout` finds in a dragged layout, and whether the drag made it. */
 export interface DraggedProblem {
-  readonly problem: MapProblem;
   /** Whether the layout before the drag didn't have it. */
   readonly added: boolean;
+  readonly problem: MapProblem;
 }
 
-const checked = new WeakMap<MapData, WeakMap<Layout, readonly MapProblem[]>>();
+const checked = new WeakMap<
+  MapData,
+  WeakMap<Layout, ReadonlyArray<MapProblem>>
+>();
 
 /**
  * `checkLayout`, remembered for this data and this layout. A drag asks about
@@ -834,18 +841,18 @@ export interface Checkable {
  * moves it between zones; `changedProblems` takes both maps whole.
  */
 export const changedProblems: {
-  (before: Checkable): (after: Checkable) => readonly DraggedProblem[];
-  (after: Checkable, before: Checkable): readonly DraggedProblem[];
+  (before: Checkable): (after: Checkable) => ReadonlyArray<DraggedProblem>;
+  (after: Checkable, before: Checkable): ReadonlyArray<DraggedProblem>;
 } = dual(
   2,
-  (after: Checkable, before: Checkable): readonly DraggedProblem[] => {
+  (after: Checkable, before: Checkable): ReadonlyArray<DraggedProblem> => {
     const known = new Set(
       Arr.map(checkLayoutOnce(before.data, before.layout), lineOf)
     );
 
     return Arr.map(checkLayoutOnce(after.data, after.layout), (problem) => ({
-      problem,
       added: !known.has(lineOf(problem)),
+      problem,
     }));
   }
 );
@@ -864,12 +871,12 @@ export const changedChapterProblems = ({
   readonly after: Checkable;
   readonly before: Checkable;
   readonly chapter: string | undefined;
-}): readonly DraggedProblem[] => {
+}): ReadonlyArray<DraggedProblem> => {
   const known = new Set(Arr.map(checkChapter(before, chapter), lineOf));
 
   return Arr.map(checkChapter(after, chapter), (problem) => ({
-    problem,
     added: !known.has(lineOf(problem)),
+    problem,
   }));
 };
 
@@ -889,17 +896,17 @@ export const changedChapterProblems = ({
  * time, without holding up a drag for the whole map.
  */
 export const draggedProblemsIn = ({
-  data,
-  before,
   after,
+  before,
   chapters,
+  data,
 }: {
-  readonly data: MapData;
-  readonly before: Layout;
   readonly after: Layout;
+  readonly before: Layout;
   /** Which of `chapterViews(data)` to draw, by id. */
   readonly chapters: ReadonlySet<string | undefined>;
-}): readonly DraggedProblem[] => {
+  readonly data: MapData;
+}): ReadonlyArray<DraggedProblem> => {
   const shown = Arr.filter(chapterViews(data), ({ id }) => chapters.has(id));
 
   const problemsOf = (layout: Layout) => [
@@ -912,8 +919,8 @@ export const draggedProblemsIn = ({
   const known = new Set(Arr.map(problemsOf(before), lineOf));
 
   return Arr.map(problemsOf(after), (problem) => ({
-    problem,
     added: !known.has(lineOf(problem)),
+    problem,
   }));
 };
 
@@ -922,10 +929,17 @@ export const draggedProblemsIn = ({
  * map's data is the same before and after.
  */
 export const draggedProblems: {
-  (before: Layout, after: Layout): (data: MapData) => readonly DraggedProblem[];
-  (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[];
+  (
+    before: Layout,
+    after: Layout
+  ): (data: MapData) => ReadonlyArray<DraggedProblem>;
+  (data: MapData, before: Layout, after: Layout): ReadonlyArray<DraggedProblem>;
 } = dual(
   3,
-  (data: MapData, before: Layout, after: Layout): readonly DraggedProblem[] =>
+  (
+    data: MapData,
+    before: Layout,
+    after: Layout
+  ): ReadonlyArray<DraggedProblem> =>
     changedProblems({ data, layout: after }, { data, layout: before })
 );

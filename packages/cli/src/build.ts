@@ -17,7 +17,7 @@ import { renderSystemMd } from "./system-md.ts";
 import { writeAll } from "./write-files.ts";
 import type { Output } from "./write-files.ts";
 
-const quoted = (ids: readonly string[]) =>
+const quoted = (ids: ReadonlyArray<string>) =>
   Arr.join(
     Arr.map(ids, (id) => `"${id}"`),
     ", "
@@ -28,16 +28,16 @@ const quoted = (ids: readonly string[]) =>
  * skipped, if they were.
  */
 export const printNotes = Effect.fnUntraced(function* ({
-  warnings,
   sourcesSkipped,
+  warnings,
 }: {
-  readonly warnings: readonly MapProblem[];
   readonly sourcesSkipped: Option.Option<string>;
+  readonly warnings: ReadonlyArray<MapProblem>;
 }) {
   yield* Effect.forEach(
     warnings,
     (warning) => Console.error(formatProblem(warning)),
-    { discard: true }
+    { concurrency: 1, discard: true }
   );
 
   yield* Option.match(sourcesSkipped, {
@@ -64,15 +64,15 @@ export const siteOutputs = Effect.fnUntraced(function* (
   const systemMdFile = path.join(output, "SYSTEM.md");
   const pageFile = path.join(output, `${state.system}.html`);
 
-  const outputs: readonly Output[] = [
+  const outputs: ReadonlyArray<Output> = [
     {
-      file: systemMdFile,
       content: renderSystemMd(state, path.relative(output, home)),
+      file: systemMdFile,
     },
-    { file: pageFile, content: yield* renderPage(state) },
+    { content: yield* renderPage(state), file: pageFile },
   ];
 
-  return { outputs, systemMdFile, pageFile };
+  return { outputs, pageFile, systemMdFile };
 });
 
 /**
@@ -93,19 +93,19 @@ export const rebuild = Effect.fnUntraced(function* (
   yield* withLock(home, command);
 
   const {
-    warnings,
     data,
     layout,
+    proposals,
     saved,
     sourceLinks,
     sourcesSkipped,
-    proposals,
+    warnings,
   } = yield* loadMap({
-    home,
-    output,
-    command,
     arrange: (mapData, savedLayout) =>
       placeStructures(mapData, savedLayout).layout,
+    command,
+    home,
+    output,
   });
 
   const placed = Arr.filter(
@@ -127,52 +127,52 @@ export const rebuild = Effect.fnUntraced(function* (
     placed.length > 0 || pruned.length > 0 || prunedRoutes.length > 0;
 
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
-  const state: MapState = { system, data, layout: next, sourceLinks };
+  const state: MapState = { data, layout: next, sourceLinks, system };
 
   const layoutFile = path.join(home, "layout.json");
 
   // The state holds the accepted layout only. Pending changes reach served
   // pages through serve, never SYSTEM.md or the read-only page.
-  const { outputs, systemMdFile, pageFile } = yield* siteOutputs(state, home);
+  const { outputs, pageFile, systemMdFile } = yield* siteOutputs(state, home);
 
   // layout.json is only written when placing added or pruned structures or
   // pruned route overrides.
   // Under serve the write is one more watch event, and that rebuild finds
   // every structure placed, so it writes no layout and the loop ends.
-  const layoutOutput: readonly Output[] = changed
-    ? [{ file: layoutFile, content: yield* encodeLayout(next) }]
+  const layoutOutput: ReadonlyArray<Output> = changed
+    ? [{ content: yield* encodeLayout(next), file: layoutFile }]
     : [];
 
   yield* writeAll([...layoutOutput, ...outputs]);
 
   return {
-    state,
-    proposals,
-    warnings,
-    sourcesSkipped,
+    layoutFile,
+    pageFile,
     placed,
+    proposals,
     pruned,
     prunedRoutes,
+    sourcesSkipped,
+    state,
     systemMdFile,
-    pageFile,
-    layoutFile,
+    warnings,
   };
 }, Effect.scoped);
 
 const build = Effect.fn("build")(function* (home: string) {
   const {
-    state,
-    warnings,
-    sourcesSkipped,
+    layoutFile,
+    pageFile,
     placed,
     pruned,
     prunedRoutes,
+    sourcesSkipped,
+    state,
     systemMdFile,
-    pageFile,
-    layoutFile,
+    warnings,
   } = yield* rebuild(home, "build");
 
-  yield* printNotes({ warnings, sourcesSkipped });
+  yield* printNotes({ sourcesSkipped, warnings });
 
   if (placed.length > 0) {
     yield* Effect.log(

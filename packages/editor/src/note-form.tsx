@@ -12,38 +12,38 @@ const always = () => true;
  * typed is lost.
  */
 export function NoteForm({
-  label,
+  canSend = always,
   hideLabel = false,
   initial = "",
-  submit,
-  placeholder = "Ask a question or ask for a change…",
+  label,
   limit = maxNoteLength,
-  rows = 3,
-  canSend = always,
-  onSubmit,
   onCancel,
+  onSubmit,
+  placeholder = "Ask a question or ask for a change…",
+  rows = 3,
+  submit,
 }: {
-  /** What the box is for. It names the field to a screen reader. */
-  readonly label: string;
+  /** Whether `text`, trimmed, may be sent. The button waits for it. */
+  readonly canSend?: (text: string) => boolean;
   /**
    * Whether the label is left off the screen, because the section's own
    * heading already says it. The box keeps the label as its accessible name.
    */
   readonly hideLabel?: boolean;
   readonly initial?: string;
-  /** What the empty box says. */
-  readonly placeholder?: string;
+  /** What the box is for. It names the field to a screen reader. */
+  readonly label: string;
   /** The most characters the box takes. */
   readonly limit?: number;
-  readonly rows?: number;
-  /** Whether `text`, trimmed, may be sent. The button waits for it. */
-  readonly canSend?: (text: string) => boolean;
-  readonly submit: string;
+  readonly onCancel?: () => void;
   readonly onSubmit: (
     text: string,
     done: (failure: string | undefined) => void
   ) => void;
-  readonly onCancel?: () => void;
+  /** What the empty box says. */
+  readonly placeholder?: string;
+  readonly rows?: number;
+  readonly submit: string;
 }) {
   const id = useId();
   const [text, setText] = useState(initial);
@@ -64,32 +64,29 @@ export function NoteForm({
 
   return (
     <form
-      data-note-form
       className="flex flex-col gap-1.5"
+      data-note-form
       onSubmit={(event) => {
         event.preventDefault();
         send();
       }}
     >
       <label
-        htmlFor={id}
         className={
           hideLabel ? "sr-only" : "text-xs tracking-widest uppercase opacity-70"
         }
+        htmlFor={id}
       >
         {label}
       </label>
       <textarea
-        id={id}
-        data-note-text
-        name="note"
-        rows={rows}
-        value={text}
-        maxLength={limit}
         autoComplete="off"
-        placeholder={placeholder}
-        disabled={sending}
         className="border-ink bg-paper text-ink focus-visible:outline-ink resize-y border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
+        data-note-text
+        disabled={sending}
+        id={id}
+        maxLength={limit}
+        name="note"
         onChange={(event) => {
           setText(event.target.value);
         }}
@@ -99,27 +96,30 @@ export function NoteForm({
             send();
           }
         }}
+        placeholder={placeholder}
+        rows={rows}
+        value={text}
       />
       {failure === undefined ? null : (
         <p
+          className="border-refused border-l-2 pl-2 text-xs"
           data-note-failure
           role="alert"
-          className="border-refused border-l-2 pl-2 text-xs"
         >
           {failure}
         </p>
       )}
       <div className="flex gap-1.5">
         <button
-          type="submit"
-          data-note-send
           className={controlClass}
+          data-note-send
           disabled={sending || text.trim() === "" || !canSend(text.trim())}
+          type="submit"
         >
           {sending ? "Saving…" : submit}
         </button>
         {onCancel === undefined ? null : (
-          <button type="button" className={controlClass} onClick={onCancel}>
+          <button className={controlClass} onClick={onCancel} type="button">
             Cancel
           </button>
         )}

@@ -10,11 +10,15 @@ import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMapFiles = yield* fullMap;
+
+  return yield* buildAndOpen(fullMapFiles, "review");
 });
 
 const pipelinePage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* minimalMap, "pipeline");
+  const minimalMapFiles = yield* minimalMap;
+
+  return yield* buildAndOpen(minimalMapFiles, "pipeline");
 });
 
 const overviewButton = "header [data-control='overview']";
@@ -31,7 +35,7 @@ const openOverview = Effect.fnUntraced(function* (page: Page) {
 
 /** The resolved `href` of each link matching `selector`. */
 const resolvedLinks = (page: Page, selector: string) =>
-  inPage<readonly string[]>(
+  inPage<ReadonlyArray<string>>(
     page,
     `[...document.querySelectorAll(${literal(selector)})].map((a) => a.href)`
   );
@@ -69,7 +73,7 @@ describe("the How it's built page", () => {
   it.live("shows every overview field in SYSTEM.md's order", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+        const { errors, page } = yield* reviewPage;
 
         yield* openOverview(page);
 
@@ -152,14 +156,16 @@ describe("the How it's built page", () => {
 
         assert.lengthOf(adrs, 2);
         assert.match(adr, /^file:.*\/review\/adr\/0001-local-server\.md$/u);
-        assert.isTrue(yield* fileExists(adr), adr);
+        const adrExists = yield* fileExists(adr);
+        assert.isTrue(adrExists, adr);
         assert.strictEqual(url, "https://example.com/adr/harness");
         assert.lengthOf(deepDives, 1);
         assert.match(
           research,
           /^file:.*\/review\/research\/clipboard\.md#findings$/u
         );
-        assert.isTrue(yield* fileExists(research), research);
+        const researchExists = yield* fileExists(research);
+        assert.isTrue(researchExists, research);
       })
     )
   );
@@ -205,19 +211,21 @@ describe("the How it's built page", () => {
         );
 
         assert.strictEqual(expanded, "true");
-        assert.isTrue(yield* inPage<boolean>(page, focusInside));
-        assert.deepStrictEqual(yield* texts(page, "[data-hint]"), [
-          "Esc closes this page",
-        ]);
+        const focusInOverview = yield* inPage<boolean>(page, focusInside);
+        assert.isTrue(focusInOverview);
+        const hints = yield* texts(page, "[data-hint]");
+        assert.deepStrictEqual(hints, ["Esc closes this page"]);
 
         yield* press(page, "Escape");
         yield* waitGone(page, overviewPage);
-        assert.isTrue(yield* inPage<boolean>(page, focusOnButton));
+        const focusAfterEscape = yield* inPage<boolean>(page, focusOnButton);
+        assert.isTrue(focusAfterEscape);
 
         yield* openOverview(page);
         yield* click(page, overviewButton);
         yield* waitGone(page, overviewPage);
-        assert.isTrue(yield* inPage<boolean>(page, focusOnButton));
+        const focusAfterToggle = yield* inPage<boolean>(page, focusOnButton);
+        assert.isTrue(focusAfterToggle);
       })
     )
   );
@@ -254,10 +262,10 @@ describe("the How it's built page", () => {
 
         assert.strictEqual(chapter, "c-save");
         assert.strictEqual(pinned, 1);
-        assert.strictEqual(yield* inPage<string>(page, scale), zoomed);
-        assert.isTrue(
-          Arr.isArrayNonEmpty(yield* texts(page, "[data-structure]"))
-        );
+        const scaleAfter = yield* inPage<string>(page, scale);
+        assert.strictEqual(scaleAfter, zoomed);
+        const structureTexts = yield* texts(page, "[data-structure]");
+        assert.isTrue(Arr.isArrayNonEmpty(structureTexts));
       })
     )
   );

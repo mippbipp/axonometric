@@ -80,7 +80,7 @@ export interface HopEnds {
  * target's box can't hide the arrowhead. When neither or both do, it bends x
  * first.
  */
-export const routeHop = ({ from, to }: HopEnds): readonly GridPoint[] => {
+export const routeHop = ({ from, to }: HopEnds): ReadonlyArray<GridPoint> => {
   const start = centre(from);
   const end = centre(to);
   const yFirstArrivesInFront = start.x > end.x && start.y <= end.y;
@@ -145,24 +145,24 @@ export const routesOf = ({
 
 const lineCache = new WeakMap<
   Readonly<Record<string, HopRoute>>,
-  Map<View, Readonly<Record<string, readonly GridPosition[]>>>
+  Map<View, Readonly<Record<string, ReadonlyArray<GridPosition>>>>
 >();
 
 /** Each routed hop's own line on the ground in `view`, as the scene draws it. */
 const linesOf = ({
-  routes,
   data,
   layout,
+  routes,
   view,
 }: {
-  readonly routes: Readonly<Record<string, HopRoute>>;
   readonly data: MapData;
   readonly layout: Layout;
+  readonly routes: Readonly<Record<string, HopRoute>>;
   readonly view: View;
-}): Readonly<Record<string, readonly GridPosition[]>> => {
+}): Readonly<Record<string, ReadonlyArray<GridPosition>>> => {
   const byView =
     lineCache.get(routes) ??
-    new Map<View, Readonly<Record<string, readonly GridPosition[]>>>();
+    new Map<View, Readonly<Record<string, ReadonlyArray<GridPosition>>>>();
 
   const cached = byView.get(view);
 
@@ -171,9 +171,9 @@ const linesOf = ({
   }
 
   const lines = drawnRoutes({
-    routes,
     hops: data.hops,
     placements: layout.structures,
+    routes,
     view,
   });
 
@@ -190,19 +190,19 @@ const linesOf = ({
  */
 export const screenRouteOf = ({
   data,
+  hop,
   layout,
   revealed,
-  hop,
   view,
 }: {
   readonly data: MapData;
+  readonly hop: { readonly id: string };
   readonly layout: Layout;
   readonly revealed: ReadonlySet<string>;
-  readonly hop: { readonly id: string };
   readonly view: View;
-}): readonly ScreenPoint[] | undefined => {
+}): ReadonlyArray<ScreenPoint> | undefined => {
   const routes = routesOf({ data, layout, revealed });
-  const line = linesOf({ routes, data, layout, view })[hop.id];
+  const line = linesOf({ data, layout, routes, view })[hop.id];
 
   return line === undefined
     ? undefined
@@ -217,7 +217,7 @@ export const pointAlong = ({
   points,
   t,
 }: {
-  readonly points: readonly ScreenPoint[];
+  readonly points: ReadonlyArray<ScreenPoint>;
   readonly t: number;
 }): ScreenPoint => {
   const legs = Arr.flatMap(points, (point, index) => {
@@ -227,9 +227,9 @@ export const pointAlong = ({
       ? []
       : [
           {
-            start: point,
             end: next,
             length: Math.hypot(next.sx - point.sx, next.sy - point.sy),
+            start: point,
           },
         ];
   });

@@ -9,11 +9,11 @@ import { makeHome } from "./harness.ts";
 
 // Copies the built bundle into the temporary home folder and runs the copy
 // there. The home folder sits outside the repo, so no node_modules is in
-// reach and the run fails unless the bundle is self-contained. `pnpm test`
+// reach and the run fails unless the bundle is self-contained. `bun run test`
 // builds the bundle first.
 const runBundle = Effect.fnUntraced(function* (
   home: string,
-  args: readonly string[]
+  args: ReadonlyArray<string>
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -38,7 +38,7 @@ const runBundle = Effect.fnUntraced(function* (
     { concurrency: "unbounded" }
   );
 
-  return { exitCode: Number(exitCode), stdout, stderr };
+  return { exitCode: Number(exitCode), stderr, stdout };
 }, Effect.provide(NodeServices.layer));
 
 describe("the built bundle", () => {
@@ -81,7 +81,8 @@ describe("the built bundle", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const home = yield* makeHome(yield* minimalMap);
+        const minimalMapFiles = yield* minimalMap;
+        const home = yield* makeHome(minimalMapFiles);
 
         const result = yield* runBundle(home, ["build", "pipeline/map"]);
 

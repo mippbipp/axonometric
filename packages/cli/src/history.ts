@@ -56,7 +56,7 @@ export const revisionsIn = Effect.fnUntraced(function* (home: string) {
     .readDirectory(path.join(home, historyFolder))
     .pipe(
       Effect.catchReason("PlatformError", "NotFound", () =>
-        Effect.succeed<readonly string[]>([])
+        Effect.succeed<ReadonlyArray<string>>([])
       )
     );
 
@@ -97,8 +97,8 @@ export const checkHistory = Effect.fnUntraced(function* (
       return [
         make({
           file,
-          path: [],
           message: `could not be read: ${describeCause(text.failure)}.${suffix}`,
+          path: [],
         }),
       ];
     }
@@ -110,8 +110,8 @@ export const checkHistory = Effect.fnUntraced(function* (
         problemsFromIssue(file, decoded.failure.issue),
         (problem): MapProblem => ({
           ...problem,
-          severity: strict ? "error" : "warning",
           message: `${problem.message}${suffix}`,
+          severity: strict ? "error" : "warning",
         })
       );
     }
@@ -121,13 +121,14 @@ export const checkHistory = Effect.fnUntraced(function* (
       : [
           make({
             file,
-            path: ["revision"],
             message: `is ${decoded.success.revision}, but the file is named for revision ${n}. A revision file's number is the number in its name.${suffix}`,
+            path: ["revision"],
           }),
         ];
   });
 
-  const found = yield* Effect.forEach(yield* revisionsIn(home), check);
+  const revisions = yield* revisionsIn(home);
+  const found = yield* Effect.forEach(revisions, check, { concurrency: 1 });
 
   return Arr.flatten(found);
 });
@@ -169,18 +170,22 @@ export const readRevision = Effect.fnUntraced(function* (
  */
 export const loadHistory = Effect.fnUntraced(function* (
   home: string,
-  known: readonly HistoryEntry[]
+  known: ReadonlyArray<HistoryEntry>
 ) {
   const saved = yield* revisionsIn(home);
   const kept = new Map(Arr.map(known, (entry) => [entry.revision, entry]));
 
-  const entries = yield* Effect.forEach(saved, (n) => {
-    const entry = kept.get(n);
+  const entries = yield* Effect.forEach(
+    saved,
+    (n) => {
+      const entry = kept.get(n);
 
-    return entry === undefined
-      ? Effect.map(readRevision(home, n), Option.map(historyEntryOf))
-      : Effect.succeedSome(entry);
-  });
+      return entry === undefined
+        ? Effect.map(readRevision(home, n), Option.map(historyEntryOf))
+        : Effect.succeedSome(entry);
+    },
+    { concurrency: 1 }
+  );
 
   return Arr.reverse(Arr.flatMap(entries, Option.toArray));
 });
@@ -203,10 +208,10 @@ export const acceptedIds = Effect.fnUntraced(function* (home: string) {
     found === undefined || Option.isNone(found) ? undefined : found.value.data;
 
   const known: KnownIds = {
-    structure: new Set(Arr.map(data?.structures ?? [], ({ id }) => id)),
-    hop: new Set(Arr.map(data?.hops ?? [], ({ id }) => id)),
     flow: new Set(Arr.map(data?.flows ?? [], ({ id }) => id)),
     group: new Set(Arr.map(data?.groups ?? [], ({ id }) => id)),
+    hop: new Set(Arr.map(data?.hops ?? [], ({ id }) => id)),
+    structure: new Set(Arr.map(data?.structures ?? [], ({ id }) => id)),
   };
 
   return known;

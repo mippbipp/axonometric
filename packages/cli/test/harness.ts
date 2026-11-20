@@ -37,31 +37,31 @@ export type HomeFiles = Readonly<Partial<Record<string, string>>>;
 
 export interface CliResult {
   readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
   /** Every file in the home folder after the run. */
   readonly files: HomeFiles;
+  readonly stderr: string;
+  readonly stdout: string;
 }
 
 const plainTerminal: TerminalCapabilities.TerminalCapabilities = {
-  canColor: false,
   canAnimate: false,
+  canColor: false,
   canPrompt: false,
 };
 
-const formatLine = (args: readonly unknown[]) =>
+const formatLine = (args: ReadonlyArray<unknown>) =>
   `${Arr.join(Arr.map(args, String), " ")}\n`;
 
 const captureConsole = () => {
-  const output = { stdout: "", stderr: "" };
+  const output = { stderr: "", stdout: "" };
 
   const console: Console.Console = {
     ...globalThis.console,
-    log: (...args: readonly unknown[]) => {
-      output.stdout += formatLine(args);
-    },
-    error: (...args: readonly unknown[]) => {
+    error: (...args: ReadonlyArray<unknown>) => {
       output.stderr += formatLine(args);
+    },
+    log: (...args: ReadonlyArray<unknown>) => {
+      output.stdout += formatLine(args);
     },
   };
 
@@ -131,7 +131,7 @@ export const makeHome = Effect.fnUntraced(function* (files: HomeFiles) {
 }, Effect.provide(NodeServices.layer));
 
 /** Runs the CLI in-process with `args`, writing its output to `output`. */
-const runCaptured = (args: readonly string[]) => {
+const runCaptured = (args: ReadonlyArray<string>) => {
   const { console, output } = captureConsole();
   const stdio = Stdio.layerTest({ args: Effect.succeed(args) });
 
@@ -166,17 +166,18 @@ const exitCodeOf = (exit: Exit.Exit<unknown, unknown>) => {
  */
 export const runCli = Effect.fnUntraced(function* (
   home: string,
-  args: readonly string[]
+  args: ReadonlyArray<string>
 ) {
   const { exit, output } = runCaptured(args);
-  const exitCode = exitCodeOf(yield* exit);
+  const exitResult = yield* exit;
+  const exitCode = exitCodeOf(exitResult);
   const files = yield* readFiles(home);
 
   return {
     exitCode,
-    stdout: output.stdout,
-    stderr: output.stderr,
     files,
+    stderr: output.stderr,
+    stdout: output.stdout,
   } satisfies CliResult;
 }, Effect.provide(NodeServices.layer));
 
@@ -221,12 +222,12 @@ const waitForServer = Effect.fnUntraced(function* (
 
 /** A `serve` running in-process, started by `startServe`. */
 export interface RunningServe {
-  readonly url: string;
-  readonly state: ServerState;
   /** What it has printed so far. */
-  readonly output: { readonly stdout: string; readonly stderr: string };
+  readonly output: { readonly stderr: string; readonly stdout: string };
+  readonly state: ServerState;
   /** Stops it as Ctrl-C would, by interrupting it. */
   readonly stop: Effect.Effect<void>;
+  readonly url: string;
 }
 
 /**
@@ -236,7 +237,7 @@ export interface RunningServe {
  */
 export const startServe = Effect.fnUntraced(function* (
   home: string,
-  args: readonly string[]
+  args: ReadonlyArray<string>
 ) {
   const fs = yield* FileSystem.FileSystem;
   const file = yield* serverStateFile(home);
@@ -264,10 +265,10 @@ export const startServe = Effect.fnUntraced(function* (
   );
 
   return {
-    url: state.url,
-    state,
     output,
+    state,
     stop: Fiber.interrupt(fiber),
+    url: state.url,
   } satisfies RunningServe;
 }, Effect.provide(NodeServices.layer));
 
@@ -299,14 +300,14 @@ export const proposalsText = (home: string) =>
  */
 export const serveReviewMap = Effect.fnUntraced(function* (
   files: HomeFiles,
-  args: readonly string[]
+  args: ReadonlyArray<string>
 ) {
   const path = yield* Path.Path;
   const root = yield* makeHome({ ...(yield* fullMap), ...files });
   const home = path.join(root, "review", "map");
   const serve = yield* startServe(home, ["--port", "0", ...args]);
 
-  return { root, home, serve, url: serve.url };
+  return { home, root, serve, url: serve.url };
 }, Effect.provide(NodeServices.layer));
 
 /**
@@ -321,7 +322,7 @@ export const openReviewMap = Effect.fnUntraced(function* (
   const opened = yield* openUrl(served.url, options);
 
   yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
+    opened.page.setViewportSize({ height: 800, width: 1280 })
   );
 
   return { ...served, ...opened };
@@ -335,9 +336,14 @@ export const proposalsIn = Effect.fnUntraced(function* (home: string) {
   const path = yield* Path.Path;
   const file = path.join(home, "proposals.json");
 
-  return (yield* fs.exists(file))
-    ? Option.some(yield* decodeProposals(yield* fs.readFileString(file)))
-    : Option.none<Proposals>();
+  if (!(yield* fs.exists(file))) {
+    return Option.none<Proposals>();
+  }
+
+  const text = yield* fs.readFileString(file);
+  const proposals = yield* decodeProposals(text);
+
+  return Option.some(proposals);
 }, Effect.provide(NodeServices.layer));
 
 /**
@@ -352,9 +358,11 @@ export const readProposals = Effect.fnUntraced(function* (home: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  return yield* decodeProposals(
-    yield* fs.readFileString(path.join(home, "proposals.json"))
+  const proposalsJson = yield* fs.readFileString(
+    path.join(home, "proposals.json")
   );
+
+  return yield* decodeProposals(proposalsJson);
 }, Effect.provide(NodeServices.layer));
 
 /**

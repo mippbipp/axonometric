@@ -28,7 +28,7 @@
   "type": "module",
   "scripts": {
     "build": "tsdown",
-    "build:sea": "node scripts/build-sea.ts",
+    "build:binary": "node scripts/build-binary.ts",
     "dev": "node src/bin.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -47,7 +47,6 @@
     "@types/react-dom": "catalog:",
     "effect": "catalog:effect",
     "playwright": "catalog:",
-    "postject": "1.0.0-alpha.6",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tsdown": "catalog:",
@@ -55,6 +54,7 @@
     "vitest": "catalog:"
   },
   "engines": {
+    "bun": ">=1.4.4",
     "node": ">=24.22.1"
   }
 }

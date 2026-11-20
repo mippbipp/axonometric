@@ -36,14 +36,14 @@ import { writeAll } from "./write-files.ts";
 
 /** What accepting changes leaves the server holding. */
 export interface AcceptedState {
-  readonly state: MapState;
-  readonly proposals: Proposals;
   /**
    * Every revision that reads, newest first, read from `history/` once the
    * new revision is saved and still under the lock. Taking it from disk
    * keeps a revision the CLI saved a moment before from being lost.
    */
   readonly history: HistoryList;
+  readonly proposals: Proposals;
+  readonly state: MapState;
 }
 
 /**
@@ -72,10 +72,10 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
     home,
     write.baseFileRevision,
     loadMap({
+      arrange: (data, saved) => placeStructures(data, saved).layout,
+      command: "accept",
       home,
       output: path.dirname(home),
-      command: "accept",
-      arrange: (data, saved) => placeStructures(data, saved).layout,
       strictProposals: true,
     }).pipe(
       Effect.catchTag("MapInvalid", ({ problems }) =>
@@ -91,37 +91,37 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
   const waiting = acceptRefusal({
     proposals: current,
     // Structures the engineer has proposed take ground too.
+    hops: map.data.hops,
+    ids: write.changeIds,
     layout: layoutUnderProposals({
       data: map.data,
       layout: map.layout,
       proposals: current,
     }),
-    ids: write.changeIds,
-    hops: map.data.hops,
   });
 
   if (Option.isSome(waiting)) {
     return yield* LayoutChangeRefused.make({
-      reason: waiting.value,
       proposals: current,
+      reason: waiting.value,
     });
   }
 
   const result = acceptLayoutChanges({
+    hops: map.data.hops,
+    ids: write.changeIds,
     layout: map.layout,
     pending: current.layout,
-    ids: write.changeIds,
-    hops: map.data.hops,
   });
 
   if (Result.isFailure(result)) {
     return yield* LayoutChangeRefused.make({
-      reason: result.failure,
       proposals: current,
+      reason: result.failure,
     });
   }
 
-  const { accepted, remaining, dropped, layout } = result.success;
+  const { accepted, dropped, layout, remaining } = result.success;
 
   const structureNames = new Map(
     Arr.map(map.data.structures, ({ id, name }) => [id, name])
@@ -140,32 +140,35 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
   const number = yield* nextRevision(home);
   const revisionFile = path.join(home, historyFolder, revisionFileName(number));
 
+  const now = yield* DateTime.now;
+  const savedAt = DateTime.formatIso(now);
+
   const revision: Revision = {
-    format: 1,
-    revision: number,
-    savedAt: DateTime.formatIso(yield* DateTime.now),
-    message,
     accepted: Arr.map(accepted, (change) => ({
-      kind: "layout",
-      id: change.id,
       change,
+      id: change.id,
+      kind: "layout",
     })),
-    rejected: [],
     data: map.data,
+    format: 1,
     layout,
+    message,
+    rejected: [],
+    revision: number,
+    savedAt,
   };
 
   const proposals: Proposals = {
     ...current,
-    revision: current.revision + 1,
     layout: remaining,
+    revision: current.revision + 1,
   };
 
   const state: MapState = {
-    system: yield* systemOf(home),
     data: map.data,
     layout,
     sourceLinks: map.sourceLinks,
+    system: yield* systemOf(home),
   };
 
   const site = yield* siteOutputs(state, home);
@@ -174,28 +177,28 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
   // writeAll fails before it renames anything if the file exists.
   yield* writeAll([
     {
-      file: revisionFile,
       content: yield* encodeRevision(revision),
       exclusive: true,
+      file: revisionFile,
     },
     {
-      file: path.join(home, "layout.json"),
       content: yield* encodeLayout(layout),
+      file: path.join(home, "layout.json"),
     },
     {
-      file: path.join(home, "proposals.json"),
       content: yield* encodeProposals(proposals),
+      file: path.join(home, "proposals.json"),
     },
     ...site.outputs,
   ]);
 
   // Still under the lock, so quick writes tell the pages in order.
-  yield* written({ state, proposals, history: yield* loadHistory(home, []) });
+  yield* written({ history: yield* loadHistory(home, []), proposals, state });
 
   return {
-    revision: number,
-    message,
     layout,
+    message,
     proposals,
+    revision: number,
   } satisfies Accepted;
 }, Effect.scoped);

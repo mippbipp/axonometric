@@ -22,13 +22,13 @@ const noop = () => {};
  * the form doesn't ask.
  */
 export function QuestionAnswer({
-  structure,
   question,
+  structure,
 }: {
-  /** The id of the structure the question is on. */
-  readonly structure: string;
   /** The question's id, such as Q-P1. */
   readonly question: string;
+  /** The id of the structure the question is on. */
+  readonly structure: string;
 }) {
   const review = useReview();
   const [answering, setAnswering] = useState(false);
@@ -48,13 +48,13 @@ export function QuestionAnswer({
   );
 
   return (
-    <div data-question-answer={question} className="mt-1 flex flex-col gap-1.5">
+    <div className="mt-1 flex flex-col gap-1.5" data-question-answer={question}>
       {Arr.map(answers, ({ item, status }) => (
         <div
-          key={item.id}
+          className="border-pending flex flex-col gap-1 border-l-2 pl-2"
           data-answer={item.id}
           data-answer-state={status.state}
-          className="border-pending flex flex-col gap-1 border-l-2 pl-2"
+          key={item.id}
         >
           <span className="block break-words">{item.text}</span>
           <span className="block opacity-70">Answered {item.answeredOn}</span>
@@ -62,14 +62,14 @@ export function QuestionAnswer({
           {status.state === "open" ? (
             <span>
               <button
-                type="button"
-                data-answer-discard={item.id}
-                className={controlClass}
                 aria-label={`Discard answer: ${question}`}
+                className={controlClass}
+                data-answer-discard={item.id}
                 disabled={!review.canWrite}
                 onClick={() => {
                   review.ops.discardProposal(item.id, noop);
                 }}
+                type="button"
               >
                 Discard
               </button>
@@ -80,16 +80,17 @@ export function QuestionAnswer({
       {answering ? (
         <NoteForm
           label={`Your answer to ${question}`}
-          submit="Save answer"
-          placeholder="Write the answer…"
+          onCancel={() => {
+            setAnswering(false);
+          }}
           onSubmit={(text, done) => {
             review.ops.add(
               {
-                kind: "answer",
-                structureId: structure,
-                question,
-                text,
                 answeredOn: today(),
+                kind: "answer",
+                question,
+                structureId: structure,
+                text,
               },
               (outcome) => {
                 if (Result.isSuccess(outcome)) {
@@ -100,21 +101,20 @@ export function QuestionAnswer({
               }
             );
           }}
-          onCancel={() => {
-            setAnswering(false);
-          }}
+          placeholder="Write the answer…"
+          submit="Save answer"
         />
       ) : null}
       {!answering && !waiting && review.canWrite ? (
         <span>
           <button
-            type="button"
-            data-answer-open={question}
-            className={controlClass}
             aria-label={`${answers.length === 0 ? "Answer" : "Answer again"}: ${question}`}
+            className={controlClass}
+            data-answer-open={question}
             onClick={() => {
               setAnswering(true);
             }}
+            type="button"
           >
             {answers.length === 0 ? "Answer" : "Answer again"}
           </button>
@@ -152,7 +152,7 @@ export function RaisedQuestions({
   }
 
   return (
-    <section data-raised-section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-raised-section>
       <h3 className="text-xs tracking-widest uppercase opacity-70">
         Raise a question
       </h3>
@@ -160,10 +160,10 @@ export function RaisedQuestions({
         <ul className="flex flex-col gap-2">
           {Arr.map(raised, ({ item, status }) => (
             <li
-              key={item.id}
+              className="border-pending flex flex-col gap-1 border-l-2 pl-2 text-sm"
               data-raised-question={item.id}
               data-raised-state={status.state}
-              className="border-pending flex flex-col gap-1 border-l-2 pl-2 text-sm"
+              key={item.id}
             >
               <span className="break-words">{item.text}</span>
               <ItemStatusLine status={status} />
@@ -173,12 +173,9 @@ export function RaisedQuestions({
       )}
       {editOn && review.canWrite ? (
         <NoteForm
-          label="A new question about this"
           hideLabel
-          submit="Raise question"
-          placeholder="Write the question as one sentence…"
+          label="A new question about this"
           limit={maxNoteLength}
-          rows={2}
           onSubmit={(text, done) => {
             review.ops.add(
               { kind: "question", structureId: structure, text },
@@ -187,6 +184,9 @@ export function RaisedQuestions({
               }
             );
           }}
+          placeholder="Write the question as one sentence…"
+          rows={2}
+          submit="Raise question"
         />
       ) : null}
     </section>

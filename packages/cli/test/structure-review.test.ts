@@ -34,32 +34,32 @@ const at = "2026-11-01T09:00:00.000Z";
 
 const added: StructureChange = {
   action: "add",
+  at: { d: 2, w: 2, x: 12, y: 12 },
   structure: {
+    group: "loop",
     id: "new-1",
     name: "Build cache",
     shape: "store",
-    group: "loop",
     status: "planned",
   },
-  at: { x: 12, y: 12, w: 2, d: 2 },
 };
 
 const item = (id: string, change: StructureChange): BatchItem => ({
+  change,
   id,
   kind: "structure",
-  change,
 });
 
 const fileOf = (proposals: Proposals) =>
   `${JSON.stringify(proposals, null, 2)}\n`;
 
 const batchOf = (
-  items: readonly BatchItem[],
+  items: ReadonlyArray<BatchItem>,
   verdicts: Batch["verdicts"] = {}
-): Batch => ({ number: 1, frozenAt: at, items, verdicts });
+): Batch => ({ frozenAt: at, items, number: 1, verdicts });
 
 const homeWith = (
-  items: readonly BatchItem[],
+  items: ReadonlyArray<BatchItem>,
   verdicts: Batch["verdicts"] = {},
   dataEdit: (data: string) => string = (data) => data
 ) =>
@@ -71,15 +71,15 @@ const homeWith = (
       ...files,
       "review/map/data.mjs": dataEdit(files["review/map/data.mjs"] ?? ""),
       "review/map/proposals.json": fileOf({
+        batches: [batchOf(items, verdicts)],
         format: 1,
-        revision: 4,
         layout: [],
         notes: [],
-        batches: [batchOf(items, verdicts)],
+        revision: 4,
       }),
     });
 
-    return { root, home: path.join(root, "review", "map") };
+    return { home: path.join(root, "review", "map"), root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 /** data.mjs with a structure `id` added to the loop group. */
@@ -315,7 +315,7 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
   it.effect("records a rejected add without touching layout.json", () =>
     Effect.gen(function* () {
       const { home } = yield* homeWith([item("p1", added)], {
-        p1: { verdict: "rejected", reason: "No cache." },
+        p1: { reason: "No cache.", verdict: "rejected" },
       });
 
       const committed = yield* runCli(home, ["commit", home]);
@@ -370,14 +370,15 @@ describe("structure writes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const root = yield* makeHome(yield* fullMap);
+        const fullMapFiles = yield* fullMap;
+        const root = yield* makeHome(fullMapFiles);
         const home = path.join(root, "review", "map");
         const serve = yield* startServe(home, ["--port", "0"]);
 
         const sent = yield* post(serve.url, "/api/structures", {
           baseFileRevision: 0,
-          id: "p1",
           change: added,
+          id: "p1",
         });
 
         assert.strictEqual(sent.status, 200, sent.body);
@@ -385,8 +386,8 @@ describe("structure writes over HTTP", () => {
         // Moving a structure into a group needs a group the map has.
         const badGroup = yield* post(serve.url, "/api/structures", {
           baseFileRevision: 1,
+          change: { action: "group", group: "nowhere", structure: "page" },
           id: "p4",
-          change: { action: "group", structure: "page", group: "nowhere" },
         });
 
         assert.strictEqual(badGroup.status, 422);
@@ -394,8 +395,6 @@ describe("structure writes over HTTP", () => {
 
         // A layout write may not land on the ground a proposed structure takes.
         const moveOnto = yield* write(serve.url, {
-          method: "put",
-          target: "/api/proposals/layout",
           body: {
             baseFileRevision: 1,
             layout: [
@@ -404,13 +403,15 @@ describe("structure writes over HTTP", () => {
                 kind: "move",
                 moves: [
                   {
-                    target: { kind: "structure", id: "engineer" },
                     position: { x: 12, y: 12 },
+                    target: { id: "engineer", kind: "structure" },
                   },
                 ],
               },
             ],
           },
+          method: "put",
+          target: "/api/proposals/layout",
         });
 
         assert.strictEqual(moveOnto.status, 422, moveOnto.body);

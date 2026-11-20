@@ -9,18 +9,18 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** A structure and the questions of one state it has. */
 export interface QuestionGroup<Q extends Question> {
+  readonly questions: ReadonlyArray<Q>;
   readonly structure: Structure;
-  readonly questions: readonly Q[];
 }
 
 const groupsOf = <Q extends Question>(
-  structures: readonly Structure[],
+  structures: ReadonlyArray<Structure>,
   keep: (question: Question) => question is Q
-): readonly QuestionGroup<Q>[] =>
+): ReadonlyArray<QuestionGroup<Q>> =>
   Arr.flatMap(structures, (structure) => {
     const questions = Arr.filter(structure.questions ?? [], keep);
 
-    return questions.length === 0 ? [] : [{ structure, questions }];
+    return questions.length === 0 ? [] : [{ questions, structure }];
   });
 
 const isOpen = (question: Question) => question.state === "open";
@@ -33,7 +33,7 @@ const isResolved = (question: Question): question is ResolvedQuestion =>
  * grouped by structure in map order.
  */
 export const useRevealedQuestions = () => {
-  const { state, revealed } = useWalkthrough();
+  const { revealed, state } = useWalkthrough();
 
   const shown = Arr.filter(state.data.structures, ({ id }) => revealed.has(id));
 

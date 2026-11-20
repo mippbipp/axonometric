@@ -61,14 +61,14 @@ const choose = (choice: ThemeChoice) => {
 };
 
 const opposite = {
-  light: "dark",
   dark: "light",
+  light: "dark",
 } as const satisfies Record<Theme, Theme>;
 
 const actions = {
-  system: "Follow system theme",
-  light: "Use light theme",
   dark: "Use dark theme",
+  light: "Use light theme",
+  system: "Follow system theme",
 } as const satisfies Record<ThemeChoice, string>;
 
 /**
@@ -84,12 +84,12 @@ export function ThemeToggle() {
 
   return (
     <button
-      type="button"
-      data-theme-toggle=""
       className={controlClass}
+      data-theme-toggle=""
       onClick={() => {
         choose(nextChoice);
       }}
+      type="button"
     >
       {actions[nextChoice]}
     </button>

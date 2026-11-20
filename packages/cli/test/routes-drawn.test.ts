@@ -98,12 +98,12 @@ const labelReport = `
 
 interface LabelReport {
   readonly hop: string;
-  readonly own: number;
   readonly nearestOther: number;
+  readonly own: number;
 }
 
 const labelsIn = Effect.fnUntraced(function* (page: Page) {
-  return yield* Effect.promise((): Promise<readonly LabelReport[]> =>
+  return yield* Effect.promise((): Promise<ReadonlyArray<LabelReport>> =>
     page.evaluate(labelReport)
   );
 });
@@ -139,14 +139,16 @@ describe("routed hops", () => {
   it.live("draw the crowded map's boxes in front over the ones behind", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* crowdedMap, "crowded");
+        const crowdedMapFiles = yield* crowdedMap;
+        const { page } = yield* buildAndOpen(crowdedMapFiles, "crowded");
 
         yield* goToChapter(page, "c-all");
 
         // At a point where the west wall's box and the vault's both draw,
         // the topmost structure is the one in front.
-        const onTop = yield* Effect.promise((): Promise<readonly string[]> =>
-          page.evaluate(`(() => {
+        const onTop = yield* Effect.promise(
+          (): Promise<ReadonlyArray<string>> =>
+            page.evaluate(`(() => {
             const structure = (id) => document.querySelector('[data-structure="' + id + '"]');
             const west = structure("west");
             const inFill = (element, x, y) =>
@@ -190,7 +192,8 @@ describe("routed hops", () => {
   it.live("draw stretches hidden behind boxes faintly over them", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* crowdedMap, "crowded");
+        const crowdedMapFiles = yield* crowdedMap;
+        const { page } = yield* buildAndOpen(crowdedMapFiles, "crowded");
 
         yield* goToChapter(page, "c-all");
 
@@ -224,7 +227,8 @@ describe("routed hops", () => {
   it.live("carry packets along the drawn route", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* fullMap, "review");
+        const fullMapFiles = yield* fullMap;
+        const { page } = yield* buildAndOpen(fullMapFiles, "review");
 
         yield* goToChapter(page, "c-save");
         yield* Effect.promise(() =>

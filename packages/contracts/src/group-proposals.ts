@@ -18,32 +18,32 @@ import type { StructureWorld } from "./structure-proposals.ts";
 
 /** What a group proposal is checked against. */
 export interface GroupWorld {
+  /** The map with only the frozen items applied: what an open item lands on. */
+  readonly base: Pick<MapData, "groups">;
   /**
    * The map as proposed, open and frozen items applied, so a group an
    * earlier proposal adds is known to later ones.
    */
   readonly data: Pick<MapData, "groups">;
-  /** The map with only the frozen items applied: what an open item lands on. */
-  readonly base: Pick<MapData, "groups">;
 }
 
-const openOf = (proposals: Proposals): readonly GroupProposal[] =>
+const openOf = (proposals: Proposals): ReadonlyArray<GroupProposal> =>
   proposals.groups ?? [];
 
 const bump = (
   proposals: Proposals,
-  groups: readonly GroupProposal[]
+  groups: ReadonlyArray<GroupProposal>
 ): Proposals => ({
   ...proposals,
-  revision: proposals.revision + 1,
   groups,
+  revision: proposals.revision + 1,
 });
 
 const idInUse = (proposals: Proposals, id: string) =>
   Arr.some(reviewEntries(proposals), ({ item }) => item.id === id);
 
 /** The provisional ids of the groups that batches waiting for the agent add. */
-const waitingAdds = (proposals: Proposals): readonly string[] =>
+const waitingAdds = (proposals: Proposals): ReadonlyArray<string> =>
   Arr.flatMap(proposals.batches ?? [], (batch) =>
     batch.committed === undefined
       ? Arr.flatMap(batch.items, (item) =>
@@ -86,14 +86,14 @@ const titleRefusal = (
  * the title as the map has it takes the open rename away.
  */
 const setProposal = ({
-  proposals,
-  id,
   change,
+  id,
+  proposals,
   world,
 }: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
   readonly change: GroupChange;
+  readonly id: ChangeId;
+  readonly proposals: Proposals;
   readonly world: GroupWorld;
 }): Proposals => {
   const open = openOf(proposals);
@@ -129,9 +129,9 @@ const setProposal = ({
     proposals,
     Option.isSome(existing)
       ? Arr.map(open, (found) =>
-          found.id === keptId ? { id: keptId, change } : found
+          found.id === keptId ? { change, id: keptId } : found
         )
-      : [...open, { id: keptId, change }]
+      : [...open, { change, id: keptId }]
   );
 };
 
@@ -148,14 +148,14 @@ const setProposal = ({
  *   waiting in a batch, or another group has the title.
  */
 const proposeGroup = ({
-  proposals,
-  id,
   change,
+  id,
+  proposals,
   world,
 }: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
   readonly change: GroupChange;
+  readonly id: ChangeId;
+  readonly proposals: Proposals;
   readonly world: GroupWorld;
 }): Result.Result<Proposals, string> => {
   const open = openOf(proposals);
@@ -251,7 +251,7 @@ const proposeGroup = ({
     return Result.succeed(proposals);
   }
 
-  return Result.succeed(setProposal({ proposals, id, change, world }));
+  return Result.succeed(setProposal({ change, id, proposals, world }));
 };
 
 /** One structure that moves into a new group, with the id of its proposal. */
@@ -267,25 +267,25 @@ export interface Member {
  * is checked against, without the new group, which this adds.
  */
 export const proposeGroupWithMembers = ({
-  proposals,
-  id,
   change,
+  id,
   members,
-  world,
+  proposals,
   structures,
+  world,
 }: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
   readonly change: GroupChange;
-  readonly members: readonly Member[];
-  readonly world: GroupWorld;
+  readonly id: ChangeId;
+  readonly members: ReadonlyArray<Member>;
+  readonly proposals: Proposals;
   readonly structures: StructureWorld;
+  readonly world: GroupWorld;
 }): Result.Result<Proposals, string> => {
   if (change.action !== "add" && members.length > 0) {
     return Result.fail("Only a new group takes members.");
   }
 
-  const added = proposeGroup({ proposals, id, change, world });
+  const added = proposeGroup({ change, id, proposals, world });
 
   if (Result.isFailure(added) || change.action !== "add") {
     return added;
@@ -313,13 +313,13 @@ export const proposeGroupWithMembers = ({
     (so, member): Result.Result<Proposals, string> =>
       Result.flatMap(so, (held) =>
         proposeStructure({
-          proposals: held,
-          id: member.id,
           change: {
             action: "group",
-            structure: member.structure,
             group: change.group.id,
+            structure: member.structure,
           },
+          id: member.id,
+          proposals: held,
           world: grown,
         })
       )

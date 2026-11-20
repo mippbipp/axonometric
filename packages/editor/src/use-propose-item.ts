@@ -16,7 +16,7 @@ import { useProposed } from "./proposed-context.ts";
  */
 // oxlint-disable-next-line effecttsgo/missing-pipeable-signature -- a React hook, called as `useItemPreview(items, scope)`, never piped.
 export const useItemPreview = (
-  items: readonly BatchItem[],
+  items: ReadonlyArray<BatchItem>,
   scope: CheckScope
 ) => {
   const proposing = useProposed();
@@ -69,14 +69,14 @@ export const useShowProblems = () => {
 
   return {
     /** Shows what `items` add to `check`'s report. */
-    show: (items: readonly BatchItem[], scope: CheckScope) => {
+    show: (items: ReadonlyArray<BatchItem>, scope: CheckScope) => {
       panel?.show({
         problems: proposing?.problemsOf(items, { scope }) ?? [],
       });
     },
     /** Shows why a change was refused. */
     refuse: (refusal: string) => {
-      panel?.show({ refusal, problems: [] });
+      panel?.show({ problems: [], refusal });
     },
   };
 };

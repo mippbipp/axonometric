@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
   chapterViews,
   draggedProblemsIn,
@@ -62,7 +63,7 @@ export type CheckAnswer = typeof CheckAnswer.Type;
 const checkOrder = (
   data: MapData,
   onScreen: string
-): readonly (string | undefined)[] => {
+): ReadonlyArray<string | undefined> => {
   const ids = Arr.map(chapterViews(data), ({ id }) => id);
 
   return [
@@ -82,9 +83,9 @@ export const checkDrag = Effect.fnUntraced(function* ({
   step: { step, after, onScreen },
   answer,
 }: {
+  readonly answer: (found: CheckAnswer) => void;
   readonly map: CheckMap;
   readonly step: CheckStep;
-  readonly answer: (found: CheckAnswer) => void;
 }) {
   const order = checkOrder(data, onScreen);
   const done = new Set<string | undefined>();
@@ -123,8 +124,8 @@ const warmUp = Effect.fnUntraced(function* ({ data, before }: CheckMap) {
 
 /** What a checker holds between messages: the map, and the step it checks. */
 interface Held {
-  map: CheckMap | undefined;
   checking: Fiber.Fiber<void> | undefined;
+  map: CheckMap | undefined;
 }
 
 /**

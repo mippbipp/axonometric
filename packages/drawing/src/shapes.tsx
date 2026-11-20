@@ -35,19 +35,19 @@ const halfTileHeight = tileHeight / 2;
 const gridStep = Math.hypot(halfTileWidth, halfTileHeight);
 
 interface DrawProps {
-  readonly placement: Placement;
-  readonly height: number;
   readonly hatch: string;
+  readonly height: number;
+  readonly placement: Placement;
 }
 
-const centreOf = ({ x, y, w, d }: Placement, z: number) =>
+const centreOf = ({ d, w, x, y }: Placement, z: number) =>
   project({ x: x + w / 2, y: y + d / 2, z });
 
-const inset = ({ x, y, w, d }: Placement, by: number): Placement => ({
+const inset = ({ d, w, x, y }: Placement, by: number): Placement => ({
+  d: d - 2 * by,
+  w: w - 2 * by,
   x: x + by,
   y: y + by,
-  w: w - 2 * by,
-  d: d - 2 * by,
 });
 
 /**
@@ -58,18 +58,18 @@ const alongX = (at: ScreenPoint) =>
   `matrix(${halfTileWidth / gridStep} ${halfTileHeight / gridStep} 0 1 ${at.sx} ${at.sy})`;
 
 function Face({
-  points,
   hatch,
+  points,
 }: {
-  readonly points: readonly ScreenPoint[];
   readonly hatch?: string;
+  readonly points: ReadonlyArray<ScreenPoint>;
 }) {
   const { face } = useLook();
   const hatching = useHatching(hatch);
 
   return (
     <>
-      <polygon data-face="" points={toPoints(points)} fill={face} />
+      <polygon data-face="" fill={face} points={toPoints(points)} />
       {hatching === undefined ? null : (
         <polygon points={toPoints(points)} {...hatching} />
       )}
@@ -79,31 +79,31 @@ function Face({
 
 /** A box from `z0` to `z1` over `placement`, sides hatched. */
 function Prism({
+  hatch,
+  hatchTop = false,
   placement,
   z0,
   z1,
-  hatch,
-  hatchTop = false,
 }: {
+  readonly hatch: string;
+  readonly hatchTop?: boolean;
   readonly placement: Placement;
   readonly z0: number;
   readonly z1: number;
-  readonly hatch: string;
-  readonly hatchTop?: boolean;
 }) {
   const low = corners(placement, z0);
   const top = corners(placement, z1);
 
   return (
     <>
-      <Face points={[low.left, low.front, top.front, top.left]} hatch={hatch} />
+      <Face hatch={hatch} points={[low.left, low.front, top.front, top.left]} />
       <Face
-        points={[low.front, low.right, top.right, top.front]}
         hatch={hatch}
+        points={[low.front, low.right, top.right, top.front]}
       />
       <Face
-        points={[top.back, top.right, top.front, top.left]}
         hatch={hatchTop ? hatch : undefined}
+        points={[top.back, top.right, top.front, top.left]}
       />
     </>
   );
@@ -115,10 +115,10 @@ function Footprint({ placement }: { readonly placement: Placement }) {
 
   return (
     <polygon
-      points={toPoints([ground.back, ground.right, ground.front, ground.left])}
       fill="none"
-      strokeWidth={0.8}
       opacity={0.45}
+      points={toPoints([ground.back, ground.right, ground.front, ground.left])}
+      strokeWidth={0.8}
     />
   );
 }
@@ -135,16 +135,16 @@ const flatRadii = (radius: number) => ({
 /** An upright cylinder from `z0` to `z1`, standing on `at`. */
 function Drum({
   at,
+  hatch,
   radius,
   z0,
   z1,
-  hatch,
 }: {
   readonly at: ScreenPoint;
+  readonly hatch: string;
   readonly radius: number;
   readonly z0: number;
   readonly z1: number;
-  readonly hatch: string;
 }) {
   const { face } = useLook();
   const hatching = useHatching(hatch);
@@ -157,22 +157,22 @@ function Drum({
 
   return (
     <>
-      <path data-face="" d={side} fill={face} />
+      <path d={side} data-face="" fill={face} />
       {hatching === undefined ? null : <path d={side} {...hatching} />}
-      <ellipse data-face="" cx={at.sx} cy={high} rx={rx} ry={ry} fill={face} />
+      <ellipse cx={at.sx} cy={high} data-face="" fill={face} rx={rx} ry={ry} />
     </>
   );
 }
 
 /** A plain box: the `box` shape, also used for the inside view's steps. */
-export function BoxShape({ placement, height, hatch }: DrawProps) {
-  return <Prism placement={placement} z0={0} z1={height} hatch={hatch} />;
+export function BoxShape({ hatch, height, placement }: DrawProps) {
+  return <Prism hatch={hatch} placement={placement} z0={0} z1={height} />;
 }
 
 const roofRise = 16;
 
 /** A block with a hipped roof: the system's brain. */
-function TallShape({ placement, height, hatch }: DrawProps) {
+function TallShape({ hatch, height, placement }: DrawProps) {
   const { face } = useLook();
   const eaves = height - roofRise;
   const top = corners(placement, eaves);
@@ -187,13 +187,13 @@ function TallShape({ placement, height, hatch }: DrawProps) {
 
   return (
     <>
-      <Prism placement={placement} z0={0} z1={eaves} hatch={hatch} />
+      <Prism hatch={hatch} placement={placement} z0={0} z1={eaves} />
       {Arr.map(slopes, ([from, to]) => (
         <polygon
-          key={`${from.sx},${from.sy}`}
           data-face=""
-          points={toPoints([from, to, apex])}
           fill={face}
+          key={`${from.sx},${from.sy}`}
+          points={toPoints([from, to, apex])}
         />
       ))}
     </>
@@ -203,7 +203,7 @@ function TallShape({ placement, height, hatch }: DrawProps) {
 const drumGap = 3;
 
 /** Three stacked drums: memory, ledgers, directories. */
-function StoreShape({ placement, height, hatch }: DrawProps) {
+function StoreShape({ hatch, height, placement }: DrawProps) {
   const radius = (Math.min(placement.w, placement.d) / 2) * 0.92;
   const at = centreOf(placement, 0);
   const layer = (height - drumGap * 2) / 3;
@@ -212,12 +212,12 @@ function StoreShape({ placement, height, hatch }: DrawProps) {
     <>
       {Arr.map([0, 1, 2], (index) => (
         <Drum
-          key={index}
           at={at}
+          hatch={hatch}
+          key={index}
           radius={radius}
           z0={index * (layer + drumGap)}
           z1={index * (layer + drumGap) + layer}
-          hatch={hatch}
         />
       ))}
     </>
@@ -231,7 +231,7 @@ const cardGap = 2;
 const cardShift = 0.1;
 
 /** A fanned deck of thin cards: tools. */
-function CardsShape({ placement, height, hatch }: DrawProps) {
+function CardsShape({ hatch, height, placement }: DrawProps) {
   const spread = cardShift * (cardCount - 1);
   const thickness = (height - cardGap * (cardCount - 1)) / cardCount;
 
@@ -239,16 +239,16 @@ function CardsShape({ placement, height, hatch }: DrawProps) {
     <>
       {Arr.map(Arr.range(0, cardCount - 1), (index) => (
         <Prism
+          hatch={hatch}
           key={index}
           placement={{
+            d: placement.d - spread,
+            w: placement.w - spread,
             x: placement.x + cardShift * index,
             y: placement.y + spread - cardShift * index,
-            w: placement.w - spread,
-            d: placement.d - spread,
           }}
           z0={index * (thickness + cardGap)}
           z1={index * (thickness + cardGap) + thickness}
-          hatch={hatch}
         />
       ))}
     </>
@@ -256,14 +256,14 @@ function CardsShape({ placement, height, hatch }: DrawProps) {
 }
 
 /** A wide, flat block with a hatched top: an existing backend. */
-function SlabShape({ placement, height, hatch }: DrawProps) {
+function SlabShape({ hatch, height, placement }: DrawProps) {
   return (
-    <Prism placement={placement} z0={0} z1={height} hatch={hatch} hatchTop />
+    <Prism hatch={hatch} hatchTop placement={placement} z0={0} z1={height} />
   );
 }
 
 /** A thin slab with a screen and lines of text on top. */
-function ScreenShape({ placement, height, hatch }: DrawProps) {
+function ScreenShape({ hatch, height, placement }: DrawProps) {
   const { paint } = useLook();
   const glass = inset(placement, Math.min(placement.w, placement.d) * 0.14);
   const panel = corners(glass, height);
@@ -271,10 +271,10 @@ function ScreenShape({ placement, height, hatch }: DrawProps) {
 
   return (
     <>
-      <Prism placement={placement} z0={0} z1={height} hatch={hatch} />
+      <Prism hatch={hatch} placement={placement} z0={0} z1={height} />
       <polygon
-        points={toPoints([panel.back, panel.right, panel.front, panel.left])}
         fill={paint.paper}
+        points={toPoints([panel.back, panel.right, panel.front, panel.left])}
         strokeWidth={0.9}
       />
       {Arr.map(lines, (at, index) => {
@@ -290,12 +290,12 @@ function ScreenShape({ placement, height, hatch }: DrawProps) {
         return (
           <line
             key={at}
-            x1={start.sx}
-            y1={start.sy}
-            x2={end.sx}
-            y2={end.sy}
-            strokeWidth={1.4}
             opacity={0.7}
+            strokeWidth={1.4}
+            x1={start.sx}
+            x2={end.sx}
+            y1={start.sy}
+            y2={end.sy}
           />
         );
       })}
@@ -304,28 +304,28 @@ function ScreenShape({ placement, height, hatch }: DrawProps) {
 }
 
 /** A box with a dark band around it: approval or confirmation. */
-function GateShape({ placement, height, hatch }: DrawProps) {
+function GateShape({ hatch, height, placement }: DrawProps) {
   const { solid } = useLook();
   const low = corners(placement, height * 0.5);
   const high = corners(placement, height * 0.74);
 
   return (
     <>
-      <Prism placement={placement} z0={0} z1={height} hatch={hatch} />
+      <Prism hatch={hatch} placement={placement} z0={0} z1={height} />
       <polygon
-        points={toPoints([low.left, low.front, high.front, high.left])}
         fill={solid}
+        points={toPoints([low.left, low.front, high.front, high.left])}
       />
       <polygon
-        points={toPoints([low.front, low.right, high.right, high.front])}
         fill={solid}
+        points={toPoints([low.front, low.right, high.right, high.front])}
       />
     </>
   );
 }
 
 /** A box with a hatched top and a clock on its face: a scheduled pass. */
-function JobShape({ placement, height, hatch }: DrawProps) {
+function JobShape({ hatch, height, placement }: DrawProps) {
   const { paint } = useLook();
   const radius = Math.min(height * 0.3, placement.w * gridStep * 0.18);
 
@@ -337,9 +337,9 @@ function JobShape({ placement, height, hatch }: DrawProps) {
 
   return (
     <>
-      <Prism placement={placement} z0={0} z1={height} hatch={hatch} hatchTop />
+      <Prism hatch={hatch} hatchTop placement={placement} z0={0} z1={height} />
       <g transform={alongX(at)}>
-        <circle r={radius} fill={paint.paper} strokeWidth={1} />
+        <circle fill={paint.paper} r={radius} strokeWidth={1} />
         <path
           d={`M0,${-radius * 0.7} L0,0 L${radius * 0.55},0`}
           fill="none"
@@ -353,7 +353,7 @@ function JobShape({ placement, height, hatch }: DrawProps) {
 const headRadius = 11;
 
 /** A standing figure: a body and a head. */
-function PersonShape({ placement, height, hatch }: DrawProps) {
+function PersonShape({ hatch, height, placement }: DrawProps) {
   const { face } = useLook();
   const at = centreOf(placement, 0);
   const radius = Math.min(placement.w, placement.d) * 0.26;
@@ -362,13 +362,13 @@ function PersonShape({ placement, height, hatch }: DrawProps) {
   return (
     <>
       <Footprint placement={placement} />
-      <Drum at={at} radius={radius} z0={0} z1={shoulders} hatch={hatch} />
+      <Drum at={at} hatch={hatch} radius={radius} z0={0} z1={shoulders} />
       <circle
-        data-face=""
         cx={at.sx}
         cy={at.sy - height + headRadius}
-        r={headRadius}
+        data-face=""
         fill={face}
+        r={headRadius}
       />
     </>
   );
@@ -379,7 +379,7 @@ const pageThickness = 0.1;
 const foldSize = 12;
 
 /** An upright page with a folded corner: a pull request or a report. */
-function DocumentShape({ placement, height, hatch }: DrawProps) {
+function DocumentShape({ hatch, height, placement }: DrawProps) {
   const { face } = useLook();
   const from = placement.x + placement.w * 0.12;
   const to = placement.x + placement.w * 0.88;
@@ -419,35 +419,35 @@ function DocumentShape({ placement, height, hatch }: DrawProps) {
   return (
     <>
       <Footprint placement={placement} />
-      <Face points={edge} hatch={hatch} />
+      <Face hatch={hatch} points={edge} />
       <Face points={topEdge} />
-      <polygon data-face="" points={toPoints(page)} fill={face} />
+      <polygon data-face="" fill={face} points={toPoints(page)} />
       <g data-fold="">
         <polygon
           data-face=""
-          points={toPoints(flap)}
           fill={face}
+          points={toPoints(flap)}
           strokeWidth={1}
         />
         <line
           data-crease=""
-          x1={foldTop.sx}
-          y1={foldTop.sy}
-          x2={foldSide.sx}
-          y2={foldSide.sy}
           strokeWidth={1.4}
+          x1={foldTop.sx}
+          x2={foldSide.sx}
+          y1={foldTop.sy}
+          y2={foldSide.sy}
         />
       </g>
       <g transform={alongX(at(from, height))}>
         {Arr.map(lines, (line, index) => (
           <line
             key={line}
-            x1={width * 0.14}
-            y1={height * line}
-            x2={width * (index === lines.length - 1 ? 0.55 : 0.86)}
-            y2={height * line}
-            strokeWidth={1.2}
             opacity={0.7}
+            strokeWidth={1.2}
+            x1={width * 0.14}
+            x2={width * (index === lines.length - 1 ? 0.55 : 0.86)}
+            y1={height * line}
+            y2={height * line}
           />
         ))}
       </g>
@@ -461,7 +461,7 @@ const haloSize = 0.2;
  * A box inside a dashed outer ring: a source outside the system. The ring
  * is dashed so it can't be read as a hop.
  */
-function ExternalShape({ placement, height, hatch }: DrawProps) {
+function ExternalShape({ hatch, height, placement }: DrawProps) {
   const { paint } = useLook();
   const halo = inset(placement, -haloSize);
   // The halo stops at the ground, so it stays clear of the name tag.
@@ -481,28 +481,28 @@ function ExternalShape({ placement, height, hatch }: DrawProps) {
     <>
       <polygon
         data-external-ring=""
-        points={toPoints(outline)}
         fill={paint.paper}
-        strokeWidth={0.9}
+        points={toPoints(outline)}
         strokeDasharray={dashes.ring}
+        strokeWidth={0.9}
       />
-      <Prism placement={placement} z0={0} z1={height} hatch={hatch} />
+      <Prism hatch={hatch} placement={placement} z0={0} z1={height} />
     </>
   );
 }
 
 const drawings = {
   box: BoxShape,
-  tall: TallShape,
-  store: StoreShape,
   cards: CardsShape,
-  slab: SlabShape,
-  screen: ScreenShape,
+  document: DocumentShape,
+  external: ExternalShape,
   gate: GateShape,
   job: JobShape,
   person: PersonShape,
-  document: DocumentShape,
-  external: ExternalShape,
+  screen: ScreenShape,
+  slab: SlabShape,
+  store: StoreShape,
+  tall: TallShape,
 } as const satisfies Record<Shape, (props: DrawProps) => ReactNode>;
 
 export function CodeChip({
@@ -519,21 +519,21 @@ export function CodeChip({
   return (
     <g data-code-chip="">
       <rect
+        fill={paint.paper}
+        height={rect.bottom - rect.top}
+        strokeWidth={1}
+        width={rect.right - rect.left}
         x={rect.left}
         y={rect.top}
-        width={rect.right - rect.left}
-        height={rect.bottom - rect.top}
-        fill={paint.paper}
-        strokeWidth={1}
       />
       <text
-        x={(rect.left + rect.right) / 2}
-        y={(rect.top + rect.bottom) / 2 + textSizes.chip.baseline * grow}
-        textAnchor="middle"
+        fill={solid}
         fontSize={textSizes.chip.font * grow}
         fontWeight={600}
-        fill={solid}
         stroke="none"
+        textAnchor="middle"
+        x={(rect.left + rect.right) / 2}
+        y={(rect.top + rect.bottom) / 2 + textSizes.chip.baseline * grow}
       >
         {code}
       </text>
@@ -575,13 +575,13 @@ export function OffMark({ at }: { readonly at: ScreenPoint }) {
   return (
     <g
       data-off-mark=""
-      transform={`translate(${at.sx} ${at.sy})`}
-      strokeWidth={1.4}
       strokeLinecap="round"
+      strokeWidth={1.4}
+      transform={`translate(${at.sx} ${at.sy})`}
     >
-      <circle r={8} fill={paint.paper} strokeWidth={1} />
+      <circle fill={paint.paper} r={8} strokeWidth={1} />
       <path d="M-3.2,-2.6 A4.2,4.2 0 1 0 3.2,-2.6" fill="none" />
-      <line x1={0} y1={-4.8} x2={0} y2={-0.6} />
+      <line x1={0} x2={0} y1={-4.8} y2={-0.6} />
     </g>
   );
 }
@@ -591,30 +591,30 @@ export function OffMark({ at }: { readonly at: ScreenPoint }) {
  * with its code chip on top when it fits.
  */
 export function IsoStructure({
-  placed: { structure, placement, chip },
+  faded,
   hatch,
   isNew,
-  faded,
+  placed: { chip, placement, structure },
 }: StructureDrawingProps) {
-  const { paint, Frame } = useDrawing();
+  const { Frame, paint } = useDrawing();
   const Drawing = drawings[structure.shape];
   const look = looksOf(paint)[structure.status];
 
   return (
     <Frame
+      faded={faded}
       id={structure.id}
+      isNew={isNew}
+      look={look}
       name={structure.name}
       shape={structure.shape}
       status={structure.status}
-      isNew={isNew}
-      faded={faded}
-      look={look}
     >
       <LookContext value={look}>
         <Drawing
-          placement={placement}
-          height={isoHeights[structure.shape]}
           hatch={hatch}
+          height={isoHeights[structure.shape]}
+          placement={placement}
         />
         {chip === undefined ? null : (
           <CodeChip code={structure.code} rect={chip} />

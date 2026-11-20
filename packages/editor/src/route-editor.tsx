@@ -51,27 +51,27 @@ interface RouteEnds {
 
 /** One press on a segment, until it's released. */
 interface Press {
-  readonly hop: string;
-  readonly segment: number;
   readonly axis: SegmentGuide["axis"];
-  readonly pointer: number;
+  readonly ends: RouteEnds;
   /** Where the press started, in window pixels. */
   readonly from: { readonly x: number; readonly y: number };
   /** The ground point under the press. */
   readonly ground: GridPoint;
-  readonly route: readonly GridPoint[];
-  readonly ends: RouteEnds;
+  readonly hop: string;
+  readonly pointer: number;
+  readonly route: ReadonlyArray<GridPoint>;
+  readonly segment: number;
 }
 
 /** A press past the threshold, and the route it would leave. */
 interface Drag {
   readonly hop: string;
-  readonly points: readonly GridPoint[];
+  readonly points: ReadonlyArray<GridPoint>;
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
 }
 
-const samePoints = (a: readonly GridPoint[], b: readonly GridPoint[]) =>
+const samePoints = (a: ReadonlyArray<GridPoint>, b: ReadonlyArray<GridPoint>) =>
   a.length === b.length &&
   Arr.every(a, (point, index) => {
     const other = b[index];
@@ -84,19 +84,19 @@ const samePoints = (a: readonly GridPoint[], b: readonly GridPoint[]) =>
  * view draws it, which is its lane when the hop shares a grid line.
  */
 function Segments({
+  onHover,
   routed,
   view,
-  onHover,
 }: {
+  readonly onHover: (hop: string | null) => void;
   readonly routed: SceneHop;
   readonly view: View;
-  readonly onHover: (hop: string | null) => void;
 }) {
   const ground = groundProjections[view];
 
   const guides = segmentGuides({
-    route: routed.route.points,
     drawn: Arr.map(routed.points, ground.toGround),
+    route: routed.route.points,
   });
 
   return (
@@ -107,26 +107,25 @@ function Segments({
 
         return (
           <line
-            // oxlint-disable-next-line react/no-array-index-key -- a segment is named by its position along the route.
-            key={index}
-            data-route-segment=""
-            data-hop-id={routed.hop.id}
-            data-segment={index}
-            data-axis={guide.axis}
-            x1={from.sx}
-            y1={from.sy}
-            x2={to.sx}
-            y2={to.sy}
-            stroke="transparent"
-            strokeWidth={hitWidth}
-            strokeLinecap="round"
             className={cursorOf(view, guide.axis)}
+            data-axis={guide.axis}
+            data-hop-id={routed.hop.id}
+            data-route-segment=""
+            data-segment={index}
+            key={index}
             onPointerEnter={() => {
               onHover(routed.hop.id);
             }}
             onPointerLeave={() => {
               onHover(null);
             }}
+            stroke="transparent"
+            strokeLinecap="round"
+            strokeWidth={hitWidth}
+            x1={from.sx}
+            x2={to.sx}
+            y1={from.sy}
+            y2={to.sy}
           >
             <title>{routed.hop.label}</title>
           </line>
@@ -150,17 +149,17 @@ function Segments({
  * - The warnings the new route would add show as the drag goes.
  */
 export function RouteEditor({
-  view,
   hops,
-  placements,
   onHover,
+  placements,
+  view,
 }: {
-  readonly view: View;
-  readonly hops: readonly SceneHop[];
-  /** Where each structure is shown now. */
-  readonly placements: Readonly<Partial<Record<string, Placement>>>;
+  readonly hops: ReadonlyArray<SceneHop>;
   /** Called with the hop's id while the pointer is on it, else null. */
   readonly onHover: (hop: string | null) => void;
+  /** Where each structure is shown now. */
+  readonly placements: Readonly<Partial<Record<string, Placement>>>;
+  readonly view: View;
 }) {
   const editing = useEditing();
   const rerouted = pendingHops(editing);
@@ -208,8 +207,8 @@ export function RouteEditor({
         {
           id: "preview",
           kind: "reroute",
-          target: { kind: "hop", id: drag.hop },
           points: drag.points,
+          target: { id: drag.hop, kind: "hop" },
         },
       ],
       refusal: drag.refusal,
@@ -257,14 +256,14 @@ export function RouteEditor({
     // a drag. Capturing at once keeps the moves coming.
     element.setPointerCapture(event.pointerId);
     press.current = {
-      hop,
-      segment: Number(target.dataset.segment),
       axis: target.dataset.axis === "y" ? "y" : "x",
-      pointer: event.pointerId,
+      ends: { from, to },
       from: { x: event.clientX, y: event.clientY },
       ground,
+      hop,
+      pointer: event.pointerId,
       route: routed.value.route.points,
-      ends: { from, to },
+      segment: Number(target.dataset.segment),
     };
   };
 
@@ -312,10 +311,10 @@ export function RouteEditor({
         : ground.x - current.ground.x;
 
     const points = dragSegment({
+      ends: current.ends,
+      offset,
       points: current.route,
       segment: current.segment,
-      offset,
-      ends: current.ends,
     });
 
     const unchanged = samePoints(points, routeVertices(current.route));
@@ -374,29 +373,29 @@ export function RouteEditor({
 
   return (
     <g
-      ref={root}
-      data-route-editor={live ? "on" : "off"}
       data-dragging-route={drag?.hop}
+      data-route-editor={live ? "on" : "off"}
+      onLostPointerCapture={(event) => {
+        end(event, false);
+      }}
+      onPointerCancel={(event) => {
+        end(event, false);
+      }}
       onPointerDown={live ? onPointerDown : undefined}
       onPointerMove={live ? onPointerMove : undefined}
       onPointerUp={(event) => {
         end(event, true);
       }}
-      onPointerCancel={(event) => {
-        end(event, false);
-      }}
-      onLostPointerCapture={(event) => {
-        end(event, false);
-      }}
+      ref={root}
     >
       {Option.isSome(selected) ? (
         <polyline
-          data-hop-selected={selected.value.hop.id}
           aria-hidden="true"
-          points={toPoints(selected.value.points)}
-          fill="none"
-          strokeLinejoin="round"
           className="stroke-ink pointer-events-none opacity-20"
+          data-hop-selected={selected.value.hop.id}
+          fill="none"
+          points={toPoints(selected.value.points)}
+          strokeLinejoin="round"
           strokeWidth={7}
         />
       ) : null}
@@ -404,13 +403,13 @@ export function RouteEditor({
         Arr.filter(hops, ({ hop }) => rerouted.has(hop.id)),
         (routed) => (
           <polyline
-            key={routed.hop.id}
-            data-hop-pending={routed.hop.id}
             aria-hidden="true"
-            points={toPoints(routed.points)}
-            fill="none"
-            strokeLinejoin="round"
             className="stroke-pending pointer-events-none"
+            data-hop-pending={routed.hop.id}
+            fill="none"
+            key={routed.hop.id}
+            points={toPoints(routed.points)}
+            strokeLinejoin="round"
             strokeWidth={2}
           />
         )
@@ -419,28 +418,28 @@ export function RouteEditor({
         ? Arr.map(hops, (routed) => (
             <Segments
               key={routed.hop.id}
+              onHover={onHover}
               routed={routed}
               view={view}
-              onHover={onHover}
             />
           ))
         : null}
       {drag === undefined ? null : (
         <polyline
-          data-route-preview={drag.hop}
-          data-refused={drag.refusal !== undefined}
-          points={toPoints(
-            Arr.map(drag.points, groundProjections[view].toScreen)
-          )}
-          fill="none"
-          strokeLinejoin="round"
           className={
             drag.refusal === undefined
               ? "stroke-pending pointer-events-none"
               : "stroke-refused pointer-events-none"
           }
-          strokeWidth={drag.refusal === undefined ? 2.2 : 3}
+          data-refused={drag.refusal !== undefined}
+          data-route-preview={drag.hop}
+          fill="none"
+          points={toPoints(
+            Arr.map(drag.points, groundProjections[view].toScreen)
+          )}
           strokeDasharray={drag.refusal === undefined ? "6 3" : undefined}
+          strokeLinejoin="round"
+          strokeWidth={drag.refusal === undefined ? 2.2 : 3}
         >
           {drag.refusal === undefined ? null : <title>{drag.refusal}</title>}
         </polyline>

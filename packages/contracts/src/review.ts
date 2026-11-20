@@ -54,7 +54,7 @@ type Listed = Proposals;
 const isOpenBatch = (batch: Batch) => batch.committed === undefined;
 
 /** The batches `proposals` holds, in number order. */
-export const batchesOf = (proposals: Listed): readonly Batch[] =>
+export const batchesOf = (proposals: Listed): ReadonlyArray<Batch> =>
   Arr.sort(
     proposals.batches ?? [],
     Order.mapInput(Order.Number, ({ number }: Batch) => number)
@@ -75,7 +75,7 @@ export const nextBatchNumber = (proposals: Listed): number =>
  */
 export const frozenLayoutChanges = (
   proposals: Listed
-): readonly LayoutChange[] => {
+): ReadonlyArray<LayoutChange> => {
   const open = Arr.filter(batchesOf(proposals), (batch) => isOpenBatch(batch));
 
   return Arr.flatMap(open, (batch) =>
@@ -86,7 +86,7 @@ export const frozenLayoutChanges = (
 };
 
 /** Every open item of every kind: those not in a batch yet. */
-export const openItems = (proposals: Listed): readonly BatchItem[] =>
+export const openItems = (proposals: Listed): ReadonlyArray<BatchItem> =>
   Arr.flatMap(allKinds, (kind) => kind.open(proposals));
 
 /** How many open items there are, of every kind. */
@@ -127,6 +127,7 @@ export const frozenRefusal: {
   )
 );
 
+// oxlint-disable-next-line effecttsgo/global-json -- a map key built from layout changes, never decoded
 const keyOf = (change: LayoutChange) => JSON.stringify(change);
 
 /**
@@ -136,7 +137,7 @@ const keyOf = (change: LayoutChange) => JSON.stringify(change);
  */
 const proposedStructureRefusal = (
   proposals: Proposals,
-  after: readonly LayoutChange[]
+  after: ReadonlyArray<LayoutChange>
 ): Option.Option<string> => {
   const before = new Set(Arr.map(proposals.layout, keyOf));
 
@@ -194,12 +195,12 @@ const proposedStructureRefusal = (
  * open list, or when it is removed from it.
  */
 export const frozenWriteRefusal = ({
-  proposals,
   after,
+  proposals,
 }: {
-  readonly proposals: Proposals;
   /** The list of open layout changes the write would leave. */
-  readonly after: readonly LayoutChange[];
+  readonly after: ReadonlyArray<LayoutChange>;
+  readonly proposals: Proposals;
 }): Option.Option<string> => {
   const proposedOnly = proposedStructureRefusal(proposals, after);
 
@@ -237,42 +238,45 @@ export const frozenWriteRefusal = ({
  * those). Each kind says what it points at, so a new kind needs nothing here.
  */
 export const checkOpenItems: {
-  (proposals: Proposals): (data: MapData) => readonly MapProblem[];
-  (data: MapData, proposals: Proposals): readonly MapProblem[];
-} = dual(2, (data: MapData, proposals: Proposals): readonly MapProblem[] => {
-  // A hop the engineer drew is known to the notes that follow.
-  const drawn = addedHopIds([
-    ...openHopChanges(proposals),
-    ...frozenHopChanges(proposals),
-  ]);
+  (proposals: Proposals): (data: MapData) => ReadonlyArray<MapProblem>;
+  (data: MapData, proposals: Proposals): ReadonlyArray<MapProblem>;
+} = dual(
+  2,
+  (data: MapData, proposals: Proposals): ReadonlyArray<MapProblem> => {
+    // A hop the engineer drew is known to the notes that follow.
+    const drawn = addedHopIds([
+      ...openHopChanges(proposals),
+      ...frozenHopChanges(proposals),
+    ]);
 
-  const existing = {
-    structures: new Set(Arr.map(data.structures, ({ id }) => id)),
-    hops: new Set([...Arr.map(data.hops, ({ id }) => id), ...drawn]),
-    groups: new Set(Arr.map(data.groups, ({ id }) => id)),
-    chapters: new Set(Arr.map(data.chapters, ({ id }) => id)),
-  };
+    const existing = {
+      chapters: new Set(Arr.map(data.chapters, ({ id }) => id)),
+      groups: new Set(Arr.map(data.groups, ({ id }) => id)),
+      hops: new Set([...Arr.map(data.hops, ({ id }) => id), ...drawn]),
+      structures: new Set(Arr.map(data.structures, ({ id }) => id)),
+    };
 
-  return Arr.flatMap(allKinds, (spec) =>
-    Arr.flatMap(spec.open(proposals), (item, index) =>
-      Option.match(spec.dangling(item, existing), {
-        onNone: () => [],
-        onSome: (why) => [
-          mapWarning({
-            file: "proposals.json",
-            path: [spec.listKey, index, "target"],
-            message: `${why}, so this ${spec.name(item)} points at nothing. Discard it from the page's Pending list.`,
-          }),
-        ],
-      })
-    )
-  );
-});
+    return Arr.flatMap(allKinds, (spec) =>
+      Arr.flatMap(spec.open(proposals), (item, index) =>
+        Option.match(spec.dangling(item, existing), {
+          onNone: () => [],
+          onSome: (why) => [
+            mapWarning({
+              file: "proposals.json",
+              message: `${why}, so this ${spec.name(item)} points at nothing. Discard it from the page's Pending list.`,
+              path: [spec.listKey, index, "target"],
+            }),
+          ],
+        })
+      )
+    );
+  }
+);
 
 /** The result of freezing the open items. */
 export interface FreezeResult {
-  readonly proposals: Proposals;
   readonly batch: Batch;
+  readonly proposals: Proposals;
 }
 
 /**
@@ -281,15 +285,15 @@ export interface FreezeResult {
  * goes up by one. Fails when nothing is open.
  */
 export const freezeOpen = ({
-  proposals,
   at,
   known,
+  proposals,
 }: {
-  readonly proposals: Proposals;
   /** When the batch is frozen, as an ISO date and time in UTC. */
   readonly at: string;
   /** The ids the accepted map has now, by entity; see `Batch.structures`. */
-  readonly known?: Partial<Record<Entity, readonly string[]>> | undefined;
+  readonly known?: Partial<Record<Entity, ReadonlyArray<string>>> | undefined;
+  readonly proposals: Proposals;
 }): Result.Result<FreezeResult, string> => {
   const items = openItems(proposals);
 
@@ -300,9 +304,9 @@ export const freezeOpen = ({
   }
 
   const frozen: Batch = {
-    number: nextBatchNumber(proposals),
     frozenAt: at,
     items,
+    number: nextBatchNumber(proposals),
     verdicts: {},
   };
 
@@ -321,8 +325,8 @@ export const freezeOpen = ({
     batch,
     proposals: {
       ...emptied,
-      revision: proposals.revision + 1,
       batches: [...(proposals.batches ?? []), batch],
+      revision: proposals.revision + 1,
     },
   });
 };
@@ -330,26 +334,26 @@ export const freezeOpen = ({
 const sameItem = Schema.toEquivalence(BatchItemSchema);
 
 /** The items still waiting on the agent: open, or in a batch with no commit. */
-const waitingItems = (proposals: Proposals): readonly Waiting[] => [
+const waitingItems = (proposals: Proposals): ReadonlyArray<Waiting> => [
   ...Arr.map(openItems(proposals), (item): Waiting => ({
-    item,
     batch: undefined,
+    item,
   })),
   ...Arr.flatMap(batchesOf(proposals), (batch) =>
     isOpenBatch(batch)
-      ? Arr.map(batch.items, (item): Waiting => ({ item, batch: batch.number }))
+      ? Arr.map(batch.items, (item): Waiting => ({ batch: batch.number, item }))
       : []
   ),
 ];
 
 /** What an item is checked against when it is added: the map as data.mjs has it. */
 export interface Known {
-  /** The ids of the structures data.mjs has. */
-  readonly structureIds: ReadonlySet<string>;
-  /** The hops data.mjs has. */
-  readonly hops?: readonly HopEnds[] | undefined;
   /** The map itself, for the kinds that point into its text. */
   readonly data?: MapData | undefined;
+  /** The hops data.mjs has. */
+  readonly hops?: ReadonlyArray<HopEnds> | undefined;
+  /** The ids of the structures data.mjs has. */
+  readonly structureIds: ReadonlySet<string>;
 }
 
 /**
@@ -363,13 +367,13 @@ export interface Known {
  * (see `KindSpec.breakage`), such as a note on a structure data.mjs lacks.
  */
 export const addItem = ({
-  proposals,
   item,
   known,
+  proposals,
 }: {
-  readonly proposals: Proposals;
   readonly item: BatchItem;
   readonly known: Known;
+  readonly proposals: Proposals;
 }): Result.Result<Proposals, string> => {
   const existing = Arr.findFirst(
     reviewEntries(proposals),
@@ -385,10 +389,10 @@ export const addItem = ({
   const spec = specOf(item);
 
   const broken = spec.breakage(item, {
+    data: known.data,
+    hops: known.hops ?? [],
     layout: emptyLayout,
     structureIds: known.structureIds,
-    hops: known.hops ?? [],
-    data: known.data,
   });
 
   if (Option.isSome(broken)) {
@@ -421,17 +425,17 @@ const emptyLayout: Layout = { format: 1, revision: 0, structures: {} };
  *   footprint on a frozen change's spot.
  */
 export const acceptRefusal = ({
-  proposals,
-  layout,
-  ids,
   hops,
+  ids,
+  layout,
+  proposals,
 }: {
-  readonly proposals: Proposals;
+  /** The map's hops, which say where a reroute's ends belong. */
+  readonly hops: ReadonlyArray<HopEnds>;
+  readonly ids: "all" | ReadonlyArray<string>;
   /** The accepted layout, as `layout.json` holds it. */
   readonly layout: Layout;
-  readonly ids: "all" | readonly string[];
-  /** The map's hops, which say where a reroute's ends belong. */
-  readonly hops: readonly HopEnds[];
+  readonly proposals: Proposals;
 }): Option.Option<string> => {
   const wanted =
     ids === "all"
@@ -449,8 +453,8 @@ export const acceptRefusal = ({
 
   return layoutRefusal({
     accepted: applyLayoutChanges(layout, frozen),
-    before: [],
     after: wanted,
+    before: [],
     hops,
   });
 };
@@ -466,26 +470,26 @@ export const acceptRefusal = ({
  * break the map.
  */
 export const reopenItem = ({
-  proposals,
-  id,
-  newId,
-  layout,
-  known,
-  hops,
-  text,
   data,
+  hops,
+  id,
+  known,
+  layout,
+  newId,
+  proposals,
+  text,
 }: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
-  readonly newId: ChangeId;
-  readonly layout: Layout;
-  readonly known: ReadonlySet<string>;
-  /** The map's hops, which say where a reroute's ends belong. */
-  readonly hops: readonly HopEnds[];
-  /** For an item of text, the text the new item starts with instead of the old one. */
-  readonly text?: string | undefined;
   /** The map, for the kinds that point into its text. */
   readonly data?: MapData | undefined;
+  /** The map's hops, which say where a reroute's ends belong. */
+  readonly hops: ReadonlyArray<HopEnds>;
+  readonly id: ChangeId;
+  readonly known: ReadonlySet<string>;
+  readonly layout: Layout;
+  readonly newId: ChangeId;
+  readonly proposals: Proposals;
+  /** For an item of text, the text the new item starts with instead of the old one. */
+  readonly text?: string | undefined;
 }): Result.Result<Proposals, string> => {
   const found = findBatchItem(proposals, id);
 
@@ -513,7 +517,7 @@ export const reopenItem = ({
     return Result.fail(`The id "${newId}" is already in use.`);
   }
 
-  const dismissed = dismissItem({ proposals, id });
+  const dismissed = dismissItem({ id, proposals });
 
   if (Result.isFailure(dismissed)) {
     return dismissed;
@@ -549,10 +553,10 @@ export const reopenItem = ({
   const reopened = spec.reopened(item, newId, text);
 
   const broken = spec.breakage(reopened, {
+    data,
+    hops,
     layout: applyLayoutChanges(layout, proposals.layout),
     structureIds: known,
-    hops,
-    data,
     // The items waiting are judged together, as a batch is.
     siblings: [...openItems(dismissed.success), reopened],
   });
@@ -592,12 +596,12 @@ export const reopenItem = ({
 
 /** `data` with every open and frozen item of `proposals` applied. */
 const proposedData = (data: MapData, proposals: Proposals): MapData => {
-  const waiting: readonly Batch[] = Arr.filter(
+  const waiting: ReadonlyArray<Batch> = Arr.filter(
     batchesOf(proposals),
     isOpenBatch
   );
 
-  const items: readonly BatchItem[] = [
+  const items: ReadonlyArray<BatchItem> = [
     ...Arr.flatMap(waiting, ({ items: held }) => held),
     ...openItems(proposals),
   ];
@@ -652,12 +656,12 @@ const rewriteOpen = (
  * long for its kind.
  */
 export const editProposal = ({
-  proposals,
   id,
+  proposals,
   text,
 }: {
-  readonly proposals: Proposals;
   readonly id: ChangeId;
+  readonly proposals: Proposals;
   readonly text: string;
 }): Result.Result<Proposals, string> => {
   const found = openItemNamed(proposals, id);
@@ -689,11 +693,11 @@ export const editProposal = ({
 
 /** Removes open item `id`. Fails when it is in a batch, or isn't there. */
 export const discardProposal = ({
-  proposals,
   id,
+  proposals,
 }: {
-  readonly proposals: Proposals;
   readonly id: ChangeId;
+  readonly proposals: Proposals;
 }): Result.Result<Proposals, string> => {
   const found = openItemNamed(proposals, id);
 
@@ -721,7 +725,7 @@ export const discardProposal = ({
 };
 
 /** What the agent can say about the items still without a verdict. */
-export const withoutVerdict = (batch: Batch): readonly BatchItem[] =>
+export const withoutVerdict = (batch: Batch): ReadonlyArray<BatchItem> =>
   Arr.filter(batch.items, ({ id }) => !Rec.has(batch.verdicts, id));
 
 /**
@@ -731,14 +735,11 @@ export const withoutVerdict = (batch: Batch): readonly BatchItem[] =>
  * until the commit.
  */
 export const recordVerdict = ({
-  proposals,
-  id,
-  verdict,
   accepted = noKnownIds,
+  id,
+  proposals,
+  verdict,
 }: {
-  readonly proposals: Proposals;
-  readonly id: string;
-  readonly verdict: Verdict;
   /**
    * The ids of each entity the accepted map has, for a batch frozen without
    * its own lists (`Batch.structures`, `hops` and `flows`). `--as` may not
@@ -747,6 +748,9 @@ export const recordVerdict = ({
    * skipped.
    */
   readonly accepted?: KnownIds;
+  readonly id: string;
+  readonly proposals: Proposals;
+  readonly verdict: Verdict;
 }): Result.Result<Proposals, string> => {
   const oldest = oldestOpenBatch(proposals);
 
@@ -756,7 +760,7 @@ export const recordVerdict = ({
     );
   }
 
-  const { number, items } = oldest.value;
+  const { items, number } = oldest.value;
 
   if (!Arr.some(items, (item) => item.id === id)) {
     const elsewhere = findBatchItem(proposals, id);
@@ -798,10 +802,10 @@ export const recordVerdict = ({
   };
 
   const known: KnownIds = {
-    structure: frozenIds("structure"),
-    hop: frozenIds("hop"),
     flow: frozenIds("flow"),
     group: frozenIds("group"),
+    hop: frozenIds("hop"),
+    structure: frozenIds("structure"),
   };
 
   const refused = Arr.findFirst(items, (item) => item.id === id).pipe(
@@ -822,8 +826,8 @@ export const recordVerdict = ({
 
   return Result.succeed({
     ...proposals,
-    revision: proposals.revision + 1,
     batches,
+    revision: proposals.revision + 1,
   });
 };
 
@@ -832,33 +836,33 @@ export const recordVerdict = ({
  * What breaks depends on the kind of item; see `KindSpec.breakage`.
  */
 export const breakageOf = ({
+  data,
+  hops,
   item,
   layout,
-  structureIds,
-  hops,
-  data,
   siblings,
+  structureIds,
 }: {
-  readonly item: BatchItem;
-  readonly layout: Layout;
-  readonly structureIds: ReadonlySet<string>;
-  readonly hops: readonly HopEnds[];
   /** The map, for the kinds that point into its text. */
   readonly data?: MapData | undefined;
+  readonly hops: ReadonlyArray<HopEnds>;
+  readonly item: BatchItem;
+  readonly layout: Layout;
   /** The batch's items, for the kinds that are judged together. */
-  readonly siblings?: readonly BatchItem[] | undefined;
+  readonly siblings?: ReadonlyArray<BatchItem> | undefined;
+  readonly structureIds: ReadonlySet<string>;
 }): Option.Option<string> =>
-  specOf(item).breakage(item, { layout, structureIds, hops, data, siblings });
+  specOf(item).breakage(item, { data, hops, layout, siblings, structureIds });
 
 /** What committing a batch makes. */
 export interface Committing {
+  readonly accepted: ReadonlyArray<AcceptedItem>;
   readonly batch: Batch;
-  /** `proposals.json` with the batch closed. */
-  readonly proposals: Proposals;
   /** The accepted layout, with the accepted layout changes applied. */
   readonly layout: Layout;
-  readonly accepted: readonly AcceptedItem[];
-  readonly rejected: readonly RejectedItem[];
+  /** `proposals.json` with the batch closed. */
+  readonly proposals: Proposals;
+  readonly rejected: ReadonlyArray<RejectedItem>;
 }
 
 /**
@@ -876,27 +880,27 @@ export interface Committing {
  * `acceptLayoutChanges` says.
  */
 export const commitBatch = ({
-  proposals,
-  layout,
-  saved,
+  at,
   data,
   hops,
+  layout,
+  proposals,
   revision,
-  at,
+  saved,
 }: {
-  readonly proposals: Proposals;
-  /** The layout the commit starts from: `layout.json` with new structures placed. */
-  readonly layout: Layout;
-  /** `layout.json` as the file holds it. */
-  readonly saved: Layout;
+  /** When the commit is made, as an ISO date and time in UTC. */
+  readonly at: string;
   /** The map as the agent left data.mjs. */
   readonly data: MapData;
   /** The map's hops, which say where a reroute's ends belong. */
-  readonly hops: readonly HopEnds[];
+  readonly hops: ReadonlyArray<HopEnds>;
+  /** The layout the commit starts from: `layout.json` with new structures placed. */
+  readonly layout: Layout;
+  readonly proposals: Proposals;
   /** The number of the revision this commit saves. */
   readonly revision: number;
-  /** When the commit is made, as an ISO date and time in UTC. */
-  readonly at: string;
+  /** `layout.json` as the file holds it. */
+  readonly saved: Layout;
 }): Result.Result<Committing, string> => {
   const oldest = oldestOpenBatch(proposals);
 
@@ -936,7 +940,7 @@ export const commitBatch = ({
     verdict,
   }));
 
-  const context = { layout, saved, data };
+  const context = { data, layout, saved };
 
   const refused = Arr.findFirst(
     Arr.flatMap(decided, ({ item, verdict }) =>
@@ -956,7 +960,7 @@ export const commitBatch = ({
     ({ verdict }) => verdict.verdict !== "rejected"
   );
 
-  const toApply: readonly LayoutChange[] = Arr.flatMap(
+  const toApply: ReadonlyArray<LayoutChange> = Arr.flatMap(
     decided,
     ({ item, verdict }) => specOf(item).applies(item, verdict, context)
   );
@@ -965,12 +969,12 @@ export const commitBatch = ({
     toApply.length === 0
       ? Result.succeed(layout)
       : Result.map(
-          acceptLayoutChanges({ layout, pending: toApply, ids: "all", hops }),
+          acceptLayoutChanges({ hops, ids: "all", layout, pending: toApply }),
           (result) => result.layout
         );
 
   return Result.map(applied, (nextLayout): Committing => {
-    const retargetItems = (items: readonly BatchItem[]) =>
+    const retargetItems = (items: ReadonlyArray<BatchItem>) =>
       hasRenames(renames)
         ? Arr.map(items, (one) => specOf(one).retargeted(one, renames))
         : items;
@@ -981,8 +985,8 @@ export const commitBatch = ({
       if (other.number === batch.number) {
         return {
           ...other,
+          committed: { at, revision },
           items: retargetItems(other.items),
-          committed: { revision, at },
         };
       }
 
@@ -1000,16 +1004,16 @@ export const commitBatch = ({
     );
 
     return {
+      accepted: Arr.map(taken, ({ item, verdict }) =>
+        specOf(item).accepted(item, verdict)
+      ),
       batch,
       layout: nextLayout,
       proposals: {
         ...(hasRenames(renames) ? retargetedOpen : proposals),
-        revision: proposals.revision + 1,
         batches,
+        revision: proposals.revision + 1,
       },
-      accepted: Arr.map(taken, ({ item, verdict }) =>
-        specOf(item).accepted(item, verdict)
-      ),
       rejected: Arr.flatMap(decided, ({ item, verdict }) =>
         verdict.verdict === "rejected"
           ? [specOf(item).rejected(item, verdict.reason)]
@@ -1051,12 +1055,12 @@ export const commitMessage = (batch: Batch): string => {
 /** Where an item is in its life. */
 export type ItemStatus =
   | { readonly state: "open" }
-  | { readonly state: "frozen"; readonly batch: number }
+  | { readonly batch: number; readonly state: "frozen" }
   | {
-      readonly state: "reviewed";
       readonly batch: number;
-      readonly verdict: Verdict;
       readonly dismissed: boolean;
+      readonly state: "reviewed";
+      readonly verdict: Verdict;
     };
 
 /** One item with its status, as the page lists it. */
@@ -1071,7 +1075,9 @@ export interface ReviewEntry {
  * has its items "reviewed"; one without has them "frozen". Entries a
  * committed batch left without a verdict stay "frozen".
  */
-export const reviewEntries = (proposals: Listed): readonly ReviewEntry[] => [
+export const reviewEntries = (
+  proposals: Listed
+): ReadonlyArray<ReviewEntry> => [
   ...Arr.map(openItems(proposals), (item): ReviewEntry => ({
     item,
     status: { state: "open" },
@@ -1085,12 +1091,12 @@ export const reviewEntries = (proposals: Listed): readonly ReviewEntry[] => [
         status:
           batch.committed !== undefined && Option.isSome(verdict)
             ? {
-                state: "reviewed",
                 batch: batch.number,
-                verdict: verdict.value,
                 dismissed: (batch.dismissed ?? []).includes(item.id),
+                state: "reviewed",
+                verdict: verdict.value,
               }
-            : { state: "frozen", batch: batch.number },
+            : { batch: batch.number, state: "frozen" },
       };
     })
   ),
@@ -1101,11 +1107,11 @@ export const reviewEntries = (proposals: Listed): readonly ReviewEntry[] => [
  * Fails when the item isn't in a committed batch, or is already dismissed.
  */
 export const dismissItem = ({
-  proposals,
   id,
+  proposals,
 }: {
-  readonly proposals: Proposals;
   readonly id: ChangeId;
+  readonly proposals: Proposals;
 }): Result.Result<Proposals, string> => {
   const found = findBatchItem(proposals, id);
 
@@ -1127,12 +1133,12 @@ export const dismissItem = ({
 
   return Result.succeed({
     ...proposals,
-    revision: proposals.revision + 1,
     batches: Arr.map(proposals.batches ?? [], (other) =>
       other.number === batch.number
         ? { ...other, dismissed: [...(other.dismissed ?? []), id] }
         : other
     ),
+    revision: proposals.revision + 1,
   });
 };
 
@@ -1145,11 +1151,11 @@ export type PartialNames = Pick<Names, "structure" | "hop"> &
 
 /** `names` with an id standing in for each title it lacks. */
 export const fullNames = (names: PartialNames): Names => ({
-  structure: names.structure,
-  hop: names.hop,
-  group: names.group ?? ((id) => id),
   acceptedGroup: names.acceptedGroup ?? names.group ?? ((id) => id),
   chapter: names.chapter ?? ((id) => id),
+  group: names.group ?? ((id) => id),
+  hop: names.hop,
+  structure: names.structure,
 });
 
 /** One line that says what an item is. */
@@ -1169,35 +1175,42 @@ export const sectionOf = (item: BatchItem): Section => specOf(item).section;
  * `sectionOfItem` says which section an item is in.
  */
 export const inSections: {
+  <A>(sectionOfItem: (item: A) => Section): (
+    items: ReadonlyArray<A>
+  ) => ReadonlyArray<{
+    readonly items: ReadonlyArray<A>;
+    readonly section: Section;
+  }>;
   <A>(
+    items: ReadonlyArray<A>,
     sectionOfItem: (item: A) => Section
-  ): (
-    items: readonly A[]
-  ) => readonly { readonly section: Section; readonly items: readonly A[] }[];
-  <A>(
-    items: readonly A[],
-    sectionOfItem: (item: A) => Section
-  ): readonly { readonly section: Section; readonly items: readonly A[] }[];
+  ): ReadonlyArray<{
+    readonly items: ReadonlyArray<A>;
+    readonly section: Section;
+  }>;
 } = dual(
   2,
   <A>(
-    items: readonly A[],
+    items: ReadonlyArray<A>,
     sectionOfItem: (item: A) => Section
-  ): readonly { readonly section: Section; readonly items: readonly A[] }[] =>
+  ): ReadonlyArray<{
+    readonly items: ReadonlyArray<A>;
+    readonly section: Section;
+  }> =>
     Arr.flatMap(sections, (section) => {
       const held = Arr.filter(items, (item) => sectionOfItem(item) === section);
 
-      return held.length === 0 ? [] : [{ section, items: held }];
+      return held.length === 0 ? [] : [{ items: held, section }];
     })
 );
 
 /** Batch items split by section; see `inSections`. */
 export const bySection = (
-  items: readonly BatchItem[]
-): readonly {
+  items: ReadonlyArray<BatchItem>
+): ReadonlyArray<{
+  readonly items: ReadonlyArray<BatchItem>;
   readonly section: Section;
-  readonly items: readonly BatchItem[];
-}[] => inSections(items, sectionOf);
+}> => inSections(items, sectionOf);
 
 /**
  * Said in the prompt and in `review`'s output. The engineer's text reaches the
@@ -1215,7 +1228,9 @@ export const changedLayoutNotice =
  * fold that kind into data.mjs. Said in the prompt and in `review`'s output,
  * after the notices that apply to every batch.
  */
-export const kindNotices = (items: readonly BatchItem[]): readonly string[] =>
+export const kindNotices = (
+  items: ReadonlyArray<BatchItem>
+): ReadonlyArray<string> =>
   Arr.flatMap(allKinds, (spec) =>
     spec.notice !== undefined &&
     Arr.some(items, (item) => specOf(item) === spec)
@@ -1238,13 +1253,13 @@ const quoted = (path: string) =>
  * for a line of the prompt.
  */
 export const reviewPrompt = ({
-  home,
   batch,
+  home,
   names,
 }: {
+  readonly batch: Batch;
   /** The absolute path of the home folder. */
   readonly home: string;
-  readonly batch: Batch;
   readonly names: PartialNames;
 }): string =>
   Arr.join(
@@ -1257,7 +1272,7 @@ export const reviewPrompt = ({
       changedLayoutNotice,
       engineerTextNotice,
       ...kindNotices(batch.items),
-      ...Arr.flatMap(bySection(batch.items), ({ section, items }) => [
+      ...Arr.flatMap(bySection(batch.items), ({ items, section }) => [
         "",
         `${sectionTitles[section]}:`,
         ...Arr.map(items, (item) => `- ${summaryLine(item, names)}`),

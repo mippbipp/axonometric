@@ -11,11 +11,11 @@ import { Array as Arr } from "effect";
  * one run; a flow choice makes one run per flow it plays.
  */
 export interface PacketRun {
+  readonly hops: ReadonlyArray<Hop>;
   /** The chapter's or the flow's id. */
   readonly id: string;
   /** The chapter title or flow name, for the packet panel. */
   readonly name: string;
-  readonly hops: readonly Hop[];
 }
 
 /** A chapter, and the map it belongs to. */
@@ -35,7 +35,7 @@ export const flowChoiceKey = (choice: FlowChoice) =>
 export interface ChapterPlay {
   /** Names the chapter and the choice together; see `flowChoiceKey`. */
   readonly key: string;
-  readonly runs: readonly PacketRun[];
+  readonly runs: ReadonlyArray<PacketRun>;
 }
 
 /**
@@ -44,9 +44,9 @@ export interface ChapterPlay {
  * or placed are left out, and empty runs are dropped.
  */
 export const chapterPlayOf = ({
+  choice,
   state,
   stop,
-  choice,
 }: ChapterOfMap & { readonly choice: FlowChoice }): ChapterPlay => {
   const hops = new Map(Arr.map(state.data.hops, (hop) => [hop.id, hop]));
 
@@ -57,20 +57,20 @@ export const chapterPlayOf = ({
   const run = (
     id: string,
     name: string,
-    hopIds: readonly string[]
-  ): readonly PacketRun[] => {
+    hopIds: ReadonlyArray<string>
+  ): ReadonlyArray<PacketRun> => {
     const playable = Arr.flatMap(hopIds, (hopId) => {
       const hop = hops.get(hopId);
 
       return hop !== undefined && shown(hop.from) && shown(hop.to) ? [hop] : [];
     });
 
-    return playable.length === 0 ? [] : [{ id, name, hops: playable }];
+    return playable.length === 0 ? [] : [{ hops: playable, id, name }];
   };
 
   const lists =
     choice.kind === "chapter"
-      ? [{ id: stop.id, name: stop.title, hops: stop.plays }]
+      ? [{ hops: stop.plays, id: stop.id, name: stop.title }]
       : Arr.filter(
           state.data.flows,
           (flow) => choice.kind === "all" || flow.id === choice.id

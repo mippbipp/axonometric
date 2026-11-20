@@ -32,10 +32,10 @@ export const loadReviewMap = Effect.fnUntraced(function* (
   const path = yield* Path.Path;
 
   return yield* loadMap({
+    arrange: (data, saved) => placeStructures(data, saved).layout,
+    command,
     home,
     output: path.dirname(home),
-    command,
-    arrange: (data, saved) => placeStructures(data, saved).layout,
     strictProposals: true,
   });
 });

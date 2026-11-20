@@ -58,8 +58,8 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
 
   return (
     <li
-      data-flow-editor={flow.id}
       className="border-ink/40 flex flex-col gap-2 border p-2"
+      data-flow-editor={flow.id}
     >
       <div className="flex items-end gap-1.5">
         <label
@@ -70,54 +70,54 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
             Name{proposedHere ? " (proposed)" : ""}
           </span>
           <input
-            id={`${id}-name`}
-            data-flow-name={flow.id}
-            type="text"
-            value={name ?? flow.name}
-            maxLength={maxFlowNameLength}
-            disabled={!canPropose}
             autoComplete="off"
             className={fieldClass}
+            data-flow-name={flow.id}
+            disabled={!canPropose}
+            id={`${id}-name`}
+            maxLength={maxFlowNameLength}
             onChange={(event) => {
               setName(event.target.value);
             }}
+            type="text"
+            value={name ?? flow.name}
           />
         </label>
         {name !== undefined &&
         name.trim() !== "" &&
         name.trim() !== flow.name ? (
           <button
-            type="button"
-            data-flow-rename={flow.id}
             className={controlClass}
+            data-flow-rename={flow.id}
             disabled={!canPropose}
             onClick={() => {
               send({ action: "rename", flow: flow.id, name: name.trim() });
               setName(undefined);
             }}
+            type="button"
           >
             Rename
           </button>
         ) : null}
       </div>
       <SortableList
-        label={`Hops of ${flow.name}`}
         dataList={`hops:${flow.id}`}
         disabled={!canPropose}
-        rows={Arr.map(flow.hops, (hop, index) => ({
-          id: hop,
-          name: labelOf(hop),
-          prefix: `${index + 1}. `,
-          note: removed.has(hop) ? "proposed for deletion" : undefined,
-        }))}
+        label={`Hops of ${flow.name}`}
         onMove={(order) => {
           if (Arr.isReadonlyArrayNonEmpty(order)) {
             send({ action: "hops", flow: flow.id, hops: order });
           }
         }}
+        rows={Arr.map(flow.hops, (hop, index) => ({
+          id: hop,
+          name: labelOf(hop),
+          note: removed.has(hop) ? "proposed for deletion" : undefined,
+          prefix: `${index + 1}. `,
+        }))}
       />
       {failure === undefined ? null : (
-        <p data-flow-failure className="border-refused border-l-2 pl-2 text-xs">
+        <p className="border-refused border-l-2 pl-2 text-xs" data-flow-failure>
           {failure}
         </p>
       )}
@@ -129,7 +129,7 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
 function NewFlowForm() {
   const connections = useConnections();
   const [name, setName] = useState("");
-  const [picked, setPicked] = useState<readonly string[]>([]);
+  const [picked, setPicked] = useState<ReadonlyArray<string>>([]);
   const [failure, setFailure] = useState<string | undefined>();
   const id = useId();
 
@@ -150,9 +150,9 @@ function NewFlowForm() {
 
   return (
     <form
-      data-new-flow
       aria-label="Create a flow"
       className="flex flex-col gap-2 text-xs"
+      data-new-flow
       onSubmit={(event) => {
         event.preventDefault();
 
@@ -191,18 +191,18 @@ function NewFlowForm() {
       <label className="flex flex-col gap-1" htmlFor={`${id}-name`}>
         <span className="opacity-70">New flow</span>
         <input
-          id={`${id}-name`}
-          data-new-flow-name
-          type="text"
-          value={name}
-          maxLength={maxFlowNameLength}
-          disabled={!connections.canPropose}
           autoComplete="off"
           className={fieldClass}
+          data-new-flow-name
+          disabled={!connections.canPropose}
+          id={`${id}-name`}
+          maxLength={maxFlowNameLength}
           onChange={(event) => {
             setFailure(undefined);
             setName(event.target.value);
           }}
+          type="text"
+          value={name}
         />
       </label>
       <fieldset className="flex flex-col gap-1">
@@ -212,9 +212,8 @@ function NewFlowForm() {
             <li key={hop}>
               <label className="flex items-center gap-2">
                 <input
-                  type="checkbox"
-                  data-new-flow-hop={hop}
                   checked={picked.includes(hop)}
+                  data-new-flow-hop={hop}
                   disabled={!connections.canPropose}
                   onChange={(event) => {
                     setPicked(
@@ -223,6 +222,7 @@ function NewFlowForm() {
                         : Arr.filter(picked, (other) => other !== hop)
                     );
                   }}
+                  type="checkbox"
                 />
                 <span className="min-w-0 break-words">{label}</span>
               </label>
@@ -231,17 +231,17 @@ function NewFlowForm() {
         </ul>
       </fieldset>
       {failure === undefined ? null : (
-        <p data-new-flow-failure className="border-refused border-l-2 pl-2">
+        <p className="border-refused border-l-2 pl-2" data-new-flow-failure>
           {failure}
         </p>
       )}
       <button
-        type="submit"
-        data-new-flow-submit
         className={`${controlClass} self-start`}
+        data-new-flow-submit
         disabled={
           !connections.canPropose || name.trim() === "" || listed.length === 0
         }
+        type="submit"
       >
         Create flow
       </button>
@@ -266,7 +266,7 @@ export function FlowsTab() {
   const { flows } = connections.proposed.state.data;
 
   return (
-    <section data-flows-tab className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" data-flows-tab>
       <p className="text-xs opacity-70">
         A flow is a named, ordered list of hops. Rename a flow, drag its hops
         into a new order, or reorder the flows. Each change is a proposal for
@@ -278,10 +278,9 @@ export function FlowsTab() {
             Order of the flows
           </h3>
           <SortableList
-            label="Order of the flows"
             dataList="flows"
             disabled={!connections.canPropose}
-            rows={Arr.map(flows, ({ id, name }) => ({ id, name }))}
+            label="Order of the flows"
             onMove={(order) => {
               if (!Arr.isReadonlyArrayNonEmpty(order)) {
                 return;
@@ -301,11 +300,12 @@ export function FlowsTab() {
                 setFailure(failureOf(outcome));
               });
             }}
+            rows={Arr.map(flows, ({ id, name }) => ({ id, name }))}
           />
           {failure === undefined ? null : (
             <p
-              data-flows-failure
               className="border-refused border-l-2 pl-2 text-xs"
+              data-flows-failure
             >
               {failure}
             </p>
@@ -314,7 +314,7 @@ export function FlowsTab() {
       ) : null}
       <ul className="flex flex-col gap-2">
         {Arr.map(flows, (flow) => (
-          <FlowEditor key={flow.id} flow={flow} />
+          <FlowEditor flow={flow} key={flow.id} />
         ))}
       </ul>
       <NewFlowForm />

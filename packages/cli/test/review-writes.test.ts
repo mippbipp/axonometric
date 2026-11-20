@@ -12,39 +12,39 @@ const at = "2026-11-01T09:00:00.000Z";
 
 const frozenFile = `${JSON.stringify(
   {
-    format: 1,
-    revision: 3,
-    layout: [],
-    notes: [],
     batches: [
       {
-        number: 1,
         frozenAt: at,
         items: [
           {
             id: "frozen-note",
             kind: "note",
-            target: { kind: "structure", id: "server" },
+            target: { id: "server", kind: "structure" },
             text: "Waiting for the agent",
           },
           {
-            id: "frozen-move",
-            kind: "layout",
             change: {
               id: "frozen-move",
               kind: "move",
               moves: [
                 {
-                  target: { kind: "structure", id: "engineer" },
                   position: { x: 0, y: 4 },
+                  target: { id: "engineer", kind: "structure" },
                 },
               ],
             },
+            id: "frozen-move",
+            kind: "layout",
           },
         ],
+        number: 1,
         verdicts: {},
       },
     ],
+    format: 1,
+    layout: [],
+    notes: [],
+    revision: 3,
   },
   null,
   2
@@ -61,10 +61,10 @@ type Args = readonly [
 ];
 
 const post = (...[url, target, headers, body]: Args) =>
-  writeText(url, { method: "post", target, headers, body });
+  writeText(url, { body, headers, method: "post", target });
 
 const put = (...[url, target, headers, body]: Args) =>
-  writeText(url, { method: "put", target, headers, body });
+  writeText(url, { body, headers, method: "put", target });
 
 const json = (value: Readonly<Record<string, Schema.Json>>) =>
   JSON.stringify(value);
@@ -110,8 +110,8 @@ describe("the review routes", () => {
             url,
             route,
             {
-              origin: "http://evil.example",
               "content-type": "application/json",
+              origin: "http://evil.example",
             },
             body
           );
@@ -126,7 +126,7 @@ describe("the review routes", () => {
           const asText = yield* post(
             url,
             route,
-            { origin: url, "content-type": "text/plain" },
+            { "content-type": "text/plain", origin: url },
             body
           );
 
@@ -135,7 +135,8 @@ describe("the review routes", () => {
           assert.strictEqual(asText.status, 415, route);
         }
 
-        assert.strictEqual(yield* proposalsText(home), before);
+        const proposalsAfter = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfter, before);
       })
   );
 
@@ -149,27 +150,27 @@ describe("the review routes", () => {
         json({
           baseFileRevision: 3,
           id: "n1",
-          target: { kind: "unknown", id: "x" },
+          target: { id: "x", kind: "unknown" },
           text: "t",
         }),
         json({
           baseFileRevision: 3,
           id: "../x",
-          target: { kind: "structure", id: "server" },
+          target: { id: "server", kind: "structure" },
           text: "t",
         }),
         json({
           baseFileRevision: 3,
           id: "n1",
-          target: { kind: "structure", id: "server" },
+          target: { id: "server", kind: "structure" },
           text: "",
         }),
         json({
           baseFileRevision: 3,
-          id: "n1",
-          target: { kind: "structure", id: "server" },
-          text: "t",
           extra: true,
+          id: "n1",
+          target: { id: "server", kind: "structure" },
+          text: "t",
         }),
       ];
 
@@ -182,7 +183,7 @@ describe("the review routes", () => {
       const long = json({
         baseFileRevision: 3,
         id: "n1",
-        target: { kind: "structure", id: "server" },
+        target: { id: "server", kind: "structure" },
         text: Str.repeat(2001)("x"),
       });
 
@@ -190,7 +191,8 @@ describe("the review routes", () => {
         (yield* post(url, "/api/notes", ownOrigin(url), long)).status,
         400
       );
-      assert.strictEqual(yield* proposalsText(home), before);
+      const proposalsAfter = yield* proposalsText(home);
+      assert.strictEqual(proposalsAfter, before);
     })
   );
 
@@ -206,14 +208,15 @@ describe("the review routes", () => {
         json({
           baseFileRevision: 1,
           id: "n1",
-          target: { kind: "structure", id: "server" },
+          target: { id: "server", kind: "structure" },
           text: "Based on an old file",
         })
       );
 
       assert.strictEqual(sent.status, 409);
       assert.include(sent.body, "StaleProposals");
-      assert.strictEqual(yield* proposalsText(home), before);
+      const proposalsAfter = yield* proposalsText(home);
+      assert.strictEqual(proposalsAfter, before);
     })
   );
 
@@ -230,7 +233,7 @@ describe("the review routes", () => {
           json({
             baseFileRevision: 3,
             id: "n-open",
-            target: { kind: "structure", id: "page" },
+            target: { id: "page", kind: "structure" },
             text: "A fresh question",
           })
         );
@@ -253,7 +256,8 @@ describe("the review routes", () => {
         assert.include(answer.prompt, "batch 2");
         assert.include(answer.prompt, "summary");
 
-        const saved = yield* decodeProposals(yield* proposalsText(home));
+        const proposalsJson = yield* proposalsText(home);
+        const saved = yield* decodeProposals(proposalsJson);
 
         assert.deepStrictEqual(saved, answer.proposals);
       })
@@ -278,8 +282,8 @@ describe("the review routes", () => {
                 kind: "move",
                 moves: [
                   {
-                    target: { kind: "structure", id: "engineer" },
                     position: { x: 0, y: 8 },
+                    target: { id: "engineer", kind: "structure" },
                   },
                 ],
               },
@@ -289,7 +293,8 @@ describe("the review routes", () => {
 
         assert.strictEqual(reuse.status, 422);
         assert.include(reuse.body, "frozen-move");
-        assert.strictEqual(yield* proposalsText(home), before);
+        const proposalsAfterReuse = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfterReuse, before);
 
         // An open move that lands on a frozen one's spot is refused as an
         // overlap: frozen changes still count.
@@ -305,8 +310,8 @@ describe("the review routes", () => {
                 kind: "move",
                 moves: [
                   {
-                    target: { kind: "structure", id: "page" },
                     position: { x: 0, y: 4 },
+                    target: { id: "page", kind: "structure" },
                   },
                 ],
               },
@@ -315,7 +320,8 @@ describe("the review routes", () => {
         );
 
         assert.strictEqual(onto.status, 422);
-        assert.strictEqual(yield* proposalsText(home), before);
+        const proposalsAfterOnto = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfterOnto, before);
       })
   );
 
@@ -338,8 +344,8 @@ describe("the review routes", () => {
                 kind: "move",
                 moves: [
                   {
-                    target: { kind: "structure", id: "engineer" },
                     position: { x: 0, y: 12 },
+                    target: { id: "engineer", kind: "structure" },
                   },
                 ],
               },
@@ -360,7 +366,8 @@ describe("the review routes", () => {
 
         assert.strictEqual(accepted.status, 422, accepted.body);
         assert.include(accepted.body, "Wait for the agent");
-        assert.strictEqual(yield* proposalsText(home), before);
+        const proposalsAfter = yield* proposalsText(home);
+        assert.strictEqual(proposalsAfter, before);
 
         assert.strictEqual(
           (yield* readHome(home))["history/0001.json"],
@@ -372,24 +379,24 @@ describe("the review routes", () => {
 
 describe("text suggestions, answers and questions", () => {
   const suggestion = {
-    id: "s-one",
-    target: { kind: "structure", id: "page" },
-    field: "oneLiner",
-    before: "Shows the map and records notes.",
     after: "Shows the map and saves each note.",
+    before: "Shows the map and records notes.",
+    field: "oneLiner",
+    id: "s-one",
+    target: { id: "page", kind: "structure" },
   } as const;
 
   const answer = {
-    id: "a-one",
-    target: { kind: "structure", id: "page" },
-    question: "Q-P1",
-    text: "Yes, 2000 characters.",
     answeredOn: "2026-11-02",
+    id: "a-one",
+    question: "Q-P1",
+    target: { id: "page", kind: "structure" },
+    text: "Yes, 2000 characters.",
   } as const;
 
   const question = {
     id: "q-one",
-    target: { kind: "structure", id: "server" },
+    target: { id: "server", kind: "structure" },
     text: "Should the server retry a failed write?",
   } as const;
 
@@ -401,7 +408,7 @@ describe("text suggestions, answers and questions", () => {
 
   const hopNote = {
     id: "n-hop",
-    target: { kind: "hop", id: "h-save" },
+    target: { id: "h-save", kind: "hop" },
     text: "Why not a socket?",
   } as const;
 
@@ -440,7 +447,7 @@ describe("text suggestions, answers and questions", () => {
       const refused = [
         [
           "/api/notes",
-          { ...hopNote, target: { kind: "hop", id: "no-such-hop" } },
+          { ...hopNote, target: { id: "no-such-hop", kind: "hop" } },
           "no-such-hop",
         ],
         [
@@ -452,7 +459,7 @@ describe("text suggestions, answers and questions", () => {
         ["/api/answers", { ...answer, question: "Q-P2" }, "resolved"],
         [
           "/api/questions",
-          { ...question, target: { kind: "structure", id: "nowhere" } },
+          { ...question, target: { id: "nowhere", kind: "structure" } },
           "nowhere",
         ],
       ] as const;
@@ -469,7 +476,8 @@ describe("text suggestions, answers and questions", () => {
         assert.include(sent.body, why);
       }
 
-      assert.strictEqual(yield* proposalsText(home), before);
+      const proposalsAfter = yield* proposalsText(home);
+      assert.strictEqual(proposalsAfter, before);
     })
   );
 
@@ -496,7 +504,8 @@ describe("text suggestions, answers and questions", () => {
 
       assert.strictEqual(gone.status, 200, gone.body);
 
-      const saved = yield* decodeProposals(yield* proposalsText(home));
+      const proposalsJson = yield* proposalsText(home);
+      const saved = yield* decodeProposals(proposalsJson);
 
       assert.strictEqual(saved.suggestions?.[0]?.after, "Better.");
       assert.strictEqual(saved.suggestions?.[0]?.before, suggestion.before);

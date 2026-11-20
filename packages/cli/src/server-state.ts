@@ -14,7 +14,9 @@ const encodeState = Schema.encodeEffect(StateFile);
 export const serverStateFile = Effect.fnUntraced(function* (home: string) {
   const path = yield* Path.Path;
 
-  return path.join(yield* stateFolderPath(home), "server.json");
+  const stateDir = yield* stateFolderPath(home);
+
+  return path.join(stateDir, "server.json");
 });
 
 /** The state file's text, or nothing when there's no file. */
@@ -34,7 +36,8 @@ const readText = Effect.fnUntraced(function* (file: string) {
  * that doesn't decode, or whose process has exited, counts as no server.
  */
 export const runningServer = Effect.fnUntraced(function* (home: string) {
-  const text = yield* readText(yield* serverStateFile(home));
+  const stateFile = yield* serverStateFile(home);
+  const text = yield* readText(stateFile);
 
   return Option.filter(Option.flatMap(text, decodeState), (state) =>
     processIsAlive(state.pid)
@@ -57,7 +60,7 @@ export const recordServer = Effect.fnUntraced(function* (
   const file = yield* serverStateFile(home);
   const content = yield* encodeState(state);
 
-  yield* Effect.acquireRelease(writeAll([{ file, content }]), () =>
+  yield* Effect.acquireRelease(writeAll([{ content, file }]), () =>
     readText(file).pipe(
       Effect.flatMap((current) =>
         Option.contains(current, content) ? fs.remove(file) : Effect.void

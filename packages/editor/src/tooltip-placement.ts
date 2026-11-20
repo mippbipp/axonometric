@@ -1,9 +1,9 @@
 /** A box on screen, in pixels. */
 export interface Box {
+  readonly height: number;
   readonly left: number;
   readonly top: number;
   readonly width: number;
-  readonly height: number;
 }
 
 /** The gap between the tooltip and the box it describes, in pixels. */
@@ -35,20 +35,20 @@ const clamp = (value: number, low: number, high: number) =>
  */
 export const tooltipPlacement = ({
   canvas,
-  target,
   others,
-  tags,
-  size,
   pointerX,
+  size,
+  tags,
+  target,
 }: {
   readonly canvas: Box;
-  readonly target: Box;
   /** Other structures' boxes. */
-  readonly others: readonly Box[];
-  /** Name tags, which matter half as much as structures. */
-  readonly tags: readonly Box[];
-  readonly size: { readonly width: number; readonly height: number };
+  readonly others: ReadonlyArray<Box>;
   readonly pointerX: number;
+  readonly size: { readonly height: number; readonly width: number };
+  /** Name tags, which matter half as much as structures. */
+  readonly tags: ReadonlyArray<Box>;
+  readonly target: Box;
 }): { readonly left: number; readonly top: number } => {
   const middleY = target.top + target.height / 2 - size.height / 2;
   const centredX = pointerX - size.width / 2;

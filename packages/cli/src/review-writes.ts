@@ -56,34 +56,34 @@ import { writeAll } from "./write-files.ts";
  */
 /** What a write's change is given: the files as read under the lock. */
 interface Held {
-  readonly proposals: Proposals;
-  /** The layout open changes land on: the accepted one with frozen items applied. */
-  readonly layout: Layout;
-  /** The names of the structures the map shows, proposed ones included. */
-  readonly structures: ReadonlyMap<string, string>;
-  /** The map's hops, with their labels. */
-  readonly hops: readonly Hop[];
   /** The map as data.mjs has it, for the items that point into its text. */
   readonly data: MapData;
+  /** The map's hops, with their labels. */
+  readonly hops: ReadonlyArray<Hop>;
+  /** The layout open changes land on: the accepted one with frozen items applied. */
+  readonly layout: Layout;
+  readonly now: string;
+  readonly proposals: Proposals;
   /**
    * The map as proposed, with every frozen and open item applied. Checks
    * read it, so a structure or group an earlier proposal adds is known to
    * the later ones.
    */
   readonly proposed: ProposedMap<Mappable>;
-  readonly now: string;
+  /** The names of the structures the map shows, proposed ones included. */
+  readonly structures: ReadonlyMap<string, string>;
 }
 
 const writeProposals = Effect.fnUntraced(
   function* <A>({
-    home,
     baseFileRevision,
     change,
+    home,
     written,
   }: {
-    readonly home: string;
     readonly baseFileRevision: number;
     readonly change: (held: Held) => Change<A>;
+    readonly home: string;
     readonly written: (proposals: Proposals) => Effect.Effect<void>;
   }) {
     const path = yield* Path.Path;
@@ -98,37 +98,38 @@ const writeProposals = Effect.fnUntraced(
       )
     );
 
-    const now = DateTime.formatIso(yield* DateTime.now);
+    const currentTime = yield* DateTime.now;
+    const now = DateTime.formatIso(currentTime);
 
     // Built once per write: the frozen items alone are what open changes
     // land on, and all of them are what the checks read.
     const state = { data: map.data, layout: map.layout };
-    const proposed = proposedMap({ state, proposals: map.proposals });
+    const proposed = proposedMap({ proposals: map.proposals, state });
 
     const changed = change({
-      proposals: map.proposals,
-      layout: proposedMap({ state, proposals: map.proposals, open: false })
-        .state.layout,
-      structures: structureNames(proposed.state.data),
-      hops: map.data.hops,
       data: map.data,
-      proposed,
+      hops: map.data.hops,
+      layout: proposedMap({ open: false, proposals: map.proposals, state })
+        .state.layout,
       now,
+      proposals: map.proposals,
+      proposed,
+      structures: structureNames(proposed.state.data),
     });
 
     if (Result.isFailure(changed)) {
       return yield* ProposalRefused.make({
-        reason: changed.failure,
         proposals: map.proposals,
+        reason: changed.failure,
       });
     }
 
-    const { proposals, answer } = changed.success;
+    const { answer, proposals } = changed.success;
 
     yield* writeAll([
       {
-        file: path.join(home, "proposals.json"),
         content: yield* encodeProposals(proposals),
+        file: path.join(home, "proposals.json"),
       },
     ]);
 
@@ -147,7 +148,7 @@ type Told = (proposals: Proposals) => Effect.Effect<void>;
 
 /** What a write changes, and what it answers. */
 type Change<A> = Result.Result<
-  { readonly proposals: Proposals; readonly answer: A },
+  { readonly answer: A; readonly proposals: Proposals },
   string
 >;
 
@@ -155,7 +156,7 @@ type Change<A> = Result.Result<
 const answeringWithFile = (
   made: Result.Result<Proposals, string>
 ): Change<Proposals> =>
-  Result.map(made, (proposals) => ({ proposals, answer: proposals }));
+  Result.map(made, (proposals) => ({ answer: proposals, proposals }));
 
 /**
  * A write that edits `proposals.json` and answers with the file. The edit
@@ -168,20 +169,20 @@ const editing =
   ) =>
   (home: string, write: W, written: Told) =>
     writeProposals({
-      home,
       baseFileRevision: write.baseFileRevision,
-      written,
       change: (held) => answeringWithFile(edit(held, write)),
+      home,
+      written,
     }).pipe(Effect.withSpan(name));
 
 // oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(home, write, written)`, never piped.
 
 /** What an item is checked against when it is added. */
-const knownIn = ({ structures, proposed, data }: Held): Known => ({
+const knownIn = ({ data, proposed, structures }: Held): Known => ({
   structureIds: new Set(structures.keys()),
   // A hop the engineer drew can carry a note before the agent adds it.
-  hops: proposed.state.data.hops,
   data,
+  hops: proposed.state.data.hops,
 });
 
 /** A write that adds the item `make` builds from the request. */
@@ -191,9 +192,9 @@ const adding = <W extends { readonly baseFileRevision: number }>(
 ) =>
   editing<W>(name, (held, { baseFileRevision: _base, ...write }) =>
     addItem({
-      proposals: held.proposals,
       item: make(write),
       known: knownIn(held),
+      proposals: held.proposals,
     })
   );
 
@@ -224,13 +225,13 @@ export const addQuestionWrite = adding<QuestionAdd>(
 /** Changes the text of an open note, suggestion, answer or raised question. */
 export const editItemWrite = editing<ItemEdit>(
   "editItemWrite",
-  ({ proposals }, { id, text }) => editProposal({ proposals, id, text })
+  ({ proposals }, { id, text }) => editProposal({ id, proposals, text })
 );
 
 /** Removes an open note, suggestion, answer or raised question. */
 export const discardItemWrite = editing<ItemWrite>(
   "discardItemWrite",
-  ({ proposals }, { id }) => discardProposal({ proposals, id })
+  ({ proposals }, { id }) => discardProposal({ id, proposals })
 );
 
 /**
@@ -240,11 +241,11 @@ export const discardItemWrite = editing<ItemWrite>(
  */
 export const setStructureWrite = editing<StructureWrite>(
   "setStructureWrite",
-  ({ proposals, proposed }, { id, change }) =>
+  ({ proposals, proposed }, { change, id }) =>
     proposeStructure({
-      proposals,
-      id,
       change,
+      id,
+      proposals,
       world: { data: proposed.state.data, layout: proposed.state.layout },
     })
 );
@@ -254,13 +255,13 @@ export const setStructureWrite = editing<StructureWrite>(
  * structure, hop or flow an earlier proposal adds is known to later ones, and
  * the map the frozen items alone make, which an open change lands on.
  */
-const connectionWorld = ({ proposed, data, proposals }: Held) => ({
-  data: proposed.state.data,
+const connectionWorld = ({ data, proposals, proposed }: Held) => ({
   base: proposedMap({
-    state: { data, layout: proposed.state.layout },
-    proposals,
     open: false,
+    proposals,
+    state: { data, layout: proposed.state.layout },
   }).state.data,
+  data: proposed.state.data,
 });
 
 /**
@@ -270,11 +271,11 @@ const connectionWorld = ({ proposed, data, proposals }: Held) => ({
  */
 export const setHopWrite = editing<HopWrite>(
   "setHopWrite",
-  (held, { id, change }) =>
+  (held, { change, id }) =>
     proposeHop({
-      proposals: held.proposals,
-      id,
       change,
+      id,
+      proposals: held.proposals,
       world: connectionWorld(held),
     })
 );
@@ -286,11 +287,11 @@ export const setHopWrite = editing<HopWrite>(
  */
 export const setFlowWrite = editing<FlowWrite>(
   "setFlowWrite",
-  (held, { id, change }) =>
+  (held, { change, id }) =>
     proposeFlow({
-      proposals: held.proposals,
-      id,
       change,
+      id,
+      proposals: held.proposals,
       world: connectionWorld(held),
     })
 );
@@ -302,17 +303,17 @@ export const setFlowWrite = editing<FlowWrite>(
  */
 export const setGroupWrite = editing<GroupWrite>(
   "setGroupWrite",
-  (held, { id, change, members }) =>
+  (held, { change, id, members }) =>
     proposeGroupWithMembers({
-      proposals: held.proposals,
-      id,
       change,
+      id,
       members: members ?? [],
-      world: connectionWorld(held),
+      proposals: held.proposals,
       structures: {
         data: held.proposed.state.data,
         layout: held.proposed.state.layout,
       },
+      world: connectionWorld(held),
     })
 );
 
@@ -322,11 +323,11 @@ export const setGroupWrite = editing<GroupWrite>(
  */
 export const setChapterWrite = editing<ChapterWrite>(
   "setChapterWrite",
-  ({ proposals, proposed, data }, { id, change }) =>
+  ({ data, proposals, proposed }, { change, id }) =>
     proposeChapter({
-      proposals,
-      id,
       change,
+      id,
+      proposals,
       world: { data, proposed: proposed.state.data },
     })
 );
@@ -334,22 +335,22 @@ export const setChapterWrite = editing<ChapterWrite>(
 /** Takes a reviewed item off the page. */
 export const dismissWrite = editing<ItemWrite>(
   "dismissWrite",
-  ({ proposals }, { id }) => dismissItem({ proposals, id })
+  ({ proposals }, { id }) => dismissItem({ id, proposals })
 );
 
 /** Reopens a rejected item as a new open item linked to it. */
 export const reopenWrite = editing<ReopenWrite>(
   "reopenWrite",
-  ({ proposals, layout, structures, hops, data }, { id, newId, text }) =>
+  ({ data, hops, layout, proposals, structures }, { id, newId, text }) =>
     reopenItem({
-      proposals,
-      id,
-      newId,
-      layout,
-      known: new Set(structures.keys()),
-      hops,
-      text,
       data,
+      hops,
+      id,
+      known: new Set(structures.keys()),
+      layout,
+      newId,
+      proposals,
+      text,
     })
 );
 
@@ -367,36 +368,36 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
   const absolute = path.resolve(home);
 
   return yield* writeProposals<FreezeAnswer>({
-    home,
     baseFileRevision: write.baseFileRevision,
-    written,
-    change: ({ proposals, proposed, data, now }) =>
+    change: ({ data, now, proposals, proposed }) =>
       Result.map(
         freezeOpen({
-          proposals,
           at: now,
           known: {
-            structure: Arr.map(data.structures, ({ id }) => id),
-            hop: Arr.map(data.hops, ({ id }) => id),
             flow: Arr.map(data.flows, ({ id }) => id),
             group: Arr.map(data.groups, ({ id }) => id),
+            hop: Arr.map(data.hops, ({ id }) => id),
+            structure: Arr.map(data.structures, ({ id }) => id),
           },
+          proposals,
         }),
         (frozen) => ({
-          proposals: frozen.proposals,
           answer: {
             batch: frozen.batch,
             home: absolute,
-            proposals: frozen.proposals,
             prompt: reviewPrompt({
-              home: absolute,
               batch: frozen.batch,
+              home: absolute,
               // A hop the engineer drew has a label on the page and none in
               // data.mjs yet, and so has a group.
-              names: namesOf({ shown: proposed.state.data, accepted: data }),
+              names: namesOf({ accepted: data, shown: proposed.state.data }),
             }),
+            proposals: frozen.proposals,
           },
+          proposals: frozen.proposals,
         })
       ),
+    home,
+    written,
   });
 });

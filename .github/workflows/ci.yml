@@ -13,26 +13,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Each OS runs the CLI tests as one of 2 shards, split by how long each
+  # file takes (packages/cli/test/shard-sequencer.ts). Every shard builds,
+  # since the CLI tests run the built bundle. The other packages' tests run
+  # once per OS, in shard 1. Branch protection requires these job names:
+  #   check (ubuntu-24.04, shard 1/2)    check (ubuntu-24.04, shard 2/2)
+  #   check (macos-latest, shard 1/2)    check (macos-latest, shard 2/2)
+  #   check (windows-latest, shard 1/2)  check (windows-latest, shard 2/2)
+  # Changing the shard count renames them, so update the required list too.
   check:
+    name: check (${{ matrix.os }}, shard ${{ matrix.shard }}/2)
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-latest, windows-latest]
+        shard: [1, 2]
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      # Installs pnpm from `packageManager` and Node from `devEngines.runtime`,
-      # then runs `pnpm install --frozen-lockfile`.
-      - uses: pnpm/setup@v3
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
-          cache: true
-          require-lockfile: true
+          bun-version-file: package.json
+
+      # The tests and the bundle run on the Node that npm users have.
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - run: bun ci
 
       - run: node --version
-
-      - run: pnpm ox
 
       # The page tests open the built page in Chromium. Locally, the dev
       # shell provides it. They launch it headless, so only the headless
@@ -43,16 +56,16 @@ jobs:
         id: playwright
         shell: bash
         run: |
-          version=$(sed -n 's/^  playwright@\([^:(]*\):$/\1/p' pnpm-lock.yaml | head -n 1)
+          version=$(sed -n 's/^    "playwright": \["playwright@\([^"]*\)".*/\1/p' bun.lock | head -n 1)
           if [ -z "$version" ]; then
-            echo "No playwright version in pnpm-lock.yaml." >&2
+            echo "No playwright version in bun.lock." >&2
             exit 1
           fi
           echo "Playwright $version"
           echo "version=$version" >>"$GITHUB_OUTPUT"
           echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/ms-playwright" >>"$GITHUB_ENV"
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@v6.1.0
         id: browsers
         with:
           path: ${{ runner.temp }}/ms-playwright
@@ -60,16 +73,24 @@ jobs:
 
       - name: Download Chromium for Playwright
         if: steps.browsers.outputs.cache-hit != 'true'
-        run: pnpm --filter axonometric exec playwright install --only-shell chromium
+        working-directory: packages/cli
+        run: bunx playwright install --only-shell chromium
 
       # The system libraries live outside the cache.
       - name: Install Chromium's system libraries
         if: runner.os == 'Linux'
-        run: pnpm --filter axonometric exec playwright install-deps chromium
+        working-directory: packages/cli
+        run: bunx playwright install-deps chromium
 
-      - run: pnpm test
+      - name: Test the CLI, shard ${{ matrix.shard }} of 2
+        run: bunx turbo run test --filter=axonometric -- --shard=${{ matrix.shard }}/2
+
+      - name: Test the other packages and the root scripts
+        if: matrix.shard == 1
+        run: bunx turbo run test //#test:scripts --filter='!axonometric'
 
       - name: Run the built bundle
+        if: matrix.shard == 1
         run: |
           node packages/cli/dist/bin.mjs --version
           node packages/cli/dist/bin.mjs --help
@@ -77,8 +98,24 @@ jobs:
       # Packs the npm tarball the same way the release workflow does, then
       # checks its files and package.json. See packages/cli/scripts/pack-npm.ts.
       - name: Check the npm tarball
-        if: runner.os == 'Linux'
-        run: pnpm --filter axonometric pack:npm "$RUNNER_TEMP/axonometric.tgz"
+        if: matrix.shard == 1 && runner.os == 'Linux'
+        run: bun run --cwd packages/cli pack:npm "$RUNNER_TEMP/axonometric.tgz"
+
+      # The bundle keeps its node shebang, so `--bun` makes Bun run it
+      # instead. Installs the tarball the way a Bun user does.
+      - name: Run the npm tarball under Bun
+        if: matrix.shard == 1 && runner.os == 'Linux'
+        run: |
+          mkdir "$RUNNER_TEMP/bun-install"
+          cp -r packages/cli/test/fixtures/pipeline "$RUNNER_TEMP/pipeline"
+          cd "$RUNNER_TEMP/bun-install"
+          bun init -y
+          bun add "$RUNNER_TEMP/axonometric.tgz"
+          bunx --bun axonometric --version
+          bunx --bun axonometric --help
+          bunx --bun axonometric build "$RUNNER_TEMP/pipeline/map"
+          test -s "$RUNNER_TEMP/pipeline/SYSTEM.md"
+          test -s "$RUNNER_TEMP/pipeline/pipeline.html"
 
   # npm trusted publishing needs no token, so no workflow may pass one. The
   # pattern is split so this file doesn't match itself.
@@ -86,7 +123,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Check that no workflow uses an npm token
         run: |
@@ -105,12 +142,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@v31.11.5
 
-      # If pnpm-lock.yaml changed, this fails with a hash mismatch. Copy the
-      # `got: sha256-...` value into `pnpmDeps.hash` in nix/package.nix.
+      # If bun.lock changed, this fails with a hash mismatch. Copy the
+      # `got: sha256-...` value into `bunDeps.outputHash` in nix/package.nix.
       - run: nix build -L .#default
 
       # Runs the package's install check: --version and a build of the
@@ -119,16 +156,42 @@ jobs:
 
       - run: nix run . -- --version
 
-  react-doctor:
+  # Lint, format, typecheck and React Doctor run once here, so the OS jobs
+  # only build and test. Nothing waits on it: both report in the same round.
+  lint:
     runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: pnpm/setup@v3
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
-          cache: true
-          require-lockfile: true
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - run: bun ci
+
+      - run: bun run ox
 
       # Fails on any React Doctor finding in the editor.
-      - run: pnpm run react-doctor
+      - run: bun run react-doctor
+
+  # Fails when .github/workflows/actions.lock is out of sync with the
+  # workflows or a locked pin no longer verifies upstream.
+  lockfile:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: gh extension install github/gh-actions-lock --pin v0.4.1
+
+      - run: gh actions-lock --verify

@@ -14,10 +14,8 @@ import { IsoPlate, PlanPlate } from "./zones.tsx";
 
 /** Everything the drawing does differently in each view. */
 export interface ViewDrawing {
-  /** What the view is called, as `GLOSSARY.md` names it. */
-  readonly title: string;
-  readonly Structure: ComponentType<StructureDrawingProps>;
-  readonly Plate: ComponentType<{ readonly drawing: SceneZone }>;
+  /** The screen points a structure's drawing reaches, tag included. */
+  readonly extentOf: (placed: SceneStructure) => ReadonlyArray<ScreenPoint>;
   /** Whether bends get the diamond markers system-atlas draws. */
   readonly markBends: boolean;
   /**
@@ -26,18 +24,15 @@ export interface ViewDrawing {
    * shows in a still image, so a file has it too.
    */
   readonly newRing: boolean;
-  /** The screen points a structure's drawing reaches, tag included. */
-  readonly extentOf: (placed: SceneStructure) => readonly ScreenPoint[];
+  readonly Plate: ComponentType<{ readonly drawing: SceneZone }>;
+  readonly Structure: ComponentType<StructureDrawingProps>;
+  /** What the view is called, as `GLOSSARY.md` names it. */
+  readonly title: string;
 }
 
 export const viewDrawings: Readonly<Record<View, ViewDrawing>> = {
   iso: {
-    title: "Iso view",
-    Structure: IsoStructure,
-    Plate: IsoPlate,
-    markBends: true,
-    newRing: true,
-    extentOf: ({ structure, placement, tag }) => {
+    extentOf: ({ placement, structure, tag }) => {
       const ground = corners(placement, 0);
       const top = corners(placement, isoHeights[structure.shape]);
 
@@ -54,19 +49,24 @@ export const viewDrawings: Readonly<Record<View, ViewDrawing>> = {
         { sx: tag.right, sy: tag.bottom },
       ];
     },
+    markBends: true,
+    newRing: true,
+    Plate: IsoPlate,
+    Structure: IsoStructure,
+    title: "Iso view",
   },
   plan: {
-    title: "Plan view",
-    Structure: PlanStructure,
     Plate: PlanPlate,
+    Structure: PlanStructure,
+    title: "Plan view",
     // From above a bend is plain to see, and a dot there reads as a
     // junction.
-    markBends: false,
-    newRing: false,
     extentOf: ({ outline, tag }) => [
       ...outline,
       { sx: tag.left, sy: tag.top },
       { sx: tag.right, sy: tag.bottom },
     ],
+    markBends: false,
+    newRing: false,
   },
 };

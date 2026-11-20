@@ -15,17 +15,17 @@ import type { LayoutChange } from "./proposals.ts";
 /** What accepting some pending layout changes makes. */
 export interface Acceptance {
   /** The changes taken, in the order they were pending. */
-  readonly accepted: readonly LayoutChange[];
+  readonly accepted: ReadonlyArray<LayoutChange>;
+  /** What was taken out of earlier pending changes because accepting overrides it. */
+  readonly dropped: ReadonlyArray<DroppedChange>;
+  /** The accepted layout with `accepted` applied, one file revision on. */
+  readonly layout: Layout;
   /**
    * The changes still pending, in order. An earlier change that the accepted
    * ones override is left out, or has the overridden structures left out of
    * it, and is listed in `dropped`.
    */
-  readonly remaining: readonly LayoutChange[];
-  /** What was taken out of earlier pending changes because accepting overrides it. */
-  readonly dropped: readonly DroppedChange[];
-  /** The accepted layout with `accepted` applied, one file revision on. */
-  readonly layout: Layout;
+  readonly remaining: ReadonlyArray<LayoutChange>;
 }
 
 /**
@@ -34,10 +34,10 @@ export interface Acceptance {
  * acts on, the change is gone from the pending list.
  */
 export interface DroppedChange {
+  readonly hops: ReadonlyArray<string>;
   readonly id: string;
   readonly kind: LayoutChange["kind"];
-  readonly structures: readonly string[];
-  readonly hops: readonly string[];
+  readonly structures: ReadonlyArray<string>;
 }
 
 /**
@@ -57,9 +57,9 @@ const settings = (change: LayoutChange) =>
 
 /** What is left of a pending change, and what was taken out of it. */
 interface Overridden {
+  readonly hops: ReadonlyArray<string>;
   readonly left: Option.Option<LayoutChange>;
-  readonly structures: readonly string[];
-  readonly hops: readonly string[];
+  readonly structures: ReadonlyArray<string>;
 }
 
 /**
@@ -81,11 +81,11 @@ const withoutOverridden = (
   );
 
   if (structures.length === 0 && hops.length === 0) {
-    return { left: Option.some(change), structures, hops };
+    return { hops, left: Option.some(change), structures };
   }
 
   if (change.kind !== "move") {
-    return { left: Option.none(), structures, hops };
+    return { hops, left: Option.none(), structures };
   }
 
   const kept = Arr.filter(
@@ -94,12 +94,12 @@ const withoutOverridden = (
   );
 
   return {
+    hops,
     left: Arr.match(kept, {
       onEmpty: () => Option.none(),
       onNonEmpty: (moves) => Option.some({ ...change, moves }),
     }),
     structures,
-    hops,
   };
 };
 
@@ -116,16 +116,16 @@ const withoutOverridden = (
  * and `dropped` says what.
  */
 export const acceptLayoutChanges = ({
+  hops,
+  ids,
   layout,
   pending,
-  ids,
-  hops,
 }: {
-  readonly layout: Layout;
-  readonly pending: readonly LayoutChange[];
-  readonly ids: "all" | readonly string[];
   /** The map's hops, which say where a reroute's ends belong. */
-  readonly hops: readonly HopEnds[];
+  readonly hops: ReadonlyArray<HopEnds>;
+  readonly ids: "all" | ReadonlyArray<string>;
+  readonly layout: Layout;
+  readonly pending: ReadonlyArray<LayoutChange>;
 }): Result.Result<Acceptance, string> => {
   if (pending.length === 0) {
     return Result.fail(
@@ -149,8 +149,8 @@ export const acceptLayoutChanges = ({
 
   const refusal = layoutRefusal({
     accepted: layout,
-    before: [],
     after: accepted,
+    before: [],
     hops,
   });
 
@@ -178,16 +178,15 @@ export const acceptLayoutChanges = ({
 
   return Result.succeed({
     accepted,
-    remaining: Arr.flatMap(outcomes, ({ left }) => Option.toArray(left)),
-    dropped: Arr.flatMap(outcomes, ({ change, structures, hops: lost }) =>
+    dropped: Arr.flatMap(outcomes, ({ change, hops: lost, structures }) =>
       structures.length === 0 && lost.length === 0
         ? []
         : [
             {
+              hops: lost,
               id: change.id,
               kind: change.kind,
               structures,
-              hops: lost,
             },
           ]
     ),
@@ -195,6 +194,7 @@ export const acceptLayoutChanges = ({
       ...applyLayoutChanges(layout, accepted),
       revision: layout.revision + 1,
     },
+    remaining: Arr.flatMap(outcomes, ({ left }) => Option.toArray(left)),
   });
 };
 
@@ -203,9 +203,9 @@ const verbOf = (change: LayoutChange) =>
   Match.value(change).pipe(
     Match.discriminatorsExhaustive("kind")({
       move: () => "Move",
-      resize: () => "Resize",
       reroute: ({ points }) =>
         points === null ? "Reset the route of" : "Reroute",
+      resize: () => "Resize",
     })
   );
 
@@ -213,7 +213,7 @@ const verbOf = (change: LayoutChange) =>
 const namedInFull = 4;
 
 /** Joins names as prose: "A", "A and B", or "A, B and C". */
-const listNames = (names: readonly string[]) => {
+const listNames = (names: ReadonlyArray<string>) => {
   const last = names.at(-1);
 
   return last === undefined || names.length === 1
@@ -221,7 +221,7 @@ const listNames = (names: readonly string[]) => {
     : `${Arr.join(names.slice(0, -1), ", ")} and ${last}`;
 };
 
-const namesOf = (names: readonly string[]) =>
+const namesOf = (names: ReadonlyArray<string>) =>
   names.length <= namedInFull
     ? listNames(names)
     : `${Arr.join(names.slice(0, 3), ", ")} and ${names.length - 3} more`;
@@ -232,7 +232,7 @@ const lowerFirst = (text: string) =>
 /** What `acceptanceMessage` can also say. */
 export interface MessageOptions {
   /** Earlier pending changes that the accepted ones replace. */
-  readonly dropped?: readonly DroppedChange[];
+  readonly dropped?: ReadonlyArray<DroppedChange>;
   /** Turns a hop id into the name to use for it. The id itself by default. */
   readonly hopNameOf?: (id: string) => string;
 }
@@ -248,16 +248,16 @@ export const acceptanceMessage: {
   (
     nameOf: (id: string) => string,
     options?: MessageOptions
-  ): (changes: readonly LayoutChange[]) => string;
+  ): (changes: ReadonlyArray<LayoutChange>) => string;
   (
-    changes: readonly LayoutChange[],
+    changes: ReadonlyArray<LayoutChange>,
     nameOf: (id: string) => string,
     options?: MessageOptions
   ): string;
 } = dual(
   (args) => Arr.isArray(args[0]),
   (
-    changes: readonly LayoutChange[],
+    changes: ReadonlyArray<LayoutChange>,
     nameOf: (id: string) => string,
     { dropped = [], hopNameOf = (id) => id }: MessageOptions = {}
   ): string => {

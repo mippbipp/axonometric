@@ -30,8 +30,8 @@ const advancesOf = (font: Uint8Array) => {
   const metrics = view.getUint16((tables.get("hhea") ?? 0) + 34);
 
   return {
-    unitsPerEm: view.getUint16(head + 18),
     advances: Arr.makeBy(metrics, (glyph) => view.getUint16(hmtx + glyph * 4)),
+    unitsPerEm: view.getUint16(head + 18),
   };
 };
 
@@ -43,9 +43,11 @@ describe("the bundled fonts", () => {
       const fonts = path.join(import.meta.dirname, "..", "assets", "fonts");
 
       for (const weight of ["Regular", "Bold"]) {
-        const { unitsPerEm, advances } = advancesOf(
-          yield* fs.readFile(path.join(fonts, `LiberationMono-${weight}.ttf`))
+        const fontBytes = yield* fs.readFile(
+          path.join(fonts, `LiberationMono-${weight}.ttf`)
         );
+
+        const { advances, unitsPerEm } = advancesOf(fontBytes);
 
         // hmtx lists a metric for each glyph up to the last whose advance
         // differs, and every glyph after it shares the last one. A monospace

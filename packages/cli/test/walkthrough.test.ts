@@ -14,7 +14,9 @@ import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
 const reviewPage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* fullMap, "review");
+  const fullMapFiles = yield* fullMap;
+
+  return yield* buildAndOpen(fullMapFiles, "review");
 });
 
 const drawnStructures = (page: Page) =>
@@ -64,7 +66,7 @@ describe("the chapter walkthrough", () => {
   it.live("lists every chapter in the rail and opens on the first", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+        const { errors, page } = yield* reviewPage;
 
         const rail = yield* Effect.promise(() =>
           page.locator("[data-chapter-rail] button").allTextContents()
@@ -89,21 +91,21 @@ describe("the chapter walkthrough", () => {
       Effect.gen(function* () {
         const { page } = yield* reviewPage;
 
-        assert.deepStrictEqual(yield* drawnStructures(page), [
-          "engineer",
-          "page",
-        ]);
+        const structuresAtStart = yield* drawnStructures(page);
+        assert.deepStrictEqual(structuresAtStart, ["engineer", "page"]);
 
         yield* click(page, '[data-chapter-rail] button[data-chapter="c-save"]');
         yield* waitForChapter(page, "c-save");
 
-        assert.deepStrictEqual(yield* drawnStructures(page), [
+        const structuresInSaveChapter = yield* drawnStructures(page);
+        assert.deepStrictEqual(structuresInSaveChapter, [
           "engineer",
           "page",
           "proposals",
           "server",
         ]);
-        assert.deepStrictEqual(yield* newMarkers(page), [
+        const newMarkersInSaveChapter = yield* newMarkers(page);
+        assert.deepStrictEqual(newMarkersInSaveChapter, [
           "proposals",
           "server",
         ]);
@@ -131,7 +133,8 @@ describe("the chapter walkthrough", () => {
         yield* press(page, "ArrowRight");
         yield* waitForChapter(page, "c-all");
 
-        assert.lengthOf(yield* drawnStructures(page), 6);
+        const structuresInAllChapter = yield* drawnStructures(page);
+        assert.lengthOf(structuresInAllChapter, 6);
 
         yield* press(page, "ArrowLeft");
         yield* waitForChapter(page, "c-save");
@@ -152,7 +155,8 @@ describe("the chapter walkthrough", () => {
           "[data-structure], [data-name-tag], [data-zone]"
         );
 
-        assert.isAtMost(yield* scaleOf(page), 1.5);
+        const scaleNow = yield* scaleOf(page);
+        assert.isAtMost(scaleNow, 1.5);
         assert.isDefined(svg);
 
         if (svg === undefined) {
@@ -234,15 +238,18 @@ describe("the chapter walkthrough", () => {
   it.live("shows a map with no chapters whole, as one chapter", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page } = yield* buildAndOpen(yield* minimalMap, "pipeline");
+        const minimalMapFiles = yield* minimalMap;
+        const { page } = yield* buildAndOpen(minimalMapFiles, "pipeline");
 
         const rail = yield* Effect.promise(() =>
           page.locator("[data-chapter-rail] button").count()
         );
 
         assert.strictEqual(rail, 1);
-        assert.lengthOf(yield* drawnStructures(page), 2);
-        assert.deepStrictEqual(yield* newMarkers(page), []);
+        const structuresInSmallMap = yield* drawnStructures(page);
+        assert.lengthOf(structuresInSmallMap, 2);
+        const newMarkersInSmallMap = yield* newMarkers(page);
+        assert.deepStrictEqual(newMarkersInSmallMap, []);
       })
     )
   );

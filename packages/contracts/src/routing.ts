@@ -24,18 +24,18 @@ import { zonesOf } from "./zones.ts";
 /** Where a hop runs on the ground, from one footprint's edge to the other's. */
 export interface HopRoute {
   /**
-   * The route's ends and bends, in grid units on half units. Every leg runs
-   * along x or y.
-   */
-  readonly points: readonly GridPoint[];
-  /**
    * The ids of the structures, other than the hop's ends, whose footprints
    * the route runs under or along, in data.mjs order. Empty when the route
    * is clear.
    */
-  readonly crosses: readonly string[];
+  readonly crosses: ReadonlyArray<string>;
   /** Whether the points come from a route override in `layout.json`. */
   readonly overridden: boolean;
+  /**
+   * The route's ends and bends, in grid units on half units. Every leg runs
+   * along x or y.
+   */
+  readonly points: ReadonlyArray<GridPoint>;
   /**
    * Whether the route is longer than `routeCap` allows for the distance
    * between its ends, because nothing shorter gets through.
@@ -55,18 +55,18 @@ export interface HopRoute {
 const routeCap = (distance: number) => 1.5 * distance + 1;
 
 /** A route's length in grid units, and the distance between its ends. */
-export const routeLength = (points: readonly GridPoint[]) => {
+export const routeLength = (points: ReadonlyArray<GridPoint>) => {
   const legs = Arr.reduce(
     points,
-    { length: 0, last: points[0] },
+    { last: points[0], length: 0 },
     (sum, point) => ({
+      last: point,
       length:
         sum.last === undefined
           ? 0
           : sum.length +
             Math.abs(point.x - sum.last.x) +
             Math.abs(point.y - sum.last.y),
-      last: point,
     })
   );
 
@@ -74,11 +74,11 @@ export const routeLength = (points: readonly GridPoint[]) => {
   const last = points.at(-1);
 
   return {
-    length: legs.length,
     distance:
       first === undefined || last === undefined
         ? 0
         : Math.abs(last.x - first.x) + Math.abs(last.y - first.y),
+    length: legs.length,
   };
 };
 
@@ -277,31 +277,31 @@ const stubLengths = [2, 1] as const;
 const tagMargin = 3;
 
 interface Box {
-  readonly id: string;
   readonly group: string;
+  readonly id: string;
   readonly placement: Placement;
   readonly shape: Shape;
   readonly x0: number;
-  readonly y0: number;
   readonly x1: number;
+  readonly y0: number;
   readonly y1: number;
 }
 
 const toBox = (
   {
-    id,
     group,
+    id,
     shape = "box",
-  }: { readonly id: string; readonly group: string; readonly shape?: Shape },
+  }: { readonly group: string; readonly id: string; readonly shape?: Shape },
   placement: Placement
 ): Box => ({
-  id,
   group,
+  id,
   placement,
   shape,
   x0: placement.x * scale,
-  y0: placement.y * scale,
   x1: (placement.x + placement.w) * scale,
+  y0: placement.y * scale,
   y1: (placement.y + placement.d) * scale,
 });
 
@@ -321,7 +321,7 @@ const stepTouches = (
 };
 
 /** Every half-unit step along a polyline in half units. */
-const stepsAlong = (points: readonly { x: number; y: number }[]) =>
+const stepsAlong = (points: ReadonlyArray<{ x: number; y: number }>) =>
   Arr.flatMap(points, (start, index) => {
     const end = points[index + 1];
 
@@ -350,9 +350,9 @@ const toHalfUnits = (point: GridPoint) => ({
 
 /** The structures other than `ends` that a route in half units touches. */
 const crossesOf = (
-  boxes: readonly Box[],
+  boxes: ReadonlyArray<Box>,
   ends: ReadonlySet<string>,
-  points: readonly { x: number; y: number }[]
+  points: ReadonlyArray<{ x: number; y: number }>
 ) => {
   const steps = stepsAlong(points);
 
@@ -377,7 +377,7 @@ const queuedFirst = (a: Queued, b: Queued) =>
  * pushed first, so the search is deterministic.
  */
 const makeQueue = () => {
-  const items: Queued[] = [];
+  const items: Array<Queued> = [];
   let seq = 0;
 
   const swap = (i: number, j: number) => {
@@ -441,7 +441,7 @@ const makeQueue = () => {
     return top?.state;
   };
 
-  return { push, pop, size: () => items.length };
+  return { pop, push, size: () => items.length };
 };
 
 /**
@@ -474,30 +474,30 @@ const alongXAxis = (direction: number) => direction % 2 === 0;
 
 /** The router's grid: every half-unit point in the routed area. */
 interface Grid {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
+  readonly boxes: ReadonlyArray<Box>;
+  /** The points on a box's corner, by point index. */
+  readonly corners: ReadonlySet<number>;
   readonly height: number;
-  readonly boxes: readonly Box[];
+  /** Like `touches`, for steps whose line on screen crosses a name tag. */
+  readonly inTags: ReadonlyArray<ReadonlyArray<number> | undefined>;
+  /** Like `touches`, for steps inside a zone, keyed the same way. */
+  readonly inZones: ReadonlyArray<ReadonlyArray<number> | undefined>;
+  readonly left: number;
+  /** Like `touches`, for steps that lie on a zone's outline. */
+  readonly onZoneLines: ReadonlyArray<ReadonlyArray<number> | undefined>;
+  readonly top: number;
   /**
    * For each point and each of +x and +y, the indexes of the boxes the step
    * from that point touches, or `undefined` for none.
    */
-  readonly touches: readonly (readonly number[] | undefined)[];
-  readonly zones: readonly Box[];
-  /** Like `touches`, for steps inside a zone, keyed the same way. */
-  readonly inZones: readonly (readonly number[] | undefined)[];
-  /** Like `touches`, for steps whose line on screen crosses a name tag. */
-  readonly inTags: readonly (readonly number[] | undefined)[];
-  /** Like `touches`, for steps that lie on a zone's outline. */
-  readonly onZoneLines: readonly (readonly number[] | undefined)[];
-  /** The points on a box's corner, by point index. */
-  readonly corners: ReadonlySet<number>;
+  readonly touches: ReadonlyArray<ReadonlyArray<number> | undefined>;
+  readonly width: number;
+  readonly zones: ReadonlyArray<Box>;
 }
 
 /** Adds `value` to the list at `index`. */
 const push = (
-  lists: (number[] | undefined)[],
+  lists: Array<Array<number> | undefined>,
   index: number,
   value: number
 ) => {
@@ -509,22 +509,22 @@ const push = (
 
 /** A step's line on screen. */
 const stepOnScreen = (x: number, y: number, direction: 0 | 1) => ({
-  start: project({ x: x / scale, y: y / scale }),
   end: project({
     x: (x + (direction === 0 ? 1 : 0)) / scale,
     y: (y + (direction === 1 ? 1 : 0)) / scale,
   }),
+  start: project({ x: x / scale, y: y / scale }),
 });
 
 const gridOf = (
-  boxes: readonly Box[],
-  zones: readonly Box[],
+  boxes: ReadonlyArray<Box>,
+  zones: ReadonlyArray<Box>,
   {
-    tags,
     extra,
+    tags,
   }: {
-    readonly tags: readonly ScreenRect[];
-    readonly extra: readonly { x: number; y: number }[];
+    readonly extra: ReadonlyArray<{ x: number; y: number }>;
+    readonly tags: ReadonlyArray<ScreenRect>;
   }
 ): Grid => {
   const xs = [
@@ -541,10 +541,10 @@ const gridOf = (
   const top = Math.min(0, ...ys) - margin;
   const width = Math.max(0, ...xs) + margin - left + 1;
   const height = Math.max(0, ...ys) + margin - top + 1;
-  const touches: (number[] | undefined)[] = [];
-  const inZones: (number[] | undefined)[] = [];
-  const inTags: (number[] | undefined)[] = [];
-  const onZoneLines: (number[] | undefined)[] = [];
+  const touches: Array<Array<number> | undefined> = [];
+  const inZones: Array<Array<number> | undefined> = [];
+  const inTags: Array<Array<number> | undefined> = [];
+  const onZoneLines: Array<Array<number> | undefined> = [];
 
   const keyOf = (x: number, y: number, direction: 0 | 1) =>
     ((y - top) * width + (x - left)) * 2 + direction;
@@ -637,27 +637,27 @@ const gridOf = (
   }
 
   return {
-    left,
-    top,
-    width,
-    height,
     boxes,
-    touches,
-    zones,
-    inZones,
-    inTags,
-    onZoneLines,
     corners,
+    height,
+    inTags,
+    inZones,
+    left,
+    onZoneLines,
+    top,
+    touches,
+    width,
+    zones,
   };
 };
 
 /** A point on a footprint's edge a route may start or end at. */
 interface EdgePoint {
-  readonly x: number;
-  readonly y: number;
+  readonly cost: number;
   /** The direction pointing out of the footprint. */
   readonly out: number;
-  readonly cost: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 /** The screen direction each edge faces: +x, +y, -x and -y. */
@@ -674,9 +674,9 @@ const edgeNormals = [
  * it. Ends apart on both axes have two facing edges.
  */
 const facingEdges: {
-  (other: Placement): (box: Placement) => readonly boolean[];
-  (box: Placement, other: Placement): readonly boolean[];
-} = dual(2, (box: Placement, other: Placement): readonly boolean[] => [
+  (other: Placement): (box: Placement) => ReadonlyArray<boolean>;
+  (box: Placement, other: Placement): ReadonlyArray<boolean>;
+} = dual(2, (box: Placement, other: Placement): ReadonlyArray<boolean> => [
   other.x >= box.x + box.w,
   other.y >= box.y + box.d,
   other.x + other.w <= box.x,
@@ -684,10 +684,10 @@ const facingEdges: {
 ]);
 
 const placementOf = (box: Box): Placement => ({
+  d: (box.y1 - box.y0) / scale,
+  w: (box.x1 - box.x0) / scale,
   x: box.x0 / scale,
   y: box.y0 / scale,
-  w: (box.x1 - box.x0) / scale,
-  d: (box.y1 - box.y0) / scale,
 });
 
 /**
@@ -695,7 +695,7 @@ const placementOf = (box: Box): Placement => ({
  * face it cost nothing, or a little for the one of two that faces it less
  * directly on screen; the others cost a lot.
  */
-const facingOf = (box: Box, other: Box): readonly number[] => {
+const facingOf = (box: Box, other: Box): ReadonlyArray<number> => {
   const gx = (other.x0 + other.x1 - box.x0 - box.x1) / 2;
   const gy = (other.y0 + other.y1 - box.y0 - box.y1) / 2;
   const toward = { sx: gx - gy, sy: (gx + gy) / 2 };
@@ -787,7 +787,7 @@ const edgePoints = (
   box: Box,
   other: Box,
   { backCost = 0, extra = () => 0 }: EdgeOptions = {}
-): readonly EdgePoint[] => {
+): ReadonlyArray<EdgePoint> => {
   const midX = (box.x0 + box.x1) / 2;
   const midY = (box.y0 + box.y1) / 2;
   const facing = facingOf(box, other);
@@ -800,28 +800,28 @@ const edgePoints = (
 
   return [
     ...Arr.map(alongEdge(box.x0, box.x1, corners), (x) => ({
+      cost: costOf(plusY) + offCentreCost * Math.abs(x - midX),
+      out: plusY,
       x,
       y: box.y1,
-      out: plusY,
-      cost: costOf(plusY) + offCentreCost * Math.abs(x - midX),
     })),
     ...Arr.map(alongEdge(box.y0, box.y1, corners), (y) => ({
+      cost: costOf(plusX) + offCentreCost * Math.abs(y - midY),
+      out: plusX,
       x: box.x1,
       y,
-      out: plusX,
-      cost: costOf(plusX) + offCentreCost * Math.abs(y - midY),
     })),
     ...Arr.map(alongEdge(box.x0, box.x1, corners), (x) => ({
+      cost: costOf(minusY) + offCentreCost * Math.abs(x - midX),
+      out: minusY,
       x,
       y: box.y0,
-      out: minusY,
-      cost: costOf(minusY) + offCentreCost * Math.abs(x - midX),
     })),
     ...Arr.map(alongEdge(box.y0, box.y1, corners), (y) => ({
+      cost: costOf(minusX) + offCentreCost * Math.abs(y - midY),
+      out: minusX,
       x: box.x0,
       y,
-      out: minusX,
-      cost: costOf(minusX) + offCentreCost * Math.abs(y - midY),
     })),
   ];
 };
@@ -833,18 +833,11 @@ const distanceTo = (
 ) => Math.max(box.x0 - x, 0, x - box.x1) + Math.max(box.y0 - y, 0, y - box.y1);
 
 interface Usage {
-  /** Steps any route uses, keyed by step. */
-  readonly steps: Set<number>;
   /**
    * For each structure, the points the routes of its hops pass and the axes
    * their legs run along there: 1 for x, 2 for y.
    */
   readonly axes: Map<string, Map<number, number>>;
-  /** Steps and points routes between each pair of structures use. */
-  readonly pairs: Map<
-    string,
-    { readonly steps: Set<number>; readonly points: Set<number> }
-  >;
   /**
    * Every route so far: its two structures, its steps, and the axes its
    * legs run along at each point it passes, 3 at its ends and bends.
@@ -854,15 +847,26 @@ interface Usage {
    * structure's edge, keyed by structure and the direction out of the edge.
    */
   readonly edgeEnds: Map<string, { heads: number; starts: number }>;
-  readonly routes: {
-    readonly ends: readonly string[];
-    readonly steps: ReadonlySet<number>;
+  /** Steps and points routes between each pair of structures use. */
+  readonly pairs: Map<
+    string,
+    { readonly points: Set<number>; readonly steps: Set<number> }
+  >;
+  readonly routes: Array<{
+    readonly ends: ReadonlyArray<string>;
     readonly points: ReadonlyMap<number, number>;
-  }[];
+    readonly steps: ReadonlySet<number>;
+  }>;
+  /** Steps any route uses, keyed by step. */
+  readonly steps: Set<number>;
 }
 
-const pairKey = (a: string, b: string) =>
-  a < b ? JSON.stringify([a, b]) : JSON.stringify([b, a]);
+const pairKey = (a: string, b: string) => {
+  const [first, second] = a < b ? [a, b] : [b, a];
+
+  // oxlint-disable-next-line effecttsgo/global-json -- a map key of two strings, never decoded
+  return JSON.stringify([first, second]);
+};
 
 const pairUsage = (usage: Usage, key: string) => {
   const existing = usage.pairs.get(key);
@@ -871,7 +875,7 @@ const pairUsage = (usage: Usage, key: string) => {
     return existing;
   }
 
-  const created = { steps: new Set<number>(), points: new Set<number>() };
+  const created = { points: new Set<number>(), steps: new Set<number>() };
 
   usage.pairs.set(key, created);
 
@@ -925,9 +929,9 @@ const countEnd = (
   usage: Usage,
   {
     id,
-    out,
     kind,
-  }: { readonly id: string; readonly out: number; readonly kind: EndKind },
+    out,
+  }: { readonly id: string; readonly kind: EndKind; readonly out: number },
   by = 1
 ) => {
   const key = edgeKey(id, out);
@@ -939,15 +943,15 @@ const countEnd = (
 const record = (
   grid: Grid,
   {
-    usage,
-    key,
     ends,
+    key,
+    usage,
   }: {
-    readonly usage: Usage;
+    readonly ends: ReadonlyArray<string>;
     readonly key: string;
-    readonly ends: readonly string[];
+    readonly usage: Usage;
   },
-  points: readonly Cell[]
+  points: ReadonlyArray<Cell>
 ) => {
   const pair = pairUsage(usage, key);
   const maps = Arr.map(ends, (end) => axesOf(usage, end));
@@ -988,24 +992,24 @@ const record = (
   if (first !== undefined && second !== undefined) {
     countEnd(usage, {
       id: ends[0] ?? "",
-      out: directionOf(first, second),
       kind: "starts",
+      out: directionOf(first, second),
     });
   }
 
   if (last !== undefined && before !== undefined) {
     countEnd(usage, {
       id: ends[1] ?? "",
-      out: directionOf(last, before),
       kind: "heads",
+      out: directionOf(last, before),
     });
   }
 
-  usage.routes.push({ ends, steps, points: passes });
+  usage.routes.push({ ends, points: passes, steps });
 };
 
 /** Keeps a polyline's first and last points and the points where it turns. */
-const cornersOf = (points: readonly Cell[]) =>
+const cornersOf = (points: ReadonlyArray<Cell>) =>
   Arr.filter(points, (point, index) => {
     const previous = points[index - 1];
     const next = points[index + 1];
@@ -1019,40 +1023,40 @@ const cornersOf = (points: readonly Cell[]) =>
 
 /** What one search needs to know besides the grid. */
 interface Search {
-  readonly grid: Grid;
-  readonly usage: Usage;
-  readonly pair: ReturnType<typeof pairUsage>;
-  readonly ends: ReadonlySet<string>;
-  /** The groups of the hop's ends, whose zones cost nothing to cross. */
-  readonly groups: ReadonlySet<string>;
-  readonly from: Box;
-  readonly to: Box;
-  /** Where the routes of the ends' other hops run, and along which axes. */
-  readonly siblings: readonly ReadonlyMap<number, number>[];
-  /**
-   * The steps and points of routes that share neither of this hop's
-   * structures, which it must keep off except to cross them squarely.
-   */
-  readonly strangers: {
-    readonly steps: ReadonlySet<number>;
-    readonly points: ReadonlyMap<number, number>;
-  };
+  /** The route's area on screen. */
+  readonly area: ScreenRect;
   /**
    * Whether the hop's two footprints overlap, which leaves too little room
    * outside both to keep its route off their corners and their zone's
    * outline. `check` warns about the overlap instead.
    */
   readonly cornersFree: boolean;
+  readonly ends: ReadonlySet<string>;
+  readonly from: Box;
+  readonly grid: Grid;
+  /** The groups of the hop's ends, whose zones cost nothing to cross. */
+  readonly groups: ReadonlySet<string>;
+  /** The line between the two boxes' screen centres. */
+  readonly line: readonly [ScreenPoint, ScreenPoint];
+  readonly pair: ReturnType<typeof pairUsage>;
+  /** Where the routes of the ends' other hops run, and along which axes. */
+  readonly siblings: ReadonlyArray<ReadonlyMap<number, number>>;
+  /**
+   * The steps and points of routes that share neither of this hop's
+   * structures, which it must keep off except to cross them squarely.
+   */
+  readonly strangers: {
+    readonly points: ReadonlyMap<number, number>;
+    readonly steps: ReadonlySet<number>;
+  };
+  readonly to: Box;
+  readonly usage: Usage;
   /**
    * When set, steps outside this box aren't allowed at all, and bends cost
    * nothing for straying from the route's area: the search is after a route
    * short enough for `routeCap`, wherever it bends.
    */
   readonly window: Box | undefined;
-  /** The route's area on screen. */
-  readonly area: ScreenRect;
-  /** The line between the two boxes' screen centres. */
-  readonly line: readonly [ScreenPoint, ScreenPoint];
 }
 
 const inside = (grid: Grid, { x, y }: Cell) =>
@@ -1124,7 +1128,7 @@ const stepPrice = (
   return (
     stepCost +
     bend +
-    outlinePrice(search, { step, next: nextIndex, direction }) +
+    outlinePrice(search, { direction, next: nextIndex, step }) +
     touched.length * crossCost +
     zones * zoneStepCost +
     crossings * siblingCrossCost +
@@ -1144,15 +1148,15 @@ const stepPrice = (
  * first counts.
  */
 const outlinePrice = (
-  { grid, strangers, cornersFree }: Search,
+  { cornersFree, grid, strangers }: Search,
   {
-    step,
-    next,
     direction,
+    next,
+    step,
   }: {
-    readonly step: number;
-    readonly next: number;
     readonly direction: number;
+    readonly next: number;
+    readonly step: number;
   }
 ) => {
   const stranger =
@@ -1202,7 +1206,7 @@ const cellOf = (grid: Grid, state: number): Cell => {
 };
 
 const pathTo = (grid: Grid, parent: Int32Array, state: number) => {
-  const path: Cell[] = [];
+  const path: Array<Cell> = [];
 
   for (let at = state; at !== -1; at = parent[at] ?? -1) {
     path.push(cellOf(grid, at));
@@ -1226,7 +1230,7 @@ const noPrice = (): number | undefined => 0;
 const runPrice = (
   search: Search,
   from: Cell,
-  { direction, count }: { readonly direction: number; readonly count: number }
+  { count, direction }: { readonly count: number; readonly direction: number }
 ) =>
   Arr.reduce(Arr.range(0, count - 1), noPrice(), (sum, step) => {
     const price = stepPrice(
@@ -1240,10 +1244,10 @@ const runPrice = (
 
 /** A stub: a straight run out from an edge point, where the search meets it. */
 interface Stub {
+  readonly cost: number;
   readonly edge: EdgePoint;
   /** The stub's far end, away from the box. */
   readonly tip: Cell;
-  readonly cost: number;
 }
 
 /**
@@ -1251,20 +1255,20 @@ interface Stub {
  * `stubLengths`, with what the edge point and the run cost. Longer stubs
  * come first and cost less, so a route leaves a box squarely.
  */
-const stubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
+const stubsOf = (search: Search, box: Box, other: Box): ReadonlyArray<Stub> =>
   Arr.flatMap(
     edgePoints(box, other, { extra: crowded(search.usage, box, "starts") }),
     (edge) =>
       Arr.flatMap(stubLengths, (count, index) => {
-        const price = runPrice(search, edge, { direction: edge.out, count });
+        const price = runPrice(search, edge, { count, direction: edge.out });
 
         return price === undefined
           ? []
           : [
               {
+                cost: edge.cost + price + index * bendCost,
                 edge,
                 tip: stepFrom(edge, edge.out, count),
-                cost: edge.cost + price + index * bendCost,
               },
             ];
       })
@@ -1275,7 +1279,11 @@ const stubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
  * out for each of `stubLengths`, priced for the run back in towards the
  * edge, with what the edge point costs (back edges `backEndCost` more).
  */
-const inwardStubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
+const inwardStubsOf = (
+  search: Search,
+  box: Box,
+  other: Box
+): ReadonlyArray<Stub> =>
   Arr.flatMap(
     edgePoints(box, other, {
       backCost: backEndCost,
@@ -1286,13 +1294,13 @@ const inwardStubsOf = (search: Search, box: Box, other: Box): readonly Stub[] =>
         const tip = stepFrom(edge, edge.out, count);
 
         const price = runPrice(search, tip, {
-          direction: opposite(edge.out),
           count,
+          direction: opposite(edge.out),
         });
 
         return price === undefined
           ? []
-          : [{ edge, tip, cost: edge.cost + price + index * bendCost }];
+          : [{ cost: edge.cost + price + index * bendCost, edge, tip }];
       })
   );
 
@@ -1306,9 +1314,9 @@ interface Finish {
 /** One search's working state. */
 interface Frontier {
   readonly cost: Float64Array;
-  readonly parent: Int32Array;
   readonly done: Uint8Array;
   readonly origin: Map<number, Cell>;
+  readonly parent: Int32Array;
   readonly queue: ReturnType<typeof makeQueue>;
 }
 
@@ -1329,12 +1337,12 @@ const strangersOf = (usage: Usage, ends: ReadonlySet<string>) => {
     }
   }
 
-  return { steps, points };
+  return { points, steps };
 };
 
 const searchOf = (
   grid: Grid,
-  { usage, key }: { readonly usage: Usage; readonly key: string },
+  { key, usage }: { readonly key: string; readonly usage: Usage },
   {
     from,
     to,
@@ -1345,26 +1353,26 @@ const searchOf = (
     readonly window: Box | undefined;
   }
 ): Search => ({
-  grid,
-  usage,
-  pair: pairUsage(usage, key),
+  area: routeArea(from, to),
+  cornersFree: overlapping(from, to),
   ends: new Set([from.id, to.id]),
-  groups: new Set([from.group, to.group]),
   from,
-  to,
+  grid,
+  groups: new Set([from.group, to.group]),
+  line: [screenCentre(from), screenCentre(to)],
+  pair: pairUsage(usage, key),
   siblings: Arr.flatMap([from.id, to.id], (id) =>
     Option.toArray(Option.fromNullishOr(usage.axes.get(id)))
   ),
   strangers: strangersOf(usage, new Set([from.id, to.id])),
-  cornersFree: overlapping(from, to),
+  to,
+  usage,
   window,
-  area: routeArea(from, to),
-  line: [screenCentre(from), screenCentre(to)],
 });
 
 /** The stubs into the target, keyed by the point where the search meets them. */
 const goalsOf = (search: Search) => {
-  const goals = new Map<number, Stub[]>();
+  const goals = new Map<number, Array<Stub>>();
 
   for (const stub of inwardStubsOf(search, search.to, search.from)) {
     const index = pointIndex(search.grid, stub.tip);
@@ -1378,13 +1386,13 @@ const goalsOf = (search: Search) => {
 /** The cheapest way to finish from `state` into one of the goal stubs. */
 const finishFrom = (
   {
-    search,
     goals,
+    search,
   }: {
+    readonly goals: ReadonlyMap<number, ReadonlyArray<Stub>>;
     readonly search: Search;
-    readonly goals: ReadonlyMap<number, readonly Stub[]>;
   },
-  { state, g }: { readonly state: number; readonly g: number },
+  { g, state }: { readonly g: number; readonly state: number },
   best: Finish | undefined
 ): Finish | undefined => {
   const heading = state % directions;
@@ -1457,7 +1465,7 @@ const routeOf = (grid: Grid, frontier: Frontier, best: Finish) => {
 const straightAcross = (
   search: Search,
   { from, to }: { readonly from: Box; readonly to: Box }
-): readonly Cell[] | undefined => {
+): ReadonlyArray<Cell> | undefined => {
   const entries = edgePoints(to, from, {
     extra: crowded(search.usage, to, "heads"),
   });
@@ -1471,7 +1479,7 @@ const straightAcross = (
       `${stub.tip.x},${stub.tip.y},${opposite(stub.edge.out)}`
     );
 
-    return end === undefined ? [] : [{ stub, cost: stub.cost + end.cost }];
+    return end === undefined ? [] : [{ cost: stub.cost + end.cost, stub }];
   });
 
   if (!Arr.isReadonlyArrayNonEmpty(straight)) {
@@ -1494,13 +1502,13 @@ const straightAcross = (
  */
 const searchRoute = (
   grid: Grid,
-  pair: { readonly usage: Usage; readonly key: string },
+  pair: { readonly key: string; readonly usage: Usage },
   ends: {
     readonly from: Box;
     readonly to: Box;
     readonly window: Box | undefined;
   }
-): readonly Cell[] => {
+): ReadonlyArray<Cell> => {
   const search = searchOf(grid, pair, ends);
   const across = straightAcross(search, ends);
 
@@ -1513,9 +1521,9 @@ const searchRoute = (
 
   const frontier: Frontier = {
     cost: new Float64Array(size).fill(Number.POSITIVE_INFINITY),
-    parent: new Int32Array(size).fill(-1),
     done: new Uint8Array(size),
     origin: new Map(),
+    parent: new Int32Array(size).fill(-1),
     queue: makeQueue(),
   };
 
@@ -1545,7 +1553,7 @@ const searchRoute = (
 
     if (frontier.done[state] !== 1) {
       frontier.done[state] = 1;
-      best = finishFrom({ search, goals }, { state, g }, best);
+      best = finishFrom({ goals, search }, { g, state }, best);
       expand(search, frontier, state);
     }
   }
@@ -1556,11 +1564,11 @@ const searchRoute = (
 /** How far past the box around both ends a capped route may go. */
 const windowMargin = 4;
 
-const lengthOfCells = (points: readonly Cell[]) =>
+const lengthOfCells = (points: ReadonlyArray<Cell>) =>
   routeLength(Arr.map(points, ({ x, y }) => ({ x: x / scale, y: y / scale })));
 
-const withinCap = (points: readonly Cell[]) => {
-  const { length, distance } = lengthOfCells(points);
+const withinCap = (points: ReadonlyArray<Cell>) => {
+  const { distance, length } = lengthOfCells(points);
 
   return length <= routeCap(distance);
 };
@@ -1573,9 +1581,9 @@ const withinCap = (points: readonly Cell[]) => {
  */
 const cappedRoute = (
   grid: Grid,
-  pair: { readonly usage: Usage; readonly key: string },
+  pair: { readonly key: string; readonly usage: Usage },
   { from, to }: { readonly from: Box; readonly to: Box }
-): readonly Cell[] => {
+): ReadonlyArray<Cell> => {
   const free = searchRoute(grid, pair, { from, to, window: undefined });
 
   if (free.length === 0 || withinCap(free)) {
@@ -1587,11 +1595,11 @@ const cappedRoute = (
     to,
     window: {
       ...from,
-      id: "",
       group: "",
+      id: "",
       x0: Math.min(from.x0, to.x0) - windowMargin,
-      y0: Math.min(from.y0, to.y0) - windowMargin,
       x1: Math.max(from.x1, to.x1) + windowMargin,
+      y0: Math.min(from.y0, to.y0) - windowMargin,
       y1: Math.max(from.y1, to.y1) + windowMargin,
     },
   });
@@ -1637,7 +1645,7 @@ export const routeHops: {
     });
 
     const zones = Arr.map(zonesOf({ data, layout }), (zone) =>
-      toBox({ id: zone.group.id, group: zone.group.id }, zone.box)
+      toBox({ group: zone.group.id, id: zone.group.id }, zone.box)
     );
 
     const byId = new Map(Arr.map(boxes, (box) => [box.id, box]));
@@ -1655,14 +1663,14 @@ export const routeHops: {
         : [nameTagRect(placement, nameTagText(structure))];
     });
 
-    const grid = gridOf(boxes, zones, { tags, extra: overridePoints });
+    const grid = gridOf(boxes, zones, { extra: overridePoints, tags });
 
     const usage: Usage = {
-      steps: new Set(),
       axes: new Map(),
+      edgeEnds: new Map(),
       pairs: new Map(),
       routes: [],
-      edgeEnds: new Map(),
+      steps: new Set(),
     };
 
     const routes: Record<string, HopRoute> = {};
@@ -1685,7 +1693,7 @@ export const routeHops: {
           const only = faces.indexOf(true);
 
           if (Arr.filter(faces, Boolean).length === 1) {
-            countEnd(usage, { id: box.id, out: only, kind });
+            countEnd(usage, { id: box.id, kind, out: only });
             reserved.set(end, [box.id, only, kind]);
           }
         }
@@ -1697,7 +1705,7 @@ export const routeHops: {
         const held = reserved.get(end);
 
         if (held !== undefined) {
-          countEnd(usage, { id: held[0], out: held[1], kind: held[2] }, -1);
+          countEnd(usage, { id: held[0], kind: held[2], out: held[1] }, -1);
           reserved.delete(end);
         }
       }
@@ -1719,14 +1727,14 @@ export const routeHops: {
 
       const halfUnits =
         override === undefined
-          ? cappedRoute(grid, { usage, key }, { from, to })
+          ? cappedRoute(grid, { key, usage }, { from, to })
           : Arr.map(override, toHalfUnits);
 
       if (halfUnits.length === 0) {
         return;
       }
 
-      record(grid, { usage, key, ends: [hop.from, hop.to] }, halfUnits);
+      record(grid, { ends: [hop.from, hop.to], key, usage }, halfUnits);
 
       const points =
         override ??
@@ -1735,12 +1743,12 @@ export const routeHops: {
           y: point.y / scale,
         }));
 
-      const { length, distance } = routeLength(points);
+      const { distance, length } = routeLength(points);
 
       routes[hop.id] = {
-        points,
         crosses: crossesOf(boxes, ends, halfUnits),
         overridden: override !== undefined,
+        points,
         tooLong: length > routeCap(distance),
       };
     };
@@ -1805,11 +1813,11 @@ export const routeRevealed = ({
   routeHops(
     {
       ...data,
-      structures: Arr.filter(data.structures, ({ id }) => revealed.has(id)),
       hops: Arr.filter(
         data.hops,
         ({ from, to }) => revealed.has(from) && revealed.has(to)
       ),
+      structures: Arr.filter(data.structures, ({ id }) => revealed.has(id)),
     },
     layout
   );

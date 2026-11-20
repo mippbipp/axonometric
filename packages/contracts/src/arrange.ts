@@ -31,24 +31,24 @@ export type Axis = "x" | "y";
 const snap = (value: number) => Math.round(value * 2) / 2;
 
 /** The structures in `ids` that `placements` places, as `[id, placement]`. */
-const placed = (placements: Placements, ids: readonly string[]) =>
+const placed = (placements: Placements, ids: ReadonlyArray<string>) =>
   Arr.flatMap(Arr.dedupe(ids), (id) =>
     Option.match(Option.fromNullishOr(placements[id]), {
       onNone: () => [],
-      onSome: (placement): [string, Placement][] => [[id, placement]],
+      onSome: (placement): Array<[string, Placement]> => [[id, placement]],
     })
   );
 
 const toMove = (id: string, position: GridPoint): StructureMove => ({
-  target: { kind: "structure", id },
   position,
+  target: { id, kind: "structure" },
 });
 
 /** The moves that put each structure at `positionOf(placement)`, less those already there. */
 const movesTo = (
-  structures: readonly (readonly [string, Placement])[],
+  structures: ReadonlyArray<readonly [string, Placement]>,
   positionOf: (placement: Placement, index: number) => GridPoint
-): readonly StructureMove[] =>
+): ReadonlyArray<StructureMove> =>
   Arr.flatMap(structures, ([id, placement], index) => {
     const position = positionOf(placement, index);
 
@@ -57,9 +57,9 @@ const movesTo = (
       : [toMove(id, position)];
   });
 
-const smallest = (values: readonly number[]) => Math.min(...values);
+const smallest = (values: ReadonlyArray<number>) => Math.min(...values);
 
-const largest = (values: readonly number[]) => Math.max(...values);
+const largest = (values: ReadonlyArray<number>) => Math.max(...values);
 
 /**
  * The moves that line up `ids` as `how` says, in the ground's terms, as the
@@ -69,29 +69,29 @@ const largest = (values: readonly number[]) => Math.max(...values);
  * doesn't place, gets no move.
  */
 export const alignMoves = ({
-  placements,
-  ids,
   how,
+  ids,
+  placements,
 }: {
-  readonly placements: Placements;
-  readonly ids: readonly string[];
   readonly how: Alignment;
-}): readonly StructureMove[] => {
+  readonly ids: ReadonlyArray<string>;
+  readonly placements: Placements;
+}): ReadonlyArray<StructureMove> => {
   const structures = placed(placements, ids);
   const at = Arr.map(structures, ([, placement]) => placement);
 
   const left = smallest(Arr.map(at, ({ x }) => x));
-  const right = largest(Arr.map(at, ({ x, w }) => x + w));
+  const right = largest(Arr.map(at, ({ w, x }) => x + w));
   const top = smallest(Arr.map(at, ({ y }) => y));
-  const bottom = largest(Arr.map(at, ({ y, d }) => y + d));
+  const bottom = largest(Arr.map(at, ({ d, y }) => y + d));
 
   const positions: Readonly<Record<Alignment, (at: Placement) => GridPoint>> = {
+    bottom: ({ d, x }) => ({ x, y: snap(bottom - d) }),
+    "centre-x": ({ w, y }) => ({ x: snap((left + right) / 2 - w / 2), y }),
+    "centre-y": ({ d, x }) => ({ x, y: snap((top + bottom) / 2 - d / 2) }),
     left: ({ y }) => ({ x: left, y }),
-    right: ({ y, w }) => ({ x: snap(right - w), y }),
+    right: ({ w, y }) => ({ x: snap(right - w), y }),
     top: ({ x }) => ({ x, y: top }),
-    bottom: ({ x, d }) => ({ x, y: snap(bottom - d) }),
-    "centre-x": ({ y, w }) => ({ x: snap((left + right) / 2 - w / 2), y }),
-    "centre-y": ({ x, d }) => ({ x, y: snap((top + bottom) / 2 - d / 2) }),
   };
 
   return movesTo(structures, positions[how]);
@@ -101,22 +101,22 @@ type Entry = readonly [string, Placement];
 
 /** What `distributeMoves` reads and writes along one ground axis. */
 interface Along {
-  readonly start: (placement: Placement) => number;
-  readonly size: (placement: Placement) => number;
   /** `placement`'s position with its start along the axis set to `start`. */
   readonly setStart: (placement: Placement, start: number) => GridPoint;
+  readonly size: (placement: Placement) => number;
+  readonly start: (placement: Placement) => number;
 }
 
 const along: Readonly<Record<Axis, Along>> = {
   x: {
-    start: ({ x }) => x,
-    size: ({ w }) => w,
     setStart: ({ y }, start) => ({ x: start, y }),
+    size: ({ w }) => w,
+    start: ({ x }) => x,
   },
   y: {
-    start: ({ y }) => y,
-    size: ({ d }) => d,
     setStart: ({ x }, start) => ({ x, y: start }),
+    size: ({ d }) => d,
+    start: ({ y }) => y,
   },
 };
 
@@ -127,15 +127,15 @@ const along: Readonly<Record<Axis, Along>> = {
  * others. Needs three structures; with fewer there is nothing to spread.
  */
 export const distributeMoves = ({
-  placements,
-  ids,
   axis,
+  ids,
+  placements,
 }: {
-  readonly placements: Placements;
-  readonly ids: readonly string[];
   readonly axis: Axis;
-}): readonly StructureMove[] => {
-  const { start, size, setStart } = along[axis];
+  readonly ids: ReadonlyArray<string>;
+  readonly placements: Placements;
+}): ReadonlyArray<StructureMove> => {
+  const { setStart, size, start } = along[axis];
 
   // By position along the axis, then by id, so equal positions order the
   // same each time.
@@ -174,14 +174,14 @@ export const distributeMoves = ({
  * structure's place in the set. `delta` should be a multiple of half a unit.
  */
 export const nudgeMoves = ({
-  placements,
-  ids,
   delta,
+  ids,
+  placements,
 }: {
-  readonly placements: Placements;
-  readonly ids: readonly string[];
   readonly delta: GridPoint;
-}): readonly StructureMove[] =>
+  readonly ids: ReadonlyArray<string>;
+  readonly placements: Placements;
+}): ReadonlyArray<StructureMove> =>
   movesTo(placed(placements, ids), ({ x, y }) => ({
     x: x + delta.x,
     y: y + delta.y,
@@ -200,21 +200,21 @@ export interface GroundBox {
  * diamond on screen.
  */
 export const structuresInBox = ({
-  placements,
   box: { from, to },
   ids,
+  placements,
 }: {
-  readonly placements: Placements;
   readonly box: GroundBox;
   /** The structures to look at. */
-  readonly ids: readonly string[];
-}): readonly string[] => {
+  readonly ids: ReadonlyArray<string>;
+  readonly placements: Placements;
+}): ReadonlyArray<string> => {
   const left = Math.min(from.x, to.x);
   const right = Math.max(from.x, to.x);
   const top = Math.min(from.y, to.y);
   const bottom = Math.max(from.y, to.y);
 
-  return Arr.flatMap(placed(placements, ids), ([id, { x, y, w, d }]) =>
+  return Arr.flatMap(placed(placements, ids), ([id, { d, w, x, y }]) =>
     x < right && left < x + w && y < bottom && top < y + d ? [id] : []
   );
 };
@@ -229,10 +229,10 @@ export const appendMove = ({
   id,
   moves,
 }: {
-  readonly changes: readonly LayoutChange[];
+  readonly changes: ReadonlyArray<LayoutChange>;
   readonly id: string;
-  readonly moves: readonly StructureMove[];
-}): readonly LayoutChange[] =>
+  readonly moves: ReadonlyArray<StructureMove>;
+}): ReadonlyArray<LayoutChange> =>
   Arr.isReadonlyArrayNonEmpty(moves)
     ? [...changes, { id, kind: "move", moves }]
     : changes;

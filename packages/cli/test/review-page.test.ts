@@ -3,7 +3,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option } from "effect";
 import type { Page } from "playwright";
 
-import { click, count, textOf, waitFor, waitGone } from "./browser.ts";
+import {
+  assertCount,
+  assertTextIncludes,
+  click,
+  textOf,
+  waitFor,
+  waitGone,
+} from "./browser.ts";
 import { openReviewMap, readProposals, runCli } from "./harness.ts";
 
 // The review loop in a page that a real serve serves: pin a note, send it to
@@ -60,7 +67,7 @@ const pinNote = Effect.fnUntraced(function* (page: Page, text: string) {
 
 const copiedText = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<readonly string[]>("window.__copied ?? []")
+    page.evaluate<ReadonlyArray<string>>("window.__copied ?? []")
   );
 
 describe("a note on a structure", () => {
@@ -68,7 +75,7 @@ describe("a note on a structure", () => {
     "is saved as a proposal, shown by a marker on the map and in the Pending list",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* servedReview();
+        const { errors, home, page } = yield* servedReview();
 
         yield* pinServer(page);
         yield* pinNote(page, "Why a server, not a file watcher?");
@@ -88,12 +95,14 @@ describe("a note on a structure", () => {
 
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-item][data-review-state="open"]');
-        assert.include(
-          yield* textOf(page, "[data-review-list]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-review-list]",
           "Why a server, not a file watcher?"
         );
-        assert.include(
-          yield* textOf(page, '[role="tab"][data-tab="pending"]'),
+        yield* assertTextIncludes(
+          page,
+          '[role="tab"][data-tab="pending"]',
           "Pending · 1"
         );
         assert.deepStrictEqual(errors, []);
@@ -166,12 +175,15 @@ describe("the Ready for review button", () => {
         // The frozen note waits for the agent, with no Discard.
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, "[data-waiting-for-agent]");
-        assert.strictEqual(
-          yield* count(page, '[data-review-item] button:has-text("Discard")'),
+
+        yield* assertCount(
+          page,
+          '[data-review-item] button:has-text("Discard")',
           0
         );
-        assert.include(
-          yield* textOf(page, "[data-waiting-for-agent]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-waiting-for-agent]",
           "waiting for the agent"
         );
 
@@ -181,13 +193,13 @@ describe("the Ready for review button", () => {
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
 
-        assert.include(yield* textOf(page, "[data-review-title]"), "Batch 2");
+        yield* assertTextIncludes(page, "[data-review-title]", "Batch 2");
         assert.include((yield* copiedText(page)).at(-1) ?? "", "batch 2");
 
         const proposals = yield* readProposals(home);
 
         assert.deepStrictEqual(
-          Arr.map(proposals.batches ?? [], ({ number, items }) => [
+          Arr.map(proposals.batches ?? [], ({ items, number }) => [
             number,
             items.length,
           ]),
@@ -212,8 +224,9 @@ describe("the Ready for review button", () => {
         yield* click(page, "[data-ready-for-review]");
         yield* waitFor(page, "[data-review-dialog][open]");
 
-        assert.include(
-          yield* textOf(page, "[data-review-dialog]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-review-dialog]",
           "Your browser blocked the clipboard"
         );
 
@@ -272,7 +285,7 @@ describe("the agent's verdicts", () => {
     "shows each verdict and reason after verdict and commit run in the CLI, and keeps a rejected note, across a reload, until it is dismissed",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* servedReview();
+        const { errors, home, page } = yield* servedReview();
 
         yield* sendOne(page, "Why a server?");
 
@@ -302,15 +315,15 @@ describe("the agent's verdicts", () => {
 
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-verdict="rejected"]');
-        assert.include(
-          yield* textOf(page, "[data-review-list]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-review-list]",
           "The page already polls nothing."
         );
-        assert.strictEqual(
-          yield* count(
-            page,
-            '[data-note-marker="server"][data-note-rejected="true"]'
-          ),
+
+        yield* assertCount(
+          page,
+          '[data-note-marker="server"][data-note-rejected="true"]',
           1
         );
         assert.deepStrictEqual(errors, []);

@@ -46,7 +46,7 @@ export function ChapterPendingLook({
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
-      {Arr.flatMap(scene.structures, ({ structure, placement }) => {
+      {Arr.flatMap(scene.structures, ({ placement, structure }) => {
         const reveals = revealing.has(structure.id);
         const hides = hiding.has(structure.id);
 
@@ -54,30 +54,30 @@ export function ChapterPendingLook({
           return [];
         }
 
-        const { x, y, w, d } = placement;
+        const { d, w, x, y } = placement;
 
         return [
           <OutlineLines
-            key={structure.id}
-            id={structure.id}
-            points={groundOutline(
-              {
-                x: x - ringGap,
-                y: y - ringGap,
-                w: w + ringGap * 2,
-                d: d + ringGap * 2,
-              },
-              ground
-            )}
-            text={text}
-            closed
             className={reveals ? "stroke-pending" : "stroke-refused"}
-            width={1.6}
+            closed
             dash={reveals ? "5 3" : undefined}
+            id={structure.id}
+            key={structure.id}
             mark={{
               "data-chapter-mark": reveals ? "reveal" : "hide",
               "data-chapter-mark-of": structure.id,
             }}
+            points={groundOutline(
+              {
+                d: d + ringGap * 2,
+                w: w + ringGap * 2,
+                x: x - ringGap,
+                y: y - ringGap,
+              },
+              ground
+            )}
+            text={text}
+            width={1.6}
           />,
         ];
       })}
@@ -91,18 +91,18 @@ export function ChapterPendingLook({
 
         return [
           <OutlineLines
-            key={hop.id}
-            id={hop.id}
-            points={points}
-            text={text}
-            closed={false}
             className={plays ? "stroke-pending" : "stroke-refused"}
-            width={plays ? 2.4 : 3}
+            closed={false}
             dash={plays ? undefined : "2 4"}
+            id={hop.id}
+            key={hop.id}
             mark={{
               "data-chapter-mark": plays ? "play" : "unplay",
               "data-chapter-mark-of": hop.id,
             }}
+            points={points}
+            text={text}
+            width={plays ? 2.4 : 3}
           />,
         ];
       })}

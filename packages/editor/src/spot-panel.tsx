@@ -13,8 +13,8 @@ export function SpotPanel({ spot }: { readonly spot: GridPoint }) {
 
   return (
     <section
-      data-spot-panel={`${spot.x},${spot.y}`}
       className="flex flex-col gap-3"
+      data-spot-panel={`${spot.x},${spot.y}`}
     >
       <p className="text-xs tracking-widest uppercase opacity-70">Empty spot</p>
       <h2 className="text-lg leading-tight font-medium">
@@ -27,12 +27,12 @@ export function SpotPanel({ spot }: { readonly spot: GridPoint }) {
       <NotesSection target={{ kind: "spot", x: spot.x, y: spot.y }} />
       <div className="flex gap-1.5">
         <button
-          type="button"
-          data-control="close"
           className={controlClass}
+          data-control="close"
           onClick={() => {
             tool?.pick(null);
           }}
+          type="button"
         >
           Close
         </button>

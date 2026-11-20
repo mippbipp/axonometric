@@ -35,13 +35,13 @@ const sameLayout = Schema.toEquivalence(Layout);
 
 /** What a commit did, for the command to print. */
 export interface Committed {
-  readonly batch: Batch;
-  readonly revision: number;
-  readonly message: string;
   readonly accepted: number;
+  readonly batch: Batch;
   readonly changed: number;
-  readonly rejected: number;
+  readonly message: string;
   readonly proposals: Proposals;
+  readonly rejected: number;
+  readonly revision: number;
 }
 
 /**
@@ -76,16 +76,17 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
   const map = yield* loadReviewMap(home, "commit");
 
   const number = yield* nextRevision(home);
-  const at = DateTime.formatIso(yield* DateTime.now);
+  const currentTime = yield* DateTime.now;
+  const at = DateTime.formatIso(currentTime);
 
   const committing = commitBatch({
-    proposals: map.proposals,
-    layout: map.layout,
-    saved: map.saved,
+    at,
     data: map.data,
     hops: map.data.hops,
+    layout: map.layout,
+    proposals: map.proposals,
     revision: number,
-    at,
+    saved: map.saved,
   });
 
   if (Result.isFailure(committing)) {
@@ -95,7 +96,7 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
     });
   }
 
-  const { batch, accepted, rejected, proposals } = committing.success;
+  const { accepted, batch, proposals, rejected } = committing.success;
   const verdicts = Rec.values(batch.verdicts);
 
   const text = Option.match(
@@ -121,42 +122,42 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
     : map.saved;
 
   const revision: Revision = {
+    accepted,
+    data: map.data,
     format: 1,
+    layout,
+    message: text,
+    rejected,
     revision: number,
     savedAt: at,
-    message: text,
-    accepted,
-    rejected,
-    data: map.data,
-    layout,
   };
 
   const state: MapState = {
-    system: yield* systemOf(home),
     data: map.data,
     layout,
     sourceLinks: map.sourceLinks,
+    system: yield* systemOf(home),
   };
 
   const site = yield* siteOutputs(state, home);
 
   yield* writeAll([
     {
-      file: path.join(home, historyFolder, revisionFileName(number)),
       content: yield* encodeRevision(revision),
       exclusive: true,
+      file: path.join(home, historyFolder, revisionFileName(number)),
     },
     ...(changedLayout
       ? [
           {
-            file: path.join(home, "layout.json"),
             content: yield* encodeLayout(layout),
+            file: path.join(home, "layout.json"),
           },
         ]
       : []),
     {
-      file: path.join(home, "proposals.json"),
       content: yield* encodeProposals(proposals),
+      file: path.join(home, "proposals.json"),
     },
     ...site.outputs,
   ]);
@@ -165,12 +166,12 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
     Arr.filter(verdicts, ({ verdict }) => verdict === kind).length;
 
   return {
-    batch,
-    revision: number,
-    message: text,
     accepted: count("accepted"),
+    batch,
     changed: count("changed"),
-    rejected: count("rejected"),
+    message: text,
     proposals,
+    rejected: count("rejected"),
+    revision: number,
   } satisfies Committed;
 }, Effect.scoped);

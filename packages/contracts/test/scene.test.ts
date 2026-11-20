@@ -6,7 +6,6 @@ import {
   Record as Rec,
   String as Str,
 } from "effect";
-import { vi } from "vitest";
 
 import {
   arrowheadOf,
@@ -79,12 +78,15 @@ const legsCross = (a: Leg, b: Leg) => {
   );
 };
 
-const routesCross = (a: readonly GridPoint[], b: readonly GridPoint[]) =>
+const routesCross = (
+  a: ReadonlyArray<GridPoint>,
+  b: ReadonlyArray<GridPoint>
+) =>
   Arr.some(legsOf(a), (first) =>
     Arr.some(legsOf(b), (second) => legsCross(first, second))
   );
 
-const bendsOf = (points: readonly GridPoint[]) =>
+const bendsOf = (points: ReadonlyArray<GridPoint>) =>
   Math.max(0, points.length - 2);
 
 interface Span {
@@ -98,9 +100,9 @@ const spansShare = (a: Span, b: Span) =>
 
 const apart = (a: Span, b: Span) => a.to <= b.from || b.to <= a.from;
 
-const alongX = ({ x, w }: Placement): Span => ({ from: x, to: x + w });
+const alongX = ({ w, x }: Placement): Span => ({ from: x, to: x + w });
 
-const alongY = ({ y, d }: Placement): Span => ({ from: y, to: y + d });
+const alongY = ({ d, y }: Placement): Span => ({ from: y, to: y + d });
 
 /**
  * The fewest bends any right-angled route between two footprints needs
@@ -127,7 +129,7 @@ const alone = (
   { data, layout }: { readonly data: MapData; readonly layout: Layout },
   revealed: ReadonlySet<string>,
   id: string
-): readonly GridPoint[] => {
+): ReadonlyArray<GridPoint> => {
   const routes = routeRevealed({
     data: { ...data, hops: Arr.filter(data.hops, (hop) => hop.id === id) },
     layout,
@@ -182,7 +184,7 @@ const areaOf = (
 const strayOf = (
   map: { readonly data: MapData; readonly layout: Layout },
   hop: { readonly from: string; readonly to: string },
-  points: readonly GridPoint[]
+  points: ReadonlyArray<GridPoint>
 ) => {
   const area = areaOf(map, hop);
 
@@ -195,7 +197,7 @@ const strayOf = (
 };
 
 /** The points on a footprint's edges, on half units. */
-const edgePointsOf = ({ x, y, w, d }: Placement): readonly GridPoint[] => [
+const edgePointsOf = ({ d, w, x, y }: Placement): ReadonlyArray<GridPoint> => [
   ...Arr.flatMap(Arr.range(0, w * 2), (step) => [
     { x: x + step / 2, y },
     { x: x + step / 2, y: y + d },
@@ -231,7 +233,7 @@ const legTouches = (leg: Leg, box: Placement) => {
 /** Whether a leg's line on screen runs through a name tag. */
 const legCrossesTag = (leg: Leg, tag: ScreenRect) =>
   crossesPolygon(
-    { start: project(leg.start), end: project(leg.end) },
+    { end: project(leg.end), start: project(leg.start) },
     rectCorners(tag)
   );
 
@@ -246,7 +248,7 @@ const clearRoutes = (
   map: { readonly data: MapData; readonly layout: Layout },
   hop: { readonly from: string; readonly to: string },
   revealed: ReadonlySet<string>
-): readonly (readonly GridPoint[])[] => {
+): ReadonlyArray<ReadonlyArray<GridPoint>> => {
   const source = placementOf(map.layout, hop.from);
   const target = placementOf(map.layout, hop.to);
 
@@ -278,7 +280,7 @@ const clearRoutes = (
     ])
   );
 
-  const clear = (points: readonly GridPoint[]) => {
+  const clear = (points: ReadonlyArray<GridPoint>) => {
     const legs = legsOf(points);
     const [first] = legs;
     const last = legs.at(-1);
@@ -319,7 +321,10 @@ const fewestStrayClear = (
   );
 
 /** Whether two routes share a half-unit step anywhere. */
-const shareStep = (a: readonly GridPoint[], b: readonly GridPoint[]) => {
+const shareStep = (
+  a: ReadonlyArray<GridPoint>,
+  b: ReadonlyArray<GridPoint>
+) => {
   const first = new Set(stepsOf(a));
 
   return Arr.some(stepsOf(b), (step) => first.has(step));
@@ -362,7 +367,7 @@ const distance = (a: ScreenPoint, b: ScreenPoint) =>
  * A segment that misses a rect is nearest it at one of its own ends or at
  * one of the rect's corners.
  */
-const rectGap = (points: readonly ScreenPoint[], rect: ScreenRect) => {
+const rectGap = (points: ReadonlyArray<ScreenPoint>, rect: ScreenRect) => {
   const box = rectCorners(rect);
 
   const inside = ({ sx, sy }: ScreenPoint) =>
@@ -410,7 +415,6 @@ const offSegment = (point: ScreenPoint, a: ScreenPoint, b: ScreenPoint) => {
 // The pipeline map routes 29 hops for each of its eight chapters, and some
 // tests search every short route for comparison: a few seconds each, more
 // when the browser tests run alongside.
-vi.setConfig({ testTimeout: 30_000 });
 
 const clashKey = ({ between: [first, second] }: SceneClash) =>
   `${first} × ${second}`;
@@ -428,7 +432,7 @@ const clashKey = ({ between: [first, second] }: SceneClash) =>
  * - shapes, Iso view: two boxes stand on the name tags in front of them.
  *   The map packs its boxes tight, and `check` warns about both tags.
  */
-const allowedClashes: ReadonlyMap<string, readonly string[]> = new Map([
+const allowedClashes: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
   ["crowded c-all iso", ["box:north × box:vault", "box:west × box:vault"]],
   ["shapes all iso", ["box:document × tag:job", "box:store × tag:cards"]],
 ]);
@@ -455,9 +459,9 @@ describe("scene", () => {
             for (const view of views) {
               const scene = sceneOf({
                 data,
+                labelFirst: chapter.plays,
                 layout,
                 revealed: chapter.revealed,
-                labelFirst: chapter.plays,
                 view,
               });
 
@@ -515,7 +519,7 @@ describe("scene", () => {
         assert.isAbove(scale, 0);
 
         /** A ground rectangle drawn flat: its corners clockwise from the top left. */
-        const flat = ({ x, y, w, d }: Placement) => [
+        const flat = ({ d, w, x, y }: Placement) => [
           { sx: x * scale, sy: y * scale },
           { sx: (x + w) * scale, sy: y * scale },
           { sx: (x + w) * scale, sy: (y + d) * scale },
@@ -528,15 +532,15 @@ describe("scene", () => {
         );
 
         // Other shapes may overhang their footprint, the same on every side.
-        for (const { structure, outline } of scene.structures) {
-          const { x, y, w, d } = placementOf(layout, structure.id);
+        for (const { outline, structure } of scene.structures) {
+          const { d, w, x, y } = placementOf(layout, structure.id);
           const by = x - (outline[0]?.sx ?? 0) / scale;
 
           const drawn = flat({
+            d: d + 2 * by,
+            w: w + 2 * by,
             x: x - by,
             y: y - by,
-            w: w + 2 * by,
-            d: d + 2 * by,
           });
 
           assert.isAtLeast(by, 0, structure.id);
@@ -550,7 +554,7 @@ describe("scene", () => {
 
         assert.lengthOf(scene.zones, data.groups.length);
 
-        for (const { zone, plate } of scene.zones) {
+        for (const { plate, zone } of scene.zones) {
           assert.deepStrictEqual(plate, flat(zone.box), zone.group.id);
         }
 
@@ -590,13 +594,13 @@ describe("scene", () => {
             for (const chapter of chapters) {
               const scene = sceneOf({
                 data,
+                labelFirst: chapter.plays,
                 layout,
                 revealed: chapter.revealed,
-                labelFirst: chapter.plays,
                 view,
               });
 
-              for (const { hop, points, label } of scene.hops) {
+              for (const { hop, label, points } of scene.hops) {
                 if (label !== undefined) {
                   const gap = rectGap(points, label) / unit;
 
@@ -634,7 +638,7 @@ describe("scene", () => {
           assert.isDefined(head);
           assert.isDefined(before);
 
-          const { back, right, front, left } = corners(
+          const { back, front, left, right } = corners(
             placementOf(layout, hop.hop.to),
             0
           );
@@ -662,7 +666,7 @@ describe("scene", () => {
       });
 
       for (const hop of scene.hops) {
-        const { back, right, front, left } = corners(
+        const { back, front, left, right } = corners(
           placementOf(layout, hop.hop.from),
           0
         );
@@ -747,7 +751,7 @@ describe("scene", () => {
         const { data, layout } = yield* fixture("flake-pipeline");
 
         const warned = new Set(
-          Arr.flatMap(checkLayout(data, layout), ({ path, message }) =>
+          Arr.flatMap(checkLayout(data, layout), ({ message, path }) =>
             Str.includes("long way round")(message) ? [path] : []
           )
         );
@@ -773,7 +777,7 @@ describe("scene", () => {
             const length = Arr.reduce(
               legsOf(route.points),
               0,
-              (sum, { start, end }) =>
+              (sum, { end, start }) =>
                 sum + Math.abs(end.x - start.x) + Math.abs(end.y - start.y)
             );
 
@@ -811,18 +815,18 @@ describe("scene", () => {
               ? []
               : [
                   {
-                    hop: hop.id,
                     box: hop.from,
-                    other: hop.to,
-                    head: false,
                     edge: edgeOf(first, route.points[1] ?? first),
+                    head: false,
+                    hop: hop.id,
+                    other: hop.to,
                   },
                   {
-                    hop: hop.id,
                     box: hop.to,
-                    other: hop.from,
-                    head: true,
                     edge: edgeOf(last, route.points.at(-2) ?? last),
+                    head: true,
+                    hop: hop.id,
+                    other: hop.from,
                   },
                 ];
           });
@@ -840,7 +844,7 @@ describe("scene", () => {
               );
 
               assert.isTrue(
-                facingEdgesFull(box, other, { taken, extra: end.head }),
+                facingEdgesFull(box, other, { extra: end.head, taken }),
                 `${end.hop} ${end.head ? "enters" : "leaves"} ${end.box} by an edge facing away in ${chapter.id} while a facing edge has room`
               );
             }
@@ -976,41 +980,41 @@ describe("scene", () => {
 /** A one-group map with 2×2 boxes at `placements` and route overrides. */
 const groundMap = (
   placements: Readonly<Record<string, GridPoint>>,
-  hops: readonly {
-    readonly id: string;
+  hops: ReadonlyArray<{
     readonly from: string;
+    readonly id: string;
     readonly to: string;
-  }[],
-  routes: Readonly<Record<string, readonly GridPoint[]>>
+  }>,
+  routes: Readonly<Record<string, ReadonlyArray<GridPoint>>>
 ) => {
   const ids = Rec.keys(placements);
 
   const data: MapData = {
-    format: 1,
-    revision: 0,
-    overview: { title: "Map", summary: "A map." },
-    groups: [{ id: "main", title: "Main" }],
-    structures: Arr.map(ids, (id) => ({
-      id,
-      code: "S",
-      name: id,
-      shape: "box" as const,
-      group: "main",
-      status: "live" as const,
-      oneLiner: "One line.",
-      whatItDoes: "Does.",
-      howItsBuilt: "Built.",
-    })),
-    hops: Arr.map(hops, (hop) => ({ ...hop, label: "x" })),
-    flows: [],
     chapters: [],
+    flows: [],
+    format: 1,
+    groups: [{ id: "main", title: "Main" }],
+    hops: Arr.map(hops, (hop) => ({ ...hop, label: "x" })),
+    overview: { summary: "A map.", title: "Map" },
+    revision: 0,
+    structures: Arr.map(ids, (id) => ({
+      code: "S",
+      group: "main",
+      howItsBuilt: "Built.",
+      id,
+      name: id,
+      oneLiner: "One line.",
+      shape: "box" as const,
+      status: "live" as const,
+      whatItDoes: "Does.",
+    })),
   };
 
   const layout: Layout = {
     format: 1,
     revision: 0,
-    structures: Rec.map(placements, ({ x, y }) => ({ x, y, w: 2, d: 2 })),
     routes,
+    structures: Rec.map(placements, ({ x, y }) => ({ d: 2, w: 2, x, y })),
   };
 
   return { data, layout, revealed: new Set(ids) };
@@ -1045,8 +1049,8 @@ describe("ground clashes", () => {
       // The route turns on m's corner at (4, 0) without running along or
       // under m, so only the outline check sees it.
       const map = groundMap(
-        { a: { x: 0, y: 0 }, m: { x: 4, y: 0 }, b: { x: 8, y: 0 } },
-        [{ id: "h", from: "a", to: "b" }],
+        { a: { x: 0, y: 0 }, b: { x: 8, y: 0 }, m: { x: 4, y: 0 } },
+        [{ from: "a", id: "h", to: "b" }],
         {
           h: [
             { x: 2, y: 0.5 },
@@ -1072,7 +1076,7 @@ describe("ground clashes", () => {
     Effect.sync(() => {
       const map = groundMap(
         { a: { x: 0, y: 0 }, b: { x: 6, y: 0 } },
-        [{ id: "h", from: "a", to: "b" }],
+        [{ from: "a", id: "h", to: "b" }],
         {
           h: [
             { x: 2, y: 2 },
@@ -1097,7 +1101,7 @@ describe("ground clashes", () => {
       // The zone reaches one unit past the boxes, to y = -1.
       const map = groundMap(
         { a: { x: 0, y: 0 }, b: { x: 6, y: 0 } },
-        [{ id: "h", from: "a", to: "b" }],
+        [{ from: "a", id: "h", to: "b" }],
         {
           h: [
             { x: 1, y: 0 },
@@ -1129,8 +1133,8 @@ describe("ground clashes", () => {
             d: { x: 14, y: 8 },
           },
           [
-            { id: "one", from: "a", to: "b" },
-            { id: "two", from: "c", to: "d" },
+            { from: "a", id: "one", to: "b" },
+            { from: "c", id: "two", to: "d" },
           ],
           {
             one: [
@@ -1184,8 +1188,8 @@ describe("ground clashes", () => {
           d: { x: 5, y: 10 },
         },
         [
-          { id: "across", from: "a", to: "b" },
-          { id: "down", from: "c", to: "d" },
+          { from: "a", id: "across", to: "b" },
+          { from: "c", id: "down", to: "d" },
         ],
         {
           across: [
@@ -1260,7 +1264,10 @@ describe("ground clashes", () => {
 });
 
 /** Whether a point is inside a convex polygon, edges excluded. */
-const insidePolygon = (polygon: readonly ScreenPoint[], point: ScreenPoint) => {
+const insidePolygon = (
+  polygon: ReadonlyArray<ScreenPoint>,
+  point: ScreenPoint
+) => {
   const signs = Arr.map(polygon, (corner, index) => {
     const next = polygon[(index + 1) % polygon.length] ?? corner;
 
@@ -1277,8 +1284,8 @@ const insidePolygon = (polygon: readonly ScreenPoint[], point: ScreenPoint) => {
 
 /** One arrowhead: its tip, the way it points, and the edge it is on. */
 interface Head {
-  readonly tip: ScreenPoint;
   readonly along: ScreenPoint;
+  readonly tip: ScreenPoint;
 }
 
 /**
@@ -1300,7 +1307,8 @@ describe("arrowheads", () => {
         // the least a map is shown at, so heads must clear each other there.
         const fit = 0.4;
         const need = 2 * arrowHalfWidth * fit + 3;
-        const closest: { readonly gap: number; readonly where: string }[] = [];
+        const closest: Array<{ readonly gap: number; readonly where: string }> =
+          [];
 
         for (const name of [
           "flake-pipeline",
@@ -1324,7 +1332,7 @@ describe("arrowheads", () => {
             });
 
             // Each head: its tip, its direction, and the edge it is on.
-            const heads = Arr.flatMap(hops, ({ hop, route, points }) => {
+            const heads = Arr.flatMap(hops, ({ hop, points, route }) => {
               const tip = points.at(-1);
               const before = points.at(-2);
               const last = route.points.at(-1);
@@ -1337,13 +1345,13 @@ describe("arrowheads", () => {
                 ? []
                 : [
                     {
-                      id: hop.id,
-                      edge: `${hop.to}:${edgeOf(last, back)}`,
-                      tip,
                       along: {
                         sx: tip.sx - before.sx,
                         sy: tip.sy - before.sy,
                       },
+                      edge: `${hop.to}:${edgeOf(last, back)}`,
+                      id: hop.id,
+                      tip,
                     },
                   ];
             });
@@ -1445,8 +1453,8 @@ describe("arrowheads", () => {
       const map = groundMap(
         { a: { x: 0, y: 0 }, b: { x: 6, y: 0 }, c: { x: 0, y: 4 } },
         [
-          { id: "one", from: "a", to: "b" },
-          { id: "two", from: "c", to: "b" },
+          { from: "a", id: "one", to: "b" },
+          { from: "c", id: "two", to: "b" },
         ],
         {}
       );

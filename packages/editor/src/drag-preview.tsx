@@ -33,22 +33,22 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 /** How long a drag rests before its warnings are worked out. */
 const settle = Duration.millis(120);
 
-const none: readonly LayoutChange[] = [];
+const none: ReadonlyArray<LayoutChange> = [];
 
 /** The layout a drag's changes would leave, with route overrides carried along. */
 const draggedLayout = (
   { data, layout }: MapState,
-  changes: readonly LayoutChange[]
+  changes: ReadonlyArray<LayoutChange>
 ) => {
   // A move carries a route override along when both its ends move
   // together, as saving the move does.
   const carried = Arr.flatMap(changes, (change) =>
     change.kind === "move"
       ? shiftedRoutes({
-          layout,
           hops: data.hops,
-          moves: change.moves,
           id: (hop) => `preview-${hop}`,
+          layout,
+          moves: change.moves,
         })
       : []
   );
@@ -61,12 +61,12 @@ const draggedLayout = (
  * whether every chapter is in yet.
  */
 interface Checked {
-  readonly step: number;
-  readonly problems: readonly DraggedProblem[];
   readonly complete: boolean;
+  readonly problems: ReadonlyArray<DraggedProblem>;
+  readonly step: number;
 }
 
-const unchecked: Checked = { step: -1, problems: [], complete: true };
+const unchecked: Checked = { complete: true, problems: [], step: -1 };
 
 const decodeAnswer = Schema.decodeUnknownResult(CheckAnswer);
 
@@ -96,9 +96,9 @@ const mapIdOf = (state: MapState) => {
  * has no workers the check runs on the page instead, a chapter at a time.
  */
 interface DragChecker {
+  readonly close: () => void;
   readonly map: (map: CheckMap) => void;
   readonly step: (step: CheckStep) => void;
-  readonly close: () => void;
 }
 
 const startChecker = (answer: (found: CheckAnswer) => void): DragChecker => {
@@ -123,11 +123,11 @@ const startChecker = (answer: (found: CheckAnswer) => void): DragChecker => {
   };
 
   return {
-    map: send,
-    step: send,
     close: () => {
       worker.terminate();
     },
+    map: send,
+    step: send,
   };
 };
 
@@ -147,11 +147,11 @@ const startChecker = (answer: (found: CheckAnswer) => void): DragChecker => {
  * with the ones the drag adds marked.
  */
 export function DragPreviewProvider({
-  state,
   children,
+  state,
 }: {
-  readonly state: MapState;
   readonly children: ReactNode;
+  readonly state: MapState;
 }) {
   const [drag, setDrag] = useState<DragPreviewInput | undefined>();
   const [checked, setChecked] = useState(unchecked);
@@ -190,10 +190,10 @@ export function DragPreviewProvider({
     }
 
     checker.current?.map({
-      kind: "map",
-      id: mapIdOf(state),
-      data: state.data,
       before: state.layout,
+      data: state.data,
+      id: mapIdOf(state),
+      kind: "map",
     });
   }, [state, live]);
 
@@ -209,11 +209,11 @@ export function DragPreviewProvider({
 
     const send = Effect.sync(() => {
       checker.current?.step({
-        kind: "step",
-        step,
-        map: mapIdOf(state),
         after: draggedLayout(state, changes),
+        kind: "step",
+        map: mapIdOf(state),
         onScreen: stop.id,
+        step,
       });
     });
 
@@ -236,42 +236,42 @@ export function DragPreviewProvider({
       return change === undefined
         ? nothingReported
         : {
-            refusal: change.refusal,
             problems: change.problems,
+            refusal: change.refusal,
             source: "change",
           };
     }
 
     if (drag.refusal !== undefined) {
-      return { refusal: drag.refusal, problems: [], source: "drag" };
+      return { problems: [], refusal: drag.refusal, source: "drag" };
     }
 
     // The last step's answer stays up while this step is checked.
     return {
-      refusal: undefined,
-      problems: checked.problems,
-      source: "drag",
       complete: checked.complete && checked.step === waitingOn,
+      problems: checked.problems,
+      refusal: undefined,
+      source: "drag",
     };
   }, [drag, checked, change, waitingOn]);
 
   const changePreview = useMemo(
     (): ChangePreview => ({
-      show: setChange,
       clear: () => {
         setChange(undefined);
       },
+      show: setChange,
     }),
     []
   );
 
   const preview = useMemo(
     (): DragPreview => ({
-      show: setDrag,
       clear: () => {
         setDrag(undefined);
         setChecked(unchecked);
       },
+      show: setDrag,
     }),
     []
   );
@@ -306,7 +306,7 @@ export function DragPreviewProvider({
  * Nothing shows when there is nothing to say.
  */
 export function DragWarnings({ className }: { readonly className?: string }) {
-  const { refusal, problems, source, complete = true } = useDragReport();
+  const { complete = true, problems, refusal, source } = useDragReport();
 
   if (refusal === undefined && problems.length === 0) {
     return null;
@@ -316,17 +316,17 @@ export function DragWarnings({ className }: { readonly className?: string }) {
 
   return (
     <section
-      data-drag-warnings
       aria-label={`Warnings for this ${source}`}
       aria-live="polite"
       className={`border-refused bg-paper text-ink flex max-h-[45svh] shrink-0 flex-col border-2 text-xs ${className ?? ""}`}
+      data-drag-warnings
     >
       {refusal === undefined ? (
         <>
           <h2
-            data-drag-warnings-heading=""
-            data-checking={complete ? undefined : ""}
             className="shrink-0 px-3 pt-2 pb-1 tracking-widest uppercase opacity-70"
+            data-checking={complete ? undefined : ""}
+            data-drag-warnings-heading=""
           >
             {problems.length === 1
               ? "check would report 1 warning"
@@ -335,28 +335,28 @@ export function DragWarnings({ className }: { readonly className?: string }) {
             {complete ? "" : ", checking other chapters"}
           </h2>
           <ul
-            data-drag-warnings-list=""
             className="flex min-h-0 flex-col gap-1.5 overflow-y-auto px-3 pb-2"
+            data-drag-warnings-list=""
           >
-            {Arr.map(problems, ({ problem, added: isNew }) => (
+            {Arr.map(problems, ({ added: isNew, problem }) => (
               <li
-                key={`${problem.file} ${problem.path} ${problem.message}`}
+                className="flex flex-col"
                 data-drag-warning=""
                 data-warning-new={isNew}
-                className="flex flex-col"
+                key={`${problem.file} ${problem.path} ${problem.message}`}
               >
                 {isNew ? (
                   <b
-                    data-warning-badge=""
                     className="text-2xs font-medium tracking-widest uppercase"
+                    data-warning-badge=""
                   >
                     New from this {source}
                   </b>
                 ) : null}
                 <span data-warning-message="">{problem.message}</span>
                 <span
-                  data-warning-where=""
                   className="text-2xs font-mono opacity-60"
+                  data-warning-where=""
                 >
                   {problem.path === ""
                     ? problem.file
@@ -369,14 +369,14 @@ export function DragWarnings({ className }: { readonly className?: string }) {
       ) : (
         <>
           <h2
-            data-drag-warnings-heading=""
             className="shrink-0 px-3 pt-2 pb-1 tracking-widest uppercase opacity-70"
+            data-drag-warnings-heading=""
           >
             {source === "drag"
               ? "This drop would be refused"
               : "This change would be refused"}
           </h2>
-          <p data-drag-refusal="" className="min-h-0 overflow-y-auto px-3 pb-2">
+          <p className="min-h-0 overflow-y-auto px-3 pb-2" data-drag-refusal="">
             {refusal}
           </p>
         </>

@@ -21,8 +21,8 @@ const builtInRepo = Effect.gen(function* () {
 
   const home = yield* makeHome({
     ...files,
-    "packages/editor/src/app.tsx": "export {};\n",
     "packages/editor/index.html": "<!doctype html>\n",
+    "packages/editor/src/app.tsx": "export {};\n",
   });
 
   yield* initRepo(home);
@@ -66,7 +66,7 @@ describe.skipIf(noGit)("a structure's sources", () => {
   it.live("show in the pinned panel as links to GitHub, as in SYSTEM.md", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { commit, systemMd, page, errors } = yield* builtInRepo;
+        const { commit, errors, page, systemMd } = yield* builtInRepo;
 
         const pinnedUrl = `https://github.com/mippbipp/axonometric/blob/${commit}/packages/editor/src/app.tsx`;
 
@@ -85,10 +85,8 @@ describe.skipIf(noGit)("a structure's sources", () => {
 
         const links = '[data-structure-panel="page"] [data-source] a';
 
-        assert.deepStrictEqual(yield* attributesOf(page, links, "href"), [
-          pinnedUrl,
-          branchUrl,
-        ]);
+        const linkHrefs = yield* attributesOf(page, links, "href");
+        assert.deepStrictEqual(linkHrefs, [pinnedUrl, branchUrl]);
 
         const text = yield* Effect.promise(() =>
           page.locator('[data-structure-panel="page"]').textContent()

@@ -21,129 +21,129 @@ import { useSelection } from "./selection-context.ts";
  * diagonal edge of the ground they use instead, with the axis in brackets.
  */
 interface Names {
-  readonly plan: string;
   readonly iso: string;
+  readonly plan: string;
 }
 
 /** One button's icon, drawn on a 16 by 16 plan of the ground. */
 interface Control {
-  readonly label: Names;
   readonly icon: ReactNode;
+  readonly label: Names;
 }
 
-const alignments: readonly (Control & { readonly how: Alignment })[] = [
+const alignments: ReadonlyArray<Control & { readonly how: Alignment }> = [
   {
     how: "left",
-    label: {
-      plan: "Align left edges",
-      iso: "Align to the upper-left edge (smallest x)",
-    },
     icon: (
       <>
         <path d="M2 1v14" />
-        <rect x="4" y="3" width="9" height="4" />
-        <rect x="4" y="9" width="5" height="4" />
+        <rect height="4" width="9" x="4" y="3" />
+        <rect height="4" width="5" x="4" y="9" />
       </>
     ),
+    label: {
+      iso: "Align to the upper-left edge (smallest x)",
+      plan: "Align left edges",
+    },
   },
   {
     how: "centre-x",
-    label: {
-      plan: "Align centres on x (a vertical line)",
-      iso: "Align centres on x (a line from lower-left to upper-right)",
-    },
     icon: (
       <>
         <path d="M8 1v14" />
-        <rect x="3" y="3" width="10" height="4" />
-        <rect x="5" y="9" width="6" height="4" />
+        <rect height="4" width="10" x="3" y="3" />
+        <rect height="4" width="6" x="5" y="9" />
       </>
     ),
+    label: {
+      iso: "Align centres on x (a line from lower-left to upper-right)",
+      plan: "Align centres on x (a vertical line)",
+    },
   },
   {
     how: "right",
-    label: {
-      plan: "Align right edges",
-      iso: "Align to the lower-right edge (largest x)",
-    },
     icon: (
       <>
         <path d="M14 1v14" />
-        <rect x="3" y="3" width="9" height="4" />
-        <rect x="7" y="9" width="5" height="4" />
+        <rect height="4" width="9" x="3" y="3" />
+        <rect height="4" width="5" x="7" y="9" />
       </>
     ),
+    label: {
+      iso: "Align to the lower-right edge (largest x)",
+      plan: "Align right edges",
+    },
   },
   {
     how: "top",
-    label: {
-      plan: "Align top edges",
-      iso: "Align to the upper-right edge (smallest y)",
-    },
     icon: (
       <>
         <path d="M1 2h14" />
-        <rect x="3" y="4" width="4" height="9" />
-        <rect x="9" y="4" width="4" height="5" />
+        <rect height="9" width="4" x="3" y="4" />
+        <rect height="5" width="4" x="9" y="4" />
       </>
     ),
+    label: {
+      iso: "Align to the upper-right edge (smallest y)",
+      plan: "Align top edges",
+    },
   },
   {
     how: "centre-y",
-    label: {
-      plan: "Align centres on y (a horizontal line)",
-      iso: "Align centres on y (a line from upper-left to lower-right)",
-    },
     icon: (
       <>
         <path d="M1 8h14" />
-        <rect x="3" y="3" width="4" height="10" />
-        <rect x="9" y="5" width="4" height="6" />
+        <rect height="10" width="4" x="3" y="3" />
+        <rect height="6" width="4" x="9" y="5" />
       </>
     ),
+    label: {
+      iso: "Align centres on y (a line from upper-left to lower-right)",
+      plan: "Align centres on y (a horizontal line)",
+    },
   },
   {
     how: "bottom",
-    label: {
-      plan: "Align bottom edges",
-      iso: "Align to the lower-left edge (largest y)",
-    },
     icon: (
       <>
         <path d="M1 14h14" />
-        <rect x="3" y="3" width="4" height="9" />
-        <rect x="9" y="7" width="4" height="5" />
+        <rect height="9" width="4" x="3" y="3" />
+        <rect height="5" width="4" x="9" y="7" />
       </>
     ),
+    label: {
+      iso: "Align to the lower-left edge (largest y)",
+      plan: "Align bottom edges",
+    },
   },
 ];
 
-const distributions: readonly (Control & { readonly axis: Axis })[] = [
+const distributions: ReadonlyArray<Control & { readonly axis: Axis }> = [
   {
     axis: "x",
-    label: {
-      plan: "Distribute horizontally",
-      iso: "Distribute along x (down and to the right)",
-    },
     icon: (
       <>
         <path d="M1 1v14M15 1v14" />
-        <rect x="6" y="4" width="4" height="8" />
+        <rect height="8" width="4" x="6" y="4" />
       </>
     ),
+    label: {
+      iso: "Distribute along x (down and to the right)",
+      plan: "Distribute horizontally",
+    },
   },
   {
     axis: "y",
-    label: {
-      plan: "Distribute vertically",
-      iso: "Distribute along y (down and to the left)",
-    },
     icon: (
       <>
         <path d="M1 1h14M1 15h14" />
-        <rect x="4" y="6" width="8" height="4" />
+        <rect height="4" width="8" x="4" y="6" />
       </>
     ),
+    label: {
+      iso: "Distribute along y (down and to the left)",
+      plan: "Distribute vertically",
+    },
   },
 ];
 
@@ -157,23 +157,23 @@ const distributeNeedsThree = "Select three or more to distribute";
  * Strokes keep their width under the projection.
  */
 function Icon({
-  view,
   children,
+  view,
 }: {
-  readonly view: View;
   readonly children: ReactNode;
+  readonly view: View;
 }) {
   const iso = view === "iso";
 
   return (
     <svg
-      viewBox={iso ? "0 0 24 16" : "0 0 16 16"}
+      aria-hidden="true"
       className={cn(
         "h-4 fill-none stroke-current **:[vector-effect:non-scaling-stroke]",
         iso ? "w-6" : "w-4"
       )}
       strokeWidth={1.2}
-      aria-hidden="true"
+      viewBox={iso ? "0 0 24 16" : "0 0 16 16"}
     >
       <g
         transform={
@@ -204,11 +204,11 @@ const iconButton = cn(
  * each button works along.
  */
 export function EditToolbar({
-  view,
   className,
+  view,
 }: {
-  readonly view: View;
   readonly className?: string;
+  readonly view: View;
 }) {
   const editing = useEditing();
   const proposing = useProposed();
@@ -222,7 +222,7 @@ export function EditToolbar({
     return null;
   }
 
-  const { canUndo, canRedo, undo, redo, arrange } = editing;
+  const { arrange, canRedo, canUndo, redo, undo } = editing;
   const ids = [...multiSelection];
   const many = ids.length >= 2;
   const canDistribute = ids.length >= 3;
@@ -233,16 +233,16 @@ export function EditToolbar({
 
   /** Shows `label` while the pointer or focus is on a button. */
   const hintFor = (label: string) => ({
-    onPointerEnter: () => {
-      setHint(label);
+    onBlur: () => {
+      setHint(undefined);
     },
     onFocus: () => {
       setHint(label);
     },
-    onPointerLeave: () => {
-      setHint(undefined);
+    onPointerEnter: () => {
+      setHint(label);
     },
-    onBlur: () => {
+    onPointerLeave: () => {
       setHint(undefined);
     },
   });
@@ -253,62 +253,62 @@ export function EditToolbar({
       data-edit-toolbar
     >
       <div
-        role="toolbar"
         aria-label="Undo and redo"
-        data-history-toolbar
         className="flex gap-1.5"
+        data-history-toolbar
+        role="toolbar"
       >
         <button
-          type="button"
-          data-control="undo"
-          className={controlClass}
-          disabled={!canUndo}
           aria-label="Undo"
-          title="Undo (Ctrl+Z)"
+          className={controlClass}
+          data-control="undo"
+          disabled={!canUndo}
           onClick={() => {
             setRefusal(undefined);
             undo();
           }}
+          title="Undo (Ctrl+Z)"
+          type="button"
         >
           <span aria-hidden="true">↶ Undo</span>
         </button>
         <button
-          type="button"
-          data-control="add-structure"
-          className={controlClass}
           aria-expanded={placing?.open === true}
+          className={controlClass}
+          data-control="add-structure"
           disabled={proposing === null || !proposing.canPropose}
-          title="Propose a new structure"
           onClick={() => {
             placing?.setOpen(!placing.open);
           }}
+          title="Propose a new structure"
+          type="button"
         >
           + Structure
         </button>
         <button
-          type="button"
-          data-control="add-group"
-          className={controlClass}
           aria-expanded={newGroup?.open === true}
+          className={controlClass}
+          data-control="add-group"
           disabled={proposing === null || !proposing.canPropose}
-          title="Create a group, from the selected structures or empty"
           onClick={() => {
             newGroup?.setOpen(!newGroup.open);
           }}
+          title="Create a group, from the selected structures or empty"
+          type="button"
         >
           + Group
         </button>
         <button
-          type="button"
-          data-control="redo"
-          className={controlClass}
-          disabled={!canRedo}
           aria-label="Redo"
-          title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+          className={controlClass}
+          data-control="redo"
+          disabled={!canRedo}
           onClick={() => {
             setRefusal(undefined);
             redo();
           }}
+          title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+          type="button"
         >
           <span aria-hidden="true">Redo ↷</span>
         </button>
@@ -317,45 +317,45 @@ export function EditToolbar({
       <NoteToolHint />
       {many ? (
         <div
-          role="toolbar"
           aria-label={`Arrange ${ids.length} selected structures`}
-          data-arrange-toolbar
           className="border-ink bg-paper flex flex-col items-end gap-1 border p-1.5"
+          data-arrange-toolbar
+          role="toolbar"
         >
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             <span className="px-1 text-xs tracking-widest uppercase opacity-70">
               {ids.length} selected
             </span>
-            {Arr.map(alignments, ({ how, label, icon }) => (
+            {Arr.map(alignments, ({ how, icon, label }) => (
               <button
-                key={how}
-                type="button"
-                data-align={how}
-                className={iconButton}
                 aria-label={label[view]}
+                className={iconButton}
+                data-align={how}
+                key={how}
                 title={label[view]}
+                type="button"
                 {...hintFor(label[view])}
                 onClick={() => {
-                  run((placements) => alignMoves({ placements, ids, how }));
+                  run((placements) => alignMoves({ how, ids, placements }));
                 }}
               >
                 <Icon view={view}>{icon}</Icon>
               </button>
             ))}
             <span aria-hidden="true" className="bg-ink h-4 w-px opacity-40" />
-            {Arr.map(distributions, ({ axis, label, icon }) => (
+            {Arr.map(distributions, ({ axis, icon, label }) => (
               <button
-                key={axis}
-                type="button"
-                data-distribute={axis}
-                className={iconButton}
                 aria-label={label[view]}
-                title={canDistribute ? label[view] : distributeNeedsThree}
+                className={iconButton}
+                data-distribute={axis}
                 disabled={!canDistribute}
+                key={axis}
+                title={canDistribute ? label[view] : distributeNeedsThree}
+                type="button"
                 {...hintFor(label[view])}
                 onClick={() => {
                   run((placements) =>
-                    distributeMoves({ placements, ids, axis })
+                    distributeMoves({ axis, ids, placements })
                   );
                 }}
               >
@@ -366,8 +366,8 @@ export function EditToolbar({
           {(hint ?? (canDistribute ? "" : distributeNeedsThree)) ===
           "" ? null : (
             <p
-              data-toolbar-hint
               className="max-w-80 text-right text-xs opacity-80"
+              data-toolbar-hint
             >
               {hint ?? distributeNeedsThree}
             </p>
@@ -376,9 +376,9 @@ export function EditToolbar({
       ) : null}
       {refusal === undefined ? null : (
         <p
-          role="alert"
-          data-arrange-refused
           className="border-refused bg-paper max-w-72 border-l-2 px-2 py-1 text-xs"
+          data-arrange-refused
+          role="alert"
         >
           {refusal}
         </p>

@@ -25,7 +25,7 @@ export const useDrop = () => {
   const editing = useEditing();
   const proposing = useProposed();
   const panel = useChangePreview();
-  const { state, revealed } = useWalkthrough();
+  const { revealed, state } = useWalkthrough();
 
   /** Proposes `change`, and shows in the panel what it adds or why it was refused. */
   const proposeShown = (
@@ -39,7 +39,7 @@ export const useDrop = () => {
     const refusal = proposing.refusalOf(change);
 
     if (refusal !== undefined) {
-      panel?.show({ refusal, problems: [] });
+      panel?.show({ problems: [], refusal });
 
       return;
     }
@@ -51,7 +51,7 @@ export const useDrop = () => {
       const why = Option.getOrUndefined(Result.getFailure(outcome));
 
       if (why !== undefined) {
-        panel?.show({ refusal: why, problems: [] });
+        panel?.show({ problems: [], refusal: why });
       }
     });
   };
@@ -67,7 +67,7 @@ export const useDrop = () => {
           const why = Option.getOrUndefined(Result.getFailure(outcome));
 
           if (why !== undefined) {
-            panel?.show({ refusal: why, problems: [] });
+            panel?.show({ problems: [], refusal: why });
           }
         });
 
@@ -80,16 +80,16 @@ export const useDrop = () => {
       // the move applied, so the group is judged where it now stands.
       const group = Option.getOrUndefined(
         droppedIntoGroup({
-          data: state.data,
-          layout: state.layout,
-          id,
           at: next,
+          data: state.data,
+          id,
+          layout: state.layout,
           revealed,
         })
       );
 
       if (group !== undefined) {
-        proposeShown({ action: "group", structure: id, group }, { [id]: next });
+        proposeShown({ action: "group", group, structure: id }, { [id]: next });
       }
     },
   };

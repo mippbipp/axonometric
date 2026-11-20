@@ -4,6 +4,7 @@ import { Effect, FileSystem, Path } from "effect";
 import type { Page } from "playwright";
 
 import {
+  assertAttribute,
   attributeOf,
   literal,
   openUrl,
@@ -81,17 +82,15 @@ const styleOf = (page: Page, selector: string, property: string) =>
 /** The hop is inside the spotlight, at full strength. */
 const assertInside = Effect.fnUntraced(function* (page: Page, hopId: string) {
   yield* waitForFaded(page, hop(hopId), "false");
-  assert.strictEqual(yield* opacityOf(page, hop(hopId), "1"), "1", hopId);
+  const hopOpacity = yield* opacityOf(page, hop(hopId), "1");
+  assert.strictEqual(hopOpacity, "1", hopId);
 });
 
 /** The hop is outside the spotlight, at the faded strength. */
 const assertOutside = Effect.fnUntraced(function* (page: Page, hopId: string) {
   yield* waitForFaded(page, hop(hopId), "true");
-  assert.strictEqual(
-    yield* opacityOf(page, hop(hopId), faded.line),
-    faded.line,
-    hopId
-  );
+  const fadedHopOpacity = yield* opacityOf(page, hop(hopId), faded.line);
+  assert.strictEqual(fadedHopOpacity, faded.line, hopId);
 });
 
 const assertStructureInside = Effect.fnUntraced(function* (
@@ -99,7 +98,8 @@ const assertStructureInside = Effect.fnUntraced(function* (
   id: string
 ) {
   yield* waitForFaded(page, structure(id), "false");
-  assert.strictEqual(yield* opacityOf(page, structure(id), "1"), "1", id);
+  const structureOpacity = yield* opacityOf(page, structure(id), "1");
+  assert.strictEqual(structureOpacity, "1", id);
 });
 
 const assertStructureOutside = Effect.fnUntraced(function* (
@@ -107,11 +107,14 @@ const assertStructureOutside = Effect.fnUntraced(function* (
   id: string
 ) {
   yield* waitForFaded(page, structure(id), "true");
-  assert.strictEqual(
-    yield* opacityOf(page, structure(id), faded.structure),
-    faded.structure,
-    id
+
+  const fadedStructureOpacity = yield* opacityOf(
+    page,
+    structure(id),
+    faded.structure
   );
+
+  assert.strictEqual(fadedStructureOpacity, faded.structure, id);
 });
 
 /** The ends of the first flow's hops, which the first packet walks. */
@@ -132,7 +135,9 @@ const ends = new Map<string, readonly [string, string]>([
 ]);
 
 const pipelinePage = Effect.gen(function* () {
-  return yield* buildAndOpen(yield* pipelineMap, "flake-pipeline");
+  const pipelineMapFiles = yield* pipelineMap;
+
+  return yield* buildAndOpen(pipelineMapFiles, "flake-pipeline");
 });
 
 /** Points at a hop. Packets move over lines, so the event is dispatched. */
@@ -148,7 +153,7 @@ describe("the spotlight of a chapter", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors } = yield* pipelinePage;
+          const { errors, page } = yield* pipelinePage;
 
           yield* openChapter(page, "c-pr");
 
@@ -166,19 +171,31 @@ describe("the spotlight of a chapter", () => {
             // the lines behind it.
             const tag = '[data-name-tag="main"]';
 
-            assert.strictEqual(
-              yield* opacityOf(page, `${tag} text`, faded.line),
+            const tagTextOpacity = yield* opacityOf(
+              page,
+              `${tag} text`,
               faded.line
             );
-            assert.strictEqual(
-              yield* styleOf(page, `${tag} rect`, "strokeOpacity"),
-              faded.line
+
+            assert.strictEqual(tagTextOpacity, faded.line);
+
+            const tagStrokeOpacity = yield* styleOf(
+              page,
+              `${tag} rect`,
+              "strokeOpacity"
             );
-            assert.strictEqual(
-              yield* styleOf(page, `${tag} rect`, "fillOpacity"),
-              "1"
+
+            assert.strictEqual(tagStrokeOpacity, faded.line);
+
+            const tagFillOpacity = yield* styleOf(
+              page,
+              `${tag} rect`,
+              "fillOpacity"
             );
-            assert.strictEqual(yield* styleOf(page, tag, "opacity"), "1");
+
+            assert.strictEqual(tagFillOpacity, "1");
+            const tagOpacity = yield* styleOf(page, tag, "opacity");
+            assert.strictEqual(tagOpacity, "1");
 
             yield* waitForFaded(page, '[data-name-tag="main"]', "true");
             yield* waitForFaded(page, '[data-name-tag="pr"]', "false");
@@ -203,18 +220,22 @@ describe("the spotlight of a picked flow", () => {
           yield* Effect.promise(() =>
             page.locator(hop("h-main-updater")).waitFor()
           );
-          assert.strictEqual(
-            yield* Effect.promise(() =>
-              page.locator('[data-faded="true"]').count()
-            ),
-            0,
-            "the opening chapter"
+
+          const fadedInOpeningChapter = yield* Effect.promise(() =>
+            page.locator('[data-faded="true"]').count()
           );
+
+          assert.strictEqual(fadedInOpeningChapter, 0, "the opening chapter");
 
           // The last chapter plays nothing, so nothing carries a fade at all.
           yield* openChapter(page, "c-all");
+
+          const fadedInLastChapter = yield* Effect.promise(() =>
+            page.locator("[data-faded]").count()
+          );
+
           assert.strictEqual(
-            yield* Effect.promise(() => page.locator("[data-faded]").count()),
+            fadedInLastChapter,
             0,
             "a chapter that plays nothing"
           );
@@ -225,11 +246,12 @@ describe("the spotlight of a picked flow", () => {
             yield* Effect.promise(() =>
               page.locator('[data-flow="all"]').click()
             );
-            assert.strictEqual(
-              yield* Effect.promise(() => page.locator("[data-faded]").count()),
-              0,
-              `${view}: all flows`
+
+            const fadedAll = yield* Effect.promise(() =>
+              page.locator("[data-faded]").count()
             );
+
+            assert.strictEqual(fadedAll, 0, `${view}: all flows`);
 
             yield* Effect.promise(() =>
               page.locator('[data-flow="f-stale"]').click()
@@ -334,7 +356,8 @@ describe("a faded structure", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const root = yield* makeHome(yield* pipelineMap);
+        const pipelineMapFiles = yield* pipelineMap;
+        const root = yield* makeHome(pipelineMapFiles);
 
         const serve = yield* startServe(
           path.join(root, "flake-pipeline", "map"),
@@ -344,7 +367,7 @@ describe("a faded structure", () => {
         const { page } = yield* openUrl(serve.url);
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1280, height: 800 })
+          page.setViewportSize({ height: 800, width: 1280 })
         );
 
         yield* openChapter(page, "c-pr");
@@ -501,8 +524,9 @@ describe("faded parts", () => {
             yield* pointAway(page);
             yield* assertStructureInside(page, "main");
 
-            assert.strictEqual(
-              yield* attributeOf(page, structure("main"), "data-selected"),
+            yield* assertAttribute(
+              page,
+              { name: "data-selected", selector: structure("main") },
               "true"
             );
             yield* assertOutside(page, "h-updater-pr");
@@ -552,12 +576,14 @@ describe("faded parts", () => {
           return opacity;
         });
 
-        assert.notStrictEqual(yield* opacityOnHover(), "1", "with motion");
+        const hoverOpacityWithMotion = yield* opacityOnHover();
+        assert.notStrictEqual(hoverOpacityWithMotion, "1", "with motion");
 
         yield* Effect.promise(() =>
           page.emulateMedia({ reducedMotion: "reduce" })
         );
-        assert.strictEqual(yield* opacityOnHover(), "1", "reduced motion");
+        const hoverOpacityReduced = yield* opacityOnHover();
+        assert.strictEqual(hoverOpacityReduced, "1", "reduced motion");
       })
     )
   );
@@ -583,9 +609,8 @@ describe("an export", () => {
           ])
         );
 
-        const text = yield* fs.readFileString(
-          yield* Effect.promise(() => download.path())
-        );
+        const downloadPath = yield* Effect.promise(() => download.path());
+        const text = yield* fs.readFileString(downloadPath);
 
         assert.match(
           text,

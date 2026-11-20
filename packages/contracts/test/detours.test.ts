@@ -32,10 +32,10 @@ const between = (a: Placement, b: Placement): Option.Option<Placement> => {
     const top = Math.max(a.y, b.y);
 
     return Option.some({
+      d: Math.min(a.y + a.d, b.y + b.d) - top,
+      w: right.x - left.x - left.w,
       x: left.x + left.w,
       y: top,
-      w: right.x - left.x - left.w,
-      d: Math.min(a.y + a.d, b.y + b.d) - top,
     });
   }
 
@@ -44,10 +44,10 @@ const between = (a: Placement, b: Placement): Option.Option<Placement> => {
     const left = Math.max(a.x, b.x);
 
     return Option.some({
+      d: lower.y - upper.y - upper.d,
+      w: Math.min(a.x + a.w, b.x + b.w) - left,
       x: left,
       y: upper.y + upper.d,
-      w: Math.min(a.x + a.w, b.x + b.w) - left,
-      d: lower.y - upper.y - upper.d,
     });
   }
 
@@ -128,8 +128,7 @@ describe("detours", () => {
         const { data, layout } = yield* placedFixture("update-pipeline");
 
         assert.deepStrictEqual(detoursIn(data, layout), []);
-      }),
-    60_000
+      })
   );
 
   it.effect(
@@ -155,7 +154,6 @@ describe("detours", () => {
         });
 
         assert.deepStrictEqual(across, []);
-      }),
-    60_000
+      })
   );
 });

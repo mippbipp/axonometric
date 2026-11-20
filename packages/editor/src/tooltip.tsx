@@ -25,6 +25,9 @@ export function TooltipProvider({
 
   const actions = useMemo(
     (): TooltipActions => ({
+      hide: (id) => {
+        setHovered((current) => (current?.id === id ? null : current));
+      },
       show: (next) => {
         // Small pointer moves keep the tooltip where it is, so moving over a
         // structure doesn't redraw it on every event.
@@ -35,9 +38,6 @@ export function TooltipProvider({
             ? current
             : next
         );
-      },
-      hide: (id) => {
-        setHovered((current) => (current?.id === id ? null : current));
       },
     }),
     []
@@ -55,11 +55,11 @@ export function TooltipProvider({
 }
 
 function TooltipBox({
-  hovered,
   children,
+  hovered,
 }: {
-  readonly hovered: Hovered;
   readonly children: ReactNode;
+  readonly hovered: Hovered;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -75,10 +75,10 @@ function TooltipBox({
     }
 
     const toBox = (rect: DOMRect): Box => ({
+      height: rect.height,
       left: rect.left,
       top: rect.top,
       width: rect.width,
-      height: rect.height,
     });
 
     const target = canvas.querySelector(
@@ -94,14 +94,14 @@ function TooltipBox({
 
     const at = tooltipPlacement({
       canvas: toBox(bounds),
+      others: boxesOf("[data-structure]"),
+      pointerX: hovered.x,
+      size: { height: element.offsetHeight, width: element.offsetWidth },
+      tags: boxesOf("[data-name-tag]"),
       target:
         target === null
-          ? { left: hovered.x, top: hovered.y, width: 0, height: 0 }
+          ? { height: 0, left: hovered.x, top: hovered.y, width: 0 }
           : toBox(target.getBoundingClientRect()),
-      others: boxesOf("[data-structure]"),
-      tags: boxesOf("[data-name-tag]"),
-      size: { width: element.offsetWidth, height: element.offsetHeight },
-      pointerX: hovered.x,
     });
 
     element.style.left = `${at.left - bounds.left}px`;
@@ -110,10 +110,10 @@ function TooltipBox({
 
   return (
     <div
+      className="border-ink bg-paper text-ink pointer-events-none absolute top-0 left-0 z-10 max-w-64 border px-2 py-1 text-xs"
+      data-tooltip={hovered.id}
       ref={ref}
       role="tooltip"
-      data-tooltip={hovered.id}
-      className="border-ink bg-paper text-ink pointer-events-none absolute top-0 left-0 z-10 max-w-64 border px-2 py-1 text-xs"
     >
       {children}
     </div>

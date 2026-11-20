@@ -13,7 +13,7 @@ export const labelReach: Readonly<Record<View, number>> = {
 };
 
 /** A rect's corners, clockwise from the top left. */
-export const rectCorners = (rect: ScreenRect): readonly ScreenPoint[] => [
+export const rectCorners = (rect: ScreenRect): ReadonlyArray<ScreenPoint> => [
   { sx: rect.left, sy: rect.top },
   { sx: rect.right, sy: rect.top },
   { sx: rect.right, sy: rect.bottom },
@@ -52,7 +52,7 @@ export const segmentDistance = (
 const lengthInside = (
   start: ScreenPoint,
   end: ScreenPoint,
-  polygon: readonly ScreenPoint[]
+  polygon: ReadonlyArray<ScreenPoint>
 ) => {
   const count = Math.max(polygon.length, 1);
 
@@ -104,13 +104,13 @@ const lengthInside = (
  * more than half a pixel, rather than just touching it.
  */
 export const crossesPolygon = (
-  { start, end }: { readonly start: ScreenPoint; readonly end: ScreenPoint },
-  polygon: readonly ScreenPoint[]
+  { end, start }: { readonly end: ScreenPoint; readonly start: ScreenPoint },
+  polygon: ReadonlyArray<ScreenPoint>
 ) => lengthInside(start, end, polygon) > 0.5;
 
 /** How far `point` is from the polyline `points`. */
 export const lineDistance = (
-  points: readonly ScreenPoint[],
+  points: ReadonlyArray<ScreenPoint>,
   point: ScreenPoint
 ) => {
   const legs = Arr.zip(points, Arr.drop(points, 1));

@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";
-import { vi } from "vitest";
 
 import { proposalProblems } from "../src/index.ts";
 import type { BatchItem, CheckScope } from "../src/index.ts";
@@ -10,36 +9,34 @@ import { fixture } from "./fixture-maps.ts";
 // plain data. The review map has the groups people, loop and outside; its
 // chapters reveal engineer and page, then server and proposals, then the rest.
 
-vi.setConfig({ testTimeout: 5000 });
-
 const newGroup: BatchItem = {
+  change: { action: "add", group: { id: "data-1", title: "Data layer" } },
   id: "g",
   kind: "group",
-  change: { action: "add", group: { id: "data-1", title: "Data layer" } },
 };
 
 const into = (structure: string, index: number): BatchItem => ({
+  change: { action: "group", group: "data-1", structure },
   id: `s${index}`,
   kind: "structure",
-  change: { action: "group", structure, group: "data-1" },
 });
 
 const reveal: BatchItem = {
+  change: { action: "reveal", chapter: "c-save", structure: "pull-request" },
   id: "c",
   kind: "chapter",
-  change: { action: "reveal", chapter: "c-save", structure: "pull-request" },
 };
 
-const inChapter = (chapter: string): CheckScope => ({ of: "chapter", chapter });
+const inChapter = (chapter: string): CheckScope => ({ chapter, of: "chapter" });
 
 /** What the proposal adds to the report, as the panel marks it "New from this change". */
-const addedBy = (items: readonly BatchItem[], scope: CheckScope) =>
+const addedBy = (items: ReadonlyArray<BatchItem>, scope: CheckScope) =>
   Effect.gen(function* () {
     const { data, layout } = yield* fixture("review");
 
     return Arr.flatMap(
       proposalProblems({ before: { data, layout }, items, scope }),
-      ({ problem, added }) => (added ? [problem.message] : [])
+      ({ added, problem }) => (added ? [problem.message] : [])
     );
   });
 
@@ -50,10 +47,8 @@ describe("what a group proposal adds to the layout checks", () => {
     "is nothing where the new group's zone fits, in the chapter viewed",
     () =>
       Effect.gen(function* () {
-        assert.deepStrictEqual(
-          yield* addedBy(groupOfTwo, inChapter("c-save")),
-          []
-        );
+        const problems = yield* addedBy(groupOfTwo, inChapter("c-save"));
+        assert.deepStrictEqual(problems, []);
       })
   );
 
@@ -71,10 +66,8 @@ describe("what a group proposal adds to the layout checks", () => {
 
   it.effect("adds nothing for an empty group, which has no zone to draw", () =>
     Effect.gen(function* () {
-      assert.deepStrictEqual(
-        yield* addedBy([newGroup], inChapter("c-all")),
-        []
-      );
+      const problems = yield* addedBy([newGroup], inChapter("c-all"));
+      assert.deepStrictEqual(problems, []);
     })
   );
 
@@ -83,17 +76,14 @@ describe("what a group proposal adds to the layout checks", () => {
     () =>
       Effect.gen(function* () {
         const rename: BatchItem = {
+          change: { action: "rename", group: "loop", title: "The save loop" },
           id: "r",
           kind: "group",
-          change: { action: "rename", group: "loop", title: "The save loop" },
         };
 
         for (const chapter of ["c-page", "c-save", "c-all"]) {
-          assert.deepStrictEqual(
-            yield* addedBy([rename], inChapter(chapter)),
-            [],
-            chapter
-          );
+          const problems = yield* addedBy([rename], inChapter(chapter));
+          assert.deepStrictEqual(problems, [], chapter);
         }
       })
   );
@@ -128,14 +118,15 @@ describe("what a chapter proposal adds to the layout checks", () => {
   it.effect("adds nothing for a hop that is not drawn in that chapter", () =>
     Effect.gen(function* () {
       const play: BatchItem = {
+        change: { action: "play", chapter: "c-page", hop: "h-store" },
         id: "p",
         kind: "chapter",
-        change: { action: "play", chapter: "c-page", hop: "h-store" },
       };
 
+      const problems = yield* addedBy([play], inChapter("c-page"));
       // The hop's ends are not revealed in c-page, so it is not drawn there and
       // adds nothing to the drawing; review, not the layout checks, says it breaks.
-      assert.deepStrictEqual(yield* addedBy([play], inChapter("c-page")), []);
+      assert.deepStrictEqual(problems, []);
     })
   );
 
@@ -143,38 +134,35 @@ describe("what a chapter proposal adds to the layout checks", () => {
     "adds nothing for a hide, an unplay or an order that draws nothing new",
     () =>
       Effect.gen(function* () {
-        const actions: readonly BatchItem[] = [
+        const actions: ReadonlyArray<BatchItem> = [
           {
-            id: "a",
-            kind: "chapter",
             change: {
               action: "hide",
               chapter: "c-save",
               structure: "proposals",
             },
+            id: "a",
+            kind: "chapter",
           },
           {
+            change: { action: "unplay", chapter: "c-save", hop: "h-store" },
             id: "b",
             kind: "chapter",
-            change: { action: "unplay", chapter: "c-save", hop: "h-store" },
           },
           {
-            id: "c",
-            kind: "chapter",
             change: {
               action: "order",
               chapter: "c-save",
               plays: ["h-store", "h-note", "h-save"],
             },
+            id: "c",
+            kind: "chapter",
           },
         ];
 
         for (const item of actions) {
-          assert.deepStrictEqual(
-            yield* addedBy([item], inChapter("c-save")),
-            [],
-            item.id
-          );
+          const problems = yield* addedBy([item], inChapter("c-save"));
+          assert.deepStrictEqual(problems, [], item.id);
         }
       })
   );

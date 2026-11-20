@@ -37,28 +37,28 @@ const items = [
   [
     "/api/suggestions",
     {
-      id: "s-one",
-      target: { kind: "structure", id: "page" },
-      field: "oneLiner",
-      before: "Shows the map and records notes.",
       after: "Shows the map and saves each note.",
+      before: "Shows the map and records notes.",
+      field: "oneLiner",
+      id: "s-one",
+      target: { id: "page", kind: "structure" },
     },
   ],
   [
     "/api/answers",
     {
-      id: "a-one",
-      target: { kind: "structure", id: "page" },
-      question: "Q-P1",
-      text: "Yes, 2000 characters.",
       answeredOn: "2026-11-02",
+      id: "a-one",
+      question: "Q-P1",
+      target: { id: "page", kind: "structure" },
+      text: "Yes, 2000 characters.",
     },
   ],
   [
     "/api/questions",
     {
       id: "q-one",
-      target: { kind: "structure", id: "server" },
+      target: { id: "server", kind: "structure" },
       text: "Should the server retry a failed write?",
     },
   ],
@@ -74,7 +74,7 @@ const items = [
     "/api/notes",
     {
       id: "n-hop",
-      target: { kind: "hop", id: "h-save" },
+      target: { id: "h-save", kind: "hop" },
       text: "Why not a socket?",
     },
   ],
@@ -89,7 +89,7 @@ const bodyOf = (value: Readonly<Record<string, Schema.Json>>) =>
 
 /** The review map served, with every item sent and frozen into batch 1. */
 const frozenOverHttp = Effect.gen(function* () {
-  const { root, home, serve } = yield* serveReviewMap({}, []);
+  const { home, root, serve } = yield* serveReviewMap({}, []);
 
   let revision = 0;
 
@@ -112,7 +112,7 @@ const frozenOverHttp = Effect.gen(function* () {
 
   assert.strictEqual(frozen.status, 200, frozen.body);
 
-  return { root, home, prompt: (yield* decodeFrozen(frozen.body)).prompt };
+  return { home, prompt: (yield* decodeFrozen(frozen.body)).prompt, root };
 }).pipe(Effect.provide(NodeServices.layer));
 
 describe("the loop for words", () => {
@@ -122,7 +122,8 @@ describe("the loop for words", () => {
       Effect.gen(function* () {
         const { home } = yield* frozenOverHttp;
 
-        const proposals = yield* decodeProposals(yield* proposalsText(home));
+        const proposalsJson = yield* proposalsText(home);
+        const proposals = yield* decodeProposals(proposalsJson);
 
         assert.deepStrictEqual(
           Arr.map(proposals.batches?.[0]?.items ?? [], ({ kind }) => kind),
@@ -257,8 +258,8 @@ describe("the loop for words", () => {
         assert.deepStrictEqual(
           spot,
           Option.some({
-            kind: "note",
             id: "n-spot",
+            kind: "note",
             target: { kind: "spot", x: 14.5, y: 3 },
             text: "A cache could sit here.",
           })

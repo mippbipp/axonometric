@@ -41,7 +41,7 @@ export const structureChangeToLayout: {
 );
 
 /** A footprint in words, such as `x 4, y 2, w 2, d 2`. */
-export const describePlacement = ({ x, y, w, d }: Placement) =>
+export const describePlacement = ({ d, w, x, y }: Placement) =>
   `x ${x}, y ${y}, w ${w}, d ${d}`;
 
 /**
@@ -55,17 +55,17 @@ export const referencesTo: {
     id: string
   ): (
     data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">
-  ) => readonly string[];
+  ) => ReadonlyArray<string>;
   (
     data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">,
     id: string
-  ): readonly string[];
+  ): ReadonlyArray<string>;
 } = dual(
   2,
   (
     data: Pick<MapData, "structures" | "hops" | "flows" | "chapters">,
     id: string
-  ): readonly string[] => {
+  ): ReadonlyArray<string> => {
     const hops = Arr.filter(
       data.hops,
       ({ from, to }) => from === id || to === id
@@ -123,13 +123,13 @@ export const referencesTo: {
 
 /** What `structureBreakage` needs to know about the map. */
 export interface StructureLanding {
-  readonly layout: Layout;
-  readonly structureIds: ReadonlySet<string>;
   /** The map's data, which a deletion is checked against. */
   readonly data: Pick<
     MapData,
     "structures" | "hops" | "flows" | "chapters" | "groups"
   >;
+  readonly layout: Layout;
+  readonly structureIds: ReadonlySet<string>;
 }
 
 const unknownGroup = (
@@ -159,10 +159,10 @@ export const structureBreakage: {
   2,
   (
     change: StructureChange,
-    { layout, structureIds, data }: StructureLanding
+    { data, layout, structureIds }: StructureLanding
   ): Option.Option<string> => {
     if (change.action === "add") {
-      const { structure: made, at } = change;
+      const { at, structure: made } = change;
 
       return Option.orElse(unknownGroup(data, made.group), () =>
         Option.map(
@@ -212,16 +212,16 @@ export const structureBreakage: {
  * change only.
  */
 export const droppedIntoGroup = ({
-  data,
-  layout,
-  id,
   at,
+  data,
+  id,
+  layout,
   revealed,
 }: {
-  readonly data: Pick<MapData, "groups" | "structures">;
-  readonly layout: Layout;
-  readonly id: string;
   readonly at: Placement;
+  readonly data: Pick<MapData, "groups" | "structures">;
+  readonly id: string;
+  readonly layout: Layout;
   readonly revealed?: ReadonlySet<string> | undefined;
 }): Option.Option<string> => {
   const own = Arr.findFirst(
@@ -266,12 +266,12 @@ const checkedSpots = 300;
 
 /** Where a new structure goes when the engineer hasn't picked a spot. */
 export interface DefaultSpot {
-  readonly spot: Placement;
   /**
    * How many warnings the proposed map gains from a structure at `spot`.
    * Nothing is the aim; more than that means no spot within reach was clear.
    */
   readonly added: number;
+  readonly spot: Placement;
 }
 
 /** The gap between two ground rectangles, 0 when they touch or overlap. */
@@ -296,22 +296,22 @@ const centreGap = (a: Placement, b: Placement): number =>
  */
 export const defaultSpotFor = ({
   data,
-  layout,
   group,
-  shape,
+  layout,
   name,
+  shape,
 }: {
   readonly data: MapData;
-  readonly layout: Layout;
   readonly group: string;
-  readonly shape: Structure["shape"];
+  readonly layout: Layout;
   readonly name: string;
+  readonly shape: Structure["shape"];
 }): DefaultSpot => {
   // The structure the page would draw for this add, code and all: the name
   // tag holds the code, so a probe with another code is checked at another
   // width.
   const probe: Structure = structureOfNew(
-    { id: probeId, name, shape, group, status: "planned" },
+    { group, id: probeId, name, shape, status: "planned" },
     new Set(Arr.map(data.structures, ({ code }) => code))
   );
 
@@ -350,17 +350,17 @@ export const defaultSpotFor = ({
     { onNone: () => beside, onSome: ({ box }) => box }
   );
 
-  const { w, d } = defaultFootprint;
+  const { d, w } = defaultFootprint;
   const others = Rec.values(layout.structures);
   const columns = Math.ceil((base.w + w + 2 * defaultSpotRadius) / 0.5);
   const rows = Math.ceil((base.d + d + 2 * defaultSpotRadius) / 0.5);
 
   const grid = Arr.flatMap(Arr.range(0, columns), (column) =>
     Arr.map(Arr.range(0, rows), (row): Placement => ({
+      d,
+      w,
       x: base.x - w - defaultSpotRadius + column * 0.5,
       y: base.y - d - defaultSpotRadius + row * 0.5,
-      w,
-      d,
     }))
   );
 
@@ -383,7 +383,7 @@ export const defaultSpotFor = ({
     const added = addedAt(spot);
 
     if (best === undefined || added < best.added) {
-      best = { spot, added };
+      best = { added, spot };
     }
 
     if (added === 0) {
@@ -391,5 +391,5 @@ export const defaultSpotFor = ({
     }
   }
 
-  return best ?? { spot: beside, added: addedAt(beside) };
+  return best ?? { added: addedAt(beside), spot: beside };
 };

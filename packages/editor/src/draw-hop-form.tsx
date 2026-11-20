@@ -76,18 +76,18 @@ export function DrawHopForm() {
   const changeOf = (to: string, made: string) => ({
     action: "add" as const,
     hop: {
-      id: newHopId(made === "" ? "hop" : made),
       from: draft.from,
-      to,
+      id: newHopId(made === "" ? "hop" : made),
       label: made,
+      to,
     },
   });
 
   return (
     <form
-      data-draw-hop
       aria-label="Draw a hop"
       className="flex flex-col gap-2 text-xs"
+      data-draw-hop
       onSubmit={(event) => {
         event.preventDefault();
 
@@ -103,7 +103,7 @@ export function DrawHopForm() {
 
         if (refusal !== undefined) {
           setFailure(refusal);
-          panel?.show({ refusal, problems: [] });
+          panel?.show({ problems: [], refusal });
 
           return;
         }
@@ -125,7 +125,7 @@ export function DrawHopForm() {
           const why = Option.getOrUndefined(Result.getFailure(outcome));
 
           setFailure(why);
-          panel?.show({ refusal: why, problems: [] });
+          panel?.show({ problems: [], refusal: why });
         });
       }}
     >
@@ -137,15 +137,15 @@ export function DrawHopForm() {
       <label className="flex flex-col gap-1" htmlFor={`${id}-to`}>
         <span className="opacity-70">To</span>
         <select
-          id={`${id}-to`}
-          data-draw="to"
-          value={draft.to ?? ""}
           className={fieldClass}
+          data-draw="to"
+          id={`${id}-to`}
           onChange={(event) => {
             drafting.pick(
               event.target.value === "" ? null : event.target.value
             );
           }}
+          value={draft.to ?? ""}
         >
           <option value="">Pick a structure…</option>
           {Arr.map(targets, (other) => (
@@ -158,44 +158,44 @@ export function DrawHopForm() {
       <label className="flex flex-col gap-1" htmlFor={`${id}-label`}>
         <span className="opacity-70">Label</span>
         <input
-          id={`${id}-label`}
-          data-draw="label"
-          type="text"
-          value={label}
-          maxLength={maxHopLabelLength}
           autoComplete="off"
-          ref={focusOnOpen}
           className={fieldClass}
+          data-draw="label"
+          id={`${id}-label`}
+          maxLength={maxHopLabelLength}
           onChange={(event) => {
             setFailure(undefined);
             setLabel(event.target.value);
           }}
+          ref={focusOnOpen}
+          type="text"
+          value={label}
         />
       </label>
       {failure === undefined ? null : (
-        <p data-draw-failure className="border-refused border-l-2 pl-2">
+        <p className="border-refused border-l-2 pl-2" data-draw-failure>
           {failure}
         </p>
       )}
       <div className="flex gap-1.5">
         <button
-          type="submit"
-          data-draw="submit"
           className={controlClass}
+          data-draw="submit"
           disabled={
             draft.to === null ||
             label.trim() === "" ||
             sending ||
             !connections.canPropose
           }
+          type="submit"
         >
           Propose hop
         </button>
         <button
-          type="button"
-          data-draw="cancel"
           className={controlClass}
+          data-draw="cancel"
           onClick={close}
+          type="button"
         >
           Cancel
         </button>

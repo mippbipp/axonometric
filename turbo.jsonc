@@ -1,6 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "stream",
+  "agentGuidance": false,
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -19,7 +20,7 @@
     },
     // oxlint/oxfmt run from the repo root, so they are Root Tasks backed by
     // the root package.json scripts of the same names. Run them through
-    // `pnpm ox` and `pnpm ox:fix`, which call turbo.
+    // `bun run ox` and `bun run ox:fix`, which call turbo.
     // `lint` and `format` are independent checks, so they stay
     // parallel; only the fixing variants are ordered, because `lint:fix`
     // rewrites the files `format:fix` then has to format.
@@ -31,6 +32,10 @@
     "//#format:fix": {
       "dependsOn": ["//#lint:fix"],
       "cache": false,
+    },
+    // Node tests for the root scripts, such as the test lock.
+    "//#test:scripts": {
+      "inputs": ["scripts/**"],
     },
     // Full `tsc --noEmit` for the root-owned files.
     "//#typecheck": {},

@@ -8,9 +8,9 @@ import { useReview } from "./review-context.ts";
 
 /** What the dialog shows once a batch is frozen. */
 interface Sent {
-  readonly frozen: FreezeAnswer;
   /** Whether the prompt reached the clipboard. */
   readonly copied: boolean;
+  readonly frozen: FreezeAnswer;
 }
 
 /**
@@ -64,23 +64,23 @@ function PromptBox({
   return (
     <div className="flex flex-col gap-1">
       <label
-        htmlFor={id}
         className="text-xs tracking-widest uppercase opacity-70"
+        htmlFor={id}
       >
         Prompt for your agent
       </label>
       <textarea
-        id={id}
-        ref={ref}
-        data-review-prompt
-        readOnly
-        spellCheck={false}
-        rows={10}
-        value={prompt}
         className="border-ink bg-face text-ink focus-visible:outline-ink resize-y border p-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
+        data-review-prompt
+        id={id}
         onFocus={(event) => {
           event.currentTarget.select();
         }}
+        readOnly
+        ref={ref}
+        rows={10}
+        spellCheck={false}
+        value={prompt}
       />
     </div>
   );
@@ -141,7 +141,7 @@ export function ReadyForReview() {
       // Tried right after the answer arrives. A browser that wants a click
       // for the clipboard refuses, and the dialog shows the prompt instead.
       copyToClipboard(frozen.prompt, (copied) => {
-        setSent({ frozen, copied });
+        setSent({ copied, frozen });
         setBusy(false);
       });
     });
@@ -163,43 +163,43 @@ export function ReadyForReview() {
     <>
       {showButton ? (
         <button
-          type="button"
-          data-ready-for-review
           className={controlClass}
+          data-ready-for-review
           disabled={!review.canWrite || busy || open === 0}
+          onClick={press}
           title={
             open === 0
               ? "Add a note, a suggestion or an answer, or move a structure first"
               : "Freeze these into a batch and copy a prompt for your agent"
           }
-          onClick={press}
+          type="button"
         >
           {busy ? "Saving…" : `Ready for review · ${open}`}
         </button>
       ) : null}
       {failure === undefined ? null : (
         <output
-          data-review-failure
           className="border-refused max-w-64 border-l-2 pl-2 text-xs"
+          data-review-failure
         >
           {failure}
         </output>
       )}
       <dialog
-        ref={dialog}
-        data-review-dialog
         aria-labelledby={titleId}
         className="border-ink bg-paper text-ink m-auto max-w-lg overscroll-contain border-2 p-0 font-mono backdrop:bg-black/40"
+        data-review-dialog
         onClose={() => {
           setSent(null);
         }}
+        ref={dialog}
       >
         {sent === null ? null : (
           <div className="flex flex-col gap-3 p-4 text-sm">
             <h2
-              id={titleId}
-              data-review-title
               className="text-base font-medium text-balance"
+              data-review-title
+              id={titleId}
             >
               Batch {sent.frozen.batch.number} is ready for your agent
             </h2>
@@ -208,7 +208,7 @@ export function ReadyForReview() {
                 ? "The prompt is copied. Paste it into your agent."
                 : "Your browser blocked the clipboard. The prompt is selected below. Copy it and paste it into your agent."}
             </p>
-            <p data-review-summary-note className="text-xs opacity-80">
+            <p className="text-xs opacity-80" data-review-summary-note>
               The list in the prompt is a summary. The full details are in{" "}
               <code translate="no">{sent.frozen.home}/proposals.json</code>.
             </p>
@@ -220,16 +220,16 @@ export function ReadyForReview() {
               You can keep editing. New changes go in batch{" "}
               {sent.frozen.batch.number + 1}.
             </p>
-            <form method="dialog" className="flex gap-1.5">
+            <form className="flex gap-1.5" method="dialog">
               <button
-                type="button"
-                data-review-copy
                 className={controlClass}
+                data-review-copy
                 onClick={copyAgain}
+                type="button"
               >
                 Copy the prompt
               </button>
-              <button type="submit" data-review-close className={controlClass}>
+              <button className={controlClass} data-review-close type="submit">
                 Close
               </button>
             </form>

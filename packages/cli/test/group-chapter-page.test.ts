@@ -3,11 +3,11 @@ import { Array as Arr, Effect, String as Str } from "effect";
 import type { Page } from "playwright";
 
 import {
+  assertCount,
+  assertTextIncludes,
   click,
-  count,
   goToChapterPaused,
   showViewFitted,
-  textOf,
   waitFor,
   waitTimeout,
 } from "./browser.ts";
@@ -79,7 +79,7 @@ describe("creating a group", () => {
     "from two selected structures, drawn in the pending look in both views",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-save");
         yield* makeGroup(page, "Data layer");
@@ -96,18 +96,17 @@ describe("creating a group", () => {
 
         for (const which of ["iso", "plan"] as const) {
           yield* showViewFitted(page, which);
-          assert.strictEqual(yield* count(page, "[data-pending-zone]"), 1);
-          assert.strictEqual(
-            yield* count(
-              page,
-              '[data-structure="server"][data-pending="true"]'
-            ),
+          yield* assertCount(page, "[data-pending-zone]", 1);
+
+          yield* assertCount(
+            page,
+            '[data-structure="server"][data-pending="true"]',
             1
           );
         }
 
         // The side index lists the new group with its members.
-        assert.include(yield* textOf(page, "[data-side-index]"), "Data layer");
+        yield* assertTextIncludes(page, "[data-side-index]", "Data layer");
         assert.deepStrictEqual(errors, []);
       }),
     90_000
@@ -123,8 +122,9 @@ describe("creating a group", () => {
         yield* Effect.promise(() =>
           page.locator("[data-new-group-title]").fill("Spare")
         );
-        assert.include(
-          yield* textOf(page, "[data-new-group-members]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-new-group-members]",
           "starts empty"
         );
         yield* click(page, "[data-new-group-submit]");
@@ -163,8 +163,9 @@ describe("renaming a group", () => {
         // The Pending tab names the title the map has now, not the new one.
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-kind="group"]');
-        assert.include(
-          yield* textOf(page, '[data-review-kind="group"]'),
+        yield* assertTextIncludes(
+          page,
+          '[data-review-kind="group"]',
           "Rename the group The loop to The save loop"
         );
         yield* click(page, '[role="tab"][data-tab="details"]');
@@ -193,8 +194,9 @@ describe("renaming a group", () => {
         );
         yield* click(page, "[data-group-rename]");
         yield* waitFor(page, "[data-group-failure]");
-        assert.include(
-          yield* textOf(page, "[data-group-failure]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-group-failure]",
           "already has a group"
         );
       }),
@@ -220,25 +222,27 @@ describe("a chapter proposal", () => {
 
         // c-save shows the ring, and a chapter that also draws the structure
         // does not.
-        assert.strictEqual(
-          yield* count(
-            page,
-            '[data-chapter-mark="hide"][data-chapter-mark-of="server"]'
-          ),
+        yield* assertCount(
+          page,
+          '[data-chapter-mark="hide"][data-chapter-mark-of="server"]',
           1
         );
 
         yield* goToChapterPaused(page, "c-all");
-        assert.strictEqual(yield* count(page, '[data-structure="server"]'), 1);
-        assert.strictEqual(yield* count(page, "[data-chapter-mark]"), 0);
-        assert.strictEqual(
-          yield* count(page, '[data-structure="server"][data-pending="true"]'),
+        yield* assertCount(page, '[data-structure="server"]', 1);
+        yield* assertCount(page, "[data-chapter-mark]", 0);
+
+        yield* assertCount(
+          page,
+          '[data-structure="server"][data-pending="true"]',
           0
         );
 
         yield* goToChapterPaused(page, "c-save");
-        assert.strictEqual(
-          yield* count(page, '[data-structure="server"][data-pending="true"]'),
+
+        yield* assertCount(
+          page,
+          '[data-structure="server"][data-pending="true"]',
           1
         );
       }),
@@ -260,11 +264,8 @@ describe("a chapter proposal", () => {
         );
 
         yield* goToChapterPaused(page, "c-page");
-        assert.strictEqual(yield* count(page, "[data-chapter-mark]"), 0);
-        assert.strictEqual(
-          yield* count(page, '[data-structure="pull-request"]'),
-          0
-        );
+        yield* assertCount(page, "[data-chapter-mark]", 0);
+        yield* assertCount(page, '[data-structure="pull-request"]', 0);
       }),
     90_000
   );
@@ -282,8 +283,9 @@ describe("a chapter proposal", () => {
             .click({ button: "right" })
         );
         yield* waitFor(page, '[data-structure-menu="proposals"]');
-        assert.include(
-          yield* textOf(page, '[data-menu="chapter-toggle"]'),
+        yield* assertTextIncludes(
+          page,
+          '[data-menu="chapter-toggle"]',
           "Hide from this chapter"
         );
         yield* click(page, '[data-menu="chapter-toggle"]');
@@ -381,45 +383,46 @@ describe("the Pending tab", () => {
         yield* click(page, '[role="tab"][data-tab="pending"]');
         yield* waitFor(page, '[data-review-section="chapter"]');
 
-        assert.strictEqual(yield* count(page, "[data-review-section]"), 2);
-        assert.include(
-          yield* textOf(page, '[data-review-section="diagram"] h3'),
+        yield* assertCount(page, "[data-review-section]", 2);
+
+        yield* assertTextIncludes(
+          page,
+          '[data-review-section="diagram"] h3',
           "Diagram changes"
         );
-        assert.include(
-          yield* textOf(page, '[data-review-section="chapter"] h3'),
+
+        yield* assertTextIncludes(
+          page,
+          '[data-review-section="chapter"] h3',
           "Chapter changes"
         );
-        assert.strictEqual(
-          yield* count(
-            page,
-            '[data-review-section="chapter"] [data-review-kind="chapter"]'
-          ),
+
+        yield* assertCount(
+          page,
+          '[data-review-section="chapter"] [data-review-kind="chapter"]',
           1
         );
-        assert.strictEqual(
-          yield* count(
-            page,
-            '[data-review-section="diagram"] [data-review-kind="chapter"]'
-          ),
+
+        yield* assertCount(
+          page,
+          '[data-review-section="diagram"] [data-review-kind="chapter"]',
           0
         );
 
         // Each item is listed once, and there's no old structures heading.
         const ids = yield* Effect.promise(() =>
-          page.evaluate<readonly string[]>(
+          page.evaluate<ReadonlyArray<string>>(
             `[...document.querySelectorAll("[data-side-panel] [data-review-item]")].map((row) => row.getAttribute("data-review-item"))`
           )
         );
 
         assert.isAbove(ids.length, 2);
         assert.strictEqual(new Set(ids).size, ids.length, Arr.join(ids, ", "));
-        assert.strictEqual(yield* count(page, "[data-pending-structures]"), 0);
-        assert.strictEqual(
-          yield* count(
-            page,
-            "[data-side-panel] h3:text-is('Structure proposals')"
-          ),
+        yield* assertCount(page, "[data-pending-structures]", 0);
+
+        yield* assertCount(
+          page,
+          "[data-side-panel] h3:text-is('Structure proposals')",
           0
         );
       }),
@@ -428,8 +431,8 @@ describe("the Pending tab", () => {
 });
 
 /** Every pending ring piece that crosses a visible name tag, code chip, zone title or hop label. */
-const ringsOverText = (report: DrawingReport): readonly string[] => {
-  const text: readonly Drawn[] = [...report.text, ...report.chips];
+const ringsOverText = (report: DrawingReport): ReadonlyArray<string> => {
+  const text: ReadonlyArray<Drawn> = [...report.text, ...report.chips];
 
   return Arr.flatMap(report.rings, ({ id, segment }) =>
     Arr.flatMap(text, (other) =>
@@ -446,7 +449,7 @@ describe("the pending rings and lines", () => {
     "stay clear of every name tag, chip, zone title and hop label, in both views",
     () =>
       Effect.gen(function* () {
-        const { page, errors } = yield* served;
+        const { errors, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-save");
         yield* makeGroup(page, "Data layer");
@@ -482,15 +485,15 @@ describe("the pending rings and lines", () => {
 });
 
 /** The warnings as one line each, for an assertion's message. */
-const words = (found: readonly { message: string; isNew: boolean }[]) =>
+const words = (found: ReadonlyArray<{ isNew: boolean; message: string }>) =>
   Arr.join(
-    Arr.map(found, ({ message, isNew }) => `${isNew ? "NEW " : ""}${message}`),
+    Arr.map(found, ({ isNew, message }) => `${isNew ? "NEW " : ""}${message}`),
     " | "
   );
 
 const warnings = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<readonly { message: string; isNew: boolean }[]>(
+    page.evaluate<ReadonlyArray<{ isNew: boolean; message: string }>>(
       `[...document.querySelectorAll("[data-drag-warning]")].map((item) => ({ message: item.querySelector("[data-warning-message]").textContent, isNew: item.getAttribute("data-warning-new") === "true" }))`
     )
   );
@@ -525,7 +528,7 @@ describe("the warnings panel for group and chapter proposals", () => {
         assert.isTrue(
           Arr.some(
             open,
-            ({ message, isNew }) =>
+            ({ isNew, message }) =>
               isNew &&
               /zones of groups "loop" and "data-layer-\w+" overlap/u.test(
                 message
@@ -533,8 +536,9 @@ describe("the warnings panel for group and chapter proposals", () => {
           ),
           words(open)
         );
-        assert.include(
-          yield* textOf(page, "[data-warning-badge]"),
+        yield* assertTextIncludes(
+          page,
+          "[data-warning-badge]",
           "New from this change"
         );
 
@@ -569,7 +573,7 @@ describe("the warnings panel for group and chapter proposals", () => {
         assert.isTrue(
           Arr.some(
             shown,
-            ({ message, isNew }) =>
+            ({ isNew, message }) =>
               isNew &&
               Str.includes("overlap")(message) &&
               Str.includes('chapter "c-save"')(message)
@@ -593,7 +597,7 @@ describe("the chapter details for a proposal", () => {
         yield* waitFor(page, '[data-play-pending="order"]');
 
         const moved = yield* Effect.promise(() =>
-          page.evaluate<readonly string[]>(
+          page.evaluate<ReadonlyArray<string>>(
             `[...document.querySelectorAll('[data-play-pending="order"] [data-play-state]')].map((el) => el.textContent)`
           )
         );
@@ -603,8 +607,10 @@ describe("the chapter details for a proposal", () => {
 
         yield* click(page, '[data-play-toggle="h-store"]');
         yield* waitFor(page, '[data-play-pending="unplay"]');
-        assert.include(
-          yield* textOf(page, '[data-play-pending="unplay"] [data-play-state]'),
+
+        yield* assertTextIncludes(
+          page,
+          '[data-play-pending="unplay"] [data-play-state]',
           "Proposed to stop playing"
         );
 
@@ -613,8 +619,10 @@ describe("the chapter details for a proposal", () => {
         );
         yield* click(page, "[data-add-play-submit]");
         yield* waitFor(page, '[data-play-pending="play"]');
-        assert.include(
-          yield* textOf(page, '[data-play-pending="play"] [data-play-state]'),
+
+        yield* assertTextIncludes(
+          page,
+          '[data-play-pending="play"] [data-play-state]',
           "Proposed to play"
         );
       }),
@@ -628,28 +636,30 @@ describe("the chapter details for a proposal", () => {
         const { page } = yield* served;
 
         yield* goToChapterPaused(page, "c-save");
-        assert.strictEqual(yield* count(page, "[data-chapter-legend]"), 0);
+        yield* assertCount(page, "[data-chapter-legend]", 0);
 
         yield* click(page, '[data-reveal="pull-request"]');
         yield* waitFor(page, '[data-legend="reveal"]');
-        assert.include(
-          yield* textOf(page, '[data-legend="reveal"]'),
+        yield* assertTextIncludes(
+          page,
+          '[data-legend="reveal"]',
           "Proposed to show"
         );
-        assert.strictEqual(yield* count(page, '[data-legend="hide"]'), 0);
+        yield* assertCount(page, '[data-legend="hide"]', 0);
 
         yield* click(page, '[data-structure="proposals"]');
         yield* click(page, '[data-chapter-toggle="hide"]');
         yield* unpin(page);
         yield* waitFor(page, '[data-legend="hide"]');
-        assert.include(
-          yield* textOf(page, '[data-legend="hide"]'),
+        yield* assertTextIncludes(
+          page,
+          '[data-legend="hide"]',
           "Proposed to hide"
         );
 
         // Another chapter shows none of it.
         yield* goToChapterPaused(page, "c-page");
-        assert.strictEqual(yield* count(page, "[data-chapter-legend]"), 0);
+        yield* assertCount(page, "[data-chapter-legend]", 0);
       }),
     90_000
   );

@@ -20,10 +20,11 @@ const focusedControl = (page: Page) =>
 
 /** The pipeline map's read-only file, at its last chapter. */
 const lastChapter = Effect.gen(function* () {
-  const opened = yield* buildAndOpen(yield* pipelineMap, "flake-pipeline");
+  const pipelineMapFiles = yield* pipelineMap;
+  const opened = yield* buildAndOpen(pipelineMapFiles, "flake-pipeline");
 
   yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
+    opened.page.setViewportSize({ height: 800, width: 1280 })
   );
   yield* click(opened.page, '[data-chapter-rail] button[data-chapter="c-all"]');
   yield* Effect.promise(() =>
@@ -48,7 +49,7 @@ const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
   const { readFile } = yield* Effect.promise(() => import("node:fs/promises"));
   const bytes = yield* Effect.promise(() => readFile(path));
 
-  return { name: download.suggestedFilename(), bytes };
+  return { bytes, name: download.suggestedFilename() };
 });
 
 const chooseWhite = Effect.fnUntraced(function* (page: Page) {
@@ -58,19 +59,19 @@ const chooseWhite = Effect.fnUntraced(function* (page: Page) {
 });
 
 interface SvgReport {
-  readonly rootRole: string | null;
-  readonly labelledBy: string | null;
-  readonly firstChildren: readonly string[];
-  readonly titleText: string;
   readonly descText: string;
-  readonly ids: readonly string[];
-  /** Every `#id` the file refers to, by `url()`, `href` or ARIA. */
-  readonly references: readonly string[];
   /** Every `url()` or `href` that doesn't point inside the file. */
-  readonly external: readonly string[];
-  readonly text: string;
+  readonly external: ReadonlyArray<string>;
+  readonly firstChildren: ReadonlyArray<string>;
+  readonly ids: ReadonlyArray<string>;
+  readonly labelledBy: string | null;
+  /** Every `#id` the file refers to, by `url()`, `href` or ARIA. */
+  readonly references: ReadonlyArray<string>;
+  readonly rootRole: string | null;
   /** The text of each <style> element. */
-  readonly styleElements: readonly string[];
+  readonly styleElements: ReadonlyArray<string>;
+  readonly text: string;
+  readonly titleText: string;
 }
 
 /** Parses an SVG file in the page and reports what's in it. */
@@ -121,7 +122,7 @@ const decoder = new TextDecoder();
 
 /** The colour of a PNG's top left pixel, read through a canvas. */
 const cornerPixel = (page: Page, bytes: Uint8Array) =>
-  inPage<readonly number[]>(
+  inPage<ReadonlyArray<number>>(
     page,
     `(async () => {
       const image = new Image();
@@ -158,24 +159,24 @@ const relativeCentres = (page: Page, selector: (id: string) => string) =>
 const Binding = Schema.Struct({ elementId: Schema.String });
 
 const ExcalidrawElement = Schema.Struct({
-  id: Schema.String,
-  type: Schema.String,
-  frameId: Schema.NullOr(Schema.String),
-  containerId: Schema.optionalKey(Schema.String),
   boundElements: Schema.Array(
     Schema.Struct({ id: Schema.String, type: Schema.String })
   ),
-  startBinding: Schema.optionalKey(Schema.NullOr(Binding)),
+  containerId: Schema.optionalKey(Schema.String),
   endBinding: Schema.optionalKey(Schema.NullOr(Binding)),
+  frameId: Schema.NullOr(Schema.String),
+  id: Schema.String,
+  startBinding: Schema.optionalKey(Schema.NullOr(Binding)),
+  type: Schema.String,
 });
 
 const ExcalidrawFile = Schema.Struct({
+  appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
+  elements: Schema.Array(ExcalidrawElement),
+  files: Schema.Record(Schema.String, Schema.Unknown),
+  source: Schema.String,
   type: Schema.Literal("excalidraw"),
   version: Schema.Literal(2),
-  source: Schema.String,
-  elements: Schema.Array(ExcalidrawElement),
-  appState: Schema.Struct({ viewBackgroundColor: Schema.String }),
-  files: Schema.Record(Schema.String, Schema.Unknown),
 });
 
 const decodeExcalidraw = Schema.decodeUnknownEffect(
@@ -188,14 +189,14 @@ describe("export", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors, requests } = yield* lastChapter;
+          const { errors, page, requests } = yield* lastChapter;
 
-          const names = yield* inPage<readonly string[]>(
+          const names = yield* inPage<ReadonlyArray<string>>(
             page,
             `[...document.querySelectorAll("[data-map-layer] [data-structure]")].map((element) => element.getAttribute("aria-label"))`
           );
 
-          const { name, bytes } = yield* exportFile(page, "svg");
+          const { bytes, name } = yield* exportFile(page, "svg");
           const report = yield* svgReport(page, decoder.decode(bytes));
           const prefix = "flake-pipeline-iso-chapter-8-";
 
@@ -319,10 +320,8 @@ describe("export", () => {
           const white = yield* exportFile(page, "png");
 
           assert.strictEqual(white.name, "flake-pipeline-iso-chapter-8.png");
-          assert.deepStrictEqual(
-            yield* cornerPixel(page, white.bytes),
-            [255, 255, 255, 255]
-          );
+          const whiteCornerPixel = yield* cornerPixel(page, white.bytes);
+          assert.deepStrictEqual(whiteCornerPixel, [255, 255, 255, 255]);
         })
       ),
     60_000
@@ -341,7 +340,7 @@ describe("export", () => {
             '[data-chapter-rail] button[data-chapter="c-monday"]'
           );
 
-          const { name, bytes } = yield* exportFile(page, "excalidraw");
+          const { bytes, name } = yield* exportFile(page, "excalidraw");
           const file = yield* decodeExcalidraw(decoder.decode(bytes));
 
           assert.strictEqual(name, "flake-pipeline.excalidraw");
@@ -369,19 +368,24 @@ describe("export", () => {
           yield* Effect.promise(() =>
             page.locator("[data-export-menu]").waitFor()
           );
-          assert.strictEqual(yield* focusedControl(page), "svg");
+          const focusedOnOpen = yield* focusedControl(page);
+          assert.strictEqual(focusedOnOpen, "svg");
 
           yield* press(page, "ArrowDown");
-          assert.strictEqual(yield* focusedControl(page), "png");
+          const focusedAfterDown = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterDown, "png");
           yield* press(page, "End");
-          assert.strictEqual(yield* focusedControl(page), "background");
+          const focusedAfterEnd = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterEnd, "background");
 
           // The background option is drawn as a checkbox in both states.
           const row = page.locator('[data-export-item="background"]');
 
-          assert.include(yield* Effect.promise(() => row.textContent()), "☐");
+          const uncheckedRow = yield* Effect.promise(() => row.textContent());
+          assert.include(uncheckedRow, "☐");
           yield* press(page, " ");
-          assert.include(yield* Effect.promise(() => row.textContent()), "☑");
+          const checkedRow = yield* Effect.promise(() => row.textContent());
+          assert.include(checkedRow, "☑");
 
           const checked = yield* Effect.promise(() =>
             page
@@ -391,9 +395,11 @@ describe("export", () => {
 
           assert.strictEqual(checked, "true");
           yield* press(page, "ArrowDown");
-          assert.strictEqual(yield* focusedControl(page), "svg");
+          const focusedAfterWrapDown = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterWrapDown, "svg");
           yield* press(page, "ArrowUp");
-          assert.strictEqual(yield* focusedControl(page), "background");
+          const focusedAfterUp = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterUp, "background");
 
           // The map's keys stay off while the menu has focus.
           yield* press(page, "v");
@@ -402,13 +408,14 @@ describe("export", () => {
           );
 
           yield* press(page, "Escape");
-          assert.strictEqual(
-            yield* Effect.promise(() =>
-              page.locator("[data-export-menu]").count()
-            ),
-            0
+
+          const menuCountAfterEscape = yield* Effect.promise(() =>
+            page.locator("[data-export-menu]").count()
           );
-          assert.strictEqual(yield* focusedControl(page), "export");
+
+          assert.strictEqual(menuCountAfterEscape, 0);
+          const focusedAfterClose = yield* focusedControl(page);
+          assert.strictEqual(focusedAfterClose, "export");
 
           // Tab from the open menu closes it and moves focus on, off the menu.
           yield* press(page, "Enter");
@@ -416,19 +423,19 @@ describe("export", () => {
             page.locator("[data-export-menu]").waitFor()
           );
           yield* press(page, "Tab");
-          assert.strictEqual(
-            yield* Effect.promise(() =>
-              page.locator("[data-export-menu]").count()
-            ),
-            0
+
+          const menuCountAfterTab = yield* Effect.promise(() =>
+            page.locator("[data-export-menu]").count()
           );
-          assert.isTrue(
-            yield* inPage<boolean>(
-              page,
-              `document.activeElement !== document.body && document.activeElement.closest("[data-export-menu]") === null && document.activeElement.dataset.control !== "export"`
-            ),
-            "focus moved on from the menu"
+
+          assert.strictEqual(menuCountAfterTab, 0);
+
+          const focusMovedOn = yield* inPage<boolean>(
+            page,
+            `document.activeElement !== document.body && document.activeElement.closest("[data-export-menu]") === null && document.activeElement.dataset.control !== "export"`
           );
+
+          assert.isTrue(focusMovedOn, "focus moved on from the menu");
         })
       ),
     60_000
@@ -461,7 +468,7 @@ describe("export", () => {
             "pipeline"
           );
 
-          const { name, bytes } = yield* exportFile(opened.page, "svg");
+          const { bytes, name } = yield* exportFile(opened.page, "svg");
           const text = decoder.decode(bytes);
           const report = yield* svgReport(opened.page, text);
 
@@ -508,7 +515,8 @@ describe("export", () => {
           );
 
           assert.strictEqual(live, "polite");
-          assert.strictEqual(yield* inPage<number>(page, "window.__saved"), 0);
+          const savedCount = yield* inPage<number>(page, "window.__saved");
+          assert.strictEqual(savedCount, 0);
         }
       })
     )

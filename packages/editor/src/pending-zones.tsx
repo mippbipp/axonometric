@@ -29,19 +29,19 @@ export function PendingZones({ scene }: { readonly scene: Scene }) {
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
-      {Arr.flatMap(scene.zones, ({ zone, plate }) =>
+      {Arr.flatMap(scene.zones, ({ plate, zone }) =>
         pending.has(zone.group.id)
           ? [
               <OutlineLines
-                key={zone.group.id}
+                className="stroke-pending"
+                closed
+                dash="6 4"
                 id={zone.group.id}
+                key={zone.group.id}
+                mark={{ "data-pending-zone": zone.group.id }}
                 points={plate}
                 text={text}
-                closed
-                className="stroke-pending"
                 width={1.6}
-                dash="6 4"
-                mark={{ "data-pending-zone": zone.group.id }}
               />,
             ]
           : []

@@ -9,14 +9,14 @@ import type { LoadedRevision } from "./history-client.ts";
 export type Opened =
   | { readonly revision: number; readonly status: "loading" }
   | {
+      readonly message: string;
       readonly revision: number;
       readonly status: "failed";
-      readonly message: string;
     }
   | {
       readonly revision: number;
-      readonly status: "ready";
       readonly saved: Revision;
+      readonly status: "ready";
     };
 
 /**
@@ -52,8 +52,8 @@ export const useOpenedRevision = (
             Effect.sync(() => {
               setOpened(
                 loaded.ok
-                  ? { revision, status: "ready", saved: loaded.revision }
-                  : { revision, status: "failed", message: loaded.message }
+                  ? { revision, saved: loaded.revision, status: "ready" }
+                  : { message: loaded.message, revision, status: "failed" }
               );
             })
           ),
@@ -71,5 +71,5 @@ export const useOpenedRevision = (
 
   useEffect(() => stop, [stop]);
 
-  return { opened, open, close };
+  return { close, open, opened };
 };

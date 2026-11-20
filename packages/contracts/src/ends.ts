@@ -49,8 +49,8 @@ export const cornerMargin = 0.5;
  */
 export const endRange = (length: number) =>
   length < 1
-    ? { low: 0, high: length }
-    : { low: cornerMargin, high: length - cornerMargin };
+    ? { high: length, low: 0 }
+    : { high: length - cornerMargin, low: cornerMargin };
 
 /** How far apart two neighbouring ends sit along their edge. */
 export const endGap: {
@@ -77,7 +77,7 @@ export const fitsEdge: {
   (length: number, ends: EdgeEnds): boolean;
 } = dual(2, (length: number, { heads, starts }: EdgeEnds) => {
   const { head, start } = endWidths.iso;
-  const { low, high } = endRange(length);
+  const { high, low } = endRange(length);
 
   if (heads + starts <= 1 + 1e-9) {
     return true;

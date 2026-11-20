@@ -127,8 +127,8 @@ export class NoFreePort extends Schema.TaggedError<
   NoFreePort,
   { readonly brand: unique symbol }
 >()("NoFreePort", {
-  host: Schema.String,
   first: Schema.Int,
+  host: Schema.String,
   last: Schema.Int,
 }) {
   public override get [CliError.userMessage]() {
@@ -148,23 +148,23 @@ export class ListenFailed extends Schema.TaggedError<
 
 /** How `serve` was asked to run. */
 export interface ServeOptions {
+  /** Host names to answer besides loopback, for a reverse proxy. */
+  readonly allowHosts: ReadonlyArray<string>;
   readonly home: string;
+  readonly host: string;
+  readonly open: boolean;
   /** A port to use and nothing else, or none to find a free one. */
   readonly port: Option.Option<number>;
-  readonly host: string;
-  /** Host names to answer besides loopback, for a reverse proxy. */
-  readonly allowHosts: readonly string[];
-  readonly open: boolean;
 }
 
 /** What the map files say now, as serve holds it. */
 interface Held {
   /** The last good map, with the accepted layout only. */
   readonly good: MapState;
-  /** What `proposals.json` held when it last decoded. */
-  readonly proposals: Proposals;
   /** The revisions that read, newest first. */
   readonly history: HistoryList;
+  /** What `proposals.json` held when it last decoded. */
+  readonly proposals: Proposals;
   /** The `MapRejected` saying why the map files don't make a map, while they don't. */
   readonly rejected: Option.Option<ServerEvent>;
 }
@@ -176,7 +176,7 @@ const shownState = ({ good, proposals }: Held): MapState => ({
 });
 
 /** The events that describe `held` to a page. */
-const eventsOf = (held: Held): readonly ServerEvent[] =>
+const eventsOf = (held: Held): ReadonlyArray<ServerEvent> =>
   Option.match(held.rejected, {
     onNone: () => [
       ServerEvent.cases.MapUpdated.make({ state: shownState(held) }),
@@ -253,17 +253,17 @@ const listenOn = (host: string, port: number) =>
     );
 
     return NodeHttpServer.make(() => node, {
+      gracefulShutdownTimeout: Duration.seconds(1),
       host,
       port,
-      gracefulShutdownTimeout: Duration.seconds(1),
     }).pipe(Effect.tap(() => closeConnections));
   }).pipe(
     Effect.asSome,
-    Effect.catchTag("ServeError", (error) =>
-      isAddressInUse(error.cause)
+    Effect.catchTag("ServeError", (failure) =>
+      isAddressInUse(failure.cause)
         ? Effect.succeedNone
         : Effect.fail(
-            ListenFailed.make({ host, reason: describeError(error.cause) })
+            ListenFailed.make({ host, reason: describeError(failure.cause) })
           )
     )
   );
@@ -290,8 +290,8 @@ const listen = Effect.fnUntraced(function* (
   }
 
   return yield* NoFreePort.make({
-    host,
     first: defaultPort,
+    host,
     last: defaultPort + portsToTry - 1,
   });
 });
@@ -324,22 +324,25 @@ const printedRejection = (error: MapInvalid) =>
 const rebuildHeld = (home: string) =>
   rebuild(home, "serve").pipe(
     Effect.tap(printNotes),
-    Effect.map(({ state, proposals }) => (held: Held): Held => ({
+    Effect.map(({ proposals, state }) => (held: Held): Held => ({
       ...held,
       good: state,
       proposals,
       rejected: Option.none(),
     })),
-    Effect.catchTag("MapInvalid", (error) =>
-      Effect.as(Console.error(printedRejection(error)), (held: Held): Held => ({
-        ...held,
-        rejected: Option.some(
-          ServerEvent.cases.MapRejected.make({
-            summary: summaryOf(error),
-            problems: error.problems,
-          })
-        ),
-      }))
+    Effect.catchTag("MapInvalid", (invalid) =>
+      Effect.as(
+        Console.error(printedRejection(invalid)),
+        (held: Held): Held => ({
+          ...held,
+          rejected: Option.some(
+            ServerEvent.cases.MapRejected.make({
+              problems: invalid.problems,
+              summary: summaryOf(invalid),
+            })
+          ),
+        })
+      )
     )
   );
 
@@ -352,8 +355,6 @@ const reloadProposals = (home: string) =>
   loadProposals(home).pipe(
     Effect.flatMap(
       Result.match({
-        onSuccess: (proposals) =>
-          Effect.succeed((held: Held): Held => ({ ...held, proposals })),
         onFailure: (problems) => {
           const lines = Arr.map(
             problems,
@@ -370,6 +371,8 @@ const reloadProposals = (home: string) =>
 
           return Effect.as(Console.error(message), (held: Held): Held => held);
         },
+        onSuccess: (proposals) =>
+          Effect.succeed((held: Held): Held => ({ ...held, proposals })),
       })
     )
   );
@@ -407,10 +410,10 @@ const watchMap = (home: string, ready: Latch.Latch) =>
 
     return fs
       .watch(home, {
-        recursive: true,
         onReady: () => {
           ready.openUnsafe();
         },
+        recursive: true,
       })
       .pipe(
         Stream.flatMap((event) => {
@@ -443,16 +446,16 @@ const heartbeats = Stream.tick(heartbeatInterval).pipe(
 
 /** The HTTP routes: the API, behind the Host check and the write guard. */
 const routes = ({
-  home,
-  held,
-  stopping,
   answeredHosts,
+  held,
+  home,
+  stopping,
 }: {
-  readonly home: string;
-  readonly held: SubscriptionRef.SubscriptionRef<Held>;
-  readonly stopping: Latch.Latch;
   /** The host names the server answers; any other Host gets a 403. */
   readonly answeredHosts: ReadonlySet<string>;
+  readonly held: SubscriptionRef.SubscriptionRef<Held>;
+  readonly home: string;
+  readonly stopping: Latch.Latch;
 }) => {
   // The history is sent when the stream opens and when the list changes, not
   // with every edit to the pending changes.
@@ -472,24 +475,24 @@ const routes = ({
   );
 
   const served = {
-    events: Str.slice(1)(serverPaths.events),
-    pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
     accept: Str.slice(1)(serverPaths.accept),
-    notes: Str.slice(1)(serverPaths.notes),
-    editItem: Str.slice(1)(serverPaths.editItem),
-    discardItem: Str.slice(1)(serverPaths.discardItem),
-    suggestions: Str.slice(1)(serverPaths.suggestions),
     answers: Str.slice(1)(serverPaths.answers),
-    questions: Str.slice(1)(serverPaths.questions),
-    structure: Str.slice(1)(serverPaths.structure),
-    hop: Str.slice(1)(serverPaths.hop),
-    flow: Str.slice(1)(serverPaths.flow),
-    group: Str.slice(1)(serverPaths.group),
     chapter: Str.slice(1)(serverPaths.chapter),
-    freeze: Str.slice(1)(serverPaths.freeze),
+    discardItem: Str.slice(1)(serverPaths.discardItem),
     dismiss: Str.slice(1)(serverPaths.dismiss),
-    reopen: Str.slice(1)(serverPaths.reopen),
+    editItem: Str.slice(1)(serverPaths.editItem),
+    events: Str.slice(1)(serverPaths.events),
+    flow: Str.slice(1)(serverPaths.flow),
+    freeze: Str.slice(1)(serverPaths.freeze),
+    group: Str.slice(1)(serverPaths.group),
     history: Str.slice(1)(serverPaths.history),
+    hop: Str.slice(1)(serverPaths.hop),
+    notes: Str.slice(1)(serverPaths.notes),
+    pendingLayout: Str.slice(1)(serverPaths.pendingLayout),
+    questions: Str.slice(1)(serverPaths.questions),
+    reopen: Str.slice(1)(serverPaths.reopen),
+    structure: Str.slice(1)(serverPaths.structure),
+    suggestions: Str.slice(1)(serverPaths.suggestions),
   };
 
   const tell = (proposals: Proposals) =>
@@ -534,7 +537,7 @@ const routes = ({
             Effect.flatMap(({ good }) =>
               writePendingLayout(
                 home,
-                { write: payload, hops: good.data.hops, data: good.data },
+                { data: good.data, hops: good.data.hops, write: payload },
                 (proposals) =>
                   SubscriptionRef.update(held, (current) => ({
                     ...current,
@@ -549,12 +552,12 @@ const routes = ({
           )
         )
         .handle("accept", ({ payload }) =>
-          acceptPendingLayout(home, payload, ({ state, proposals, history }) =>
+          acceptPendingLayout(home, payload, ({ history, proposals, state }) =>
             SubscriptionRef.update(held, (current) => ({
               ...current,
               good: state,
-              proposals,
               history,
+              proposals,
               rejected: Option.none(),
             }))
           ).pipe(
@@ -639,8 +642,8 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   const held = yield* SubscriptionRef.make<Held>({
     good: first.state,
-    proposals: first.proposals,
     history: yield* loadHistory(home, []),
+    proposals: first.proposals,
     rejected: Option.none(),
   });
 
@@ -673,7 +676,8 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
     const { history } = yield* SubscriptionRef.get(held);
 
-    yield* SubscriptionRef.update(held, yield* reloadHistory(home, history));
+    const reloadedHistory = yield* reloadHistory(home, history);
+    yield* SubscriptionRef.update(held, reloadedHistory);
   }).pipe(
     Effect.scoped,
     Effect.catchCause((cause) =>
@@ -717,10 +721,10 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   const app = yield* HttpRouter.toHttpEffect(
     routes({
-      home,
-      held,
-      stopping,
       answeredHosts,
+      held,
+      home,
+      stopping,
     })
   );
 
@@ -770,10 +774,13 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
       );
     }
 
+    const now = yield* DateTime.now;
+    const since = DateTime.formatIso(now);
+
     const recorded: ServerState = {
-      url: `http://${urlHostName}:${portOf(server)}`,
       pid: process.pid,
-      since: DateTime.formatIso(yield* DateTime.now),
+      since,
+      url: `http://${urlHostName}:${portOf(server)}`,
     };
 
     yield* recordServer(home, recorded).pipe(Scope.provide(scope));
