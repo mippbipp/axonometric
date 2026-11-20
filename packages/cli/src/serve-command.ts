@@ -64,6 +64,7 @@ const StatusReport = Schema.Union([
     pages: ServerStatus.fields.pages,
     now: ServerStatus.fields.now,
     decisions: Schema.optionalKey(ServerStatus.fields.decisions),
+    truncated: Schema.optionalKey(ServerStatus.fields.truncated),
   }),
   Schema.Struct({ home: Schema.String, running: Schema.Literal(false) }),
 ]);
@@ -167,11 +168,11 @@ const status = Effect.fn("status")(function* (
   }
 
   const state = server.value;
-  const { decisions, now, pages } = yield* askStatus(state, since);
+  const { decisions, now, pages, truncated } = yield* askStatus(state, since);
   const running = { home, running: true as const, ...state, now, pages };
 
   const report = yield* encodeReport(
-    Option.isSome(since) ? { ...running, decisions } : running
+    Option.isSome(since) ? { ...running, decisions, truncated } : running
   );
 
   yield* Console.log(

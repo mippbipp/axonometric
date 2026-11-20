@@ -3,7 +3,7 @@ import type {
   LayoutChange,
   ServerStatus,
 } from "@axonometric/contracts";
-import { Array as Arr, Clock, DateTime, Effect, Ref } from "effect";
+import { Array as Arr, Clock, DateTime, Effect, Option, Ref } from "effect";
 import type { Scope } from "effect";
 
 /** How many decisions the server keeps. Older ones are dropped. */
@@ -32,7 +32,13 @@ export interface AgentDecisions {
  * `now` neither misses a decision nor repeats one.
  */
 export const makeAgentDecisions = Effect.gen(function* () {
-  const log = yield* Ref.make<ReadonlyArray<AgentDecision>>([]);
+  // `droppedAt` is when the newest decision cut for the cap was recorded.
+  // Decisions only rise in time, so one was lost after `since` exactly when
+  // `droppedAt` is later than `since`.
+  const log = yield* Ref.make<{
+    readonly droppedAt: number;
+    readonly held: ReadonlyArray<AgentDecision>;
+  }>({ droppedAt: Number.NEGATIVE_INFINITY, held: [] });
   const pages = yield* Ref.make(0);
   const last = yield* Ref.make(Number.NEGATIVE_INFINITY);
 
@@ -61,18 +67,31 @@ export const makeAgentDecisions = Effect.gen(function* () {
 
       const at = yield* stamp;
 
-      yield* Ref.update(log, (held) =>
-        Arr.takeRight(
-          [...held, ...Arr.map(agent, (change) => ({ at, change, decision }))],
-          maxDecisions
-        )
-      );
+      yield* Ref.update(log, ({ droppedAt, held }) => {
+        const all = [
+          ...held,
+          ...Arr.map(agent, (change) => ({ at, change, decision })),
+        ];
+
+        const [dropped, kept] = Arr.splitAt(
+          all,
+          Math.max(0, all.length - maxDecisions)
+        );
+
+        return {
+          droppedAt: Option.match(Arr.last(dropped), {
+            onNone: () => droppedAt,
+            onSome: (cut) => DateTime.toEpochMillis(cut.at),
+          }),
+          held: kept,
+        };
+      });
     }
   );
 
   const status: AgentDecisions["status"] = Effect.fnUntraced(function* (since) {
     const now = yield* stamp;
-    const held = yield* Ref.get(log);
+    const { droppedAt, held } = yield* Ref.get(log);
 
     return {
       decisions:
@@ -81,6 +100,8 @@ export const makeAgentDecisions = Effect.gen(function* () {
           : Arr.filter(held, ({ at }) => DateTime.isGreaterThan(at, since)),
       now,
       pages: yield* Ref.get(pages),
+      truncated:
+        since !== undefined && droppedAt > DateTime.toEpochMillis(since),
     };
   });
 

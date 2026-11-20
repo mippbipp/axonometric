@@ -34,6 +34,7 @@ const Report = Schema.Struct({
   now: Schema.optionalKey(ServerStatus.fields.now),
   pages: Schema.optionalKey(Schema.Int),
   running: Schema.Boolean,
+  truncated: Schema.optionalKey(ServerStatus.fields.truncated),
 });
 
 const decodeReport = Schema.decodeUnknownEffect(Schema.fromJsonString(Report));
@@ -170,6 +171,7 @@ describe("status --json", () => {
         const before = yield* statusOf(home);
 
         assert.notProperty(before, "decisions");
+        assert.notProperty(before, "truncated");
 
         yield* proposeVia(home, ["page", "--y", "3", "Tidy the loop"]);
         yield* proposeVia(home, ["server", "--w", "3", "Tidy the loop"]);
@@ -221,6 +223,8 @@ describe("status --json", () => {
           ]
         );
 
+        assert.strictEqual(after.truncated, false);
+
         const startTime = DateTime.makeUnsafe(start);
 
         for (const { at, change } of after.decisions ?? []) {
@@ -232,6 +236,7 @@ describe("status --json", () => {
         const next = yield* statusOf(home, nowOf(after));
 
         assert.deepStrictEqual(next.decisions, []);
+        assert.strictEqual(next.truncated, false);
       }).pipe(Effect.provide(NodeServices.layer)),
     60_000
   );
@@ -343,6 +348,51 @@ describe("the decision log", () => {
           );
         }
       })
+  );
+
+  it.effect("says when the cap dropped decisions after --since", () =>
+    Effect.gen(function* () {
+      const log = yield* makeAgentDecisions;
+      const epoch = DateTime.makeUnsafe(0);
+      const dropped = 10;
+
+      assert.isFalse((yield* log.status(epoch)).truncated);
+
+      for (const n of Arr.range(1, maxDecisions)) {
+        yield* log.record([agentMove(`c${n}`)], "accepted");
+      }
+
+      assert.isFalse((yield* log.status(epoch)).truncated);
+
+      const newestDropped = (yield* log.status(epoch)).decisions[dropped - 1];
+
+      assert.strictEqual(newestDropped?.change.id, `c${dropped}`);
+
+      for (const n of Arr.range(maxDecisions + 1, maxDecisions + dropped)) {
+        yield* log.record([agentMove(`c${n}`)], "accepted");
+      }
+
+      const all = yield* log.status(epoch);
+
+      assert.strictEqual(all.decisions.length, maxDecisions);
+      assert.isTrue(all.truncated);
+
+      const before = DateTime.subtract(newestDropped?.at ?? epoch, {
+        milliseconds: 1,
+      });
+
+      assert.isTrue((yield* log.status(before)).truncated);
+
+      const fromEdge = yield* log.status(newestDropped?.at);
+
+      assert.isFalse(fromEdge.truncated);
+      assert.strictEqual(fromEdge.decisions.length, maxDecisions);
+
+      const again = yield* log.status(all.now);
+
+      assert.isFalse(again.truncated);
+      assert.deepStrictEqual(again.decisions, []);
+    })
   );
 
   it.effect(

@@ -75,6 +75,12 @@ export const ServerStatus = Schema.Struct({
   now: Schema.DateTimeUtcFromString,
   /** The decisions after `since`, oldest first. Empty without `since`. */
   decisions: Schema.Array(AgentDecision),
+  /**
+   * Whether the server dropped decisions after `since`, because it keeps only
+   * the newest 50. When true, `decisions` starts partway through what the
+   * engineer decided. Always false without `since`.
+   */
+  truncated: Schema.Boolean,
 });
 
 export type ServerStatus = typeof ServerStatus.Type;
