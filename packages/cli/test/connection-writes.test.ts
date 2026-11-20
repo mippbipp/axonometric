@@ -3,7 +3,7 @@ import type { Batch, BatchItem } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Schema } from "effect";
 
-import { proposalsText, serveReviewMap } from "./harness.ts";
+import { proposalsText, serveReviewMap, mapKeys } from "./harness.ts";
 import { post } from "./revisions.ts";
 
 // Plain HTTP writes for hop labels and flow names, for the requests a page
@@ -64,7 +64,7 @@ const file = `${JSON.stringify(
   2
 )}\n`;
 
-const served = serveReviewMap({ "review/map/proposals.json": file }, []);
+const served = serveReviewMap({ [mapKeys("review").proposalsFile]: file }, []);
 
 const json = (value: Readonly<Record<string, Schema.Json>>) =>
   JSON.stringify(value);

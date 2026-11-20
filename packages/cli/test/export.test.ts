@@ -10,7 +10,7 @@ import type { Page } from "playwright";
 
 import { click, inPage, literal, press } from "./browser.ts";
 import { minimalMap, pipelineMap } from "./fixtures.ts";
-import { buildAndOpen } from "./harness.ts";
+import { buildAndOpen, mapKeys } from "./harness.ts";
 
 const focusedControl = (page: Page) =>
   inPage<string | null>(
@@ -447,12 +447,12 @@ describe("export", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const files = yield* minimalMap;
-          const data = files["pipeline/map/data.mjs"] ?? "";
+          const data = files[mapKeys("pipeline").dataFile] ?? "";
 
           const opened = yield* buildAndOpen(
             {
               ...files,
-              "pipeline/map/data.mjs": Arr.reduce(
+              [mapKeys("pipeline").dataFile]: Arr.reduce(
                 [
                   ['name: "Flake updater"', `name: 'Fish & "chips" <1>'`],
                   ['label: "update → build"', `label: 'a < b & "c"'`],

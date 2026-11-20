@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 
 import { pipelineMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapIn } from "./harness.ts";
 
 describe("check on the pipeline map", () => {
   it.effect(
@@ -14,7 +14,7 @@ describe("check on the pipeline map", () => {
 
         const result = yield* runCli(home, [
           "check",
-          `${home}/flake-pipeline/map`,
+          mapIn(home, "flake-pipeline").home,
         ]);
 
         assert.strictEqual(result.exitCode, 0, result.stdout + result.stderr);

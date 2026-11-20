@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 
 import { updatePipelineMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
 describe("the update pipeline map", () => {
   it.effect(
@@ -11,12 +11,12 @@ describe("the update pipeline map", () => {
       Effect.gen(function* () {
         const updatePipelineMapFiles = yield* updatePipelineMap;
         const home = yield* makeHome(updatePipelineMapFiles);
-        const map = `${home}/update-pipeline/map`;
+        const map = mapIn(home, "update-pipeline").home;
 
         const built = yield* runCli(home, ["build", map]);
 
         assert.strictEqual(built.exitCode, 0, built.stdout + built.stderr);
-        assert.isString(built.files["update-pipeline/map/layout.json"]);
+        assert.isString(built.files[mapKeys("update-pipeline").layoutFile]);
 
         const checked = yield* runCli(home, ["check", map]);
 

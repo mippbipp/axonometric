@@ -8,11 +8,11 @@ import {
 } from "effect";
 
 import { minimalMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
-const dataFile = "pipeline/map/data.mjs";
+const { dataFile } = mapKeys("pipeline");
 
-const layoutFile = "pipeline/map/layout.json";
+const { layoutFile } = mapKeys("pipeline");
 
 interface PlacementInput {
   readonly d: number;
@@ -57,7 +57,7 @@ const buildWith = Effect.fnUntraced(function* (
 ) {
   const home = yield* makeHome({ ...(yield* minimalMap), ...files });
 
-  return yield* runCli(home, ["build", `${home}/pipeline/map`]);
+  return yield* runCli(home, ["build", mapIn(home, "pipeline").home]);
 });
 
 describe("build", () => {
@@ -69,9 +69,9 @@ describe("build", () => {
 
         assert.strictEqual(result.stderr, "");
         assert.strictEqual(result.exitCode, 0);
-        assert.isString(result.files["pipeline/pipeline.html"]);
+        assert.isString(result.files[mapKeys("pipeline").pageFile]);
 
-        const systemMd = result.files["pipeline/SYSTEM.md"] ?? "";
+        const systemMd = result.files[mapKeys("pipeline").systemMdFile] ?? "";
 
         assert.include(systemMd, "# Flake update pipeline\n");
         assert.include(systemMd, "| `updater` | Flake updater |");
@@ -94,7 +94,7 @@ describe("build", () => {
           ]),
         });
 
-        const page = result.files["pipeline/pipeline.html"] ?? "";
+        const page = result.files[mapKeys("pipeline").pageFile] ?? "";
 
         assert.strictEqual(result.exitCode, 0);
         assert.match(
@@ -159,7 +159,7 @@ describe("build", () => {
         // The lock folder stays, holding only the .gitignore that keeps it
         // out of git.
         assert.deepStrictEqual(Arr.sort(Rec.keys(result.files), Order.String), [
-          "pipeline/map/.axonometric/.gitignore",
+          mapKeys("pipeline").gitignoreFile,
           dataFile,
           layoutFile,
         ]);

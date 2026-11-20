@@ -5,7 +5,6 @@ import {
   Array as Arr,
   Effect,
   FileSystem,
-  Path,
   pipe,
   Schema,
   String as Str,
@@ -31,7 +30,15 @@ import {
 import { drawingReport, textClashes } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
 import { fullMap } from "./fixtures.ts";
-import { makeHome, readIn, serveReviewMap, startServe } from "./harness.ts";
+import {
+  makeHome,
+  readIn,
+  serveReviewMap,
+  startServe,
+  mapKeys,
+  mapIn,
+  homeAt,
+} from "./harness.ts";
 import { acceptChanges, moveOf, resizeOf } from "./revisions.ts";
 
 // The History panel in a page that a real serve serves: two revisions made
@@ -186,7 +193,7 @@ const waitForPendingCount = Effect.fnUntraced(function* (
   wanted: number
 ) {
   for (let tries = 0; tries < 150; tries += 1) {
-    const proposalsText = yield* readIn(root, "review/map/proposals.json");
+    const proposalsText = yield* readIn(root, mapKeys("review").proposalsFile);
     const proposals = yield* decodeProposals(proposalsText);
 
     if (proposals.layout.length === wanted) {
@@ -504,11 +511,10 @@ describe("the History panel", () => {
     "compares changed text, added and removed structures and hops, with ghosts, in both views",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const fs = yield* FileSystem.FileSystem;
         const files = yield* fullMap;
         const root = yield* makeHome(files);
-        const home = path.join(root, "review", "map");
+        const { home } = mapIn(root, "review");
         const serve = yield* startServe(home, ["--port", "0"]);
 
         yield* acceptChanges(serve, {
@@ -519,7 +525,7 @@ describe("the History panel", () => {
 
         // The agent edits data.mjs: renames the server, rewords a hop, drops
         // the upstream structure and its chapter reveal, drops a hop and adds one.
-        const dataFile = path.join(home, "data.mjs");
+        const { dataFile } = homeAt(home);
         const data = yield* fs.readFileString(dataFile);
 
         yield* fs.writeFileString(
@@ -640,7 +646,10 @@ describe("the History panel", () => {
             .waitFor({ state: "visible", ...waitTimeout })
         );
 
-        const proposalsText = yield* readIn(root, "review/map/proposals.json");
+        const proposalsText = yield* readIn(
+          root,
+          mapKeys("review").proposalsFile
+        );
         const proposals = yield* decodeProposals(proposalsText);
 
         const moves = Arr.flatMap(proposals.layout, (change) =>
@@ -675,7 +684,7 @@ describe("the History panel", () => {
           { id: "page", kind: "resize", x: 2, y: 2 },
         ]);
 
-        const layoutText = yield* readIn(root, "review/map/layout.json");
+        const layoutText = yield* readIn(root, mapKeys("review").layoutFile);
         // Nothing is accepted: layout.json still has revision 2's positions,
         // and no third revision exists.
         const layout = yield* decodeLayout(layoutText);
@@ -716,11 +725,10 @@ describe("the History panel", () => {
     "lists the meaning differences in the restore dialog instead of dropping them",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const fs = yield* FileSystem.FileSystem;
         const fullMapFiles = yield* fullMap;
         const root = yield* makeHome(fullMapFiles);
-        const home = path.join(root, "review", "map");
+        const { home } = mapIn(root, "review");
         const serve = yield* startServe(home, ["--port", "0"]);
 
         yield* acceptChanges(serve, {
@@ -729,7 +737,7 @@ describe("the History panel", () => {
           message: "Before the rewrite",
         });
 
-        const dataFile = path.join(home, "data.mjs");
+        const { dataFile } = homeAt(home);
         const data = yield* fs.readFileString(dataFile);
 
         yield* fs.writeFileString(

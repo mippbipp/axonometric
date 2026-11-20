@@ -1,10 +1,8 @@
 import {
   commitBatch,
   commitMessage,
-  historyFolder,
   Layout,
   maxMessageLength,
-  revisionFileName,
 } from "@axonometric/contracts";
 import type {
   Batch,
@@ -17,15 +15,15 @@ import {
   DateTime,
   Effect,
   Option,
-  Path,
   Record as Rec,
   Result,
   Schema,
   String as Str,
 } from "effect";
 
-import { siteOutputs, systemOf } from "./build.ts";
+import { siteOutputs } from "./build.ts";
 import { encodeRevision, nextRevision } from "./history.ts";
+import type { HomePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
 import { encodeLayout, encodeProposals } from "./map-files.ts";
 import { loadReviewMap, ReviewRefused } from "./review-shared.ts";
@@ -54,11 +52,9 @@ export interface Committed {
  * can't all be applied.
  */
 export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
-  home: string,
+  paths: HomePaths,
   given: Option.Option<string>
 ) {
-  const path = yield* Path.Path;
-
   const tooLong = Option.filter(
     Option.map(given, Str.trim),
     (message) => message.length > maxMessageLength
@@ -71,11 +67,11 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
     });
   }
 
-  yield* withLock(home, "commit");
+  yield* withLock(paths, "commit");
 
-  const map = yield* loadReviewMap(home, "commit");
+  const map = yield* loadReviewMap(paths, "commit");
 
-  const number = yield* nextRevision(home);
+  const number = yield* nextRevision(paths);
   const currentTime = yield* DateTime.now;
   const at = DateTime.formatIso(currentTime);
 
@@ -136,30 +132,30 @@ export const commitOldestBatch = Effect.fn("commitOldestBatch")(function* (
     data: map.data,
     layout,
     sourceLinks: map.sourceLinks,
-    system: yield* systemOf(home),
+    system: paths.system,
   };
 
-  const site = yield* siteOutputs(state, home);
+  const site = yield* siteOutputs(state, paths);
 
   yield* writeAll([
     {
       content: yield* encodeRevision(revision),
       exclusive: true,
-      file: path.join(home, historyFolder, revisionFileName(number)),
+      file: paths.revisionFile(number),
     },
     ...(changedLayout
       ? [
           {
             content: yield* encodeLayout(layout),
-            file: path.join(home, "layout.json"),
+            file: paths.layoutFile,
           },
         ]
       : []),
     {
       content: yield* encodeProposals(proposals),
-      file: path.join(home, "proposals.json"),
+      file: paths.proposalsFile,
     },
-    ...site.outputs,
+    ...site,
   ]);
 
   const count = (kind: string) =>

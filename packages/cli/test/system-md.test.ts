@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option, String as Str } from "effect";
 
 import { fullMap, minimalMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
 /** The full map's SYSTEM.md, built once by the first test that asks for it. */
 // oxlint-disable-next-line node/no-sync, eslint/no-restricted-properties -- Effect.cached only makes the memo, which every test then shares, and a module-level memo has no test scope to run in
@@ -11,11 +11,11 @@ const builtSystemMd = Effect.runSync(
     Effect.gen(function* () {
       const fullMapFiles = yield* fullMap;
       const home = yield* makeHome(fullMapFiles);
-      const result = yield* runCli(home, ["build", `${home}/review/map`]);
+      const result = yield* runCli(home, ["build", mapIn(home, "review").home]);
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
 
-      return result.files["review/SYSTEM.md"] ?? "";
+      return result.files[mapKeys("review").systemMdFile] ?? "";
     })
   )
 );
@@ -187,8 +187,11 @@ describe("the SYSTEM.md build writes", () => {
     Effect.gen(function* () {
       const minimalMapFiles = yield* minimalMap;
       const home = yield* makeHome(minimalMapFiles);
-      const result = yield* runCli(home, ["build", `${home}/pipeline/map`]);
-      const systemMd = result.files["pipeline/SYSTEM.md"] ?? "";
+      const result = yield* runCli(home, [
+        "build",
+        mapIn(home, "pipeline").home,
+      ]);
+      const systemMd = result.files[mapKeys("pipeline").systemMdFile] ?? "";
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       assert.deepStrictEqual(

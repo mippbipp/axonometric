@@ -51,6 +51,8 @@ import { HttpApiBuilder } from "effect/http-api";
 import { acceptPendingLayout } from "./accept-writes.ts";
 import { printNotes, rebuild } from "./build.ts";
 import { loadHistory, readRevision } from "./history.ts";
+import { homePaths, mapFileNames } from "./home-paths.ts";
+import type { HomePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
 import { loadProposals } from "./map-files.ts";
 import type { MapInvalid } from "./map-files.ts";
@@ -321,8 +323,8 @@ const printedRejection = (error: MapInvalid) =>
  * Rebuilds the map and returns how what the server holds changes. A map
  * with errors keeps the last good map, and is printed.
  */
-const rebuildHeld = (home: string) =>
-  rebuild(home, "serve").pipe(
+const rebuildHeld = (paths: HomePaths) =>
+  rebuild(paths, "serve").pipe(
     Effect.tap(printNotes),
     Effect.map(({ proposals, state }) => (held: Held): Held => ({
       ...held,
@@ -351,8 +353,8 @@ const rebuildHeld = (home: string) =>
  * changes. A file that doesn't decode leaves the pending changes as they
  * were and is printed; the next rebuild, or `check`, reports it.
  */
-const reloadProposals = (home: string) =>
-  loadProposals(home).pipe(
+const reloadProposals = (paths: HomePaths) =>
+  loadProposals(paths).pipe(
     Effect.flatMap(
       Result.match({
         onFailure: (problems) => {
@@ -363,7 +365,7 @@ const reloadProposals = (home: string) =>
 
           const message = Arr.join(
             [
-              `${home}: proposals.json doesn't decode, so serve keeps the pending changes it has.`,
+              `${paths.home}: ${mapFileNames.proposals} doesn't decode, so serve keeps the pending changes it has.`,
               ...lines,
             ],
             "\n"
@@ -382,15 +384,13 @@ const reloadProposals = (home: string) =>
  * revisions already held aren't read again, because a revision is never
  * rewritten.
  */
-const reloadHistory = (home: string, known: HistoryList) =>
-  loadHistory(home, known).pipe(
+const reloadHistory = (paths: HomePaths, known: HistoryList) =>
+  loadHistory(paths, known).pipe(
     Effect.map((history) => (held: Held): Held => ({ ...held, history }))
   );
 
 /** Changes to these rebuild the map. */
-const mapFiles = new Set(["data.mjs", "layout.json"]);
-
-const proposalsFileName = "proposals.json";
+const mapFiles = new Set<string>([mapFileNames.data, mapFileNames.layout]);
 
 /** What the watcher calls a change in `history/`. */
 const historyChange = historyFolder;
@@ -422,7 +422,7 @@ const watchMap = (home: string, ready: Latch.Latch) =>
 
           if (folder === ".") {
             return mapFiles.has(name) ||
-              name === proposalsFileName ||
+              name === mapFileNames.proposals ||
               name === historyChange
               ? Stream.make(name)
               : Stream.empty;
@@ -448,13 +448,13 @@ const heartbeats = Stream.tick(heartbeatInterval).pipe(
 const routes = ({
   answeredHosts,
   held,
-  home,
+  paths,
   stopping,
 }: {
   /** The host names the server answers; any other Host gets a 403. */
   readonly answeredHosts: ReadonlySet<string>;
   readonly held: SubscriptionRef.SubscriptionRef<Held>;
-  readonly home: string;
+  readonly paths: HomePaths;
   readonly stopping: Latch.Latch;
 }) => {
   // The history is sent when the stream opens and when the list changes, not
@@ -516,7 +516,7 @@ const routes = ({
         Effect.map(SubscriptionRef.get(held), ({ history }) => history)
       )
       .handle("revision", ({ params }) =>
-        readRevision(home, params.n).pipe(
+        readRevision(paths, params.n).pipe(
           Effect.flatMap(
             Option.match({
               onNone: () => RevisionNotFound.make({ revision: params.n }),
@@ -536,7 +536,7 @@ const routes = ({
           SubscriptionRef.get(held).pipe(
             Effect.flatMap(({ good }) =>
               writePendingLayout(
-                home,
+                paths,
                 { data: good.data, hops: good.data.hops, write: payload },
                 (proposals) =>
                   SubscriptionRef.update(held, (current) => ({
@@ -552,7 +552,7 @@ const routes = ({
           )
         )
         .handle("accept", ({ payload }) =>
-          acceptPendingLayout(home, payload, ({ history, proposals, state }) =>
+          acceptPendingLayout(paths, payload, ({ history, proposals, state }) =>
             SubscriptionRef.update(held, (current) => ({
               ...current,
               good: state,
@@ -580,13 +580,13 @@ const routes = ({
   const reviewing =
     <P, A, E, R>(
       write: (
-        home: string,
+        paths: HomePaths,
         payload: P,
         written: (proposals: Proposals) => Effect.Effect<void>
       ) => Effect.Effect<A, E, R>
     ) =>
     ({ payload }: { readonly payload: P }) =>
-      write(home, payload, tell);
+      write(paths, payload, tell);
 
   const reviewHandlers = HttpApiBuilder.group(ServerApi, "review", (group) =>
     group
@@ -628,28 +628,29 @@ const routes = ({
  */
 export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   const { home, host } = options;
+  const paths = yield* homePaths(home);
   const scope = yield* Effect.scope;
 
-  const other = yield* runningServer(home);
+  const other = yield* runningServer(paths);
 
   if (Option.isSome(other)) {
     return yield* ServerRunning.make({ home, server: other.value.url });
   }
 
-  const first = yield* rebuild(home, "serve");
+  const first = yield* rebuild(paths, "serve");
 
   yield* printNotes(first);
 
   const held = yield* SubscriptionRef.make<Held>({
     good: first.state,
-    history: yield* loadHistory(home, []),
+    history: yield* loadHistory(paths, []),
     proposals: first.proposals,
     rejected: Option.none(),
   });
 
   const watching = yield* Latch.make();
 
-  const onMapChange = rebuildHeld(home).pipe(
+  const onMapChange = rebuildHeld(paths).pipe(
     Effect.flatMap((next) => SubscriptionRef.update(held, next)),
     Effect.catchCause((cause) =>
       Console.error(`serve could not rebuild the map: ${Cause.pretty(cause)}`)
@@ -658,11 +659,11 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   // Pending changes don't affect the accepted map, SYSTEM.md or the page, so
   // a change to proposals.json alone is read and broadcast without a rebuild.
-  const onProposalsChange = reloadProposals(home).pipe(
+  const onProposalsChange = reloadProposals(paths).pipe(
     Effect.flatMap((next) => SubscriptionRef.update(held, next)),
     Effect.catchCause((cause) =>
       Console.error(
-        `serve could not read proposals.json: ${Cause.pretty(cause)}`
+        `serve could not read ${mapFileNames.proposals}: ${Cause.pretty(cause)}`
       )
     )
   );
@@ -672,11 +673,11 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   // It reads and replaces the list under the lock that every accept holds,
   // so it can't put back a list that an accept has since moved on from.
   const onHistoryChange = Effect.gen(function* () {
-    yield* withLock(home, "serve");
+    yield* withLock(paths, "serve");
 
     const { history } = yield* SubscriptionRef.get(held);
 
-    const reloadedHistory = yield* reloadHistory(home, history);
+    const reloadedHistory = yield* reloadHistory(paths, history);
     yield* SubscriptionRef.update(held, reloadedHistory);
   }).pipe(
     Effect.scoped,
@@ -692,7 +693,9 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
         if (Arr.some(changed, (name) => mapFiles.has(name))) {
           yield* onMapChange;
-        } else if (Arr.some(changed, (name) => name === proposalsFileName)) {
+        } else if (
+          Arr.some(changed, (name) => name === mapFileNames.proposals)
+        ) {
           yield* onProposalsChange;
         }
 
@@ -723,7 +726,7 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
     routes({
       answeredHosts,
       held,
-      home,
+      paths,
       stopping,
     })
   );
@@ -734,9 +737,9 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
   // The lock keeps two servers starting at once from both getting past the
   // check above.
   const state = yield* Effect.gen(function* () {
-    yield* withLock(home, "serve");
+    yield* withLock(paths, "serve");
 
-    const raced = yield* runningServer(home);
+    const raced = yield* runningServer(paths);
 
     if (Option.isSome(raced)) {
       return yield* ServerRunning.make({ home, server: raced.value.url });
@@ -783,7 +786,7 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
       url: `http://${urlHostName}:${portOf(server)}`,
     };
 
-    yield* recordServer(home, recorded).pipe(Scope.provide(scope));
+    yield* recordServer(paths, recorded).pipe(Scope.provide(scope));
 
     return recorded;
   }).pipe(Effect.scoped);

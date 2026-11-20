@@ -5,9 +5,9 @@ import { Array as Arr, Effect, Schema, String as Str } from "effect";
 
 import { minimalMap } from "./fixtures.ts";
 import type { HomeFiles } from "./harness.ts";
-import { buildAndOpen, makeHome, runCli } from "./harness.ts";
+import { buildAndOpen, makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
-const layoutFile = "pipeline/map/layout.json";
+const { layoutFile } = mapKeys("pipeline");
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
@@ -66,7 +66,7 @@ const withRawRoutes = Effect.fnUntraced(function* (
 const checkIn = Effect.fnUntraced(function* (files: HomeFiles) {
   const home = yield* makeHome(files);
 
-  return yield* runCli(home, ["check", `${home}/pipeline/map`]);
+  return yield* runCli(home, ["check", mapIn(home, "pipeline").home]);
 });
 
 describe("route overrides", () => {

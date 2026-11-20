@@ -6,7 +6,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Path } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn, homeAt } from "./harness.ts";
 
 /** Runs git in `cwd` and returns its exit code. */
 const git = Effect.fnUntraced(function* (
@@ -42,7 +42,7 @@ describe("init", () => {
           '// sources: [{ path: "src/api/server.ts", commit: "3f2a9c1" }],'
         );
         assert.isUndefined(result.files["docs/pipeline/map/layout.json"]);
-        assert.include(result.stdout, `Wrote ${path.join(map, "data.mjs")}.`);
+        assert.include(result.stdout, `Wrote ${homeAt(map).dataFile}.`);
         assert.include(result.stdout, "axonometric build");
 
         const checked = yield* runCli(home, ["check", map]);
@@ -67,37 +67,32 @@ describe("init", () => {
   it.effect("keeps .axonometric out of git with its own .gitignore", () =>
     Effect.gen(function* () {
       const home = yield* makeHome({});
-      const map = `${home}/pipeline/map`;
+      const map = mapIn(home, "pipeline").home;
 
       yield* runCli(home, ["init", map]);
 
       const built = yield* runCli(home, ["build", map]);
 
-      assert.strictEqual(
-        built.files["pipeline/map/.axonometric/.gitignore"],
-        "*\n"
-      );
+      assert.strictEqual(built.files[mapKeys("pipeline").gitignoreFile], "*\n");
     })
   );
 
   it.effect("refuses to overwrite an existing map", () =>
     Effect.gen(function* () {
-      const path = yield* Path.Path;
-
       const home = yield* makeHome({
-        "pipeline/map/data.mjs": "export default { mine: true };\n",
+        [mapKeys("pipeline").dataFile]: "export default { mine: true };\n",
       });
 
-      const map = path.join(home, "pipeline", "map");
+      const map = mapIn(home, "pipeline").home;
       const result = yield* runCli(home, ["init", map]);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(
         result.stderr,
-        `${path.join(map, "data.mjs")} already exists. init never overwrites a map; edit it, or pick another home folder.`
+        `${homeAt(map).dataFile} already exists. init never overwrites a map; edit it, or pick another home folder.`
       );
       assert.strictEqual(
-        result.files["pipeline/map/data.mjs"],
+        result.files[mapKeys("pipeline").dataFile],
         "export default { mine: true };\n"
       );
     }).pipe(Effect.provide(NodeServices.layer))

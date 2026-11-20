@@ -13,17 +13,17 @@ import type {
 } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  Path,
-  pipe,
-  Schema,
-  String as Str,
-} from "effect";
+import { Array as Arr, Effect, pipe, Schema, String as Str } from "effect";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import {
+  makeHome,
+  runCli,
+  startServe,
+  mapKeys,
+  homeKeys,
+  mapIn,
+} from "./harness.ts";
 import { post as postText, write } from "./revisions.ts";
 
 // Seam 1: a proposed structure through the review loop. The review map has
@@ -64,13 +64,14 @@ const homeWith = (
   dataEdit: (data: string) => string = (data) => data
 ) =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
     const files = yield* fullMap;
 
     const root = yield* makeHome({
       ...files,
-      "review/map/data.mjs": dataEdit(files["review/map/data.mjs"] ?? ""),
-      "review/map/proposals.json": fileOf({
+      [mapKeys("review").dataFile]: dataEdit(
+        files[mapKeys("review").dataFile] ?? ""
+      ),
+      [mapKeys("review").proposalsFile]: fileOf({
         batches: [batchOf(items, verdicts)],
         format: 1,
         layout: [],
@@ -79,7 +80,7 @@ const homeWith = (
       }),
     });
 
-    return { home: path.join(root, "review", "map"), root };
+    return { home: mapIn(root, "review").home, root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 /** data.mjs with a structure `id` added to the loop group. */
@@ -146,7 +147,7 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
         assert.strictEqual(committed.exitCode, 0, committed.stderr);
 
         const layout = yield* decodeLayout(
-          committed.files["layout.json"] ?? ""
+          committed.files[homeKeys.layoutFile] ?? ""
         );
 
         assert.deepStrictEqual(placement(layout, "new-1"), added.at);
@@ -195,7 +196,7 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
         assert.strictEqual(committed.exitCode, 0, committed.stderr);
 
         const layout = yield* decodeLayout(
-          committed.files["layout.json"] ?? ""
+          committed.files[homeKeys.layoutFile] ?? ""
         );
 
         assert.deepStrictEqual(placement(layout, "build-cache"), added.at);
@@ -216,7 +217,7 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
         assert.isUndefined(placement(revision.layout, "new-1"));
 
         const proposals = yield* decodeProposals(
-          committed.files["proposals.json"] ?? ""
+          committed.files[homeKeys.proposalsFile] ?? ""
         );
 
         assert.strictEqual(
@@ -242,7 +243,9 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
 
         assert.strictEqual(built.exitCode, 0, built.stderr);
 
-        const placed = yield* decodeLayout(built.files["layout.json"] ?? "");
+        const placed = yield* decodeLayout(
+          built.files[homeKeys.layoutFile] ?? ""
+        );
 
         assert.isDefined(placement(placed, "build-cache"));
         assert.notDeepEqual(placement(placed, "build-cache"), added.at);
@@ -270,7 +273,7 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
 
         // The engineer's drop wins over the spot the rebuild chose.
         const layout = yield* decodeLayout(
-          committed.files["layout.json"] ?? ""
+          committed.files[homeKeys.layoutFile] ?? ""
         );
 
         assert.deepStrictEqual(placement(layout, "build-cache"), added.at);
@@ -322,7 +325,9 @@ describe("a structure proposed on the page, through freeze, verdict and commit",
 
       assert.strictEqual(committed.exitCode, 0, committed.stderr);
 
-      const layout = yield* decodeLayout(committed.files["layout.json"] ?? "");
+      const layout = yield* decodeLayout(
+        committed.files[homeKeys.layoutFile] ?? ""
+      );
 
       assert.isUndefined(placement(layout, "new-1"));
 
@@ -369,10 +374,9 @@ describe("structure writes over HTTP", () => {
     "are saved, need a group the map has, and hold their ground against a layout write",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const fullMapFiles = yield* fullMap;
         const root = yield* makeHome(fullMapFiles);
-        const home = path.join(root, "review", "map");
+        const { home } = mapIn(root, "review");
         const serve = yield* startServe(home, ["--port", "0"]);
 
         const sent = yield* post(serve.url, "/api/structures", {

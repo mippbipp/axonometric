@@ -11,12 +11,11 @@ import {
   Effect,
   FileSystem,
   Option,
-  Path,
   Schema,
   String as Str,
 } from "effect";
 
-import { proposalsText, runCli, serveReviewMap } from "./harness.ts";
+import { proposalsText, runCli, serveReviewMap, homeAt } from "./harness.ts";
 import { post } from "./revisions.ts";
 
 // Text suggestions, answers and raised questions through the whole loop on a
@@ -272,9 +271,8 @@ describe("the loop for words", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home } = yield* frozenOverHttp;
-        const file = path.join(home, "data.mjs");
+        const file = homeAt(home).dataFile;
         const data = yield* fs.readFileString(file);
 
         yield* fs.writeFileString(

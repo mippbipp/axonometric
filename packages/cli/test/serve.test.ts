@@ -5,20 +5,26 @@ import {
   NodeSocket,
 } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Path, Predicate, Schema, String as Str } from "effect";
+import { Effect, Option, Predicate, Schema, String as Str } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { minimalMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import {
+  makeHome,
+  runCli,
+  startServe,
+  mapKeys,
+  homeKeys,
+  mapIn,
+} from "./harness.ts";
 
 /** A home folder holding the minimal map, and its path. */
 const minimalHome = Effect.gen(function* () {
-  const path = yield* Path.Path;
   const minimalMapFiles = yield* minimalMap;
   const root = yield* makeHome(minimalMapFiles);
 
-  return path.join(root, "pipeline", "map");
+  return mapIn(root, "pipeline").home;
 }).pipe(Effect.provide(NodeServices.layer));
 
 const encodeServerState = Schema.encodeEffect(
@@ -27,18 +33,16 @@ const encodeServerState = Schema.encodeEffect(
 
 /** A home with the minimal map and a state file naming `pid`, as a running `serve` would write it. */
 const homeWithStateFile = Effect.fnUntraced(function* (pid: number) {
-  const path = yield* Path.Path;
-
   const root = yield* makeHome({
     ...(yield* minimalMap),
-    "pipeline/map/.axonometric/server.json": yield* encodeServerState({
+    [mapKeys("pipeline").serverStateFile]: yield* encodeServerState({
       pid,
       since: "2026-11-01T09:00:00.000Z",
       url: "http://127.0.0.1:5999",
     }),
   });
 
-  return path.join(root, "pipeline", "map");
+  return mapIn(root, "pipeline").home;
 }, Effect.provide(NodeServices.layer));
 
 /** The PID of a child process that idles until the scope closes. */
@@ -204,13 +208,13 @@ describe("serve", () => {
           ...serve.state,
         });
 
-        assert.isDefined(status.files[".axonometric/server.json"]);
+        assert.isDefined(status.files[homeKeys.serverStateFile]);
 
         yield* serve.stop;
 
         const after = yield* runCli(home, ["status", home]);
 
-        assert.isUndefined(after.files[".axonometric/server.json"]);
+        assert.isUndefined(after.files[homeKeys.serverStateFile]);
       })
   );
 
@@ -254,7 +258,7 @@ describe("serve", () => {
         result.stderr,
         `Port ${port} on 127.0.0.1 is in use. Pick another with --port, or leave --port out to use the next free port.`
       );
-      assert.isUndefined(result.files[".axonometric/server.json"]);
+      assert.isUndefined(result.files[homeKeys.serverStateFile]);
     })
   );
 

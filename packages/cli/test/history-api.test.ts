@@ -16,7 +16,13 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, serveReviewMap, startServe } from "./harness.ts";
+import {
+  makeHome,
+  serveReviewMap,
+  startServe,
+  mapIn,
+  homeAt,
+} from "./harness.ts";
 import type { RunningServe } from "./harness.ts";
 import { acceptChanges, get, moveOf } from "./revisions.ts";
 
@@ -102,11 +108,10 @@ describe("gET /api/history", () => {
 
   it.live("lists nothing for a map with no revisions", () =>
     Effect.gen(function* () {
-      const path = yield* Path.Path;
       const fullMapFiles = yield* fullMap;
       const root = yield* makeHome(fullMapFiles);
 
-      const serve = yield* startServe(path.join(root, "review", "map"), [
+      const serve = yield* startServe(mapIn(root, "review").home, [
         "--port",
         "0",
       ]);
@@ -124,13 +129,9 @@ describe("gET /api/history", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, url } = yield* servedWithTwo;
 
-        yield* fs.writeFileString(
-          path.join(home, "history", "0003.json"),
-          "not json"
-        );
+        yield* fs.writeFileString(homeAt(home).revisionFile(3), "not json");
 
         const list = yield* decodeList((yield* get(url, "/api/history")).body);
 
@@ -148,7 +149,6 @@ describe("gET /api/history/:n", () => {
   it.live("returns the revision as saved: its data and its layout", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
       const { home, url } = yield* servedWithTwo;
 
       const sent = yield* get(url, "/api/history/1");
@@ -158,7 +158,7 @@ describe("gET /api/history/:n", () => {
       const revision = yield* decodeRevision(sent.body);
 
       const firstRevisionText = yield* fs.readFileString(
-        path.join(home, "history", "0001.json")
+        homeAt(home).revisionFile(1)
       );
 
       const onDisk = yield* decodeRevision(firstRevisionText);

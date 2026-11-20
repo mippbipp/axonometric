@@ -23,7 +23,16 @@ import {
 import { HttpClient } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, pageState, readIn, runCli, startServe } from "./harness.ts";
+import {
+  makeHome,
+  pageState,
+  readIn,
+  runCli,
+  startServe,
+  mapKeys,
+  homeKeys,
+  mapIn,
+} from "./harness.ts";
 import type { HomeFiles } from "./harness.ts";
 
 // The review commands on a temporary home folder: review, verdict and commit.
@@ -111,15 +120,13 @@ const decided: Batch["verdicts"] = {
 
 const homeWith = (proposals: string, more: HomeFiles = {}) =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
-
     const root = yield* makeHome({
       ...(yield* fullMap),
-      "review/map/proposals.json": proposals,
+      [mapKeys("review").proposalsFile]: proposals,
       ...more,
     });
 
-    return { home: path.join(root, "review", "map"), root };
+    return { home: mapIn(root, "review").home, root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
@@ -221,7 +228,7 @@ describe("review", () => {
 
       assert.strictEqual(result.exitCode, 0);
       assert.include(result.stdout, "No batch is waiting for review");
-      assert.strictEqual(result.files["proposals.json"], proposals);
+      assert.strictEqual(result.files[homeKeys.proposalsFile], proposals);
       assert.isUndefined(result.files["history/0001.json"]);
     })
   );
@@ -234,8 +241,8 @@ describe("review", () => {
       const result = yield* runCli(home, ["review", home]);
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
-      assert.strictEqual(result.files["proposals.json"], proposals);
-      assert.isUndefined(result.files[".axonometric/server.json"]);
+      assert.strictEqual(result.files[homeKeys.proposalsFile], proposals);
+      assert.isUndefined(result.files[homeKeys.serverStateFile]);
     })
   );
 });
@@ -257,7 +264,7 @@ describe("verdict", () => {
       assert.strictEqual(result.exitCode, 0, result.stderr);
 
       const proposals = yield* decodeProposals(
-        result.files["proposals.json"] ?? ""
+        result.files[homeKeys.proposalsFile] ?? ""
       );
 
       assert.deepStrictEqual(proposals.batches?.[0]?.verdicts, {
@@ -285,7 +292,7 @@ describe("verdict", () => {
 
         assert.strictEqual(result.exitCode, 1);
         assert.include(result.stderr, "needs --reason");
-        assert.strictEqual(result.files["proposals.json"], proposals);
+        assert.strictEqual(result.files[homeKeys.proposalsFile], proposals);
       }
 
       const blank = yield* runCli(home, [
@@ -298,7 +305,7 @@ describe("verdict", () => {
       ]);
 
       assert.strictEqual(blank.exitCode, 1);
-      assert.strictEqual(blank.files["proposals.json"], proposals);
+      assert.strictEqual(blank.files[homeKeys.proposalsFile], proposals);
     })
   );
 
@@ -321,7 +328,7 @@ describe("verdict", () => {
         assert.include(result.stderr, `"${kind}"`);
       }
 
-      assert.strictEqual(result.files["proposals.json"], proposals);
+      assert.strictEqual(result.files[homeKeys.proposalsFile], proposals);
     })
   );
 });
@@ -334,15 +341,15 @@ describe("commit", () => {
       });
 
       const { home, root } = yield* homeWith(proposals);
-      const before = yield* readIn(root, "review/map/layout.json");
+      const before = yield* readIn(root, mapKeys("review").layoutFile);
 
       const result = yield* runCli(home, ["commit", home]);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(result.stderr, "2 items without a verdict");
       assert.include(result.stderr, "resize-page, note-server");
-      assert.strictEqual(result.files["proposals.json"], proposals);
-      assert.strictEqual(result.files["layout.json"], before);
+      assert.strictEqual(result.files[homeKeys.proposalsFile], proposals);
+      assert.strictEqual(result.files[homeKeys.layoutFile], before);
       assert.isUndefined(result.files["history/0001.json"]);
     })
   );
@@ -383,7 +390,9 @@ describe("commit", () => {
           ["A 3 × 2 page covers the hop."]
         );
 
-        const layout = yield* decodeLayout(result.files["layout.json"] ?? "");
+        const layout = yield* decodeLayout(
+          result.files[homeKeys.layoutFile] ?? ""
+        );
 
         assert.deepStrictEqual(layout.structures.engineer, {
           d: 2,
@@ -401,7 +410,7 @@ describe("commit", () => {
         assert.deepStrictEqual(revision.layout, layout);
 
         const proposals = yield* decodeProposals(
-          result.files["proposals.json"] ?? ""
+          result.files[homeKeys.proposalsFile] ?? ""
         );
 
         assert.deepStrictEqual(proposals.batches?.[0]?.committed?.revision, 1);
@@ -416,15 +425,15 @@ describe("commit", () => {
 
       // SYSTEM.md holds no positions, so the stand-in text shows that
       // commit writes it again.
-      yield* writeIn(root, "review/SYSTEM.md", "stale");
+      yield* writeIn(root, mapKeys("review").systemMdFile, "stale");
 
       const result = yield* runCli(home, ["commit", home]);
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
-      const systemMdText = yield* readIn(root, "review/SYSTEM.md");
+      const systemMdText = yield* readIn(root, mapKeys("review").systemMdFile);
       assert.include(systemMdText, "# Review loop");
 
-      const reviewHtml = yield* readIn(root, "review/review.html");
+      const reviewHtml = yield* readIn(root, mapKeys("review").pageFile);
       // The accepted move puts the engineer at y 4.
       const state = yield* pageState(reviewHtml);
 
@@ -472,14 +481,14 @@ describe("commit", () => {
       const proposals = proposalsWith(decided);
 
       const { home } = yield* homeWith(proposals, {
-        "review/map/data.mjs": "export default { format: 1 };\n",
+        [mapKeys("review").dataFile]: "export default { format: 1 };\n",
       });
 
       const result = yield* runCli(home, ["commit", home]);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(result.stderr, "commit wrote nothing");
-      assert.strictEqual(result.files["proposals.json"], proposals);
+      assert.strictEqual(result.files[homeKeys.proposalsFile], proposals);
       assert.isUndefined(result.files["history/0001.json"]);
     })
   );
@@ -509,10 +518,10 @@ describe("commit", () => {
         const committed = yield* runCli(home, ["commit", home]);
 
         assert.strictEqual(committed.exitCode, 0, committed.stderr);
-        assert.isUndefined(committed.files[".axonometric/server.json"]);
+        assert.isUndefined(committed.files[homeKeys.serverStateFile]);
 
         const proposals = yield* decodeProposals(
-          committed.files["proposals.json"] ?? ""
+          committed.files[homeKeys.proposalsFile] ?? ""
         );
 
         assert.strictEqual(proposals.batches?.[0]?.committed?.revision, 1);
@@ -605,7 +614,7 @@ describe("a changed layout item", () => {
         assert.strictEqual(committed.exitCode, 0, committed.stderr);
 
         const layout = yield* decodeLayout(
-          committed.files["layout.json"] ?? ""
+          committed.files[homeKeys.layoutFile] ?? ""
         );
 
         // The agent's position wins; the proposal's y 4 was not applied.
@@ -674,7 +683,7 @@ describe("the length caps", () => {
 
       assert.strictEqual(over.exitCode, 1);
       assert.include(over.stderr, `limit of ${maxReasonLength}`);
-      assert.strictEqual(over.files["proposals.json"], proposals);
+      assert.strictEqual(over.files[homeKeys.proposalsFile], proposals);
 
       const exact = yield* runCli(home, [
         "verdict",
@@ -703,7 +712,7 @@ describe("the length caps", () => {
 
       assert.strictEqual(over.exitCode, 1);
       assert.include(over.stderr, `limit of ${maxMessageLength}`);
-      assert.strictEqual(over.files["proposals.json"], proposals);
+      assert.strictEqual(over.files[homeKeys.proposalsFile], proposals);
       assert.isUndefined(over.files["history/0001.json"]);
     })
   );

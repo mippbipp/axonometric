@@ -5,7 +5,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import packageJson from "../package.json" with { type: "json" };
 import { minimalMap } from "./fixtures.ts";
-import { makeHome } from "./harness.ts";
+import { makeHome, mapIn } from "./harness.ts";
 
 // Copies the built bundle into the temporary home folder and runs the copy
 // there. The home folder sits outside the repo, so no node_modules is in
@@ -80,18 +80,15 @@ describe("the built bundle", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const minimalMapFiles = yield* minimalMap;
         const home = yield* makeHome(minimalMapFiles);
 
         const result = yield* runBundle(home, ["build", "pipeline/map"]);
 
-        const page = yield* fs.readFileString(
-          path.join(home, "pipeline", "pipeline.html")
-        );
+        const page = yield* fs.readFileString(mapIn(home, "pipeline").pageFile);
 
         const systemMd = yield* fs.readFileString(
-          path.join(home, "pipeline", "SYSTEM.md")
+          mapIn(home, "pipeline").systemMdFile
         );
 
         assert.strictEqual(result.exitCode, 0, result.stderr);

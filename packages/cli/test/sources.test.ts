@@ -13,9 +13,9 @@ import {
 import { minimalMap } from "./fixtures.ts";
 import { commitAll, git, initRepo, noGit } from "./git.ts";
 import type { HomeFiles } from "./harness.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
-const dataFile = "pipeline/map/data.mjs";
+const { dataFile } = mapKeys("pipeline");
 
 /**
  * The minimal map with `sources` on its first structure. `sources` is a JS
@@ -83,7 +83,7 @@ const writeMap = Effect.fnUntraced(function* (
 
   yield* Effect.forEach(
     Rec.toEntries(files),
-    ([file, content]) => writeFile(home, file, content),
+    ([file, content = ""]) => writeFile(home, file, content),
     { concurrency: 1, discard: true }
   );
 });
@@ -93,9 +93,7 @@ const runOnMap = Effect.fnUntraced(function* (
   home: string,
   command: "build" | "check"
 ) {
-  const path = yield* Path.Path;
-
-  return yield* runCli(home, [command, path.join(home, "pipeline", "map")]);
+  return yield* runCli(home, [command, mapIn(home, "pipeline").home]);
 }, Effect.provide(NodeServices.layer));
 
 /** Writes the map in `home` with `sources`, then runs `check` on it. */
@@ -295,7 +293,6 @@ describe("check outside a git repo", () => {
 
   it.effect("says why in check --json, without counting a warning", () =>
     Effect.gen(function* () {
-      const path = yield* Path.Path;
       const home = yield* makeHome({});
 
       yield* writeMap(home, '[{ path: "src/updater.ts" }]');
@@ -303,7 +300,7 @@ describe("check outside a git repo", () => {
       const result = yield* runCli(home, [
         "check",
         "--json",
-        path.join(home, "pipeline", "map"),
+        mapIn(home, "pipeline").home,
       ]);
 
       const report = yield* decodeReport(result.stdout);
@@ -321,7 +318,6 @@ describe.skipIf(noGit)(
   () => {
     it.effect("reports sourcesSkipped as null when the checks ran", () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const { home } = yield* repoHome();
 
         yield* writeMap(home, '[{ path: "src/updater.ts" }]');
@@ -329,7 +325,7 @@ describe.skipIf(noGit)(
         const result = yield* runCli(home, [
           "check",
           "--json",
-          path.join(home, "pipeline", "map"),
+          mapIn(home, "pipeline").home,
         ]);
 
         const report = yield* decodeReport(result.stdout);
@@ -367,7 +363,10 @@ const buildWith = Effect.fnUntraced(function* (
 
   assert.strictEqual(result.exitCode, 0, result.stderr);
 
-  return { commit, systemMd: result.files["pipeline/SYSTEM.md"] ?? "" };
+  return {
+    commit,
+    systemMd: result.files[mapKeys("pipeline").systemMdFile] ?? "",
+  };
 }, Effect.provide(NodeServices.layer));
 
 const pinnedSource = (commit: string) =>
@@ -440,7 +439,7 @@ describe.skipIf(noGit)("build's source links", { timeout: 30_000 }, () => {
       const result = yield* runOnMap(home, "build");
 
       assert.include(
-        result.files["pipeline/SYSTEM.md"] ?? "",
+        result.files[mapKeys("pipeline").systemMdFile] ?? "",
         `(https://github.com/mippbipp/pipeline/blob/${commit}/src/updater.ts)`
       );
     })

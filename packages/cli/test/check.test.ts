@@ -9,13 +9,13 @@ import { Array as Arr, Effect, Schema, String as Str } from "effect";
 
 import { fullMap } from "./fixtures.ts";
 import type { HomeFiles } from "./harness.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
-const dataFile = "review/map/data.mjs";
+const { dataFile } = mapKeys("review");
 
-const layoutFile = "review/map/layout.json";
+const { layoutFile } = mapKeys("review");
 
-const proposalsFile = "review/map/proposals.json";
+const { proposalsFile } = mapKeys("review");
 
 /** A proposals.json holding `layout`, written as JSON text. */
 const proposals = (layout: string) =>
@@ -83,7 +83,7 @@ const checkWith = Effect.fnUntraced(function* (
 ) {
   const home = yield* makeHome({ ...(yield* fullMap), ...files });
 
-  return yield* runCli(home, ["check", ...flags, `${home}/review/map`]);
+  return yield* runCli(home, ["check", ...flags, mapIn(home, "review").home]);
 });
 
 /**
@@ -152,7 +152,7 @@ data.structures[1].status = "retired";`);
       const checked = yield* checkWith(files, ["--json"]);
       const report = yield* decodeReport(checked.stdout);
       const home = yield* makeHome({ ...(yield* fullMap), ...files });
-      const built = yield* runCli(home, ["build", `${home}/review/map`]);
+      const built = yield* runCli(home, ["build", mapIn(home, "review").home]);
 
       assert.strictEqual(checked.exitCode, 0);
       assert.isTrue(report.ok);
@@ -165,7 +165,7 @@ data.structures[1].status = "retired";`);
         built.stderr,
         'warning data.mjs groups[3]: group "spare" has no structures'
       );
-      assert.isString(built.files["review/SYSTEM.md"]);
+      assert.isString(built.files[mapKeys("review").systemMdFile]);
     })
   );
 
@@ -497,12 +497,12 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
     Effect.gen(function* () {
       const files = yield* editData('data.chapters[0].plays.push("h-save");');
       const home = yield* makeHome({ ...(yield* fullMap), ...files });
-      const result = yield* runCli(home, ["build", `${home}/review/map`]);
+      const result = yield* runCli(home, ["build", mapIn(home, "review").home]);
 
       assert.strictEqual(result.exitCode, 1);
       assert.include(result.stderr, "build wrote nothing.");
       assert.include(result.stderr, "error data.mjs chapters[0].plays[1]:");
-      assert.isUndefined(result.files["review/SYSTEM.md"]);
+      assert.isUndefined(result.files[mapKeys("review").systemMdFile]);
     })
   );
 
@@ -566,12 +566,15 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
         Effect.gen(function* () {
           const files = { [proposalsFile]: "{ not json" };
           const home = yield* makeHome({ ...(yield* fullMap), ...files });
-          const result = yield* runCli(home, ["build", `${home}/review/map`]);
+          const result = yield* runCli(home, [
+            "build",
+            mapIn(home, "review").home,
+          ]);
 
           assert.strictEqual(result.exitCode, 0, result.stderr);
           assert.include(result.stderr, "warning proposals.json");
           assert.include(result.stderr, "Pending changes are ignored");
-          assert.isDefined(result.files["review/SYSTEM.md"]);
+          assert.isDefined(result.files[mapKeys("review").systemMdFile]);
           assert.strictEqual(result.files[proposalsFile], "{ not json");
         })
     );
@@ -581,8 +584,8 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
     it.effect("passes valid revision files and writes nothing", () =>
       Effect.gen(function* () {
         const files = {
-          "review/map/history/0001.json": yield* revisionText(1),
-          "review/map/history/0002.json": yield* revisionText(2),
+          [mapKeys("review").revisionFile(1)]: yield* revisionText(1),
+          [mapKeys("review").revisionFile(2)]: yield* revisionText(2),
         };
 
         const before = { ...(yield* fullMap), ...files };
@@ -597,8 +600,8 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
     it.effect("names a revision file that isn't JSON", () =>
       Effect.gen(function* () {
         const result = yield* checkWith({
-          "review/map/history/0001.json": yield* revisionText(1),
-          "review/map/history/0002.json": "{ not json",
+          [mapKeys("review").revisionFile(1)]: yield* revisionText(1),
+          [mapKeys("review").revisionFile(2)]: "{ not json",
         });
 
         assert.strictEqual(result.exitCode, 1);
@@ -621,7 +624,7 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
         );
 
         const result = yield* checkWith({
-          "review/map/history/0001.json": broken,
+          [mapKeys("review").revisionFile(1)]: broken,
         });
 
         assert.strictEqual(result.exitCode, 1);
@@ -638,7 +641,7 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
         const broken = edited(good, '"shape":"person"', '"shape":"blob"');
 
         const result = yield* checkWith({
-          "review/map/history/0001.json": broken,
+          [mapKeys("review").revisionFile(1)]: broken,
         });
 
         assert.strictEqual(result.exitCode, 1);
@@ -655,7 +658,7 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
         const newer = edited(good, '"format":1', '"format":2');
 
         const result = yield* checkWith({
-          "review/map/history/0001.json": newer,
+          [mapKeys("review").revisionFile(1)]: newer,
         });
 
         assert.strictEqual(result.exitCode, 1);
@@ -669,7 +672,7 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
     it.effect("reports a revision whose number isn't the one in its name", () =>
       Effect.gen(function* () {
         const result = yield* checkWith({
-          "review/map/history/0003.json": yield* revisionText(2),
+          [mapKeys("review").revisionFile(3)]: yield* revisionText(2),
         });
 
         assert.strictEqual(result.exitCode, 1);
@@ -684,8 +687,8 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
       Effect.gen(function* () {
         const result = yield* checkWith(
           {
-            "review/map/history/0001.json": "{ not json",
-            "review/map/history/0002.json": "[]",
+            [mapKeys("review").revisionFile(1)]: "{ not json",
+            [mapKeys("review").revisionFile(2)]: "[]",
           },
           ["--json"]
         );
@@ -717,16 +720,19 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
       Effect.gen(function* () {
         const home = yield* makeHome({
           ...(yield* fullMap),
-          "review/map/history/0001.json": "{ not json",
+          [mapKeys("review").revisionFile(1)]: "{ not json",
         });
 
-        const result = yield* runCli(home, ["build", `${home}/review/map`]);
+        const result = yield* runCli(home, [
+          "build",
+          mapIn(home, "review").home,
+        ]);
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
         assert.include(result.stderr, "warning history/0001.json");
         assert.include(result.stderr, "ignored until it is fixed");
         assert.strictEqual(
-          result.files["review/map/history/0001.json"],
+          result.files[mapKeys("review").revisionFile(1)],
           "{ not json"
         );
       })

@@ -2,7 +2,7 @@ import { Proposals } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema, String as Str } from "effect";
 
-import { proposalsText, readHome, serveReviewMap } from "./harness.ts";
+import { proposalsText, readHome, serveReviewMap, mapKeys } from "./harness.ts";
 import { ownOrigin, writeText } from "./revisions.ts";
 
 // Plain HTTP writes to the review routes of a real serve, for the requests a
@@ -50,7 +50,10 @@ const frozenFile = `${JSON.stringify(
   2
 )}\n`;
 
-const served = serveReviewMap({ "review/map/proposals.json": frozenFile }, []);
+const served = serveReviewMap(
+  { [mapKeys("review").proposalsFile]: frozenFile },
+  []
+);
 
 /** A write to `target`, as `[url, target, headers, body]`. */
 type Args = readonly [

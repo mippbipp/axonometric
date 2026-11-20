@@ -8,6 +8,7 @@ import { Console, Effect, Option, Path, Result, String as Str } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
 import { acceptedIds } from "./history.ts";
+import { homePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
 import { MapInvalid, encodeProposals, loadProposals } from "./map-files.ts";
 import { ReviewRefused } from "./review-shared.ts";
@@ -89,6 +90,7 @@ const verdict = Effect.fn("verdict")(function* ({
   readonly reason: Option.Option<string>;
 }) {
   const path = yield* Path.Path;
+  const paths = yield* homePaths(home);
   const decided = verdictOf(kind, reason, as);
 
   if (Result.isFailure(decided)) {
@@ -98,9 +100,9 @@ const verdict = Effect.fn("verdict")(function* ({
     });
   }
 
-  yield* withLock(home, "verdict");
+  yield* withLock(paths, "verdict");
 
-  const loaded = yield* loadProposals(home);
+  const loaded = yield* loadProposals(paths);
 
   if (Result.isFailure(loaded)) {
     return yield* MapInvalid.make({
@@ -111,7 +113,7 @@ const verdict = Effect.fn("verdict")(function* ({
   }
 
   const recorded = recordVerdict({
-    accepted: yield* acceptedIds(home),
+    accepted: yield* acceptedIds(paths),
     id: item,
     proposals: loaded.success,
     verdict: decided.success,
@@ -127,7 +129,7 @@ const verdict = Effect.fn("verdict")(function* ({
   yield* writeAll([
     {
       content: yield* encodeProposals(recorded.success),
-      file: path.join(home, "proposals.json"),
+      file: paths.proposalsFile,
     },
   ]);
 

@@ -8,7 +8,6 @@ import {
   FileSystem,
   Option,
   Order,
-  Path,
   Schema,
   String as Str,
 } from "effect";
@@ -37,6 +36,9 @@ import {
   runCli,
   startServe,
   waitForRevision,
+  mapKeys,
+  mapIn,
+  homeAt,
 } from "./harness.ts";
 
 // Rerouting arrows and moving groups in a page that a real serve serves. The
@@ -826,9 +828,8 @@ describe("the warnings panel", () => {
     "stays inside the side panel, keeps the heading in view while a long list scrolls, and reaches its last line",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const files = yield* fullMap;
-        const layoutFile = "review/map/layout.json";
+        const { layoutFile } = mapKeys("review");
         const saved = yield* decodeLayout(files[layoutFile] ?? "");
 
         // Four structures stacked on one spot's tags give check many
@@ -845,7 +846,7 @@ describe("the warnings panel", () => {
           }),
         });
 
-        const home = path.join(root, "review", "map");
+        const { home } = mapIn(root, "review");
         const serve = yield* startServe(home, ["--port", "0"]);
         const { page } = yield* openUrl(serve.url);
 
@@ -1014,9 +1015,8 @@ describe("the panel for what a drag would leave", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, page } = yield* servedReview;
-        const layoutPath = path.join(home, "layout.json");
+        const layoutPath = homeAt(home).layoutFile;
 
         const layoutPathText = yield* fs.readFileString(layoutPath);
         const accepted = yield* decodeLayout(layoutPathText);
@@ -1118,7 +1118,7 @@ describe("the panel for what a drag would leave", () => {
             revision: resized.revision + 1,
           });
 
-          yield* fs.writeFileString(path.join(home, "proposals.json"), emptied);
+          yield* fs.writeFileString(homeAt(home).proposalsFile, emptied);
 
           const printed = yield* runCli(home, ["check", "--json", home]);
 

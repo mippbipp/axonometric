@@ -35,7 +35,7 @@ import {
   overlap,
 } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
-import { openReviewMap, proposalsOrEmpty, runCli } from "./harness.ts";
+import { openReviewMap, proposalsOrEmpty, runCli, homeAt } from "./harness.ts";
 import { post } from "./revisions.ts";
 
 // Seam 2: hop and flow proposals in a page that a real serve serves. The
@@ -1459,8 +1459,7 @@ describe("the open page after verdict changed --as on a hop and a flow", () => {
         yield* Effect.promise(() => page.keyboard.press("Escape"));
 
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const dataFile = path.join(home, "data.mjs");
+        const { dataFile } = homeAt(home);
 
         const dataFileText = yield* fs.readFileString(dataFile);
         yield* fs.writeFileString(
