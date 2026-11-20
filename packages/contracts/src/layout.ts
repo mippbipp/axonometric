@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
   Array as Arr,
   Effect,
@@ -77,7 +78,7 @@ export type GridPoint = typeof GridPoint.Type;
 const routeFix =
   "Write a route override as a list of at least two points, such as [{ x: 2, y: 1 }, { x: 4, y: 1 }], where each point shares x or y with the one before it.";
 
-const rightAngled = (points: readonly GridPoint[]) =>
+const rightAngled = (points: ReadonlyArray<GridPoint>) =>
   Arr.every(points, (point, index) => {
     const previous = points[index - 1];
 
@@ -96,7 +97,7 @@ export const maxRoutePoints = 200;
 /** How far from the origin a route override's points may lie, on each axis. */
 export const maxRouteReach = 1000;
 
-const withinReach = (points: readonly GridPoint[]) =>
+const withinReach = (points: ReadonlyArray<GridPoint>) =>
   Arr.every(
     points,
     ({ x, y }) => Math.abs(x) <= maxRouteReach && Math.abs(y) <= maxRouteReach

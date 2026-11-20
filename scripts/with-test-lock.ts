@@ -23,8 +23,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Option, Schema } from "effect";
 
 const Holder = Schema.Struct({
-  pid: Schema.Int,
   command: Schema.String,
+  pid: Schema.Int,
   startedAt: Schema.String,
 });
 
@@ -166,14 +166,14 @@ const release = (lockPath: string, me: Holder): void => {
 /** The command this run started, once it has started one. */
 let running: ChildProcess | null = null;
 
-const run = (command: string, args: readonly string[]): Promise<number> =>
+const run = (command: string, args: ReadonlyArray<string>): Promise<number> =>
   new Promise((resolve) => {
     // On Windows a bare name like `turbo` can resolve to a .cmd file, which
     // only a shell runs. A path goes straight to the OS, since a shell would
     // split it at spaces.
     const child = spawn(command, args, {
-      stdio: "inherit",
       shell: process.platform === "win32" && basename(command) === command,
+      stdio: "inherit",
     });
 
     running = child;
@@ -210,8 +210,8 @@ const main = async (): Promise<number> => {
   }
 
   const me: Holder = {
-    pid: process.pid,
     command: [command, ...args].join(" "),
+    pid: process.pid,
     startedAt: new Date().toISOString(),
   };
 

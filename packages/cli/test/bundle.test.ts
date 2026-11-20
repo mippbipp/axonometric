@@ -13,7 +13,7 @@ import { makeHome } from "./harness.ts";
 // builds the bundle first.
 const runBundle = Effect.fnUntraced(function* (
   home: string,
-  args: readonly string[]
+  args: ReadonlyArray<string>
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -38,7 +38,7 @@ const runBundle = Effect.fnUntraced(function* (
     { concurrency: "unbounded" }
   );
 
-  return { exitCode: Number(exitCode), stdout, stderr };
+  return { exitCode: Number(exitCode), stderr, stdout };
 }, Effect.provide(NodeServices.layer));
 
 describe("the built bundle", () => {

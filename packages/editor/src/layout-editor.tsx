@@ -33,7 +33,7 @@ const minSide = 0.5;
 /** A footprint corner a resize handle sits on, by compass point on the grid. */
 type Corner = "nw" | "ne" | "se" | "sw";
 
-const corners: readonly Corner[] = ["nw", "ne", "se", "sw"];
+const corners: ReadonlyArray<Corner> = ["nw", "ne", "se", "sw"];
 
 const isEast = (corner: Corner) => corner === "ne" || corner === "se";
 
@@ -67,12 +67,12 @@ const resized = (
     : Math.min(snap(start.y + delta.y), bottom - minSide);
 
   return {
-    x,
-    y,
-    w: isEast(corner) ? Math.max(snap(start.w + delta.x), minSide) : right - x,
     d: isSouth(corner)
       ? Math.max(snap(start.d + delta.y), minSide)
       : bottom - y,
+    w: isEast(corner) ? Math.max(snap(start.w + delta.x), minSide) : right - x,
+    x,
+    y,
   };
 };
 
@@ -85,16 +85,16 @@ const moved = (start: Placement, delta: GridPoint): Placement => ({
 
 /** One press on a structure or a handle, until it's released. */
 interface Press {
-  readonly id: string;
-  readonly pointer: number;
+  /** The handle's corner for a resize, or nothing for a move. */
+  readonly corner: Corner | undefined;
   /** Where the press started, in window pixels. */
   readonly from: { readonly x: number; readonly y: number };
   /** The ground point under the press. */
   readonly ground: GridPoint;
+  readonly id: string;
+  readonly pointer: number;
   /** Where the structure was shown when the press started. */
   readonly start: Placement;
-  /** The handle's corner for a resize, or nothing for a move. */
-  readonly corner: Corner | undefined;
 }
 
 /** A press past the threshold, and where it would put the structure. */
@@ -105,29 +105,29 @@ interface Drag {
    * Every structure that moves with it: the multi-selection when the press
    * is on one of its structures, else just `id`.
    */
-  readonly ids: readonly string[];
-  readonly start: Placement;
+  readonly ids: ReadonlyArray<string>;
   readonly next: Placement;
-  /** Whether a corner handle is resizing the footprint, not moving it. */
-  readonly resizing: boolean;
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
+  /** Whether a corner handle is resizing the footprint, not moving it. */
+  readonly resizing: boolean;
+  readonly start: Placement;
 }
 
 /** The moves as the one move change a drop would make, or none. */
 const movesChange = (
-  moves: readonly StructureMove[]
-): readonly LayoutChange[] =>
+  moves: ReadonlyArray<StructureMove>
+): ReadonlyArray<LayoutChange> =>
   Arr.isReadonlyArrayNonEmpty(moves)
     ? [{ id: "preview", kind: "move", moves }]
     : [];
 
 /** Where each of `ids` goes when the pressed structure goes from `start` to `next`. */
 const movesOf = (
-  ids: readonly string[],
+  ids: ReadonlyArray<string>,
   placements: Readonly<Partial<Record<string, Placement>>>,
-  { start, next }: Pick<Drag, "start" | "next">
-): readonly StructureMove[] =>
+  { next, start }: Pick<Drag, "start" | "next">
+): ReadonlyArray<StructureMove> =>
   Arr.flatMap(ids, (id) => {
     const at = placements[id];
 
@@ -135,11 +135,11 @@ const movesOf = (
       ? []
       : [
           {
-            target: { kind: "structure" as const, id },
             position: {
               x: at.x + next.x - start.x,
               y: at.y + next.y - start.y,
             },
+            target: { id, kind: "structure" as const },
           },
         ];
   });
@@ -148,14 +148,14 @@ const movesOf = (
 const previewChanges = (
   drag: Drag,
   placements: Readonly<Partial<Record<string, Placement>>>
-): readonly LayoutChange[] =>
+): ReadonlyArray<LayoutChange> =>
   drag.resizing
     ? [
         {
+          footprint: { d: drag.next.d, w: drag.next.w },
           id: "preview",
           kind: "resize",
-          target: { kind: "structure", id: drag.id },
-          footprint: { w: drag.next.w, d: drag.next.d },
+          target: { id: drag.id, kind: "structure" },
         },
         ...(samePosition(drag.next, drag.start)
           ? []
@@ -177,21 +177,21 @@ const previewChanges = (
  *   in red, and dropping there snaps the structure back.
  */
 export function LayoutEditor({
-  view,
-  placements,
   children,
+  placements,
+  view,
 }: {
-  readonly view: View;
+  readonly children: ReactNode;
   /** Where each structure is shown now. */
   readonly placements: Readonly<Partial<Record<string, Placement>>>;
-  readonly children: ReactNode;
+  readonly view: View;
 }) {
   const editing = useEditing();
   const dropping = useDrop();
   const preview = useDragPreview();
   const setOutlines = useDropOutlines()?.set;
   const { state } = useWalkthrough();
-  const { selected, multiSelection } = useSelection();
+  const { multiSelection, selected } = useSelection();
   const root = useRef<SVGGElement>(null);
   const press = useRef<Press | undefined>(undefined);
   const dragged = useRef(false);
@@ -204,15 +204,15 @@ export function LayoutEditor({
 
     if (canvas !== null && canvas !== undefined) {
       shiftDrawing({
-        root: canvas,
-        view,
-        ids: drag === undefined || drag.resizing ? [] : drag.ids,
-        changing: drag?.ids,
-        hops: state.data.hops,
         by:
           drag === undefined
             ? undefined
             : { x: drag.next.x - drag.start.x, y: drag.next.y - drag.start.y },
+        changing: drag?.ids,
+        hops: state.data.hops,
+        ids: drag === undefined || drag.resizing ? [] : drag.ids,
+        root: canvas,
+        view,
       });
     }
   }, [drag, view, state.data.hops]);
@@ -239,15 +239,15 @@ export function LayoutEditor({
         ? undefined
         : {
             moving: drag.resizing
-              ? [{ id: drag.id, from: drag.start, to: drag.next }]
+              ? [{ from: drag.start, id: drag.id, to: drag.next }]
               : Arr.flatMap(
                   movesOf(drag.ids, placements, drag),
-                  ({ target, position }) => {
+                  ({ position, target }) => {
                     const from = placements[target.id];
 
                     return from === undefined
                       ? []
-                      : [{ id: target.id, from, to: { ...from, ...position } }];
+                      : [{ from, id: target.id, to: { ...from, ...position } }];
                   }
                 ),
             refusal: drag.refusal,
@@ -300,12 +300,12 @@ export function LayoutEditor({
 
     dragged.current = false;
     press.current = {
-      id,
-      pointer: event.pointerId,
+      corner,
       from: { x: event.clientX, y: event.clientY },
       ground,
+      id,
+      pointer: event.pointerId,
       start,
-      corner,
     };
 
     // A handle is never a click target, so it takes the pointer at once,
@@ -389,14 +389,14 @@ export function LayoutEditor({
         : {
             id: current.id,
             ids,
-            start: current.start,
             next,
-            resizing: current.corner !== undefined,
             refusal: together
               ? editing.refusalOfMoves(
-                  movesOf(ids, placements, { start: current.start, next })
+                  movesOf(ids, placements, { next, start: current.start })
                 )
               : dropping.refusalOf(current.id, next),
+            resizing: current.corner !== undefined,
+            start: current.start,
           }
     );
   };
@@ -436,30 +436,30 @@ export function LayoutEditor({
 
   return (
     <g
-      ref={root}
-      data-layout-editor={live ? "on" : "off"}
       data-dragging={drag?.id}
+      data-layout-editor={live ? "on" : "off"}
+      onLostPointerCapture={(event) => {
+        end(event, false);
+      }}
+      onPointerCancel={(event) => {
+        end(event, false);
+      }}
       onPointerDown={live ? onPointerDown : undefined}
       onPointerMove={live ? onPointerMove : undefined}
       onPointerUp={(event) => {
         end(event, true);
       }}
-      onPointerCancel={(event) => {
-        end(event, false);
-      }}
-      onLostPointerCapture={(event) => {
-        end(event, false);
-      }}
+      ref={root}
     >
       {children}
       {live && selected !== null && handlesAt !== undefined ? (
         <ResizeHandles
           id={selected}
-          placement={handlesAt}
-          view={view}
           onPress={(event, corner) => {
             begin(event, selected, corner);
           }}
+          placement={handlesAt}
+          view={view}
         />
       ) : null}
     </g>
@@ -472,14 +472,14 @@ const handleSize = 12;
 /** A square handle on each corner of the selected structure's footprint. */
 function ResizeHandles({
   id,
+  onPress,
   placement,
   view,
-  onPress,
 }: {
   readonly id: string;
+  readonly onPress: (event: ReactPointerEvent, corner: Corner) => void;
   readonly placement: Placement;
   readonly view: View;
-  readonly onPress: (event: ReactPointerEvent, corner: Corner) => void;
 }) {
   const ground = groundProjections[view];
 
@@ -490,18 +490,18 @@ function ResizeHandles({
 
         return (
           <rect
-            key={corner}
-            data-resize-handle={corner}
             aria-hidden="true"
-            x={at.sx - handleSize / 2}
-            y={at.sy - handleSize / 2}
-            width={handleSize}
-            height={handleSize}
             className="fill-paper stroke-pending cursor-move"
-            strokeWidth={1.5}
+            data-resize-handle={corner}
+            height={handleSize}
+            key={corner}
             onPointerDown={(event) => {
               onPress(event, corner);
             }}
+            strokeWidth={1.5}
+            width={handleSize}
+            x={at.sx - handleSize / 2}
+            y={at.sy - handleSize / 2}
           />
         );
       })}

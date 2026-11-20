@@ -10,18 +10,18 @@ const decodeRevision = Schema.decodeUnknownOption(
 /** What reading a revision from the server gave. */
 export type LoadedRevision =
   | { readonly ok: true; readonly revision: Revision }
-  | { readonly ok: false; readonly message: string };
+  | { readonly message: string; readonly ok: false };
 
 /**
  * Reads revision `n` from the server. The number comes from the history the
  * server listed, and goes into the path as digits.
  */
 export const loadRevision = ({
-  served,
   n,
+  served,
 }: {
-  readonly served: ServedPage;
   readonly n: number;
+  readonly served: ServedPage;
 }): Effect.Effect<LoadedRevision> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient;
@@ -34,23 +34,23 @@ export const loadRevision = ({
 
     if (response.status === 404) {
       return {
-        ok: false,
         message: `Revision ${n} is gone from the history folder.`,
+        ok: false,
       } satisfies LoadedRevision;
     }
 
     return Option.match(decodeRevision(text), {
       onNone: (): LoadedRevision => ({
-        ok: false,
         message: `The server's answer for revision ${n} didn't make sense. Reload the page.`,
+        ok: false,
       }),
       onSome: (revision): LoadedRevision => ({ ok: true, revision }),
     });
   }).pipe(
     Effect.catchTag("HttpClientError", () =>
       Effect.succeed<LoadedRevision>({
-        ok: false,
         message: `Revision ${n} couldn't be read: the server didn't answer. It may have stopped.`,
+        ok: false,
       })
     ),
     Effect.scoped,

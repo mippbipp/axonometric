@@ -55,5 +55,5 @@ export const useHopFlowToggle = (hop: string) => {
     });
   };
 
-  return { toggle, failure };
+  return { failure, toggle };
 };

@@ -66,38 +66,38 @@ const withoutRenamed = (
 };
 
 const reportItem = ({
-  item,
   batch,
-  replaces,
-  layout,
-  names,
   data,
   groups,
   hops,
+  item,
+  layout,
+  names,
+  replaces,
 }: {
-  readonly item: BatchItem;
   readonly batch: Batch;
-  /** For items reopened after a rejection, the rejected item's id. */
-  readonly replaces: Readonly<Record<string, string>> | undefined;
-  readonly layout: Layout;
-  readonly names: ReadonlyMap<string, string>;
   readonly data: MapData;
+  /** The groups of the proposed map, so a new group has its title. */
+  readonly groups: MapData["groups"];
   /**
    * The hops the page shows, the engineer's drawn ones included: data.mjs
    * doesn't have them until the agent adds them, and an item that lists one
    * isn't broken for that.
    */
-  readonly hops: readonly Hop[];
-  /** The groups of the proposed map, so a new group has its title. */
-  readonly groups: MapData["groups"];
+  readonly hops: ReadonlyArray<Hop>;
+  readonly item: BatchItem;
+  readonly layout: Layout;
+  readonly names: ReadonlyMap<string, string>;
+  /** For items reopened after a rejection, the rejected item's id. */
+  readonly replaces: Readonly<Record<string, string>> | undefined;
 }): ReportedItem => {
   const called = namesOf({
-    shown: { ...data, structures: data.structures, hops, groups },
     accepted: data,
+    shown: { ...data, groups, hops, structures: data.structures },
   });
 
   const spec = specOf(item);
-  const { before, after } = spec.facts(item, layout, data);
+  const { after, before } = spec.facts(item, layout, data);
   const structureIds = new Set(names.keys());
   const decided = Rec.get(batch.verdicts, item.id);
   const landing = withoutRenamed(layout, decided);
@@ -107,10 +107,24 @@ const reportItem = ({
   const pointers = spec.targets(item);
 
   return {
+    after,
+    before,
+    breaks: Option.getOrNull(
+      breakageOf({
+        data,
+        hops,
+        item,
+        layout: landing,
+        siblings: batch.items,
+        structureIds,
+      })
+    ),
     id: item.id,
     kind: spec.name(item),
+    outOfDate: Option.getOrNull(spec.outOfDate?.(item, data) ?? Option.none()),
+    replaces: Option.getOrNull(Rec.get(replaces ?? {}, item.id)),
     section: spec.section,
-    targets: Arr.map(pointers, ({ kind, id }) => ({
+    targets: Arr.map(pointers, ({ id, kind }) => ({
       id,
       name: Match.value(kind).pipe(
         Match.when("hop", () => hopLabelOf(hops, id)),
@@ -119,20 +133,6 @@ const reportItem = ({
         Match.orElse(() => names.get(id) ?? id)
       ),
     })),
-    before,
-    after,
-    breaks: Option.getOrNull(
-      breakageOf({
-        item,
-        layout: landing,
-        structureIds,
-        hops,
-        data,
-        siblings: batch.items,
-      })
-    ),
-    outOfDate: Option.getOrNull(spec.outOfDate?.(item, data) ?? Option.none()),
-    replaces: Option.getOrNull(Rec.get(replaces ?? {}, item.id)),
     verdict: Option.getOrNull(decided),
   };
 };
@@ -172,11 +172,11 @@ const textOf = Effect.fnUntraced(function* (item: ReportedItem) {
  * is a reported item and the text `review` prints for it.
  */
 const listedBySection = (
-  pairs: readonly (readonly [ReportedItem, string])[]
-): readonly string[] =>
+  pairs: ReadonlyArray<readonly [ReportedItem, string]>
+): ReadonlyArray<string> =>
   Arr.flatMap(
     inSections(pairs, ([reported]) => reported.section),
-    ({ section, items: held }) => {
+    ({ items: held, section }) => {
       const texts = Arr.map(held, ([, text]) => text);
 
       return ["", `${sectionTitles[section]}:`, "", Arr.join(texts, "\n\n")];
@@ -193,8 +193,8 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
   // A structure the engineer proposed has a name on the page and none in
   // data.mjs yet, so review names it from the proposed map.
   const proposed = proposedMap({
-    state: { data: map.data, layout: map.layout },
     proposals: map.proposals,
+    state: { data: map.data, layout: map.layout },
   }).state.data;
 
   const names = structureNames(proposed);
@@ -207,14 +207,14 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
     onSome: (batch) =>
       Arr.map(batch.items, (item) =>
         reportItem({
-          item,
           batch,
-          replaces: map.proposals.replaces,
+          data: map.data,
+          groups: proposed.groups,
+          hops: proposed.hops,
+          item,
           layout: map.layout,
           names,
-          data: map.data,
-          hops: proposed.hops,
-          groups: proposed.groups,
+          replaces: map.proposals.replaces,
         })
       ),
   });
@@ -222,10 +222,10 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
   if (json) {
     const batch = Option.match(oldest, {
       onNone: () => null,
-      onSome: ({ number, frozenAt }) => ({ number, frozenAt, items }),
+      onSome: ({ frozenAt, number }) => ({ frozenAt, items, number }),
     });
 
-    const reportText = yield* encodeReport({ home: absolute, batch });
+    const reportText = yield* encodeReport({ batch, home: absolute });
 
     return yield* Console.log(reportText);
   }
@@ -236,7 +236,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
     );
   }
 
-  const { number, frozenAt } = oldest.value;
+  const { frozenAt, number } = oldest.value;
   const undecided = Arr.filter(items, ({ verdict }) => verdict === null);
   const described = yield* Effect.forEach(items, textOf, { concurrency: 1 });
   const listing = listedBySection(Arr.zip(items, described));

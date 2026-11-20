@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- these objects are printed as JSON for review, so their key order is what the agent reads */
 import { Array as Arr, Option } from "effect";
 
 import type { MapData } from "./map-data.ts";
@@ -39,9 +40,9 @@ const waitingMessage = ({
   id,
   batch,
 }: {
-  readonly what: string;
-  readonly id: string;
   readonly batch: number | undefined;
+  readonly id: string;
+  readonly what: string;
 }) =>
   batch === undefined
     ? `${what} waiting (${id}). Edit or discard that one first.`
@@ -80,7 +81,7 @@ export const suggestionKind: KindSpec<SuggestionItem> = {
     suggestions: [...(proposals.suggestions ?? []), suggestion],
   }),
   name: () => "suggestion",
-  targets: (item): readonly Pointer[] => [
+  targets: (item): ReadonlyArray<Pointer> => [
     { kind: "structure", id: item.target.id },
   ],
   dangling: (item, known) => danglingStructure(item.target.id, known),
@@ -188,7 +189,7 @@ export const answerKind: KindSpec<AnswerItem> = {
     answers: [...(proposals.answers ?? []), answer],
   }),
   name: () => "answer",
-  targets: (item): readonly Pointer[] => [
+  targets: (item): ReadonlyArray<Pointer> => [
     { kind: "structure", id: item.target.id },
   ],
   dangling: (item, known) => danglingStructure(item.target.id, known),
@@ -296,7 +297,7 @@ export const questionKind: KindSpec<QuestionItem> = {
     raised: [...(proposals.raised ?? []), raised],
   }),
   name: () => "question",
-  targets: (item): readonly Pointer[] => [
+  targets: (item): ReadonlyArray<Pointer> => [
     { kind: "structure", id: item.target.id },
   ],
   dangling: (item, known) => danglingStructure(item.target.id, known),

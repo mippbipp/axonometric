@@ -53,7 +53,7 @@ const servedAll = Effect.gen(function* () {
 /** Shift-clicks each structure in turn. */
 const shiftClick = Effect.fnUntraced(function* (
   page: Page,
-  ids: readonly string[]
+  ids: ReadonlyArray<string>
 ) {
   for (const id of ids) {
     yield* Effect.promise(() =>
@@ -65,7 +65,7 @@ const shiftClick = Effect.fnUntraced(function* (
 /** The ids of the structures in the multi-selection, sorted. */
 const multiSelectedIds = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<string[]>(
+    page.evaluate<Array<string>>(
       `[...document.querySelectorAll('[data-structure][data-multi-selected="true"]')].map((e) => e.dataset.structure).sort()`
     )
   );
@@ -82,7 +82,7 @@ const groundToPage = Effect.fnUntraced(function* (
   ground: Point
 ) {
   const [left, top, tx, ty, scale] = yield* Effect.promise(() =>
-    page.evaluate<number[]>(`(() => {
+    page.evaluate<Array<number>>(`(() => {
       const svg = document.querySelector("svg[data-scale]");
       const rect = svg.getBoundingClientRect();
       const [tx, ty, scale] = svg
@@ -106,18 +106,18 @@ const groundToPage = Effect.fnUntraced(function* (
 
 /** Holds Shift and drags a box between two ground points on empty canvas. */
 const dragBox = Effect.fnUntraced(function* ({
-  page,
-  view,
   from,
-  to,
+  page,
   release = true,
+  to,
+  view,
 }: {
-  readonly page: Page;
-  readonly view: View;
   readonly from: Point;
-  readonly to: Point;
+  readonly page: Page;
   /** Whether to let go at the end. */
   readonly release?: boolean;
+  readonly to: Point;
+  readonly view: View;
 }) {
   const start = yield* groundToPage(page, view, from);
   const end = yield* groundToPage(page, view, to);
@@ -161,13 +161,13 @@ const movesOf = (layout: Proposals["layout"]) => {
     ? Rec.fromEntries(
         Arr.map(
           change.moves,
-          ({ target, position }) => [target.id, position] as const
+          ({ position, target }) => [target.id, position] as const
         )
       )
     : {};
 };
 
-const views: readonly View[] = ["iso", "plan"];
+const views: ReadonlyArray<View> = ["iso", "plan"];
 
 describe("selecting several structures", () => {
   for (const view of views) {
@@ -175,7 +175,7 @@ describe("selecting several structures", () => {
       `Shift-click adds a structure to the set and takes it out again, in ${view}`,
       () =>
         Effect.gen(function* () {
-          const { page, errors } = yield* servedAll;
+          const { errors, page } = yield* servedAll;
 
           yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
@@ -199,18 +199,18 @@ describe("selecting several structures", () => {
       `Shift-dragging a box on empty canvas selects every structure it touches, in ${view}`,
       () =>
         Effect.gen(function* () {
-          const { page, home } = yield* servedAll;
+          const { home, page } = yield* servedAll;
 
           yield* showView(page, view);
 
           // Ground x -0.3 to 9.5 and y -0.3 to 2.6 reaches engineer, page
           // and server along the top row, and nothing below it.
           yield* dragBox({
-            page,
-            view,
             from: { x: -0.3, y: 2.6 },
-            to: { x: 9.5, y: -0.3 },
+            page,
             release: false,
+            to: { x: 9.5, y: -0.3 },
+            view,
           });
 
           yield* waitFor(page, "[data-selection-box]");
@@ -265,7 +265,7 @@ describe("moving a selection", () => {
       `dragging one of the set moves all of it as one change, in ${view}`,
       () =>
         Effect.gen(function* () {
-          const { page, home } = yield* servedAll;
+          const { home, page } = yield* servedAll;
 
           yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
@@ -297,19 +297,19 @@ describe("moving a selection", () => {
     );
   }
 
-  for (const { what, select, from, by, outlines } of [
+  for (const { by, from, outlines, select, what } of [
     {
-      what: "a multi-selection",
-      select: ["engineer", "page"],
       from: '[data-structure="engineer"]',
+      select: ["engineer", "page"],
+      what: "a multi-selection",
       // Eight units right puts engineer at 8,0, on server.
       by: { x: 8, y: 0 },
       outlines: 2,
     },
     {
-      what: "a group dragged by its zone title",
-      select: [],
       from: '[data-zone-title-hit="people"]',
+      select: [],
+      what: "a group dragged by its zone title",
       // The engineer sits at x 0–2. Moving it 4 along x lands on the page.
       by: { x: 4, y: 0 },
       outlines: 1,
@@ -319,7 +319,7 @@ describe("moving a selection", () => {
       `refuses a drop of ${what} that puts any footprint on another, and writes nothing`,
       () =>
         Effect.gen(function* () {
-          const { page, home } = yield* servedAll;
+          const { home, page } = yield* servedAll;
 
           yield* showView(page, "plan");
           yield* shiftClick(page, select);
@@ -337,7 +337,7 @@ describe("moving a selection", () => {
 
           yield* assertAttribute(
             page,
-            { selector: "[data-drag-outline]", name: "data-refused" },
+            { name: "data-refused", selector: "[data-drag-outline]" },
             "true"
           );
           yield* assertCount(page, "[data-drag-outline]", outlines);
@@ -362,7 +362,7 @@ describe("nudging a selection", () => {
       `the arrow keys move the set half a unit along the ground and leave the chapter, in ${view}`,
       () =>
         Effect.gen(function* () {
-          const { page, home } = yield* served;
+          const { home, page } = yield* served;
 
           yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
@@ -386,19 +386,19 @@ describe("nudging a selection", () => {
             kind: "move",
             moves: [
               {
-                target: { kind: "structure", id: "engineer" },
                 position: { x: 0.5, y: 0.5 },
+                target: { id: "engineer", kind: "structure" },
               },
               {
-                target: { kind: "structure", id: "page" },
                 position: { x: 4.5, y: 0.5 },
+                target: { id: "page", kind: "structure" },
               },
             ],
           });
 
           yield* assertAttribute(
             page,
-            { selector: "[data-walkthrough]", name: "data-chapter" },
+            { name: "data-chapter", selector: "[data-walkthrough]" },
             "c-page"
           );
         }),
@@ -408,7 +408,7 @@ describe("nudging a selection", () => {
 
   it.live("without a set the arrow keys still change chapter", () =>
     Effect.gen(function* () {
-      const { page, home } = yield* served;
+      const { home, page } = yield* served;
 
       yield* press(page, "ArrowRight");
       yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
@@ -420,7 +420,7 @@ describe("nudging a selection", () => {
 
       yield* assertAttribute(
         page,
-        { selector: "[data-walkthrough]", name: "data-chapter" },
+        { name: "data-chapter", selector: "[data-walkthrough]" },
         "c-save"
       );
 
@@ -435,7 +435,7 @@ describe("nudging a selection", () => {
     "refuses a nudge onto another footprint and writes nothing",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* servedAll;
+        const { home, page } = yield* servedAll;
 
         // Engineer ends at x 2 and page starts at 4. Four presses take page
         // to 2, where it only touches engineer along an edge. The fifth
@@ -492,54 +492,54 @@ describe("aligning and distributing", () => {
     })
   );
 
-  const cases: readonly {
-    readonly ids: readonly string[];
+  const cases: ReadonlyArray<{
     readonly button: string;
     readonly expected: Readonly<Record<string, Point>>;
-  }[] = [
+    readonly ids: ReadonlyArray<string>;
+  }> = [
     {
-      ids: ["engineer", "page", "pull-request"],
       button: "[data-align='top']",
       expected: { "pull-request": { x: 12, y: 0 } },
+      ids: ["engineer", "page", "pull-request"],
     },
     {
-      ids: ["engineer", "page", "pull-request"],
       button: "[data-align='bottom']",
       expected: { engineer: { x: 0, y: 5.5 }, page: { x: 4, y: 5.5 } },
+      ids: ["engineer", "page", "pull-request"],
     },
     {
-      ids: ["engineer", "page", "pull-request"],
       button: "[data-align='centre-y']",
       expected: {
         engineer: { x: 0, y: 3 },
         page: { x: 4, y: 3 },
         "pull-request": { x: 12, y: 3 },
       },
+      ids: ["engineer", "page", "pull-request"],
     },
     {
-      ids: ["page", "pull-request"],
       button: "[data-align='left']",
       expected: { "pull-request": { x: 4, y: 6 } },
+      ids: ["page", "pull-request"],
     },
     {
-      ids: ["server", "pull-request"],
       button: "[data-align='right']",
       expected: { server: { x: 12, y: 0 } },
+      ids: ["server", "pull-request"],
     },
     {
-      ids: ["engineer", "pull-request"],
       button: "[data-align='centre-x']",
       expected: { engineer: { x: 6, y: 0 }, "pull-request": { x: 6, y: 6 } },
+      ids: ["engineer", "pull-request"],
     },
     {
-      ids: ["engineer", "proposals", "upstream"],
       button: "[data-distribute='x']",
       expected: { proposals: { x: 9, y: 6 } },
+      ids: ["engineer", "proposals", "upstream"],
     },
     {
-      ids: ["engineer", "page", "proposals"],
       button: "[data-distribute='y']",
       expected: { page: { x: 4, y: 3 } },
+      ids: ["engineer", "page", "proposals"],
     },
   ];
 
@@ -548,13 +548,13 @@ describe("aligning and distributing", () => {
       `each align and distribute button is one change with the expected positions, and one undo takes it back, in ${view}`,
       () =>
         Effect.gen(function* () {
-          const { page, home } = yield* servedAll;
+          const { home, page } = yield* servedAll;
 
           yield* showView(page, view);
 
           let revision = 0;
 
-          for (const { ids, button, expected } of cases) {
+          for (const { button, expected, ids } of cases) {
             yield* shiftClick(page, ids);
             yield* waitFor(page, button);
             yield* Effect.promise(() => page.locator(button).click());
@@ -584,7 +584,7 @@ describe("aligning and distributing", () => {
     "refuses an alignment that lands two footprints on one spot, and says why",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* servedAll;
+        const { home, page } = yield* servedAll;
 
         // Left-aligning proposals and pull-request puts both at x 8, y 6.
         yield* shiftClick(page, ["proposals", "pull-request"]);
@@ -626,7 +626,7 @@ describe("undo and redo", () => {
     "start disabled, and the buttons undo and redo what is on disk",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* servedAll;
+        const { home, page } = yield* servedAll;
 
         yield* showView(page, "plan");
 
@@ -671,7 +671,7 @@ describe("undo and redo", () => {
     "Ctrl+Z undoes, and Ctrl+Shift+Z and Ctrl+Y redo",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* servedAll;
+        const { home, page } = yield* servedAll;
 
         yield* showView(page, "plan");
         yield* dragEngineer(page);
@@ -701,7 +701,7 @@ describe("undo and redo", () => {
     "a new edit clears what could be redone",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* servedAll;
+        const { home, page } = yield* servedAll;
 
         yield* showView(page, "plan");
         yield* dragEngineer(page);
@@ -726,7 +726,7 @@ describe("undo and redo", () => {
     "keeps the step and shows a conflict when the file changed underneath",
     () =>
       Effect.gen(function* () {
-        const { page, home, serve } = yield* servedAll;
+        const { home, page, serve } = yield* servedAll;
 
         yield* showView(page, "plan");
         yield* dragEngineer(page);
@@ -741,7 +741,6 @@ describe("undo and redo", () => {
 
         const written = yield* Effect.promise(() =>
           page.request.put(new URL("/api/proposals/layout", serve.url).href, {
-            headers: { origin: serve.url, "content-type": "application/json" },
             data: {
               baseFileRevision: 1,
               layout: [
@@ -754,13 +753,14 @@ describe("undo and redo", () => {
                   kind: "move",
                   moves: [
                     {
-                      target: { kind: "structure", id: "upstream" },
                       position: { x: 18, y: 4 },
+                      target: { id: "upstream", kind: "structure" },
                     },
                   ],
                 },
               ],
             },
+            headers: { "content-type": "application/json", origin: serve.url },
           })
         );
 
@@ -779,7 +779,7 @@ describe("undo and redo", () => {
         // Nothing was written over the other writer's change, and the step
         // is kept.
         assert.deepStrictEqual(
-          Option.map(saved, ({ revision, layout }) => [
+          Option.map(saved, ({ layout, revision }) => [
             revision,
             Arr.map(layout, ({ id }) => id),
           ]).pipe(Option.getOrNull),
@@ -806,18 +806,18 @@ describe("undo and redo", () => {
 
 /** What a structure looks like on screen: its outline, face and ring. */
 interface Look {
-  readonly stroke: string;
   readonly face: string;
   readonly ring: string | null;
   readonly ringDash: string | null;
+  readonly stroke: string;
 }
 
 const LookJson = Schema.fromJsonString(
   Schema.Struct({
-    stroke: Schema.String,
     face: Schema.String,
     ring: Schema.NullOr(Schema.String),
     ringDash: Schema.NullOr(Schema.String),
+    stroke: Schema.String,
   })
 );
 
@@ -849,7 +849,7 @@ describe("how the multi-selection looks", () => {
       `a multi-selected, a pending and a both structure look different from each other, in ${view}`,
       () =>
         Effect.gen(function* () {
-          const { page, home } = yield* servedAll;
+          const { home, page } = yield* servedAll;
 
           yield* showView(page, view);
 
@@ -932,13 +932,13 @@ describe("the toolbar", () => {
         // Undo and Redo are named without their arrows.
         yield* assertAttribute(
           page,
-          { selector: "[data-control='undo']", name: "aria-label" },
+          { name: "aria-label", selector: "[data-control='undo']" },
           "Undo"
         );
 
         yield* assertAttribute(
           page,
-          { selector: "[data-control='redo']", name: "aria-label" },
+          { name: "aria-label", selector: "[data-control='redo']" },
           "Redo"
         );
       }),
@@ -966,7 +966,7 @@ describe("the toolbar", () => {
 
       yield* assertAttribute(
         page,
-        { selector: "[data-align='left']", name: "aria-label" },
+        { name: "aria-label", selector: "[data-align='left']" },
         "Align left edges"
       );
     })
@@ -980,7 +980,7 @@ describe("older news from the server", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { page, home } = yield* servedAll;
+        const { home, page } = yield* servedAll;
 
         yield* shiftClick(page, ["engineer", "page"]);
         yield* press(page, "ArrowDown");
@@ -1004,8 +1004,8 @@ describe("older news from the server", () => {
           Schema.fromJsonString(Proposals)
         )({
           format: 1,
-          revision: 0,
           layout: [],
+          revision: 0,
         });
 
         yield* fs.writeFileString(path.join(home, "proposals.json"), emptied);
@@ -1022,7 +1022,7 @@ describe("accepting a change", () => {
     "clears the undo history and says so, when the accepted layout moves on",
     () =>
       Effect.gen(function* () {
-        const { page, home } = yield* servedAll;
+        const { home, page } = yield* servedAll;
 
         yield* shiftClick(page, ["engineer", "page"]);
         yield* press(page, "ArrowDown");
@@ -1058,7 +1058,7 @@ describe("editing off", () => {
     "hides the toolbar, the set and the nudge when the server is stopped",
     () =>
       Effect.gen(function* () {
-        const { page, home, serve } = yield* servedAll;
+        const { home, page, serve } = yield* servedAll;
 
         yield* shiftClick(page, ["engineer", "page"]);
         yield* waitFor(page, "[data-arrange-toolbar]");
@@ -1082,7 +1082,7 @@ describe("editing off", () => {
     () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const { root, home, serve } = yield* servedAll;
+        const { home, root, serve } = yield* servedAll;
 
         yield* serve.stop;
 

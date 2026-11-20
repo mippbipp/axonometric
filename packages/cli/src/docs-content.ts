@@ -35,8 +35,8 @@ export const docsContent: Effect.Effect<
     (file) =>
       fs.readFileString(path.join(folder, file)).pipe(
         Effect.mapBoth({
-          onSuccess: (text) => [Str.slice(0, -3)(file), text] as const,
           onFailure: () => DocsNotFound.make({ file: folder }),
+          onSuccess: (text) => [Str.slice(0, -3)(file), text] as const,
         })
       ),
     { concurrency: 1 }

@@ -7,18 +7,25 @@ const spot = ({ x, y }: { readonly x: number; readonly y: number }) =>
 
 /** How a change names what it acts on. */
 export interface Names {
-  readonly structure: (id: string) => string;
   /** A hop by the structures at its ends, such as "Page to Server". */
   readonly hop: (id: string) => string;
+  readonly structure: (id: string) => string;
 }
 
 /** Each structure or hop a change acts on, named, and what happens to it. */
 export const describeChange: {
-  (accepted: Layout, names: Names): (change: LayoutChange) => readonly string[];
-  (change: LayoutChange, accepted: Layout, names: Names): readonly string[];
+  (
+    accepted: Layout,
+    names: Names
+  ): (change: LayoutChange) => ReadonlyArray<string>;
+  (change: LayoutChange, accepted: Layout, names: Names): ReadonlyArray<string>;
 } = dual(
   3,
-  (change: LayoutChange, accepted: Layout, names: Names): readonly string[] => {
+  (
+    change: LayoutChange,
+    accepted: Layout,
+    names: Names
+  ): ReadonlyArray<string> => {
     const nameOf = names.structure;
 
     if (change.kind === "reroute") {
@@ -32,7 +39,7 @@ export const describeChange: {
     }
 
     if (change.kind === "move") {
-      return Arr.map(change.moves, ({ target, position }) => {
+      return Arr.map(change.moves, ({ position, target }) => {
         const before = Rec.get(accepted.structures, target.id);
 
         const from = Option.match(before, {
@@ -44,7 +51,7 @@ export const describeChange: {
       });
     }
 
-    const { w, d } = change.footprint;
+    const { d, w } = change.footprint;
     const before = Rec.get(accepted.structures, change.target.id);
 
     const from = Option.match(before, {

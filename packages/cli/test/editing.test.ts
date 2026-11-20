@@ -96,7 +96,7 @@ describe("moving structures", () => {
     "drags a structure in Plan view, snapped to half units, and saves it to proposals.json",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* servedReview;
+        const { errors, home, page } = yield* servedReview;
 
         yield* showView(page, "plan");
 
@@ -113,8 +113,8 @@ describe("moving structures", () => {
             kind: "move",
             moves: [
               {
-                target: { kind: "structure", id: "engineer" },
                 position: { x: 0.5, y: 3.5 },
+                target: { id: "engineer", kind: "structure" },
               },
             ],
           },
@@ -178,7 +178,7 @@ describe("moving structures", () => {
 
         yield* assertAttribute(
           page,
-          { selector: "[data-drag-outline]", name: "data-refused" },
+          { name: "data-refused", selector: "[data-drag-outline]" },
           "true"
         );
 
@@ -322,9 +322,9 @@ describe("resizing structures", () => {
 
         assert.deepStrictEqual(withoutIds(saved.layout), [
           {
+            footprint: { d: 3, w: 2.5 },
             kind: "resize",
-            target: { kind: "structure", id: "engineer" },
-            footprint: { w: 2.5, d: 3 },
+            target: { id: "engineer", kind: "structure" },
           },
         ]);
       }),
@@ -420,7 +420,7 @@ describe("the side panel tabs", () => {
         assert.isDefined(panel);
 
         const sizes = yield* Effect.promise(() =>
-          page.evaluate<string[]>(
+          page.evaluate<Array<string>>(
             `[...document.querySelectorAll('[role="tab"]')].map((tab) => getComputedStyle(tab).fontSize)`
           )
         );
@@ -507,7 +507,7 @@ describe("editing off", () => {
     "hides the handles, stops dragging and hides Discard while the server is stopped",
     () =>
       Effect.gen(function* () {
-        const { home, serve, page } = yield* servedReview;
+        const { home, page, serve } = yield* servedReview;
         const unit = yield* unitOnScreen(page, "iso");
         const from = yield* centreOf(page, '[data-structure="engineer"]');
 
@@ -547,7 +547,7 @@ describe("editing off", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { root, home, serve, page } = yield* servedReview;
+        const { home, page, root, serve } = yield* servedReview;
 
         yield* showView(page, "plan");
 
@@ -564,7 +564,7 @@ describe("editing off", () => {
         assert.strictEqual(built.exitCode, 0, built.stderr);
         assert.deepStrictEqual(
           (yield* decodeLayout(layout)).structures.engineer,
-          { x: 0, y: 0, w: 2, d: 2 }
+          { d: 2, w: 2, x: 0, y: 0 }
         );
 
         const file = path.join(root, "review", "review.html");
@@ -579,7 +579,7 @@ describe("editing off", () => {
 
         yield* assertAttribute(
           opened.page,
-          { selector: '[data-structure="engineer"] [data-face]', name: "x" },
+          { name: "x", selector: '[data-structure="engineer"] [data-face]' },
           "0"
         );
         yield* assertCount(opened.page, '[data-pending="true"]', 0);
@@ -602,7 +602,7 @@ describe("editing off", () => {
     structure: string,
     other: { readonly id: string; readonly to: { x: number; y: number } }
   ) {
-    const { home, serve, page } = yield* servedReview;
+    const { home, page, serve } = yield* servedReview;
     const held = yield* Latch.make();
     const reached = yield* Latch.make();
     const services = yield* Effect.context();
@@ -632,11 +632,11 @@ describe("editing off", () => {
 
     const written = yield* Effect.promise(() =>
       page.request.put(new URL("/api/proposals/layout", serve.url).href, {
-        headers: { origin: serve.url, "content-type": "application/json" },
         data: {
           baseFileRevision: 0,
           layout: [moveOf("other-writer", other.id, other.to)],
         },
+        headers: { "content-type": "application/json", origin: serve.url },
       })
     );
 

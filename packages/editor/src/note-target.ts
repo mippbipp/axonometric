@@ -5,8 +5,8 @@ import { Match } from "effect";
 export const noteTargetKey = (target: NoteTarget): string =>
   Match.value(target).pipe(
     Match.discriminatorsExhaustive("kind")({
-      structure: ({ id }) => `structure:${id}`,
       hop: ({ id }) => `hop:${id}`,
       spot: ({ x, y }) => `spot:${x},${y}`,
+      structure: ({ id }) => `structure:${id}`,
     })
   );

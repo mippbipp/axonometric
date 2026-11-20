@@ -38,9 +38,9 @@ const step = 0.5;
 const bigStep = 5;
 
 const arrows = {
-  ArrowRight: { x: 1, y: 0 },
-  ArrowLeft: { x: -1, y: 0 },
   ArrowDown: { x: 0, y: 1 },
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
   ArrowUp: { x: 0, y: -1 },
 } as const satisfies Readonly<Record<string, GridPoint>>;
 
@@ -93,8 +93,8 @@ export function NoteToolProvider({
 }: {
   readonly children: ReactNode;
 }) {
-  const { selected, selectedHop, select } = useSelection();
-  const { state, revealed } = useWalkthrough();
+  const { select, selected, selectedHop } = useSelection();
+  const { revealed, state } = useWalkthrough();
   const [cursor, setCursor] = useState<GridPoint | null>(null);
   const [spot, setSpot] = useState<GridPoint | null>(null);
   const armed = cursor !== null;
@@ -172,13 +172,13 @@ export function NoteToolProvider({
 
   const value = useMemo(
     (): NoteTool => ({
-      armed,
-      cursor,
-      spot,
       arm: (on) => {
         setCursor(on ? start : null);
       },
+      armed,
+      cursor,
       pick,
+      spot,
     }),
     [armed, cursor, spot, start, pick]
   );
@@ -200,15 +200,15 @@ export function NoteToolButton() {
 
   return (
     <button
-      type="button"
-      data-control="note-tool"
-      className={cn(controlClass, tool.armed && "bg-ink text-paper")}
       aria-pressed={tool.armed}
+      className={cn(controlClass, tool.armed && "bg-ink text-paper")}
+      data-control="note-tool"
       disabled={!review.canWrite}
-      title="Pin a note to an empty spot on the map"
       onClick={() => {
         tool.arm(!tool.armed);
       }}
+      title="Pin a note to an empty spot on the map"
+      type="button"
     >
       Note
     </button>
@@ -221,9 +221,9 @@ export function NoteToolHint() {
 
   return tool?.armed === true ? (
     <p
-      data-note-tool-hint
       aria-live="polite"
       className="bg-paper max-w-72 px-1 text-right text-xs opacity-80"
+      data-note-tool-hint
     >
       Click empty ground to pin a note there, or move the cursor with the arrow
       keys (Shift for five units) and press Enter. Esc stops.
@@ -252,14 +252,10 @@ export function SpotPicker({ view }: { readonly view: View }) {
 
   return (
     <rect
-      ref={sheet}
-      data-spot-picker
-      x={-100_000}
-      y={-100_000}
-      width={200_000}
-      height={200_000}
-      fill="transparent"
       className="cursor-crosshair"
+      data-spot-picker
+      fill="transparent"
+      height={200_000}
       onClick={(event) => {
         const element = sheet.current;
 
@@ -271,6 +267,10 @@ export function SpotPicker({ view }: { readonly view: View }) {
           tool.arm(false);
         }
       }}
+      ref={sheet}
+      width={200_000}
+      x={-100_000}
+      y={-100_000}
     />
   );
 }
@@ -292,20 +292,20 @@ export function SpotCursor({ view }: { readonly view: View }) {
 
   return (
     <g
-      pointerEvents="none"
       data-spot-cursor={`${tool.cursor.x},${tool.cursor.y}`}
+      pointerEvents="none"
     >
       <title>{`Note at the spot ${tool.cursor.x}, ${tool.cursor.y}`}</title>
       <path
-        d={`M ${at.sx - arm} ${at.sy} H ${at.sx + arm} M ${at.sx} ${at.sy - arm} V ${at.sy + arm}`}
         className="stroke-ink fill-none"
+        d={`M ${at.sx - arm} ${at.sy} H ${at.sx + arm} M ${at.sx} ${at.sy - arm} V ${at.sy + arm}`}
         strokeWidth={1.6}
       />
       <circle
+        className="stroke-ink fill-none"
         cx={at.sx}
         cy={at.sy}
         r={arm / 2}
-        className="stroke-ink fill-none"
         strokeWidth={1.6}
       />
     </g>

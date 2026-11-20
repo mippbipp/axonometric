@@ -8,11 +8,11 @@ import { createContext } from "react";
 
 /** What the page's editing layers need to know about the view they sit in. */
 export interface EditorView {
-  readonly view: View;
   /** Where each structure is shown now. */
   readonly placements: Readonly<Partial<Record<string, Placement>>>;
   /** The structures the chapter reveals. */
   readonly revealed: ReadonlySet<string>;
+  readonly view: View;
 }
 
 export const EditorViewContext = createContext<EditorView | null>(null);
@@ -26,13 +26,13 @@ export const EditorViewContext = createContext<EditorView | null>(null);
  * don't redraw with it.
  */
 export interface SceneFacts {
-  readonly texts: readonly ScreenRect[];
-  readonly outlines: readonly (readonly ScreenPoint[])[];
+  readonly outlines: ReadonlyArray<ReadonlyArray<ScreenPoint>>;
+  readonly texts: ReadonlyArray<ScreenRect>;
   readonly zoom: number;
 }
 
 export const EditorSceneContext = createContext<SceneFacts>({
-  texts: [],
   outlines: [],
+  texts: [],
   zoom: 1,
 });

@@ -17,10 +17,10 @@ export const useSending = () => {
     failure,
     sending,
     /** Shows a refusal that came before anything was sent. */
-    refuse: setFailure,
     clear: () => {
       setFailure(undefined);
     },
+    refuse: setFailure,
     run: <A>(
       send: (done: (outcome: ReviewOutcome<A>) => void) => void,
       onSent?: (value: A) => void

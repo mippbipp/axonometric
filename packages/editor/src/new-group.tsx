@@ -34,7 +34,7 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
   const titleId = useId();
   const { stop } = useWalkthrough();
   const [title, setTitle] = useState("");
-  const { failure, sending, clear, run } = useSending();
+  const { clear, failure, run, sending } = useSending();
 
   const members = useMemo(
     () =>
@@ -57,9 +57,9 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
   // While the form is open the panel shows what the group would add to
   // `check`'s report, judged on the chapter being viewed: a zone round the
   // members, and the new group's own.
-  const preview = useMemo((): readonly BatchItem[] => {
+  const preview = useMemo((): ReadonlyArray<BatchItem> => {
     const moves = Arr.map(members, ({ id }) =>
-      structureItem({ action: "group", structure: id, group: groupId })
+      structureItem({ action: "group", group: groupId, structure: id })
     );
 
     return trimmed === ""
@@ -71,7 +71,7 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
   }, [trimmed, groupId, members]);
 
   const scope = useMemo(
-    (): CheckScope => ({ of: "chapter", chapter: stop.id }),
+    (): CheckScope => ({ chapter: stop.id, of: "chapter" }),
     [stop.id]
   );
 
@@ -79,8 +79,8 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
 
   return (
     <form
-      data-new-group
       className="flex flex-col gap-2"
+      data-new-group
       onSubmit={(event) => {
         event.preventDefault();
 
@@ -106,23 +106,23 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
         }, onDone);
       }}
     >
-      <label htmlFor={titleId} className="text-xs opacity-70">
+      <label className="text-xs opacity-70" htmlFor={titleId}>
         Group title
       </label>
       <input
-        id={titleId}
-        data-new-group-title
-        type="text"
-        value={title}
-        maxLength={maxGroupTitleLength}
         autoComplete="off"
         className={fieldClass}
+        data-new-group-title
+        id={titleId}
+        maxLength={maxGroupTitleLength}
         onChange={(event) => {
           clear();
           setTitle(event.target.value);
         }}
+        type="text"
+        value={title}
       />
-      <p data-new-group-members className="text-xs opacity-70">
+      <p className="text-xs opacity-70" data-new-group-members>
         {members.length === 0
           ? "No structures are selected, so the group starts empty."
           : `Moves ${Arr.join(
@@ -132,23 +132,23 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
       </p>
       {failure === undefined ? null : (
         <p
-          role="alert"
-          data-new-group-failure
           className="border-refused border-l-2 pl-2 text-xs"
+          data-new-group-failure
+          role="alert"
         >
           {failure}
         </p>
       )}
       <div className="flex gap-1.5">
         <button
-          type="submit"
-          data-new-group-submit
           className={controlClass}
+          data-new-group-submit
           disabled={trimmed === "" || sending || ops?.canPropose !== true}
+          type="submit"
         >
           {members.length === 0 ? "Create empty group" : "Create group"}
         </button>
-        <button type="button" className={controlClass} onClick={onDone}>
+        <button className={controlClass} onClick={onDone} type="button">
           Cancel
         </button>
       </div>

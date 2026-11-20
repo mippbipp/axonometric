@@ -24,7 +24,7 @@ before(() => {
 });
 
 after(() => {
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { force: true, recursive: true });
 });
 
 interface Finished {
@@ -77,8 +77,8 @@ const until = async (ready: () => boolean): Promise<void> => {
 
 const Holder = Schema.fromJsonString(
   Schema.Struct({
-    pid: Schema.Int,
     command: Schema.String,
+    pid: Schema.Int,
     startedAt: Schema.String,
   })
 );
@@ -137,8 +137,8 @@ void describe("with-test-lock", () => {
     writeFileSync(
       lock,
       JSON.stringify({
-        pid: dead.pid,
         command: "turbo run test",
+        pid: dead.pid,
         startedAt: "2026-01-01T00:00:00.000Z",
       })
     );
@@ -153,8 +153,8 @@ void describe("with-test-lock", () => {
     const lock = join(dir, "ci.lock");
 
     const held = JSON.stringify({
-      pid: process.pid,
       command: "turbo run test",
+      pid: process.pid,
       startedAt: new Date().toISOString(),
     });
 

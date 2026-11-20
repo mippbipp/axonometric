@@ -35,7 +35,7 @@ const openOverview = Effect.fnUntraced(function* (page: Page) {
 
 /** The resolved `href` of each link matching `selector`. */
 const resolvedLinks = (page: Page, selector: string) =>
-  inPage<readonly string[]>(
+  inPage<ReadonlyArray<string>>(
     page,
     `[...document.querySelectorAll(${literal(selector)})].map((a) => a.href)`
   );
@@ -73,7 +73,7 @@ describe("the How it's built page", () => {
   it.live("shows every overview field in SYSTEM.md's order", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+        const { errors, page } = yield* reviewPage;
 
         yield* openOverview(page);
 

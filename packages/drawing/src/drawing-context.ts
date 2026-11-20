@@ -24,21 +24,8 @@ export const pagePaint: Paint = Rec.map(palette.light, (_value, name) =>
 
 /** What a drawing needs to know about where it is drawn. */
 export interface DrawingEnvironment {
-  readonly paint: Paint;
-  /**
-   * Whether the drawing is on the live page, where a status that hides
-   * hatching still keeps the hatching, hidden, and where parts that aren't
-   * targets ignore the pointer. A file leaves both out.
-   */
-  readonly live: boolean;
   /** The group one structure's parts are drawn in. */
   readonly Frame: ComponentType<StructureFrameProps>;
-  /**
-   * Surrounds the structures, their hidden hops and their name tags. The
-   * page's editor goes here, to drag and select; a file's just passes them
-   * through.
-   */
-  readonly Layers: ComponentType<{ readonly children: ReactNode }>;
   /**
    * The `id` of a part of a file, such as `chapter-3-structure-gate`, or
    * `null` on the page, where parts have no ids.
@@ -47,6 +34,19 @@ export interface DrawingEnvironment {
     kind: "structure" | "hop" | "zone",
     id: string
   ) => string | null;
+  /**
+   * Surrounds the structures, their hidden hops and their name tags. The
+   * page's editor goes here, to drag and select; a file's just passes them
+   * through.
+   */
+  readonly Layers: ComponentType<{ readonly children: ReactNode }>;
+  /**
+   * Whether the drawing is on the live page, where a status that hides
+   * hatching still keeps the hatching, hidden, and where parts that aren't
+   * targets ignore the pointer. A file leaves both out.
+   */
+  readonly live: boolean;
+  readonly paint: Paint;
 }
 
 export const DrawingContext = createContext<DrawingEnvironment | null>(null);

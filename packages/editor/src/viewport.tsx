@@ -22,8 +22,8 @@ interface Camera {
 }
 
 interface Size {
-  readonly width: number;
   readonly height: number;
+  readonly width: number;
 }
 
 /** Space left around the bounds when they're fitted, in screen pixels. */
@@ -42,7 +42,7 @@ const dragThreshold = 4;
 /** How much one press of + or - zooms. */
 const zoomStep = 1.25;
 
-const emptyBounds: Bounds = { minX: -1, minY: -1, maxX: 1, maxY: 1 };
+const emptyBounds: Bounds = { maxX: 1, maxY: 1, minX: -1, minY: -1 };
 
 const noFloor = (scale: number) => scale;
 
@@ -59,13 +59,13 @@ const scaleToFit = (bounds: Bounds, size: Size) =>
 
 const fitted = ({
   boundsAt,
-  size,
   floor,
+  size,
 }: {
   /** The drawing's bounds when it's drawn at a zoom. */
   readonly boundsAt: (zoom: number) => Bounds;
-  readonly size: Size;
   readonly floor: (scale: number) => number;
+  readonly size: Size;
 }): Camera => {
   const scale = floor(settledScale((zoom) => scaleToFit(boundsAt(zoom), size)));
 
@@ -87,8 +87,8 @@ const fitted = ({
  * whichever is larger.
  */
 const limitsFor = (fitScale: number) => ({
-  min: Math.min(fitScale, 1) / 2,
   max: Math.max(fitScale, 1) * 4,
+  min: Math.min(fitScale, 1) / 2,
 });
 
 /**
@@ -98,14 +98,14 @@ const limitsFor = (fitScale: number) => ({
  */
 const reprojected = ({
   camera,
-  size,
-  previous,
   next,
+  previous,
+  size,
 }: {
   readonly camera: Camera;
-  readonly size: Size;
-  readonly previous: GroundProjection;
   readonly next: GroundProjection;
+  readonly previous: GroundProjection;
+  readonly size: Size;
 }): Camera => {
   const middle = previous.toGround({
     sx: (size.width / 2 - camera.x) / camera.scale,
@@ -124,15 +124,15 @@ const reprojected = ({
 
 /** Zooms `camera` by `factor` around the screen point `at`, within limits. */
 const zoomed = ({
+  at,
   camera,
   factor,
-  at,
   limits,
 }: {
+  readonly at: { readonly x: number; readonly y: number };
   readonly camera: Camera;
   readonly factor: number;
-  readonly at: { readonly x: number; readonly y: number };
-  readonly limits: { readonly min: number; readonly max: number };
+  readonly limits: { readonly max: number; readonly min: number };
 }): Camera => {
   const scale = Math.min(
     Math.max(camera.scale * factor, limits.min),
@@ -177,7 +177,7 @@ const startsOnStructure = (target: EventTarget | null) =>
 
 interface Gestures {
   readonly current: () => Camera;
-  readonly limits: () => { readonly min: number; readonly max: number };
+  readonly limits: () => { readonly max: number; readonly min: number };
   readonly show: (next: Camera) => void;
   readonly zoomBy: (
     factor: number,
@@ -198,9 +198,9 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
   };
 
   const pointers = new Map<number, { x: number; y: number }>();
-  let press: { x: number; y: number; camera: Camera } | undefined;
+  let press: { camera: Camera; x: number; y: number } | undefined;
   let dragging = false;
-  let pinch: { distance: number; camera: Camera } | undefined;
+  let pinch: { camera: Camera; distance: number } | undefined;
 
   const pinchSpan = () => {
     const [a, b] = [...pointers.values()];
@@ -208,8 +208,8 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
     return a === undefined || b === undefined
       ? undefined
       : {
-          distance: Math.hypot(a.x - b.x, a.y - b.y),
           centre: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+          distance: Math.hypot(a.x - b.x, a.y - b.y),
         };
   };
 
@@ -236,7 +236,7 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
       pinch =
         span === undefined
           ? undefined
-          : { distance: span.distance, camera: gestures.current() };
+          : { camera: gestures.current(), distance: span.distance };
     } else if (!startsOnStructure(event.target) && !event.shiftKey) {
       // A Shift-drag on empty space draws a selection box instead.
       press = { ...local(event), camera: gestures.current() };
@@ -258,9 +258,9 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
       if (span !== undefined && pinch.distance > 0) {
         gestures.show(
           zoomed({
+            at: span.centre,
             camera: pinch.camera,
             factor: span.distance / pinch.distance,
-            at: span.centre,
             limits: gestures.limits(),
           })
         );
@@ -345,34 +345,34 @@ const listenForGestures = (svg: SVGSVGElement, gestures: Gestures) => {
  * sized for (see `textZoomOf`) whenever it changes step.
  */
 export function Viewport({
+  children,
   fit = emptyBounds,
   fitAt,
-  fitKey = "",
   fitFloor = noFloor,
-  onTextZoom,
+  fitKey = "",
   ground,
+  onTextZoom,
   title,
-  children,
 }: {
+  readonly children: ReactNode;
   readonly fit?: Bounds | undefined;
   /**
    * The bounds to fit when the drawing is shown at a zoom, for a drawing
    * whose text grows as it zooms out. Takes the place of `fit`.
    */
   readonly fitAt?: ((zoom: number) => Bounds | undefined) | undefined;
-  /** Names what `fit` holds, such as a chapter. A new key refits the view. */
-  readonly fitKey?: string;
   /**
    * The zoom to fit at, given the zoom that fits `fit`: the same or larger.
    * Defaults to the zoom that fits.
    */
   readonly fitFloor?: (scale: number) => number;
-  /** Called with the zoom text is sized for, each time it changes. */
-  readonly onTextZoom?: ((zoom: number) => void) | undefined;
+  /** Names what `fit` holds, such as a chapter. A new key refits the view. */
+  readonly fitKey?: string;
   /** How the drawing projects the ground, to keep the middle on a switch. */
   readonly ground?: GroundProjection | undefined;
+  /** Called with the zoom text is sized for, each time it changes. */
+  readonly onTextZoom?: ((zoom: number) => void) | undefined;
   readonly title: string;
-  readonly children: ReactNode;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const worldRef = useRef<SVGGElement>(null);
@@ -422,8 +422,8 @@ export function Viewport({
 
     const next = fitted({
       boundsAt: boundsAt.current,
-      size: { width: svg.clientWidth, height: svg.clientHeight },
       floor: floor.current,
+      size: { height: svg.clientHeight, width: svg.clientWidth },
     });
 
     fitScale.current = next.scale;
@@ -442,9 +442,9 @@ export function Viewport({
 
       show(
         zoomed({
+          at: centre,
           camera: camera.current,
           factor,
-          at: centre,
           limits: limitsFor(fitScale.current),
         })
       );
@@ -474,9 +474,9 @@ export function Viewport({
 
     const next = reprojected({
       camera: camera.current,
-      size: { width: svg.clientWidth, height: svg.clientHeight },
-      previous,
       next: ground,
+      previous,
+      size: { height: svg.clientHeight, width: svg.clientWidth },
     });
 
     fitScale.current = (fitScale.current * previous.unit) / ground.unit;
@@ -554,44 +554,44 @@ export function Viewport({
           the default, Chromium rounds each glyph's advance to a whole pixel
           on screen, so a 9 px label is drawn at 5 px a character, not 5.4. */}
       <svg
-        ref={svgRef}
         aria-labelledby={titleId}
         className="text-ink block size-full cursor-grab touch-none select-none active:cursor-grabbing"
+        ref={svgRef}
         textRendering="geometricPrecision"
       >
         <title id={titleId}>{title}</title>
-        <g ref={worldRef} data-viewport="">
+        <g data-viewport="" ref={worldRef}>
           {children}
         </g>
       </svg>
       <div className="absolute right-3 bottom-3 flex gap-1.5 font-mono">
         <button
-          type="button"
-          className={controlClass}
           aria-label="Zoom in"
-          title="Zoom in (+)"
+          className={controlClass}
           onClick={() => {
             zoomBy(zoomStep);
           }}
+          title="Zoom in (+)"
+          type="button"
         >
           +
         </button>
         <button
-          type="button"
-          className={controlClass}
           aria-label="Zoom out"
-          title="Zoom out (-)"
+          className={controlClass}
           onClick={() => {
             zoomBy(1 / zoomStep);
           }}
+          title="Zoom out (-)"
+          type="button"
         >
           −
         </button>
         <button
-          type="button"
           className={controlClass}
-          title="Zoom to fit (0)"
           onClick={zoomToFit}
+          title="Zoom to fit (0)"
+          type="button"
         >
           Zoom to fit
         </button>

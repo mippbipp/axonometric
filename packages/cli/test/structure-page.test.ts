@@ -42,7 +42,7 @@ const savedStructures = (home: string, expected: number) =>
       (saved) => saved.length === expected,
       () => `proposals.json never held ${expected} structure proposals`
     ),
-    Effect.retry({ times: 100, schedule: Schedule.spaced("100 millis") }),
+    Effect.retry({ schedule: Schedule.spaced("100 millis"), times: 100 }),
     Effect.orDie
   );
 
@@ -105,7 +105,7 @@ const addStructure = Effect.fnUntraced(function* (
 });
 
 /** The pieces of the cross that run over a code chip or a name tag. */
-const strikesOverText = (report: DrawingReport): readonly string[] => {
+const strikesOverText = (report: DrawingReport): ReadonlyArray<string> => {
   // The chip's rendered box, with 3 pixels of air round it.
   const aired = Arr.map(report.chips, ({ id, polygon }): Drawn => {
     const xs = Arr.map(polygon, ({ x }) => x);
@@ -124,7 +124,7 @@ const strikesOverText = (report: DrawingReport): readonly string[] => {
     };
   });
 
-  const text: readonly Drawn[] = [
+  const text: ReadonlyArray<Drawn> = [
     ...aired,
     ...Arr.filter(report.text, ({ id }) => Str.startsWith("tag:")(id)),
   ];
@@ -145,7 +145,7 @@ describe("adding a structure from the toolbar", () => {
     "asks for name, shape, group, status and position, and saves a proposal",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-control="add-structure"]');
@@ -195,15 +195,15 @@ describe("adding a structure from the toolbar", () => {
           assert.deepStrictEqual(
             { ...saved.change.structure, id: "" },
             {
+              group: "outside",
               id: "",
               name: "Build cache",
               shape: "store",
-              group: "outside",
               status: "planned",
             }
           );
           assert.match(saved.change.structure.id, /^build-cache-[0-9a-f]{4}$/u);
-          assert.deepStrictEqual(saved.change.at, { x: 12, y: 12, w: 2, d: 2 });
+          assert.deepStrictEqual(saved.change.at, { d: 2, w: 2, x: 12, y: 12 });
         }
 
         assert.deepStrictEqual(errors, []);
@@ -526,10 +526,10 @@ describe("the context menu on a structure", () => {
         assert.sameDeepMembers(
           [...changes],
           [
-            { action: "status", structure: "server", status: "off" },
-            { action: "group", structure: "proposals", group: "outside" },
-            { action: "shape", structure: "engineer", shape: "box" },
-            { action: "rename", structure: "page", name: "Map view" },
+            { action: "status", status: "off", structure: "server" },
+            { action: "group", group: "outside", structure: "proposals" },
+            { action: "shape", shape: "box", structure: "engineer" },
+            { action: "rename", name: "Map view", structure: "page" },
             { action: "delete", structure: "upstream" },
           ]
         );

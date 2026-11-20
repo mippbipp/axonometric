@@ -7,7 +7,7 @@ import type { BatchItem, Verdict } from "./proposals.ts";
 export type Entity = "structure" | "hop" | "flow" | "group";
 
 /** Every entity, in the order the messages list them. */
-export const entities: readonly Entity[] = [
+export const entities: ReadonlyArray<Entity> = [
   "structure",
   "hop",
   "flow",
@@ -26,14 +26,14 @@ export type Renames = Readonly<Record<Entity, ReadonlyMap<string, string>>>;
 
 /** Renames of nothing. */
 export const noRenames: Renames = {
-  structure: new Map(),
-  hop: new Map(),
   flow: new Map(),
   group: new Map(),
+  hop: new Map(),
+  structure: new Map(),
 };
 
 /** `list` as `Renames`. Ids the agent kept as they were are not renames. */
-export const renamesOf = (list: readonly Rename[]): Renames => {
+export const renamesOf = (list: ReadonlyArray<Rename>): Renames => {
   const mapOf = (entity: Entity): ReadonlyMap<string, string> =>
     new Map(
       Arr.flatMap(list, (rename) =>
@@ -44,10 +44,10 @@ export const renamesOf = (list: readonly Rename[]): Renames => {
     );
 
   return {
-    structure: mapOf("structure"),
-    hop: mapOf("hop"),
     flow: mapOf("flow"),
     group: mapOf("group"),
+    hop: mapOf("hop"),
+    structure: mapOf("structure"),
   };
 };
 
@@ -70,23 +70,23 @@ export type KnownIds = Readonly<Record<Entity, ReadonlySet<string>>>;
 
 /** Known ids of nothing. */
 export const noKnownIds: KnownIds = {
-  structure: new Set(),
-  hop: new Set(),
   flow: new Set(),
   group: new Set(),
+  hop: new Set(),
+  structure: new Set(),
 };
 
 /** The key of a `Batch` list of the ids an entity had when the batch was frozen. */
 export const batchKeyOf = {
-  structure: "structures",
-  hop: "hops",
   flow: "flows",
   group: "groups",
+  hop: "hops",
+  structure: "structures",
 } as const satisfies Record<Entity, string>;
 
 /** The ids frozen into a batch, by entity. */
 export type FrozenIds = Partial<
-  Record<(typeof batchKeyOf)[Entity], readonly string[]>
+  Record<(typeof batchKeyOf)[Entity], ReadonlyArray<string>>
 >;
 
 /** What `verdict` knows when it checks a verdict. */
@@ -102,11 +102,11 @@ export interface VerdictContext {
 
 /** What a kind of item adds under a provisional id, and how it says so. */
 export interface Provisional<I extends BatchItem> {
+  /** The provisional id the item adds, or nothing when it adds none. */
+  readonly adds: (item: I) => Option.Option<string>;
   readonly entity: Entity;
   /** What the entity is called in a message, such as "hop". */
   readonly noun: string;
-  /** The provisional id the item adds, or nothing when it adds none. */
-  readonly adds: (item: I) => Option.Option<string>;
 }
 
 /** The final id a verdict gives a provisional id: `--as`, else the id itself. */
@@ -125,6 +125,16 @@ export const provisionalOf = <I extends BatchItem>(spec: Provisional<I>) => ({
   /** The id the item ends up with once taken, or nothing if it adds none. */
   finalIdOf: (item: I, verdict: Verdict): Option.Option<string> =>
     Option.map(spec.adds(item), (provisional) => finalOf(provisional, verdict)),
+
+  renames: (item: I, verdict: Verdict): ReadonlyArray<Rename> =>
+    verdict.verdict === "rejected"
+      ? []
+      : Option.match(spec.adds(item), {
+          onNone: () => [],
+          onSome: (from) => [
+            { entity: spec.entity, from, to: finalOf(from, verdict) },
+          ],
+        }),
 
   verdictRefusal: (
     item: I,
@@ -161,14 +171,4 @@ export const provisionalOf = <I extends BatchItem>(spec: Provisional<I>) => ({
         `--as ${as} is already the final id of item ${other} in this batch. Give each new ${spec.noun} its own id.`
     );
   },
-
-  renames: (item: I, verdict: Verdict): readonly Rename[] =>
-    verdict.verdict === "rejected"
-      ? []
-      : Option.match(spec.adds(item), {
-          onNone: () => [],
-          onSome: (from) => [
-            { entity: spec.entity, from, to: finalOf(from, verdict) },
-          ],
-        }),
 });

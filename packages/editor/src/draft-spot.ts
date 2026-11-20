@@ -8,15 +8,15 @@ import { useProposed } from "./proposed-context.ts";
 
 /** Where the structure in the add form would go. */
 export interface DraftSpot {
-  readonly spot: Placement;
-  /** Whether the engineer picked or typed it, rather than the form choosing. */
-  readonly picked: boolean;
   /**
    * How many warnings the proposed map gains from a structure there. For a
    * spot the form chose, anything above nothing means no clear spot was
    * within reach.
    */
   readonly added: number | undefined;
+  /** Whether the engineer picked or typed it, rather than the form choosing. */
+  readonly picked: boolean;
+  readonly spot: Placement;
 }
 
 /**
@@ -47,10 +47,10 @@ export const useDraftSpot = (): DraftSpot | null => {
         ? null
         : defaultSpotFor({
             data: proposed.data,
-            layout: proposed.layout,
             group,
-            shape,
+            layout: proposed.layout,
             name: name === undefined || name === "" ? "New structure" : name,
+            shape,
           }),
     [open, picked, proposed, group, shape, name]
   );
@@ -61,13 +61,13 @@ export const useDraftSpot = (): DraftSpot | null => {
 
   if (picked !== null) {
     return {
-      spot: { ...picked, ...newStructureFootprint },
-      picked: true,
       added: undefined,
+      picked: true,
+      spot: { ...picked, ...newStructureFootprint },
     };
   }
 
   return chosen === null
     ? null
-    : { spot: chosen.spot, picked: false, added: chosen.added };
+    : { added: chosen.added, picked: false, spot: chosen.spot };
 };

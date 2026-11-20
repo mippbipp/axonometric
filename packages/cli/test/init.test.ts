@@ -9,7 +9,10 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { makeHome, runCli } from "./harness.ts";
 
 /** Runs git in `cwd` and returns its exit code. */
-const git = Effect.fnUntraced(function* (cwd: string, args: readonly string[]) {
+const git = Effect.fnUntraced(function* (
+  cwd: string,
+  args: ReadonlyArray<string>
+) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
   return yield* spawner.exitCode(ChildProcess.make("git", args, { cwd }));

@@ -17,10 +17,10 @@ interface Box {
 
 /** The handlers a box selection needs on the canvas. */
 interface Handlers {
+  readonly onClick: (event: MouseEvent) => void;
   readonly onDown: (event: PointerEvent) => void;
   readonly onMove: (event: PointerEvent) => void;
   readonly onUp: (event: PointerEvent) => void;
-  readonly onClick: (event: MouseEvent) => void;
 }
 
 /** Listens with `handlers` on `svg`, and returns a function that stops. */
@@ -42,13 +42,13 @@ const listenOn = (svg: SVGSVGElement, handlers: Handlers) => {
 
 /** A Shift-press on empty canvas, until it's released. */
 interface Press {
-  readonly pointer: number;
-  readonly x: number;
-  readonly y: number;
   /** The ground point the box started at. */
   readonly from: GridPoint;
   /** What was selected when the press began, which the box adds to. */
   readonly kept: ReadonlySet<string>;
+  readonly pointer: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
@@ -65,14 +65,14 @@ const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
  * transformed group, so the box pans and zooms with the map.
  */
 export function BoxSelect({
-  view,
   placements,
   revealed,
+  view,
 }: {
-  readonly view: View;
   readonly placements: Readonly<Partial<Record<string, Placement>>>;
   /** The structures that are on the map now. */
   readonly revealed: ReadonlySet<string>;
+  readonly view: View;
 }) {
   const editing = useEditing();
   const { multiSelection, setMultiSelection } = useSelection();
@@ -104,11 +104,11 @@ export function BoxSelect({
 
     if (from !== undefined) {
       press.current = {
+        from,
+        kept: multiSelection,
         pointer: event.pointerId,
         x: event.clientX,
         y: event.clientY,
-        from,
-        kept: multiSelection,
       };
     }
   });
@@ -151,9 +151,9 @@ export function BoxSelect({
     const hit = new Set([
       ...current.kept,
       ...structuresInBox({
-        placements,
         box: next,
         ids: [...revealed],
+        placements,
       }),
     ]);
 
@@ -186,7 +186,7 @@ export function BoxSelect({
     const svg = anchor.current?.ownerSVGElement;
 
     return live && svg !== null && svg !== undefined
-      ? listenOn(svg, { onDown, onMove, onUp, onClick })
+      ? listenOn(svg, { onClick, onDown, onMove, onUp })
       : undefined;
   }, [live]);
 
@@ -194,25 +194,25 @@ export function BoxSelect({
   const top = box === undefined ? 0 : Math.min(box.from.y, box.to.y);
 
   return (
-    <g ref={anchor} className="pointer-events-none">
+    <g className="pointer-events-none" ref={anchor}>
       {box === undefined ? null : (
         <polygon
-          data-selection-box=""
           aria-hidden="true"
+          className="fill-multi/10 stroke-multi"
+          data-selection-box=""
           points={toPoints(
             groundOutline(
               {
+                d: Math.abs(box.to.y - box.from.y),
+                w: Math.abs(box.to.x - box.from.x),
                 x: left,
                 y: top,
-                w: Math.abs(box.to.x - box.from.x),
-                d: Math.abs(box.to.y - box.from.y),
               },
               groundProjections[view]
             )
           )}
-          className="fill-multi/10 stroke-multi"
-          strokeWidth={1.5}
           strokeDasharray="5 3"
+          strokeWidth={1.5}
         />
       )}
     </g>

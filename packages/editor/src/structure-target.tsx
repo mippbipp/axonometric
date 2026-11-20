@@ -30,15 +30,15 @@ import { useTooltipActions } from "./tooltip-context.ts";
  * them. Pass the drawing as `children` and any other attributes as props.
  */
 export function StructureTarget({
-  id,
   children,
   className,
+  id,
   ...rest
 }: SVGProps<SVGGElement> & { readonly id: string }) {
-  const { selected, multiSelection, select, toggleMultiSelected, goInside } =
+  const { goInside, multiSelection, select, selected, toggleMultiSelected } =
     useSelection();
 
-  const { show, hide } = useTooltipActions();
+  const { hide, show } = useTooltipActions();
   const name = useStructuresById().get(id)?.name ?? id;
   const isSelected = selected === id;
   const editing = useEditing();
@@ -60,7 +60,7 @@ export function StructureTarget({
 
   const marks = useCompare();
   const kinds = marks?.structures.get(id);
-  const marked = spokenMarks({ marks, id });
+  const marked = spokenMarks({ id, marks });
 
   const showAtPointer = (event: PointerEvent) => {
     show({ id, x: event.clientX, y: event.clientY });
@@ -94,19 +94,6 @@ export function StructureTarget({
   return (
     <g
       {...rest}
-      className={cn(
-        "focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-dashed",
-        className
-      )}
-      data-structure={id}
-      data-selected={isSelected}
-      data-multi-selected={isMultiSelected}
-      data-pending={isPending}
-      data-removed={isRemoved}
-      data-compare={kinds?.join(" ")}
-      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
-      role="button"
-      tabIndex={0}
       aria-label={Arr.join(
         [
           isMultiSelected ? `${name}, in the multi-selection` : name,
@@ -117,22 +104,35 @@ export function StructureTarget({
         ", "
       )}
       aria-pressed={isSelected}
+      className={cn(
+        "focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-dashed",
+        className
+      )}
+      data-compare={kinds?.join(" ")}
+      data-multi-selected={isMultiSelected}
+      data-pending={isPending}
+      data-removed={isRemoved}
+      data-selected={isSelected}
+      data-structure={id}
+      onBlur={() => {
+        hide(id);
+      }}
       onClick={(event) => {
         activate(event.shiftKey);
       }}
       onDoubleClick={() => {
         goInside(id);
       }}
+      onFocus={showOnKeyboardFocus}
+      onKeyDown={onKeyDown}
       onPointerEnter={showAtPointer}
-      onPointerMove={showAtPointer}
       onPointerLeave={() => {
         hide(id);
       }}
-      onFocus={showOnKeyboardFocus}
-      onBlur={() => {
-        hide(id);
-      }}
-      onKeyDown={onKeyDown}
+      onPointerMove={showAtPointer}
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
+      role="button"
+      tabIndex={0}
     >
       {children}
     </g>

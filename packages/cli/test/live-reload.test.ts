@@ -62,10 +62,10 @@ const settle = Effect.fnUntraced(function* (page: Page) {
 });
 
 interface Box {
+  readonly height: number;
+  readonly width: number;
   readonly x: number;
   readonly y: number;
-  readonly width: number;
-  readonly height: number;
 }
 
 const overlaps = (a: Box, b: Box) =>
@@ -106,7 +106,7 @@ describe("live reload", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { root, home, page, errors } = yield* servedReview;
+        const { errors, home, page, root } = yield* servedReview;
         const scale = yield* settle(page);
 
         yield* editData(home, rename('"Save server"', '"Write server"'));
@@ -129,13 +129,13 @@ describe("live reload", () => {
 
         yield* assertAttribute(
           page,
-          { selector: "[data-walkthrough]", name: "data-chapter" },
+          { name: "data-chapter", selector: "[data-walkthrough]" },
           "c-save"
         );
 
         yield* assertAttribute(
           page,
-          { selector: '[data-selected="true"]', name: "data-structure" },
+          { name: "data-structure", selector: '[data-selected="true"]' },
           "server"
         );
 
@@ -194,19 +194,19 @@ describe("live reload", () => {
 
         yield* assertAttribute(
           page,
-          { selector: "[data-walkthrough]", name: "data-view" },
+          { name: "data-view", selector: "[data-walkthrough]" },
           "plan"
         );
 
         yield* assertAttribute(
           page,
-          { selector: "[data-walkthrough]", name: "data-chapter" },
+          { name: "data-chapter", selector: "[data-walkthrough]" },
           "c-save"
         );
 
         yield* assertAttribute(
           page,
-          { selector: '[data-selected="true"]', name: "data-structure" },
+          { name: "data-structure", selector: '[data-selected="true"]' },
           "server"
         );
       }),
@@ -249,7 +249,7 @@ describe("live reload", () => {
     "says the server stopped, and recovers when it starts again",
     () =>
       Effect.gen(function* () {
-        const { home, serve, page } = yield* servedReview;
+        const { home, page, serve } = yield* servedReview;
         const { port } = new URL(serve.url);
 
         yield* serve.stop;
@@ -275,7 +275,7 @@ describe("live reload", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { root, home, page } = yield* servedReview;
+        const { home, page, root } = yield* servedReview;
 
         yield* fs.makeDirectory(path.join(root, "src"));
         yield* fs.writeFileString(
@@ -322,10 +322,10 @@ export default data;
       `shows the error banner and the stopped notice clear of every control at ${width}×800`,
       () =>
         Effect.gen(function* () {
-          const { home, serve, page } = yield* servedReview;
+          const { home, page, serve } = yield* servedReview;
 
           yield* Effect.promise(() =>
-            page.setViewportSize({ width, height: 800 })
+            page.setViewportSize({ height: 800, width })
           );
           // Every name blanked gives a long list of problems, which must
           // scroll inside the banner instead of reaching the playback bar.

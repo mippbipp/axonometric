@@ -26,31 +26,31 @@ const dragThreshold = 4;
 
 /** One press on a zone's title, until it's released. */
 interface Press {
-  readonly group: string;
-  readonly pointer: number;
   readonly from: { readonly x: number; readonly y: number };
   readonly ground: GridPoint;
+  readonly group: string;
   /** Every member of the group and where it was shown at the press. */
-  readonly members: readonly (readonly [string, Placement])[];
+  readonly members: ReadonlyArray<readonly [string, Placement]>;
+  readonly pointer: number;
 }
 
 /** A press past the threshold, and where it would put the group. */
 interface Drag {
-  readonly group: string;
   readonly by: GridPoint;
-  readonly members: readonly (readonly [string, Placement])[];
+  readonly group: string;
+  readonly members: ReadonlyArray<readonly [string, Placement]>;
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
 }
 
 /** The moves that put every member `by` away from where it is. */
 const movesBy = (
-  members: readonly (readonly [string, Placement])[],
+  members: ReadonlyArray<readonly [string, Placement]>,
   by: GridPoint
-): readonly StructureMove[] =>
+): ReadonlyArray<StructureMove> =>
   Arr.map(members, ([id, at]) => ({
-    target: { kind: "structure" as const, id },
     position: { x: at.x + by.x, y: at.y + by.y },
+    target: { id, kind: "structure" as const },
   }));
 
 /**
@@ -68,17 +68,17 @@ const movesBy = (
  * - The warnings the move would add show as the drag goes.
  */
 export function GroupEditor({
-  view,
   data,
   layout,
+  view,
   zones,
 }: {
-  readonly view: View;
   readonly data: Pick<MapData, "structures">;
   /** The layout as the page shows it now. */
   readonly layout: Layout;
+  readonly view: View;
   /** The zones the view draws, whose titles are the handles. */
-  readonly zones: readonly SceneZone[];
+  readonly zones: ReadonlyArray<SceneZone>;
 }) {
   const editing = useEditing();
   const { state } = useWalkthrough();
@@ -144,12 +144,12 @@ export function GroupEditor({
 
     if (canvas !== null && canvas !== undefined) {
       shiftDrawing({
-        root: canvas,
-        view,
-        ids: drag === undefined ? [] : Arr.map(drag.members, ([id]) => id),
+        by: drag?.by,
         groups: drag === undefined ? [] : [drag.group],
         hops: state.data.hops,
-        by: drag?.by,
+        ids: drag === undefined ? [] : Arr.map(drag.members, ([id]) => id),
+        root: canvas,
+        view,
       });
     }
   }, [drag, view, state.data.hops]);
@@ -161,8 +161,8 @@ export function GroupEditor({
         ? undefined
         : {
             moving: Arr.map(drag.members, ([id, from]) => ({
-              id,
               from,
+              id,
               to: { ...from, x: from.x + drag.by.x, y: from.y + drag.by.y },
             })),
             refusal: drag.refusal,
@@ -211,8 +211,8 @@ export function GroupEditor({
     }
 
     const members = Arr.flatMap(
-      groupMembers({ data, layout, group }),
-      (id): readonly (readonly [string, Placement])[] => {
+      groupMembers({ data, group, layout }),
+      (id): ReadonlyArray<readonly [string, Placement]> => {
         const at = layout.structures[id];
 
         return at === undefined ? [] : [[id, at]];
@@ -226,11 +226,11 @@ export function GroupEditor({
     // a drag. Capturing at once keeps the moves coming.
     element.setPointerCapture(event.pointerId);
     press.current = {
-      group,
-      pointer: event.pointerId,
       from: { x: event.clientX, y: event.clientY },
       ground,
+      group,
       members,
+      pointer: event.pointerId,
     };
   };
 
@@ -279,8 +279,8 @@ export function GroupEditor({
       before !== undefined && before.by.x === by.x && before.by.y === by.y
         ? before
         : {
-            group: current.group,
             by,
+            group: current.group,
             members: current.members,
             refusal:
               by.x === 0 && by.y === 0
@@ -326,33 +326,33 @@ export function GroupEditor({
 
   return (
     <g
-      ref={root}
-      data-group-editor={live ? "on" : "off"}
       data-dragging-group={drag?.group}
+      data-group-editor={live ? "on" : "off"}
+      onLostPointerCapture={(event) => {
+        end(event, false);
+      }}
+      onPointerCancel={(event) => {
+        end(event, false);
+      }}
       onPointerDown={live ? onPointerDown : undefined}
       onPointerMove={live ? onPointerMove : undefined}
       onPointerUp={(event) => {
         end(event, true);
       }}
-      onPointerCancel={(event) => {
-        end(event, false);
-      }}
-      onLostPointerCapture={(event) => {
-        end(event, false);
-      }}
+      ref={root}
     >
       {live
-        ? Arr.flatMap(zones, ({ zone, title }) =>
+        ? Arr.flatMap(zones, ({ title, zone }) =>
             title === undefined
               ? []
               : [
                   <polygon
-                    key={zone.group.id}
-                    data-zone-title-hit={zone.group.id}
-                    points={toPoints(title)}
-                    fill="transparent"
-                    stroke="none"
                     className="cursor-move"
+                    data-zone-title-hit={zone.group.id}
+                    fill="transparent"
+                    key={zone.group.id}
+                    points={toPoints(title)}
+                    stroke="none"
                   >
                     <title>
                       Click to open {zone.group.title}, double-click to rename

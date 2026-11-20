@@ -78,14 +78,14 @@ export function NewStructureSpot({ view }: { readonly view: View }) {
       : (drafted?.spot ?? null);
 
   return (
-    <g ref={root} aria-hidden="true" className="pointer-events-none">
+    <g aria-hidden="true" className="pointer-events-none" ref={root}>
       {shown === null ? null : (
         <polygon
+          className="stroke-pending fill-none"
           data-spot-outline=""
           points={toPoints(groundOutline(shown, groundProjections[view]))}
-          className="stroke-pending fill-none"
-          strokeWidth={2}
           strokeDasharray="5 3"
+          strokeWidth={2}
         />
       )}
     </g>

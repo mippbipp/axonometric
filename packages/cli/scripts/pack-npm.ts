@@ -47,8 +47,8 @@ const repoOnlyFields = ["devDependencies", "scripts"] as const;
 // npm's provenance check compares repository.url with the GitHub repo that
 // published the package.
 const PublishedManifest = Schema.Struct({
-  name: Schema.Literal("axonometric"),
   license: Schema.Literal("MIT"),
+  name: Schema.Literal("axonometric"),
   repository: Schema.Struct({
     type: Schema.Literal("git"),
     url: Schema.Literal("git+https://github.com/mippbipp/axonometric.git"),
@@ -62,16 +62,16 @@ const PublishedManifest = Schema.Struct({
     )
   ),
   engines: Schema.Struct({
-    node: Schema.Literal(">=24.22.1"),
     bun: Schema.Literal(">=1.4.4"),
+    node: Schema.Literal(">=24.22.1"),
   }),
   // Everything is bundled into dist/bin.mjs, so installing the package
   // installs nothing else.
+  bundleDependencies: Schema.optionalKey(Schema.Never),
   dependencies: Schema.optionalKey(Schema.Never),
+  devDependencies: Schema.optionalKey(Schema.Never),
   optionalDependencies: Schema.optionalKey(Schema.Never),
   peerDependencies: Schema.optionalKey(Schema.Never),
-  bundleDependencies: Schema.optionalKey(Schema.Never),
-  devDependencies: Schema.optionalKey(Schema.Never),
   // npm runs install scripts on the user's machine, and the rest only work
   // in this repo, so the tarball has none.
   scripts: Schema.optionalKey(Schema.Never),
@@ -106,7 +106,7 @@ const decodePackResult = Schema.decodeUnknownEffect(
 /** Runs a command and returns its stdout, failing on a non-zero exit. */
 const runText = Effect.fnUntraced(function* (
   command: string,
-  args: readonly string[],
+  args: ReadonlyArray<string>,
   cwd: string
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -129,7 +129,7 @@ const runText = Effect.fnUntraced(function* (
   return stdout;
 }, Effect.scoped);
 
-const sorted = (paths: readonly string[]) =>
+const sorted = (paths: ReadonlyArray<string>) =>
   Arr.join(Arr.sort(paths, Order.String), "\n  ");
 
 /**

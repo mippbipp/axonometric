@@ -19,10 +19,10 @@ export const unwrap = <A, E>(result: Result.Result<A, E>): A => {
 /** The prompt's lines for a batch of `proposals`, frozen now. */
 export const promptLines = (proposals: Proposals, names: PartialNames) => {
   const { batch } = unwrap(
-    freezeOpen({ proposals, at: "2026-11-01T09:00:00.000Z" })
+    freezeOpen({ at: "2026-11-01T09:00:00.000Z", proposals })
   );
 
-  return Str.split("\n")(reviewPrompt({ home: "/maps/t", batch, names }));
+  return Str.split("\n")(reviewPrompt({ batch, home: "/maps/t", names }));
 };
 
 /** The prompt's line for the first item `proposals` holds, once frozen. */
@@ -33,9 +33,9 @@ export const promptLine = (proposals: Proposals, names: PartialNames) =>
 
 /** A "changed" verdict that commits a new item under the id `as`. */
 export const changedAs = (as: string): Verdict => ({
-  verdict: "changed",
-  reason: "Renamed.",
   as,
+  reason: "Renamed.",
+  verdict: "changed",
 });
 
 /** The id a taken item was committed as, when the agent chose one. */

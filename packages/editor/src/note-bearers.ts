@@ -37,7 +37,7 @@ export const useNoteBearers = (): NoteBearers | null => {
       ({ item }) => item.target
     );
 
-    const spots: GridPoint[] = [];
+    const spots: Array<GridPoint> = [];
 
     for (const target of targets) {
       if (
@@ -49,17 +49,17 @@ export const useNoteBearers = (): NoteBearers | null => {
     }
 
     return {
-      structures: new Set(
-        Arr.flatMap(targets, (target) =>
-          target.kind === "structure" ? [target.id] : []
-        )
-      ),
       hops: new Set(
         Arr.flatMap(targets, (target) =>
           target.kind === "hop" ? [target.id] : []
         )
       ),
       spots,
+      structures: new Set(
+        Arr.flatMap(targets, (target) =>
+          target.kind === "structure" ? [target.id] : []
+        )
+      ),
     };
   }, [entries]);
 };
@@ -105,12 +105,12 @@ const reach = noteMarkerRadius + noteMarkerStroke / 2;
 export const spotRingCorners = (
   scene: Scene,
   bearers: NoteBearers | null
-): readonly ScreenPoint[] =>
+): ReadonlyArray<ScreenPoint> =>
   bearers === null || bearers.spots.length === 0
     ? []
     : Arr.flatMap(
         placedMarkers(scene, bearers).spots,
-        ({ marker: { sx, sy } }): readonly ScreenPoint[] => [
+        ({ marker: { sx, sy } }): ReadonlyArray<ScreenPoint> => [
           { sx: sx - reach, sy: sy - reach },
           { sx: sx + reach, sy: sy + reach },
         ]
@@ -125,11 +125,11 @@ export const spotRingCorners = (
 export const spotDrawn = (
   scene: Scene,
   bearers: NoteBearers | null,
-  fitIds: readonly string[]
-): readonly {
-  readonly ids: readonly string[];
-  readonly points: readonly ScreenPoint[];
-}[] => {
+  fitIds: ReadonlyArray<string>
+): ReadonlyArray<{
+  readonly ids: ReadonlyArray<string>;
+  readonly points: ReadonlyArray<ScreenPoint>;
+}> => {
   const points = spotRingCorners(scene, bearers);
 
   return points.length === 0 ? [] : [{ ids: fitIds, points }];

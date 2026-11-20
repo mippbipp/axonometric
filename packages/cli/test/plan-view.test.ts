@@ -53,28 +53,28 @@ const groundAtMiddle = (page: Page) =>
 
 /** How one part of a drawing is painted. */
 interface Paint {
+  readonly dashes: string;
   readonly fill: string;
   readonly fillOpacity: number;
   readonly stroke: string;
-  readonly dashes: string;
 }
 
 /** Whether any part is dashed. */
-const dashed = (look: readonly Paint[]) =>
+const dashed = (look: ReadonlyArray<Paint>) =>
   Arr.some(look, ({ dashes }) => dashes !== "none");
 
 /** How many parts draw a solid outline. */
-const solidOutlines = (look: readonly Paint[]) =>
+const solidOutlines = (look: ReadonlyArray<Paint>) =>
   Arr.filter(
     look,
-    ({ stroke, dashes }) => stroke !== "none" && dashes === "none"
+    ({ dashes, stroke }) => stroke !== "none" && dashes === "none"
   ).length;
 
 /** Whether a part with no outline lays a see-through tint over the box. */
-const tinted = (look: readonly Paint[]) =>
+const tinted = (look: ReadonlyArray<Paint>) =>
   Arr.some(
     look,
-    ({ stroke, fillOpacity }) =>
+    ({ fillOpacity, stroke }) =>
       stroke === "none" && fillOpacity > 0 && fillOpacity < 1
   );
 
@@ -83,7 +83,7 @@ const reviewPage = Effect.gen(function* () {
   const opened = yield* buildAndOpen(fullMapFiles, "review");
 
   yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
+    opened.page.setViewportSize({ height: 800, width: 1280 })
   );
 
   return opened;
@@ -95,7 +95,7 @@ describe("Plan view", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors } = yield* reviewPage;
+          const { errors, page } = yield* reviewPage;
 
           yield* goToChapter(page, "c-save");
           yield* click(page, '[data-structure="server"]');
@@ -240,7 +240,7 @@ describe("Plan view", () => {
           "data-plan-icon"
         );
 
-        const parts = yield* inPage<string[]>(
+        const parts = yield* inPage<Array<string>>(
           page,
           `Array.from(document.querySelectorAll("[data-plan-icon]"), (icon) =>
             Array.from(icon.querySelectorAll("*"), (child) =>
@@ -270,7 +270,7 @@ describe("Plan view", () => {
           // How each part a structure draws around and over its box is
           // painted, as the browser computes it.
           const lookOf = (id: string) =>
-            inPage<readonly Paint[]>(
+            inPage<ReadonlyArray<Paint>>(
               page,
               `Array.from(document.querySelectorAll('[data-structure="${id}"] > rect, [data-structure="${id}"] > polygon'), (part) => {
                 const style = getComputedStyle(part);

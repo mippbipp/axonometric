@@ -34,7 +34,7 @@ const widePage = Effect.gen(function* () {
   const opened = yield* reviewPage;
 
   yield* Effect.promise(() =>
-    opened.page.setViewportSize({ width: 1280, height: 800 })
+    opened.page.setViewportSize({ height: 800, width: 1280 })
   );
   yield* waitFor(opened.page, "[data-side-index]");
 
@@ -87,7 +87,7 @@ describe("hovering a structure", () => {
   it.live("shows its name and one-liner, and hides when the mouse leaves", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+        const { errors, page } = yield* reviewPage;
 
         yield* Effect.promise(() => page.locator(structure("page")).hover());
         yield* waitFor(page, '[data-tooltip="page"]');
@@ -186,7 +186,7 @@ describe("clicking a structure", () => {
   it.live("pins its panel, and the panel says it's pinned", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { page, errors } = yield* reviewPage;
+        const { errors, page } = yield* reviewPage;
 
         yield* pin(page, "page");
 
@@ -316,7 +316,7 @@ describe("clicking a structure", () => {
         // At this width the hints for a pinned structure would wrap onto a
         // second line if the hint bar let them.
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 900, height: 640 })
+          page.setViewportSize({ height: 640, width: 900 })
         );
 
         const scale = () =>
@@ -484,7 +484,7 @@ describe("the inside view", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors } = yield* reviewPage;
+          const { errors, page } = yield* reviewPage;
 
           yield* goToChapter(page, "c-save");
           yield* pin(page, "page");

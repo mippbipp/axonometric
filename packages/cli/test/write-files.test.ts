@@ -28,7 +28,7 @@ describe("writing outputs", () => {
           Effect.forkScoped
         );
 
-        yield* writeAll([{ file, content: "new" }]);
+        yield* writeAll([{ content: "new", file }]);
 
         const fileText = yield* fs.readFileString(file);
         assert.strictEqual(fileText, "new");
@@ -62,9 +62,9 @@ describe("writing outputs", () => {
         };
 
         const exit = yield* writeAll([
-          { file: one, content: "new one" },
-          { file: two, content: "new two" },
-          { file: three, content: "new three" },
+          { content: "new one", file: one },
+          { content: "new two", file: two },
+          { content: "new three", file: three },
         ]).pipe(
           Effect.provideService(FileSystem.FileSystem, failing),
           Effect.exit
@@ -91,8 +91,8 @@ describe("writing outputs", () => {
       const b = path.join(home, "b.json");
 
       const exit = yield* writeAll([
-        { file: a, content: "new a" },
-        { file: b, content: "new b", exclusive: true },
+        { content: "new a", file: a },
+        { content: "new b", exclusive: true, file: b },
       ]).pipe(Effect.exit);
 
       assert.isTrue(Exit.isFailure(exit));

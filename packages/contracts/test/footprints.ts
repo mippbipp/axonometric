@@ -13,8 +13,8 @@ export const placementOf = (layout: Layout, id: string): Placement => {
 
 /** `box` widened by `by` grid units on every side. */
 export const grow = (box: Placement, by: number): Placement => ({
+  d: box.d + 2 * by,
+  w: box.w + 2 * by,
   x: box.x - by,
   y: box.y - by,
-  w: box.w + 2 * by,
-  d: box.d + 2 * by,
 });

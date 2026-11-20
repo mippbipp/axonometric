@@ -67,7 +67,7 @@ const pinNote = Effect.fnUntraced(function* (page: Page, text: string) {
 
 const copiedText = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<readonly string[]>("window.__copied ?? []")
+    page.evaluate<ReadonlyArray<string>>("window.__copied ?? []")
   );
 
 describe("a note on a structure", () => {
@@ -75,7 +75,7 @@ describe("a note on a structure", () => {
     "is saved as a proposal, shown by a marker on the map and in the Pending list",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* servedReview();
+        const { errors, home, page } = yield* servedReview();
 
         yield* pinServer(page);
         yield* pinNote(page, "Why a server, not a file watcher?");
@@ -199,7 +199,7 @@ describe("the Ready for review button", () => {
         const proposals = yield* readProposals(home);
 
         assert.deepStrictEqual(
-          Arr.map(proposals.batches ?? [], ({ number, items }) => [
+          Arr.map(proposals.batches ?? [], ({ items, number }) => [
             number,
             items.length,
           ]),
@@ -285,7 +285,7 @@ describe("the agent's verdicts", () => {
     "shows each verdict and reason after verdict and commit run in the CLI, and keeps a rejected note, across a reload, until it is dismissed",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* servedReview();
+        const { errors, home, page } = yield* servedReview();
 
         yield* sendOne(page, "Why a server?");
 

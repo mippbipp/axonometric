@@ -13,11 +13,11 @@ export const outlineClearance = 3;
 const minOutlinePiece = 3;
 
 /** The smallest rect holding `points`. */
-const boundsOf = (points: readonly ScreenPoint[]): ScreenRect => ({
-  left: Math.min(...Arr.map(points, ({ sx }) => sx)),
-  top: Math.min(...Arr.map(points, ({ sy }) => sy)),
-  right: Math.max(...Arr.map(points, ({ sx }) => sx)),
+const boundsOf = (points: ReadonlyArray<ScreenPoint>): ScreenRect => ({
   bottom: Math.max(...Arr.map(points, ({ sy }) => sy)),
+  left: Math.min(...Arr.map(points, ({ sx }) => sx)),
+  right: Math.max(...Arr.map(points, ({ sx }) => sx)),
+  top: Math.min(...Arr.map(points, ({ sy }) => sy)),
 });
 
 /**
@@ -25,8 +25,8 @@ const boundsOf = (points: readonly ScreenPoint[]): ScreenRect => ({
  * each zone's title and each hop's label. An editing outline stays clear of
  * these boxes, so it never crosses a letter.
  */
-export const textBoxesOf = (scene: Scene): readonly ScreenRect[] => [
-  ...Arr.flatMap(scene.structures, ({ tag, chip }) =>
+export const textBoxesOf = (scene: Scene): ReadonlyArray<ScreenRect> => [
+  ...Arr.flatMap(scene.structures, ({ chip, tag }) =>
     chip === undefined ? [tag] : [tag, chip]
   ),
   ...Arr.flatMap(scene.zones, ({ title }) =>
@@ -45,14 +45,14 @@ export const textBoxesOf = (scene: Scene): readonly ScreenRect[] => [
  * title or a hop label: the outline has a gap where the text is.
  */
 export const clearOfText = ({
+  closed,
   points,
   text,
-  closed,
 }: {
-  readonly points: readonly ScreenPoint[];
-  readonly text: readonly ScreenRect[];
   readonly closed: boolean;
-}): readonly Segment[] => {
+  readonly points: ReadonlyArray<ScreenPoint>;
+  readonly text: ReadonlyArray<ScreenRect>;
+}): ReadonlyArray<Segment> => {
   const holes = Arr.map(text, (rect) =>
     rectPolygon(grown(rect, outlineClearance))
   );
@@ -65,6 +65,6 @@ export const clearOfText = ({
   );
 
   return Arr.flatMap(legs, ([start, end]) =>
-    outsideHoles({ start, end }, holes, minOutlinePiece)
+    outsideHoles({ end, start }, holes, minOutlinePiece)
   );
 };

@@ -15,7 +15,7 @@ export const noGit = spawnSync("git", ["--version"]).error !== undefined;
 /** Runs git in `cwd` and returns its trimmed output. */
 export const git = Effect.fnUntraced(function* (
   cwd: string,
-  args: readonly string[]
+  args: ReadonlyArray<string>
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 

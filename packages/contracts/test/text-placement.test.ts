@@ -176,7 +176,7 @@ describe("name tags at full size", () => {
           const warned = new Set(
             Arr.map(
               checkLayout(data, layout),
-              ({ path, message }) => `${path}: ${message}`
+              ({ message, path }) => `${path}: ${message}`
             )
           );
 

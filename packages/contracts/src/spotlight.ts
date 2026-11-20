@@ -5,26 +5,26 @@ import type { Hop, MapData } from "./map-data.ts";
 
 /** A hop or a structure that the pointer is on, or that is pinned. */
 export type SpotlightTarget =
-  | { readonly kind: "hop"; readonly id: string }
-  | { readonly kind: "structure"; readonly id: string };
+  | { readonly id: string; readonly kind: "hop" }
+  | { readonly id: string; readonly kind: "structure" };
 
 /** What the spotlight is worked out from. */
 interface SpotlightChoice {
-  /**
-   * The ids of the hops the chapter plays, or the picked flow's. `"all"` is
-   * every flow, which fades nothing, as does playing no hops.
-   */
-  readonly play: readonly string[] | "all";
-  /** What the pointer is on, if anything. */
-  readonly hovered: SpotlightTarget | null;
-  /** The selected packet's hop, or the selected structure. */
-  readonly pinned: SpotlightTarget | null;
   /**
    * The ends of a hop being drawn: the structure it starts at and, once the
    * pointer is on one, the structure it would end at. Left out when no hop is
    * being drawn.
    */
   readonly drawing?: DrawingHop | null | undefined;
+  /** What the pointer is on, if anything. */
+  readonly hovered: SpotlightTarget | null;
+  /** The selected packet's hop, or the selected structure. */
+  readonly pinned: SpotlightTarget | null;
+  /**
+   * The ids of the hops the chapter plays, or the picked flow's. `"all"` is
+   * every flow, which fades nothing, as does playing no hops.
+   */
+  readonly play: ReadonlyArray<string> | "all";
 }
 
 /** The ends of a hop being drawn on the page. */
@@ -43,8 +43,8 @@ export interface Spotlight {
 }
 
 const spotlightOfHops = (
-  hops: readonly Hop[],
-  alsoStructures: readonly string[] = []
+  hops: ReadonlyArray<Hop>,
+  alsoStructures: ReadonlyArray<string> = []
 ): Spotlight => ({
   hops: new Set(Arr.map(hops, ({ id }) => id)),
   structures: new Set([
@@ -70,11 +70,11 @@ const spotlightOfHops = (
  */
 const spotlightOf = ({
   data,
-  revealed,
-  play,
+  drawing = null,
   hovered,
   pinned,
-  drawing = null,
+  play,
+  revealed,
 }: SpotlightChoice & {
   readonly data: Pick<MapData, "hops">;
   /** The structures drawn. */
@@ -139,7 +139,7 @@ const spotlightOf = ({
 /** What the last chapter's flow picker has chosen to play. */
 export type FlowChoice =
   | { readonly kind: "chapter" }
-  | { readonly kind: "flow"; readonly id: string }
+  | { readonly id: string; readonly kind: "flow" }
   | { readonly kind: "all" };
 
 /**
@@ -148,12 +148,12 @@ export type FlowChoice =
  */
 export const defaultFlowChoice = ({
   data,
-  stop,
   isLast,
+  stop,
 }: {
   readonly data: Pick<MapData, "flows">;
-  readonly stop: Pick<ChapterStop, "plays">;
   readonly isLast: boolean;
+  readonly stop: Pick<ChapterStop, "plays">;
 }): FlowChoice =>
   isLast && stop.plays.length === 0 && data.flows.length > 0
     ? { kind: "all" }
@@ -164,14 +164,14 @@ export const defaultFlowChoice = ({
  * flow's, or `"all"` for every flow, which fades nothing.
  */
 export const playedHopsOf = ({
+  choice,
   data,
   stop,
-  choice,
 }: {
+  readonly choice: FlowChoice;
   readonly data: Pick<MapData, "flows">;
   readonly stop: Pick<ChapterStop, "plays">;
-  readonly choice: FlowChoice;
-}): readonly string[] | "all" => {
+}): ReadonlyArray<string> | "all" => {
   if (choice.kind === "all") {
     return "all";
   }
@@ -182,7 +182,7 @@ export const playedHopsOf = ({
 
   return Arr.findFirst(data.flows, (flow) => flow.id === choice.id).pipe(
     Option.map((flow) => flow.hops),
-    Option.getOrElse((): readonly string[] => [])
+    Option.getOrElse((): ReadonlyArray<string> => [])
   );
 };
 
@@ -193,25 +193,25 @@ export const playedHopsOf = ({
  * page or in a file, comes from this one call.
  */
 export const chapterSpotlightOf = ({
-  data,
-  stop,
   choice,
+  data,
+  drawing = null,
   hovered,
   pinned,
-  drawing = null,
+  stop,
 }: {
-  readonly data: Pick<MapData, "hops" | "flows">;
-  readonly stop: Pick<ChapterStop, "revealed" | "plays">;
   readonly choice: FlowChoice;
+  readonly data: Pick<MapData, "hops" | "flows">;
+  readonly drawing?: DrawingHop | null | undefined;
   readonly hovered: SpotlightTarget | null;
   readonly pinned: SpotlightTarget | null;
-  readonly drawing?: DrawingHop | null | undefined;
+  readonly stop: Pick<ChapterStop, "revealed" | "plays">;
 }): Spotlight | null =>
   spotlightOf({
     data,
-    revealed: stop.revealed,
-    play: playedHopsOf({ data, stop, choice }),
+    drawing,
     hovered,
     pinned,
-    drawing,
+    play: playedHopsOf({ choice, data, stop }),
+    revealed: stop.revealed,
   });

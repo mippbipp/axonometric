@@ -12,15 +12,15 @@ import { createContext, use } from "react";
  * when a structure or a hop is selected.
  */
 export interface NoteTool {
+  readonly arm: (armed: boolean) => void;
   /** Whether a click on the map picks a spot, and the arrows move the cursor. */
   readonly armed: boolean;
   /** The grid cursor while the tool is armed, else `null`. */
   readonly cursor: GridPoint | null;
-  /** The spot whose panel is open, or `null`. */
-  readonly spot: GridPoint | null;
-  readonly arm: (armed: boolean) => void;
   /** Opens the panel of `spot`, or closes it with `null`. */
   readonly pick: (spot: GridPoint | null) => void;
+  /** The spot whose panel is open, or `null`. */
+  readonly spot: GridPoint | null;
 }
 
 export const NoteToolContext = createContext<NoteTool | null>(null);

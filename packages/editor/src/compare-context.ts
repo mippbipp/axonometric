@@ -18,11 +18,11 @@ export const useCompare = (): CompareMarks | null => use(CompareContext);
  * "moved, text changed", or `undefined` when it has none.
  */
 export const spokenMarks = ({
-  marks,
   id,
+  marks,
 }: {
-  readonly marks: CompareMarks | null;
   readonly id: string;
+  readonly marks: CompareMarks | null;
 }): string | undefined => {
   const found = marks?.structures.get(id);
 

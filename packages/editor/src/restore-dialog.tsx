@@ -6,15 +6,15 @@ import { controlClass } from "./control-class.ts";
 
 /** What a restore did, for the dialog that reports it. */
 export interface RestoreReport {
-  readonly revision: number;
-  /** The layout differences that became pending changes. */
-  readonly restored: readonly DifferenceLine[];
+  /** Differences in what the map says, which a restore can't turn into layout changes. */
+  readonly meaning: ReadonlyArray<DifferenceLine>;
   /** Why the layout couldn't be restored, when it couldn't. */
   readonly refusal: string | undefined;
-  /** Differences in what the map says, which a restore can't turn into layout changes. */
-  readonly meaning: readonly DifferenceLine[];
+  /** The layout differences that became pending changes. */
+  readonly restored: ReadonlyArray<DifferenceLine>;
+  readonly revision: number;
   /** Route differences, which aren't pending changes yet. */
-  readonly routes: readonly DifferenceLine[];
+  readonly routes: ReadonlyArray<DifferenceLine>;
 }
 
 /** What the dialog says about the layout changes a restore made. */
@@ -27,7 +27,7 @@ function Lines({
   lines,
   name,
 }: {
-  readonly lines: readonly DifferenceLine[];
+  readonly lines: ReadonlyArray<DifferenceLine>;
   readonly name: string;
 }) {
   return (
@@ -45,15 +45,15 @@ function Lines({
  * it takes focus, Escape closes it, and focus returns to where it came from.
  */
 export function RestoreDialog({
-  report,
   onClose,
+  report,
 }: {
-  readonly report: RestoreReport;
   readonly onClose: () => void;
+  readonly report: RestoreReport;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const { revision, restored, refusal, meaning, routes } = report;
+  const { meaning, refusal, restored, revision, routes } = report;
 
   useEffect(() => {
     const dialog = ref.current;
@@ -69,16 +69,16 @@ export function RestoreDialog({
 
   return (
     <dialog
-      ref={ref}
-      data-restore-dialog
       aria-labelledby={titleId}
       className="border-ink bg-paper text-ink m-auto max-h-[80svh] w-[min(36rem,90vw)] overflow-auto border-2 p-4 font-mono text-xs backdrop:bg-black/40"
+      data-restore-dialog
       onClose={onClose}
+      ref={ref}
     >
       <div className="flex flex-col gap-3">
         <h2
-          id={titleId}
           className="text-sm font-medium tracking-widest uppercase"
+          id={titleId}
         >
           Restore revision {revision}
         </h2>
@@ -119,12 +119,12 @@ export function RestoreDialog({
         )}
         <div className="flex justify-end">
           <button
-            type="button"
-            data-control="close-restore"
             className={controlClass}
+            data-control="close-restore"
             onClick={() => {
               ref.current?.close();
             }}
+            type="button"
           >
             Close
           </button>

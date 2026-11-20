@@ -15,16 +15,16 @@ import type { ScreenPoint } from "./projection.ts";
  * `undefined` when the view doesn't draw the hop. Keep it stable between
  * renders, for example with `useCallback`, so routes aren't recomputed.
  */
-export type RouteOf = (hop: Hop) => readonly ScreenPoint[] | undefined;
+export type RouteOf = (hop: Hop) => ReadonlyArray<ScreenPoint> | undefined;
 
 function Packet({
+  routeOf,
   run,
   runIndex,
-  routeOf,
 }: {
+  readonly routeOf: RouteOf;
   readonly run: PacketRun;
   readonly runIndex: number;
-  readonly routeOf: RouteOf;
 }) {
   const { selected, selectPacket } = usePlayback();
   const moving = useDropOutlines()?.outlines?.moving;
@@ -61,38 +61,38 @@ function Packet({
 
   return (
     <g
+      aria-label={`Packet: ${hop.label}`}
+      className="cursor-pointer outline-none"
       data-packet={hop.id}
       data-packet-hidden={hidden ? "" : undefined}
       data-run={run.id}
       data-selected={isSelected}
-      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the packet's group takes the button role.
-      role="button"
-      tabIndex={0}
-      aria-label={`Packet: ${hop.label}`}
-      className="cursor-pointer outline-none"
       onClick={() => {
         selectPacket(runIndex);
       }}
       onKeyDown={onKeyDown}
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the packet's group takes the button role.
+      role="button"
+      tabIndex={0}
     >
       {/* A wider, invisible target so the packet is easy to hit. */}
-      <circle cx={sx} cy={sy} r={12} className="fill-transparent" />
+      <circle className="fill-transparent" cx={sx} cy={sy} r={12} />
       {isSelected ? (
         <circle
+          className="stroke-ink"
           cx={sx}
           cy={sy}
-          r={11}
           fill="none"
-          className="stroke-ink"
-          strokeWidth={1.2}
+          r={11}
           strokeDasharray="2 2"
+          strokeWidth={1.2}
         />
       ) : null}
       <circle
+        className="fill-ink stroke-paper"
         cx={sx}
         cy={sy}
         r={5.5}
-        className="fill-ink stroke-paper"
         strokeWidth={1.6}
       />
     </g>
@@ -109,12 +109,12 @@ function Packet({
  * packet is selected.
  */
 export function PacketLayer({ routeOf }: { readonly routeOf: RouteOf }) {
-  const { runs, playing } = usePlayback();
+  const { playing, runs } = usePlayback();
 
   return (
     <g data-packets data-playing={playing}>
       {Arr.map(runs, (run, index) => (
-        <Packet key={run.id} run={run} runIndex={index} routeOf={routeOf} />
+        <Packet key={run.id} routeOf={routeOf} run={run} runIndex={index} />
       ))}
     </g>
   );

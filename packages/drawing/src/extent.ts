@@ -7,17 +7,17 @@ import type { ViewDrawing } from "./views.tsx";
 
 /** Everything a scene draws, with the structures each belongs to. */
 export const drawnIn = ({
-  scene,
   drawing,
+  scene,
 }: {
-  readonly scene: Scene;
   readonly drawing: ViewDrawing;
+  readonly scene: Scene;
 }) => [
   ...Arr.map(scene.structures, (item) => ({
     ids: [item.structure.id],
     points: drawing.extentOf(item),
   })),
-  ...Arr.map(scene.hops, ({ hop, points, label }) => ({
+  ...Arr.map(scene.hops, ({ hop, label, points }) => ({
     ids: [hop.from, hop.to],
     points:
       label === undefined
@@ -28,7 +28,7 @@ export const drawnIn = ({
             { sx: label.right, sy: label.bottom },
           ],
   })),
-  ...Arr.map(scene.zones, ({ zone, plate, title }) => ({
+  ...Arr.map(scene.zones, ({ plate, title, zone }) => ({
     ids: zone.members,
     points: [...plate, ...(title ?? [])],
   })),
@@ -44,7 +44,7 @@ export const extentOf = ({
 }): ScreenRect =>
   boundsOfPoints(
     Arr.flatMap(
-      drawnIn({ scene, drawing: viewDrawings[view] }),
+      drawnIn({ drawing: viewDrawings[view], scene }),
       ({ points }) => points
     )
   );

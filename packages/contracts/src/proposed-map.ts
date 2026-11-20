@@ -15,33 +15,34 @@ export interface Mappable {
 
 /** The map as proposed: the accepted map with the proposals applied. */
 export interface ProposedMap<S extends Mappable = MapState> {
-  /**
-   * The accepted state with every proposal's effect on `data` and `layout`.
-   * The page lays this out, routes it and checks its text like any other map.
-   */
-  readonly state: S;
-  /** What each proposal touches, by the proposal's item id. */
-  readonly touches: ReadonlyMap<string, Touches>;
-  /** Every structure some proposal adds, changes, moves or removes. */
-  readonly structures: ReadonlySet<string>;
   /** Every hop some proposal touches. */
   readonly hops: ReadonlySet<string>;
   /**
    * What kinds mark besides structures and hops, by the name of the mark and
    * the ids it marks; see `Touches.marks`. Read one with `marked`.
    */
-  readonly marks: readonly Mark[];
+  readonly marks: ReadonlyArray<Mark>;
+  /**
+   * The accepted state with every proposal's effect on `data` and `layout`.
+   * The page lays this out, routes it and checks its text like any other map.
+   */
+  readonly state: S;
+  /** Every structure some proposal adds, changes, moves or removes. */
+  readonly structures: ReadonlySet<string>;
+  /** What each proposal touches, by the proposal's item id. */
+  readonly touches: ReadonlyMap<string, Touches>;
 }
 
 const byKind = Order.mapInput(Order.Number, (item: BatchItem) =>
   applyOrder.indexOf(item.kind)
 );
 
-const inKindOrder = (items: readonly BatchItem[]): readonly BatchItem[] =>
-  Arr.sort(items, byKind);
+const inKindOrder = (
+  items: ReadonlyArray<BatchItem>
+): ReadonlyArray<BatchItem> => Arr.sort(items, byKind);
 
 /** The items in batches that no commit has closed, in kind order. */
-export const frozenItems = (proposals: Proposals): readonly BatchItem[] => {
+export const frozenItems = (proposals: Proposals): ReadonlyArray<BatchItem> => {
   const waiting = Arr.filter(
     batchesOf(proposals),
     (batch: Batch) => batch.committed === undefined
@@ -52,9 +53,9 @@ export const frozenItems = (proposals: Proposals): readonly BatchItem[] => {
 
 /** What asks for marks: a name, and optionally where and which look. */
 export interface MarkQuery {
+  readonly kind?: string | undefined;
   readonly name: string;
   readonly scope?: string | undefined;
-  readonly kind?: string | undefined;
 }
 
 /** The ids that proposals mark under `query`; none when no proposal does. */
@@ -106,14 +107,14 @@ export const marked: {
  * proposals apply: the map an open proposal lands on.
  */
 export const proposedMap = <S extends Mappable>({
-  state,
-  proposals,
   open = true,
+  proposals,
+  state,
 }: {
+  readonly open?: boolean;
+  readonly proposals: Proposals;
   /** The accepted map. Whatever else it holds comes back unchanged. */
   readonly state: S;
-  readonly proposals: Proposals;
-  readonly open?: boolean;
 }): ProposedMap<S> => {
   const items = [
     ...frozenItems(proposals),
@@ -136,11 +137,11 @@ export const proposedMap = <S extends Mappable>({
   const all = [...touches.values()];
 
   return {
-    state: { ...state, data: applied.data, layout: applied.layout },
-    touches,
-    structures: new Set(Arr.flatMap(all, ({ structures }) => structures)),
     hops: new Set(Arr.flatMap(all, ({ hops }) => hops)),
     marks: Arr.flatMap(all, ({ marks }) => marks),
+    state: { ...state, data: applied.data, layout: applied.layout },
+    structures: new Set(Arr.flatMap(all, ({ structures }) => structures)),
+    touches,
   };
 };
 

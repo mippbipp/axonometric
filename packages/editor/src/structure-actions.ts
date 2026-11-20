@@ -25,34 +25,32 @@ export const changeFor = {
     action: "delete",
     structure: structure.id,
   }),
+  group: (structure: Structure, group: string): StructureChange => ({
+    action: "group",
+    group,
+    structure: structure.id,
+  }),
   rename: (structure: Structure, name: string): StructureChange => ({
     action: "rename",
-    structure: structure.id,
     name,
+    structure: structure.id,
   }),
   shape: (structure: Structure, shape: Shape): StructureChange => ({
     action: "shape",
-    structure: structure.id,
     shape,
-  }),
-  group: (structure: Structure, group: string): StructureChange => ({
-    action: "group",
     structure: structure.id,
-    group,
   }),
   status: (structure: Structure, status: Status): StructureChange => ({
     action: "status",
-    structure: structure.id,
     status,
+    structure: structure.id,
   }),
 } as const;
 
 /** The shapes to pick from, with the words the form shows. */
-export const shapeChoices: readonly { value: Shape; label: string }[] = Arr.map(
-  shapes,
-  (value) => ({ value, label: value })
-);
+export const shapeChoices: ReadonlyArray<{ label: string; value: Shape }> =
+  Arr.map(shapes, (value) => ({ label: value, value }));
 
 /** The statuses to pick from, with the fixed label of each. */
-export const statusChoices: readonly { value: Status; label: string }[] =
-  Arr.map(statuses, (value) => ({ value, label: statusLabels[value] }));
+export const statusChoices: ReadonlyArray<{ label: string; value: Status }> =
+  Arr.map(statuses, (value) => ({ label: statusLabels[value], value }));

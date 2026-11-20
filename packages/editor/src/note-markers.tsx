@@ -19,18 +19,18 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** What the notes on one target add up to, for its ring. */
 interface Tally {
-  readonly target: NoteTarget;
   readonly count: number;
   /** Whether the agent rejected one of them. */
   readonly rejected: boolean;
+  readonly target: NoteTarget;
 }
 
 const sameTarget = (a: NoteTarget, b: NoteTarget): boolean =>
   Match.value(a).pipe(
     Match.discriminatorsExhaustive("kind")({
-      structure: ({ id }) => b.kind === "structure" && b.id === id,
       hop: ({ id }) => b.kind === "hop" && b.id === id,
       spot: ({ x, y }) => b.kind === "spot" && b.x === x && b.y === y,
+      structure: ({ id }) => b.kind === "structure" && b.id === id,
     })
   );
 
@@ -48,17 +48,17 @@ const nameOfRing = ({
 
 /** A ring the engineer can reach with the keyboard and press to open its target. */
 function Ring({
-  id,
   at,
-  tally,
+  id,
   name,
   onOpen,
+  tally,
 }: {
-  readonly id: string;
   readonly at: NoteMarkerSpot;
-  readonly tally: Tally;
+  readonly id: string;
   readonly name: string;
   readonly onOpen: () => void;
+  readonly tally: Tally;
 }) {
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -69,34 +69,34 @@ function Ring({
 
   return (
     <g
-      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the ring's group takes the button role.
-      role="button"
-      tabIndex={0}
       aria-label={name}
+      className="focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-dashed"
       data-note-marker={id}
       data-note-placed="ring"
       data-note-rejected={tally.rejected}
-      pointerEvents="all"
-      className="focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-dashed"
       onClick={(event) => {
         event.stopPropagation();
         onOpen();
       }}
       onKeyDown={onKeyDown}
+      pointerEvents="all"
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the ring's group takes the button role.
+      role="button"
+      tabIndex={0}
     >
       <title>{name}</title>
       <circle
+        className={`${colourOf(tally.rejected)} fill-none`}
         cx={at.sx}
         cy={at.sy}
         r={noteMarkerRadius}
-        className={`${colourOf(tally.rejected)} fill-none`}
         strokeWidth={noteMarkerStroke}
       />
       <circle
         cx={at.sx}
         cy={at.sy}
-        r={noteMarkerRadius + 2}
         fill="transparent"
+        r={noteMarkerRadius + 2}
         stroke="none"
       />
     </g>
@@ -154,7 +154,7 @@ export function NoteMarkers({ scene }: { readonly scene: Scene }) {
                 }
               : before
           )
-        : [...found, { target: item.target, count: 1, rejected }];
+        : [...found, { count: 1, rejected, target: item.target }];
     }
   );
 
@@ -163,8 +163,8 @@ export function NoteMarkers({ scene }: { readonly scene: Scene }) {
 
   return (
     <g>
-      {Arr.flatMap(scene.structures, ({ structure, placement }) => {
-        const target: NoteTarget = { kind: "structure", id: structure.id };
+      {Arr.flatMap(scene.structures, ({ placement, structure }) => {
+        const target: NoteTarget = { id: structure.id, kind: "structure" };
         const tally = Option.getOrUndefined(tallyOf(target));
 
         if (tally === undefined) {
@@ -176,10 +176,9 @@ export function NoteMarkers({ scene }: { readonly scene: Scene }) {
         if (at !== undefined) {
           return [
             <Ring
-              key={`structure:${structure.id}`}
-              id={structure.id}
               at={at}
-              tally={tally}
+              id={structure.id}
+              key={`structure:${structure.id}`}
               name={nameOfRing({
                 count: tally.count,
                 what: `on "${byId.get(structure.id)?.name ?? structure.id}"`,
@@ -187,37 +186,37 @@ export function NoteMarkers({ scene }: { readonly scene: Scene }) {
               onOpen={() => {
                 select(structure.id);
               }}
+              tally={tally}
             />,
           ];
         }
 
         return [
           <polygon
-            key={`structure:${structure.id}`}
+            className={`${colourOf(tally.rejected)} fill-none`}
             data-note-marker={structure.id}
             data-note-placed="outline"
             data-note-rejected={tally.rejected}
+            key={`structure:${structure.id}`}
             pointerEvents="none"
             points={toPoints(
               groundOutline(placement, groundProjections[scene.view])
             )}
-            className={`${colourOf(tally.rejected)} fill-none`}
-            strokeWidth={1.6}
             strokeDasharray="1 3"
+            strokeWidth={1.6}
           />,
         ];
       })}
       {Arr.flatMap([...placed.hops.entries()], ([hop, at]) => {
-        const tally = Option.getOrUndefined(tallyOf({ kind: "hop", id: hop }));
+        const tally = Option.getOrUndefined(tallyOf({ id: hop, kind: "hop" }));
 
         return tally === undefined
           ? []
           : [
               <Ring
-                key={`hop:${hop}`}
-                id={`hop:${hop}`}
                 at={at}
-                tally={tally}
+                id={`hop:${hop}`}
+                key={`hop:${hop}`}
                 name={nameOfRing({
                   count: tally.count,
                   what: `on hop "${hopName(hop)}"`,
@@ -225,20 +224,20 @@ export function NoteMarkers({ scene }: { readonly scene: Scene }) {
                 onOpen={() => {
                   selectHop(hop);
                 }}
+                tally={tally}
               />,
             ];
       })}
-      {Arr.flatMap(placed.spots, ({ spot, marker }) => {
+      {Arr.flatMap(placed.spots, ({ marker, spot }) => {
         const tally = Option.getOrUndefined(tallyOf({ kind: "spot", ...spot }));
 
         return tally === undefined
           ? []
           : [
               <Ring
-                key={`spot:${spot.x},${spot.y}`}
-                id={`spot:${spot.x},${spot.y}`}
                 at={marker}
-                tally={tally}
+                id={`spot:${spot.x},${spot.y}`}
+                key={`spot:${spot.x},${spot.y}`}
                 name={nameOfRing({
                   count: tally.count,
                   what: `at the spot ${spot.x}, ${spot.y}`,
@@ -246,6 +245,7 @@ export function NoteMarkers({ scene }: { readonly scene: Scene }) {
                 onOpen={() => {
                   tool?.pick(spot);
                 }}
+                tally={tally}
               />,
             ];
       })}

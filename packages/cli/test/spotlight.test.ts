@@ -153,7 +153,7 @@ describe("the spotlight of a chapter", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors } = yield* pipelinePage;
+          const { errors, page } = yield* pipelinePage;
 
           yield* openChapter(page, "c-pr");
 
@@ -367,7 +367,7 @@ describe("a faded structure", () => {
         const { page } = yield* openUrl(serve.url);
 
         yield* Effect.promise(() =>
-          page.setViewportSize({ width: 1280, height: 800 })
+          page.setViewportSize({ height: 800, width: 1280 })
         );
 
         yield* openChapter(page, "c-pr");
@@ -526,7 +526,7 @@ describe("faded parts", () => {
 
             yield* assertAttribute(
               page,
-              { selector: structure("main"), name: "data-selected" },
+              { name: "data-selected", selector: structure("main") },
               "true"
             );
             yield* assertOutside(page, "h-updater-pr");

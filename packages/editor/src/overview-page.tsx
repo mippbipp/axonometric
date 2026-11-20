@@ -43,7 +43,7 @@ export function OverviewPageProvider({
   }, [open, close]);
 
   const value = useMemo(
-    () => ({ open, toggle, close, buttonRef, pageId }),
+    () => ({ buttonRef, close, open, pageId, toggle }),
     [open, toggle, close, pageId]
   );
 
@@ -52,17 +52,17 @@ export function OverviewPageProvider({
 
 /** The header button that opens and closes the "How it's built" page. */
 export function OverviewButton() {
-  const { open, toggle, buttonRef, pageId } = useOverviewPage();
+  const { buttonRef, open, pageId, toggle } = useOverviewPage();
 
   return (
     <button
+      aria-controls={open ? pageId : undefined}
+      aria-expanded={open}
+      className={cn(controlClass, open && "bg-ink text-paper")}
+      data-control="overview"
+      onClick={toggle}
       ref={buttonRef}
       type="button"
-      data-control="overview"
-      aria-expanded={open}
-      aria-controls={open ? pageId : undefined}
-      className={cn(controlClass, open && "bg-ink text-paper")}
-      onClick={toggle}
     >
       {pageTitle}
     </button>
@@ -70,11 +70,11 @@ export function OverviewButton() {
 }
 
 function Section({
-  title,
   children,
+  title,
 }: {
-  readonly title: string;
   readonly children: ReactNode;
+  readonly title: string;
 }) {
   return (
     <section className="flex flex-col gap-2">
@@ -85,13 +85,13 @@ function Section({
 }
 
 function TextSection({
-  title,
-  text,
   className,
+  text,
+  title,
 }: {
-  readonly title: string;
-  readonly text: string | undefined;
   readonly className?: string;
+  readonly text: string | undefined;
+  readonly title: string;
 }) {
   return text === undefined ? null : (
     <Section title={title}>
@@ -105,9 +105,9 @@ function TextSection({
  * a repeat gets its count after it, such as "Server 2".
  */
 const keysOf = <A,>(
-  items: readonly A[],
+  items: ReadonlyArray<A>,
   textOf: (item: A) => string
-): readonly string[] => {
+): ReadonlyArray<string> => {
   const seen = new Map<string, number>();
 
   return Arr.map(items, (item) => {
@@ -130,16 +130,16 @@ function Decisions({
   return (
     <Section title="Decisions">
       <div className="overflow-x-auto">
-        <table data-overview-decisions className="w-full text-left text-sm">
+        <table className="w-full text-left text-sm" data-overview-decisions>
           <thead className="text-xs tracking-widest uppercase opacity-70">
             <tr>
-              <th scope="col" className="pr-4 pb-1 font-normal">
+              <th className="pr-4 pb-1 font-normal" scope="col">
                 Topic
               </th>
-              <th scope="col" className="pr-4 pb-1 font-normal">
+              <th className="pr-4 pb-1 font-normal" scope="col">
                 Decision
               </th>
-              <th scope="col" className="pb-1 font-normal">
+              <th className="pb-1 font-normal" scope="col">
                 ADR
               </th>
             </tr>
@@ -177,7 +177,7 @@ function DeepDives({
           deepDives,
           keysOf(deepDives, (deepDive) => deepDive.title)
         ).map(([deepDive, key]) => (
-          <li key={key} data-deep-dive>
+          <li data-deep-dive key={key}>
             <b className="font-medium">
               {deepDive.link === undefined ? (
                 deepDive.title
@@ -213,8 +213,8 @@ function OverviewContents({ overview }: { readonly overview: Overview }) {
             keysOf(stats, (stat) => stat.label)
           ).map(([stat, key]) => (
             <div
-              key={key}
               className="border-ink flex flex-col border px-3 py-1.5"
+              key={key}
             >
               <dt className="text-2xs tracking-widest uppercase opacity-70">
                 {stat.label}
@@ -226,10 +226,10 @@ function OverviewContents({ overview }: { readonly overview: Overview }) {
       )}
       {decisions.length === 0 ? null : <Decisions decisions={decisions} />}
       <TextSection
-        title="What the platform provides"
         text={overview.platformProvides}
+        title="What the platform provides"
       />
-      <TextSection title="What we own" text={overview.weOwn} />
+      <TextSection text={overview.weOwn} title="What we own" />
       {overview.fileLayout === undefined ? null : (
         <Section title="File layout">
           <pre className="border-ink bg-face overflow-x-auto border p-3 text-xs">
@@ -238,9 +238,9 @@ function OverviewContents({ overview }: { readonly overview: Overview }) {
         </Section>
       )}
       <TextSection
-        title="Cost model"
-        text={overview.costModel}
         className="whitespace-pre-line"
+        text={overview.costModel}
+        title="Cost model"
       />
       {deepDives.length === 0 ? null : <DeepDives deepDives={deepDives} />}
     </>
@@ -297,20 +297,20 @@ function OpenOverviewPage() {
 
   return (
     <dialog
-      ref={ref}
-      open
-      id={pageId}
       aria-labelledby={titleId}
-      data-overview-page
-      tabIndex={-1}
       className="bg-paper text-ink absolute inset-0 z-10 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 p-0 focus:outline-none"
+      data-overview-page
+      id={pageId}
+      open
+      ref={ref}
+      tabIndex={-1}
     >
       <article className="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-8">
         <header className="flex flex-col gap-1">
           <p className="text-xs tracking-widest uppercase opacity-70">
             {state.data.overview.title}
           </p>
-          <h2 id={titleId} className="text-lg leading-tight font-medium">
+          <h2 className="text-lg leading-tight font-medium" id={titleId}>
             {pageTitle}
           </h2>
         </header>

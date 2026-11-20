@@ -35,7 +35,7 @@ export function ChangeStructure({
   const connections = useConnections();
   const drafting = useHopDraft();
   const { state } = useWalkthrough();
-  const { send, failure, clear, canPropose } = usePropose();
+  const { canPropose, clear, failure, send } = usePropose();
   const renameId = useId();
   const [name, setName] = useState<string | undefined>();
 
@@ -62,25 +62,25 @@ export function ChangeStructure({
 
   const choose = ({
     label,
-    value,
-    options,
     onChange,
+    options,
+    value,
   }: {
     readonly label: string;
-    readonly value: string;
-    readonly options: readonly { value: string; label: string }[];
     readonly onChange: (next: string) => void;
+    readonly options: ReadonlyArray<{ label: string; value: string }>;
+    readonly value: string;
   }) => (
     <label className="flex items-center justify-between gap-2 text-xs">
       <span className="opacity-70">{label}</span>
       <select
-        data-change={label.toLowerCase()}
         className={fieldClass}
-        value={value}
+        data-change={label.toLowerCase()}
         disabled={!canPropose || deleted}
         onChange={(event) => {
           onChange(event.target.value);
         }}
+        value={value}
       >
         {Arr.map(options, (option) => (
           <option key={option.value} value={option.value}>
@@ -92,15 +92,15 @@ export function ChangeStructure({
   );
 
   return (
-    <section data-change-structure className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-change-structure>
       <h3 className="text-xs tracking-widest uppercase opacity-70">
         Propose a change
       </h3>
       {deleted ? (
         <DeletionNotice
-          open={openDeletion}
-          discard={proposing.discard}
           canWrite={canPropose}
+          discard={proposing.discard}
+          open={openDeletion}
         />
       ) : null}
       <form
@@ -113,41 +113,39 @@ export function ChangeStructure({
           }
         }}
       >
-        <label htmlFor={renameId} className="sr-only">
+        <label className="sr-only" htmlFor={renameId}>
           Name
         </label>
         <input
-          id={renameId}
-          data-change="name"
-          type="text"
-          value={typed}
-          maxLength={maxStructureNameLength}
           autoComplete="off"
-          disabled={!canPropose || deleted}
           className={`${fieldClass} min-w-0 flex-1`}
+          data-change="name"
+          disabled={!canPropose || deleted}
+          id={renameId}
+          maxLength={maxStructureNameLength}
           onChange={(event) => {
             clear();
             setName(event.target.value);
           }}
+          type="text"
+          value={typed}
         />
         <button
-          type="submit"
-          data-change="rename"
           className={controlClass}
+          data-change="rename"
           disabled={
             !canPropose ||
             deleted ||
             typed.trim() === "" ||
             typed.trim() === structure.name
           }
+          type="submit"
         >
           Rename
         </button>
       </form>
       {choose({
         label: "Shape",
-        value: structure.shape,
-        options: shapeChoices,
         onChange: (next) => {
           Option.map(
             Arr.findFirst(shapeChoices, ({ value }) => value === next),
@@ -156,22 +154,22 @@ export function ChangeStructure({
             }
           );
         },
+        options: shapeChoices,
+        value: structure.shape,
       })}
       {choose({
         label: "Group",
-        value: structure.group,
-        options: Arr.map(state.data.groups, ({ id, title }) => ({
-          value: id,
-          label: title,
-        })),
         onChange: (next) => {
           send(changeFor.group(structure, next));
         },
+        options: Arr.map(state.data.groups, ({ id, title }) => ({
+          label: title,
+          value: id,
+        })),
+        value: structure.group,
       })}
       {choose({
         label: "Status",
-        value: structure.status,
-        options: statusChoices,
         onChange: (next) => {
           Option.map(
             Arr.findFirst(statusChoices, ({ value }) => value === next),
@@ -180,12 +178,14 @@ export function ChangeStructure({
             }
           );
         },
+        options: statusChoices,
+        value: structure.status,
       })}
       {failure === undefined ? null : (
         <p
-          role="alert"
-          data-change-failure
           className="border-refused border-l-2 pl-2 text-xs"
+          data-change-failure
+          role="alert"
         >
           {failure}
         </p>
@@ -193,25 +193,25 @@ export function ChangeStructure({
       <div className="flex flex-wrap gap-1.5">
         {connections === null || drafting === null ? null : (
           <button
-            type="button"
-            data-change="draw-hop"
             className={controlClass}
+            data-change="draw-hop"
             disabled={!connections.canPropose || deleted}
             onClick={() => {
               drafting.begin(structure.id);
             }}
+            type="button"
           >
             Draw hop from here
           </button>
         )}
         <button
-          type="button"
-          data-change="delete"
           className={controlClass}
+          data-change="delete"
           disabled={!canPropose || deleted}
           onClick={() => {
             send(changeFor.delete(structure));
           }}
+          type="button"
         >
           Propose deleting
         </button>

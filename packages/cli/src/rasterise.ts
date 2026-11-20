@@ -26,15 +26,15 @@ const start = resvgWasm.pipe(
   ),
   Effect.flatMap((bytes) =>
     Effect.tryPromise({
+      catch: (cause) =>
+        RasteriseFailed.make({
+          reason: `the renderer didn't start: ${String(cause)}`,
+        }),
       try: () => {
         started ??= initWasm(bytes);
 
         return started;
       },
-      catch: (cause) =>
-        RasteriseFailed.make({
-          reason: `the renderer didn't start: ${String(cause)}`,
-        }),
     })
   )
 );
@@ -60,13 +60,14 @@ export const rasterise = Effect.fn("rasterise")(function* (
   );
 
   return yield* Effect.try({
+    catch: (cause) => RasteriseFailed.make({ reason: String(cause) }),
     try: () => {
       const resvg = new Resvg(svgText, {
         fitTo: { mode: "zoom", value: scale },
         font: {
-          loadSystemFonts: false,
-          fontBuffers: fonts,
           defaultFontFamily: exportFontFamily,
+          fontBuffers: fonts,
+          loadSystemFonts: false,
           monospaceFamily: exportFontFamily,
           sansSerifFamily: exportFontFamily,
           serifFamily: exportFontFamily,
@@ -79,6 +80,5 @@ export const rasterise = Effect.fn("rasterise")(function* (
         resvg.free();
       }
     },
-    catch: (cause) => RasteriseFailed.make({ reason: String(cause) }),
   });
 });

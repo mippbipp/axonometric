@@ -8,11 +8,11 @@ import { tagHeight } from "./iso.ts";
  */
 export const textSizes = {
   /** The baseline sits `baseline` below the tag's top. */
-  tag: { font: 12, least: 10, height: tagHeight, baseline: 13 },
+  tag: { baseline: 13, font: 12, height: tagHeight, least: 10 },
   /** The baseline sits `baseline` above the label's bottom. */
-  label: { font: 12, least: 9, height: 15, baseline: 4 },
+  label: { baseline: 4, font: 12, height: 15, least: 9 },
   /** The baseline sits `baseline` below the chip's middle. */
-  chip: { font: 10, least: 9, height: 14, baseline: 3.5 },
+  chip: { baseline: 3.5, font: 10, height: 14, least: 9 },
   /** A zone title's box is drawn with the scene's ascent and descent. */
   title: { font: 10, least: 9 },
 } as const;
@@ -23,9 +23,9 @@ export const textSizes = {
  * on screen, hop labels, code chips and zone titles to 9 px.
  */
 export interface TextGrowth {
-  readonly tag: number;
-  readonly label: number;
   readonly chip: number;
+  readonly label: number;
+  readonly tag: number;
   readonly title: number;
 }
 
@@ -35,9 +35,9 @@ export const textGrowthAt = (zoom: number): TextGrowth => {
     Math.max(1, least / (font * zoom));
 
   return {
-    tag: grow(textSizes.tag),
-    label: grow(textSizes.label),
     chip: grow(textSizes.chip),
+    label: grow(textSizes.label),
+    tag: grow(textSizes.tag),
     title: grow(textSizes.title),
   };
 };

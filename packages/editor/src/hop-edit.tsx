@@ -53,17 +53,17 @@ export function HopEdit({
   };
 
   return (
-    <section data-hop-edit={id} className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2" data-hop-edit={id}>
       {deleted ? (
         <DeletionNotice
+          canWrite={connections.canPropose}
+          discard={connections.discard}
           open={Option.getOrUndefined(
             Option.map(
               proposals?.deletion ?? Option.none(),
               ({ id: item }) => item
             )
           )}
-          discard={connections.discard}
-          canWrite={connections.canPropose}
         />
       ) : null}
       <label
@@ -72,25 +72,25 @@ export function HopEdit({
       >
         <span className="opacity-70">Label</span>
         <input
-          id={`hop-label-${id}`}
-          data-hop-label-field
-          type="text"
-          value={typed ?? label}
-          maxLength={maxHopLabelLength}
-          disabled={!connections.canPropose || deleted}
           autoComplete="off"
           className={fieldClass}
+          data-hop-label-field
+          disabled={!connections.canPropose || deleted}
+          id={`hop-label-${id}`}
+          maxLength={maxHopLabelLength}
           onChange={(event) => {
             setTyped(event.target.value);
             setFailure(undefined);
           }}
+          type="text"
+          value={typed ?? label}
         />
       </label>
       <HopFlows hop={id} />
       {failure === undefined ? null : (
         <p
-          data-hop-change-failure
           className="border-refused border-l-2 pl-2 text-xs"
+          data-hop-change-failure
         >
           {failure}
         </p>
@@ -98,28 +98,28 @@ export function HopEdit({
       <div className="flex flex-wrap gap-1.5">
         {changed ? (
           <button
-            type="button"
-            data-hop-relabel={id}
             className={controlClass}
+            data-hop-relabel={id}
             disabled={!connections.canPropose}
             onClick={() => {
               send({ action: "relabel", hop: id, label: trimmed }, () => {
                 setTyped(undefined);
               });
             }}
+            type="button"
           >
             Propose relabel
           </button>
         ) : null}
         {deleted ? null : (
           <button
-            type="button"
-            data-hop-delete={id}
             className={controlClass}
+            data-hop-delete={id}
             disabled={!connections.canPropose}
             onClick={() => {
               send({ action: "delete", hop: id });
             }}
+            type="button"
           >
             Propose deleting
           </button>

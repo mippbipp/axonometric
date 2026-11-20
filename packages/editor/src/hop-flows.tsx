@@ -17,7 +17,7 @@ export function HopFlows({ hop }: { readonly hop: string }) {
   const connections = useConnections();
   const proposals = useHopProposals(hop);
   const { state } = useWalkthrough();
-  const { toggle, failure } = useHopFlowToggle(hop);
+  const { failure, toggle } = useHopFlowToggle(hop);
 
   if (connections === null) {
     return null;
@@ -36,7 +36,7 @@ export function HopFlows({ hop }: { readonly hop: string }) {
   const accepted = new Set(Arr.map(state.data.flows, ({ id }) => id));
 
   return (
-    <fieldset data-hop-flows={hop} className="flex flex-col gap-1">
+    <fieldset className="flex flex-col gap-1" data-hop-flows={hop}>
       <legend className="text-xs tracking-widest uppercase opacity-70">
         Flows
       </legend>
@@ -50,13 +50,13 @@ export function HopFlows({ hop }: { readonly hop: string }) {
               )}
             >
               <input
-                type="checkbox"
-                data-hop-flow={id}
                 checked={inFlows.includes(id)}
+                data-hop-flow={id}
                 disabled={!canEdit}
                 onChange={(event) => {
                   toggle(id, event.target.checked);
                 }}
+                type="checkbox"
               />
               <span className="min-w-0 break-words">{name}</span>
               {accepted.has(id) ? null : (
@@ -68,8 +68,8 @@ export function HopFlows({ hop }: { readonly hop: string }) {
       </ul>
       {failure === undefined ? null : (
         <p
-          data-hop-flows-failure
           className="border-refused border-l-2 pl-2 text-xs"
+          data-hop-flows-failure
         >
           {failure}
         </p>

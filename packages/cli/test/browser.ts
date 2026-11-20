@@ -33,7 +33,7 @@ const openContext = Effect.acquireRelease(
     browser ??= chromium.launch();
 
     return browser.then((launched) =>
-      launched.newContext({ viewport: { width: 1024, height: 640 } })
+      launched.newContext({ viewport: { height: 640, width: 1024 } })
     );
   }),
   (context) => Effect.promise(() => context.close())
@@ -68,8 +68,8 @@ export const openUrl = Effect.fnUntraced(function* (
     );
   }
 
-  const requests: string[] = [];
-  const errors: string[] = [];
+  const requests: Array<string> = [];
+  const errors: Array<string> = [];
 
   page.on("request", (request) => {
     if (!Str.startsWith("file:")(request.url())) {
@@ -87,7 +87,7 @@ export const openUrl = Effect.fnUntraced(function* (
     page.locator("[data-structure]").first().waitFor({ state: "attached" })
   );
 
-  return { page, requests, errors };
+  return { errors, page, requests };
 });
 
 /** Opens the HTML file `file`, as `openUrl` does. */
@@ -224,7 +224,7 @@ export const assertTextIncludes = Effect.fnUntraced(function* (
 /** Fails the test unless attribute `name` of the first element matching `target.selector` is `expected`. */
 export const assertAttribute = Effect.fnUntraced(function* (
   page: Page,
-  target: { readonly selector: string; readonly name: string },
+  target: { readonly name: string; readonly selector: string },
   expected: string | null
 ) {
   const found = yield* attributeOf(page, target.selector, target.name);

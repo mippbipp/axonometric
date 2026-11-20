@@ -15,17 +15,17 @@ import type { FadeAttributes } from "./fading.ts";
  * hatching inside a full-strength outline, with a power mark on top.
  */
 export interface Look {
-  readonly paint: Paint;
-  /** The fill of a face. */
-  readonly face: string;
-  /** The fill of a part drawn in solid ink, such as a gate's band or a code. */
-  readonly solid: string;
   /** The outline's dash pattern, or `undefined` for a solid line. */
   readonly dash: string | undefined;
+  /** The fill of a face. */
+  readonly face: string;
   /** Whether hatching is drawn. */
   readonly hatched: boolean;
   /** The opacity of hatching, or `undefined` for full strength. */
   readonly hatchOpacity: number | undefined;
+  readonly paint: Paint;
+  /** The fill of a part drawn in solid ink, such as a gate's band or a code. */
+  readonly solid: string;
 }
 
 /** How faint a switched-off structure's hatching is. */
@@ -34,28 +34,28 @@ const offHatchOpacity = 0.3;
 /** The look of each status in `paint`. */
 export const looksOf = (paint: Paint): Readonly<Record<Status, Look>> => ({
   live: {
-    paint,
-    face: paint.face,
-    solid: paint.ink,
     dash: undefined,
+    face: paint.face,
     hatched: true,
     hatchOpacity: undefined,
-  },
-  planned: {
     paint,
-    face: paint.paper,
     solid: paint.ink,
-    dash: dashes.planned,
-    hatched: false,
-    hatchOpacity: undefined,
   },
   off: {
-    paint,
-    face: paint.faceOff,
-    solid: paint.muted,
     dash: undefined,
+    face: paint.faceOff,
     hatched: true,
     hatchOpacity: offHatchOpacity,
+    paint,
+    solid: paint.muted,
+  },
+  planned: {
+    dash: dashes.planned,
+    face: paint.paper,
+    hatched: false,
+    hatchOpacity: undefined,
+    paint,
+    solid: paint.ink,
   },
 });
 
@@ -78,26 +78,26 @@ export const useFace = (): string => useLook().face;
  * including the fading of a structure outside the spotlight.
  */
 export const frameAttributes = ({
-  look,
   faded,
+  look,
 }: {
-  readonly look: Look;
   readonly faded?: boolean | undefined;
+  readonly look: Look;
 }): SVGProps<SVGGElement> & Pick<FadeAttributes, "data-faded"> => ({
   ...fadeAttributes({ faded, strength: fadedOpacity.structure }),
   stroke: look.paint.ink,
-  strokeWidth: 1.2,
-  strokeLinejoin: "round",
   strokeDasharray: look.dash,
+  strokeLinejoin: "round",
+  strokeWidth: 1.2,
 });
 
 /** The attributes of one hatching part. */
 export interface Hatching {
   readonly "data-hatch": "";
-  readonly fill: string;
-  readonly stroke: "none";
   readonly display: "none" | undefined;
+  readonly fill: string;
   readonly opacity: number | undefined;
+  readonly stroke: "none";
 }
 
 /**
@@ -114,10 +114,10 @@ export const useHatching = (
   return hatch !== undefined && (look.hatched || live)
     ? {
         "data-hatch": "",
-        fill: `url(#${hatch})`,
-        stroke: "none",
         display: look.hatched ? undefined : "none",
+        fill: `url(#${hatch})`,
         opacity: look.hatchOpacity,
+        stroke: "none",
       }
     : undefined;
 };

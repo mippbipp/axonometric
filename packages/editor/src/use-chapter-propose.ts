@@ -20,17 +20,16 @@ export const useChapterPropose = () => {
 
   return {
     canPropose: ops?.canPropose === true,
-    sending: sending.sending,
-    failure: sending.failure,
     clear: sending.clear,
+    failure: sending.failure,
     send: (change: ChapterChange, done?: () => void) => {
       if (ops === null) {
         return;
       }
 
       problems.show([chapterItem(change)], {
-        of: "chapter",
         chapter: stop.id,
+        of: "chapter",
       });
       sending.run(
         (finish) => {
@@ -41,5 +40,6 @@ export const useChapterPropose = () => {
         }
       );
     },
+    sending: sending.sending,
   };
 };

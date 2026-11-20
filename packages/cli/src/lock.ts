@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
   DateTime,
   Duration,
@@ -88,10 +89,10 @@ export const processIsAlive = (pid: number) => {
 
 /** How long a command waits for a held lock before giving up. */
 export interface LockWait {
-  /** How long to keep retrying in total. */
-  readonly timeout: Duration.Input;
   /** How long to wait between tries. */
   readonly interval: Duration.Input;
+  /** How long to keep retrying in total. */
+  readonly timeout: Duration.Input;
 }
 
 export const defaultLockWait: LockWait = {

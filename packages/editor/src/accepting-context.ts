@@ -7,10 +7,6 @@ import { createContext, use } from "react";
  * read-only file has no `AcceptingContext`, so it shows no Accept buttons.
  */
 export interface Accepting {
-  /** Whether an accept can be sent now. False while the server is down. */
-  readonly canAccept: boolean;
-  /** Whether an accept is waiting for, or on its way to, the server. */
-  readonly busy: boolean;
   /**
    * Accepts the pending layout changes with these ids, or all of them, as one
    * revision. An empty `message` has the server write one from the changes.
@@ -20,6 +16,10 @@ export interface Accepting {
     ids: "all" | Arr.NonEmptyReadonlyArray<ChangeId>,
     message: string
   ) => void;
+  /** Whether an accept is waiting for, or on its way to, the server. */
+  readonly busy: boolean;
+  /** Whether an accept can be sent now. False while the server is down. */
+  readonly canAccept: boolean;
 }
 
 export const AcceptingContext = createContext<Accepting | null>(null);

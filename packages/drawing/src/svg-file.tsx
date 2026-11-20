@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-jsx-props -- the root <svg> header is parsed by position (width before height) by the export tests and by tools that read the file's first bytes */
 import {
   chapterStopsOf,
   exportFontStack,
@@ -24,30 +25,30 @@ const margin = 16;
 
 /** What an exported SVG is of, and how it looks. */
 export interface SvgRequest {
-  readonly state: MapState;
-  readonly view: View;
-  /** The chapter's index, from 0. */
-  readonly chapter: number;
   /** The colour behind the drawing: the palette's paper, or white. */
   readonly background: "paper" | "white";
-  /**
-   * The palette to draw in. White always draws in the light palette, so
-   * dark-theme ink doesn't vanish on it.
-   */
-  readonly theme: "light" | "dark";
+  /** The chapter's index, from 0. */
+  readonly chapter: number;
   /**
    * What to draw at full strength, or `null` to fade nothing. The page
    * passes the spotlight it shows; the `export` command passes the chapter's
    * or the picked flow's, from `chapterSpotlightOf`.
    */
   readonly spotlight: Spotlight | null;
+  readonly state: MapState;
+  /**
+   * The palette to draw in. White always draws in the light palette, so
+   * dark-theme ink doesn't vanish on it.
+   */
+  readonly theme: "light" | "dark";
+  readonly view: View;
 }
 
 /** An SVG file's text and its size in pixels. */
 export interface SvgFile {
+  readonly height: number;
   readonly text: string;
   readonly width: number;
-  readonly height: number;
 }
 
 /** The drawing's text sizes are those of a view at real size. */
@@ -99,28 +100,28 @@ const viewNames = {
  * left out.
  */
 export const svgFileOf = ({
-  state,
-  view,
-  chapter,
   background,
-  theme,
+  chapter,
   spotlight,
+  state,
+  theme,
+  view,
 }: SvgRequest): SvgFile => {
   const stops = chapterStopsOf(state);
   const index = Math.min(Math.max(chapter, 0), stops.length - 1);
   const stop = stops[index] ?? stops[0];
   const number = index + 1;
   const { data, layout } = state;
-  const prefix = `${exportName({ system: state.system, view, chapter: number })}-`;
+  const prefix = `${exportName({ chapter: number, system: state.system, view })}-`;
   const palettes: Readonly<Record<"light" | "dark", Paint>> = palette;
   const paint = palettes[background === "white" ? "light" : theme];
 
   const scene = sceneOf({
     data,
+    labelFirst: stop.plays,
     layout,
     revealed: stop.revealed,
     routes: routeRevealed({ data, layout, revealed: stop.revealed }),
-    labelFirst: stop.plays,
     view,
     zoom: exportZoom,
   });
@@ -134,11 +135,11 @@ export const svgFileOf = ({
   const description = `${viewNames[view]} of ${data.overview.title}, at chapter ${number} of ${stops.length}, ${stop.title}. ${stop.lede}`;
 
   const environment: DrawingEnvironment = {
-    paint,
-    live: false,
     Frame: FileFrame,
-    Layers: PassThrough,
     idOf: (kind, id) => `${prefix}${kind}-${id}`,
+    Layers: PassThrough,
+    live: false,
+    paint,
   };
 
   const markup = renderToStaticMarkup(
@@ -160,18 +161,18 @@ export const svgFileOf = ({
         {/* oxlint-disable-next-line shadcn/no-inline-styles -- a standalone SVG has no stylesheet to put its @font-face in */}
         <style>{fontFaceCss}</style>
         <rect
+          aria-hidden="true"
+          fill={background === "white" ? whiteBackground : paint.paper}
+          height={height}
+          stroke="none"
+          width={width}
           x={x}
           y={y}
-          width={width}
-          height={height}
-          fill={background === "white" ? whiteBackground : paint.paper}
-          stroke="none"
-          aria-hidden="true"
         />
         <MapDrawing
-          scene={scene}
           hatch={`${prefix}pattern-1`}
           newlyRevealed={new Set(stop.newlyRevealed)}
+          scene={scene}
           spotlight={spotlight}
         />
       </svg>
@@ -179,8 +180,8 @@ export const svgFileOf = ({
   );
 
   return {
+    height,
     text: `${xmlDeclaration}${finished(markup)}\n`,
     width,
-    height,
   };
 };

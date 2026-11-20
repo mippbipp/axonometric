@@ -13,52 +13,52 @@ import { post } from "./revisions.ts";
 const at = "2026-11-01T09:00:00.000Z";
 
 const openHop: BatchItem = {
+  change: { action: "relabel", hop: "h-save", label: "saves" },
   id: "open-hop",
   kind: "hop",
-  change: { action: "relabel", hop: "h-save", label: "saves" },
 };
 
 const rejectedHop: BatchItem = {
+  change: { action: "relabel", hop: "h-note", label: "pins" },
   id: "rejected-hop",
   kind: "hop",
-  change: { action: "relabel", hop: "h-note", label: "pins" },
 };
 
 const rejectedFlow: BatchItem = {
+  change: { action: "rename", flow: "f-note", name: "Notes" },
   id: "rejected-flow",
   kind: "flow",
-  change: { action: "rename", flow: "f-note", name: "Notes" },
 };
 
 const reviewed: Batch = {
-  number: 1,
+  committed: { at, revision: 1 },
   frozenAt: at,
   items: [rejectedHop, rejectedFlow],
+  number: 1,
   verdicts: {
-    "rejected-hop": { verdict: "rejected", reason: "No." },
-    "rejected-flow": { verdict: "rejected", reason: "No." },
+    "rejected-flow": { reason: "No.", verdict: "rejected" },
+    "rejected-hop": { reason: "No.", verdict: "rejected" },
   },
-  committed: { revision: 1, at },
 };
 
 const file = `${JSON.stringify(
   {
-    format: 1,
-    revision: 3,
-    layout: [],
-    hops: [
-      {
-        id: "open-hop",
-        change: openHop.kind === "hop" ? openHop.change : undefined,
-      },
-    ],
+    batches: [reviewed],
     flows: [
       {
-        id: "open-flow",
         change: { action: "rename", flow: "f-note", name: "Primary" },
+        id: "open-flow",
       },
     ],
-    batches: [reviewed],
+    format: 1,
+    hops: [
+      {
+        change: openHop.kind === "hop" ? openHop.change : undefined,
+        id: "open-hop",
+      },
+    ],
+    layout: [],
+    revision: 3,
   },
   null,
   2
@@ -187,7 +187,7 @@ describe("reopening a rejected hop or flow over HTTP", () => {
       assert.isTrue(
         Arr.some(
           saved.flows ?? [],
-          ({ id, change }) =>
+          ({ change, id }) =>
             id === "again" &&
             change.action === "rename" &&
             change.name === "Notes trail"

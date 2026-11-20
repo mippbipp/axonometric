@@ -9,7 +9,7 @@ import type { GridPoint, Placement } from "./layout.ts";
 /** The two drawings of a layout: isometric, and straight from above. */
 export type View = "iso" | "plan";
 
-export const views: readonly View[] = ["iso", "plan"];
+export const views: ReadonlyArray<View> = ["iso", "plan"];
 
 /**
  * One grid unit in Plan view, in screen units. A half-unit gap below a box
@@ -25,8 +25,8 @@ export const projectPlan = ({ x, y }: GridPosition): ScreenPoint => ({
 
 /** Moves between the ground grid and the screen, in one view. */
 export interface GroundProjection {
-  readonly toScreen: (point: GridPosition) => ScreenPoint;
   readonly toGround: (point: ScreenPoint) => GridPoint;
+  readonly toScreen: (point: GridPosition) => ScreenPoint;
   /** How long one grid unit along x or y is on screen. */
   readonly unit: number;
 }
@@ -37,28 +37,28 @@ export interface GroundProjection {
  */
 export const groundProjections: Readonly<Record<View, GroundProjection>> = {
   iso: {
-    toScreen: project,
     toGround: ({ sx, sy }) => {
       const across = sx / (tileWidth / 2);
       const down = sy / (tileHeight / 2);
 
       return { x: (across + down) / 2, y: (down - across) / 2 };
     },
+    toScreen: project,
     unit: gridOnScreen,
   },
   plan: {
-    toScreen: projectPlan,
     toGround: ({ sx, sy }) => ({ x: sx / planUnit, y: sy / planUnit }),
+    toScreen: projectPlan,
     unit: planUnit,
   },
 };
 
 /** A footprint's rectangle in Plan view. */
-export const planRect = ({ x, y, w, d }: Placement): ScreenRect => ({
-  left: x * planUnit,
-  top: y * planUnit,
-  right: (x + w) * planUnit,
+export const planRect = ({ d, w, x, y }: Placement): ScreenRect => ({
   bottom: (y + d) * planUnit,
+  left: x * planUnit,
+  right: (x + w) * planUnit,
+  top: y * planUnit,
 });
 
 /** The gap between a box and its name tag in Plan view. */
@@ -66,8 +66,8 @@ const planTagGap = 6;
 
 /** A name tag's size on screen. */
 export interface TagSize {
-  readonly width: number;
   readonly height: number;
+  readonly width: number;
 }
 
 /**
@@ -78,21 +78,21 @@ export interface TagSize {
  * other tags.
  */
 export const planTagSpots: {
-  (size: TagSize): (box: ScreenRect) => readonly ScreenRect[];
-  (box: ScreenRect, size: TagSize): readonly ScreenRect[];
+  (size: TagSize): (box: ScreenRect) => ReadonlyArray<ScreenRect>;
+  (box: ScreenRect, size: TagSize): ReadonlyArray<ScreenRect>;
 } = dual(
   2,
-  (box: ScreenRect, { width, height }: TagSize): readonly ScreenRect[] => {
+  (box: ScreenRect, { height, width }: TagSize): ReadonlyArray<ScreenRect> => {
     const middle = (box.left + box.right) / 2;
     const reach = (box.right - box.left) / 2;
 
     const shifts = slideOffsets(reach);
 
     const at = (centre: number, top: number): ScreenRect => ({
+      bottom: top + height,
       left: centre - width / 2,
       right: centre + width / 2,
       top,
-      bottom: top + height,
     });
 
     const below = box.bottom + planTagGap;

@@ -12,13 +12,13 @@ import { fixture } from "./fixture-maps.ts";
 
 /** How far to move a structure, in grid units. */
 interface Nudge {
-  readonly id: string;
   readonly dx: number;
   readonly dy: number;
+  readonly id: string;
 }
 
 /** `layout` with a structure moved by `nudge`. */
-const nudged = (layout: Layout, { id, dx, dy }: Nudge): Layout => {
+const nudged = (layout: Layout, { dx, dy, id }: Nudge): Layout => {
   const at = layout.structures[id];
 
   assert.isDefined(at, `${id} has no placement`);
@@ -40,11 +40,11 @@ describe("checking a drag a chapter at a time", () => {
     () =>
       Effect.gen(function* () {
         const { data, layout } = yield* fixture("review");
-        const after = nudged(layout, { id: "server", dx: 0, dy: 2.5 });
+        const after = nudged(layout, { dx: 0, dy: 2.5, id: "server" });
         const chapters = new Set(idsOf(data));
 
         assert.deepStrictEqual(
-          draggedProblemsIn({ data, before: layout, after, chapters }),
+          draggedProblemsIn({ after, before: layout, chapters, data }),
           draggedProblems(data, layout, after)
         );
       })
@@ -53,14 +53,14 @@ describe("checking a drag a chapter at a time", () => {
   it.effect("keeps check's order whatever order the chapters come in", () =>
     Effect.gen(function* () {
       const { data, layout } = yield* fixture("review");
-      const after = nudged(layout, { id: "proposals", dx: 0, dy: -2.5 });
+      const after = nudged(layout, { dx: 0, dy: -2.5, id: "proposals" });
       const ids = idsOf(data);
       const backwards = new Set(Arr.reverse(ids));
       const forwards = new Set(ids);
 
       assert.deepStrictEqual(
-        draggedProblemsIn({ data, before: layout, after, chapters: backwards }),
-        draggedProblemsIn({ data, before: layout, after, chapters: forwards })
+        draggedProblemsIn({ after, before: layout, chapters: backwards, data }),
+        draggedProblemsIn({ after, before: layout, chapters: forwards, data })
       );
     })
   );
@@ -70,14 +70,14 @@ describe("checking a drag a chapter at a time", () => {
     () =>
       Effect.gen(function* () {
         const { data, layout } = yield* fixture("review");
-        const after = nudged(layout, { id: "proposals", dx: 0, dy: -2.5 });
+        const after = nudged(layout, { dx: 0, dy: -2.5, id: "proposals" });
         const [first, ...others] = idsOf(data);
 
         const one = draggedProblemsIn({
-          data,
-          before: layout,
           after,
+          before: layout,
           chapters: new Set([first]),
+          data,
         });
 
         const all = Arr.map(checkLayout(data, after), ({ message }) => message);
@@ -95,7 +95,7 @@ describe("checking a drag a chapter at a time", () => {
   it.effect("gives the same answer when asked again for a layout", () =>
     Effect.gen(function* () {
       const { data, layout } = yield* fixture("review");
-      const right = { id: "server", dx: 3, dy: 0 };
+      const right = { dx: 3, dy: 0, id: "server" };
       const after = nudged(layout, right);
       const back = nudged(after, { ...right, dx: -3 });
 

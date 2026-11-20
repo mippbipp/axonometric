@@ -79,7 +79,7 @@ describe("creating a group", () => {
     "from two selected structures, drawn in the pending look in both views",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-save");
         yield* makeGroup(page, "Data layer");
@@ -411,7 +411,7 @@ describe("the Pending tab", () => {
 
         // Each item is listed once, and there's no old structures heading.
         const ids = yield* Effect.promise(() =>
-          page.evaluate<readonly string[]>(
+          page.evaluate<ReadonlyArray<string>>(
             `[...document.querySelectorAll("[data-side-panel] [data-review-item]")].map((row) => row.getAttribute("data-review-item"))`
           )
         );
@@ -431,8 +431,8 @@ describe("the Pending tab", () => {
 });
 
 /** Every pending ring piece that crosses a visible name tag, code chip, zone title or hop label. */
-const ringsOverText = (report: DrawingReport): readonly string[] => {
-  const text: readonly Drawn[] = [...report.text, ...report.chips];
+const ringsOverText = (report: DrawingReport): ReadonlyArray<string> => {
+  const text: ReadonlyArray<Drawn> = [...report.text, ...report.chips];
 
   return Arr.flatMap(report.rings, ({ id, segment }) =>
     Arr.flatMap(text, (other) =>
@@ -449,7 +449,7 @@ describe("the pending rings and lines", () => {
     "stay clear of every name tag, chip, zone title and hop label, in both views",
     () =>
       Effect.gen(function* () {
-        const { page, errors } = yield* served;
+        const { errors, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-save");
         yield* makeGroup(page, "Data layer");
@@ -485,15 +485,15 @@ describe("the pending rings and lines", () => {
 });
 
 /** The warnings as one line each, for an assertion's message. */
-const words = (found: readonly { message: string; isNew: boolean }[]) =>
+const words = (found: ReadonlyArray<{ isNew: boolean; message: string }>) =>
   Arr.join(
-    Arr.map(found, ({ message, isNew }) => `${isNew ? "NEW " : ""}${message}`),
+    Arr.map(found, ({ isNew, message }) => `${isNew ? "NEW " : ""}${message}`),
     " | "
   );
 
 const warnings = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<readonly { message: string; isNew: boolean }[]>(
+    page.evaluate<ReadonlyArray<{ isNew: boolean; message: string }>>(
       `[...document.querySelectorAll("[data-drag-warning]")].map((item) => ({ message: item.querySelector("[data-warning-message]").textContent, isNew: item.getAttribute("data-warning-new") === "true" }))`
     )
   );
@@ -528,7 +528,7 @@ describe("the warnings panel for group and chapter proposals", () => {
         assert.isTrue(
           Arr.some(
             open,
-            ({ message, isNew }) =>
+            ({ isNew, message }) =>
               isNew &&
               /zones of groups "loop" and "data-layer-\w+" overlap/u.test(
                 message
@@ -573,7 +573,7 @@ describe("the warnings panel for group and chapter proposals", () => {
         assert.isTrue(
           Arr.some(
             shown,
-            ({ message, isNew }) =>
+            ({ isNew, message }) =>
               isNew &&
               Str.includes("overlap")(message) &&
               Str.includes('chapter "c-save"')(message)
@@ -597,7 +597,7 @@ describe("the chapter details for a proposal", () => {
         yield* waitFor(page, '[data-play-pending="order"]');
 
         const moved = yield* Effect.promise(() =>
-          page.evaluate<readonly string[]>(
+          page.evaluate<ReadonlyArray<string>>(
             `[...document.querySelectorAll('[data-play-pending="order"] [data-play-state]')].map((el) => el.textContent)`
           )
         );

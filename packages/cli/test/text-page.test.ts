@@ -40,7 +40,7 @@ describe("a text suggestion", () => {
     "shows next to the original, which is marked current, and saves with the field, original and new text",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* pin(page, "server");
         yield* click(page, `${panel} [data-suggest="oneLiner"]`);
@@ -165,7 +165,7 @@ describe("a text suggestion", () => {
         const proposals = yield* readProposals(home);
 
         assert.deepStrictEqual(
-          Arr.map(proposals.suggestions ?? [], ({ field, before, after }) => [
+          Arr.map(proposals.suggestions ?? [], ({ after, before, field }) => [
             field,
             before,
             after,
@@ -258,7 +258,7 @@ describe("a question", () => {
     "is answered from the Questions tab, and the answer saves with today's date",
     () =>
       Effect.gen(function* () {
-        const { home, page, errors } = yield* served;
+        const { errors, home, page } = yield* served;
 
         yield* pin(page, "server");
         yield* click(page, '[role="tab"][data-tab="questions"]');
@@ -359,16 +359,16 @@ describe("a question", () => {
         assert.notInclude(reviewed.stdout, '"Q-');
 
         assert.deepStrictEqual(
-          Arr.map(report.batch?.items ?? [], ({ kind, before, after }) => ({
-            kind,
-            before,
+          Arr.map(report.batch?.items ?? [], ({ after, before, kind }) => ({
             after,
+            before,
+            kind,
           })),
           [
             {
-              kind: "question",
-              before: null,
               after: { text: "Should writes retry?" },
+              before: null,
+              kind: "question",
             },
           ]
         );
@@ -472,7 +472,7 @@ describe("the Pending tab with proposals", () => {
         );
 
         const names = yield* Effect.promise(() =>
-          page.evaluate<string[]>(
+          page.evaluate<Array<string>>(
             "[...document.querySelectorAll('[data-structure-panel] button[aria-label]')].map((button) => button.ariaLabel)"
           )
         );
@@ -499,7 +499,7 @@ describe("the Pending tab with proposals", () => {
         );
 
         const reviewItemKinds = yield* Effect.promise(() =>
-          page.evaluate<string[]>(
+          page.evaluate<Array<string>>(
             "[...document.querySelectorAll('[data-review-list] [data-review-item]')].map((item) => item.dataset.reviewKind)"
           )
         );
@@ -604,13 +604,13 @@ describe("a frozen suggestion", () => {
 /** The on-screen box of the first element `locator` matches. */
 const boxOf = (locator: Locator) =>
   Effect.promise(() => locator.first().boundingBox()).pipe(
-    Effect.map((box) => box ?? { x: 0, y: 0, width: 0, height: 0 })
+    Effect.map((box) => box ?? { height: 0, width: 0, x: 0, y: 0 })
   );
 
 /** Each button's height and font size in pixels, by its accessible name. */
 const sizesOf = (page: Page) =>
   Effect.promise(() =>
-    page.evaluate<Record<string, { height: number; font: number }>>(`(() => {
+    page.evaluate<Record<string, { font: number; height: number }>>(`(() => {
       const sizes = {};
 
       for (const button of document.querySelectorAll("[data-structure-panel] button[aria-label], [data-structure-panel] [data-note-send]")) {

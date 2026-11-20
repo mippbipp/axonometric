@@ -12,17 +12,21 @@ import { Array as Arr } from "effect";
  * earlier call is put back first; call it with no `ids` to clear.
  */
 export const shiftDrawing = ({
-  root,
-  view,
+  by,
   ids = [],
+  changing = ids,
   groups = [],
   hops = [],
-  changing = ids,
-  by,
+  root,
+  view,
 }: {
-  readonly root: ParentNode;
-  readonly view: View;
-  readonly ids?: readonly string[];
+  readonly by?: GridPoint | undefined;
+  /**
+   * The structures whose footprint is changing, which `hops` are matched
+   * against. A resize changes one without shifting it. Defaults to `ids`.
+   */
+  readonly changing?: ReadonlyArray<string>;
+  readonly groups?: ReadonlyArray<string>;
   /**
    * The map's hops. Hops stay where they were while their structures move,
    * so any hop with an end on a moving structure would point at an empty
@@ -30,14 +34,10 @@ export const shiftDrawing = ({
    * over. Those hops, line, head and label, are hidden until the drop routes
    * them again.
    */
-  readonly hops?: readonly HopEnds[];
-  /**
-   * The structures whose footprint is changing, which `hops` are matched
-   * against. A resize changes one without shifting it. Defaults to `ids`.
-   */
-  readonly changing?: readonly string[];
-  readonly groups?: readonly string[];
-  readonly by?: GridPoint | undefined;
+  readonly hops?: ReadonlyArray<HopEnds>;
+  readonly ids?: ReadonlyArray<string>;
+  readonly root: ParentNode;
+  readonly view: View;
 }) => {
   for (const element of root.querySelectorAll<SVGElement>(
     "[data-drag-shifted]"

@@ -24,7 +24,7 @@ export interface ChapterWorld {
   readonly proposed: Pick<MapData, "structures" | "hops">;
 }
 
-const openOf = (proposals: Proposals): readonly ChapterProposal[] =>
+const openOf = (proposals: Proposals): ReadonlyArray<ChapterProposal> =>
   proposals.chapters ?? [];
 
 const orderLast = Order.mapInput(Order.Number, (found: ChapterProposal) =>
@@ -38,11 +38,11 @@ const orderLast = Order.mapInput(Order.Number, (found: ChapterProposal) =>
  */
 const bump = (
   proposals: Proposals,
-  chapters: readonly ChapterProposal[]
+  chapters: ReadonlyArray<ChapterProposal>
 ): Proposals => ({
   ...proposals,
-  revision: proposals.revision + 1,
   chapters: Arr.sort(chapters, orderLast),
+  revision: proposals.revision + 1,
 });
 
 const idInUse = (proposals: Proposals, id: string) =>
@@ -131,14 +131,14 @@ const worldRefusal = (
  * order.
  */
 export const proposeChapter = ({
-  proposals,
-  id,
   change,
+  id,
+  proposals,
   world,
 }: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
   readonly change: ChapterChange;
+  readonly id: ChangeId;
+  readonly proposals: Proposals;
   readonly world: ChapterWorld;
 }): Result.Result<Proposals, string> => {
   const refusal = Option.orElse(idRefusal(proposals, id, change), () =>
@@ -191,9 +191,9 @@ export const proposeChapter = ({
       proposals,
       Option.isSome(existing)
         ? Arr.map(open, (found) =>
-            found.id === kept ? { id: kept, change } : found
+            found.id === kept ? { change, id: kept } : found
           )
-        : [...open, { id: kept, change }]
+        : [...open, { change, id: kept }]
     )
   );
 };

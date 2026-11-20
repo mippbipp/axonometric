@@ -32,7 +32,7 @@ export interface StructureWorld {
   readonly layout: Layout;
 }
 
-const openOf = (proposals: Proposals): readonly StructureProposal[] =>
+const openOf = (proposals: Proposals): ReadonlyArray<StructureProposal> =>
   proposals.structures ?? [];
 
 const noGroup = (group: string) =>
@@ -56,7 +56,7 @@ const worldRefusal = (
     return Option.none();
   }
 
-  const { structure: made, at } = change;
+  const { at, structure: made } = change;
 
   if (Arr.some(world.data.structures, ({ id }) => id === made.id)) {
     return Option.some(
@@ -96,9 +96,9 @@ const currentValue = (
 
 /** An open add changed in the one field `change` names, or taken off with a delete. */
 const editedAdd = (
-  open: readonly StructureProposal[],
+  open: ReadonlyArray<StructureProposal>,
   change: StructureChange
-): Option.Option<readonly StructureProposal[]> => {
+): Option.Option<ReadonlyArray<StructureProposal>> => {
   const id = structureOf(change);
 
   const at = Arr.findFirstIndex(
@@ -135,19 +135,11 @@ const editedAdd = (
 const structureKind = (
   world: StructureWorld
 ): ProposalKind<StructureChange> => ({
+  edited: editedAdd,
+  isAdd: (change) => change.action === "add",
+  isCurrent: (change) => currentValue(world, change),
   noun: "structure",
   open: openOf,
-  withOpen: (held, structures) => ({
-    ...held,
-    revision: held.revision + 1,
-    structures,
-  }),
-  targetOf: structureOf,
-  isAdd: (change) => change.action === "add",
-  sameChange: sameStructureChange,
-  sameSubject,
-  waitingAdds: (held) => addedIds(frozenStructureChanges(held)),
-  edited: editedAdd,
   refusal: (change) => {
     const missing =
       change.action !== "add" &&
@@ -159,7 +151,15 @@ const structureKind = (
         )
       : worldRefusal(world, change);
   },
-  isCurrent: (change) => currentValue(world, change),
+  sameChange: sameStructureChange,
+  sameSubject,
+  targetOf: structureOf,
+  waitingAdds: (held) => addedIds(frozenStructureChanges(held)),
+  withOpen: (held, structures) => ({
+    ...held,
+    revision: held.revision + 1,
+    structures,
+  }),
 });
 
 /**
@@ -171,17 +171,17 @@ const structureKind = (
  * another.
  */
 export const proposeStructure = ({
-  proposals,
-  id,
   change,
+  id,
+  proposals,
   world,
 }: {
-  readonly proposals: Proposals;
-  readonly id: ChangeId;
   readonly change: StructureChange;
+  readonly id: ChangeId;
+  readonly proposals: Proposals;
   readonly world: StructureWorld;
 }): Result.Result<Proposals, string> =>
-  proposeInto({ kind: structureKind(world), proposals, id, change });
+  proposeInto({ change, id, kind: structureKind(world), proposals });
 
 /** A fresh provisional id for a structure called `name`, such as `build-cache-4f2a`. */
 export const newProvisionalId = (name: string): string =>
@@ -193,36 +193,39 @@ export const newProvisionalId = (name: string): string =>
  * `data` is data.mjs as the agent left it, not the proposed map.
  */
 export const checkStructureProposals: {
-  (proposals: Proposals): (data: MapData) => readonly MapProblem[];
-  (data: MapData, proposals: Proposals): readonly MapProblem[];
-} = dual(2, (data: MapData, proposals: Proposals): readonly MapProblem[] => {
-  const mapIds = new Set(Arr.map(data.structures, ({ id }) => id));
-  const added = addedIds(frozenStructureChanges(proposals));
+  (proposals: Proposals): (data: MapData) => ReadonlyArray<MapProblem>;
+  (data: MapData, proposals: Proposals): ReadonlyArray<MapProblem>;
+} = dual(
+  2,
+  (data: MapData, proposals: Proposals): ReadonlyArray<MapProblem> => {
+    const mapIds = new Set(Arr.map(data.structures, ({ id }) => id));
+    const added = addedIds(frozenStructureChanges(proposals));
 
-  return Arr.flatMap(openOf(proposals), ({ change }, index) => {
-    const id = structureOf(change);
-    const path = ["structures", index, "change", "structure"];
+    return Arr.flatMap(openOf(proposals), ({ change }, index) => {
+      const id = structureOf(change);
+      const path = ["structures", index, "change", "structure"];
 
-    if (change.action === "add") {
-      return mapIds.has(id)
-        ? [
+      if (change.action === "add") {
+        return mapIds.has(id)
+          ? [
+              mapWarning({
+                file: "proposals.json",
+                message: `data.mjs already has a structure with the id "${id}", which this proposal adds. Discard it from the page's Pending list.`,
+                path: [...path, "id"],
+              }),
+            ]
+          : [];
+      }
+
+      return mapIds.has(id) || Arr.some(added, (other) => other === id)
+        ? []
+        : [
             mapWarning({
               file: "proposals.json",
-              path: [...path, "id"],
-              message: `data.mjs already has a structure with the id "${id}", which this proposal adds. Discard it from the page's Pending list.`,
+              message: `no structure in data.mjs has the id "${id}", so this ${change.action} does nothing. Discard it from the page's Pending list.`,
+              path,
             }),
-          ]
-        : [];
-    }
-
-    return mapIds.has(id) || Arr.some(added, (other) => other === id)
-      ? []
-      : [
-          mapWarning({
-            file: "proposals.json",
-            path,
-            message: `no structure in data.mjs has the id "${id}", so this ${change.action} does nothing. Discard it from the page's Pending list.`,
-          }),
-        ];
-  });
-});
+          ];
+    });
+  }
+);

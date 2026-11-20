@@ -8,9 +8,9 @@ import { onEdge } from "./route-geometry.ts";
 
 vi.setConfig({ testTimeout: 5000 });
 
-const from: Placement = { x: 0, y: 0, w: 2, d: 2 };
+const from: Placement = { d: 2, w: 2, x: 0, y: 0 };
 
-const to: Placement = { x: 8, y: 0, w: 2, d: 2 };
+const to: Placement = { d: 2, w: 2, x: 8, y: 0 };
 
 const ends = { from, to };
 
@@ -19,22 +19,25 @@ const p = (x: number, y: number): GridPoint => ({ x, y });
 /** Out of A's +x face, round a detour below, into B's -x face. */
 const detour = [p(2, 1), p(3, 1), p(3, 5), p(7, 5), p(7, 1), p(8, 1)];
 
-const drag = (points: readonly GridPoint[], segment: number, offset: number) =>
-  dragSegment({ points, segment, offset, ends });
+const drag = (
+  points: ReadonlyArray<GridPoint>,
+  segment: number,
+  offset: number
+) => dragSegment({ ends, offset, points, segment });
 
 const dragBetween = (
   placed: typeof ends,
-  drags: readonly [readonly GridPoint[], number, number]
+  drags: readonly [ReadonlyArray<GridPoint>, number, number]
 ) =>
   dragSegment({
+    ends: placed,
+    offset: drags[2],
     points: drags[0],
     segment: drags[1],
-    offset: drags[2],
-    ends: placed,
   });
 
 /** Every segment of the detour with offsets either side, in and out of range. */
-const allDrags: readonly (readonly [number, number])[] = Arr.flatMap(
+const allDrags: ReadonlyArray<readonly [number, number]> = Arr.flatMap(
   [0, 1, 2, 3, 4],
   (segment) =>
     Arr.map(
@@ -138,7 +141,7 @@ describe("dragging a segment", () => {
   it("jogs the end of a first segment that is dragged past its edge", () => {
     // Segment 0 leaves A along x; dragging it down lengthens the leg after it.
     const route = [p(2, 1), p(3, 1), p(3, 5), p(8, 5)];
-    const tall: Placement = { x: 8, y: 4, w: 2, d: 2 };
+    const tall: Placement = { d: 2, w: 2, x: 8, y: 4 };
 
     assert.deepStrictEqual(dragBetween({ from, to: tall }, [route, 0, -3]), [
       p(2, 0.5),
@@ -151,8 +154,8 @@ describe("dragging a segment", () => {
   });
 
   it("keeps a short straight route between touching footprints on their shared edge", () => {
-    const left: Placement = { x: 0, y: 0, w: 2, d: 2 };
-    const right: Placement = { x: 2.5, y: 0, w: 2, d: 2 };
+    const left: Placement = { d: 2, w: 2, x: 0, y: 0 };
+    const right: Placement = { d: 2, w: 2, x: 2.5, y: 0 };
 
     assert.deepStrictEqual(
       dragBetween({ from: left, to: right }, [[p(2, 1), p(2.5, 1)], 0, 4]),
@@ -184,12 +187,12 @@ describe("dragging a segment", () => {
 
 describe("the guides for dragging segments", () => {
   it("returns each segment of the route itself when it is drawn as it is", () => {
-    assert.deepStrictEqual(segmentGuides({ route: detour, drawn: detour }), [
-      { from: p(2, 1), to: p(3, 1), axis: "x" },
-      { from: p(3, 1), to: p(3, 5), axis: "y" },
-      { from: p(3, 5), to: p(7, 5), axis: "x" },
-      { from: p(7, 5), to: p(7, 1), axis: "y" },
-      { from: p(7, 1), to: p(8, 1), axis: "x" },
+    assert.deepStrictEqual(segmentGuides({ drawn: detour, route: detour }), [
+      { axis: "x", from: p(2, 1), to: p(3, 1) },
+      { axis: "y", from: p(3, 1), to: p(3, 5) },
+      { axis: "x", from: p(3, 5), to: p(7, 5) },
+      { axis: "y", from: p(7, 5), to: p(7, 1) },
+      { axis: "x", from: p(7, 1), to: p(8, 1) },
     ]);
   });
 
@@ -203,31 +206,31 @@ describe("the guides for dragging segments", () => {
       p(8, 1),
     ];
 
-    const guides = segmentGuides({ route: detour, drawn });
+    const guides = segmentGuides({ drawn, route: detour });
 
     assert.deepStrictEqual(guides[1], {
+      axis: "y",
       from: p(3.25, 1),
       to: p(3.25, 5.25),
-      axis: "y",
     });
     assert.deepStrictEqual(guides[2], {
+      axis: "x",
       from: p(3.25, 5.25),
       to: p(7, 5.25),
-      axis: "x",
     });
   });
 
   it("falls back to the route's own segment when nothing is drawn near it", () => {
-    const guides = segmentGuides({ route: detour, drawn: [p(2, 1), p(8, 1)] });
+    const guides = segmentGuides({ drawn: [p(2, 1), p(8, 1)], route: detour });
 
     assert.deepStrictEqual(guides[2], {
+      axis: "x",
       from: p(3, 5),
       to: p(7, 5),
-      axis: "x",
     });
   });
 
   it("returns nothing for a route with no segments", () => {
-    assert.deepStrictEqual(segmentGuides({ route: [p(2, 1)], drawn: [] }), []);
+    assert.deepStrictEqual(segmentGuides({ drawn: [], route: [p(2, 1)] }), []);
   });
 });

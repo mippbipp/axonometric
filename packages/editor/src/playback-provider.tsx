@@ -8,9 +8,9 @@ import type { Playback } from "./playback.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 interface Session {
+  readonly clock: number;
   /** Which chapter and flow choice this session plays. */
   readonly key: string;
-  readonly clock: number;
   readonly playing: boolean;
   readonly selected: number | null;
 }
@@ -57,12 +57,23 @@ export function PlaybackProvider({
     };
 
     return {
-      update,
-      play: () => {
-        update((current) => ({ ...current, playing: true, selected: null }));
+      closePacket: () => {
+        update((current) =>
+          current.selected === null ? current : { ...current, selected: null }
+        );
       },
       pause: () => {
         update((current) => ({ ...current, playing: false }));
+      },
+      play: () => {
+        update((current) => ({ ...current, playing: true, selected: null }));
+      },
+      selectPacket: (index: number) => {
+        update((current) => ({
+          ...current,
+          playing: false,
+          selected: index,
+        }));
       },
       step: () => {
         update((current) => {
@@ -81,28 +92,17 @@ export function PlaybackProvider({
           };
         });
       },
-      selectPacket: (index: number) => {
-        update((current) => ({
-          ...current,
-          playing: false,
-          selected: index,
-        }));
-      },
-      closePacket: () => {
-        update((current) =>
-          current.selected === null ? current : { ...current, selected: null }
-        );
-      },
+      update,
     };
   }, [key, reducedMotion, runs]);
 
   const { update } = actions;
 
   useFrameClock({
-    playing,
     advance: (seconds) => {
       update((current) => ({ ...current, clock: current.clock + seconds }));
     },
+    playing,
   });
 
   const value = useMemo((): Playback => {
@@ -112,18 +112,18 @@ export function PlaybackProvider({
         : run.hops[selectedHop];
 
     return {
-      runs,
+      closePacket: actions.closePacket,
+      pause: actions.pause,
+      play: actions.play,
       playing,
       reducedMotion,
+      runs,
       selected:
         run === undefined || hop === undefined || selectedHop === null
           ? null
-          : { run, hop, index: selectedHop },
-      play: actions.play,
-      pause: actions.pause,
-      step: actions.step,
+          : { hop, index: selectedHop, run },
       selectPacket: actions.selectPacket,
-      closePacket: actions.closePacket,
+      step: actions.step,
     };
   }, [runs, playing, reducedMotion, run, selectedHop, actions]);
 

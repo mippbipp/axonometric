@@ -54,7 +54,7 @@ const verdictOf = (
     return Result.succeed(
       Option.match(text, {
         onNone: (): Verdict => ({ verdict: "accepted" }),
-        onSome: (given): Verdict => ({ verdict: "accepted", reason: given }),
+        onSome: (given): Verdict => ({ reason: given, verdict: "accepted" }),
       })
     );
   }
@@ -69,24 +69,24 @@ const verdictOf = (
     onSome: (given) =>
       Result.succeed(
         kind === "changed" && Option.isSome(finalId)
-          ? { verdict: kind, reason: given, as: finalId.value }
-          : { verdict: kind, reason: given }
+          ? { as: finalId.value, reason: given, verdict: kind }
+          : { reason: given, verdict: kind }
       ),
   });
 };
 
 const verdict = Effect.fn("verdict")(function* ({
+  as,
   home,
   item,
   kind,
   reason,
-  as,
 }: {
+  readonly as: Option.Option<string>;
   readonly home: string;
   readonly item: string;
   readonly kind: Verdict["verdict"];
   readonly reason: Option.Option<string>;
-  readonly as: Option.Option<string>;
 }) {
   const path = yield* Path.Path;
   const decided = verdictOf(kind, reason, as);
@@ -104,17 +104,17 @@ const verdict = Effect.fn("verdict")(function* ({
 
   if (Result.isFailure(loaded)) {
     return yield* MapInvalid.make({
-      home,
       command: "verdict",
+      home,
       problems: loaded.failure,
     });
   }
 
   const recorded = recordVerdict({
-    proposals: loaded.success,
-    id: item,
-    verdict: decided.success,
     accepted: yield* acceptedIds(home),
+    id: item,
+    proposals: loaded.success,
+    verdict: decided.success,
   });
 
   if (Result.isFailure(recorded)) {
@@ -126,8 +126,8 @@ const verdict = Effect.fn("verdict")(function* ({
 
   yield* writeAll([
     {
-      file: path.join(home, "proposals.json"),
       content: yield* encodeProposals(recorded.success),
+      file: path.join(home, "proposals.json"),
     },
   ]);
 
@@ -149,6 +149,12 @@ const verdict = Effect.fn("verdict")(function* ({
 export const verdictCommand = Command.make(
   "verdict",
   {
+    as: Flag.String("as").pipe(
+      Flag.optional,
+      Flag.withDescription(
+        "For a new structure, hop, flow or group you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes a structure's position under it."
+      )
+    ),
     home: Argument.Directory("home", { mustExist: true }).pipe(
       Argument.withDescription(
         "The map's home folder, holding data.mjs and proposals.json"
@@ -166,12 +172,6 @@ export const verdictCommand = Command.make(
       Flag.optional,
       Flag.withDescription(
         "Why. Required for changed and rejected; the engineer reads it on the page."
-      )
-    ),
-    as: Flag.String("as").pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "For a new structure, hop, flow or group you accepted under another id: the id it has in data.mjs. Only with changed. The page follows it, and commit writes a structure's position under it."
       )
     ),
   },

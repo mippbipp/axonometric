@@ -26,7 +26,7 @@ export function RemovedMarks({
   structures,
   view,
 }: {
-  readonly structures: readonly SceneStructure[];
+  readonly structures: ReadonlyArray<SceneStructure>;
   readonly view: View;
 }) {
   const proposed = useProposedMapIgnoringEdit();
@@ -42,36 +42,36 @@ export function RemovedMarks({
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
-      {Arr.flatMap(structures, ({ structure, placement, chip, tag }) => {
+      {Arr.flatMap(structures, ({ chip, placement, structure, tag }) => {
         if (!removes.has(structure.id)) {
           return [];
         }
 
         const strikes = strikeSegments({
-          placement,
           ground,
+          placement,
           text: [chip, tag],
         });
 
         return [
           <g
-            key={structure.id}
-            data-removed-mark={structure.id}
             className="stroke-refused fill-none"
-            strokeWidth={2.2}
+            data-removed-mark={structure.id}
+            key={structure.id}
             strokeLinecap="butt"
+            strokeWidth={2.2}
           >
             <polygon
-              points={toPoints(groundOutline(placement, ground))}
               fill="none"
+              points={toPoints(groundOutline(placement, ground))}
             />
-            {Arr.map(strikes, ({ start, end }) => (
+            {Arr.map(strikes, ({ end, start }) => (
               <line
-                key={`${start.sx},${start.sy},${end.sx},${end.sy}`}
                 data-strike=""
+                key={`${start.sx},${start.sy},${end.sx},${end.sy}`}
                 x1={start.sx}
-                y1={start.sy}
                 x2={end.sx}
+                y1={start.sy}
                 y2={end.sy}
               />
             ))}

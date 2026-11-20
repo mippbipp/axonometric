@@ -67,7 +67,7 @@ const repoHome = Effect.fnUntraced(function* () {
 
   const commit = yield* commitAll(home, "add the updater");
 
-  return { home, commit };
+  return { commit, home };
 });
 
 /**
@@ -84,7 +84,7 @@ const writeMap = Effect.fnUntraced(function* (
   yield* Effect.forEach(
     Rec.toEntries(files),
     ([file, content]) => writeFile(home, file, content),
-    { discard: true, concurrency: 1 }
+    { concurrency: 1, discard: true }
   );
 });
 
@@ -113,7 +113,7 @@ describe.skipIf(noGit)(
   () => {
     it.effect("passes a pinned source with no later change", () =>
       Effect.gen(function* () {
-        const { home, commit } = yield* repoHome();
+        const { commit, home } = yield* repoHome();
 
         const result = yield* checkWith(
           home,
@@ -127,7 +127,7 @@ describe.skipIf(noGit)(
 
     it.effect("warns once the file changes in a later commit", () =>
       Effect.gen(function* () {
-        const { home, commit } = yield* repoHome();
+        const { commit, home } = yield* repoHome();
 
         yield* writeFile(home, "src/updater.ts", "export const run = 2;\n");
         yield* commitAll(home, "change the updater");
@@ -148,7 +148,7 @@ describe.skipIf(noGit)(
 
     it.effect("doesn't count changes that aren't committed", () =>
       Effect.gen(function* () {
-        const { home, commit } = yield* repoHome();
+        const { commit, home } = yield* repoHome();
 
         yield* writeFile(home, "src/updater.ts", "export const run = 3;\n");
 
@@ -163,7 +163,7 @@ describe.skipIf(noGit)(
 
     it.effect("warns when the file is deleted or renamed after the pin", () =>
       Effect.gen(function* () {
-        const { home, commit } = yield* repoHome();
+        const { commit, home } = yield* repoHome();
 
         yield* git(home, ["mv", "src/updater.ts", "src/update.ts"]);
         yield* commitAll(home, "rename the updater");
@@ -183,7 +183,7 @@ describe.skipIf(noGit)(
 
     it.effect("errors on a typo in the path, pinned or not", () =>
       Effect.gen(function* () {
-        const { home, commit } = yield* repoHome();
+        const { commit, home } = yield* repoHome();
 
         const result = yield* checkWith(
           home,
@@ -221,7 +221,7 @@ describe.skipIf(noGit)(
 
     it.effect("errors on a folder, pinned or not", () =>
       Effect.gen(function* () {
-        const { home, commit } = yield* repoHome();
+        const { commit, home } = yield* repoHome();
 
         const result = yield* checkWith(
           home,
@@ -341,8 +341,8 @@ describe.skipIf(noGit)(
 );
 
 const CheckReport = Schema.Struct({
-  warnings: Schema.Array(Schema.Unknown),
   sourcesSkipped: Schema.NullOr(Schema.String),
+  warnings: Schema.Array(Schema.Unknown),
 });
 
 const decodeReport = Schema.decodeUnknownEffect(
@@ -355,7 +355,7 @@ const buildWith = Effect.fnUntraced(function* (
   sources: (commit: string) => string,
   gateSources?: string
 ) {
-  const { home, commit } = yield* repoHome();
+  const { commit, home } = yield* repoHome();
 
   if (remote !== undefined) {
     yield* git(home, ["remote", "add", "origin", remote]);
@@ -426,7 +426,7 @@ describe.skipIf(noGit)("build's source links", { timeout: 30_000 }, () => {
 
   it.effect("links a detached HEAD's unpinned sources to its commit", () =>
     Effect.gen(function* () {
-      const { home, commit } = yield* repoHome();
+      const { commit, home } = yield* repoHome();
 
       yield* git(home, [
         "remote",

@@ -5,42 +5,42 @@ import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** One look a chapter proposal draws on the map, and what it means. */
 interface Key {
+  readonly dash: string | undefined;
   readonly mark: "reveal" | "hide" | "play" | "unplay" | "order";
-  readonly words: string;
   /** The swatch's stroke class, dash and width, as the map draws the outline. */
   readonly stroke: string;
-  readonly dash: string | undefined;
   readonly width: number;
+  readonly words: string;
 }
 
-const keys: readonly Key[] = [
+const keys: ReadonlyArray<Key> = [
   {
-    mark: "reveal",
-    words: "Proposed to show",
-    stroke: "stroke-pending",
     dash: "5 3",
-    width: 1.6,
-  },
-  {
-    mark: "hide",
-    words: "Proposed to hide",
-    stroke: "stroke-refused",
-    dash: undefined,
-    width: 1.6,
-  },
-  {
-    mark: "play",
-    words: "Proposed to play",
+    mark: "reveal",
     stroke: "stroke-pending",
-    dash: undefined,
-    width: 2.4,
+    width: 1.6,
+    words: "Proposed to show",
   },
   {
-    mark: "unplay",
-    words: "Proposed to stop playing",
+    dash: undefined,
+    mark: "hide",
     stroke: "stroke-refused",
+    width: 1.6,
+    words: "Proposed to hide",
+  },
+  {
+    dash: undefined,
+    mark: "play",
+    stroke: "stroke-pending",
+    width: 2.4,
+    words: "Proposed to play",
+  },
+  {
     dash: "2 4",
+    mark: "unplay",
+    stroke: "stroke-refused",
     width: 3,
+    words: "Proposed to stop playing",
   },
 ];
 
@@ -62,11 +62,11 @@ export function ChapterLegend() {
   const accepted = useAcceptedPlays(stop.id);
 
   const shown = {
-    reveal: revealing.size > 0,
     hide: hiding.size > 0,
-    play: playing.size > 0,
-    unplay: stopping.size > 0,
     order: ordering.size > 0 && accepted.length > 0,
+    play: playing.size > 0,
+    reveal: revealing.size > 0,
+    unplay: stopping.size > 0,
   } as const;
 
   const listed = Arr.filter(keys, ({ mark }) => shown[mark]);
@@ -76,39 +76,39 @@ export function ChapterLegend() {
   }
 
   return (
-    <div data-chapter-legend className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" data-chapter-legend>
       <h3 className="text-xs tracking-widest uppercase opacity-70">
         Proposed in this chapter
       </h3>
       <ul className="flex flex-col gap-1">
-        {Arr.map(listed, ({ mark, words, stroke, dash, width }) => (
+        {Arr.map(listed, ({ dash, mark, stroke, width, words }) => (
           <li
-            key={mark}
-            data-legend={mark}
             className="flex items-center gap-2 text-xs"
+            data-legend={mark}
+            key={mark}
           >
             <svg
               aria-hidden="true"
-              width="28"
+              className="shrink-0"
               height="8"
               viewBox="0 0 28 8"
-              className="shrink-0"
+              width="28"
             >
               <line
-                x1="1"
-                y1="4"
-                x2="27"
-                y2="4"
                 className={stroke}
-                strokeWidth={width}
                 strokeDasharray={dash}
+                strokeWidth={width}
+                x1="1"
+                x2="27"
+                y1="4"
+                y2="4"
               />
             </svg>
             <span>{words}</span>
           </li>
         ))}
         {shown.order ? (
-          <li data-legend="order" className="flex items-center gap-2 text-xs">
+          <li className="flex items-center gap-2 text-xs" data-legend="order">
             <span
               aria-hidden="true"
               className="border-pending h-2 w-7 shrink-0 border"

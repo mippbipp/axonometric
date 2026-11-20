@@ -14,11 +14,11 @@ export const lineBreak = /[\n\r\u0085\u2028\u2029]/u;
  * break filter runs as well.
  */
 export const oneLineText = ({
-  what,
   max,
+  what,
 }: {
-  readonly what: string;
   readonly max: number;
+  readonly what: string;
 }) => {
   const fix = `expected a ${what} of 1 to ${max} characters on one line, with no space at either end.`;
 

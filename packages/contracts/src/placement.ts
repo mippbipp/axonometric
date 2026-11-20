@@ -14,7 +14,7 @@ import { sceneClashes, sceneOf } from "./scene.ts";
 import { zonePadding } from "./zones.ts";
 
 /** The footprint a newly placed structure gets. */
-export const defaultFootprint = { w: 2, d: 2 } as const;
+export const defaultFootprint = { d: 2, w: 2 } as const;
 
 /** Clear ground between two structures, so name tags and routes have room. */
 export const structureGap = 2;
@@ -42,13 +42,15 @@ interface Point {
 const origin: Point = { x: 0, y: 0 };
 
 const grow = (box: Placement, by: number): Placement => ({
+  d: box.d + 2 * by,
+  w: box.w + 2 * by,
   x: box.x - by,
   y: box.y - by,
-  w: box.w + 2 * by,
-  d: box.d + 2 * by,
 });
 
-const boundsOf = (boxes: readonly Placement[]): Option.Option<Placement> => {
+const boundsOf = (
+  boxes: ReadonlyArray<Placement>
+): Option.Option<Placement> => {
   if (!Arr.isReadonlyArrayNonEmpty(boxes)) {
     return Option.none();
   }
@@ -58,7 +60,7 @@ const boundsOf = (boxes: readonly Placement[]): Option.Option<Placement> => {
   const right = Math.max(...Arr.map(boxes, (box) => box.x + box.w));
   const bottom = Math.max(...Arr.map(boxes, (box) => box.y + box.d));
 
-  return Option.some({ x: left, y: top, w: right - left, d: bottom - top });
+  return Option.some({ d: bottom - top, w: right - left, x: left, y: top });
 };
 
 const centreOf = (box: Placement): Point => ({
@@ -77,18 +79,18 @@ const distance = (a: Placement, b: Placement) => {
 /** Rounds down to a half unit, so every position stays on the grid. */
 const toHalfUnit = (value: number) => Math.floor(value * 2) / 2;
 
-const footprints = (placed: readonly PlacedStructure[]) =>
+const footprints = (placed: ReadonlyArray<PlacedStructure>) =>
   Arr.map(placed, ({ placement }) => placement);
 
-const membersOf = (placed: readonly PlacedStructure[], group: string) =>
+const membersOf = (placed: ReadonlyArray<PlacedStructure>, group: string) =>
   Arr.filter(placed, ({ structure }) => structure.group === group);
 
 /** The ground a group's placed structures cover. */
-const zoneOf = (placed: readonly PlacedStructure[], group: string) =>
+const zoneOf = (placed: ReadonlyArray<PlacedStructure>, group: string) =>
   boundsOf(footprints(membersOf(placed, group)));
 
 /** The zones of every group but `group`, from what's placed so far. */
-const otherZones = (placed: readonly PlacedStructure[], group: string) =>
+const otherZones = (placed: ReadonlyArray<PlacedStructure>, group: string) =>
   Arr.flatMap(
     Arr.dedupe(Arr.map(placed, ({ structure }) => structure.group)),
     (other) => (other === group ? [] : Option.toArray(zoneOf(placed, other)))
@@ -99,30 +101,30 @@ const apart = (a: Placement, b: Placement, gap: number) =>
 
 /** A placed structure's name tag and box outline on screen, in the Iso view. */
 interface Drawn {
+  readonly outline: ReadonlyArray<ScreenPoint>;
   readonly tag: ScreenRect;
-  readonly outline: readonly ScreenPoint[];
 }
 
-const drawnOf = ({ structure, placement }: PlacedStructure): Drawn => ({
-  tag: nameTagRect(placement, nameTagText(structure)),
+const drawnOf = ({ placement, structure }: PlacedStructure): Drawn => ({
   outline: boxOutline(placement, structure.shape),
+  tag: nameTagRect(placement, nameTagText(structure)),
 });
 
 /** What `fits` measures a candidate against: the structures placed so far. */
 interface Ground {
-  readonly placed: readonly PlacedStructure[];
   /** Each placed structure's tag and outline, in `placed` order. */
-  readonly drawn: readonly Drawn[];
+  readonly drawn: ReadonlyArray<Drawn>;
+  readonly placed: ReadonlyArray<PlacedStructure>;
   /** The zones of every group but the candidate's. */
-  readonly zones: readonly Placement[];
+  readonly zones: ReadonlyArray<Placement>;
 }
 
 const groundFor = (
-  placed: readonly PlacedStructure[],
+  placed: ReadonlyArray<PlacedStructure>,
   group: string
 ): Ground => ({
-  placed,
   drawn: Arr.map(placed, drawnOf),
+  placed,
   zones: otherZones(placed, group),
 });
 
@@ -131,7 +133,7 @@ const groundFor = (
  * structure gap, with no name tag drawn over a box either way, and with its
  * group's zone kept clear of every other zone by the group gap.
  */
-const fits = ({ placed, drawn, zones }: Ground, candidate: PlacedStructure) => {
+const fits = ({ drawn, placed, zones }: Ground, candidate: PlacedStructure) => {
   const spot = candidate.placement;
 
   const zone = boundsOf([
@@ -176,12 +178,12 @@ const neighboursOf = (data: MapData, id: string) =>
  * placed so far plus a margin.
  */
 const slotsAround = (
-  placed: readonly PlacedStructure[],
+  placed: ReadonlyArray<PlacedStructure>,
   anchor: Point
-): readonly Point[] => {
+): ReadonlyArray<Point> => {
   const area = grow(
     boundsOf(footprints(placed)).pipe(
-      Option.getOrElse(() => ({ ...anchor, w: 0, d: 0 }))
+      Option.getOrElse(() => ({ ...anchor, d: 0, w: 0 }))
     ),
     searchMargin
   );
@@ -227,7 +229,7 @@ const preference = (score: (spot: Placement) => number, anchor: Point) => {
  * go round each one.
  */
 const inTheWay = (
-  placed: readonly PlacedStructure[],
+  placed: ReadonlyArray<PlacedStructure>,
   a: Placement,
   b: Placement
 ) => {
@@ -269,7 +271,7 @@ const nearbyOf = (data: MapData, id: string) => {
 /** A structure being placed, and the map placed around it so far. */
 interface Placing {
   readonly data: MapData;
-  readonly placed: readonly PlacedStructure[];
+  readonly placed: ReadonlyArray<PlacedStructure>;
   readonly structure: Structure;
 }
 
@@ -291,16 +293,16 @@ const drawnAround = (
 
   return Option.match(index, {
     onNone: () => ({
-      revealed: new Set(Arr.filter(Rec.keys(structures), shown)),
       labelFirst: [],
+      revealed: new Set(Arr.filter(Rec.keys(structures), shown)),
     }),
     onSome: (found) => {
       const chapters = data.chapters.slice(0, found + 1);
       const sofar = Arr.flatMap(chapters, ({ reveals }) => reveals);
 
       return {
-        revealed: new Set(Arr.filter(sofar, shown)),
         labelFirst: data.chapters[found]?.plays ?? [],
+        revealed: new Set(Arr.filter(sofar, shown)),
       };
     },
   });
@@ -322,7 +324,7 @@ const drawnProblems = (placing: Placing, spot: Placement) => {
   ]);
 
   const layout: Layout = { format: 1, revision: 0, structures };
-  const { revealed, labelFirst } = drawnAround(placing, structures);
+  const { labelFirst, revealed } = drawnAround(placing, structures);
   const routes = routeRevealed({ data, layout, revealed });
 
   const detours = Arr.filter(Rec.values(routes), ({ points }) =>
@@ -330,7 +332,7 @@ const drawnProblems = (placing: Placing, spot: Placement) => {
   ).length;
 
   return Arr.reduce(views, detours, (total, view) => {
-    const scene = sceneOf({ data, layout, revealed, routes, view, labelFirst });
+    const scene = sceneOf({ data, labelFirst, layout, revealed, routes, view });
 
     // `check` holds only Plan view to the label rule.
     const hidden =
@@ -420,7 +422,7 @@ const choose = (placing: Placing, drawn: number): Placement => {
       ...slot,
       ...defaultFootprint,
     })),
-    (placement) => fits(ground, { structure, placement })
+    (placement) => fits(ground, { placement, structure })
   );
 
   if (!Arr.isReadonlyArrayNonEmpty(candidates)) {
@@ -451,7 +453,7 @@ const pairKey = (a: string, b: string) => (a < b ? `${a}\n${b}` : `${b}\n${a}`);
  * each other: each next member is the one with the most hops to those
  * already chosen, ties going to data.mjs order.
  */
-const connectedOrder = (data: MapData, members: readonly Structure[]) => {
+const connectedOrder = (data: MapData, members: ReadonlyArray<Structure>) => {
   const ids = new Set(Arr.map(members, ({ id }) => id));
 
   const counts = new Map<string, number>();
@@ -466,7 +468,7 @@ const connectedOrder = (data: MapData, members: readonly Structure[]) => {
 
   const links = (a: string, b: string) => counts.get(pairKey(a, b)) ?? 0;
 
-  const chosen: Structure[] = [];
+  const chosen: Array<Structure> = [];
   let rest = Arr.filter(members, ({ id }) => ids.has(id));
 
   while (Arr.isReadonlyArrayNonEmpty(rest)) {
@@ -493,18 +495,18 @@ interface Slot {
 /** A group's new structures laid out as a block, before it's moved into place. */
 interface Block {
   readonly columns: number;
+  readonly members: ReadonlyArray<{
+    readonly slot: Slot;
+    readonly structure: Structure;
+  }>;
   readonly rows: number;
   /** Distance between neighbouring slots. */
   readonly spacing: number;
-  readonly members: readonly {
-    readonly structure: Structure;
-    readonly slot: Slot;
-  }[];
 }
 
 const sizeOf = (block: Block) => ({
-  w: (block.columns - 1) * block.spacing + defaultFootprint.w,
   d: (block.rows - 1) * block.spacing + defaultFootprint.d,
+  w: (block.columns - 1) * block.spacing + defaultFootprint.w,
 });
 
 /** Where `slot` of a block with its top left corner at `offset` lies. */
@@ -515,14 +517,17 @@ const slotSpot = (block: Block, offset: Point, slot: Slot): Placement => ({
 });
 
 /** A block's members placed with the block's top left corner at `offset`. */
-const layBlock = (block: Block, offset: Point): readonly PlacedStructure[] =>
-  Arr.map(block.members, ({ structure, slot }) => ({
-    structure,
+const layBlock = (
+  block: Block,
+  offset: Point
+): ReadonlyArray<PlacedStructure> =>
+  Arr.map(block.members, ({ slot, structure }) => ({
     placement: slotSpot(block, offset, slot),
+    structure,
   }));
 
 /** Whether no name tag in `members` is drawn over another member's box. */
-const tagsClear = (members: readonly PlacedStructure[]) =>
+const tagsClear = (members: ReadonlyArray<PlacedStructure>) =>
   Arr.every(members, (a) =>
     Arr.every(
       members,
@@ -535,7 +540,7 @@ const tagsClear = (members: readonly PlacedStructure[]) =>
  * row in a snake, so each member sits next to the one before it. Slots are
  * `pitch` apart, widened in half units until no name tag covers a box.
  */
-const blockOf = (data: MapData, members: readonly Structure[]): Block => {
+const blockOf = (data: MapData, members: ReadonlyArray<Structure>): Block => {
   const ordered = connectedOrder(data, members);
   const columns = Math.ceil(Math.sqrt(ordered.length));
   const rows = Math.ceil(ordered.length / columns);
@@ -545,7 +550,7 @@ const blockOf = (data: MapData, members: readonly Structure[]): Block => {
     const step = index % columns;
     const column = row % 2 === 0 ? step : columns - 1 - step;
 
-    return { structure, slot: { column, row } };
+    return { slot: { column, row }, structure };
   });
 
   const spacings = Arr.map(
@@ -555,9 +560,9 @@ const blockOf = (data: MapData, members: readonly Structure[]): Block => {
 
   const block = (spacing: number): Block => ({
     columns,
+    members: slotted,
     rows,
     spacing,
-    members: slotted,
   });
 
   const spacing = Option.getOrElse(
@@ -571,7 +576,7 @@ const blockOf = (data: MapData, members: readonly Structure[]): Block => {
 };
 
 /** Where row or column `index` starts, given the sizes of those before it. */
-const startOf = (sizes: readonly number[], index: number) =>
+const startOf = (sizes: ReadonlyArray<number>, index: number) =>
   Arr.reduce(sizes.slice(0, index), 0, (sum, size) => sum + size + groupGap);
 
 /** Marks a grid cell, or a block's slot, that nothing takes. */
@@ -584,11 +589,11 @@ const empty = -1;
 const gridFor = (count: number) => {
   const columns = Math.ceil(Math.sqrt(count));
 
-  return { columns, cells: columns * Math.ceil(count / columns) };
+  return { cells: columns * Math.ceil(count / columns), columns };
 };
 
 /** Where blocks start: the origin, or right of everything already placed. */
-const blocksStart = (placed: readonly PlacedStructure[]): Point =>
+const blocksStart = (placed: ReadonlyArray<PlacedStructure>): Point =>
   boundsOf(footprints(placed)).pipe(
     Option.map((all) => ({ x: all.x + all.w + groupGap, y: all.y })),
     Option.getOrElse(() => origin)
@@ -600,11 +605,11 @@ const blocksStart = (placed: readonly PlacedStructure[]): Point =>
  * biggest block, `groupGap` from the next.
  */
 const blockOffsets = (
-  placed: readonly PlacedStructure[],
-  blocks: readonly Block[],
-  occupants: readonly number[]
-): readonly Point[] => {
-  const { columns, cells } = gridFor(blocks.length);
+  placed: ReadonlyArray<PlacedStructure>,
+  blocks: ReadonlyArray<Block>,
+  occupants: ReadonlyArray<number>
+): ReadonlyArray<Point> => {
+  const { cells, columns } = gridFor(blocks.length);
   const start = blocksStart(placed);
 
   const cellOf = new Map(
@@ -641,7 +646,10 @@ const blockOffsets = (
 };
 
 /** Every block's members, each block laid out at its offset. */
-const layBlocks = (blocks: readonly Block[], offsets: readonly Point[]) =>
+const layBlocks = (
+  blocks: ReadonlyArray<Block>,
+  offsets: ReadonlyArray<Point>
+) =>
   Arr.flatMap(blocks, (block, index) =>
     layBlock(block, offsets[index] ?? origin)
   );
@@ -689,12 +697,12 @@ const cheaper = Order.combine(
   Order.mapInput(Order.Number, (cost: HopCost) => cost.misaligned)
 );
 
-const placementsOf = (placed: readonly PlacedStructure[]) =>
+const placementsOf = (placed: ReadonlyArray<PlacedStructure>) =>
   new Map(
-    Arr.map(placed, ({ structure, placement }) => [structure.id, placement])
+    Arr.map(placed, ({ placement, structure }) => [structure.id, placement])
   );
 
-const swapped = (items: readonly number[], i: number, j: number) =>
+const swapped = (items: ReadonlyArray<number>, i: number, j: number) =>
   Arr.map(items, (item, index) => {
     if (index === i) {
       return items[j] ?? item;
@@ -709,10 +717,10 @@ const swapped = (items: readonly number[], i: number, j: number) =>
  * lowers the cost, so it stops.
  */
 const improveBySwaps = (
-  start: readonly number[],
-  cost: (items: readonly number[]) => HopCost,
+  start: ReadonlyArray<number>,
+  cost: (items: ReadonlyArray<number>) => HopCost,
   allowed: (
-    items: readonly number[],
+    items: ReadonlyArray<number>,
     moved: readonly [number, number]
   ) => boolean = () => true
 ) => {
@@ -758,9 +766,9 @@ const improveBySwaps = (
 interface CellWeights {
   readonly blocks: number;
   readonly cells: number;
+  readonly pairLeast: Float64Array;
   readonly pairLength: Float64Array;
   readonly pairOff: Float64Array;
-  readonly pairLeast: Float64Array;
   readonly placedLength: Float64Array;
   readonly placedOff: Float64Array;
 }
@@ -810,10 +818,10 @@ const leastPairCosts = (
 
 const cellWeights = (
   data: MapData,
-  placed: readonly PlacedStructure[],
-  blocks: readonly Block[]
+  placed: ReadonlyArray<PlacedStructure>,
+  blocks: ReadonlyArray<Block>
 ): CellWeights => {
-  const { columns, cells } = gridFor(blocks.length);
+  const { cells, columns } = gridFor(blocks.length);
   const count = blocks.length;
   const sizes = Arr.map(blocks, sizeOf);
   const cellW = Math.max(0, ...Arr.map(sizes, ({ w }) => w)) + groupGap;
@@ -830,7 +838,7 @@ const cellWeights = (
   // corner at the origin.
   const member = new Map(
     Arr.flatMap(blocks, (block, index) =>
-      Arr.map(layBlock(block, origin), ({ structure, placement }) => [
+      Arr.map(layBlock(block, origin), ({ placement, structure }) => [
         structure.id,
         { block: index, centre: centreOf(placement) },
       ])
@@ -882,16 +890,19 @@ const cellWeights = (
   return {
     blocks: count,
     cells,
+    pairLeast: leastPairCosts(pair.length, { blocks: count, cells }),
     pairLength: pair.length,
     pairOff: pair.off,
-    pairLeast: leastPairCosts(pair.length, { blocks: count, cells }),
     placedLength: toPlaced.length,
     placedOff: toPlaced.off,
   };
 };
 
 /** What `cells[block]`, the cell each block takes, costs under `weights`. */
-const cellsCost = (weights: CellWeights, cells: readonly number[]): HopCost => {
+const cellsCost = (
+  weights: CellWeights,
+  cells: ReadonlyArray<number>
+): HopCost => {
   const { blocks, cells: cellCount, pairLength, pairOff } = weights;
   let length = 0;
   let off = 0;
@@ -924,13 +935,13 @@ const shortlist = 32;
  */
 const cheapestCells = (
   weights: CellWeights
-): readonly (readonly number[])[] => {
+): ReadonlyArray<ReadonlyArray<number>> => {
   const {
     blocks,
     cells,
+    pairLeast,
     pairLength,
     pairOff,
-    pairLeast,
     placedLength,
     placedOff,
   } = weights;
@@ -954,7 +965,11 @@ const cheapestCells = (
     rest[block] = (rest[block + 1] ?? 0) + least;
   }
 
-  const kept: { cells: readonly number[]; length: number; off: number }[] = [];
+  const kept: Array<{
+    cells: ReadonlyArray<number>;
+    length: number;
+    off: number;
+  }> = [];
 
   let worstLength = Infinity;
   let worstOff = Infinity;
@@ -1039,11 +1054,11 @@ const cheapestCells = (
 const exhaustiveGroups = 8;
 
 /** The cell each of `count` blocks takes, from the block in each cell. */
-const cellsOf = (occupants: readonly number[], count: number) =>
+const cellsOf = (occupants: ReadonlyArray<number>, count: number) =>
   Arr.map(Arr.range(0, count - 1), (block) => occupants.indexOf(block));
 
 /** The block in each of `cellCount` cells, or `empty`, from each block's cell. */
-const occupantsOf = (cells: readonly number[], cellCount: number) =>
+const occupantsOf = (cells: ReadonlyArray<number>, cellCount: number) =>
   Arr.map(Arr.range(0, cellCount - 1), (cell) => {
     const block = cells.indexOf(cell);
 
@@ -1059,9 +1074,9 @@ const occupantsOf = (cells: readonly number[], cellCount: number) =>
  */
 const occupantsFor = (
   data: MapData,
-  placed: readonly PlacedStructure[],
-  blocks: readonly Block[]
-): readonly number[] => {
+  placed: ReadonlyArray<PlacedStructure>,
+  blocks: ReadonlyArray<Block>
+): ReadonlyArray<number> => {
   const weights = cellWeights(data, placed, blocks);
   const inOrder = occupantsOf(Arr.range(0, blocks.length - 1), weights.cells);
 
@@ -1073,7 +1088,7 @@ const occupantsFor = (
 
   // The weights space cells evenly, but rows and columns really take only
   // the room their blocks need, so the shortlist is measured as laid out.
-  const measured = (occupants: readonly number[]) => {
+  const measured = (occupants: ReadonlyArray<number>) => {
     const offsets = blockOffsets(placed, blocks, occupants);
 
     return hopCost(
@@ -1086,11 +1101,11 @@ const occupantsFor = (
     Arr.map(cheapestCells(weights), (cells) =>
       occupantsOf(cells, weights.cells)
     ),
-    { occupants: inOrder, cost: measured(inOrder) },
+    { cost: measured(inOrder), occupants: inOrder },
     (best, occupants) => {
       const cost = measured(occupants);
 
-      return cheaper(cost, best.cost) < 0 ? { occupants, cost } : best;
+      return cheaper(cost, best.cost) < 0 ? { cost, occupants } : best;
     }
   ).occupants;
 };
@@ -1103,7 +1118,7 @@ const occupantsFor = (
  */
 const faceNeighbours = (
   data: MapData,
-  others: readonly PlacedStructure[],
+  others: ReadonlyArray<PlacedStructure>,
   { block, offset }: { readonly block: Block; readonly offset: Point }
 ): Block => {
   const slots = Arr.flatMap(Arr.range(0, block.rows - 1), (row) =>
@@ -1122,7 +1137,7 @@ const faceNeighbours = (
     )
   );
 
-  const blockFrom = (order: readonly number[]): Block => ({
+  const blockFrom = (order: ReadonlyArray<number>): Block => ({
     ...block,
     members: Arr.flatMap(order, (member, index) => {
       const structure = block.members[member]?.structure;
@@ -1130,7 +1145,7 @@ const faceNeighbours = (
 
       return structure === undefined || slot === undefined
         ? []
-        : [{ structure, slot }];
+        : [{ slot, structure }];
     }),
   });
 
@@ -1144,7 +1159,7 @@ const faceNeighbours = (
     Arr.map(block.members, ({ structure }, index) => [structure.id, index])
   );
 
-  const ends = Arr.map(block.members, (): Placement[] => []);
+  const ends = Arr.map(block.members, (): Array<Placement> => []);
   const within = Arr.map(Arr.range(0, count * count - 1), () => 0);
 
   for (const hop of data.hops) {
@@ -1184,7 +1199,7 @@ const faceNeighbours = (
 
   const slotOf = new Int32Array(count);
 
-  const cost = (order: readonly number[]): HopCost => {
+  const cost = (order: ReadonlyArray<number>): HopCost => {
     for (const [slot, member] of order.entries()) {
       if (member !== empty) {
         slotOf[member] = slot;
@@ -1253,9 +1268,9 @@ const faceNeighbours = (
  */
 const arrangeBlocks = (
   data: MapData,
-  placed: readonly PlacedStructure[],
-  blocks: readonly Block[]
-): readonly PlacedStructure[] => {
+  placed: ReadonlyArray<PlacedStructure>,
+  blocks: ReadonlyArray<Block>
+): ReadonlyArray<PlacedStructure> => {
   const offsets = blockOffsets(
     placed,
     blocks,
@@ -1297,11 +1312,11 @@ export interface PlacedLayout {
   /** Every structure's placement, in data.mjs order. */
   readonly layout: Layout;
   /** The ids of the structures that were given a placement, in order. */
-  readonly placed: readonly string[];
+  readonly placed: ReadonlyArray<string>;
   /** The ids of layout entries removed because no structure has them. */
-  readonly pruned: readonly string[];
+  readonly pruned: ReadonlyArray<string>;
   /** The ids of route overrides removed because no hop has them. */
-  readonly prunedRoutes: readonly string[];
+  readonly prunedRoutes: ReadonlyArray<string>;
 }
 
 /**
@@ -1334,8 +1349,8 @@ export const placeStructures: {
   const initial = Arr.flatMap(data.structures, (structure) =>
     Option.toArray(
       Option.map(Rec.get(layout.structures, structure.id), (placement) => ({
-        structure,
         placement,
+        structure,
       }))
     )
   );
@@ -1390,7 +1405,7 @@ export const placeStructures: {
   );
 
   const blockSpot = new Map(
-    Arr.map(blocks, ({ structure, placement }) => [structure.id, placement])
+    Arr.map(blocks, ({ placement, structure }) => [structure.id, placement])
   );
 
   const blocked = new Set(Arr.map(blocks, ({ structure }) => structure.id));
@@ -1407,7 +1422,7 @@ export const placeStructures: {
     const planned = Option.filter(
       Option.fromNullishOr(blockSpot.get(structure.id)),
       (placement) =>
-        fits(groundFor(sofar, structure.group), { structure, placement })
+        fits(groundFor(sofar, structure.group), { placement, structure })
     );
 
     const spot = Option.getOrElse(planned, () =>
@@ -1420,14 +1435,14 @@ export const placeStructures: {
     return [
       ...sofar,
       {
-        structure,
         placement: { ...spot, x: toHalfUnit(spot.x), y: toHalfUnit(spot.y) },
+        structure,
       },
     ];
   });
 
   const byId = new Map(
-    Arr.map(placed, ({ structure, placement }) => [structure.id, placement])
+    Arr.map(placed, ({ placement, structure }) => [structure.id, placement])
   );
 
   const structures: Record<string, Placement> = {};

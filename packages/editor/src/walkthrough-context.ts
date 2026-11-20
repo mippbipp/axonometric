@@ -9,33 +9,33 @@ import type { PacketRun } from "./chapters.ts";
  * what the packets play.
  */
 export interface Walkthrough {
-  readonly state: MapState;
-  readonly stops: readonly ChapterStop[];
-  /** The current chapter's position in `stops`. */
-  readonly index: number;
-  readonly stop: ChapterStop;
-  readonly isLast: boolean;
-  /** Every structure revealed by the current chapter or an earlier one. */
-  readonly revealed: ReadonlySet<string>;
-  /** The structures the current chapter reveals for the first time. */
-  readonly newlyRevealed: ReadonlySet<string>;
+  readonly back: () => void;
+  readonly chooseFlow: (choice: FlowChoice) => void;
   /**
    * The structures a view should zoom to fit. Today that's everything
    * revealed so far.
    */
   readonly fit: ReadonlySet<string>;
   readonly flowChoice: FlowChoice;
-  /** The hop lists the packets play, one packet per run. */
-  readonly runs: readonly PacketRun[];
+  readonly goTo: (index: number) => void;
+  /** The current chapter's position in `stops`. */
+  readonly index: number;
+  readonly isLast: boolean;
+  /** The structures the current chapter reveals for the first time. */
+  readonly newlyRevealed: ReadonlySet<string>;
+  readonly next: () => void;
   /**
    * Names the current chapter and flow choice together. Playback restarts
    * when it changes.
    */
   readonly playKey: string;
-  readonly goTo: (index: number) => void;
-  readonly next: () => void;
-  readonly back: () => void;
-  readonly chooseFlow: (choice: FlowChoice) => void;
+  /** Every structure revealed by the current chapter or an earlier one. */
+  readonly revealed: ReadonlySet<string>;
+  /** The hop lists the packets play, one packet per run. */
+  readonly runs: ReadonlyArray<PacketRun>;
+  readonly state: MapState;
+  readonly stop: ChapterStop;
+  readonly stops: ReadonlyArray<ChapterStop>;
 }
 
 export const WalkthroughContext = createContext<Walkthrough | null>(null);

@@ -17,9 +17,9 @@ import { strikeOnRoute } from "./hop-strike.ts";
 export function RemovedHopMarks({
   hops,
 }: {
-  readonly hops: readonly SceneHop[];
+  readonly hops: ReadonlyArray<SceneHop>;
 }) {
-  const { texts, outlines } = use(EditorSceneContext);
+  const { outlines, texts } = use(EditorSceneContext);
   const proposed = useProposedHopsIgnoringEdit();
 
   const removes =
@@ -31,7 +31,7 @@ export function RemovedHopMarks({
 
   const struck = Arr.flatMap(hops, ({ hop, points }) =>
     removes.has(hop.id)
-      ? Option.match(strikeOnRoute({ route: points, texts, outlines }), {
+      ? Option.match(strikeOnRoute({ outlines, route: points, texts }), {
           onNone: () => [],
           onSome: (strike) => [{ id: hop.id, strike }],
         })
@@ -41,7 +41,7 @@ export function RemovedHopMarks({
   return (
     <g aria-hidden="true" className="pointer-events-none">
       {Arr.map(struck, ({ id, strike }) => (
-        <Strike key={id} id={id} lines={strike.lines} />
+        <Strike id={id} key={id} lines={strike.lines} />
       ))}
     </g>
   );
@@ -53,22 +53,22 @@ function Strike({
   lines,
 }: {
   readonly id: string;
-  readonly lines: readonly (readonly [ScreenPoint, ScreenPoint])[];
+  readonly lines: ReadonlyArray<readonly [ScreenPoint, ScreenPoint]>;
 }) {
   return (
     <g
-      data-removed-hop-mark={id}
       className="stroke-refused fill-none"
-      strokeWidth={2.2}
+      data-removed-hop-mark={id}
       strokeLinecap="butt"
+      strokeWidth={2.2}
     >
       {Arr.map(lines, ([from, to]) => (
         <line
-          key={`${from.sx},${from.sy}`}
           data-hop-strike=""
+          key={`${from.sx},${from.sy}`}
           x1={from.sx}
-          y1={from.sy}
           x2={to.sx}
+          y1={from.sy}
           y2={to.sy}
         />
       ))}

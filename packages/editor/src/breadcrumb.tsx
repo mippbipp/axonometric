@@ -10,26 +10,26 @@ import { useWalkthrough } from "./walkthrough-context.ts";
  * chapter rail's place while the inside view is open.
  */
 export function Breadcrumb({
-  structure,
   className,
+  structure,
 }: {
-  readonly structure: Structure;
   readonly className?: string;
+  readonly structure: Structure;
 }) {
-  const { state, index } = useWalkthrough();
+  const { index, state } = useWalkthrough();
   const { comeOut } = useSelection();
 
   return (
     <nav
       aria-label="Breadcrumb"
-      data-breadcrumb
       className={cn("flex flex-wrap items-center gap-2", className)}
+      data-breadcrumb
     >
       <button
-        type="button"
-        data-control="come-out"
         className={controlClass}
+        data-control="come-out"
         onClick={comeOut}
+        type="button"
       >
         ← Come out
       </button>

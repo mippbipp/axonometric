@@ -59,8 +59,8 @@ export const packetAt = ({ clock, hops }: RunClock): PacketAt => {
  */
 export const clockAtHop = ({
   clock,
-  hops,
   hop,
+  hops,
 }: RunClock & { readonly hop: number }) => {
   const cycle = cycleSeconds(hops);
   const cycleStart = Math.floor(clock / cycle) * cycle;
@@ -83,6 +83,6 @@ export const clockAtHop = ({
 export const clockAtNextHop = ({ clock, hops }: RunClock) =>
   clockAtHop({
     clock,
-    hops,
     hop: (packetAt({ clock, hops }).hop + 1) % hops,
+    hops,
   });

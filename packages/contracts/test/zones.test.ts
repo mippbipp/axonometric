@@ -19,15 +19,15 @@ import { grow } from "./footprints.ts";
 type MapParts = Pick<MapData, "groups" | "structures">;
 
 const structure = (id: string, group: string): Structure => ({
-  id,
   code: "S",
-  name: id,
-  shape: "box",
   group,
-  status: "live",
-  oneLiner: "One line.",
-  whatItDoes: "Does.",
   howItsBuilt: "Built.",
+  id,
+  name: id,
+  oneLiner: "One line.",
+  shape: "box",
+  status: "live",
+  whatItDoes: "Does.",
 });
 
 const data: MapParts = {
@@ -46,15 +46,15 @@ const data: MapParts = {
 
 const mapOf = (parts: MapParts): MapData => ({
   format: 1,
+  overview: { summary: "A map.", title: "Map" },
   revision: 0,
-  overview: { title: "Map", summary: "A map." },
   ...parts,
-  hops: [],
-  flows: [],
   chapters: [],
+  flows: [],
+  hops: [],
 });
 
-const at = (x: number, y: number): Placement => ({ x, y, w: 2, d: 2 });
+const at = (x: number, y: number): Placement => ({ d: 2, w: 2, x, y });
 
 const layoutOf = (structures: Readonly<Record<string, Placement>>): Layout => ({
   format: 1,
@@ -63,19 +63,19 @@ const layoutOf = (structures: Readonly<Record<string, Placement>>): Layout => ({
 });
 
 const layout = layoutOf({
-  web: at(0, 0),
   api: at(6, 0),
-  db: { x: 10, y: 3, w: 3, d: 2.5 },
   cache: at(6, 4),
+  db: { d: 2.5, w: 3, x: 10, y: 3 },
+  web: at(0, 0),
 });
 
-const zoneWarnings = (problems: readonly MapProblem[]) =>
+const zoneWarnings = (problems: ReadonlyArray<MapProblem>) =>
   Arr.filter(problems, ({ message }) => Str.includes("zones of")(message));
 
 const membersOf = (group: string, count: number) =>
   Arr.map(Arr.range(1, count), (n) => structure(`${group}${n}`, group));
 
-const groupsNamed = (ids: readonly string[]) =>
+const groupsNamed = (ids: ReadonlyArray<string>) =>
   Arr.map(ids, (id) => ({ id, title: id }));
 
 /** Asserts that no two of the map's zones share ground. */
@@ -99,14 +99,14 @@ describe("zones", () => {
       Effect.sync(() => {
         assert.deepStrictEqual(zonesOf({ data, layout }), [
           {
+            box: grow(at(0, 0), 1),
             group: { id: "front", title: "Front" },
             members: ["web"],
-            box: grow(at(0, 0), 1),
           },
           {
+            box: grow({ d: 6, w: 7, x: 6, y: 0 }, 1),
             group: { id: "back", title: "Back end" },
             members: ["api", "db", "cache"],
-            box: grow({ x: 6, y: 0, w: 7, d: 6 }, 1),
           },
         ]);
       })
@@ -130,16 +130,16 @@ describe("zones", () => {
       });
 
       assert.deepStrictEqual(
-        Arr.map(zones, ({ group, members, box }) => ({
+        Arr.map(zones, ({ box, group, members }) => ({
+          box,
           group: group.id,
           members,
-          box,
         })),
         [
           {
+            box: grow({ d: 6, w: 2, x: 6, y: 0 }, 1),
             group: "back",
             members: ["api", "cache"],
-            box: grow({ x: 6, y: 0, w: 2, d: 6 }, 1),
           },
         ]
       );
@@ -166,11 +166,11 @@ describe("zone overlap check", () => {
 
       assert.deepStrictEqual(zoneWarnings(problems), [
         {
-          severity: "warning",
           file: "layout.json",
-          path: "",
-          message: 'the zones of groups "front" and "back" overlap.',
           hint: "Move one group's structures away from the other, for example with axonometric layout <home> <id> --x <x> --y <y>.",
+          message: 'the zones of groups "front" and "back" overlap.',
+          path: "",
+          severity: "warning",
         },
       ]);
     })

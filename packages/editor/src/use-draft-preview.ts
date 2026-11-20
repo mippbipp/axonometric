@@ -39,8 +39,8 @@ export const useDraftPreview = (change: StructureChange | undefined) => {
     }
 
     panel?.show({
-      refusal: proposing.refusalOf(change),
       problems: proposing.problemsOf([structureItem(change)]),
+      refusal: proposing.refusalOf(change),
     });
   }, [change, panel, proposing]);
 

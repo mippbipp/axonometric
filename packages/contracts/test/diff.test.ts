@@ -45,7 +45,7 @@ const review = Effect.gen(function* () {
   return { data, layout } satisfies MapSnapshot;
 });
 
-const ids = (changes: readonly { readonly id: string }[]) =>
+const ids = (changes: ReadonlyArray<{ readonly id: string }>) =>
   Arr.map(changes, ({ id }) => id);
 
 describe("diffMaps()", () => {
@@ -85,13 +85,13 @@ describe("diffMaps()", () => {
       }
 
       const edits = {
+        chapters: { ...map.data, chapters: [] },
+        flows: { ...map.data, flows: [] },
+        groups: { ...map.data, groups: [] },
         overview: {
           ...map.data,
           overview: { ...map.data.overview, title: "Another" },
         },
-        groups: { ...map.data, groups: [] },
-        flows: { ...map.data, flows: [] },
-        chapters: { ...map.data, chapters: [] },
       } as const satisfies Readonly<Record<DataSection, MapData>>;
 
       for (const [section, data] of Rec.toEntries(edits)) {
@@ -102,8 +102,8 @@ describe("diffMaps()", () => {
 
       const both = {
         ...map.data,
-        overview: { ...map.data.overview, summary: "Another summary." },
         chapters: map.data.chapters.slice(1),
+        overview: { ...map.data.overview, summary: "Another summary." },
       };
 
       assert.deepStrictEqual(
@@ -119,16 +119,16 @@ describe("diffMaps()", () => {
       const diff = diffMaps(map, map);
 
       assert.deepStrictEqual(diff.structures, {
-        moved: [],
-        resized: [],
         added: [],
-        removed: [],
         changed: [],
+        moved: [],
+        removed: [],
+        resized: [],
       });
       assert.deepStrictEqual(diff.hops, {
         added: [],
-        removed: [],
         changed: [],
+        removed: [],
       });
       assert.deepStrictEqual(diff.sections, []);
       assert.deepStrictEqual(diff.rerouted, []);
@@ -140,16 +140,16 @@ describe("diffMaps()", () => {
       const before = yield* review;
 
       const after = withLayout(before, {
-        page: { x: 4, y: 4, w: 2, d: 2 },
+        page: { d: 2, w: 2, x: 4, y: 4 },
       });
 
       const { structures } = diffMaps(before, after);
 
       assert.deepStrictEqual(structures.moved, [
         {
+          from: { d: 2, w: 2, x: 4, y: 0 },
           id: "page",
-          from: { x: 4, y: 0, w: 2, d: 2 },
-          to: { x: 4, y: 4, w: 2, d: 2 },
+          to: { d: 2, w: 2, x: 4, y: 4 },
         },
       ]);
       assert.deepStrictEqual(structures.resized, []);
@@ -164,7 +164,7 @@ describe("diffMaps()", () => {
 
         const resized = diffMaps(
           before,
-          withLayout(before, { server: { x: 8, y: 0, w: 3, d: 2 } })
+          withLayout(before, { server: { d: 2, w: 3, x: 8, y: 0 } })
         ).structures;
 
         assert.deepStrictEqual(ids(resized.resized), ["server"]);
@@ -172,7 +172,7 @@ describe("diffMaps()", () => {
 
         const both = diffMaps(
           before,
-          withLayout(before, { server: { x: 9, y: 0, w: 3, d: 2 } })
+          withLayout(before, { server: { d: 2, w: 3, x: 9, y: 0 } })
         ).structures;
 
         assert.deepStrictEqual(ids(both.moved), ["server"]);
@@ -195,7 +195,7 @@ describe("diffMaps()", () => {
           ...data,
           structures: [
             ...rest,
-            { ...gone, id: "cache", code: "C", name: "Cache" },
+            { ...gone, code: "C", id: "cache", name: "Cache" },
           ],
         }));
 
@@ -225,7 +225,7 @@ describe("diffMaps()", () => {
       }));
 
       assert.deepStrictEqual(diffMaps(before, after).structures.changed, [
-        { id: "server", fields: ["name", "oneLiner"] },
+        { fields: ["name", "oneLiner"], id: "server" },
       ]);
     })
   );
@@ -246,7 +246,7 @@ describe("diffMaps()", () => {
         }));
 
         assert.deepStrictEqual(diffMaps(before, dropped).structures.changed, [
-          { id: "page", fields: ["steps"] },
+          { fields: ["steps"], id: "page" },
         ]);
 
         const unset = withData(before, (data) => ({
@@ -274,14 +274,14 @@ describe("diffMaps()", () => {
             (hop) =>
               hop.id === "h-store" ? { ...hop, label: "writes a batch" } : hop
           ),
-          { id: "h-new", from: "page", to: "proposals", label: "reads" },
+          { from: "page", id: "h-new", label: "reads", to: "proposals" },
         ],
       }));
 
       assert.deepStrictEqual(diffMaps(before, after).hops, {
         added: ["h-new"],
+        changed: [{ fields: ["label"], id: "h-store" }],
         removed: ["h-pr"],
-        changed: [{ id: "h-store", fields: ["label"] }],
       });
 
       // Change each field of a hop, alone and together, and see it named.
@@ -298,11 +298,11 @@ describe("diffMaps()", () => {
         [{ to: "proposals" }, ["to"]],
         [{ label: "PUT /proposals" }, ["label"]],
         [{ payload: { kind: "other" } }, ["payload"]],
-        [{ to: "proposals", payload: { kind: "other" } }, ["to", "payload"]],
+        [{ payload: { kind: "other" }, to: "proposals" }, ["to", "payload"]],
       ] as const) {
         assert.deepStrictEqual(
           diffMaps(before, edited(edit)).hops.changed,
-          [{ id: "h-save", fields }],
+          [{ fields, id: "h-save" }],
           Arr.join(fields, ", ")
         );
       }
@@ -329,9 +329,10 @@ describe("diffMaps()", () => {
   );
 });
 
-const fieldsOf = ({ fields }: { readonly fields: readonly string[] }) => fields;
+const fieldsOf = ({ fields }: { readonly fields: ReadonlyArray<string> }) =>
+  fields;
 
-const texts = (list: readonly { readonly text: string }[]) =>
+const texts = (list: ReadonlyArray<{ readonly text: string }>) =>
   Arr.map(list, ({ text }) => text);
 
 const idsFrom = (prefix: string) => {
@@ -348,17 +349,17 @@ describe("restoreChanges()", () => {
         const current = yield* review;
 
         const revision = withLayout(current, {
-          engineer: { x: 0, y: 4, w: 2, d: 2 },
-          page: { x: 4, y: 4, w: 2, d: 2 },
-          server: { x: 8, y: 0, w: 3, d: 2 },
+          engineer: { d: 2, w: 2, x: 0, y: 4 },
+          page: { d: 2, w: 2, x: 4, y: 4 },
+          server: { d: 2, w: 3, x: 8, y: 0 },
         });
 
         const changes = restoreChanges({
-          current: current.data,
-          revision,
-          changes: [],
           accepted: current.layout,
+          changes: [],
+          current: current.data,
           newId: idsFrom("r"),
+          revision,
         });
 
         assert.deepStrictEqual(changes, [
@@ -367,8 +368,8 @@ describe("restoreChanges()", () => {
             kind: "move",
             moves: [
               {
-                target: { kind: "structure", id: "engineer" },
                 position: { x: 0, y: 4 },
+                target: { id: "engineer", kind: "structure" },
               },
             ],
           },
@@ -377,16 +378,16 @@ describe("restoreChanges()", () => {
             kind: "move",
             moves: [
               {
-                target: { kind: "structure", id: "page" },
                 position: { x: 4, y: 4 },
+                target: { id: "page", kind: "structure" },
               },
             ],
           },
           {
+            footprint: { d: 2, w: 3 },
             id: "r-3",
             kind: "resize",
-            target: { kind: "structure", id: "server" },
-            footprint: { w: 3, d: 2 },
+            target: { id: "server", kind: "structure" },
           },
         ]);
         assert.deepStrictEqual(
@@ -407,8 +408,8 @@ describe("restoreChanges()", () => {
           kind: "move",
           moves: [
             {
-              target: { kind: "structure", id: "page" },
               position: { x: 4, y: 8 },
+              target: { id: "page", kind: "structure" },
             },
           ],
         };
@@ -419,21 +420,21 @@ describe("restoreChanges()", () => {
         };
 
         const revision = withLayout(accepted, {
-          page: { x: 4, y: 4, w: 2, d: 2 },
+          page: { d: 2, w: 2, x: 4, y: 4 },
         });
 
         const changes = restoreChanges({
-          current: shown.data,
-          revision,
-          changes: [pending],
           accepted: accepted.layout,
+          changes: [pending],
+          current: shown.data,
           newId: idsFrom("r"),
+          revision,
         });
 
         assert.deepStrictEqual(ids(changes), ["mine"]);
         assert.deepStrictEqual(
           applyLayoutChanges(accepted.layout, changes).structures.page,
-          { x: 4, y: 4, w: 2, d: 2 }
+          { d: 2, w: 2, x: 4, y: 4 }
         );
       })
   );
@@ -449,8 +450,8 @@ describe("restoreChanges()", () => {
           kind: "move",
           moves: [
             {
-              target: { kind: "structure", id: "page" },
               position: { x: 4, y: 8 },
+              target: { id: "page", kind: "structure" },
             },
           ],
         };
@@ -461,11 +462,11 @@ describe("restoreChanges()", () => {
         };
 
         const changes = restoreChanges({
-          current: shown.data,
-          revision: accepted,
-          changes: [pending],
           accepted: accepted.layout,
+          changes: [pending],
+          current: shown.data,
           newId: idsFrom("r"),
+          revision: accepted,
         });
 
         assert.deepStrictEqual(changes, []);
@@ -478,11 +479,11 @@ describe("restoreChanges()", () => {
 
       assert.deepStrictEqual(
         restoreChanges({
-          current: map.data,
-          revision: map,
-          changes: [],
           accepted: map.layout,
+          changes: [],
+          current: map.data,
           newId: idsFrom("r"),
+          revision: map,
         }),
         []
       );
@@ -497,16 +498,16 @@ describe("compareMarks()", () => {
 
       const revision = withData(
         withLayout(current, {
-          page: { x: 4, y: 4, w: 3, d: 2 },
+          page: { d: 2, w: 3, x: 4, y: 4 },
         }),
         (data) => ({
           ...data,
+          hops: Arr.filter(data.hops, ({ id }) => id !== "h-pr"),
           structures: Arr.map(data.structures, (structure) =>
             structure.id === "server"
               ? { ...structure, oneLiner: "Different." }
               : structure
           ),
-          hops: Arr.filter(data.hops, ({ id }) => id !== "h-pr"),
         })
       );
 
@@ -520,10 +521,10 @@ describe("compareMarks()", () => {
       assert.isUndefined(marks.structures.get("engineer"));
       assert.strictEqual(marks.hops.get("h-pr"), "removed");
       assert.deepStrictEqual(marks.origins.get("page"), {
+        d: 2,
+        w: 2,
         x: 4,
         y: 0,
-        w: 2,
-        d: 2,
       });
       assert.isUndefined(marks.origins.get("server"));
     })
@@ -538,11 +539,11 @@ describe("ghostedMap()", () => {
       const revision: MapSnapshot = {
         data: {
           ...current.data,
+          hops: Arr.filter(current.data.hops, ({ id }) => id !== "h-pr"),
           structures: Arr.filter(
             current.data.structures,
             ({ id }) => id !== "upstream"
           ),
-          hops: Arr.filter(current.data.hops, ({ id }) => id !== "h-pr"),
         },
         layout: {
           ...current.layout,
@@ -560,7 +561,7 @@ describe("ghostedMap()", () => {
       assert.deepStrictEqual(diff.structures.removed, ["upstream"]);
       assert.deepStrictEqual(diff.hops.removed, ["h-pr"]);
 
-      const ghosted = ghostedMap({ current, revision, diff });
+      const ghosted = ghostedMap({ current, diff, revision });
 
       assert.deepStrictEqual([...ghosted.ghostStructures], ["upstream"]);
       assert.include(ids(ghosted.data.structures), "upstream");
@@ -582,7 +583,7 @@ describe("ghostedMap()", () => {
     Effect.gen(function* () {
       const map = yield* review;
       const diff = diffMaps(map, map);
-      const ghosted = ghostedMap({ current: map, revision: map, diff });
+      const ghosted = ghostedMap({ current: map, diff, revision: map });
 
       assert.deepStrictEqual(ghosted.data, map.data);
       assert.deepStrictEqual(ghosted.layout, map.layout);
@@ -599,11 +600,13 @@ describe("describeDifferences()", () => {
 
       const revision = withData(
         withLayout(current, {
-          page: { x: 4, y: 4, w: 2, d: 2 },
-          server: { x: 8, y: 0, w: 3, d: 2 },
+          page: { d: 2, w: 2, x: 4, y: 4 },
+          server: { d: 2, w: 3, x: 8, y: 0 },
         }),
         (data) => ({
           ...data,
+          hops: Arr.filter(data.hops, ({ id }) => id !== "h-pr"),
+          overview: { ...data.overview, summary: "Another." },
           structures: Arr.map(
             Arr.filter(data.structures, ({ id }) => id !== "upstream"),
             (structure) =>
@@ -611,14 +614,12 @@ describe("describeDifferences()", () => {
                 ? { ...structure, oneLiner: "Different." }
                 : structure
           ),
-          hops: Arr.filter(data.hops, ({ id }) => id !== "h-pr"),
-          overview: { ...data.overview, summary: "Another." },
         })
       );
 
       const lines = describeDifferences({
-        diff: diffMaps(current, revision),
         current: current.data,
+        diff: diffMaps(current, revision),
         revision: revision.data,
         revisionName: "revision 2",
       });

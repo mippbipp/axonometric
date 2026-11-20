@@ -45,8 +45,8 @@ export class MapInvalid extends Schema.TaggedError<
   MapInvalid,
   { readonly brand: unique symbol }
 >()("MapInvalid", {
-  home: Schema.String,
   command: Schema.String,
+  home: Schema.String,
   problems: Schema.Array(MapProblem),
 }) {
   public override get [CliError.userMessage]() {
@@ -72,9 +72,9 @@ const decodeProposals = Schema.decodeUnknownResult(ProposalsFile, parseOptions);
 
 /** An error with a whole file, rather than one field in it. */
 const fileProblem = (file: MapFile, message: string) =>
-  mapError({ file, path: [], message });
+  mapError({ file, message, path: [] });
 
-type Loaded<A> = Result.Result<A, readonly MapProblem[]>;
+type Loaded<A> = Result.Result<A, ReadonlyArray<MapProblem>>;
 
 const encodeLayoutFile = Schema.encodeEffect(LayoutFile);
 
@@ -126,12 +126,12 @@ const loadData = Effect.fnUntraced(function* (
   const url = `${pathToFileURL(found.success).href}?load=${cacheKey}`;
 
   const module = yield* Effect.tryPromise({
-    try: (): Promise<{ readonly default?: unknown }> => import(url),
     catch: (cause) =>
       fileProblem(
         "data.mjs",
         `could not be imported: ${describeCause(cause)}. Fix the module so Node can import it.`
       ),
+    try: (): Promise<{ readonly default?: unknown }> => import(url),
   }).pipe(Effect.result);
 
   if (Result.isFailure(module)) {
@@ -157,15 +157,15 @@ export const emptyLayout: Layout = { format: 1, revision: 0, structures: {} };
 
 /** A JSON map file: its name, how to decode it, and what a missing one means. */
 interface JsonFile<A> {
-  readonly name: MapFile;
   readonly decode: (text: string) => Result.Result<A, Schema.SchemaError>;
   readonly missing: A;
+  readonly name: MapFile;
 }
 
 /** Reads the JSON file `name` in `home` with `decode`. */
 const loadJson = Effect.fnUntraced(function* <A>(
   home: string,
-  { name, decode, missing }: JsonFile<A>
+  { decode, missing, name }: JsonFile<A>
 ): Effect.fn.Return<Loaded<A>, never, FileSystem.FileSystem | Path.Path> {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -192,17 +192,17 @@ const loadJson = Effect.fnUntraced(function* <A>(
 /** Reads `layout.json`. A missing file is an empty layout, which `build` fills. */
 export const loadLayout = (home: string) =>
   loadJson(home, {
-    name: "layout.json",
     decode: decodeLayout,
     missing: emptyLayout,
+    name: "layout.json",
   });
 
 /** Reads `proposals.json`. A missing file means nothing is pending. */
 export const loadProposals = (home: string) =>
   loadJson(home, {
-    name: "proposals.json",
     decode: decodeProposals,
     missing: emptyProposals,
+    name: "proposals.json",
   });
 
 /**
@@ -265,15 +265,15 @@ const sourceContext = Effect.fnUntraced(function* (
   const repo = yield* git.repoOf(home);
 
   return Result.match(repo, {
-    onSuccess: (found): SourceContext => ({
-      repo: Option.some(found),
-      skipped: Option.none(),
-    }),
     onFailure: (reason): SourceContext => ({
       repo: Option.none(),
       skipped: Option.some(
         `Skipped the source checks: ${skipReasons[reason]}.`
       ),
+    }),
+    onSuccess: (found): SourceContext => ({
+      repo: Option.some(found),
+      skipped: Option.none(),
     }),
   });
 });
@@ -300,18 +300,18 @@ export interface LoadedMap {
   readonly data: MapData;
   /** The layout to check and use: the saved one, after `arrange`. */
   readonly layout: Layout;
+  /** What `proposals.json` holds, or nothing pending when there's no file. */
+  readonly proposals: Proposals;
   /** The layout as `layout.json` holds it, or empty when there's no file. */
   readonly saved: Layout;
   /** The web address of each source that has one, keyed by `sourceKey`. */
   readonly sourceLinks: Readonly<Record<string, string>>;
-  /** What `proposals.json` holds, or nothing pending when there's no file. */
-  readonly proposals: Proposals;
 }
 
 /** A map as loaded: the problems found, and the files when both decoded. */
 export interface InspectedMap {
-  readonly problems: readonly MapProblem[];
   readonly map: Option.Option<LoadedMap>;
+  readonly problems: ReadonlyArray<MapProblem>;
   /** Why the source checks were skipped, when they were. */
   readonly sourcesSkipped: Option.Option<string>;
 }
@@ -324,24 +324,24 @@ export interface InspectOptions {
   /** As for `LoadRequest.arrange`. */
   readonly arrange?: Arrange | undefined;
   /**
-   * Whether a `proposals.json` that doesn't decode is an error, as `check`
-   * reports it. Otherwise it's a warning, and the map loads with nothing
-   * pending: `build` and `serve` only need the accepted layout.
-   */
-  readonly strictProposals?: boolean | undefined;
-  /**
    * Whether a file in `history/` that isn't a valid revision is an error, as
    * `check` reports it. Otherwise it's a warning: a damaged old revision
    * doesn't stop `build` or `serve`.
    */
   readonly strictHistory?: boolean | undefined;
+  /**
+   * Whether a `proposals.json` that doesn't decode is an error, as `check`
+   * reports it. Otherwise it's a warning, and the map loads with nothing
+   * pending: `build` and `serve` only need the accepted layout.
+   */
+  readonly strictProposals?: boolean | undefined;
 }
 
 /** A problem as a warning, such as an error in a file that can be set aside. */
 const asWarning = (problem: MapProblem): MapProblem => ({
   ...problem,
-  severity: "warning",
   message: `${problem.message} Pending changes are ignored until this is fixed.`,
+  severity: "warning",
 });
 
 /**
@@ -364,10 +364,9 @@ export const inspectMap = Effect.fnUntraced(function* (
 
   const history = yield* checkHistory(home, options.strictHistory === true);
 
-  const noProblems: readonly MapProblem[] = [];
+  const noProblems: ReadonlyArray<MapProblem> = [];
 
   const proposals = Result.match(loadedProposals, {
-    onSuccess: (found) => ({ found, problems: noProblems }),
     onFailure: (failure) => ({
       found: emptyProposals,
       problems:
@@ -375,6 +374,7 @@ export const inspectMap = Effect.fnUntraced(function* (
           ? failure
           : Arr.map(failure, asWarning),
     }),
+    onSuccess: (found) => ({ found, problems: noProblems }),
   });
 
   if (Result.isSuccess(data) && Result.isSuccess(saved)) {
@@ -402,41 +402,41 @@ export const inspectMap = Effect.fnUntraced(function* (
     ];
 
     return {
-      problems,
       map: Option.some({
         data: data.success,
         layout,
+        proposals: proposals.found,
         saved: saved.success,
         sourceLinks: linksOf(data.success, sources.repo),
-        proposals: proposals.found,
       }),
+      problems,
       sourcesSkipped: sources.skipped,
     } satisfies InspectedMap;
   }
 
   return {
+    map: Option.none(),
     problems: [
       ...(Result.isFailure(data) ? data.failure : []),
       ...(Result.isFailure(saved) ? saved.failure : []),
       ...proposals.problems,
       ...history,
     ],
-    map: Option.none(),
     sourcesSkipped: Option.none(),
   } satisfies InspectedMap;
 });
 
 /** What `loadMap` loads, and for which command. */
 export interface LoadRequest {
+  /** As for `InspectOptions`. */
+  readonly arrange?: Arrange;
+  /** The command loading the map, named in the error. */
+  readonly command: string;
   readonly home: string;
   /** The folder SYSTEM.md is written to, which links resolve against. */
   readonly output: string;
-  /** The command loading the map, named in the error. */
-  readonly command: string;
-  /** As for `InspectOptions`. */
-  readonly arrange?: Arrange;
-  readonly strictProposals?: boolean;
   readonly strictHistory?: boolean;
+  readonly strictProposals?: boolean;
 }
 
 /**
@@ -444,22 +444,22 @@ export interface LoadRequest {
  * Returns the map and its warnings otherwise.
  */
 export const loadMap = Effect.fnUntraced(function* ({
+  arrange,
+  command,
   home,
   output,
-  command,
-  arrange,
-  strictProposals,
   strictHistory,
+  strictProposals,
 }: LoadRequest) {
-  const { problems, map, sourcesSkipped } = yield* inspectMap(home, output, {
+  const { map, problems, sourcesSkipped } = yield* inspectMap(home, output, {
     arrange,
-    strictProposals,
     strictHistory,
+    strictProposals,
   });
 
   if (splitProblems(problems).errors.length > 0 || Option.isNone(map)) {
-    return yield* MapInvalid.make({ home, command, problems });
+    return yield* MapInvalid.make({ command, home, problems });
   }
 
-  return { ...map.value, warnings: problems, sourcesSkipped };
+  return { ...map.value, sourcesSkipped, warnings: problems };
 });

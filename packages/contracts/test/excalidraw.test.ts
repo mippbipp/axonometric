@@ -6,7 +6,7 @@ import type { ExcalidrawElement } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
 
 const ofType = <T extends ExcalidrawElement["type"]>(
-  elements: readonly ExcalidrawElement[],
+  elements: ReadonlyArray<ExcalidrawElement>,
   type: T
 ) =>
   Arr.filter(
@@ -97,24 +97,24 @@ describe("excalidraw export", () => {
 
         // gate sits at x 4, y 0 with a 2 by 1.5 footprint, at 60 px a unit.
         assert.deepInclude(byId.get("structure:gate"), {
+          frameId: "group:pipeline",
+          height: 90,
+          width: 120,
           x: 240,
           y: 0,
-          width: 120,
-          height: 90,
-          frameId: "group:pipeline",
         });
 
         assert.deepInclude(byId.get("structure-name:gate"), {
-          text: "Build gate",
           containerId: "structure:gate",
+          text: "Build gate",
         });
         assert.deepInclude(byId.get("hop-label:h-update"), {
-          text: "update → build",
           containerId: "hop:h-update",
+          text: "update → build",
         });
         assert.deepInclude(byId.get("group:pipeline"), {
-          type: "frame",
           name: "Pipeline",
+          type: "frame",
         });
       })
   );

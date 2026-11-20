@@ -21,32 +21,6 @@ import type { Arrangement } from "./served-store.ts";
 export interface Editing {
   /** The accepted layout, as `layout.json` holds it. */
   readonly accepted: Layout;
-  /** The pending layout changes the page shows. */
-  readonly pending: readonly LayoutChange[];
-  /**
-   * The layout changes frozen in batches that wait for the agent. They stay
-   * drawn as pending, and can't be edited or discarded.
-   */
-  readonly frozen: readonly LayoutChange[];
-  /** Whether edits can be saved now. False while the server is down. */
-  readonly canEdit: boolean;
-  /**
-   * Puts structure `id` at `next`, as pending changes. Returns why it was
-   * refused, such as an overlap, or `undefined` when it went ahead.
-   */
-  readonly place: (id: string, next: Placement) => string | undefined;
-  /** Why `place` would refuse `next`, without saving anything. */
-  readonly refusalOf: (id: string, next: Placement) => string | undefined;
-  /**
-   * Removes the pending change with `id`, which restores the accepted value.
-   * Returns why it was refused, such as a structure that would land on
-   * another pending one, or `undefined` when it went ahead.
-   */
-  readonly discard: (id: ChangeId) => string | undefined;
-  /** Why `applyMoves` would refuse `moves`, without saving anything. */
-  readonly refusalOfMoves: (
-    moves: readonly StructureMove[]
-  ) => string | undefined;
   /**
    * Moves, nudges, aligns or distributes a set as one pending change and one
    * undo step. `plan` gets where the structures sit now and returns the
@@ -54,6 +28,43 @@ export interface Editing {
    * was refused, or `undefined`.
    */
   readonly arrange: (plan: Arrangement) => string | undefined;
+  /** Whether edits can be saved now. False while the server is down. */
+  readonly canEdit: boolean;
+  /** Whether there is an undone edit to redo. */
+  readonly canRedo: boolean;
+  /** Whether there is an edit to undo. */
+  readonly canUndo: boolean;
+  /**
+   * Removes the pending change with `id`, which restores the accepted value.
+   * Returns why it was refused, such as a structure that would land on
+   * another pending one, or `undefined` when it went ahead.
+   */
+  readonly discard: (id: ChangeId) => string | undefined;
+  /**
+   * The layout changes frozen in batches that wait for the agent. They stay
+   * drawn as pending, and can't be edited or discarded.
+   */
+  readonly frozen: ReadonlyArray<LayoutChange>;
+  /** The pending layout changes the page shows. */
+  readonly pending: ReadonlyArray<LayoutChange>;
+  /**
+   * Puts structure `id` at `next`, as pending changes. Returns why it was
+   * refused, such as an overlap, or `undefined` when it went ahead.
+   */
+  readonly place: (id: string, next: Placement) => string | undefined;
+  /** Redoes the edit that `undo` took back. */
+  readonly redo: () => void;
+  /** Why `place` would refuse `next`, without saving anything. */
+  readonly refusalOf: (id: string, next: Placement) => string | undefined;
+  /** Why `applyMoves` would refuse `moves`, without saving anything. */
+  readonly refusalOfMoves: (
+    moves: ReadonlyArray<StructureMove>
+  ) => string | undefined;
+  /** Why `reroute` would refuse `points` for `hop`, without saving anything. */
+  readonly refusalOfReroute: (
+    hop: string,
+    points: ReadonlyArray<GridPoint> | null
+  ) => string | undefined;
   /**
    * Gives hop `hop` the route override `points` as a pending change, or puts
    * it back on automatic routing with `null`. Returns why it was refused, or
@@ -61,21 +72,10 @@ export interface Editing {
    */
   readonly reroute: (
     hop: string,
-    points: readonly GridPoint[] | null
+    points: ReadonlyArray<GridPoint> | null
   ) => string | undefined;
-  /** Why `reroute` would refuse `points` for `hop`, without saving anything. */
-  readonly refusalOfReroute: (
-    hop: string,
-    points: readonly GridPoint[] | null
-  ) => string | undefined;
-  /** Whether there is an edit to undo. */
-  readonly canUndo: boolean;
-  /** Whether there is an undone edit to redo. */
-  readonly canRedo: boolean;
   /** Takes back the last edit, in the pending changes on disk too. */
   readonly undo: () => void;
-  /** Redoes the edit that `undo` took back. */
-  readonly redo: () => void;
 }
 
 export const EditingContext = createContext<Editing | null>(null);

@@ -185,48 +185,48 @@ interface Point {
 
 export interface Drawn {
   readonly id: string;
-  readonly polygon: readonly Point[];
+  readonly polygon: ReadonlyArray<Point>;
 }
 
 /** A straight piece of a drawn line, from its first point to its second. */
 export interface DrawnSegment {
   readonly id: string;
-  readonly segment: readonly Point[];
+  readonly segment: ReadonlyArray<Point>;
 }
 
 export interface DrawingReport {
-  readonly text: readonly Drawn[];
   /** Each structure's code chip, as the page draws it. */
-  readonly chips: readonly Drawn[];
-  /** The straight pieces of the pending rings and lines of group and chapter proposals. */
-  readonly rings: readonly DrawnSegment[];
-  /** The pieces of the cross through a structure proposed for deletion. */
-  readonly strikes: readonly DrawnSegment[];
-  /** The pieces of the cross through a hop proposed for deletion. */
-  readonly hopStrikes: readonly DrawnSegment[];
-  /** The legs of the line of a hop being drawn. */
-  readonly previews: readonly DrawnSegment[];
+  readonly chips: ReadonlyArray<Drawn>;
   /** The edge handles on show, as boxes. */
-  readonly handles: readonly Drawn[];
-  readonly structures: readonly Drawn[];
+  readonly handles: ReadonlyArray<Drawn>;
+  /** The pieces of the cross through a hop proposed for deletion. */
+  readonly hopStrikes: ReadonlyArray<DrawnSegment>;
+  /** The legs of the line of a hop being drawn. */
+  readonly previews: ReadonlyArray<DrawnSegment>;
+  /** The straight pieces of the pending rings and lines of group and chapter proposals. */
+  readonly rings: ReadonlyArray<DrawnSegment>;
+  /** The pieces of the cross through a structure proposed for deletion. */
+  readonly strikes: ReadonlyArray<DrawnSegment>;
+  readonly structures: ReadonlyArray<Drawn>;
+  readonly text: ReadonlyArray<Drawn>;
 }
 
 /** A hop's first leg on screen, and the structure it leaves from. */
 export interface FirstLeg {
-  readonly hop: string;
   readonly from: string;
-  readonly leg: readonly Point[];
+  readonly hop: string;
+  readonly leg: ReadonlyArray<Point>;
 }
 
 /** The least and greatest of `points` along `axis`. */
-const extentAlong = (points: readonly Point[], axis: Point) => {
+const extentAlong = (points: ReadonlyArray<Point>, axis: Point) => {
   const along = Arr.map(points, ({ x, y }) => x * axis.x + y * axis.y);
 
-  return { min: Math.min(...along), max: Math.max(...along) };
+  return { max: Math.max(...along), min: Math.min(...along) };
 };
 
 /** A normal to each edge of `points`, taken as a closed outline. */
-const edgeNormals = (points: readonly Point[]): readonly Point[] =>
+const edgeNormals = (points: ReadonlyArray<Point>): ReadonlyArray<Point> =>
   Arr.map(points, (point, index) => {
     const next = points[(index + 1) % points.length] ?? point;
 
@@ -238,7 +238,7 @@ const edgeNormals = (points: readonly Point[]): readonly Point[] =>
  * don't when their projections onto some edge normal of either are apart or
  * only touch.
  */
-const shareArea = (a: readonly Point[], b: readonly Point[]) =>
+const shareArea = (a: ReadonlyArray<Point>, b: ReadonlyArray<Point>) =>
   a.length > 0 &&
   b.length > 0 &&
   Arr.every([...edgeNormals(a), ...edgeNormals(b)], (axis) => {
@@ -249,7 +249,7 @@ const shareArea = (a: readonly Point[], b: readonly Point[]) =>
   });
 
 /** A convex polygon pulled half a pixel towards its centre. */
-const shrink = (polygon: readonly Point[]): readonly Point[] => {
+const shrink = (polygon: ReadonlyArray<Point>): ReadonlyArray<Point> => {
   const count = Math.max(polygon.length, 1);
   const cx = Arr.reduce(polygon, 0, (sum, { x }) => sum + x) / count;
   const cy = Arr.reduce(polygon, 0, (sum, { y }) => sum + y) / count;
@@ -268,7 +268,7 @@ const shrink = (polygon: readonly Point[]): readonly Point[] => {
  * Whether two drawn shapes overlap. Each is shrunk by half a pixel first,
  * so shapes the browser's rounding makes touch don't count.
  */
-export const overlap = (a: readonly Point[], b: readonly Point[]) =>
+export const overlap = (a: ReadonlyArray<Point>, b: ReadonlyArray<Point>) =>
   shareArea(shrink(a), shrink(b));
 
 /**
@@ -276,7 +276,11 @@ export const overlap = (a: readonly Point[], b: readonly Point[]) =>
  * polygon. Each edge keeps the part of the segment on the polygon's side of
  * it, the side its centre is on.
  */
-const lengthInside = (start: Point, end: Point, polygon: readonly Point[]) => {
+const lengthInside = (
+  start: Point,
+  end: Point,
+  polygon: ReadonlyArray<Point>
+) => {
   const count = Math.max(polygon.length, 1);
 
   const centre = {
@@ -326,8 +330,8 @@ const lengthInside = (start: Point, end: Point, polygon: readonly Point[]) => {
  * rounding puts on its edge doesn't count.
  */
 export const crosses = (
-  segment: readonly Point[],
-  polygon: readonly Point[]
+  segment: ReadonlyArray<Point>,
+  polygon: ReadonlyArray<Point>
 ) => {
   const [start, end] = segment;
 
@@ -343,7 +347,7 @@ export const crosses = (
  * `<text> × <other>`. Text is what `drawingReport` lists as text: name tags,
  * shown hop labels and zone titles.
  */
-export const textClashes = (report: DrawingReport): readonly string[] => [
+export const textClashes = (report: DrawingReport): ReadonlyArray<string> => [
   ...Arr.flatMap(report.text, (first, index) =>
     Arr.flatMap(Arr.drop(report.text, index + 1), (second) =>
       overlap(first.polygon, second.polygon)
@@ -362,7 +366,9 @@ export const textClashes = (report: DrawingReport): readonly string[] => [
  * Every name tag drawn over other text or over a box other than its own, as
  * `<tag> × <other>`, each pair once.
  */
-export const nameTagClashes = (report: DrawingReport): readonly string[] => {
+export const nameTagClashes = (
+  report: DrawingReport
+): ReadonlyArray<string> => {
   const tags = Arr.filter(report.text, ({ id }) => Str.startsWith("tag:")(id));
 
   const withText = Arr.flatMap(tags, (tag) =>

@@ -40,24 +40,31 @@ const gapFor = (zoom: number) => Math.max(fullSizeGap, screenGap / zoom);
 
 const square = ({ sx, sy }: NoteMarkerSpot) =>
   rectCorners({
-    left: sx - ringRadius,
-    top: sy - ringRadius,
-    right: sx + ringRadius,
     bottom: sy + ringRadius,
+    left: sx - ringRadius,
+    right: sx + ringRadius,
+    top: sy - ringRadius,
   });
 
 /** The lowest and highest of `polygon` projected onto the axis `ax, ay`. */
-const projected = (polygon: readonly ScreenPoint[], ax: number, ay: number) => {
+const projected = (
+  polygon: ReadonlyArray<ScreenPoint>,
+  ax: number,
+  ay: number
+) => {
   const along = Arr.map(polygon, ({ sx, sy }) => sx * ax + sy * ay);
 
-  return { low: Math.min(...along), high: Math.max(...along) };
+  return { high: Math.max(...along), low: Math.min(...along) };
 };
 
 /**
  * Whether two convex polygons share area: no edge normal of either one
  * separates them. Polygons that only touch don't.
  */
-const overlap = (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
+const overlap = (
+  a: ReadonlyArray<ScreenPoint>,
+  b: ReadonlyArray<ScreenPoint>
+) =>
   Arr.every([a, b], (polygon) =>
     Arr.every(polygon, (from, index) => {
       const to = polygon[(index + 1) % polygon.length] ?? from;
@@ -74,13 +81,13 @@ const overlap = (a: readonly ScreenPoint[], b: readonly ScreenPoint[]) =>
 /** Something a ring must stay clear of, with how wide its edge is drawn. */
 interface Solid {
   readonly name: string;
-  readonly polygon: readonly ScreenPoint[];
+  readonly polygon: ReadonlyArray<ScreenPoint>;
   readonly stroke: number;
 }
 
 /** Everything a marker must stay clear of. */
-const solids = (scene: Scene): readonly Solid[] => [
-  ...Arr.map(scene.structures, ({ structure, outline }) => ({
+const solids = (scene: Scene): ReadonlyArray<Solid> => [
+  ...Arr.map(scene.structures, ({ outline, structure }) => ({
     name: `box ${structure.id}`,
     polygon: outline,
     stroke: boxStroke,
@@ -90,7 +97,7 @@ const solids = (scene: Scene): readonly Solid[] => [
     polygon: rectCorners(tag),
     stroke: edgeStroke,
   })),
-  ...Arr.flatMap(scene.structures, ({ structure, chip }) =>
+  ...Arr.flatMap(scene.structures, ({ chip, structure }) =>
     chip === undefined
       ? []
       : [
@@ -101,7 +108,7 @@ const solids = (scene: Scene): readonly Solid[] => [
           },
         ]
   ),
-  ...Arr.flatMap(scene.zones, ({ zone, title }) =>
+  ...Arr.flatMap(scene.zones, ({ title, zone }) =>
     title === undefined
       ? []
       : [{ name: `title ${zone.group.id}`, polygon: title, stroke: edgeStroke }]
@@ -123,17 +130,19 @@ const solids = (scene: Scene): readonly Solid[] => [
  * How far apart a ring's stroke and another stroke show: from the ring's
  * centre, less its radius and half of each stroke's width.
  */
-const visibleGapBetween = (distance: number, strokes: readonly number[]) =>
+const visibleGapBetween = (distance: number, strokes: ReadonlyArray<number>) =>
   distance -
   ringRadius -
   Arr.reduce(strokes, 0, (sum, width) => sum + width / 2);
 
-const edgeDistance = (polygon: readonly ScreenPoint[], spot: NoteMarkerSpot) =>
-  lineDistance([...polygon, ...Arr.take(polygon, 1)], spot);
+const edgeDistance = (
+  polygon: ReadonlyArray<ScreenPoint>,
+  spot: NoteMarkerSpot
+) => lineDistance([...polygon, ...Arr.take(polygon, 1)], spot);
 
 /** Spots over the whole ground the maps use, empty or not. */
 const gridSpots = (() => {
-  const found: { x: number; y: number }[] = [];
+  const found: Array<{ x: number; y: number }> = [];
 
   for (let x = -2; x <= 22; x += 2.5) {
     for (let y = -2; y <= 10; y += 2) {
@@ -160,19 +169,19 @@ describe("note markers", () => {
             for (const chapter of chaptersOf(data)) {
               const scene = sceneOf({
                 data,
+                labelFirst: chapter.plays,
                 layout,
                 revealed: chapter.revealed,
-                labelFirst: chapter.plays,
                 view,
               });
 
               const placed = placeNoteMarkers(scene, {
+                ground: groundProjections[view],
+                hops: new Set(Arr.map(scene.hops, ({ hop }) => hop.id)),
+                spots: gridSpots,
                 structures: new Set(
                   Arr.map(scene.structures, ({ structure }) => structure.id)
                 ),
-                hops: new Set(Arr.map(scene.hops, ({ hop }) => hop.id)),
-                spots: gridSpots,
-                ground: groundProjections[view],
               });
 
               const markers = [
@@ -180,7 +189,7 @@ describe("note markers", () => {
                 ...placed.hops.entries(),
                 ...Arr.map(
                   placed.spots,
-                  ({ spot, marker }): [string, NoteMarkerSpot] => [
+                  ({ marker, spot }): [string, NoteMarkerSpot] => [
                     `spot ${spot.x},${spot.y}`,
                     marker,
                   ]
@@ -242,9 +251,9 @@ describe("note markers", () => {
         });
 
         const placed = placeNoteMarkers(scene, {
-          structures: new Set(["server", "page"]),
           hops: new Set(),
           spots: [],
+          structures: new Set(["server", "page"]),
         });
 
         assert.deepStrictEqual(
@@ -282,9 +291,9 @@ describe("note markers", () => {
       });
 
       const placed = placeNoteMarkers(scene, {
-        structures: new Set(),
         hops: new Set(["h-save"]),
         spots: [],
+        structures: new Set(),
       });
 
       const spot = placed.hops.get("h-save");
@@ -318,14 +327,14 @@ describe("note markers", () => {
       const free = { x: 14, y: 3 };
 
       const placed = placeNoteMarkers(scene, {
-        structures: new Set(),
+        ground: groundProjections.plan,
         hops: new Set(),
         spots: [free],
-        ground: groundProjections.plan,
+        structures: new Set(),
       });
 
       assert.deepStrictEqual(placed.spots, [
-        { spot: free, marker: groundProjections.plan.toScreen(free) },
+        { marker: groundProjections.plan.toScreen(free), spot: free },
       ]);
     })
   );
@@ -346,10 +355,10 @@ describe("note markers", () => {
         const onBox = { x: 5, y: 1 };
 
         const [found] = placeNoteMarkers(scene, {
-          structures: new Set(),
+          ground: groundProjections.plan,
           hops: new Set(),
           spots: [onBox],
-          ground: groundProjections.plan,
+          structures: new Set(),
         }).spots;
 
         assert.isDefined(found);
@@ -387,9 +396,9 @@ describe("note markers at a zoomed-out view", () => {
             });
 
             const placed = placeNoteMarkers(scene, {
-              structures: new Set(),
               hops: new Set(Arr.map(scene.hops, ({ hop }) => hop.id)),
               spots: [],
+              structures: new Set(),
             });
 
             placedHops += placed.hops.size;

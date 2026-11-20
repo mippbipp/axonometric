@@ -41,20 +41,20 @@ export function HopPanel({ id }: { readonly id: string }) {
     return null;
   }
 
-  const { from, to, label } = hop;
+  const { from, label, to } = hop;
   const nameOf = (structure: string) => byId.get(structure)?.name ?? structure;
   const overridden = Rec.has(state.layout.routes ?? {}, id);
   const removed = proposals?.deleted === true;
   const pending = pendingHops(editingIgnoringEdit).has(id);
 
   return (
-    <section data-hop-panel={id} className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3" data-hop-panel={id}>
       <p className="text-xs tracking-widest uppercase opacity-70">Hop</p>
       <h2 className="text-lg leading-tight font-medium">{label}</h2>
       <p className="text-sm">
         {nameOf(from)} → {nameOf(to)}
       </p>
-      <p data-hop-route-kind className="text-sm opacity-80">
+      <p className="text-sm opacity-80" data-hop-route-kind>
         {overridden
           ? `This route is set by hand${pending ? " and not yet accepted" : ""}.`
           : pending
@@ -67,11 +67,11 @@ export function HopPanel({ id }: { readonly id: string }) {
         </p>
       ) : null}
       <HopEdit id={id} label={label} />
-      <NotesSection target={{ kind: "hop", id }} />
+      <NotesSection target={{ id, kind: "hop" }} />
       {refusal === undefined ? null : (
         <p
-          data-reset-refused
           className="border-refused border-l-2 pl-2 text-xs"
+          data-reset-refused
         >
           {refusal}
         </p>
@@ -79,23 +79,23 @@ export function HopPanel({ id }: { readonly id: string }) {
       <div className="flex flex-wrap gap-1.5">
         {editing?.canEdit === true && overridden && !removed ? (
           <button
-            type="button"
-            data-reset-route={id}
             className={controlClass}
+            data-reset-route={id}
             onClick={() => {
               setRefusal(editing.reroute(id, null));
             }}
+            type="button"
           >
             Reset route
           </button>
         ) : null}
         <button
-          type="button"
-          data-control="close"
           className={controlClass}
+          data-control="close"
           onClick={() => {
             selectHop(null);
           }}
+          type="button"
         >
           Close
         </button>

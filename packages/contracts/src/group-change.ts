@@ -1,3 +1,4 @@
+/* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import { pipe, Schema, String as Str } from "effect";
 import { dual } from "effect/Function";
 

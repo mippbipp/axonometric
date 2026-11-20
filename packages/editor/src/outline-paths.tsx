@@ -9,38 +9,38 @@ import { Array as Arr } from "effect";
  * `className` and `data-outline`, the id of what the outline marks.
  */
 export function OutlineLines({
+  className,
+  closed,
+  dash,
   id,
+  mark,
   points,
   text,
-  closed,
-  className,
   width,
-  dash,
-  mark,
 }: {
-  readonly id: string;
-  readonly points: readonly ScreenPoint[];
-  readonly text: readonly ScreenRect[];
-  readonly closed: boolean;
   readonly className: string;
-  readonly width: number;
+  readonly closed: boolean;
   readonly dash: string | undefined;
+  readonly id: string;
   /** The `data-chapter-mark` or similar value the lines carry. */
   readonly mark: Readonly<Record<string, string>>;
+  readonly points: ReadonlyArray<ScreenPoint>;
+  readonly text: ReadonlyArray<ScreenRect>;
+  readonly width: number;
 }) {
-  const pieces = clearOfText({ points, text, closed });
+  const pieces = clearOfText({ closed, points, text });
 
   return (
     <g data-outline={id} {...mark}>
-      {Arr.map(pieces, ({ start, end }) => (
+      {Arr.map(pieces, ({ end, start }) => (
         <polyline
+          className={className}
+          fill="none"
           key={toPoints([start, end])}
           points={toPoints([start, end])}
-          fill="none"
-          className={className}
-          strokeWidth={width}
           strokeDasharray={dash}
           strokeLinecap="butt"
+          strokeWidth={width}
         />
       ))}
     </g>

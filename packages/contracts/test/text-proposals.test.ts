@@ -49,8 +49,8 @@ const layout: Layout = {
   format: 1,
   revision: 1,
   structures: {
-    server: { x: 0, y: 0, w: 2, d: 2 },
-    page: { x: 4, y: 0, w: 2, d: 2 },
+    page: { d: 2, w: 2, x: 4, y: 0 },
+    server: { d: 2, w: 2, x: 0, y: 0 },
   },
 };
 
@@ -59,22 +59,22 @@ const decode = Schema.decodeUnknownResult(Proposals, {
   onExcessProperty: "error",
 });
 
-const empty: P = { format: 1, revision: 1, layout: [] };
+const empty: P = { format: 1, layout: [], revision: 1 };
 
 const failure = <A>(result: Result.Result<A, string>): string =>
-  Result.match(result, { onSuccess: () => "", onFailure: (why) => why });
+  Result.match(result, { onFailure: (why) => why, onSuccess: () => "" });
 
 /** Why accepting `item` would break the map, which the test expects it to. */
 /** A map with nothing in it, for commits that read no structure. */
 const emptyData: MapData = {
-  format: 1,
-  revision: 0,
-  overview: { title: "T", summary: "S" },
-  groups: [],
-  structures: [],
-  hops: [],
-  flows: [],
   chapters: [],
+  flows: [],
+  format: 1,
+  groups: [],
+  hops: [],
+  overview: { summary: "S", title: "T" },
+  revision: 0,
+  structures: [],
 };
 
 const breaksBecause = (item: BatchItem, data: MapData): string =>
@@ -85,54 +85,54 @@ const isWhole = (item: BatchItem, data: MapData): boolean =>
   Option.isNone(breakageOf({ item, ...landing(data) }));
 
 /** The proposals after `items` are added and then frozen into batch 1. */
-const frozenWith = (items: readonly BatchItem[]): P =>
-  unwrap(freezeOpen({ proposals: addAll(known, items), at })).proposals;
+const frozenWith = (items: ReadonlyArray<BatchItem>): P =>
+  unwrap(freezeOpen({ at, proposals: addAll(known, items) })).proposals;
 
 /** An answer's fields, for a file that holds one on its own. */
 const answerFields = () => ({
-  id: "a1",
-  target: { kind: "structure" as const, id: "page" },
-  question: "Q-P1",
-  text: "Yes.",
   answeredOn: "2026-11-02",
+  id: "a1",
+  question: "Q-P1",
+  target: { id: "page", kind: "structure" as const },
+  text: "Yes.",
 });
 
 /** A suggestion's fields, for a file that holds one on its own. */
 const suggestionFields = () => ({
-  id: "s1",
-  target: { kind: "structure" as const, id: "page" },
-  field: "oneLiner",
-  before: "Shows the map and records notes.",
   after: "Shows the map and saves each note.",
+  before: "Shows the map and records notes.",
+  field: "oneLiner",
+  id: "s1",
+  target: { id: "page", kind: "structure" as const },
 });
 
 const names = {
-  structure: (id: string) => (id === "page" ? "Map page" : "Save server"),
   hop: (id: string) => `label of ${id}`,
+  structure: (id: string) => (id === "page" ? "Map page" : "Save server"),
 };
 
 const suggestion: BatchItem = {
+  after: "Shows the map and saves each note.",
+  before: "Shows the map and records notes.",
+  field: "oneLiner",
   id: "s1",
   kind: "suggestion",
-  target: { kind: "structure", id: "page" },
-  field: "oneLiner",
-  before: "Shows the map and records notes.",
-  after: "Shows the map and saves each note.",
+  target: { id: "page", kind: "structure" },
 };
 
 const answer: BatchItem = {
+  answeredOn: "2026-11-02",
   id: "a1",
   kind: "answer",
-  target: { kind: "structure", id: "page" },
   question: "Q-P1",
+  target: { id: "page", kind: "structure" },
   text: "Yes, 2000 characters.",
-  answeredOn: "2026-11-02",
 };
 
 const raised: BatchItem = {
   id: "r1",
   kind: "question",
-  target: { kind: "structure", id: "server" },
+  target: { id: "server", kind: "structure" },
   text: "Should the server retry a failed write?",
 };
 
@@ -146,14 +146,14 @@ const spotNote: BatchItem = {
 const hopNote: BatchItem = {
   id: "n-hop",
   kind: "note",
-  target: { kind: "hop", id: "h-save" },
+  target: { id: "h-save", kind: "hop" },
   text: "Why not a socket?",
 };
 
 /** Adds every item in turn, as the server does. */
-const addAll = (known: Known, items: readonly BatchItem[]): P =>
+const addAll = (known: Known, items: ReadonlyArray<BatchItem>): P =>
   Arr.reduce(items, empty, (held, item) =>
-    unwrap(addItem({ proposals: held, item, known }))
+    unwrap(addItem({ item, known, proposals: held }))
   );
 
 const everything = [suggestion, answer, raised, spotNote, hopNote] as const;
@@ -161,26 +161,26 @@ const everything = [suggestion, answer, raised, spotNote, hopNote] as const;
 /** The frozen batch of `everything`, with `verdict` given to each item in turn. */
 const allDecided = (verdict: Verdict): P =>
   Arr.reduce(everything, frozenEverything(), (held, item) =>
-    unwrap(recordVerdict({ proposals: held, id: item.id, verdict }))
+    unwrap(recordVerdict({ id: item.id, proposals: held, verdict }))
   );
 
 const frozenEverything = () =>
-  unwrap(freezeOpen({ proposals: addAll(known, everything), at })).proposals;
+  unwrap(freezeOpen({ at, proposals: addAll(known, everything) })).proposals;
 
 const known: Known = {
+  hops: [{ from: "page", id: "h-save", to: "server" }],
   structureIds: new Set(["server", "page"]),
-  hops: [{ id: "h-save", from: "page", to: "server" }],
 };
 
 describe("proposals.json with the new kinds", () => {
   it("still reads a file with structure notes only", () => {
     const old = {
       format: 1,
-      revision: 3,
       layout: [],
       notes: [
-        { id: "n1", target: { kind: "structure", id: "server" }, text: "Why?" },
+        { id: "n1", target: { id: "server", kind: "structure" }, text: "Why?" },
       ],
+      revision: 3,
     };
 
     assert.isTrue(Result.isSuccess(Schema.decodeUnknownResult(Proposals)(old)));
@@ -206,7 +206,7 @@ describe("proposals.json with the new kinds", () => {
     ["off the half-unit grid", { kind: "spot", x: 1.3, y: 0 }],
     ["too far east", { kind: "spot", x: 1001, y: 0 }],
     ["too far north", { kind: "spot", x: 0, y: -1000.5 }],
-    ["with an id", { kind: "spot", x: 0, y: 0, id: "x" }],
+    ["with an id", { id: "x", kind: "spot", x: 0, y: 0 }],
   ])("refuses a spot %s", (_name, target) => {
     const result = decode({
       ...empty,
@@ -239,7 +239,7 @@ describe("proposals.json with the new kinds", () => {
   ])("refuses %s in a batch item", (_name, item) => {
     const proposals = {
       ...empty,
-      batches: [{ number: 1, frozenAt: at, items: [item], verdicts: {} }],
+      batches: [{ frozenAt: at, items: [item], number: 1, verdicts: {} }],
     };
 
     assert.isTrue(Result.isFailure(Schema.decodeResult(Proposals)(proposals)));
@@ -269,7 +269,7 @@ describe("adding and editing", () => {
     const once = addAll(known, [suggestion]);
 
     assert.deepStrictEqual(
-      unwrap(addItem({ proposals: once, item: suggestion, known })),
+      unwrap(addItem({ item: suggestion, known, proposals: once })),
       once
     );
   });
@@ -279,28 +279,28 @@ describe("adding and editing", () => {
     const clash: BatchItem = { ...raised, id: suggestion.id };
 
     assert.include(
-      failure(addItem({ proposals: once, item: clash, known })),
+      failure(addItem({ item: clash, known, proposals: once })),
       "already in use"
     );
   });
 
   it("refuses a second suggestion for the same text while the first waits", () => {
     const once = addAll(known, [suggestion]);
-    const again: BatchItem = { ...suggestion, id: "s-again", after: "Other." };
+    const again: BatchItem = { ...suggestion, after: "Other.", id: "s-again" };
 
     assert.include(
-      failure(addItem({ proposals: once, item: again, known })),
+      failure(addItem({ item: again, known, proposals: once })),
       "already has a suggestion waiting (s1)"
     );
 
     const elsewhere: BatchItem = {
       ...again,
-      field: "whatItDoes",
       before: "Draws the map and saves each note as a proposal.",
+      field: "whatItDoes",
     };
 
     assert.isTrue(
-      Result.isSuccess(addItem({ proposals: once, item: elsewhere, known }))
+      Result.isSuccess(addItem({ item: elsewhere, known, proposals: once }))
     );
   });
 
@@ -314,30 +314,30 @@ describe("adding and editing", () => {
     };
 
     assert.include(
-      failure(addItem({ proposals: once, item: again, known })),
+      failure(addItem({ item: again, known, proposals: once })),
       "already has an answer waiting (a1)"
     );
 
-    const frozen = unwrap(freezeOpen({ proposals: once, at })).proposals;
+    const frozen = unwrap(freezeOpen({ at, proposals: once })).proposals;
 
     assert.include(
-      failure(addItem({ proposals: frozen, item: again, known })),
+      failure(addItem({ item: again, known, proposals: frozen })),
       "already has an answer waiting (a1)"
     );
 
     const other: BatchItem = { ...again, question: "Q-P2" };
 
     assert.isTrue(
-      Result.isSuccess(addItem({ proposals: frozen, item: other, known }))
+      Result.isSuccess(addItem({ item: other, known, proposals: frozen }))
     );
   });
 
   it("refuses a note on a hop or structure the map lacks", () => {
     const noHop = failure(
       addItem({
-        proposals: empty,
-        item: { ...hopNote, target: { kind: "hop", id: "h-none" } },
+        item: { ...hopNote, target: { id: "h-none", kind: "hop" } },
         known,
+        proposals: empty,
       })
     );
 
@@ -345,9 +345,9 @@ describe("adding and editing", () => {
 
     const noStructure = failure(
       addItem({
-        proposals: empty,
-        item: { ...raised, target: { kind: "structure", id: "ghost" } },
+        item: { ...raised, target: { id: "ghost", kind: "structure" } },
         known,
+        proposals: empty,
       })
     );
 
@@ -358,15 +358,15 @@ describe("adding and editing", () => {
     const open = addAll(known, everything);
 
     const edited = unwrap(
-      editProposal({ proposals: open, id: "s1", text: "Better." })
+      editProposal({ id: "s1", proposals: open, text: "Better." })
     );
 
     const answered = unwrap(
-      editProposal({ proposals: edited, id: "a1", text: "No." })
+      editProposal({ id: "a1", proposals: edited, text: "No." })
     );
 
     const asked = unwrap(
-      editProposal({ proposals: answered, id: "r1", text: "Why?" })
+      editProposal({ id: "r1", proposals: answered, text: "Why?" })
     );
 
     assert.strictEqual(asked.suggestions?.[0]?.after, "Better.");
@@ -380,7 +380,7 @@ describe("adding and editing", () => {
 
   it("discards an open item of any word kind, and says a frozen one waits", () => {
     const open = addAll(known, everything);
-    const gone = unwrap(discardProposal({ proposals: open, id: "a1" }));
+    const gone = unwrap(discardProposal({ id: "a1", proposals: open }));
 
     assert.deepStrictEqual(gone.answers, []);
     assert.strictEqual(gone.suggestions?.length, 1);
@@ -389,11 +389,11 @@ describe("adding and editing", () => {
 
     for (const id of ["s1", "a1", "r1", "n-spot"]) {
       assert.include(
-        failure(editProposal({ proposals: frozen, id, text: "x" })),
+        failure(editProposal({ id, proposals: frozen, text: "x" })),
         "waiting for the agent"
       );
       assert.include(
-        failure(discardProposal({ proposals: frozen, id })),
+        failure(discardProposal({ id, proposals: frozen })),
         "waiting for the agent"
       );
     }
@@ -404,17 +404,17 @@ describe("adding and editing", () => {
     const tooLong = Str.repeat(8001)("x");
 
     assert.include(
-      failure(editProposal({ proposals: open, id: "s1", text: tooLong })),
+      failure(editProposal({ id: "s1", proposals: open, text: tooLong })),
       "over the limit"
     );
   });
 });
 
 const landing = (data: MapData) => ({
+  data,
+  hops: data.hops,
   layout,
   structureIds: new Set(Arr.map(data.structures, ({ id }) => id)),
-  hops: data.hops,
-  data,
 });
 
 describe("the kinds' review entries", () => {
@@ -422,7 +422,7 @@ describe("the kinds' review entries", () => {
     Effect.gen(function* () {
       const { data } = yield* fixture("review");
 
-      const { before, after } = specOf(suggestion).facts(
+      const { after, before } = specOf(suggestion).facts(
         suggestion,
         layout,
         data
@@ -471,8 +471,8 @@ describe("the kinds' review entries", () => {
 
       const onStep: BatchItem = {
         ...suggestion,
-        field: "steps.1.detail",
         before: "The page posts the note to the server.",
+        field: "steps.1.detail",
       };
 
       const noStep: BatchItem = { ...onStep, field: "steps.7.detail" };
@@ -488,16 +488,16 @@ describe("the kinds' review entries", () => {
   it.effect("show an answer with the question it answers", () =>
     Effect.gen(function* () {
       const { data } = yield* fixture("review");
-      const { before, after } = specOf(answer).facts(answer, layout, data);
+      const { after, before } = specOf(answer).facts(answer, layout, data);
 
       assert.deepStrictEqual(before, {
         question: "Q-P1",
         text: "Should notes have a length limit?",
       });
       assert.deepStrictEqual(after, {
+        answeredOn: "2026-11-02",
         question: "Q-P1",
         text: "Yes, 2000 characters.",
-        answeredOn: "2026-11-02",
       });
     })
   );
@@ -523,7 +523,7 @@ describe("the kinds' review entries", () => {
   it.effect("show a raised question as new, with no question id", () =>
     Effect.gen(function* () {
       const { data } = yield* fixture("review");
-      const { before, after } = specOf(raised).facts(raised, layout, data);
+      const { after, before } = specOf(raised).facts(raised, layout, data);
 
       assert.isNull(before);
       assert.deepStrictEqual(after, {
@@ -534,13 +534,13 @@ describe("the kinds' review entries", () => {
 
   it("name a note's spot or hop in its prompt line", () => {
     const prompt = reviewPrompt({
-      home: "/work/map",
       batch: {
-        number: 1,
         frozenAt: at,
         items: [spotNote, hopNote],
+        number: 1,
         verdicts: {},
       },
+      home: "/work/map",
       names,
     });
 
@@ -555,9 +555,9 @@ describe("the kinds' review entries", () => {
 });
 
 /** Each kind that holds the engineer's words, with `text` in them. */
-const kindsWith = (text: string, row: number): readonly BatchItem[] => [
-  { ...suggestion, id: `h${row}-after`, after: text },
-  { ...suggestion, id: `h${row}-before`, before: text },
+const kindsWith = (text: string, row: number): ReadonlyArray<BatchItem> => [
+  { ...suggestion, after: text, id: `h${row}-after` },
+  { ...suggestion, before: text, id: `h${row}-before` },
   { ...answer, id: `h${row}-answer`, text },
   { ...raised, id: `h${row}-raised`, text },
   { ...spotNote, id: `h${row}-spot`, text },
@@ -565,7 +565,7 @@ const kindsWith = (text: string, row: number): readonly BatchItem[] => [
   {
     ...hopNote,
     id: `h${row}-note`,
-    target: { kind: "structure", id: "page" },
+    target: { id: "page", kind: "structure" },
     text,
   },
 ];
@@ -595,13 +595,13 @@ describe("the prompt lines for the new kinds", () => {
   const items = Arr.flatMap(hostile, (text, row) => kindsWith(text, row));
 
   const prompt = reviewPrompt({
-    home: "/work/map",
     batch: {
-      number: 1,
       frozenAt: at,
       items,
+      number: 1,
       verdicts: {},
     },
+    home: "/work/map",
     names: { ...names, structure: () => 'Evil"\n- note n9 on Z: "x' },
   });
 
@@ -649,7 +649,7 @@ describe("the prompt lines for the new kinds", () => {
     return Result.getOrThrow(Option.getOrThrow(Arr.head(decoded)));
   };
 
-  it.each(Arr.map(said, ([text, flat], row) => ({ text, flat, row })))(
+  it.each(Arr.map(said, ([text, flat], row) => ({ flat, row, text })))(
     "keeps the engineer's words in JSON strings, on one line: $flat",
     ({ flat, row }) => {
       // The second suggestion holds the text in the original, which the
@@ -729,25 +729,25 @@ describe("the revision records the new kinds", () => {
     const decided = Arr.reduce(
       [
         ["s1", { verdict: "accepted" }],
-        ["a1", { verdict: "changed", reason: "Reworded and set answeredBy." }],
-        ["r1", { verdict: "rejected", reason: "Q-S1 already asks this." }],
+        ["a1", { reason: "Reworded and set answeredBy.", verdict: "changed" }],
+        ["r1", { reason: "Q-S1 already asks this.", verdict: "rejected" }],
         ["n-spot", { verdict: "accepted" }],
-        ["n-hop", { verdict: "accepted", reason: "Added to the overview." }],
+        ["n-hop", { reason: "Added to the overview.", verdict: "accepted" }],
       ] as const,
       proposals,
       (held, [id, verdict]) =>
-        unwrap(recordVerdict({ proposals: held, id, verdict }))
+        unwrap(recordVerdict({ id, proposals: held, verdict }))
     );
 
     const committed = unwrap(
       commitBatch({
-        proposals: decided,
-        layout,
-        saved: layout,
+        at,
         data: emptyData,
         hops: [],
+        layout,
+        proposals: decided,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
@@ -786,47 +786,47 @@ describe("the revision records the new kinds", () => {
     );
 
     assert.deepStrictEqual(Option.getOrThrow(changedAnswer), {
-      kind: "answer",
-      id: "a1",
-      target: { kind: "structure", id: "page" },
-      question: "Q-P1",
-      text: "Yes, 2000 characters.",
       answeredOn: "2026-11-02",
-      reason: "Reworded and set answeredBy.",
       changed: true,
+      id: "a1",
+      kind: "answer",
+      question: "Q-P1",
+      reason: "Reworded and set answeredBy.",
+      target: { id: "page", kind: "structure" },
+      text: "Yes, 2000 characters.",
     });
   });
 
   it("keeps a rejected suggestion's original and new text", () => {
     const decided = unwrap(
       recordVerdict({
-        proposals: frozenWith([suggestion]),
         id: "s1",
-        verdict: { verdict: "rejected", reason: "The original is right." },
+        proposals: frozenWith([suggestion]),
+        verdict: { reason: "The original is right.", verdict: "rejected" },
       })
     );
 
     const committed = unwrap(
       commitBatch({
-        proposals: decided,
-        layout,
-        saved: layout,
+        at,
         data: emptyData,
         hops: [],
+        layout,
+        proposals: decided,
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
     assert.deepStrictEqual(committed.rejected, [
       {
-        kind: "suggestion",
-        id: "s1",
-        target: { kind: "structure", id: "page" },
-        field: "oneLiner",
-        before: "Shows the map and records notes.",
         after: "Shows the map and saves each note.",
+        before: "Shows the map and records notes.",
+        field: "oneLiner",
+        id: "s1",
+        kind: "suggestion",
         reason: "The original is right.",
+        target: { id: "page", kind: "structure" },
       },
     ]);
   });
@@ -834,13 +834,13 @@ describe("the revision records the new kinds", () => {
   it("applies no layout change for any of them", () => {
     const committed = unwrap(
       commitBatch({
-        proposals: allDecided({ verdict: "accepted" }),
-        layout,
-        saved: layout,
+        at,
         data: emptyData,
         hops: [],
+        layout,
+        proposals: allDecided({ verdict: "accepted" }),
         revision: 1,
-        at,
+        saved: layout,
       })
     );
 
@@ -852,32 +852,32 @@ describe("a rejected item", () => {
   it("is edited again as a new open item of the same kind, linked to the old", () => {
     const decided = unwrap(
       recordVerdict({
-        proposals: frozenWith([answer]),
         id: "a1",
-        verdict: { verdict: "rejected", reason: "Too vague." },
+        proposals: frozenWith([answer]),
+        verdict: { reason: "Too vague.", verdict: "rejected" },
       })
     );
 
     const closed = unwrap(
       commitBatch({
-        proposals: decided,
-        layout,
-        saved: layout,
+        at,
         data: emptyData,
         hops: [],
+        layout,
+        proposals: decided,
         revision: 1,
-        at,
+        saved: layout,
       })
     ).proposals;
 
     const reopened = unwrap(
       reopenItem({
-        proposals: closed,
-        id: "a1",
-        newId: "a2",
-        layout,
-        known: known.structureIds,
         hops: [],
+        id: "a1",
+        known: known.structureIds,
+        layout,
+        newId: "a2",
+        proposals: closed,
         text: "Yes: 2000 characters, as the schema says.",
       })
     );
@@ -907,14 +907,14 @@ describe("a suggestion or an answer that is frozen", () => {
     [
       "suggestion",
       suggestion,
-      { ...suggestion, id: "s-again", after: "Other." },
+      { ...suggestion, after: "Other.", id: "s-again" },
     ],
     ["answer", answer, { ...answer, id: "a-again", text: "Other." }],
   ] as const)(
     "says a frozen %s waits for the agent's commit, not that it can be edited first",
     (_kind, held, again) => {
       const why = failure(
-        addItem({ proposals: frozenWith([held]), item: again, known })
+        addItem({ item: again, known, proposals: frozenWith([held]) })
       );
 
       assert.include(why, "in batch 1, which is waiting for the agent");
@@ -924,13 +924,13 @@ describe("a suggestion or an answer that is frozen", () => {
   );
 
   it("still says an open one can be edited or discarded first", () => {
-    const again: BatchItem = { ...suggestion, id: "s-again", after: "Other." };
+    const again: BatchItem = { ...suggestion, after: "Other.", id: "s-again" };
 
     const why = failure(
       addItem({
-        proposals: addAll(known, [suggestion]),
         item: again,
         known,
+        proposals: addAll(known, [suggestion]),
       })
     );
 
@@ -971,12 +971,12 @@ describe("answeredOn", () => {
 
   it("is checked in data.mjs too", () => {
     const resolved = {
-      id: "Q-P2",
-      state: "resolved",
-      text: "Does it work?",
       answer: "Yes.",
       answeredBy: "mippbipp",
       answeredOn: "2026-02-30",
+      id: "Q-P2",
+      state: "resolved",
+      text: "Does it work?",
     };
 
     assert.isTrue(
@@ -1015,19 +1015,19 @@ describe("warnings for items that point at nothing", () => {
 
       const pointing = addAll(
         {
-          structureIds: new Set(["page", "server", "ghost"]),
           hops: [
-            { id: "h-ghost", from: "page", to: "server" },
-            { id: "h-save", from: "page", to: "server" },
+            { from: "page", id: "h-ghost", to: "server" },
+            { from: "page", id: "h-save", to: "server" },
           ],
+          structureIds: new Set(["page", "server", "ghost"]),
         },
         [
-          { ...suggestion, target: { kind: "structure", id: "ghost" } },
-          { ...answer, target: { kind: "structure", id: "ghost" } },
-          { ...raised, target: { kind: "structure", id: "ghost" } },
+          { ...suggestion, target: { id: "ghost", kind: "structure" } },
+          { ...answer, target: { id: "ghost", kind: "structure" } },
+          { ...raised, target: { id: "ghost", kind: "structure" } },
           { ...spotNote },
-          { ...hopNote, target: { kind: "hop", id: "h-ghost" } },
-          { ...hopNote, id: "n-ok", target: { kind: "hop", id: "h-save" } },
+          { ...hopNote, target: { id: "h-ghost", kind: "hop" } },
+          { ...hopNote, id: "n-ok", target: { id: "h-save", kind: "hop" } },
         ]
       );
 
@@ -1061,8 +1061,8 @@ describe("the messages for items", () => {
 
     assert.include(
       Result.match(result, {
-        onSuccess: () => "",
         onFailure: (error) => error.message,
+        onSuccess: () => "",
       }),
       "A question item has only id, kind, target and text."
     );

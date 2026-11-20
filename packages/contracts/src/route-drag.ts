@@ -11,8 +11,8 @@ import type { GridPoint, Placement } from "./layout.ts";
  * neighbouring vertices, and `dragSegment` counts segments this way.
  */
 export const routeVertices = (
-  points: readonly GridPoint[]
-): readonly GridPoint[] =>
+  points: ReadonlyArray<GridPoint>
+): ReadonlyArray<GridPoint> =>
   Arr.map(routeCorners(points), ({ x, y }) => ({ x: x / 2, y: y / 2 }));
 
 type Axis = "x" | "y";
@@ -46,18 +46,18 @@ const snapHalf = (value: number) =>
   Math.sign(value) * (Math.round(Math.abs(value) * 2) / 2);
 
 interface Lateral {
-  readonly low: number;
   readonly high: number;
+  readonly low: number;
 }
 
 /** Where a leg along an axis meets a footprint. */
 interface Meeting {
   /** The edge's coordinate on the leg's axis. */
   readonly edge: number;
-  /** Which way is out of the footprint there, along the leg's axis. */
-  readonly out: 1 | -1;
   /** The stretch of the edge an end may take, clear of the corners. */
   readonly lateral: Lateral;
+  /** Which way is out of the footprint there, along the leg's axis. */
+  readonly out: 1 | -1;
 }
 
 /**
@@ -73,20 +73,20 @@ const meetingOf = (box: Placement, axis: Axis, coordinate: number): Meeting => {
 
   return {
     edge: near ? low : high,
-    out: near ? -1 : 1,
     lateral: {
-      low: startOf(box, across) + range.low,
       high: startOf(box, across) + range.high,
+      low: startOf(box, across) + range.low,
     },
+    out: near ? -1 : 1,
   };
 };
 
-const unbounded: Lateral = { low: -Infinity, high: Infinity };
+const unbounded: Lateral = { high: Infinity, low: -Infinity };
 
-const clamp = (value: number, { low, high }: Lateral) =>
+const clamp = (value: number, { high, low }: Lateral) =>
   Math.min(Math.max(value, low), high);
 
-const outside = (value: number, { low, high }: Lateral) =>
+const outside = (value: number, { high, low }: Lateral) =>
   value < low || value > high;
 
 /** `value`, or the nearest value a stub's length out of the footprint at `meeting`. */
@@ -103,14 +103,14 @@ export interface RouteEnds {
 
 /** The first two and last two vertices of a route, which its end legs run between. */
 interface EndLegs {
-  readonly first: GridPoint;
-  readonly second: GridPoint;
   readonly before: GridPoint;
+  readonly first: GridPoint;
   readonly last: GridPoint;
+  readonly second: GridPoint;
 }
 
 /** The end legs of `vertices`, or nothing when it has fewer than two points. */
-const endLegsOf = (vertices: readonly GridPoint[]): EndLegs | undefined => {
+const endLegsOf = (vertices: ReadonlyArray<GridPoint>): EndLegs | undefined => {
   const [first, second] = vertices;
   const last = vertices.at(-1);
   const before = vertices.at(-2);
@@ -120,16 +120,16 @@ const endLegsOf = (vertices: readonly GridPoint[]): EndLegs | undefined => {
     last === undefined ||
     before === undefined
     ? undefined
-    : { first, second, before, last };
+    : { before, first, last, second };
 };
 
 /** What a route must keep, as `check` requires, to be drawn between two footprints. */
 interface Keeping {
-  readonly ends: RouteEnds;
-  readonly startAxis: Axis;
   readonly endAxis: Axis;
-  readonly exit: Meeting;
+  readonly ends: RouteEnds;
   readonly entry: Meeting;
+  readonly exit: Meeting;
+  readonly startAxis: Axis;
 }
 
 /**
@@ -138,8 +138,8 @@ interface Keeping {
  * least a stub straight into the target.
  */
 const keeps = (
-  vertices: readonly GridPoint[],
-  { ends, startAxis, endAxis, exit, entry }: Keeping
+  vertices: ReadonlyArray<GridPoint>,
+  { endAxis, ends, entry, exit, startAxis }: Keeping
 ) => {
   const legs = endLegsOf(vertices);
 
@@ -147,7 +147,7 @@ const keeps = (
     return false;
   }
 
-  const { first, second, before, last } = legs;
+  const { before, first, last, second } = legs;
 
   return (
     onOutline(first, ends.from) &&
@@ -161,15 +161,15 @@ const keeps = (
 
 /** The ends of a route and the legs next to them. */
 interface Anatomy {
-  readonly vertices: readonly GridPoint[];
-  readonly startAxis: Axis;
   readonly endAxis: Axis;
-  readonly exit: Meeting;
   readonly entry: Meeting;
+  readonly exit: Meeting;
+  readonly startAxis: Axis;
+  readonly vertices: ReadonlyArray<GridPoint>;
 }
 
 const anatomyOf = (
-  vertices: readonly GridPoint[],
+  vertices: ReadonlyArray<GridPoint>,
   ends: RouteEnds
 ): Anatomy | undefined => {
   const legs = endLegsOf(vertices);
@@ -178,30 +178,30 @@ const anatomyOf = (
     return undefined;
   }
 
-  const { first, second, before, last } = legs;
+  const { before, first, last, second } = legs;
   const startAxis = axisOf(first, second);
   const endAxis = axisOf(before, last);
 
   return {
-    vertices,
-    startAxis,
     endAxis,
-    exit: meetingOf(ends.from, startAxis, first[startAxis]),
     entry: meetingOf(ends.to, endAxis, last[endAxis]),
+    exit: meetingOf(ends.from, startAxis, first[startAxis]),
+    startAxis,
+    vertices,
   };
 };
 
 /** `vertices` with segment `segment` moved to `line` across its own axis. */
 const withSegmentAt = ({
-  vertices,
-  segment,
-  moves,
   line,
+  moves,
+  segment,
+  vertices,
 }: {
-  readonly vertices: readonly GridPoint[];
-  readonly segment: number;
-  readonly moves: Axis;
   readonly line: number;
+  readonly moves: Axis;
+  readonly segment: number;
+  readonly vertices: ReadonlyArray<GridPoint>;
 }) =>
   Arr.map(vertices, (vertex, index) =>
     index === segment || index === segment + 1
@@ -215,18 +215,18 @@ const withSegmentAt = ({
  * dragged segment is. The same goes for the last end, mirrored.
  */
 const jogged = ({
-  moved,
-  line,
   anatomy,
   jogs,
+  line,
+  moved,
 }: {
-  readonly moved: readonly GridPoint[];
-  readonly line: number;
   readonly anatomy: Anatomy;
-  readonly jogs: { readonly start: boolean; readonly end: boolean };
+  readonly jogs: { readonly end: boolean; readonly start: boolean };
+  readonly line: number;
+  readonly moved: ReadonlyArray<GridPoint>;
 }) =>
   Arr.flatMap(moved, (vertex, index) => {
-    const { startAxis, endAxis, exit, entry } = anatomy;
+    const { endAxis, entry, exit, startAxis } = anatomy;
 
     if (index === 0 && jogs.start) {
       const along = exit.edge + exit.out * stubLength;
@@ -275,16 +275,16 @@ const jogged = ({
  * start and end on the footprints to begin with.
  */
 export const dragSegment = ({
+  ends,
+  offset,
   points,
   segment,
-  offset,
-  ends,
 }: {
-  readonly points: readonly GridPoint[];
-  readonly segment: number;
-  readonly offset: number;
   readonly ends: RouteEnds;
-}): readonly GridPoint[] => {
+  readonly offset: number;
+  readonly points: ReadonlyArray<GridPoint>;
+  readonly segment: number;
+}): ReadonlyArray<GridPoint> => {
   const vertices = routeVertices(points);
   const delta = snapHalf(offset);
   const anatomy = anatomyOf(vertices, ends);
@@ -301,7 +301,7 @@ export const dragSegment = ({
     return vertices;
   }
 
-  const { startAxis, endAxis, exit, entry } = anatomy;
+  const { endAxis, entry, exit, startAxis } = anatomy;
   const legs = vertices.length - 1;
   const moves = crossAxis(axisOf(start, finish));
 
@@ -311,13 +311,13 @@ export const dragSegment = ({
   ];
 
   const line = Arr.reduce(pushed, start[moves] + delta, pushedOut);
-  const moved = withSegmentAt({ vertices, segment, moves, line });
+  const moved = withSegmentAt({ line, moves, segment, vertices });
   const slidesStart = segment === 0;
   const slidesEnd = segment === legs - 1;
 
   const jogs = {
-    start: slidesStart && outside(line, exit.lateral),
     end: slidesEnd && outside(line, entry.lateral),
+    start: slidesStart && outside(line, exit.lateral),
   };
 
   // A straight route that jogs needs room for both stubs.
@@ -331,18 +331,18 @@ export const dragSegment = ({
   );
 
   const stopped = withSegmentAt({
-    vertices,
-    segment,
-    moves,
     line: stoppedAt,
+    moves,
+    segment,
+    vertices,
   });
 
   const candidates =
     (jogs.start || jogs.end) && room
-      ? [jogged({ moved, line, anatomy, jogs }), stopped]
+      ? [jogged({ anatomy, jogs, line, moved }), stopped]
       : [stopped];
 
-  const keeping: Keeping = { ends, startAxis, endAxis, exit, entry };
+  const keeping: Keeping = { endAxis, ends, entry, exit, startAxis };
 
   return (
     Arr.findFirst(Arr.map(candidates, routeVertices), (next) =>
@@ -353,9 +353,9 @@ export const dragSegment = ({
 
 /** Where one segment of a route is drawn, and the axis it runs along. */
 export interface SegmentGuide {
+  readonly axis: Axis;
   readonly from: GridPoint;
   readonly to: GridPoint;
-  readonly axis: Axis;
 }
 
 /** How far a drawn line may sit from its route, in grid units: a lane or a jog. */
@@ -365,7 +365,7 @@ const alongOf = (guide: SegmentGuide) => {
   const a = guide.from[guide.axis];
   const b = guide.to[guide.axis];
 
-  return { low: Math.min(a, b), high: Math.max(a, b) };
+  return { high: Math.max(a, b), low: Math.min(a, b) };
 };
 
 const overlapOf = (a: SegmentGuide, b: SegmentGuide) => {
@@ -386,30 +386,33 @@ const guideAcross = (guide: SegmentGuide) => guide.from[crossAxis(guide.axis)];
  * is.
  */
 export const segmentGuides = ({
-  route,
   drawn,
+  route,
 }: {
-  readonly route: readonly GridPoint[];
-  readonly drawn: readonly GridPoint[];
-}): readonly SegmentGuide[] => {
+  readonly drawn: ReadonlyArray<GridPoint>;
+  readonly route: ReadonlyArray<GridPoint>;
+}): ReadonlyArray<SegmentGuide> => {
   const vertices = routeVertices(route);
 
-  const legs = Arr.flatMap(drawn, (from, index): readonly SegmentGuide[] => {
-    const to = drawn[index + 1];
+  const legs = Arr.flatMap(
+    drawn,
+    (from, index): ReadonlyArray<SegmentGuide> => {
+      const to = drawn[index + 1];
 
-    return to === undefined || (from.x === to.x && from.y === to.y)
-      ? []
-      : [{ from, to, axis: axisOf(from, to) }];
-  });
+      return to === undefined || (from.x === to.x && from.y === to.y)
+        ? []
+        : [{ axis: axisOf(from, to), from, to }];
+    }
+  );
 
-  return Arr.flatMap(vertices, (from, index): readonly SegmentGuide[] => {
+  return Arr.flatMap(vertices, (from, index): ReadonlyArray<SegmentGuide> => {
     const to = vertices[index + 1];
 
     if (to === undefined) {
       return [];
     }
 
-    const own: SegmentGuide = { from, to, axis: axisOf(from, to) };
+    const own: SegmentGuide = { axis: axisOf(from, to), from, to };
 
     const near = Arr.filter(
       legs,

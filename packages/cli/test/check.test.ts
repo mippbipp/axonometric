@@ -22,9 +22,9 @@ const proposals = (layout: string) =>
   `{ "format": 1, "revision": 3, "layout": ${layout} }\n`;
 
 const CheckReport = Schema.Struct({
+  errors: Schema.Array(MapProblem),
   home: Schema.String,
   ok: Schema.Boolean,
-  errors: Schema.Array(MapProblem),
   warnings: Schema.Array(MapProblem),
 });
 
@@ -60,14 +60,14 @@ const revisionText = Effect.fnUntraced(function* (
   )(module);
 
   return yield* encodeRevision({
+    accepted: [],
+    data,
     format: 1,
+    layout: yield* decodeLayout(files[layoutFile] ?? ""),
+    message: "Move Save server",
+    rejected: [],
     revision: n,
     savedAt: "2026-11-01T09:00:00.000Z",
-    message: "Move Save server",
-    accepted: [],
-    rejected: [],
-    data,
-    layout: yield* decodeLayout(files[layoutFile] ?? ""),
     ...changes,
   });
 });
@@ -79,7 +79,7 @@ const decodeReport = Schema.decodeUnknownEffect(
 /** Runs `check` on the full map with some of its files replaced. */
 const checkWith = Effect.fnUntraced(function* (
   files: HomeFiles,
-  flags: readonly string[] = []
+  flags: ReadonlyArray<string> = []
 ) {
   const home = yield* makeHome({ ...(yield* fullMap), ...files });
 
@@ -131,12 +131,12 @@ data.structures[1].status = "retired";`);
       assert.strictEqual(result.exitCode, 1);
       assert.isFalse(report.ok);
       assert.deepStrictEqual(
-        Arr.map(report.errors, ({ severity, file, path }) => ({
-          severity,
+        Arr.map(report.errors, ({ file, path, severity }) => ({
           file,
           path,
+          severity,
         })),
-        [{ severity: "error", file: "data.mjs", path: "structures[1].status" }]
+        [{ file: "data.mjs", path: "structures[1].status", severity: "error" }]
       );
       assert.include(report.errors[0]?.message ?? "", "live, planned, off");
       assert.deepStrictEqual(report.warnings, []);
@@ -157,8 +157,8 @@ data.structures[1].status = "retired";`);
       assert.strictEqual(checked.exitCode, 0);
       assert.isTrue(report.ok);
       assert.deepStrictEqual(
-        Arr.map(report.warnings, ({ severity, path }) => ({ severity, path })),
-        [{ severity: "warning", path: "groups[3]" }]
+        Arr.map(report.warnings, ({ path, severity }) => ({ path, severity })),
+        [{ path: "groups[3]", severity: "warning" }]
       );
       assert.strictEqual(built.exitCode, 0, built.stderr);
       assert.include(
@@ -339,12 +339,12 @@ data.overview.deepDives[0].link = "research/missing.md#top";`);
             format: 1,
             revision: 0,
             structures: {
-              engineer: { x: 4, y: 4, w: 2, d: 2 },
-              page: { x: 4, y: 6, w: 2, d: 2 },
-              server: { x: 4, y: 2, w: 2, d: 2 },
-              proposals: { x: 6, y: 4, w: 2, d: 2 },
-              "pull-request": { x: 2, y: 4, w: 2, d: 2 },
-              upstream: { x: 16, y: 0, w: 2, d: 2 },
+              engineer: { d: 2, w: 2, x: 4, y: 4 },
+              page: { d: 2, w: 2, x: 4, y: 6 },
+              proposals: { d: 2, w: 2, x: 6, y: 4 },
+              "pull-request": { d: 2, w: 2, x: 2, y: 4 },
+              server: { d: 2, w: 2, x: 4, y: 2 },
+              upstream: { d: 2, w: 2, x: 16, y: 0 },
             },
           }),
         },
@@ -463,7 +463,7 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
 
           assert.strictEqual(result.exitCode, 0, result.stdout);
           assert.deepStrictEqual(
-            Arr.map(report.warnings, ({ path, message }) => [path, message]),
+            Arr.map(report.warnings, ({ message, path }) => [path, message]),
             [
               [
                 "chapters[1].reveals",
@@ -705,8 +705,8 @@ data.chapters[2].plays = ["h-note", "h-save", "h-store", "h-pr", "h-note", "h-sa
       () =>
         Effect.gen(function* () {
           const result = yield* checkWith({
-            "review/map/history/notes.txt": "hello",
             "review/map/history/0001.json.1234.tmp": "half a write",
+            "review/map/history/notes.txt": "hello",
           });
 
           assert.strictEqual(result.exitCode, 0, result.stdout);

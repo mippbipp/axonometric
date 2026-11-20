@@ -12,7 +12,7 @@ const inflateAsync = promisify(inflate);
 /** The RGBA pixels of an 8-bit RGBA PNG, such as resvg writes. */
 export const decodePng = Effect.fnUntraced(function* (bytes: Uint8Array) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const data: Uint8Array[] = [];
+  const data: Array<Uint8Array> = [];
   let width = 0;
   let height = 0;
   let at = pngSignature.length;
@@ -71,11 +71,11 @@ export const decodePng = Effect.fnUntraced(function* (bytes: Uint8Array) {
   }
 
   return {
-    width,
     height,
     pixel: (x: number, y: number) => [
       ...pixels.subarray((y * width + x) * 4, (y * width + x) * 4 + 4),
     ],
     pixels,
+    width,
   };
 });

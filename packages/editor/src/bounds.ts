@@ -1,14 +1,14 @@
 /** A box in SVG user units: what the viewport fits to the window. */
 export interface Bounds {
-  readonly minX: number;
-  readonly minY: number;
   readonly maxX: number;
   readonly maxY: number;
+  readonly minX: number;
+  readonly minY: number;
 }
 
 /** The smallest box holding every point, or `undefined` for none. */
 export const boundsOf = (
-  points: readonly { readonly sx: number; readonly sy: number }[]
+  points: ReadonlyArray<{ readonly sx: number; readonly sy: number }>
 ): Bounds | undefined => {
   if (points.length === 0) {
     return undefined;
@@ -26,5 +26,5 @@ export const boundsOf = (
     maxY = Math.max(maxY, sy);
   }
 
-  return { minX, minY, maxX, maxY };
+  return { maxX, maxY, minX, minY };
 };

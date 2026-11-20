@@ -66,9 +66,9 @@ interface Spot {
 }
 
 interface TitleReport {
-  readonly zone: string;
   readonly insideOwn: boolean;
-  readonly overOtherZones: readonly string[];
+  readonly overOtherZones: ReadonlyArray<string>;
+  readonly zone: string;
 }
 
 /**
@@ -157,7 +157,7 @@ describe("zones in the Iso view", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { page, errors } = yield* reviewPage;
+          const { errors, page } = yield* reviewPage;
 
           yield* goToLast(page);
 
@@ -183,16 +183,16 @@ describe("zones in the Iso view", () => {
         yield* goToLast(page);
 
         const reports = yield* Effect.promise(() =>
-          page.evaluate<readonly TitleReport[]>(titleReports)
+          page.evaluate<ReadonlyArray<TitleReport>>(titleReports)
         );
 
         assert.lengthOf(reports, 3);
         assert.deepStrictEqual(
           reports,
           Arr.map(reports, ({ zone }) => ({
-            zone,
             insideOwn: true,
             overOtherZones: [],
+            zone,
           }))
         );
       })
@@ -219,7 +219,7 @@ describe("zones in the Iso view", () => {
         yield* goToLast(page);
 
         const spots = yield* Effect.promise(() =>
-          page.evaluate<readonly Spot[]>(stacksOverZones)
+          page.evaluate<ReadonlyArray<Spot>>(stacksOverZones)
         );
 
         // Every structure, and every hop, stands on a zone in this chapter.
