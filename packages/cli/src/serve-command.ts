@@ -3,6 +3,7 @@ import { ServerState } from "@axonometric/contracts";
 import { Console, Effect, Option, Schema } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
+import { homePaths } from "./home-paths.ts";
 import { defaultHost, serve } from "./serve.ts";
 import { runningServer } from "./server-state.ts";
 
@@ -60,7 +61,8 @@ const StatusReport = Schema.Union([
 const encodeReport = Schema.encodeEffect(Schema.fromJsonString(StatusReport));
 
 const status = Effect.fn("status")(function* (home: string, json: boolean) {
-  const server = yield* runningServer(home);
+  const value = yield* homePaths(home);
+  const server = yield* runningServer(value);
 
   const report = Option.match(server, {
     onNone: () => ({ home, running: false as const }),

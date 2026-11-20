@@ -2,6 +2,7 @@ import { Console, Effect, FileSystem, Option, Path, Schema } from "effect";
 import { Argument, CliError, Command } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { homePaths } from "./home-paths.ts";
 import { starterData } from "./starter.ts";
 
 /** The home folder already has a map, and `init` never overwrites one. */
@@ -61,7 +62,7 @@ const init = Effect.fn("init")(function* (home: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const absolute = path.resolve(home);
-  const file = path.join(absolute, "data.mjs");
+  const { dataFile: file } = yield* homePaths(absolute);
 
   yield* fs.makeDirectory(absolute, { recursive: true });
 

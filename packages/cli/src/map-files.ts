@@ -36,6 +36,8 @@ import { CliError } from "effect/cli";
 import { Git } from "./git.ts";
 import type { NoRepo, Repo } from "./git.ts";
 import { checkHistory } from "./history.ts";
+import { mapFileNames } from "./home-paths.ts";
+import type { HomePaths } from "./home-paths.ts";
 
 /**
  * The map has at least one error. `problems` holds every error and warning
@@ -88,15 +90,13 @@ const encodeProposalsFile = Schema.encodeEffect(ProposalsFile);
 export const encodeProposals = (proposals: Proposals) =>
   encodeProposalsFile(proposals).pipe(Effect.orDie);
 
-/** Returns the path of `name` in `home`, or a problem when it's missing. */
+/** Returns `file`, or a problem naming it `name` when it's missing. */
 const findFile = Effect.fnUntraced(function* (
-  home: string,
+  file: string,
   name: MapFile,
   fix: string
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, name);
   const exists = yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false));
 
   return exists
@@ -110,11 +110,11 @@ const findFile = Effect.fnUntraced(function* (
  * server, gets the file's current contents.
  */
 const loadData = Effect.fnUntraced(function* (
-  home: string
-): Effect.fn.Return<Loaded<MapData>, never, FileSystem.FileSystem | Path.Path> {
+  paths: HomePaths
+): Effect.fn.Return<Loaded<MapData>, never, FileSystem.FileSystem> {
   const found = yield* findFile(
-    home,
-    "data.mjs",
+    paths.dataFile,
+    mapFileNames.data,
     "Write the map's meaning there as an ES module with a default export."
   );
 
@@ -128,7 +128,7 @@ const loadData = Effect.fnUntraced(function* (
   const module = yield* Effect.tryPromise({
     catch: (cause) =>
       fileProblem(
-        "data.mjs",
+        mapFileNames.data,
         `could not be imported: ${describeCause(cause)}. Fix the module so Node can import it.`
       ),
     try: (): Promise<{ readonly default?: unknown }> => import(url),
@@ -141,14 +141,14 @@ const loadData = Effect.fnUntraced(function* (
   if (!("default" in module.success)) {
     return Result.fail([
       fileProblem(
-        "data.mjs",
+        mapFileNames.data,
         "has no default export. Add export default { format: 1, revision: 0, overview, groups, structures, hops, flows, chapters }."
       ),
     ]);
   }
 
   return Result.mapError(decodeData(module.success.default), (failure) =>
-    problemsFromIssue("data.mjs", failure.issue)
+    problemsFromIssue(mapFileNames.data, failure.issue)
   );
 });
 
@@ -162,14 +162,12 @@ interface JsonFile<A> {
   readonly name: MapFile;
 }
 
-/** Reads the JSON file `name` in `home` with `decode`. */
+/** Reads the JSON file `file` with `decode`. */
 const loadJson = Effect.fnUntraced(function* <A>(
-  home: string,
+  file: string,
   { decode, missing, name }: JsonFile<A>
-): Effect.fn.Return<Loaded<A>, never, FileSystem.FileSystem | Path.Path> {
+): Effect.fn.Return<Loaded<A>, never, FileSystem.FileSystem> {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, name);
   const exists = yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false));
 
   if (!exists) {
@@ -190,19 +188,19 @@ const loadJson = Effect.fnUntraced(function* <A>(
 });
 
 /** Reads `layout.json`. A missing file is an empty layout, which `build` fills. */
-export const loadLayout = (home: string) =>
-  loadJson(home, {
+export const loadLayout = (paths: HomePaths) =>
+  loadJson(paths.layoutFile, {
     decode: decodeLayout,
     missing: emptyLayout,
-    name: "layout.json",
+    name: mapFileNames.layout,
   });
 
 /** Reads `proposals.json`. A missing file means nothing is pending. */
-export const loadProposals = (home: string) =>
-  loadJson(home, {
+export const loadProposals = (paths: HomePaths) =>
+  loadJson(paths.proposalsFile, {
     decode: decodeProposals,
     missing: emptyProposals,
-    name: "proposals.json",
+    name: mapFileNames.proposals,
   });
 
 /**
@@ -249,7 +247,7 @@ const noSources: SourceContext = {
  * with none never runs git.
  */
 const sourceContext = Effect.fnUntraced(function* (
-  home: string,
+  paths: HomePaths,
   data: MapData
 ) {
   const listed = Arr.some(
@@ -262,7 +260,7 @@ const sourceContext = Effect.fnUntraced(function* (
   }
 
   const git = yield* Git;
-  const repo = yield* git.repoOf(home);
+  const repo = yield* git.repoOf(paths.home);
 
   return Result.match(repo, {
     onFailure: (reason): SourceContext => ({
@@ -350,24 +348,23 @@ const asWarning = (problem: MapProblem): MapProblem => ({
 });
 
 /**
- * Loads the map in `home` and finds every error and warning in it. Links
- * resolve against `output`, the folder SYSTEM.md is written to. The problems
+ * Loads the map in the home folder and finds every error and warning in it.
+ * Links resolve against the output folder, where SYSTEM.md is written. The problems
  * are those of the layout `options.arrange` returns, which is the saved
  * layout by default. Writes nothing.
  */
 export const inspectMap = Effect.fnUntraced(function* (
-  home: string,
-  output: string,
+  paths: HomePaths,
   options: InspectOptions = {}
 ) {
   const arrange = options.arrange ?? ((_data, saved: Layout) => saved);
 
   const [data, saved, loadedProposals] = yield* Effect.all(
-    [loadData(home), loadLayout(home), loadProposals(home)],
+    [loadData(paths), loadLayout(paths), loadProposals(paths)],
     { concurrency: 1 }
   );
 
-  const history = yield* checkHistory(home, options.strictHistory === true);
+  const history = yield* checkHistory(paths, options.strictHistory === true);
 
   const noProblems: ReadonlyArray<MapProblem> = [];
 
@@ -383,9 +380,9 @@ export const inspectMap = Effect.fnUntraced(function* (
   });
 
   if (Result.isSuccess(data) && Result.isSuccess(saved)) {
-    const links = yield* existingLinks(output, data.success);
+    const links = yield* existingLinks(paths.output, data.success);
     const layout = arrange(data.success, saved.success);
-    const sources = yield* sourceContext(home, data.success);
+    const sources = yield* sourceContext(paths, data.success);
 
     const sourceFacts = Option.isSome(sources.repo)
       ? yield* sources.repo.value.factsOf(data.success)
@@ -440,27 +437,24 @@ export interface LoadRequest {
   readonly command: string;
   /** As for `InspectOptions`. */
   readonly drawingWarnings?: boolean;
-  readonly home: string;
-  /** The folder SYSTEM.md is written to, which links resolve against. */
-  readonly output: string;
+  readonly paths: HomePaths;
   readonly strictHistory?: boolean;
   readonly strictProposals?: boolean;
 }
 
 /**
- * Loads the map in `home`, failing with every problem when it has an error.
+ * Loads the map in the home folder, failing with every problem when it has an error.
  * Returns the map and its warnings otherwise.
  */
 export const loadMap = Effect.fnUntraced(function* ({
   arrange,
   command,
   drawingWarnings,
-  home,
-  output,
+  paths,
   strictHistory,
   strictProposals,
 }: LoadRequest) {
-  const { map, problems, sourcesSkipped } = yield* inspectMap(home, output, {
+  const { map, problems, sourcesSkipped } = yield* inspectMap(paths, {
     arrange,
     drawingWarnings,
     strictHistory,
@@ -468,7 +462,7 @@ export const loadMap = Effect.fnUntraced(function* ({
   });
 
   if (splitProblems(problems).errors.length > 0 || Option.isNone(map)) {
-    return yield* MapInvalid.make({ command, home, problems });
+    return yield* MapInvalid.make({ command, home: paths.home, problems });
   }
 
   return { ...map.value, sourcesSkipped, warnings: problems };

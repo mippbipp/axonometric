@@ -1,11 +1,11 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Clock, Effect, Order, Path } from "effect";
+import { Array as Arr, Clock, Effect, Order } from "effect";
 import type { Page } from "playwright";
 
 import { goToChapterPaused, inPage, openUrl, waitFor } from "./browser.ts";
 import { pipelineMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { makeHome, startServe, mapIn } from "./harness.ts";
 
 // The drag warnings on a map big enough that checking every chapter takes
 // seconds: the flake pipeline, with 15 structures, 29 hops and 8 chapters.
@@ -13,10 +13,9 @@ import { makeHome, startServe } from "./harness.ts";
 // up with the pointer while the rest come in.
 
 const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
   const pipelineMapFiles = yield* pipelineMap;
   const root = yield* makeHome(pipelineMapFiles);
-  const home = path.join(root, "flake-pipeline", "map");
+  const { home } = mapIn(root, "flake-pipeline");
   const serve = yield* startServe(home, ["--port", "0"]);
   const { errors, page } = yield* openUrl(serve.url);
 

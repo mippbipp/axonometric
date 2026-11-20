@@ -2,14 +2,17 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 
 import { crowdedMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapIn } from "./harness.ts";
 
 describe("routing", () => {
   it.effect("check warns about the crowded map's hop under a box", () =>
     Effect.gen(function* () {
       const crowdedMapFiles = yield* crowdedMap;
       const home = yield* makeHome(crowdedMapFiles);
-      const result = yield* runCli(home, ["check", `${home}/crowded/map`]);
+      const result = yield* runCli(home, [
+        "check",
+        mapIn(home, "crowded").home,
+      ]);
 
       assert.strictEqual(result.exitCode, 0, result.stdout + result.stderr);
       assert.include(result.stdout, ": 0 errors, 1 warning.");
@@ -24,7 +27,7 @@ describe("routing", () => {
     Effect.gen(function* () {
       const crowdedMapFiles = yield* crowdedMap;
       const home = yield* makeHome(crowdedMapFiles);
-      const map = `${home}/crowded/map`;
+      const map = mapIn(home, "crowded").home;
       const checked = yield* runCli(home, ["check", map]);
       const built = yield* runCli(home, ["build", map]);
 

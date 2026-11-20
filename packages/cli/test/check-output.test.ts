@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, String as Str } from "effect";
 
 import { shapesMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapIn } from "./harness.ts";
 
 describe("check", () => {
   it.effect(
@@ -11,7 +11,7 @@ describe("check", () => {
       Effect.gen(function* () {
         const shapesMapFiles = yield* shapesMap;
         const home = yield* makeHome(shapesMapFiles);
-        const map = `${home}/shapes/map`;
+        const map = mapIn(home, "shapes").home;
         const result = yield* runCli(home, ["check", map]);
 
         const printed = Arr.map(

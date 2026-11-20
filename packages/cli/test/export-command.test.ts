@@ -10,14 +10,18 @@ import {
   String as Str,
 } from "effect";
 
+import { stateFolderName } from "../src/home-paths.ts";
 import { crowdedMap, minimalMap, pipelineMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 import type { HomeFiles } from "./harness.ts";
 
 /** The files in the home folder that are the map's own, not the lock's. */
 const mapFiles = (files: HomeFiles) =>
   Arr.sort(
-    Arr.filter(Rec.keys(files), (name) => !Str.includes(".axonometric/")(name)),
+    Arr.filter(
+      Rec.keys(files),
+      (name) => !Str.includes(`${stateFolderName}/`)(name)
+    ),
     Order.String
   );
 
@@ -72,10 +76,9 @@ describe("export", () => {
   describe("--format excalidraw", () => {
     it.effect("writes the map as an Excalidraw scene, next to SYSTEM.md", () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const pipelineMapFiles = yield* pipelineMap;
         const home = yield* makeHome(pipelineMapFiles);
-        const map = path.join(home, "flake-pipeline", "map");
+        const map = mapIn(home, "flake-pipeline").home;
 
         const result = yield* runCli(home, [
           "export",
@@ -123,7 +126,7 @@ describe("export", () => {
         const path = yield* Path.Path;
         const crowdedMapFiles = yield* crowdedMap;
         const home = yield* makeHome(crowdedMapFiles);
-        const map = path.join(home, "crowded", "map");
+        const map = mapIn(home, "crowded").home;
 
         const result = yield* runCli(home, [
           "export",
@@ -148,16 +151,15 @@ describe("export", () => {
       "places structures that have no position, and saves nothing else",
       () =>
         Effect.gen(function* () {
-          const path = yield* Path.Path;
           const files = yield* minimalMap;
 
           const home = yield* makeHome({
             ...files,
-            "pipeline/map/layout.json":
+            [mapKeys("pipeline").layoutFile]:
               '{"format":1,"revision":0,"structures":{}}',
           });
 
-          const map = path.join(home, "pipeline", "map");
+          const map = mapIn(home, "pipeline").home;
 
           // The default name is the page's, the system alone, whatever the
           // view and chapter.
@@ -175,11 +177,11 @@ describe("export", () => {
           assert.strictEqual(result.exitCode, 0, result.stderr);
           assert.isDefined(result.files["pipeline/pipeline.excalidraw"]);
           assert.strictEqual(
-            result.files["pipeline/map/layout.json"],
+            result.files[mapKeys("pipeline").layoutFile],
             '{"format":1,"revision":0,"structures":{}}'
           );
-          assert.isUndefined(result.files["pipeline/SYSTEM.md"]);
-          assert.isUndefined(result.files["pipeline/pipeline.html"]);
+          assert.isUndefined(result.files[mapKeys("pipeline").systemMdFile]);
+          assert.isUndefined(result.files[mapKeys("pipeline").pageFile]);
         }).pipe(Effect.provide(NodeServices.layer))
     );
   });
@@ -190,7 +192,7 @@ describe("export", () => {
         const path = yield* Path.Path;
         const minimalMapFiles = yield* minimalMap;
         const home = yield* makeHome(minimalMapFiles);
-        const map = path.join(home, "pipeline", "map");
+        const map = mapIn(home, "pipeline").home;
 
         const result = yield* runCli(home, [
           "export",
@@ -217,10 +219,9 @@ describe("export", () => {
       "an unknown %s %s lists the valid values",
       ([flag, value, valid]) =>
         Effect.gen(function* () {
-          const path = yield* Path.Path;
           const minimalMapFiles = yield* minimalMap;
           const home = yield* makeHome(minimalMapFiles);
-          const map = path.join(home, "pipeline", "map");
+          const map = mapIn(home, "pipeline").home;
 
           const result = yield* runCli(home, ["export", map, flag, value]);
 
@@ -235,18 +236,17 @@ describe("export", () => {
           }
 
           assert.deepStrictEqual(mapFiles(result.files), [
-            "pipeline/map/data.mjs",
-            "pipeline/map/layout.json",
+            mapKeys("pipeline").dataFile,
+            mapKeys("pipeline").layoutFile,
           ]);
         }).pipe(Effect.provide(NodeServices.layer))
     );
 
     it.effect("an unknown chapter lists the chapters, by number and id", () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const crowdedMapFiles = yield* crowdedMap;
         const home = yield* makeHome(crowdedMapFiles);
-        const map = path.join(home, "crowded", "map");
+        const map = mapIn(home, "crowded").home;
 
         for (const chapter of ["c-nope", "0", "3"]) {
           const result = yield* runCli(home, [
@@ -273,10 +273,9 @@ describe("export", () => {
       "--flow draws a picked flow's hops in the spotlight",
       () =>
         Effect.gen(function* () {
-          const path = yield* Path.Path;
           const pipelineMapFiles = yield* pipelineMap;
           const home = yield* makeHome(pipelineMapFiles);
-          const map = path.join(home, "flake-pipeline", "map");
+          const map = mapIn(home, "flake-pipeline").home;
           const file = "flake-pipeline/flake-pipeline-iso-chapter-8.svg";
 
           const stale = yield* runCli(home, [
@@ -314,10 +313,9 @@ describe("export", () => {
 
     it.effect("--flow names a flow of the map, in the last chapter", () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const pipelineMapFiles = yield* pipelineMap;
         const home = yield* makeHome(pipelineMapFiles);
-        const map = path.join(home, "flake-pipeline", "map");
+        const map = mapIn(home, "flake-pipeline").home;
 
         const unknown = yield* runCli(home, [
           "export",
@@ -351,10 +349,9 @@ describe("export", () => {
 
     it.effect("finds a chapter by id or by number before drawing", () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const crowdedMapFiles = yield* crowdedMap;
         const home = yield* makeHome(crowdedMapFiles);
-        const map = path.join(home, "crowded", "map");
+        const map = mapIn(home, "crowded").home;
 
         for (const chapter of ["c-edge", "1"]) {
           const result = yield* runCli(home, [
@@ -376,10 +373,9 @@ describe("export", () => {
   describe("the lock", () => {
     it.effect("takes and releases the lock", () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const minimalMapFiles = yield* minimalMap;
         const home = yield* makeHome(minimalMapFiles);
-        const map = path.join(home, "pipeline", "map");
+        const map = mapIn(home, "pipeline").home;
 
         const result = yield* runCli(home, [
           "export",
@@ -390,8 +386,8 @@ describe("export", () => {
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
         // Taking the lock makes .axonometric/ with its .gitignore.
-        assert.isDefined(result.files["pipeline/map/.axonometric/.gitignore"]);
-        assert.isUndefined(result.files["pipeline/map/.axonometric/lock"]);
+        assert.isDefined(result.files[mapKeys("pipeline").gitignoreFile]);
+        assert.isUndefined(result.files[mapKeys("pipeline").lockFile]);
       }).pipe(Effect.provide(NodeServices.layer))
     );
   });

@@ -16,7 +16,15 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, serveReviewMap, startServe } from "./harness.ts";
+import {
+  makeHome,
+  runCli,
+  serveReviewMap,
+  startServe,
+  mapKeys,
+  mapIn,
+  homeAt,
+} from "./harness.ts";
 import { ownOrigin, writeText } from "./revisions.ts";
 import type { Sent } from "./revisions.ts";
 
@@ -171,13 +179,12 @@ describe("writing pending layout changes over HTTP", () => {
   it.live("saves a write from the server's own origin to proposals.json", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
       const { home, url } = yield* served;
 
       const sent = yield* put(url, ownOrigin(url), moveBody(0, 4));
 
       assert.strictEqual(sent.status, 200, sent.body);
-      const saved = yield* fs.readFileString(path.join(home, "proposals.json"));
+      const saved = yield* fs.readFileString(homeAt(home).proposalsFile);
 
       const savedProposals = yield* decodeProposals(saved);
       assert.deepStrictEqual(savedProposals, {
@@ -427,7 +434,6 @@ describe("writing pending layout changes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, url } = yield* served;
 
         const [moved, written] = yield* Effect.all(
@@ -441,11 +447,9 @@ describe("writing pending layout changes over HTTP", () => {
         assert.strictEqual(moved.exitCode, 0, moved.stderr);
         assert.strictEqual(written.status, 200, written.body);
 
-        const layout = yield* fs.readFileString(path.join(home, "layout.json"));
+        const layout = yield* fs.readFileString(homeAt(home).layoutFile);
 
-        const proposals = yield* fs.readFileString(
-          path.join(home, "proposals.json")
-        );
+        const proposals = yield* fs.readFileString(homeAt(home).proposalsFile);
 
         assert.include(layout, '"server": {');
         assert.match(layout, /"server":\s*\{\s*"x": 10,/u);
@@ -514,15 +518,14 @@ describe("writing pending layout changes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const map = yield* fullMap;
 
         const root = yield* makeHome({
           ...map,
-          "review/map/proposals.json": "{ not json",
+          [mapKeys("review").proposalsFile]: "{ not json",
         });
 
-        const home = path.join(root, "review", "map");
+        const { home } = mapIn(root, "review");
         const serve = yield* startServe(home, ["--port", "0"]);
         const state = yield* getState(serve.url);
 
@@ -539,7 +542,7 @@ describe("writing pending layout changes over HTTP", () => {
         assert.strictEqual(sent.status, 409, sent.body);
 
         const proposalsText = yield* fs.readFileString(
-          path.join(home, "proposals.json")
+          homeAt(home).proposalsFile
         );
 
         assert.strictEqual(proposalsText, "{ not json");

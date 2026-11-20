@@ -18,14 +18,20 @@ import {
   Array as Arr,
   Effect,
   Option,
-  Path,
   Record as Rec,
   Schema,
   String as Str,
 } from "effect";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import {
+  makeHome,
+  runCli,
+  startServe,
+  mapKeys,
+  homeKeys,
+  mapIn,
+} from "./harness.ts";
 import { post as postText } from "./revisions.ts";
 
 // Seam 1: a group and a chapter change through the review loop. The review
@@ -89,13 +95,14 @@ const homeWith = (
   dataEdit: (data: string) => string = (data) => data
 ) =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
     const files = yield* fullMap;
 
     const root = yield* makeHome({
       ...files,
-      "review/map/data.mjs": dataEdit(files["review/map/data.mjs"] ?? ""),
-      "review/map/proposals.json": fileOf({
+      [mapKeys("review").dataFile]: dataEdit(
+        files[mapKeys("review").dataFile] ?? ""
+      ),
+      [mapKeys("review").proposalsFile]: fileOf({
         batches: [batchOf(items)],
         format: 1,
         layout: [],
@@ -103,7 +110,7 @@ const homeWith = (
       }),
     });
 
-    return { home: path.join(root, "review", "map"), root };
+    return { home: mapIn(root, "review").home, root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 /**
@@ -144,7 +151,6 @@ const decodeReview = Schema.decodeUnknownEffect(
 /** A batch the agent has rejected and committed, so its items can be edited again. */
 const rejectedHome = (items: ReadonlyArray<BatchItem>) =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
     const files = yield* fullMap;
 
     const reasons = Rec.fromEntries(
@@ -156,7 +162,7 @@ const rejectedHome = (items: ReadonlyArray<BatchItem>) =>
 
     const root = yield* makeHome({
       ...files,
-      "review/map/proposals.json": fileOf({
+      [mapKeys("review").proposalsFile]: fileOf({
         batches: [
           {
             ...batchOf(items),
@@ -170,7 +176,7 @@ const rejectedHome = (items: ReadonlyArray<BatchItem>) =>
       }),
     });
 
-    return { home: path.join(root, "review", "map"), root };
+    return { home: mapIn(root, "review").home, root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 /** A write the page could send: a JSON object of known fields. */
@@ -278,7 +284,7 @@ describe("a group made from two structures, through freeze, verdict and commit",
         );
 
         const proposals = yield* decodeProposals(
-          committed.files["proposals.json"] ?? ""
+          committed.files[homeKeys.proposalsFile] ?? ""
         );
 
         const verdict = proposals.batches?.[0]?.verdicts.g1;
@@ -362,10 +368,9 @@ describe("group and chapter writes over HTTP", () => {
     "creates a group with its members in one write, and lists the sections apart in the prompt",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const fullMapFiles = yield* fullMap;
         const root = yield* makeHome(fullMapFiles);
-        const home = path.join(root, "review", "map");
+        const { home } = mapIn(root, "review");
         const serve = yield* startServe(home, ["--port", "0"]);
 
         const made = yield* post(serve.url, "/api/groups", {
@@ -429,10 +434,9 @@ describe("group and chapter writes over HTTP", () => {
 
   it.live("guards a frozen group and chapter change", () =>
     Effect.gen(function* () {
-      const path = yield* Path.Path;
       const fullMapFiles = yield* fullMap;
       const root = yield* makeHome(fullMapFiles);
-      const home = path.join(root, "review", "map");
+      const { home } = mapIn(root, "review");
       const serve = yield* startServe(home, ["--port", "0"]);
 
       yield* post(serve.url, "/api/groups", {
@@ -493,8 +497,8 @@ describe("a group or chapter commit leaves layout.json as it was", () => {
       assert.strictEqual(before.exitCode, 0, before.stderr);
       assert.strictEqual(committed.exitCode, 0, committed.stderr);
       assert.strictEqual(
-        committed.files["layout.json"],
-        before.files["layout.json"]
+        committed.files[homeKeys.layoutFile],
+        before.files[homeKeys.layoutFile]
       );
     })
   );

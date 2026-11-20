@@ -7,10 +7,10 @@ import {
 import type { Batch, BatchItem, Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Option, Path, Schema } from "effect";
+import { Array as Arr, Effect, FileSystem, Option, Schema } from "effect";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, homeKeys, mapIn } from "./harness.ts";
 
 // A reroute and a group move through the review loop: frozen into a batch,
 // shown by review, given a verdict and committed. The review map has the hop
@@ -78,11 +78,9 @@ const homeWith = (
   verdicts: Batch["verdicts"]
 ) =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
-
     const root = yield* makeHome({
       ...(yield* fullMap),
-      "review/map/proposals.json": fileOf({
+      [mapKeys("review").proposalsFile]: fileOf({
         batches: [batchOf(items, verdicts)],
         format: 1,
         layout: [],
@@ -91,7 +89,7 @@ const homeWith = (
       }),
     });
 
-    return { home: path.join(root, "review", "map"), root };
+    return { home: mapIn(root, "review").home, root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
@@ -188,7 +186,9 @@ describe("committing a reroute", () => {
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
 
-        const layout = yield* decodeLayout(result.files["layout.json"] ?? "");
+        const layout = yield* decodeLayout(
+          result.files[homeKeys.layoutFile] ?? ""
+        );
 
         assert.deepStrictEqual(layout.routes, { "h-store": detour });
 
@@ -203,7 +203,7 @@ describe("committing a reroute", () => {
         );
 
         const proposals = yield* decodeProposals(
-          result.files["proposals.json"] ?? ""
+          result.files[homeKeys.proposalsFile] ?? ""
         );
 
         assert.strictEqual(proposals.batches?.[0]?.committed?.revision, 1);
@@ -217,7 +217,9 @@ describe("committing a reroute", () => {
       });
 
       const result = yield* runCli(home, ["commit", home]);
-      const layout = yield* decodeLayout(result.files["layout.json"] ?? "");
+      const layout = yield* decodeLayout(
+        result.files[homeKeys.layoutFile] ?? ""
+      );
 
       assert.isUndefined(layout.routes);
     })
@@ -271,7 +273,9 @@ describe("committing a reroute", () => {
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
 
-        const layout = yield* decodeLayout(result.files["layout.json"] ?? "");
+        const layout = yield* decodeLayout(
+          result.files[homeKeys.layoutFile] ?? ""
+        );
 
         // The agent's route stands; the proposal's was not applied.
         assert.deepStrictEqual(layout.routes, { "h-store": agents });
@@ -298,7 +302,9 @@ describe("committing a reroute", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
 
-      const layout = yield* decodeLayout(result.files["layout.json"] ?? "");
+      const layout = yield* decodeLayout(
+        result.files[homeKeys.layoutFile] ?? ""
+      );
 
       assert.deepStrictEqual(
         Arr.map(["page", "server", "proposals", "pull-request"], (id) => [

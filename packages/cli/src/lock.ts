@@ -5,11 +5,12 @@ import {
   Effect,
   FileSystem,
   Option,
-  Path,
   Schedule,
   Schema,
 } from "effect";
 import { CliError } from "effect/cli";
+
+import type { HomePaths } from "./home-paths.ts";
 
 /** What a lock file records about the process holding it. */
 export const LockHolder = Schema.Struct({
@@ -43,29 +44,20 @@ export class LockHeld extends Schema.TaggedError<
 
 const lockPathHint = ".axonometric/lock in the home folder";
 
-/** The path of `.axonometric/` in `home`, which holds one process's state. */
-export const stateFolderPath = (home: string) =>
-  Path.Path.use((path) => Effect.succeed(path.join(home, ".axonometric")));
-
 /**
- * Creates `.axonometric/` in `home` and returns its path. The folder holds
- * one process's state, so it carries a `.gitignore` that keeps all of it out
- * of git.
+ * Creates `.axonometric/` in the home folder. The folder holds one process's
+ * state, so it carries a `.gitignore` that keeps all of it out of git.
  */
-export const stateFolder = Effect.fnUntraced(function* (home: string) {
+export const stateFolder = Effect.fnUntraced(function* (paths: HomePaths) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const folder = yield* stateFolderPath(home);
 
-  yield* fs.makeDirectory(folder, { recursive: true });
+  yield* fs.makeDirectory(paths.stateFolder, { recursive: true });
 
   yield* fs
-    .writeFileString(path.join(folder, ".gitignore"), "*\n", { flag: "wx" })
+    .writeFileString(paths.gitignoreFile, "*\n", { flag: "wx" })
     .pipe(
       Effect.catchReason("PlatformError", "AlreadyExists", () => Effect.void)
     );
-
-  return folder;
 });
 
 /**
@@ -175,14 +167,14 @@ const attempt = Effect.fnUntraced(function* (file: string, content: string) {
  * waiting command can say who holds it.
  */
 export const withLock = Effect.fnUntraced(function* (
-  home: string,
+  paths: HomePaths,
   command: string,
   wait: LockWait = defaultLockWait
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const stateDir = yield* stateFolder(home);
-  const file = path.join(stateDir, "lock");
+  const { home, lockFile: file } = paths;
+
+  yield* stateFolder(paths);
 
   const currentTime = yield* DateTime.now;
   const since = DateTime.formatIso(currentTime);

@@ -2,7 +2,7 @@ import { LayoutChange, Proposals } from "@axonometric/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Schema } from "effect";
 
-import { proposalsText, serveReviewMap } from "./harness.ts";
+import { proposalsText, serveReviewMap, mapKeys } from "./harness.ts";
 import { writeText } from "./revisions.ts";
 
 // Plain HTTP writes to a real serve, for a reroute frozen in a batch. The
@@ -61,7 +61,10 @@ const frozenFile = `${JSON.stringify(
   2
 )}\n`;
 
-const served = serveReviewMap({ "review/map/proposals.json": frozenFile }, []);
+const served = serveReviewMap(
+  { [mapKeys("review").proposalsFile]: frozenFile },
+  []
+);
 
 const LayoutWrite = Schema.Struct({
   baseFileRevision: Schema.Finite,

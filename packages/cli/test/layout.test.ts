@@ -6,7 +6,6 @@ import {
   Effect,
   Fiber,
   FileSystem,
-  Path,
   Record as Rec,
   Schema,
   String as Str,
@@ -15,11 +14,18 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { withLock } from "../src/lock.ts";
 import { minimalMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import {
+  homeAt,
+  homeKeys,
+  makeHome,
+  mapIn,
+  runCli,
+  mapKeys,
+} from "./harness.ts";
 
-const layoutFile = "pipeline/map/layout.json";
+const { layoutFile } = mapKeys("pipeline");
 
-const lockFile = "pipeline/map/.axonometric/lock";
+const { lockFile } = mapKeys("pipeline");
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
@@ -32,7 +38,7 @@ const layoutWith = Effect.fnUntraced(function* (
 
   const result = yield* runCli(home, [
     "layout",
-    `${home}/pipeline/map`,
+    mapIn(home, "pipeline").home,
     ...args,
   ]);
 
@@ -245,14 +251,14 @@ describe("layout", () => {
       Effect.gen(function* () {
         const files = {
           ...(yield* minimalMap),
-          "pipeline/map/data.mjs": "export default {",
+          [mapKeys("pipeline").dataFile]: "export default {",
         };
 
         const home = yield* makeHome(files);
 
         const result = yield* runCli(home, [
           command,
-          `${home}/pipeline/map`,
+          mapIn(home, "pipeline").home,
           ...args,
         ]);
 
@@ -261,7 +267,7 @@ describe("layout", () => {
         assert.deepStrictEqual(
           Rec.filter(
             result.files,
-            (_, name) => !Str.startsWith("pipeline/map/.axonometric/")(name)
+            (_, name) => !Str.startsWith(mapKeys("pipeline").stateFolder)(name)
           ),
           files
         );
@@ -323,20 +329,18 @@ describe("layout", () => {
   it.effect("releases the lock when the command fails", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
       const minimalMapFiles = yield* minimalMap;
       const home = yield* makeHome(minimalMapFiles);
-      const map = path.join(home, "pipeline", "map");
-      const lock = path.join(map, ".axonometric", "lock");
+      const map = mapIn(home, "pipeline");
 
       // A folder where layout.json goes makes the command fail after it
       // has taken the lock.
-      yield* fs.remove(path.join(map, "layout.json"));
-      yield* fs.makeDirectory(path.join(map, "layout.json"));
+      yield* fs.remove(map.layoutFile);
+      yield* fs.makeDirectory(map.layoutFile);
 
       const result = yield* runCli(home, [
         "layout",
-        map,
+        map.home,
         "gate",
         "--x",
         "8",
@@ -345,7 +349,7 @@ describe("layout", () => {
       ]);
 
       assert.notStrictEqual(result.exitCode, 0);
-      const lockExists = yield* fs.exists(lock);
+      const lockExists = yield* fs.exists(map.lockFile);
       assert.isFalse(lockExists);
     }).pipe(Effect.provide(NodeServices.layer))
   );
@@ -355,12 +359,11 @@ describe("layout", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const pid = yield* liveProcess;
-        const home = yield* makeHome({ ".axonometric/lock": lockOf(pid) });
-        const lock = path.join(home, ".axonometric", "lock");
+        const home = yield* makeHome({ [homeKeys.lockFile]: lockOf(pid) });
+        const paths = homeAt(home);
 
-        const waiting = yield* withLock(home, "layout").pipe(
+        const waiting = yield* withLock(paths, "layout").pipe(
           Effect.scoped,
           Effect.forkChild
         );
@@ -372,7 +375,7 @@ describe("layout", () => {
         yield* Fiber.interrupt(waiting);
 
         assert.isBelow((yield* Clock.currentTimeMillis) - started, 1000);
-        const lockText = yield* fs.readFileString(lock);
+        const lockText = yield* fs.readFileString(paths.lockFile);
         assert.strictEqual(lockText, lockOf(pid));
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     15_000

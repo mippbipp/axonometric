@@ -42,6 +42,7 @@ import type {
 } from "@axonometric/contracts";
 import { Array as Arr, DateTime, Effect, Path, Result } from "effect";
 
+import type { HomePaths } from "./home-paths.ts";
 import { encodeProposals } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
 import { loadReviewMap, structureNames } from "./review-shared.ts";
@@ -78,20 +79,18 @@ const writeProposals = Effect.fnUntraced(
   function* <A>({
     baseFileRevision,
     change,
-    home,
+    paths,
     written,
   }: {
     readonly baseFileRevision: number;
     readonly change: (held: Held) => Change<A>;
-    readonly home: string;
+    readonly paths: HomePaths;
     readonly written: (proposals: Proposals) => Effect.Effect<void>;
   }) {
-    const path = yield* Path.Path;
-
     const map = yield* loadForWrite(
-      home,
+      paths,
       baseFileRevision,
-      loadReviewMap(home, "serve").pipe(
+      loadReviewMap(paths, "serve").pipe(
         Effect.catchTag("MapInvalid", ({ problems }) =>
           MapFilesUnreadable.make({ problems })
         )
@@ -129,7 +128,7 @@ const writeProposals = Effect.fnUntraced(
     yield* writeAll([
       {
         content: yield* encodeProposals(proposals),
-        file: path.join(home, "proposals.json"),
+        file: paths.proposalsFile,
       },
     ]);
 
@@ -167,15 +166,15 @@ const editing =
     name: string,
     edit: (held: Held, write: W) => Result.Result<Proposals, string>
   ) =>
-  (home: string, write: W, written: Told) =>
+  (paths: HomePaths, write: W, written: Told) =>
     writeProposals({
       baseFileRevision: write.baseFileRevision,
       change: (held) => answeringWithFile(edit(held, write)),
-      home,
+      paths,
       written,
     }).pipe(Effect.withSpan(name));
 
-// oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(home, write, written)`, never piped.
+// oxlint-disable effecttsgo/missing-pipeable-signature -- these are request handlers called as `(paths, write, written)`, never piped.
 
 /** What an item is checked against when it is added. */
 const knownIn = ({ data, proposed, structures }: Held): Known => ({
@@ -360,12 +359,12 @@ export const reopenWrite = editing<ReopenWrite>(
  * does too.
  */
 export const freezeWrite = Effect.fn("freezeWrite")(function* (
-  home: string,
+  paths: HomePaths,
   write: FreezeWrite,
   written: Told
 ) {
   const path = yield* Path.Path;
-  const absolute = path.resolve(home);
+  const absolute = path.resolve(paths.home);
 
   return yield* writeProposals<FreezeAnswer>({
     baseFileRevision: write.baseFileRevision,
@@ -397,7 +396,7 @@ export const freezeWrite = Effect.fn("freezeWrite")(function* (
           proposals: frozen.proposals,
         })
       ),
-    home,
+    paths,
     written,
   });
 });

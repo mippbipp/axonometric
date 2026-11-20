@@ -1,7 +1,7 @@
 import { LayoutFile, shapes } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, FileSystem, Order, Path, Schema } from "effect";
+import { Array as Arr, Effect, FileSystem, Order, Schema } from "effect";
 import type { Page } from "playwright";
 
 import {
@@ -15,7 +15,7 @@ import {
   waitFor,
 } from "./browser.ts";
 import { fullMap, pipelineMap, shapesMap } from "./fixtures.ts";
-import { buildAndOpen, makeHome, runCli } from "./harness.ts";
+import { buildAndOpen, makeHome, runCli, mapIn, homeAt } from "./harness.ts";
 
 /**
  * The middle of the structure's drawing in the drawing's own units, so a
@@ -323,11 +323,10 @@ describe("both views", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
           const files = yield* fullMap;
           const home = yield* makeHome(files);
-          const map = path.join(home, "review", "map");
-          const html = path.join(home, "review", "review.html");
+          const map = mapIn(home, "review").home;
+          const html = mapIn(home, "review").pageFile;
 
           const measure = Effect.fnUntraced(function* () {
             const built = yield* runCli(home, ["build", map]);
@@ -354,7 +353,7 @@ describe("both views", () => {
 
           const before = yield* measure();
 
-          const layoutPath = path.join(map, "layout.json");
+          const layoutPath = homeAt(map).layoutFile;
 
           const layoutPathText = yield* fs.readFileString(layoutPath);
           const moved = yield* withServerAt(layoutPathText, 9);

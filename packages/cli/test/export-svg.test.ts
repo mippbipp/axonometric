@@ -5,7 +5,7 @@ import type { Page } from "playwright";
 
 import { click, openPage } from "./browser.ts";
 import { crowdedMap, pipelineMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapIn } from "./harness.ts";
 import { decodePng } from "./png.ts";
 
 // Seam 1: `export --format svg` writes the SVG the page's Export menu saves.
@@ -63,13 +63,13 @@ describe("export --format svg", () => {
           const fs = yield* FileSystem.FileSystem;
           const pipelineMapFiles = yield* pipelineMap;
           const home = yield* makeHome(pipelineMapFiles);
-          const map = path.join(home, "flake-pipeline", "map");
+          const map = mapIn(home, "flake-pipeline").home;
           const built = yield* runCli(home, ["build", map]);
 
           assert.strictEqual(built.exitCode, 0, built.stderr);
 
           const { page } = yield* openPage(
-            path.join(home, "flake-pipeline", "flake-pipeline.html")
+            mapIn(home, "flake-pipeline").pageFile
           );
 
           yield* Effect.promise(() =>
@@ -137,7 +137,7 @@ describe("export --format svg", () => {
           const fs = yield* FileSystem.FileSystem;
           const pipelineMapFiles = yield* pipelineMap;
           const home = yield* makeHome(pipelineMapFiles);
-          const map = path.join(home, "flake-pipeline", "map");
+          const map = mapIn(home, "flake-pipeline").home;
 
           const target = path.join(home, "faded.svg");
 
@@ -211,13 +211,11 @@ describe("export --format svg", () => {
           const fs = yield* FileSystem.FileSystem;
           const crowdedMapFiles = yield* crowdedMap;
           const home = yield* makeHome(crowdedMapFiles);
-          const map = path.join(home, "crowded", "map");
+          const map = mapIn(home, "crowded").home;
 
           assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
 
-          const { page } = yield* openPage(
-            path.join(home, "crowded", "crowded.html")
-          );
+          const { page } = yield* openPage(mapIn(home, "crowded").pageFile);
 
           yield* click(page, '[data-control="export"]');
           yield* click(page, '[data-export-item="background"]');
@@ -295,12 +293,12 @@ describe("export --format png", () => {
           const fs = yield* FileSystem.FileSystem;
           const pipelineMapFiles = yield* pipelineMap;
           const home = yield* makeHome(pipelineMapFiles);
-          const map = path.join(home, "flake-pipeline", "map");
+          const map = mapIn(home, "flake-pipeline").home;
 
           assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
 
           const { page } = yield* openPage(
-            path.join(home, "flake-pipeline", "flake-pipeline.html")
+            mapIn(home, "flake-pipeline").pageFile
           );
 
           yield* Effect.promise(() =>
@@ -354,7 +352,7 @@ describe("export --format png", () => {
         const fs = yield* FileSystem.FileSystem;
         const crowdedMapFiles = yield* crowdedMap;
         const home = yield* makeHome(crowdedMapFiles);
-        const map = path.join(home, "crowded", "map");
+        const map = mapIn(home, "crowded").home;
 
         const corner = Effect.fnUntraced(function* (background: string) {
           const svg = path.join(home, `${background}.svg`);

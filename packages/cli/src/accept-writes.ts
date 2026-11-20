@@ -4,11 +4,9 @@ import {
   hopLabelOf,
   layoutUnderProposals,
   acceptLayoutChanges,
-  historyFolder,
   LayoutChangeRefused,
   MapFilesUnreadable,
   placeStructures,
-  revisionFileName,
 } from "@axonometric/contracts";
 import type {
   Accepted,
@@ -23,13 +21,13 @@ import {
   DateTime,
   Effect,
   Option,
-  Path,
   Result,
   String as Str,
 } from "effect";
 
-import { siteOutputs, systemOf } from "./build.ts";
+import { siteOutputs } from "./build.ts";
 import { encodeRevision, loadHistory, nextRevision } from "./history.ts";
+import type { HomePaths } from "./home-paths.ts";
 import { encodeLayout, encodeProposals, loadMap } from "./map-files.ts";
 import { loadForWrite } from "./pending-writes.ts";
 import { writeAll } from "./write-files.ts";
@@ -60,22 +58,19 @@ export interface AcceptedState {
  * pages.
  */
 export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
-  home: string,
+  paths: HomePaths,
   write: AcceptWrite,
   written: (held: AcceptedState) => Effect.Effect<void>
 ) {
-  const path = yield* Path.Path;
-
   // Everything is read under the lock, so nothing moves before the write.
   // A map with an error can't be snapshotted, so it isn't accepted into.
   const map = yield* loadForWrite(
-    home,
+    paths,
     write.baseFileRevision,
     loadMap({
       arrange: (data, saved) => placeStructures(data, saved).layout,
       command: "accept",
-      home,
-      output: path.dirname(home),
+      paths,
       strictProposals: true,
     }).pipe(
       Effect.catchTag("MapInvalid", ({ problems }) =>
@@ -137,8 +132,8 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
         })
       : given;
 
-  const number = yield* nextRevision(home);
-  const revisionFile = path.join(home, historyFolder, revisionFileName(number));
+  const number = yield* nextRevision(paths);
+  const revisionFile = paths.revisionFile(number);
 
   const now = yield* DateTime.now;
   const savedAt = DateTime.formatIso(now);
@@ -168,10 +163,10 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
     data: map.data,
     layout,
     sourceLinks: map.sourceLinks,
-    system: yield* systemOf(home),
+    system: paths.system,
   };
 
-  const site = yield* siteOutputs(state, home);
+  const site = yield* siteOutputs(state, paths);
 
   // Revision files are never rewritten, so the revision's file is exclusive:
   // writeAll fails before it renames anything if the file exists.
@@ -183,17 +178,17 @@ export const acceptPendingLayout = Effect.fn("acceptPendingLayout")(function* (
     },
     {
       content: yield* encodeLayout(layout),
-      file: path.join(home, "layout.json"),
+      file: paths.layoutFile,
     },
     {
       content: yield* encodeProposals(proposals),
-      file: path.join(home, "proposals.json"),
+      file: paths.proposalsFile,
     },
-    ...site.outputs,
+    ...site,
   ]);
 
   // Still under the lock, so quick writes tell the pages in order.
-  yield* written({ history: yield* loadHistory(home, []), proposals, state });
+  yield* written({ history: yield* loadHistory(paths, []), proposals, state });
 
   return {
     layout,

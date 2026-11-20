@@ -1,15 +1,10 @@
 import { formatProblem, placeStructures } from "@axonometric/contracts";
 import type { MapProblem, MapState } from "@axonometric/contracts";
-import {
-  Array as Arr,
-  Console,
-  Effect,
-  Option,
-  Path,
-  Record as Rec,
-} from "effect";
+import { Array as Arr, Console, Effect, Option, Record as Rec } from "effect";
 import { Argument, Command } from "effect/cli";
 
+import { homePaths } from "./home-paths.ts";
+import type { HomePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
 import { encodeLayout, loadMap } from "./map-files.ts";
 import { renderPage } from "./page.ts";
@@ -46,10 +41,6 @@ export const printNotes = Effect.fnUntraced(function* ({
   });
 });
 
-/** The system's name: the name of the folder that holds the home folder. */
-export const systemOf = (home: string) =>
-  Path.Path.use((path) => Effect.succeed(path.basename(path.dirname(home))));
-
 /**
  * The two files `build` writes from an accepted `state`: SYSTEM.md and the
  * read-only page, both in the home folder's parent. Pending changes never
@@ -57,22 +48,17 @@ export const systemOf = (home: string) =>
  */
 export const siteOutputs = Effect.fnUntraced(function* (
   state: MapState,
-  home: string
+  paths: HomePaths
 ) {
-  const path = yield* Path.Path;
-  const output = path.dirname(home);
-  const systemMdFile = path.join(output, "SYSTEM.md");
-  const pageFile = path.join(output, `${state.system}.html`);
-
   const outputs: ReadonlyArray<Output> = [
     {
-      content: renderSystemMd(state, path.relative(output, home)),
-      file: systemMdFile,
+      content: renderSystemMd(state, paths.homeFromOutput),
+      file: paths.systemMdFile,
     },
-    { content: yield* renderPage(state), file: pageFile },
+    { content: yield* renderPage(state), file: paths.pageFile },
   ];
 
-  return { outputs, pageFile, systemMdFile };
+  return outputs;
 });
 
 /**
@@ -83,14 +69,10 @@ export const siteOutputs = Effect.fnUntraced(function* (
  * the error.
  */
 export const rebuild = Effect.fnUntraced(function* (
-  home: string,
+  paths: HomePaths,
   command: string
 ) {
-  const path = yield* Path.Path;
-  const output = path.dirname(home);
-  const system = yield* systemOf(home);
-
-  yield* withLock(home, command);
+  yield* withLock(paths, command);
 
   const {
     data,
@@ -104,8 +86,7 @@ export const rebuild = Effect.fnUntraced(function* (
     arrange: (mapData, savedLayout) =>
       placeStructures(mapData, savedLayout).layout,
     command,
-    home,
-    output,
+    paths,
   });
 
   const placed = Arr.filter(
@@ -127,50 +108,44 @@ export const rebuild = Effect.fnUntraced(function* (
     placed.length > 0 || pruned.length > 0 || prunedRoutes.length > 0;
 
   const next = changed ? { ...layout, revision: saved.revision + 1 } : saved;
-  const state: MapState = { data, layout: next, sourceLinks, system };
-
-  const layoutFile = path.join(home, "layout.json");
+  const state: MapState = {
+    data,
+    layout: next,
+    sourceLinks,
+    system: paths.system,
+  };
 
   // The state holds the accepted layout only. Pending changes reach served
   // pages through serve, never SYSTEM.md or the read-only page.
-  const { outputs, pageFile, systemMdFile } = yield* siteOutputs(state, home);
+  const outputs = yield* siteOutputs(state, paths);
 
   // layout.json is only written when placing added or pruned structures or
   // pruned route overrides.
   // Under serve the write is one more watch event, and that rebuild finds
   // every structure placed, so it writes no layout and the loop ends.
   const layoutOutput: ReadonlyArray<Output> = changed
-    ? [{ content: yield* encodeLayout(next), file: layoutFile }]
+    ? [{ content: yield* encodeLayout(next), file: paths.layoutFile }]
     : [];
 
   yield* writeAll([...layoutOutput, ...outputs]);
 
   return {
-    layoutFile,
-    pageFile,
     placed,
     proposals,
     pruned,
     prunedRoutes,
     sourcesSkipped,
     state,
-    systemMdFile,
     warnings,
   };
 }, Effect.scoped);
 
 const build = Effect.fn("build")(function* (home: string) {
-  const {
-    layoutFile,
-    pageFile,
-    placed,
-    pruned,
-    prunedRoutes,
-    sourcesSkipped,
-    state,
-    systemMdFile,
-    warnings,
-  } = yield* rebuild(home, "build");
+  const paths = yield* homePaths(home);
+  const { layoutFile, pageFile, systemMdFile } = paths;
+
+  const { placed, pruned, prunedRoutes, sourcesSkipped, state, warnings } =
+    yield* rebuild(paths, "build");
 
   yield* printNotes({ sourcesSkipped, warnings });
 

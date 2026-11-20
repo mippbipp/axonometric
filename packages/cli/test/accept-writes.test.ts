@@ -17,7 +17,14 @@ import {
   String as Str,
 } from "effect";
 
-import { pageState, serveReviewMap } from "./harness.ts";
+import { posixPath, stateFolderName } from "../src/home-paths.ts";
+import {
+  pageState,
+  serveReviewMap,
+  mapKeys,
+  mapIn,
+  homeAt,
+} from "./harness.ts";
 import { moveOf, ownOrigin, writeText } from "./revisions.ts";
 import type { Sent } from "./revisions.ts";
 
@@ -60,15 +67,16 @@ const snapshot = Effect.fnUntraced(function* (root: string) {
 
   const kept = Arr.filter(
     entries,
-    (entry) => !Str.includes(".axonometric")(entry)
+    (entry) => !Str.includes(stateFolderName)(entry)
   );
 
   for (const entry of kept) {
     const info = yield* fs.stat(path.join(root, entry));
 
     if (info.type === "File") {
-      files[Arr.join(Str.split(entry, path.sep), "/")] =
-        yield* fs.readFileString(path.join(root, entry));
+      files[posixPath(path, entry)] = yield* fs.readFileString(
+        path.join(root, entry)
+      );
     }
   }
 
@@ -105,7 +113,6 @@ describe("accepting pending layout changes over HTTP", () => {
   it.live("accepts one change, and writes the files together", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
       const { home, root, url } = yield* served;
 
       yield* pend(url, 0, [
@@ -130,9 +137,7 @@ describe("accepting pending layout changes over HTTP", () => {
       ]);
       assert.strictEqual(answer.proposals.revision, 2);
 
-      const layoutText = yield* fs.readFileString(
-        path.join(home, "layout.json")
-      );
+      const layoutText = yield* fs.readFileString(homeAt(home).layoutFile);
 
       const layout = yield* decodeLayoutFile(layoutText);
 
@@ -150,10 +155,10 @@ describe("accepting pending layout changes over HTTP", () => {
       });
 
       const files = yield* snapshot(root);
-      const historyFile = files["review/map/history/0001.json"] ?? "";
+      const historyFile = files[mapKeys("review").revisionFile(1)] ?? "";
 
       assert.sameMembers(Arr.filter(Rec.keys(files), Str.includes("history")), [
-        "review/map/history/0001.json",
+        mapKeys("review").revisionFile(1),
       ]);
 
       const revision = yield* decodeRevisionText(historyFile);
@@ -180,7 +185,6 @@ describe("accepting pending layout changes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, url } = yield* served;
 
         yield* pend(url, 0, [
@@ -215,20 +219,20 @@ describe("accepting pending layout changes over HTTP", () => {
         assert.strictEqual(two.revision, 2);
 
         const firstText = yield* fs.readFileString(
-          path.join(home, "history", "0001.json")
+          homeAt(home).revisionFile(1)
         );
 
         assert.include(firstText, '"Move Map page; resize Save server"');
 
         const firstRevisionText = yield* fs.readFileString(
-          path.join(home, "history", "0001.json")
+          homeAt(home).revisionFile(1)
         );
 
         // The second revision didn't rewrite the first.
         assert.strictEqual(firstRevisionText, firstText);
 
         const secondRevisionText = yield* fs.readFileString(
-          path.join(home, "history", "0002.json")
+          homeAt(home).revisionFile(2)
         );
 
         const secondRevision = yield* decodeRevisionText(secondRevisionText);
@@ -248,10 +252,9 @@ describe("accepting pending layout changes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { root, url } = yield* served;
-        const html = path.join(root, "review", "review.html");
-        const systemMd = path.join(root, "review", "SYSTEM.md");
+        const html = mapIn(root, "review").pageFile;
+        const systemMd = mapIn(root, "review").systemMdFile;
 
         yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 7 })]);
 
@@ -357,13 +360,12 @@ describe("accepting pending layout changes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, root, serve, url } = yield* served;
 
         yield* pend(url, 0, [moveOf("m1", "page", { x: 4, y: 3 })]);
 
         // With a file where history/ should be, the revision can't be written.
-        yield* fs.writeFileString(path.join(home, "history"), "not a folder");
+        yield* fs.writeFileString(homeAt(home).historyFolder, "not a folder");
 
         yield* assertRefused(
           root,
@@ -372,7 +374,7 @@ describe("accepting pending layout changes over HTTP", () => {
         );
 
         const historyText = yield* fs.readFileString(
-          path.join(home, "history")
+          homeAt(home).historyFolder
         );
 
         assert.strictEqual(historyText, "not a folder");
@@ -393,7 +395,7 @@ describe("accepting pending layout changes over HTTP", () => {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const { home, url } = yield* served;
-        const old = path.join(home, "history", "0001.json");
+        const old = homeAt(home).revisionFile(1);
 
         yield* fs.makeDirectory(path.dirname(old), { recursive: true });
         yield* fs.writeFileString(
@@ -413,7 +415,7 @@ describe("accepting pending layout changes over HTTP", () => {
         assert.strictEqual(oldText, "an earlier revision, not ours to touch");
 
         const secondRevisionExists = yield* fs.exists(
-          path.join(home, "history", "0002.json")
+          homeAt(home).revisionFile(2)
         );
 
         assert.isTrue(secondRevisionExists);
@@ -454,7 +456,6 @@ describe("accepting pending layout changes over HTTP", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, url } = yield* served;
 
         yield* pend(url, 0, [
@@ -472,7 +473,7 @@ describe("accepting pending layout changes over HTTP", () => {
 
         assert.sameMembers([first.status, second.status], [200, 409]);
 
-        const history = yield* fs.readDirectory(path.join(home, "history"));
+        const history = yield* fs.readDirectory(homeAt(home).historyFolder);
 
         assert.deepStrictEqual(history, ["0001.json"]);
       }).pipe(Effect.provide(NodeServices.layer))

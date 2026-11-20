@@ -6,7 +6,6 @@ import {
   Effect,
   FileSystem,
   Option,
-  Path,
   Record as Rec,
   Schema,
 } from "effect";
@@ -31,6 +30,8 @@ import {
   proposalsIn,
   runCli,
   waitForRevision,
+  mapIn,
+  homeAt,
 } from "./harness.ts";
 
 // Selecting several structures in a page that a real serve serves, and
@@ -979,7 +980,6 @@ describe("older news from the server", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, page } = yield* servedAll;
 
         yield* shiftClick(page, ["engineer", "page"]);
@@ -994,10 +994,7 @@ describe("older news from the server", () => {
         // only what's pending. Then proposals.json goes back to revision 0
         // with nothing pending, as a late write from elsewhere would leave
         // it.
-        yield* fs.writeFileString(
-          path.join(home, "data.mjs"),
-          "export default {"
-        );
+        yield* fs.writeFileString(homeAt(home).dataFile, "export default {");
         yield* waitFor(page, "[data-map-error]");
 
         const emptied = yield* Schema.encodeEffect(
@@ -1008,7 +1005,7 @@ describe("older news from the server", () => {
           revision: 0,
         });
 
-        yield* fs.writeFileString(path.join(home, "proposals.json"), emptied);
+        yield* fs.writeFileString(homeAt(home).proposalsFile, emptied);
         yield* Effect.sleep("800 millis");
 
         yield* assertCount(page, '[data-structure][data-pending="true"]', 2);
@@ -1081,7 +1078,6 @@ describe("editing off", () => {
     "the read-only file has no toolbar and Shift-click only pins",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const { home, root, serve } = yield* servedAll;
 
         yield* serve.stop;
@@ -1090,9 +1086,7 @@ describe("editing off", () => {
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
 
-        const { page } = yield* openPage(
-          path.join(root, "review", "review.html")
-        );
+        const { page } = yield* openPage(mapIn(root, "review").pageFile);
 
         yield* Effect.promise(() =>
           page

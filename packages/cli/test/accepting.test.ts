@@ -18,6 +18,8 @@ import {
   readIn,
   runCli,
   startServe,
+  mapKeys,
+  mapIn,
 } from "./harness.ts";
 
 // Accepting pending layout changes in a page that a real serve serves: what
@@ -60,7 +62,7 @@ const pendingProposals = `${JSON.stringify(
 /** The review map with two pending changes, served on a free port and opened. */
 const servedWithPending = Effect.gen(function* () {
   const opened = yield* openReviewMap({
-    "review/map/proposals.json": pendingProposals,
+    [mapKeys("review").proposalsFile]: pendingProposals,
   });
 
   yield* click(opened.page, '[role="tab"][data-tab="pending"]');
@@ -116,7 +118,7 @@ describe("accepting layout changes in the page", () => {
 
         const historyFileExists = yield* exists(
           root,
-          "review/map/history/0001.json"
+          mapKeys("review").revisionFile(1)
         );
 
         // What the accept writes is accept-writes.test.ts's to check. The
@@ -147,7 +149,7 @@ describe("accepting layout changes in the page", () => {
 
         const firstRevisionText = yield* readIn(
           root,
-          "review/map/history/0001.json"
+          mapKeys("review").revisionFile(1)
         );
 
         const revision = yield* decodeRevision(firstRevisionText);
@@ -164,14 +166,20 @@ describe("accepting layout changes in the page", () => {
         yield* assertCount(page, "[data-accept-all]", 0);
 
         // What accept rebuilt is what `build` writes for the same files.
-        const systemMd = yield* readIn(root, "review/SYSTEM.md");
-        const readOnly = yield* readIn(root, "review/review.html");
+        const systemMd = yield* readIn(root, mapKeys("review").systemMdFile);
+        const readOnly = yield* readIn(root, mapKeys("review").pageFile);
 
-        const built = yield* runCli(root, ["build", `${root}/review/map`]);
+        const built = yield* runCli(root, [
+          "build",
+          mapIn(root, "review").home,
+        ]);
 
         assert.strictEqual(built.exitCode, 0, built.stderr);
-        assert.strictEqual(built.files["review/SYSTEM.md"], systemMd);
-        assert.strictEqual(built.files["review/review.html"], readOnly);
+        assert.strictEqual(
+          built.files[mapKeys("review").systemMdFile],
+          systemMd
+        );
+        assert.strictEqual(built.files[mapKeys("review").pageFile], readOnly);
         assert.deepStrictEqual(errors, []);
       }),
     60_000
@@ -181,10 +189,9 @@ describe("accepting layout changes in the page", () => {
     "takes the page's own drag, then accepts it as revision 1 and a second drag as revision 2",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const fullMapFiles = yield* fullMap;
         const root = yield* makeHome(fullMapFiles);
-        const home = path.join(root, "review", "map");
+        const { home } = mapIn(root, "review");
         const serve = yield* startServe(home, ["--port", "0"]);
         const { page } = yield* openUrl(serve.url);
 
@@ -231,14 +238,14 @@ describe("accepting layout changes in the page", () => {
 
         const firstRevisionText = yield* readIn(
           root,
-          "review/map/history/0001.json"
+          mapKeys("review").revisionFile(1)
         );
 
         const first = yield* decodeRevision(firstRevisionText);
 
         const secondRevisionText = yield* readIn(
           root,
-          "review/map/history/0002.json"
+          mapKeys("review").revisionFile(2)
         );
 
         const second = yield* decodeRevision(secondRevisionText);
@@ -247,7 +254,7 @@ describe("accepting layout changes in the page", () => {
         assert.strictEqual(second.revision, 2);
         assert.notStrictEqual(first.layout.revision, second.layout.revision);
         assert.notDeepEqual(first.layout.structures, second.layout.structures);
-        const layoutText = yield* readIn(root, "review/map/layout.json");
+        const layoutText = yield* readIn(root, mapKeys("review").layoutFile);
         const decodedLayout = yield* decodeLayout(layoutText);
         assert.deepStrictEqual(decodedLayout, second.layout);
       }).pipe(Effect.provide(NodeServices.layer)),

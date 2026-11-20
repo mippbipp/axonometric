@@ -11,9 +11,9 @@ import {
   waitFor,
 } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
-import { buildAndOpen } from "./harness.ts";
+import { buildAndOpen, mapKeys } from "./harness.ts";
 
-const dataFile = "review/map/data.mjs";
+const { dataFile } = mapKeys("review");
 
 /**
  * The review map with a second flow, so the flow picker has a real choice:

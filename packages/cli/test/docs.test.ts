@@ -50,7 +50,7 @@ import {
   subcommandsIn,
 } from "./docs-text.ts";
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli, startServe } from "./harness.ts";
+import { makeHome, runCli, startServe, mapKeys, mapIn } from "./harness.ts";
 
 // The docs the CLI prints are checked against the CLI itself: every command
 // they show runs as written against the review fixture, so a renamed flag or
@@ -315,14 +315,12 @@ const everyKind: Proposals = {
 
 /** The review fixture with a batch waiting, and its home folder. */
 const reviewHome = Effect.gen(function* () {
-  const path = yield* Path.Path;
-
   const root = yield* makeHome({
     ...(yield* fullMap),
-    "review/map/proposals.json": yield* encodeProposals(proposals),
+    [mapKeys("review").proposalsFile]: yield* encodeProposals(proposals),
   });
 
-  return { home: path.join(root, "review", "map"), root };
+  return { home: mapIn(root, "review").home, root };
 }).pipe(Effect.provide(NodeServices.layer));
 
 /** What `axonometric docs [topic]` prints, asserting that it succeeds. */
@@ -499,7 +497,7 @@ describe("axonometric docs", () => {
         for (const line of commandsIn(printedTopic)) {
           const { home, root } = yield* reviewHome;
           const path = yield* Path.Path;
-          const fresh = path.join(root, "fresh", "map");
+          const fresh = mapIn(root, "fresh").home;
 
           const substitutions = {
             "<home>": Str.startsWith("axonometric init ")(line) ? fresh : home,
@@ -767,10 +765,10 @@ describe("axonometric docs", () => {
 
       const home = yield* makeHome({
         ...(yield* fullMap),
-        "review/map/proposals.json": yield* encodeProposals(everyKind),
+        [mapKeys("review").proposalsFile]: yield* encodeProposals(everyKind),
       });
 
-      const map = `${home}/review/map`;
+      const map = mapIn(home, "review").home;
 
       const result = yield* runCli(home, ["review", map]);
 
