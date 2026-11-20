@@ -49,6 +49,8 @@ import {
 import { HttpApiBuilder } from "effect/http-api";
 
 import { acceptPendingLayout } from "./accept-writes.ts";
+import { makeAgentDecisions } from "./agent-decisions.ts";
+import type { AgentDecisions } from "./agent-decisions.ts";
 import { printNotes, rebuild } from "./build.ts";
 import { loadHistory, readRevision } from "./history.ts";
 import { homePaths, mapFileNames } from "./home-paths.ts";
@@ -447,12 +449,14 @@ const heartbeats = Stream.tick(heartbeatInterval).pipe(
 /** The HTTP routes: the API, behind the Host check and the write guard. */
 const routes = ({
   answeredHosts,
+  decisions,
   held,
   paths,
   stopping,
 }: {
   /** The host names the server answers; any other Host gets a 403. */
   readonly answeredHosts: ReadonlySet<string>;
+  readonly decisions: AgentDecisions;
   readonly held: SubscriptionRef.SubscriptionRef<Held>;
   readonly paths: HomePaths;
   readonly stopping: Latch.Latch;
@@ -465,13 +469,19 @@ const routes = ({
     Stream.map((history) => ServerEvent.cases.HistoryUpdated.make({ history }))
   );
 
-  const events = SubscriptionRef.changes(held).pipe(
+  const eventStream = SubscriptionRef.changes(held).pipe(
     Stream.flatMap((current) => Stream.fromIterable(eventsOf(current))),
     Stream.merge(historyEvents),
     Stream.merge(heartbeats),
     // Open streams never end on their own, so they end when the server
     // starts to stop, and it doesn't wait for them.
     Stream.interruptWhen(stopping.await)
+  );
+
+  // The page count is the open streams, so it counts from when one opens
+  // until it ends for any reason.
+  const events = Stream.unwrap(
+    decisions.connected.pipe(Effect.as(eventStream))
   );
 
   const served = {
@@ -508,6 +518,7 @@ const routes = ({
       )
       .handle("state", () => Effect.map(SubscriptionRef.get(held), shownState))
       .handle("events", () => Effect.succeed(events))
+      .handle("status", ({ query }) => decisions.status(query.since))
   );
 
   const historyHandlers = HttpApiBuilder.group(ServerApi, "history", (group) =>
@@ -538,11 +549,15 @@ const routes = ({
               writePendingLayout(
                 paths,
                 { data: good.data, hops: good.data.hops, write: payload },
-                (proposals) =>
-                  SubscriptionRef.update(held, (current) => ({
-                    ...current,
-                    proposals,
-                  }))
+                (proposals, discarded) =>
+                  decisions.record(discarded, "discarded").pipe(
+                    Effect.andThen(
+                      SubscriptionRef.update(held, (current) => ({
+                        ...current,
+                        proposals,
+                      }))
+                    )
+                  )
               )
             ),
             Effect.catchTag(
@@ -552,14 +567,21 @@ const routes = ({
           )
         )
         .handle("accept", ({ payload }) =>
-          acceptPendingLayout(paths, payload, ({ history, proposals, state }) =>
-            SubscriptionRef.update(held, (current) => ({
-              ...current,
-              good: state,
-              history,
-              proposals,
-              rejected: Option.none(),
-            }))
+          acceptPendingLayout(
+            paths,
+            payload,
+            ({ accepted, history, proposals, state }) =>
+              decisions.record(accepted, "accepted").pipe(
+                Effect.andThen(
+                  SubscriptionRef.update(held, (current) => ({
+                    ...current,
+                    good: state,
+                    history,
+                    proposals,
+                    rejected: Option.none(),
+                  }))
+                )
+              )
           ).pipe(
             Effect.catchTag(
               [
@@ -722,9 +744,12 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
 
   const stopping = yield* Latch.make();
 
+  const decisions = yield* makeAgentDecisions;
+
   const app = yield* HttpRouter.toHttpEffect(
     routes({
       answeredHosts,
+      decisions,
       held,
       paths,
       stopping,
