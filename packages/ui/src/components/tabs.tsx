@@ -53,7 +53,7 @@ function TabsTab({
   return (
     <TabsTabPrimitive
       className={cn(
-        "relative inline-flex h-[calc(100%-1px)] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-none border border-transparent px-1.5 py-0.5 text-xs font-medium whitespace-nowrap text-foreground/60 transition-all outline-none select-none hover:text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 data-[selected]:bg-background data-[selected]:text-foreground data-disabled:cursor-default data-disabled:opacity-50",
+        "relative inline-flex h-[calc(100%-1px)] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-none border border-transparent px-1.5 py-0.5 text-xs font-medium whitespace-nowrap text-foreground/60 transition-all outline-none select-none hover:text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 data-[disabled]:cursor-default data-[disabled]:opacity-50 data-[selected]:bg-background data-[selected]:text-foreground",
         className
       )}
       {...props}

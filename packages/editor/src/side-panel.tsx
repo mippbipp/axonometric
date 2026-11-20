@@ -232,7 +232,7 @@ const tabListClass =
   "border-ink h-auto w-full min-w-0 flex-wrap justify-start gap-1 border-b bg-transparent px-3 py-2 group-data-[orientation=horizontal]/tabs:h-auto";
 
 const tabClass =
-  "border-ink focus-visible:border-transparent focus-visible:outline-ink h-auto transition-none flex-none px-2 py-0.5 font-normal text-ink uppercase hover:border-ink hover:text-ink focus-visible:ring-0 focus-visible:outline-2 focus-visible:-outline-offset-2 data-disabled:hover:border-transparent data-[selected]:bg-ink data-[selected]:text-paper";
+  "border-ink focus-visible:border-transparent focus-visible:outline-ink h-auto transition-none flex-none px-2 py-0.5 font-normal text-ink uppercase hover:border-ink hover:text-ink focus-visible:ring-0 focus-visible:outline-2 focus-visible:-outline-offset-2 data-[disabled]:hover:border-transparent data-[selected]:bg-ink data-[selected]:text-paper";
 
 const panelClass =
   "focus-visible:outline-ink min-h-0 flex-1 overflow-y-auto p-4 focus-visible:outline-2 focus-visible:-outline-offset-2";

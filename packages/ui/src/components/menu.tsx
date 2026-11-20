@@ -42,7 +42,7 @@ function MenuContent<Payload = unknown>({
 }
 
 const itemClass =
-  "flex cursor-pointer items-center gap-2 px-2 py-1 text-left outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:cursor-default data-disabled:opacity-40";
+  "flex cursor-pointer items-center gap-2 px-2 py-1 text-left outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[disabled]:cursor-default data-[disabled]:opacity-50";
 
 function MenuItem({
   className,

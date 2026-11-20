@@ -144,6 +144,21 @@ describe("tabs", () => {
     expect(screen.getByRole("tabpanel").textContent).toBe("Your profile");
   });
 
+  it("styles a disabled tab with the data attribute ui-sdk sets", () => {
+    expect.hasAssertions();
+
+    render(<Settings />);
+
+    const billing = screen.getByRole("tab", { name: "Billing" });
+
+    expect(billing.dataset.disabled).toBe("");
+    expect(billing.className).toContain("data-[disabled]:opacity-50");
+    expect(billing.className).not.toMatch(/(?<![\w[])data-disabled:/u);
+    expect(
+      screen.getByRole("tab", { name: "Account" }).dataset.disabled
+    ).toBeUndefined();
+  });
+
   it("follows a controlled value and reports each choice", async () => {
     expect.hasAssertions();
 

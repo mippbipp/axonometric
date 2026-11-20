@@ -81,6 +81,33 @@ describe("menu", () => {
     ).toContain("data-highlighted:bg-accent");
   });
 
+  it("styles a disabled item with the data attribute ui-sdk sets", async () => {
+    expect.hasAssertions();
+
+    const user = userEvent.setup();
+
+    render(
+      <Menu>
+        <MenuTrigger>File</MenuTrigger>
+        <MenuContent>
+          <MenuItem>Rename</MenuItem>
+          <MenuItem disabled>Delete</MenuItem>
+        </MenuContent>
+      </Menu>
+    );
+    await user.click(screen.getByRole("button", { name: "File" }));
+    await act(settle);
+
+    const remove = screen.getByRole("menuitem", { name: "Delete" });
+
+    expect(remove.dataset.disabled).toBe("");
+    expect(remove.className).toContain("data-[disabled]:opacity-50");
+    expect(remove.className).not.toMatch(/(?<![\w[])data-disabled:/u);
+    expect(
+      screen.getByRole("menuitem", { name: "Rename" }).dataset.disabled
+    ).toBeUndefined();
+  });
+
   it("toggles a checkbox item and keeps the menu open", async () => {
     expect.hasAssertions();
 
