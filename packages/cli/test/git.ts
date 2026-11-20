@@ -1,4 +1,4 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- see noGit
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- Vitest decides skips before any test runs, so the git check calls spawnSync from node:child_process outside Effect
 import { spawnSync } from "node:child_process";
 
 import { NodeServices } from "@effect/platform-node";
@@ -9,7 +9,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
  * Whether git is missing. Tests that need a real repo skip without it.
  * Vitest decides skips before any test runs, so this check is synchronous.
  */
-// oxlint-disable-next-line node/no-sync -- see above
+// oxlint-disable-next-line node/no-sync -- a skip is decided before any test runs, so the git check cannot be an Effect
 export const noGit = spawnSync("git", ["--version"]).error !== undefined;
 
 /** Runs git in `cwd` and returns its trimmed output. */

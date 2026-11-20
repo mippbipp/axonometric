@@ -149,6 +149,28 @@ void describe("with-test-lock", () => {
     assert.equal(existsSync(lock), false);
   });
 
+  void it("waits on a lock file it can't read, says so once, and leaves the file", async () => {
+    const lock = join(dir, "garbled.lock");
+    const ran = join(dir, "garbled.ran");
+    writeFileSync(lock, "not json");
+
+    const run = start(
+      lock,
+      `require("node:fs").writeFileSync(${JSON.stringify(ran)}, "")`
+    );
+
+    await until(() => run.output().includes("can't be read"));
+    await sleep(700);
+    assert.equal(existsSync(ran), false);
+    assert.ok(run.output().includes(lock));
+    assert.match(run.output(), /delete the file/u);
+    assert.equal(readFileSync(lock, "utf8"), "not json");
+    run.child.kill("SIGTERM");
+    await run.finished;
+    assert.equal(run.output().match(/can't be read/gu)?.length, 1);
+    assert.equal(readFileSync(lock, "utf8"), "not json");
+  });
+
   void it("skips the lock when CI is true", async () => {
     const lock = join(dir, "ci.lock");
 

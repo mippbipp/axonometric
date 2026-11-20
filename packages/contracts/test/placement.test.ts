@@ -177,41 +177,35 @@ describe("placement", () => {
     })
   );
 
-  it.effect(
-    "gives the update pipeline the same layout each time",
-    () =>
-      Effect.gen(function* () {
-        const first = yield* placedFixture("update-pipeline");
-        const second = yield* placedFixture("update-pipeline");
+  it.effect("gives the update pipeline the same layout each time", () =>
+    Effect.gen(function* () {
+      const first = yield* placedFixture("update-pipeline");
+      const second = yield* placedFixture("update-pipeline");
 
-        assert.deepStrictEqual(first.layout, second.layout);
-      }),
-    30_000
+      assert.deepStrictEqual(first.layout, second.layout);
+    })
   );
 
-  it.effect(
-    "places 40 one-member groups in under 750 ms",
-    () =>
-      Effect.sync(() => {
-        const ids = Arr.map(Arr.range(0, 39), (index) => `s${index}`);
+  it.effect("places 40 one-member groups in under 750 ms", () =>
+    Effect.sync(() => {
+      const ids = Arr.map(Arr.range(0, 39), (index) => `s${index}`);
 
-        const data = mapOf(
-          Arr.map(ids, (id) => structure(id, `g-${id}`)),
-          Arr.map(Arr.range(0, 59), (index) => ({
-            ...hop(`s${(index * 7) % 40}`, `s${(index * 13 + 5) % 40}`),
-            id: `h${index}`,
-          }))
-        );
+      const data = mapOf(
+        Arr.map(ids, (id) => structure(id, `g-${id}`)),
+        Arr.map(Arr.range(0, 59), (index) => ({
+          ...hop(`s${(index * 7) % 40}`, `s${(index * 13 + 5) % 40}`),
+          id: `h${index}`,
+        }))
+      );
 
-        // Each one-member group draws a few of its slots to compare them.
-        // Locally this takes about 0.4 s.
-        const started = performance.now();
-        const { layout } = placeStructures(data, layoutOf());
+      // Each one-member group draws a few of its slots to compare them.
+      // Locally this takes about 0.4 s.
+      const started = performance.now();
+      const { layout } = placeStructures(data, layoutOf());
 
-        assert.isBelow(performance.now() - started, 750);
-        assert.lengthOf(Rec.keys(layout.structures), 40);
-      }),
-    30_000
+      assert.isBelow(performance.now() - started, 750);
+      assert.lengthOf(Rec.keys(layout.structures), 40);
+    })
   );
 
   it.effect(
@@ -227,8 +221,7 @@ describe("placement", () => {
             hiddenLabel("h-merge", "c-watchdog"),
           ]
         );
-      }),
-    30_000
+      })
   );
 
   it.effect("never moves a placed structure, and keeps the revision", () =>

@@ -1,13 +1,22 @@
-import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Option, String as Str } from "effect";
+import { assert, layer } from "@effect/vitest";
+import {
+  Array as Arr,
+  Context,
+  Effect,
+  Layer,
+  Option,
+  String as Str,
+} from "effect";
 
 import { fullMap, minimalMap } from "./fixtures.ts";
 import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
-/** The full map's SYSTEM.md, built once by the first test that asks for it. */
-// oxlint-disable-next-line node/no-sync, eslint/no-restricted-properties -- Effect.cached only makes the memo, which every test then shares, and a module-level memo has no test scope to run in
-const builtSystemMd = Effect.runSync(
-  Effect.cached(
+/** The full map's SYSTEM.md text, built once for the tests that share it. */
+class BuiltSystemMd extends Context.Service<BuiltSystemMd, string>()(
+  "axonometric/test/system-md.test/BuiltSystemMd"
+) {
+  public static readonly layer = Layer.effect(
+    BuiltSystemMd,
     Effect.gen(function* () {
       const fullMapFiles = yield* fullMap;
       const home = yield* makeHome(fullMapFiles);
@@ -17,8 +26,8 @@ const builtSystemMd = Effect.runSync(
 
       return result.files[mapKeys("review").systemMdFile] ?? "";
     })
-  )
-);
+  );
+}
 
 /** The lines from `heading` up to the next heading of the same level. */
 const sectionOf = (markdown: string, heading: string) => {
@@ -45,10 +54,10 @@ const sectionOf = (markdown: string, heading: string) => {
   });
 };
 
-describe("the SYSTEM.md build writes", () => {
+layer(BuiltSystemMd.layer)("the SYSTEM.md build writes", (it) => {
   it.effect("opens with the overview: title, summary and stats", () =>
     Effect.gen(function* () {
-      const systemMd = yield* builtSystemMd;
+      const systemMd = yield* BuiltSystemMd;
 
       assert.match(systemMd, /^# Review loop\n/u);
       assert.include(systemMd, "_Questions: 2 open, 1 resolved._");
@@ -59,7 +68,7 @@ describe("the SYSTEM.md build writes", () => {
 
   it.effect("lists decisions with their ADR links", () =>
     Effect.gen(function* () {
-      const systemMdText = yield* builtSystemMd;
+      const systemMdText = yield* BuiltSystemMd;
       const decisions = sectionOf(systemMdText, "## Decisions");
 
       assert.include(
@@ -75,7 +84,7 @@ describe("the SYSTEM.md build writes", () => {
 
   it.effect("builds How it's built from the overview fields", () =>
     Effect.gen(function* () {
-      const systemMd = yield* builtSystemMd;
+      const systemMd = yield* BuiltSystemMd;
       const howItsBuilt = sectionOf(systemMd, "## How it's built");
 
       assert.deepStrictEqual(
@@ -100,7 +109,7 @@ describe("the SYSTEM.md build writes", () => {
 
   it.effect("gives each structure its fixed status label", () =>
     Effect.gen(function* () {
-      const systemMdText = yield* builtSystemMd;
+      const systemMdText = yield* BuiltSystemMd;
       const structures = sectionOf(systemMdText, "## Structures");
 
       assert.include(
@@ -126,7 +135,7 @@ describe("the SYSTEM.md build writes", () => {
     "groups structures under their group, with steps and questions",
     () =>
       Effect.gen(function* () {
-        const systemMd = yield* builtSystemMd;
+        const systemMd = yield* BuiltSystemMd;
         const loop = sectionOf(systemMd, "### The loop");
         const page = sectionOf(systemMd, "#### P · Map page");
 
@@ -146,7 +155,7 @@ describe("the SYSTEM.md build writes", () => {
 
   it.effect("lists flows by hop and the walkthrough by chapter", () =>
     Effect.gen(function* () {
-      const systemMd = yield* builtSystemMd;
+      const systemMd = yield* BuiltSystemMd;
       const flows = sectionOf(systemMd, "## Flows");
       const walkthrough = sectionOf(systemMd, "## Walkthrough");
 
@@ -164,7 +173,7 @@ describe("the SYSTEM.md build writes", () => {
 
   it.effect("lists open and resolved questions by ID", () =>
     Effect.gen(function* () {
-      const systemMd = yield* builtSystemMd;
+      const systemMd = yield* BuiltSystemMd;
 
       assert.deepStrictEqual(
         Arr.filter(
