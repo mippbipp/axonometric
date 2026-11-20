@@ -2,6 +2,7 @@ import { maxHopLabelLength, newHopId } from "@axonometric/contracts";
 import { Array as Arr, Option, Result } from "effect";
 import { useEffect, useEffectEvent, useId, useState } from "react";
 
+import { ChoiceSelect } from "./choice-select.tsx";
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { useChangePreview } from "./drag-preview-context.ts";
@@ -134,27 +135,20 @@ export function DrawHopForm() {
         {draft.to === null ? "" : " to "}
         {draft.to === null ? null : <b data-draw-to>{nameOf(draft.to)}</b>}
       </p>
-      <label className="flex flex-col gap-1" htmlFor={`${id}-to`}>
-        <span className="opacity-70">To</span>
-        <select
-          className={fieldClass}
-          data-draw="to"
-          id={`${id}-to`}
-          onChange={(event) => {
-            drafting.pick(
-              event.target.value === "" ? null : event.target.value
-            );
-          }}
-          value={draft.to ?? ""}
-        >
-          <option value="">Pick a structure…</option>
-          {Arr.map(targets, (other) => (
-            <option key={other} value={other}>
-              {nameOf(other)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <ChoiceSelect
+        choices={Arr.map(targets, (other) => ({
+          label: nameOf(other),
+          value: other,
+        }))}
+        className="flex flex-col gap-1"
+        label="To"
+        onChange={(next) => {
+          drafting.pick(next === "" ? null : next);
+        }}
+        placeholder="Pick a structure…"
+        trigger={{ "data-draw": "to" }}
+        value={draft.to ?? ""}
+      />
       <label className="flex flex-col gap-1" htmlFor={`${id}-label`}>
         <span className="opacity-70">Label</span>
         <input

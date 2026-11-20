@@ -26,6 +26,7 @@ import {
   waitFor,
   waitForAttributes,
   waitTimeout,
+  choose,
 } from "./browser.ts";
 import { openReviewMap, proposalsOrEmpty, runCli, homeAt } from "./harness.ts";
 import { post } from "./revisions.ts";
@@ -467,9 +468,7 @@ describe("the keyboard path to drawing a hop", () => {
 
         assert.isTrue(drawSubmitDisabled);
 
-        yield* Effect.promise(() =>
-          page.locator('[data-draw="to"]').selectOption("proposals")
-        );
+        yield* choose(page, '[data-draw="to"]', "proposals");
         yield* Effect.promise(() =>
           page.locator('[data-draw="label"]').fill("looks at")
         );
@@ -571,7 +570,7 @@ describe("the hop panel and menu", () => {
         );
         yield* Effect.promise(() =>
           page.waitForFunction(
-            `document.querySelector('[data-hop-flow="f-note"]').checked === true`,
+            `document.querySelector('[data-hop-flow="f-note"]').getAttribute("aria-checked") === "true"`,
             undefined,
             waitTimeout
           )
@@ -593,7 +592,7 @@ describe("the hop panel and menu", () => {
         );
         yield* Effect.promise(() =>
           page.waitForFunction(
-            `document.querySelector('[data-hop-flow="f-note"]').checked === false`,
+            `document.querySelector('[data-hop-flow="f-note"]').getAttribute("aria-checked") === "false"`,
             undefined,
             waitTimeout
           )
@@ -861,12 +860,8 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="name"]').fill(fields.name)
   );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="shape"]').selectOption("store")
-  );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="status"]').selectOption("planned")
-  );
+  yield* choose(page, '[data-add="shape"]', "store");
+  yield* choose(page, '[data-add="status"]', "planned");
   yield* Effect.promise(() =>
     page.locator('[data-add="x"]').fill(String(fields.x))
   );

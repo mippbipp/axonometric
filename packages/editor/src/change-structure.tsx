@@ -7,6 +7,7 @@ import type { Structure } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { useId, useState } from "react";
 
+import { ChoiceSelect } from "./choice-select.tsx";
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { DeletionNotice } from "./deletion-notice.tsx";
@@ -71,24 +72,15 @@ export function ChangeStructure({
     readonly options: ReadonlyArray<{ label: string; value: string }>;
     readonly value: string;
   }) => (
-    <label className="flex items-center justify-between gap-2 text-xs">
-      <span className="opacity-70">{label}</span>
-      <select
-        className={fieldClass}
-        data-change={label.toLowerCase()}
-        disabled={!canPropose || deleted}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-        value={value}
-      >
-        {Arr.map(options, (option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <ChoiceSelect
+      choices={options}
+      className="flex items-center justify-between gap-2 text-xs"
+      disabled={!canPropose || deleted}
+      label={label}
+      onChange={onChange}
+      trigger={{ "data-change": label.toLowerCase() }}
+      value={value}
+    />
   );
 
   return (

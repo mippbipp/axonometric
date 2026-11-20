@@ -1,10 +1,16 @@
 import { maxStructureNameLength } from "@axonometric/contracts";
 import type { GridPoint } from "@axonometric/contracts";
+import { Field, FieldLabel } from "@axonometric/ui/components/field";
+import {
+  NumberInput,
+  NumberInputControl,
+} from "@axonometric/ui/components/number-input";
 import { Toggle } from "@axonometric/ui/components/toggle";
 import { Array as Arr, Option } from "effect";
 import { useId } from "react";
 
 import { addChangeOf, previewId, sentId } from "./add-change.ts";
+import { ChoiceSelect } from "./choice-select.tsx";
 import { controlClass, uiControlClass } from "./control-class.ts";
 import { useDraftSpot } from "./draft-spot.ts";
 import type { DraftSpot } from "./draft-spot.ts";
@@ -66,10 +72,8 @@ export function AddStructureForm() {
     return null;
   }
 
-  const setCoordinate = (axis: "x" | "y", text: string) => {
-    const value = Number(text);
-
-    if (text.trim() !== "" && Number.isFinite(value)) {
+  const setCoordinate = (axis: "x" | "y", value: number | null) => {
+    if (value !== null && Number.isFinite(value)) {
       placing.setSpot({
         x: spot?.x ?? 0,
         y: spot?.y ?? 0,
@@ -118,103 +122,77 @@ export function AddStructureForm() {
         />
       </label>
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1">
-          <span className="opacity-70">Shape</span>
-          <select
-            className={fieldClass}
-            data-add="shape"
-            onChange={(event) => {
-              Option.map(
-                Arr.findFirst(
-                  shapeChoices,
-                  ({ value }) => value === event.target.value
-                ),
-                ({ value }) => {
-                  placing.setDraft({ ...draft, shape: value });
-                }
-              );
-            }}
-            value={draft.shape}
-          >
-            {Arr.map(shapeChoices, ({ label, value }) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="opacity-70">Status</span>
-          <select
-            className={fieldClass}
-            data-add="status"
-            onChange={(event) => {
-              Option.map(
-                Arr.findFirst(
-                  statusChoices,
-                  ({ value }) => value === event.target.value
-                ),
-                ({ value }) => {
-                  placing.setDraft({ ...draft, status: value });
-                }
-              );
-            }}
-            value={draft.status}
-          >
-            {Arr.map(statusChoices, ({ label, value }) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label className="flex flex-col gap-1">
-        <span className="opacity-70">Group</span>
-        <select
-          className={fieldClass}
-          data-add="group"
-          onChange={(event) => {
-            placing.setDraft({ ...draft, group: event.target.value });
+        <ChoiceSelect
+          choices={shapeChoices}
+          className="flex flex-col gap-1"
+          label="Shape"
+          onChange={(next) => {
+            Option.map(
+              Arr.findFirst(shapeChoices, ({ value }) => value === next),
+              ({ value }) => {
+                placing.setDraft({ ...draft, shape: value });
+              }
+            );
           }}
-          value={draft.group}
-        >
-          {Arr.map(state.data.groups, ({ id: groupId, title }) => (
-            <option key={groupId} value={groupId}>
-              {title}
-            </option>
-          ))}
-        </select>
-      </label>
+          trigger={{ "data-add": "shape" }}
+          value={draft.shape}
+        />
+        <ChoiceSelect
+          choices={statusChoices}
+          className="flex flex-col gap-1"
+          label="Status"
+          onChange={(next) => {
+            Option.map(
+              Arr.findFirst(statusChoices, ({ value }) => value === next),
+              ({ value }) => {
+                placing.setDraft({ ...draft, status: value });
+              }
+            );
+          }}
+          trigger={{ "data-add": "status" }}
+          value={draft.status}
+        />
+      </div>
+      <ChoiceSelect
+        choices={Arr.map(state.data.groups, ({ id: groupId, title }) => ({
+          label: title,
+          value: groupId,
+        }))}
+        className="flex flex-col gap-1"
+        label="Group"
+        onChange={(next) => {
+          placing.setDraft({ ...draft, group: next });
+        }}
+        trigger={{ "data-add": "group" }}
+        value={draft.group}
+      />
       <fieldset className="flex flex-col gap-1">
         <legend className="opacity-70">Position</legend>
         <div className="flex items-end gap-1.5">
-          <label className="flex w-14 flex-col gap-1">
-            <span className="opacity-70">x</span>
-            <input
-              className={fieldClass}
-              data-add="x"
-              onChange={(event) => {
-                setCoordinate("x", event.target.value);
+          <Field className="flex w-16 flex-col gap-1">
+            <FieldLabel className="opacity-70">x</FieldLabel>
+            <NumberInput
+              onValueChange={(next) => {
+                setCoordinate("x", next);
               }}
               step={0.5}
-              type="number"
-              value={spot?.x ?? ""}
-            />
-          </label>
-          <label className="flex w-14 flex-col gap-1">
-            <span className="opacity-70">y</span>
-            <input
-              className={fieldClass}
-              data-add="y"
-              onChange={(event) => {
-                setCoordinate("y", event.target.value);
+              value={spot?.x ?? null}
+            >
+              <NumberInputControl data-add="x" />
+            </NumberInput>
+          </Field>
+          <Field className="flex w-16 flex-col gap-1">
+            <FieldLabel className="opacity-70">y</FieldLabel>
+            <NumberInput
+              onValueChange={(next) => {
+                setCoordinate("y", next);
               }}
               step={0.5}
-              type="number"
-              value={spot?.y ?? ""}
-            />
-          </label>
+              value={spot?.y ?? null}
+            >
+              <NumberInputControl data-add="y" />
+            </NumberInput>
+          </Field>
           <Toggle
             className={uiControlClass}
             data-add="pick"

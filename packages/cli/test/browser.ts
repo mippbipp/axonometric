@@ -185,6 +185,16 @@ export const waitGone = (page: Page, selector: string) =>
 export const click = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).click());
 
+/**
+ * Opens the select whose trigger matches `selector` and picks the option with
+ * the value `choice`, the way an engineer does: a click on the trigger, then
+ * a click on the option in the list.
+ */
+export const choose = (page: Page, selector: string, choice: string) =>
+  click(page, selector).pipe(
+    Effect.andThen(click(page, `[role="option"][data-choice="${choice}"]`))
+  );
+
 /** Presses `key`, such as `+` or `Control+z`, on the page. */
 export const press = (page: Page, key: string) =>
   Effect.promise(() => page.keyboard.press(key));
