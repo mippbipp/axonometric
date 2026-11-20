@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Option, Result, Schema, String as Str } from "effect";
-import { vi } from "vitest";
 
 import {
   AcceptedItem,
@@ -32,8 +31,6 @@ import type {
   Verdict,
 } from "../src/index.ts";
 import { unwrap } from "./review-helpers.ts";
-
-vi.setConfig({ testTimeout: 5000 });
 
 const layout: Layout = {
   format: 1,

@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect } from "effect";
-import { vi } from "vitest";
 
 import { proposalProblems } from "../src/index.ts";
 import type { BatchItem, CheckScope } from "../src/index.ts";
@@ -9,8 +8,6 @@ import { fixture } from "./fixture-maps.ts";
 // Seam 3: what the layout checks report for a group or chapter proposal, with
 // plain data. The review map has the groups people, loop and outside; its
 // chapters reveal engineer and page, then server and proposals, then the rest.
-
-vi.setConfig({ testTimeout: 5000 });
 
 const newGroup: BatchItem = {
   change: { action: "add", group: { id: "data-1", title: "Data layer" } },

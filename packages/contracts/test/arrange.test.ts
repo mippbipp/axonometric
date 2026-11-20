@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Record as Rec } from "effect";
-import { vi } from "vitest";
 
 import {
   alignMoves,
@@ -10,8 +9,6 @@ import {
   structuresInBox,
 } from "../src/index.ts";
 import type { LayoutChange, Placement } from "../src/index.ts";
-
-vi.setConfig({ testTimeout: 5000 });
 
 interface Point {
   readonly x: number;

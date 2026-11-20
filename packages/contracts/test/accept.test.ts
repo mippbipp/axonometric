@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option, Result, Schema } from "effect";
-import { vi } from "vitest";
 
 import {
   acceptanceMessage,
@@ -11,8 +10,6 @@ import {
 } from "../src/index.ts";
 import type { Layout, LayoutChange } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
-
-vi.setConfig({ testTimeout: 5000 });
 
 const layout: Layout = {
   format: 1,

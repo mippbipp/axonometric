@@ -8,7 +8,6 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { vi } from "vitest";
 
 import {
   breakageOf,
@@ -43,8 +42,6 @@ import { fixture } from "./fixture-maps.ts";
 import { asOf, changedAs, changedOf, unwrap } from "./review-helpers.ts";
 
 // Seam 3: the pure functions behind structure proposals, with plain data.
-
-vi.setConfig({ testTimeout: 5000 });
 
 const at = "2026-11-01T09:00:00.000Z";
 
@@ -1071,7 +1068,7 @@ describe("the structures a batch is frozen against", () => {
     });
 
     assert.isTrue(Result.isSuccess(allowed));
-  }, 5000);
+  });
 
   it("are left out of a batch frozen without them, and the check falls back to the caller's set", () => {
     const frozen = unwrap(
@@ -1089,7 +1086,7 @@ describe("the structures a batch is frozen against", () => {
     });
 
     assert.include(Result.merge(refused), "already has");
-  }, 5000);
+  });
 });
 
 /** A map with three groups in a row, each a zone with room between. */
@@ -1260,7 +1257,7 @@ describe("the default spot for a new structure", () => {
       newWarnings({ group: "g1", map, mapData: walled, spot }),
       1
     );
-  }, 60_000);
+  });
 });
 
 const lineOf = ({ message, path }: { message: string; path: string }) =>

@@ -7,7 +7,6 @@ import {
   Schema,
   String as Str,
 } from "effect";
-import { vi } from "vitest";
 
 import {
   breakageOf,
@@ -39,8 +38,6 @@ import { promptLine, promptLines, unwrap } from "./review-helpers.ts";
 
 // Seam 3: the pure functions behind group and chapter proposals, with plain
 // data.
-
-vi.setConfig({ testTimeout: 5000 });
 
 const at = "2026-11-01T09:00:00.000Z";
 

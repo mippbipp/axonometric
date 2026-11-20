@@ -6,7 +6,6 @@ import {
   Record as Rec,
   String as Str,
 } from "effect";
-import { vi } from "vitest";
 
 import {
   arrowheadOf,
@@ -416,7 +415,6 @@ const offSegment = (point: ScreenPoint, a: ScreenPoint, b: ScreenPoint) => {
 // The pipeline map routes 29 hops for each of its eight chapters, and some
 // tests search every short route for comparison: a few seconds each, more
 // when the browser tests run alongside.
-vi.setConfig({ testTimeout: 30_000 });
 
 const clashKey = ({ between: [first, second] }: SceneClash) =>
   `${first} × ${second}`;

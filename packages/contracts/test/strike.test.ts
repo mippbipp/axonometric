@@ -65,5 +65,5 @@ describe("the cross through a deleted structure", () => {
         [b, d],
       ]
     );
-  }, 5000);
+  });
 });

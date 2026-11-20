@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
-import { vi } from "vitest";
 
 import {
   emptyHistory,
@@ -10,8 +9,6 @@ import {
   undoStep,
   wroteFile,
 } from "../src/index.ts";
-
-vi.setConfig({ testTimeout: 5000 });
 
 // Lists stand in for pending-change lists: "a" is a list with one change.
 const start = emptyHistory<string>(0);

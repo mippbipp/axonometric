@@ -193,6 +193,14 @@ export default defineConfig({
       },
     },
     {
+      // The contracts tests take one timeout from vitest.config.ts, so no
+      // test sets its own.
+      files: ["packages/contracts/test/**/*.ts"],
+      rules: {
+        "vitest/require-test-timeout": "off",
+      },
+    },
+    {
       files: ["**/*.tsx"],
       rules: {
         "eslint/func-style": "off",
