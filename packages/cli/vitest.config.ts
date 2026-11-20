@@ -1,5 +1,7 @@
 import { defineConfig } from "vitest/config";
 
+import WeightedShardSequencer from "./test/shard-sequencer.ts";
+
 export default defineConfig({
   test: {
     // Browser tests drive Chromium and build real maps. On shared CI runners
@@ -13,5 +15,7 @@ export default defineConfig({
     // leaves behind has to be reset from a setup file, which runs per file.
     isolate: false,
     setupFiles: ["./test/browser-setup.ts"],
+    // CI runs the files in shards, split by how long each file takes.
+    sequence: { sequencer: WeightedShardSequencer },
   },
 });
