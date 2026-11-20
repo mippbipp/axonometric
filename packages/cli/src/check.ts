@@ -33,11 +33,16 @@ export class CheckFailed extends Schema.TaggedError<
   }
 }
 
-const check = Effect.fn("check")(function* (home: string, json: boolean) {
+const check = Effect.fn("check")(function* (
+  home: string,
+  json: boolean,
+  proposed: boolean
+) {
   const paths = yield* homePaths(home);
 
   const { problems, sourcesSkipped } = yield* inspectMap(paths, {
     drawingWarnings: true,
+    proposed,
     strictProposals: true,
     strictHistory: true,
   });
@@ -90,10 +95,16 @@ export const checkCommand = Command.make(
         "Print { home, ok, errors, warnings } as JSON instead of text"
       )
     ),
+    proposed: Flag.Boolean("proposed").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription(
+        "Check the map as the page shows it with every open layout change applied, the engineer's and the agent's, before they are accepted"
+      )
+    ),
   },
-  ({ home, json }) => check(home, json)
+  ({ home, json, proposed }) => check(home, json, proposed)
 ).pipe(
   Command.withDescription(
-    "Report the map's errors and warnings without writing anything. Exits 1 on errors."
+    "Report the map's errors and warnings without writing anything. Exits 1 on errors. With --proposed, checks the map with its open layout changes applied."
   )
 );
