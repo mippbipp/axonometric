@@ -207,8 +207,8 @@ export default defineConfig({
       },
     },
     {
-      // The contracts tests take one timeout from vitest.config.ts, so no
-      // test sets its own.
+      // Every contracts test takes the timeout in vitest.config.ts and passes
+      // none of its own, so the rule that requires one has nothing to check.
       files: ["packages/contracts/test/**/*.ts"],
       rules: {
         "vitest/require-test-timeout": "off",
