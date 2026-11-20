@@ -116,3 +116,17 @@ export const pendingHops = (editing: Editing | null): ReadonlySet<string> =>
       hopsOf
     )
   );
+
+const agentChanges = (editing: Editing | null) =>
+  Arr.filter(
+    [...(editing?.frozen ?? []), ...(editing?.pending ?? [])],
+    (change) => change.by === "agent"
+  );
+
+/** The ids of the structures the agent's pending changes act on. */
+export const agentStructures = (editing: Editing | null): ReadonlySet<string> =>
+  new Set(Arr.flatMap(agentChanges(editing), structuresOf));
+
+/** The ids of the hops the agent's pending changes reroute. */
+export const agentHops = (editing: Editing | null): ReadonlySet<string> =>
+  new Set(Arr.flatMap(agentChanges(editing), hopsOf));

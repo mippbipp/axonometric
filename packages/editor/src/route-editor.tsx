@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
-import { pendingHops, useEditing } from "./editing-context.ts";
+import { agentHops, pendingHops, useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
@@ -163,6 +163,7 @@ export function RouteEditor({
 }) {
   const editing = useEditing();
   const rerouted = pendingHops(editing);
+  const agentRerouted = agentHops(editing);
   const { selectedHop, selectHop } = useSelection();
   const preview = useDragPreview();
   const root = useRef<SVGGElement>(null);
@@ -407,6 +408,9 @@ export function RouteEditor({
             aria-hidden="true"
             className="stroke-pending pointer-events-none"
             data-hop-pending={routed.hop.id}
+            data-pending-by={
+              agentRerouted.has(routed.hop.id) ? "agent" : "engineer"
+            }
             fill="none"
             key={routed.hop.id}
             points={toPoints(routed.points)}
