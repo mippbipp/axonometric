@@ -1,9 +1,13 @@
 import type { View } from "@axonometric/contracts";
 import { views } from "@axonometric/contracts";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@axonometric/ui/components/segmented-control";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
-import { controlClass } from "./control-class.ts";
+import { uiSegmentClass } from "./control-class.ts";
 import { viewKey } from "./view-keys.ts";
 
 const names = {
@@ -11,7 +15,7 @@ const names = {
   plan: "Plan",
 } as const satisfies Record<View, string>;
 
-/** Two joined buttons, Iso and Plan, the current one pressed. */
+/** Two joined options, Iso and Plan, the current one chosen. */
 export function ViewToggle({
   choose,
   disabledBecause,
@@ -23,28 +27,29 @@ export function ViewToggle({
   readonly view: View;
 }) {
   return (
-    <fieldset className="flex" data-view-toggle>
-      <legend className="sr-only">View</legend>
+    <SegmentedControl<View>
+      aria-label="View"
+      className="flex"
+      data-view-toggle=""
+      disabled={disabledBecause !== undefined}
+      onValueChange={(next) => {
+        if (next !== null) {
+          choose(next);
+        }
+      }}
+      value={view}
+    >
       {Arr.map(views, (option, index) => (
-        <button
-          aria-pressed={option === view}
-          className={cn(
-            controlClass,
-            index > 0 && "-ml-px",
-            option === view && "bg-ink text-paper"
-          )}
+        <SegmentedControlItem
+          className={cn(uiSegmentClass, index > 0 && "-ml-px")}
           data-view={option}
-          disabled={disabledBecause !== undefined}
           key={option}
-          onClick={() => {
-            choose(option);
-          }}
           title={disabledBecause ?? `${names[option]} view (${viewKey})`}
-          type="button"
+          value={option}
         >
           {names[option]}
-        </button>
+        </SegmentedControlItem>
       ))}
-    </fieldset>
+    </SegmentedControl>
   );
 }

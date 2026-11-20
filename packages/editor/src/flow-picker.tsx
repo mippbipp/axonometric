@@ -1,9 +1,14 @@
 import type { FlowChoice } from "@axonometric/contracts";
+import {
+  SegmentedControl,
+  SegmentedControlItem,
+} from "@axonometric/ui/components/segmented-control";
 import { cn } from "@axonometric/ui/lib/utils";
-import { Array as Arr } from "effect";
+import { Array as Arr, Option } from "effect";
+import { useId } from "react";
 
 import { flowChoiceKey } from "./chapters.ts";
-import { controlClass } from "./control-class.ts";
+import { uiSegmentClass } from "./control-class.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /**
@@ -13,6 +18,7 @@ import { useWalkthrough } from "./walkthrough-context.ts";
  */
 export function FlowPicker({ className }: { readonly className?: string }) {
   const { chooseFlow, flowChoice, isLast, state, stop } = useWalkthrough();
+  const labelId = useId();
   const { flows } = state.data;
 
   if (!isLast || flows.length === 0) {
@@ -36,36 +42,46 @@ export function FlowPicker({ className }: { readonly className?: string }) {
   ];
 
   return (
-    <fieldset
+    <div
       className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)}
       data-flow-picker
     >
-      <legend className="sr-only">Flow to play</legend>
-      <span className="mr-1 text-xs tracking-widest uppercase opacity-70">
+      <span
+        className="mr-1 text-xs tracking-widest uppercase opacity-70"
+        id={labelId}
+      >
         Flow
       </span>
-      {Arr.map(options, ({ choice, label }) => {
-        const key = flowChoiceKey(choice);
+      <SegmentedControl<string>
+        aria-labelledby={labelId}
+        className="flex min-w-0 flex-wrap gap-1.5"
+        onValueChange={(next) => {
+          const option = Arr.findFirst(
+            options,
+            ({ choice }) => flowChoiceKey(choice) === next
+          );
 
-        return (
-          <button
-            aria-pressed={key === chosen}
-            className={cn(
-              controlClass,
-              "tracking-wider uppercase",
-              key === chosen && "bg-ink text-paper"
-            )}
-            data-flow={choice.kind === "flow" ? choice.id : choice.kind}
-            key={key}
-            onClick={() => {
-              chooseFlow(choice);
-            }}
-            type="button"
-          >
-            {label}
-          </button>
-        );
-      })}
-    </fieldset>
+          if (Option.isSome(option)) {
+            chooseFlow(option.value.choice);
+          }
+        }}
+        value={chosen}
+      >
+        {Arr.map(options, ({ choice, label }) => {
+          const key = flowChoiceKey(choice);
+
+          return (
+            <SegmentedControlItem
+              className={cn(uiSegmentClass, "tracking-wider uppercase")}
+              data-flow={choice.kind === "flow" ? choice.id : choice.kind}
+              key={key}
+              value={key}
+            >
+              {label}
+            </SegmentedControlItem>
+          );
+        })}
+      </SegmentedControl>
+    </div>
   );
 }

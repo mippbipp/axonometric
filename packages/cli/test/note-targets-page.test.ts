@@ -440,7 +440,14 @@ describe("the keyboard", () => {
         );
         yield* Effect.promise(() => page.keyboard.press("Enter"));
         yield* waitFor(page, "[data-spot-cursor]");
-        yield* Effect.promise(() => page.locator("body").focus());
+
+        // Focus stays on the Note button, inside the toolbar, whose own
+        // arrow keys must not take the cursor's.
+        const onNote = yield* Effect.promise(() =>
+          page.locator('[data-control="note-tool"]:focus').count()
+        );
+
+        assert.strictEqual(onNote, 1);
 
         const readout = () => textOf(page, "[data-spot-readout]");
         const start = yield* readout();

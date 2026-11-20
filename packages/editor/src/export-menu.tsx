@@ -8,10 +8,17 @@ import {
 } from "@axonometric/contracts";
 import type { View } from "@axonometric/contracts";
 import { svgFileOf } from "@axonometric/drawing";
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuContent,
+  MenuItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "@axonometric/ui/components/menu";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Effect } from "effect";
-import { useEffect, useId, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode, Ref } from "react";
+import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useExportState } from "./export-state-context.ts";
@@ -20,112 +27,27 @@ import { download, ExportFailed, pngOf } from "./svg-export.ts";
 import { shownTheme } from "./theme-state.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
-const items = ["svg", "png", "excalidraw", "background"] as const;
-
-type Item = (typeof items)[number];
-
 /** The items that save a file. */
-type Export = Exclude<Item, "background">;
-
-const itemClass =
-  "focus-visible:bg-ink focus-visible:text-paper hover:bg-ink hover:text-paper flex w-full cursor-pointer items-center gap-2 px-3 py-1 text-left text-xs outline-none";
-
-/** One row of the menu. A `checked` row is a checkbox, drawn as one. */
-function MenuItem({
-  checked,
-  children,
-  item,
-  itemRef,
-  onChoose,
-}: {
-  /** Whether a checkbox row is checked. Leave out for a row that saves. */
-  readonly checked?: boolean;
-  readonly children: ReactNode;
-  readonly item: Item;
-  readonly itemRef: Ref<HTMLButtonElement>;
-  readonly onChoose: () => void;
-}) {
-  const isCheckbox = checked !== undefined;
-
-  return (
-    <button
-      aria-checked={checked}
-      className={itemClass}
-      data-export-item={item}
-      onClick={onChoose}
-      ref={itemRef}
-      role={isCheckbox ? "menuitemcheckbox" : "menuitem"}
-      tabIndex={-1}
-      type="button"
-    >
-      {isCheckbox ? (
-        <span aria-hidden="true" className="w-3 text-sm leading-none">
-          {checked ? "☑" : "☐"}
-        </span>
-      ) : null}
-      {children}
-    </button>
-  );
-}
+type Export = "excalidraw" | "png" | "svg";
 
 /**
  * The header's Export button and its menu: the current view and chapter as
  * SVG or PNG, the whole map as an Excalidraw file, and a "White background"
- * checkbox that replaces the paper colour. The arrow keys, Home and End move
- * through the menu, and Escape or Tab closes it, with focus back on the
- * button. Files save through a download link, so export works in the
- * read-only file too. A failed export says so in a live region and saves
- * nothing.
+ * checkbox that replaces the paper colour and leaves the menu open. The menu
+ * keys are ui-sdk's: the arrow keys, Home and End move through it, and
+ * Escape or Tab closes it, with focus back on the button. Files save through
+ * a download link, so export works in the read-only file too. A failed
+ * export says so in a live region and saves nothing.
  */
 export function ExportMenu({ view }: { readonly view: View }) {
   const { flowChoice, index, state: shown } = useWalkthrough();
   // Proposals are drawn on the page and left out of what it saves.
   const state = useExportState() ?? shown;
   const targetsNow = useSpotlightActions().current;
-  const [open, setOpen] = useState(false);
   const [onWhite, setOnWhite] = useState(false);
   const [problem, setProblem] = useState("");
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef(new Map<Item, HTMLElement>());
-  const menuId = useId();
   const chapter = index + 1;
   const name = exportName({ chapter, system: state.system, view });
-
-  const close = (refocus: boolean) => {
-    setOpen(false);
-
-    if (refocus) {
-      buttonRef.current?.focus();
-    }
-  };
-
-  useEffect(() => {
-    if (open) {
-      itemRefs.current.get("svg")?.focus();
-    }
-  }, [open]);
-
-  // A press anywhere else closes the menu.
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => {
-      const { target } = event;
-
-      if (
-        target instanceof Node &&
-        menuRef.current?.contains(target) !== true &&
-        buttonRef.current?.contains(target) !== true
-      ) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, []);
 
   const svgFile = () =>
     Effect.try({
@@ -185,7 +107,6 @@ export function ExportMenu({ view }: { readonly view: View }) {
   };
 
   const run = (item: Export) => {
-    close(true);
     setProblem("");
     Effect.runFork(
       actions[item]().pipe(
@@ -198,85 +119,64 @@ export function ExportMenu({ view }: { readonly view: View }) {
     );
   };
 
-  const move = (from: Item, by: number) => {
-    const at = items.indexOf(from);
-    const next = items[(at + by + items.length) % items.length];
-
-    if (next !== undefined) {
-      itemRefs.current.get(next)?.focus();
-    }
-  };
-
-  const onMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    // The map's own keys, such as → for the next chapter or v for the
-    // other view, stay off while the menu has focus.
-    event.stopPropagation();
-
-    const current = items.find(
-      (item) => itemRefs.current.get(item) === document.activeElement
-    );
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close(true);
-    } else if (event.key === "Tab") {
-      // Focus goes back to the button first, so Tab moves on from there
-      // instead of from a menu that's about to disappear.
-      close(true);
-    } else if (current === undefined) {
-      // Only the items below move focus.
-    } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
-      event.preventDefault();
-      move(current, 1);
-    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-      event.preventDefault();
-      move(current, -1);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      move(items[0], 0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      move(items.at(-1) ?? current, 0);
-    }
-  };
-
-  const onButtonKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      event.stopPropagation();
-      setOpen(true);
-    }
-  };
-
-  const itemRef = (item: Item) => (element: HTMLElement | null) => {
-    if (element === null) {
-      itemRefs.current.delete(item);
-    } else {
-      itemRefs.current.set(item, element);
-    }
-  };
-
   return (
     <div className="relative flex">
-      <button
-        aria-controls={open ? menuId : undefined}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className={cn(controlClass, open && "bg-ink text-paper")}
-        data-control="export"
-        onClick={() => {
-          if (open) {
-            close(true);
-          } else {
-            setOpen(true);
-          }
-        }}
-        onKeyDown={onButtonKey}
-        ref={buttonRef}
-        type="button"
-      >
-        Export
-      </button>
+      <Menu>
+        <MenuTrigger
+          className={cn(
+            controlClass,
+            "aria-expanded:bg-ink aria-expanded:text-paper"
+          )}
+          data-control="export"
+        >
+          Export
+        </MenuTrigger>
+        <MenuContent
+          align="end"
+          aria-label="Export"
+          className="min-w-56"
+          data-export-menu=""
+          onKeyDown={(event) => {
+            // The map's own keys, such as → for the next chapter or v for
+            // the other view, stay off while the menu has focus.
+            event.stopPropagation();
+          }}
+        >
+          <MenuItem
+            data-export-item="svg"
+            onSelect={() => {
+              run("svg");
+            }}
+          >
+            SVG of this view and chapter
+          </MenuItem>
+          <MenuItem
+            data-export-item="png"
+            onSelect={() => {
+              run("png");
+            }}
+          >
+            PNG of this view and chapter
+          </MenuItem>
+          <MenuItem
+            data-export-item="excalidraw"
+            onSelect={() => {
+              run("excalidraw");
+            }}
+          >
+            Excalidraw file of the whole map
+          </MenuItem>
+          <MenuSeparator />
+          <MenuCheckboxItem
+            checked={onWhite}
+            data-export-item="background"
+            onCheckedChange={setOnWhite}
+            value="background"
+          >
+            White background
+          </MenuCheckboxItem>
+        </MenuContent>
+      </Menu>
       <output
         aria-live="polite"
         className={cn(
@@ -287,57 +187,6 @@ export function ExportMenu({ view }: { readonly view: View }) {
       >
         {problem}
       </output>
-      {open ? (
-        <div
-          aria-label="Export"
-          className="border-ink bg-paper text-ink absolute top-full right-0 z-30 mt-1 flex w-56 flex-col border py-1"
-          data-export-menu=""
-          id={menuId}
-          onKeyDown={onMenuKey}
-          ref={menuRef}
-          role="menu"
-          tabIndex={-1}
-        >
-          <MenuItem
-            item="svg"
-            itemRef={itemRef("svg")}
-            onChoose={() => {
-              run("svg");
-            }}
-          >
-            SVG of this view and chapter
-          </MenuItem>
-          <MenuItem
-            item="png"
-            itemRef={itemRef("png")}
-            onChoose={() => {
-              run("png");
-            }}
-          >
-            PNG of this view and chapter
-          </MenuItem>
-          <MenuItem
-            item="excalidraw"
-            itemRef={itemRef("excalidraw")}
-            onChoose={() => {
-              run("excalidraw");
-            }}
-          >
-            Excalidraw file of the whole map
-          </MenuItem>
-          <hr className="border-ink my-1" />
-          <MenuItem
-            checked={onWhite}
-            item="background"
-            itemRef={itemRef("background")}
-            onChoose={() => {
-              setOnWhite((current) => !current);
-            }}
-          >
-            White background
-          </MenuItem>
-        </div>
-      ) : null}
     </div>
   );
 }
