@@ -109,7 +109,7 @@ _Avoid_: 2D view, flat view
 
 **Scene**:
 One view's drawing of the structures a chapter has revealed, at one zoom. It holds every box, route, name tag and zone, placed at the size it is drawn.
-_Avoid_: frame, render
+_Avoid_: frame
 
 **Zoom to fit**:
 The zoom and pan that put what a chapter reveals in the middle of the canvas with room round it. It zooms in no further than 1.5 times, and out no further than name tags need to stay clear of each other.
