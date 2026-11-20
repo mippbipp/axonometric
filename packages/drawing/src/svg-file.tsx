@@ -1,4 +1,4 @@
-/* oxlint-disable perfectionist/sort-jsx-props -- the root <svg> header is parsed by position (width before height) by the export tests and by tools that read the file's first bytes */
+/* oxlint-disable perfectionist/sort-jsx-props -- export-svg.test.ts reads the root <svg> header with width before height, so its props keep their written order */
 import {
   chapterStopsOf,
   exportFontStack,
