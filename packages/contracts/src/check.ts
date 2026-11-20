@@ -1,7 +1,7 @@
 import { Array as Arr, Option, String as Str } from "effect";
 import { dual } from "effect/Function";
 
-import { checkLayout } from "./layout-checks.ts";
+import { drawingProblems, layoutWideProblems } from "./layout-checks.ts";
 import type { Layout } from "./layout.ts";
 import type { MapData } from "./map-data.ts";
 import { mapError, mapWarning } from "./problems.ts";
@@ -375,6 +375,12 @@ const tagShortensName = (data: MapData): ReadonlyArray<MapProblem> =>
 
 export interface CheckOptions {
   /**
+   * Whether to report the drawing warnings, which route and draw every
+   * chapter in both views and take seconds on a big map. Leave it out to
+   * skip them. The errors and every other warning are found either way.
+   */
+  readonly drawingWarnings?: boolean | undefined;
+  /**
    * Whether a relative link, such as `../adr/0001-runtime.md#context`,
    * resolves to a file. Links are relative to SYSTEM.md, and a fragment
    * names a place in the file.
@@ -396,7 +402,8 @@ export interface MapFiles {
 /**
  * Checks what the schemas can't: references between ids, the walkthrough,
  * links, and how the layout reads. Returns errors and warnings together. A
- * structure with no placement is fine, because `build` places it.
+ * structure with no placement is fine, because `build` places it. The
+ * drawing warnings come only when `options.drawingWarnings` is set.
  */
 export const checkMap: {
   (options: CheckOptions): (files: MapFiles) => ReadonlyArray<MapProblem>;
@@ -415,7 +422,8 @@ export const checkMap: {
       ? []
       : checkSources(data, options.sourceFacts)),
     ...repeatedSources(data),
-    ...checkLayout(data, layout),
+    ...layoutWideProblems(data, layout),
+    ...(options.drawingWarnings === true ? drawingProblems(data, layout) : []),
     ...emptyGroups(data),
     ...chapterSize(data),
     ...tagShortensName(data),
