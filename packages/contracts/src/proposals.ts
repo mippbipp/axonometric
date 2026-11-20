@@ -235,7 +235,7 @@ export const targetIdsOf = (change: LayoutChange): ReadonlyArray<string> => [
  * `hop:engineer` are different targets, so a structure and a hop that share
  * an id never collide.
  */
-const targetKeysOf = (change: LayoutChange): ReadonlyArray<string> => [
+export const targetKeysOf = (change: LayoutChange): ReadonlyArray<string> => [
   ...Arr.map(structuresOf(change), (id) => `structure:${id}`),
   ...Arr.map(hopsOf(change), (id) => `hop:${id}`),
 ];

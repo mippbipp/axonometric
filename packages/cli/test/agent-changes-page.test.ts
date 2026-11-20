@@ -9,8 +9,11 @@ import {
   assertCount,
   assertTextIncludes,
   attributesOf,
+  centreOf,
   click,
   goToChapter,
+  showView,
+  unitOnScreen,
   waitFor,
   waitGone,
 } from "./browser.ts";
@@ -20,6 +23,7 @@ import {
   readIn,
   readProposals,
   runCli,
+  waitForRevision,
 } from "./harness.ts";
 
 // The agent's layout changes in a page that a real serve serves: how the
@@ -104,6 +108,19 @@ const openPending = Effect.fnUntraced(function* (
   yield* waitFor(opened.page, "[data-pending-list]");
 
   return opened;
+});
+
+/** Drags the engineer down by `units` in Plan view. */
+const dragEngineer = Effect.fnUntraced(function* (page: Page, units: number) {
+  const unit = yield* unitOnScreen(page, "plan");
+  const from = yield* centreOf(page, '[data-structure="engineer"]');
+
+  yield* Effect.promise(() => page.mouse.move(from.x, from.y));
+  yield* Effect.promise(() => page.mouse.down());
+  yield* Effect.promise(() =>
+    page.mouse.move(from.x, from.y + unit * units, { steps: 12 })
+  );
+  yield* Effect.promise(() => page.mouse.up());
 });
 
 const pressButton = (page: Page, name: string) =>
@@ -329,6 +346,68 @@ describe("the agent's layout changes in the page", () => {
         for (const selector of buttons) {
           yield* waitFor(page, selector);
         }
+      }),
+    60_000
+  );
+
+  it.live(
+    "undo after the agent proposes for another structure takes back the engineer's drag and keeps the agent's change",
+    () =>
+      Effect.gen(function* () {
+        const { errors, home, page, root } = yield* openPending(
+          proposalsOf([])
+        );
+
+        yield* showView(page, "plan");
+        yield* dragEngineer(page, 3.5);
+
+        const dragged = yield* waitForRevision(home, 2);
+
+        assert.deepStrictEqual(
+          Arr.map(dragged.layout, ({ by }) => by),
+          ["engineer"]
+        );
+
+        const proposed = yield* runCli(root, [
+          "layout",
+          home,
+          "upstream",
+          "--y",
+          "3",
+          "--propose",
+          "--reason",
+          "Make room",
+        ]);
+
+        assert.strictEqual(proposed.exitCode, 0, proposed.stderr);
+        yield* waitFor(page, '[data-pending-id][data-pending-by="agent"]');
+
+        const agents = Arr.filter(
+          (yield* waitForRevision(home, 3)).layout,
+          ({ by }) => by === "agent"
+        );
+
+        assert.strictEqual(agents.length, 1);
+
+        yield* click(page, "[data-control='undo']");
+
+        const undone = yield* waitForRevision(home, 4);
+
+        assert.deepStrictEqual(undone.layout, agents);
+        yield* waitGone(page, '[data-pending-id][data-pending-by="engineer"]');
+        yield* assertCount(
+          page,
+          '[data-pending-id][data-pending-by="agent"]',
+          1
+        );
+        yield* assertCount(page, "[data-edit-notice]", 0);
+
+        const canRedo = yield* Effect.promise(() =>
+          page.locator("[data-control='redo']").isEnabled()
+        );
+
+        assert.isTrue(canRedo);
+        assert.deepStrictEqual(errors, []);
       }),
     60_000
   );
