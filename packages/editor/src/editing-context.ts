@@ -130,3 +130,30 @@ export const agentStructures = (editing: Editing | null): ReadonlySet<string> =>
 /** The ids of the hops the agent's pending changes reroute. */
 export const agentHops = (editing: Editing | null): ReadonlySet<string> =>
   new Set(Arr.flatMap(agentChanges(editing), hopsOf));
+
+/** What the agent has proposed to the layout: how many changes, and why. */
+export interface AgentProposal {
+  readonly count: number;
+  /** Each reason the agent gave, once, in the order the changes list them. */
+  readonly reasons: ReadonlyArray<string>;
+}
+
+/** The agent's pending layout changes, or `undefined` when it has none. */
+export const agentProposalOf = (
+  editing: Editing | null
+): AgentProposal | undefined => {
+  const changes = agentChanges(editing);
+
+  return Arr.isArrayNonEmpty(changes)
+    ? {
+        count: changes.length,
+        reasons: Arr.dedupe(
+          Arr.flatMap(changes, (change) =>
+            change.by === "agent" && change.reason !== undefined
+              ? [change.reason]
+              : []
+          )
+        ),
+      }
+    : undefined;
+};
