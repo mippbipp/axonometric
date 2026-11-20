@@ -34,6 +34,12 @@ const waitForChapter = (page: Page, id: string) =>
     page.locator(`[data-walkthrough][data-chapter="${id}"]`).waitFor()
   );
 
+const railButton = (id: string) =>
+  `[data-chapter-rail] button[data-chapter="${id}"]`;
+
+const waitForFocus = (page: Page, selector: string) =>
+  Effect.promise(() => page.locator(`${selector}:focus`).waitFor());
+
 const zoomIn = (page: Page) =>
   click(page, 'button[aria-label="Zoom in"]').pipe(
     Effect.andThen(click(page, 'button[aria-label="Zoom in"]'))
@@ -116,6 +122,75 @@ describe("the chapter walkthrough", () => {
 
         // h-pr ends at the pull request, which isn't revealed yet.
         assert.strictEqual(hops, 3);
+      })
+    )
+  );
+
+  it.live("keeps one Tab stop on the rail, and ←/→ on it move focus only", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+        const railStops = () =>
+          attributesOf(
+            page,
+            '[data-chapter-rail] button[tabindex="0"]',
+            "data-chapter"
+          );
+
+        const focusedChapter = () =>
+          Effect.promise(() =>
+            page.evaluate<string | null>(
+              "document.activeElement?.closest('[data-chapter-rail]') ? document.activeElement.getAttribute('data-chapter') : null"
+            )
+          );
+
+        const initialStops = yield* railStops();
+        assert.deepStrictEqual(initialStops, ["c-page"]);
+
+        yield* Effect.promise(() => page.locator(railButton("c-page")).focus());
+        yield* press(page, "ArrowRight");
+        yield* waitForFocus(page, railButton("c-save"));
+        // Focus moved; the chapter didn't.
+        yield* waitForChapter(page, "c-page");
+        const stopsAfterArrow = yield* railStops();
+        assert.deepStrictEqual(stopsAfterArrow, ["c-page"]);
+        const focused = yield* focusedChapter();
+        assert.strictEqual(focused, "c-save");
+
+        yield* press(page, "ArrowRight");
+        yield* waitForFocus(page, railButton("c-all"));
+        yield* waitForChapter(page, "c-page");
+
+        yield* press(page, "ArrowLeft");
+        yield* waitForFocus(page, railButton("c-save"));
+        yield* waitForChapter(page, "c-page");
+
+        // ] and [ still change the chapter with focus on the rail, and the
+        // stop follows the chapter.
+        yield* press(page, "BracketRight");
+        yield* waitForChapter(page, "c-save");
+        yield* Effect.promise(() =>
+          page.locator(`${railButton("c-save")}[tabindex="0"]`).waitFor()
+        );
+        const stopsAfterBracket = yield* railStops();
+        assert.deepStrictEqual(stopsAfterBracket, ["c-save"]);
+        yield* press(page, "BracketLeft");
+        yield* waitForChapter(page, "c-page");
+
+        // Enter on a focused rail button opens its chapter.
+        yield* press(page, "ArrowRight");
+        yield* waitForFocus(page, railButton("c-all"));
+        yield* press(page, "Enter");
+        yield* waitForChapter(page, "c-all");
+
+        // From the page body the arrows and e work as before.
+        yield* Effect.promise(() =>
+          page.evaluate("document.activeElement?.blur()")
+        );
+        yield* press(page, "ArrowLeft");
+        yield* waitForChapter(page, "c-save");
+        yield* press(page, "ArrowRight");
+        yield* waitForChapter(page, "c-all");
       })
     )
   );
