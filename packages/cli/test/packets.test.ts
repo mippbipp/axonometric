@@ -8,6 +8,7 @@ import {
   attributesOf,
   click,
   goToChapter,
+  press,
   waitFor,
 } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
@@ -264,7 +265,7 @@ describe("the flow picker", () => {
         yield* goToChapter(page, "c-all");
 
         const buttons = yield* Effect.promise(() =>
-          page.locator("[data-flow-picker] button").allTextContents()
+          page.locator("[data-flow-picker] [role=radio]").allTextContents()
         );
 
         assert.strictEqual(early, 0);
@@ -318,5 +319,29 @@ describe("the flow picker", () => {
         assert.include(eyebrow ?? "", "Accepting");
       })
     )
+  );
+
+  it.live(
+    "moves the choice with the arrow keys, without changing chapter",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* twoFlowPage;
+
+          yield* goToChapter(page, "c-all");
+          yield* Effect.promise(() =>
+            page.locator('[data-flow-picker] [data-flow="all"]').focus()
+          );
+          yield* press(page, "ArrowLeft");
+          yield* waitFor(page, '[data-flow="f-accept"][aria-checked="true"]');
+          yield* press(page, "ArrowLeft");
+          yield* waitFor(page, '[data-flow="f-note"][aria-checked="true"]');
+
+          const runs = yield* attributesOf(page, "[data-packet]", "data-run");
+
+          assert.deepStrictEqual(runs, ["f-note"]);
+          yield* waitFor(page, '[data-walkthrough][data-chapter="c-all"]');
+        })
+      )
   );
 });
