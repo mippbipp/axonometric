@@ -1,15 +1,24 @@
-import { ServerState } from "@axonometric/contracts";
+import { MapState, ServerState } from "@axonometric/contracts";
 import {
   NodeHttpClient,
   NodeServices,
   NodeSocket,
 } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Predicate, Schema, String as Str } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  FileSystem,
+  Option,
+  Predicate,
+  Schedule,
+  Schema,
+  String as Str,
+} from "effect";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { minimalMap } from "./fixtures.ts";
+import { crowdedMap, minimalMap } from "./fixtures.ts";
 import {
   makeHome,
   runCli,
@@ -112,6 +121,13 @@ const getWithoutHost = (url: string) =>
 
     return Number(status);
   }).pipe(Effect.scoped);
+
+const decodeServed = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(MapState)
+);
+
+const hasName = (name: string) => (structure: { readonly name: string }) =>
+  structure.name === name;
 
 const portOf = (url: string) => Number(new URL(url).port);
 
@@ -216,6 +232,50 @@ describe("serve", () => {
 
         assert.isUndefined(after.files[homeKeys.serverStateFile]);
       })
+  );
+
+  it.live(
+    "leaves out the drawing warning check prints, at start and on a rebuild",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const crowded = yield* crowdedMap;
+        const root = yield* makeHome(crowded);
+        const { dataFile, home } = mapIn(root, "crowded");
+        const serve = yield* startServe(home, ["--port", "0"]);
+        const text = yield* fs.readFileString(dataFile);
+        const renamed = Str.replace('name: "Client"', 'name: "Customer"')(text);
+
+        assert.notStrictEqual(renamed, text);
+        yield* fs.writeFileString(dataFile, renamed);
+
+        const served = HttpClient.HttpClient.use((client) =>
+          client.get(new URL("/api/state", serve.url))
+        ).pipe(
+          Effect.flatMap((response) => response.text),
+          Effect.flatMap(decodeServed),
+          Effect.scoped,
+          Effect.provide(NodeHttpClient.layerNodeHttp)
+        );
+
+        yield* served.pipe(
+          Effect.filterOrFail(
+            ({ data }) => Arr.some(data.structures, hasName("Customer")),
+            () => "serve has not rebuilt yet"
+          ),
+          Effect.retry({ schedule: Schedule.spaced("100 millis"), times: 100 }),
+          Effect.orDie
+        );
+
+        const checked = yield* runCli(root, ["check", home]);
+
+        assert.include(checked.stdout, 'hop "h-secret" from "api" to "vault"');
+        assert.notInclude(
+          serve.output.stdout + serve.output.stderr,
+          "h-secret"
+        );
+      }).pipe(Effect.provide(NodeServices.layer)),
+    60_000
   );
 
   it.live("refuses to start while another serve runs on the map", () =>
