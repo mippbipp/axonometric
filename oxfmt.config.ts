@@ -9,6 +9,7 @@ export default defineConfig({
     "*.md",
     "dist",
     "bun.lock",
+    "*.toml",
     // agent tooling dirs (installed skills/hooks) are not application source
     ".agents/**",
     // fixture maps are written the way an agent writes data.mjs
