@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/@hona/strobe/schema/strobe.v1.json",
+  "build": {
+    "command": "bun run build",
+    "cwd": "packages/editor",
+    "output": "packages/editor/dist"
+  },
+  "serve": {
+    "command": "bun run vite preview --host 127.0.0.1 --port {port} --strictPort",
+    "cwd": "packages/editor",
+    "dir": "packages/editor/dist"
+  }
+}
