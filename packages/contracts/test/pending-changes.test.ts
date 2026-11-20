@@ -64,6 +64,23 @@ const movesOf = (layout: ReadonlyArray<LayoutChange>) => {
 const clearedHistory =
   "Accepted changes can't be undone. Edits before this point are cleared from undo.";
 
+const stepConflict =
+  "The pending changes changed on disk since your last edit, so nothing was undone or redone. The page shows what's saved. That step is cleared from undo, with any earlier step on the same structures or hops, and your other steps are kept.";
+
+const moveOf = (
+  id: string,
+  structure: string,
+  position: GridPoint
+): LayoutChange => ({
+  by: "engineer",
+  id,
+  kind: "move",
+  moves: [{ position, target: { id: structure, kind: "structure" } }],
+});
+
+const savedOf = (page: ReturnType<typeof inMemoryPage>) =>
+  page.server.state().proposals?.layout ?? [];
+
 describe("pending changes on a served page", () => {
   it.effect(
     "each align and distribute is one change that one undo takes back",
@@ -193,7 +210,7 @@ describe("pending changes on a served page", () => {
   );
 
   it.effect(
-    "undo keeps the step and shows a conflict when the file changed underneath, and writes nothing",
+    "undo after an outside write to another target takes back only the engineer's change, and redo puts it back",
     () =>
       Effect.gen(function* () {
         const page = yield* servedReview;
@@ -201,36 +218,126 @@ describe("pending changes on a served page", () => {
         page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3.5 })));
         page.settle();
 
-        const mine = page.server.state().proposals?.layout ?? [];
-        const other: LayoutChange = {
-          by: "engineer",
-          id: "other-writer",
-          kind: "move",
-          moves: [
-            {
-              position: { x: 18, y: 4 },
-              target: { id: "upstream", kind: "structure" },
-            },
-          ],
-        };
+        const mine = savedOf(page);
+        const other = moveOf("other-writer", "upstream", { x: 18, y: 4 });
 
         page.server.writeLayout([...mine, other]);
-
-        assert.deepStrictEqual(idsOf(page.view().pending), [
-          ...idsOf(mine),
-          "other-writer",
-        ]);
-
         page.dispatch({ _tag: "Undo" });
         page.settle();
 
-        assert.strictEqual(page.view().notice?.kind, "conflict");
-        assert.strictEqual(page.server.sent().length, 1);
-        assert.strictEqual(page.server.state().proposals?.revision, 2);
-        const savedIds = idsOf(page.server.state().proposals?.layout ?? []);
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), [other]);
+        assert.deepStrictEqual(page.view().pending, [other]);
+        assert.isFalse(page.view().canUndo);
+        assert.isTrue(page.view().canRedo);
 
-        assert.deepStrictEqual(savedIds, [...idsOf(mine), "other-writer"]);
+        page.dispatch({ _tag: "Redo" });
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), [other, ...mine]);
         assert.isTrue(page.view().canUndo);
+        assert.deepStrictEqual(
+          Arr.map(
+            page.server.sent(),
+            ({ baseFileRevision }) => baseFileRevision
+          ),
+          [0, 2, 3]
+        );
+      })
+  );
+
+  it.effect(
+    "undo after an outside write to the same target is refused with a conflict, writes nothing, and clears only that step",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["server"], { x: 0, y: 3 })));
+        page.settle();
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3.5 })));
+        page.settle();
+
+        const mine = savedOf(page);
+        const over = moveOf("other-writer", "engineer", { x: 0, y: 9 });
+
+        page.server.writeLayout([...mine, over]);
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.deepStrictEqual(page.view().notice, {
+          kind: "conflict",
+          message: stepConflict,
+        });
+        assert.strictEqual(page.server.sent().length, 2);
+        assert.deepStrictEqual(savedOf(page), [...mine, over]);
+        assert.isTrue(page.view().canUndo);
+
+        // The next undo takes back the earlier edit, of the server.
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), [...Arr.drop(mine, 1), over]);
+        assert.isFalse(page.view().canUndo);
+        assert.isTrue(page.view().canRedo);
+      })
+  );
+
+  it.effect(
+    "an undo sent after an outside write to another target got in first is replayed on the fresher file and saved",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3.5 })));
+        page.settle();
+
+        const other = moveOf("other-writer", "upstream", { x: 18, y: 4 });
+
+        page.dispatch({ _tag: "Undo" });
+        page.server.writeLayout([...savedOf(page), other]);
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(
+          Arr.map(
+            page.server.sent(),
+            ({ baseFileRevision }) => baseFileRevision
+          ),
+          [0, 1, 2]
+        );
+        assert.deepStrictEqual(savedOf(page), [other]);
+        assert.deepStrictEqual(page.view().pending, [other]);
+        assert.isTrue(page.view().canRedo);
+      })
+  );
+
+  it.effect(
+    "an undo sent after an outside write to the same target got in first conflicts, and keeps their change",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3.5 })));
+        page.settle();
+
+        const over = moveOf("other-writer", "engineer", { x: 0, y: 9 });
+        const written = [...savedOf(page), over];
+
+        page.dispatch({ _tag: "Undo" });
+        page.server.writeLayout(written);
+        page.settle();
+
+        assert.deepStrictEqual(page.view().notice, {
+          kind: "conflict",
+          message: stepConflict,
+        });
+        assert.strictEqual(page.server.sent().length, 2);
+        assert.deepStrictEqual(savedOf(page), written);
+        assert.deepStrictEqual(page.view().pending, written);
+        assert.isFalse(page.view().canUndo);
+        assert.isFalse(page.view().canRedo);
       })
   );
 
@@ -359,17 +466,6 @@ describe("pending changes on a served page", () => {
   );
 });
 
-const moveOf = (
-  id: string,
-  structure: string,
-  position: GridPoint
-): LayoutChange => ({
-  by: "engineer",
-  id,
-  kind: "move",
-  moves: [{ position, target: { id: structure, kind: "structure" } }],
-});
-
 describe("who made the pending changes", () => {
   it.effect(
     "the page's edits are the engineer's, and an agent change already pending stays the agent's",
@@ -490,6 +586,47 @@ describe("pending changes with writes in flight", () => {
   );
 
   it.effect(
+    "undoing an arrange after an outside write to another target takes back its move and the reroute it carried",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout: saved } = yield* fixture("review");
+
+        // h-store takes a detour right of the server and the proposals.
+        const layout: Layout = {
+          ...saved,
+          routes: {
+            "h-store": [
+              { x: 9, y: 2 },
+              { x: 9, y: 4 },
+              { x: 13, y: 4 },
+              { x: 13, y: 7 },
+              { x: 10, y: 7 },
+            ],
+          },
+        };
+
+        const page = inMemoryPage({ data, layout, system: "review" });
+
+        page.dispatch(apply(nudge(["server", "proposals"], { x: 0, y: 2 })));
+        page.settle();
+
+        assert.deepStrictEqual(
+          Arr.map(page.view().pending, ({ kind }) => kind),
+          ["move", "reroute"]
+        );
+
+        const other = moveOf("other-writer", "upstream", { x: 18, y: 4 });
+
+        page.server.writeLayout([...savedOf(page), other]);
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), [other]);
+      })
+  );
+
+  it.effect(
     "two edits in flight when another writer gets in are both kept, and one undo takes back the later",
     () =>
       Effect.gen(function* () {
@@ -560,9 +697,6 @@ const holders = (changes: ReadonlyArray<LayoutChange>) =>
         ","
       )}`
   );
-
-const savedOf = (page: ReturnType<typeof inMemoryPage>) =>
-  page.server.state().proposals?.layout ?? [];
 
 const shownAt = (page: ReturnType<typeof inMemoryPage>, id: string) =>
   applyLayoutChanges(page.view().state.layout, page.view().pending).structures[
@@ -898,6 +1032,38 @@ describe("the agent's proposals beside the engineer's edits", () => {
         ]);
         assert.deepStrictEqual(shownAt(page, "upstream"), square(18, 9));
         assert.isNull(page.view().notice);
+      })
+  );
+
+  it.effect(
+    "undo after the agent proposes for another structure takes back the engineer's edit and keeps the agent's change",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(
+          apply({ _tag: "Place", next: square(0, 4), structure: "engineer" })
+        );
+        page.settle();
+
+        assert.isUndefined(
+          page.server.propose(
+            { _tag: "Place", next: square(18, 4), structure: "upstream" },
+            "Tidy"
+          )
+        );
+
+        const agents = Arr.filter(savedOf(page), ({ by }) => by === "agent");
+
+        assert.strictEqual(agents.length, 1);
+
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), agents);
+        assert.deepStrictEqual(shownAt(page, "engineer"), square(0, 0));
+        assert.isTrue(page.view().canRedo);
       })
   );
 

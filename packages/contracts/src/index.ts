@@ -263,15 +263,23 @@ export type {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  dropConflicted,
   emptyHistory,
   observeFile,
   pushStep,
   redoStep,
+  replayStep,
+  stepOf,
   undoStep,
-  wroteFile,
 } from "./undo-history.ts";
 
-export type { Observed, Stepped, UndoHistory } from "./undo-history.ts";
+export type {
+  Observed,
+  StepDirection,
+  Stepped,
+  UndoHistory,
+  UndoStep,
+} from "./undo-history.ts";
 
 export {
   isQueued,
