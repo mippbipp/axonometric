@@ -3,10 +3,10 @@ import {
   groundProjections,
   marked,
   removedMark,
-  strikeSegments,
+  structureStrikeOf,
   toPoints,
 } from "@axonometric/contracts";
-import type { SceneStructure, View } from "@axonometric/contracts";
+import type { Scene, View } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
 import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
@@ -23,10 +23,10 @@ import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
  * This is an editing layer: a file's drawing never includes it.
  */
 export function RemovedMarks({
-  structures,
+  scene,
   view,
 }: {
-  readonly structures: ReadonlyArray<SceneStructure>;
+  readonly scene: Scene;
   readonly view: View;
 }) {
   const proposed = useProposedMapIgnoringEdit();
@@ -42,15 +42,14 @@ export function RemovedMarks({
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
-      {Arr.flatMap(structures, ({ chip, placement, structure, tag }) => {
+      {Arr.flatMap(scene.structures, ({ placement, structure }) => {
         if (!removes.has(structure.id)) {
           return [];
         }
 
-        const strikes = strikeSegments({
-          ground,
-          placement,
-          text: [chip, tag],
+        const strikes = structureStrikeOf({
+          scene,
+          structure: structure.id,
         });
 
         return [

@@ -91,30 +91,6 @@ export const drawingReport = `(() => {
     ]),
   }));
 
-  // The strike across a hop proposed for deletion, as segments on screen.
-  const hopStrikes = [...document.querySelectorAll("[data-hop-strike]")].map((line) => ({
-    id: "hop-strike:" + line.closest("[data-removed-hop-mark]").dataset.removedHopMark,
-    segment: toScreen(line, [
-      { x: line.x1.baseVal.value, y: line.y1.baseVal.value },
-      { x: line.x2.baseVal.value, y: line.y2.baseVal.value },
-    ]),
-  }));
-
-  // The edge handles of the structure that has them, as boxes on screen.
-  const handles = [...document.querySelectorAll("[data-edge-handle]")].map((handle) => ({
-    id: "handle:" + handle.dataset.edgeOwner + ":" + handle.dataset.edgeHandle,
-    polygon: rectPolygon(handle.getBoundingClientRect()),
-  }));
-
-  // The line of a hop being drawn, as segments on screen, one per piece.
-  const previews = [...document.querySelectorAll("[data-hop-preview]")].map((line) => ({
-    id: "preview:" + line.dataset.hopPreview,
-    segment: toScreen(line, [
-      { x: line.x1.baseVal.value, y: line.y1.baseVal.value },
-      { x: line.x2.baseVal.value, y: line.y2.baseVal.value },
-    ]),
-  }));
-
   const chips = [...document.querySelectorAll("[data-code-chip]")].map((chip) => ({
     id: "chip:" + chip.closest("[data-structure]").dataset.structure,
     // The chip's rendered box, with its stroke.
@@ -152,7 +128,7 @@ export const drawingReport = `(() => {
     };
   });
 
-  return { text, chips, strikes, hopStrikes, previews, handles, rings, structures };
+  return { text, chips, strikes, rings, structures };
 })()`;
 
 /**
@@ -197,12 +173,6 @@ export interface DrawnSegment {
 export interface DrawingReport {
   /** Each structure's code chip, as the page draws it. */
   readonly chips: ReadonlyArray<Drawn>;
-  /** The edge handles on show, as boxes. */
-  readonly handles: ReadonlyArray<Drawn>;
-  /** The pieces of the cross through a hop proposed for deletion. */
-  readonly hopStrikes: ReadonlyArray<DrawnSegment>;
-  /** The legs of the line of a hop being drawn. */
-  readonly previews: ReadonlyArray<DrawnSegment>;
   /** The straight pieces of the pending rings and lines of group and chapter proposals. */
   readonly rings: ReadonlyArray<DrawnSegment>;
   /** The pieces of the cross through a structure proposed for deletion. */

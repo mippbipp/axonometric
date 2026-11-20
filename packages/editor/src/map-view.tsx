@@ -28,7 +28,6 @@ import { CompareHops, CompareRings } from "./compare-look.tsx";
 import { useProposedHopsIgnoringEdit } from "./connections-context.ts";
 import { useDraftSpot } from "./draft-spot.ts";
 import { DragOutlines } from "./drop-outline.tsx";
-import { stableFactsOf } from "./edge-handle-spots.ts";
 import { EditorSceneContext, EditorViewContext } from "./editor-view.ts";
 import { GroupEditor } from "./group-editor.tsx";
 import { HopDraftLine } from "./hop-draft-line.tsx";
@@ -236,8 +235,6 @@ export function MapView({
 
   const key = `${fitKey ?? fitKeyOf(fitTo)}${candidateKey}`;
 
-  const facts = stableFactsOf(scene);
-
   const editorView = useMemo(
     () => ({ placements: state.layout.structures, revealed, view }),
     [view, state.layout.structures, revealed]
@@ -246,7 +243,7 @@ export function MapView({
   return (
     <DrawingContext value={pageDrawing}>
       <EditorViewContext value={editorView}>
-        <EditorSceneContext value={facts}>
+        <EditorSceneContext value={scene}>
           <Viewport
             fit={fit}
             fitKey={key}
@@ -281,8 +278,8 @@ export function MapView({
               overlay={
                 <>
                   <NoteMarkers scene={scene} />
-                  <RemovedMarks structures={scene.structures} view={view} />
-                  <RemovedHopMarks hops={scene.hops} />
+                  <RemovedMarks scene={scene} view={view} />
+                  <RemovedHopMarks />
                   <SpotCursor view={view} />
                 </>
               }
