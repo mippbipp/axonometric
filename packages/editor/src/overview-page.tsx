@@ -1,17 +1,14 @@
 import type { Overview } from "@axonometric/contracts";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@axonometric/ui/components/dialog";
 import { Toggle } from "@axonometric/ui/components/toggle";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { ReactNode } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import { uiControlClass } from "./control-class.ts";
 import { MapLink } from "./map-link.tsx";
@@ -19,6 +16,19 @@ import { OverviewPageContext, useOverviewPage } from "./overview-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 const pageTitle = "How it's built";
+
+/**
+ * Keeps keys pressed in the open page, or on its header button, from the
+ * map's handlers, which listen on the window: ] for the next chapter or +
+ * to zoom stay off while the page is open. Escape goes on to ui-sdk, which
+ * closes the page on it. Default actions such as Tab and scrolling still
+ * happen.
+ */
+const keepFromMap = (event: KeyboardEvent<HTMLElement>) => {
+  if (event.key !== "Escape") {
+    event.stopPropagation();
+  }
+};
 
 /** Holds whether the "How it's built" page is open. */
 export function OverviewPageProvider({
@@ -30,9 +40,9 @@ export function OverviewPageProvider({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const pageId = useId();
 
+  // ui-sdk returns focus to the button when the page closes.
   const close = useCallback(() => {
     setOpen(false);
-    buttonRef.current?.focus();
   }, []);
 
   const toggle = useCallback(() => {
@@ -60,6 +70,7 @@ export function OverviewButton() {
       aria-controls={open ? pageId : undefined}
       className={uiControlClass}
       data-control="overview"
+      onKeyDown={open ? keepFromMap : undefined}
       onPressedChange={toggle}
       pressed={open}
       ref={buttonRef}
@@ -248,85 +259,54 @@ function OverviewContents({ overview }: { readonly overview: Overview }) {
 }
 
 /**
- * The open page. Mounting it moves focus in, and makes everything it covers
- * inert, so Tab stays inside.
- */
-function OpenOverviewPage() {
-  const { close, pageId } = useOverviewPage();
-  const { state } = useWalkthrough();
-  const ref = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-
-  // Runs before every other key handler. The map's keys, such as ] for the
-  // next chapter or + to zoom, stay off while the page is open, and Escape
-  // closes it instead of unpinning. Default actions, such as Tab and
-  // scrolling, still happen.
-  const onKey = useEffectEvent((event: KeyboardEvent) => {
-    event.stopPropagation();
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-    }
-  });
-
-  useEffect(() => {
-    const page = ref.current;
-
-    // The panels the page covers stay mounted, so Tab must skip them.
-    const covered = Arr.filter(
-      [...(page?.parentElement?.children ?? [])],
-      (element) => element !== page && !element.hasAttribute("inert")
-    );
-
-    for (const element of covered) {
-      element.setAttribute("inert", "");
-    }
-
-    page?.focus();
-    globalThis.addEventListener("keydown", onKey, { capture: true });
-
-    return () => {
-      for (const element of covered) {
-        element.removeAttribute("inert");
-      }
-
-      globalThis.removeEventListener("keydown", onKey, { capture: true });
-    };
-  }, []);
-
-  return (
-    <dialog
-      aria-labelledby={titleId}
-      className="bg-paper text-ink absolute inset-0 z-10 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 p-0 focus:outline-none"
-      data-overview-page
-      id={pageId}
-      open
-      ref={ref}
-      tabIndex={-1}
-    >
-      <article className="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-8">
-        <header className="flex flex-col gap-1">
-          <p className="text-xs tracking-widest uppercase opacity-70">
-            {state.data.overview.title}
-          </p>
-          <h2 className="text-lg leading-tight font-medium" id={titleId}>
-            {pageTitle}
-          </h2>
-        </header>
-        <OverviewContents overview={state.data.overview} />
-      </article>
-    </dialog>
-  );
-}
-
-/**
  * The "How it's built" page, drawn over the map while it's open. The map
  * stays mounted underneath, so its chapter, selection and zoom survive.
  * Put it in the same box as the panels it covers.
+ *
+ * A ui-sdk `Dialog` rendered `inline`, so it sits in the box that CSS places
+ * it in instead of the top layer. It's modal: the map and panels it covers
+ * are inert, Tab stays inside, and Escape closes it. Its header button is a
+ * persistent element, so it stays live and can close the page. Opening moves
+ * focus in, and closing returns it to that button.
  */
 export function OverviewPage() {
-  const { open } = useOverviewPage();
+  const { buttonRef, close, open, pageId } = useOverviewPage();
+  const { state } = useWalkthrough();
 
-  return open ? <OpenOverviewPage /> : null;
+  return (
+    <Dialog
+      closeOnOutsidePress={false}
+      onOpenChange={(next) => {
+        if (!next) {
+          close();
+        }
+      }}
+      open={open}
+      persistentElements={() =>
+        buttonRef.current === null ? [] : [buttonRef.current]
+      }
+    >
+      <DialogContent
+        className="bg-paper text-ink absolute inset-0 z-10 m-0 size-full max-h-none max-w-none overflow-y-auto border-0 p-0"
+        data-overview-page
+        finalFocus={() => buttonRef.current}
+        id={pageId}
+        initialFocus="content"
+        inline
+        onKeyDown={keepFromMap}
+      >
+        <article className="mx-auto flex max-w-3xl flex-col gap-5 px-6 py-8">
+          <header className="flex flex-col gap-1">
+            <p className="text-xs tracking-widest uppercase opacity-70">
+              {state.data.overview.title}
+            </p>
+            <DialogTitle className="text-lg leading-tight">
+              {pageTitle}
+            </DialogTitle>
+          </header>
+          <OverviewContents overview={state.data.overview} />
+        </article>
+      </DialogContent>
+    </Dialog>
+  );
 }
