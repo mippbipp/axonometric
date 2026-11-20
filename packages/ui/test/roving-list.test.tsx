@@ -329,8 +329,12 @@ describe("roving list", () => {
       item("b").focus();
     });
 
-    expect(fireEvent.keyDown(item("b"), { key: "ArrowDown" })).toBeFalsy();
-    expect(fireEvent.keyDown(item("c"), { key: "ArrowRight" })).toBeTruthy();
+    const notDefaultPrevented = [
+      fireEvent.keyDown(item("b"), { key: "ArrowDown" }),
+      fireEvent.keyDown(item("c"), { key: "ArrowRight" }),
+    ];
+
+    expect(notDefaultPrevented).toStrictEqual([false, true]);
   });
 
   it("still fires onClick and keeps aria-current", async () => {
