@@ -199,6 +199,7 @@ const chapterChanges: EveryOf<ChapterChange["action"], ChapterChange> = {
 
 const layoutChanges: EveryOf<LayoutChange["kind"], LayoutChange> = {
   move: {
+    by: "engineer",
     id: "x-move",
     kind: "move",
     moves: [
@@ -209,12 +210,14 @@ const layoutChanges: EveryOf<LayoutChange["kind"], LayoutChange> = {
     ],
   },
   reroute: {
+    by: "engineer",
     id: "x-reroute",
     kind: "reroute",
     points: null,
     target: { id: "h-store", kind: "hop" },
   },
   resize: {
+    by: "engineer",
     footprint: { d: 2, w: 3 },
     id: "x-resize",
     kind: "resize",

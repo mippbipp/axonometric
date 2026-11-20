@@ -180,7 +180,7 @@ export function GroupEditor({
     }
 
     preview?.show({
-      changes: [{ id: "preview", kind: "move", moves }],
+      changes: [{ by: "engineer", id: "preview", kind: "move", moves }],
       refusal: drag.refusal,
     });
   }, [drag, preview]);

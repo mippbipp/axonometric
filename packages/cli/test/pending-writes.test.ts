@@ -133,6 +133,7 @@ const asProxied = (origin: string) => ({
 });
 
 const pageAt = (x: number, y = 3): LayoutChange => ({
+  by: "engineer",
   id: "m1",
   kind: "move",
   moves: [{ position: { x, y }, target: { id: "page", kind: "structure" } }],
@@ -374,6 +375,75 @@ describe("writing pending layout changes over HTTP", () => {
           revision: 1,
         });
       })
+  );
+
+  it.live(
+    "refuses a layout change marked as the agent's, and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* served;
+
+        const forged = yield* toJson({
+          baseFileRevision: 0,
+          layout: [{ ...pageAt(4), by: "agent" }],
+        });
+
+        const refused = yield* assertRefused(
+          home,
+          422,
+          put(url, ownOrigin(url), Effect.succeed(forged))
+        );
+
+        assert.include(refused.body, "Only the CLI can make the agent's");
+      })
+  );
+
+  it.live(
+    "keeps an agent's change as the agent's when the page saves another beside it",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+
+        const pending = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Proposals)
+        )({ format: 1, layout: [{ ...pageAt(4), by: "agent" }], revision: 1 });
+
+        const { home, url } = yield* serveReviewMap(
+          { [mapKeys("review").proposalsFile]: `${pending}\n` },
+          []
+        );
+
+        const beside: LayoutChange = {
+          by: "engineer",
+          id: "m2",
+          kind: "move",
+          moves: [
+            {
+              position: { x: 0, y: 8 },
+              target: { id: "engineer", kind: "structure" },
+            },
+          ],
+        };
+
+        const sent = yield* put(
+          url,
+          ownOrigin(url),
+          toJson({
+            baseFileRevision: 1,
+            layout: [{ ...pageAt(4), by: "agent" }, beside],
+          })
+        );
+
+        assert.strictEqual(sent.status, 200, sent.body);
+
+        const text = yield* fs.readFileString(homeAt(home).proposalsFile);
+        const saved = yield* decodeProposals(text);
+
+        assert.deepStrictEqual(
+          Arr.map(saved.layout, ({ by, id }) => `${id} ${by}`),
+          ["m1 agent", "m2 engineer"]
+        );
+      }).pipe(Effect.provide(NodeServices.layer))
   );
 
   it.live("refuses a move onto another footprint", () =>

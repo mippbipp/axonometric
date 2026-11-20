@@ -403,6 +403,7 @@ describe("structure writes over HTTP", () => {
             baseFileRevision: 1,
             layout: [
               {
+                by: "engineer",
                 id: "m1",
                 kind: "move",
                 moves: [

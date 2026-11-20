@@ -111,6 +111,7 @@ describe("moving structures", () => {
 
         assert.deepStrictEqual(withoutIds(saved.layout), [
           {
+            by: "engineer",
             kind: "move",
             moves: [
               {
@@ -323,6 +324,7 @@ describe("resizing structures", () => {
 
         assert.deepStrictEqual(withoutIds(saved.layout), [
           {
+            by: "engineer",
             footprint: { d: 3, w: 2.5 },
             kind: "resize",
             target: { id: "engineer", kind: "structure" },

@@ -3,6 +3,7 @@ import { Array as Arr, Match, Option, Predicate, Result } from "effect";
 import {
   acceptLayoutChanges,
   emptyProposals,
+  agentChangeRefusal,
   frozenWriteRefusal,
   isQueued,
   LayoutChangeRefused,
@@ -107,7 +108,10 @@ export const inMemoryPage = (initial: MapState): InMemoryPage => {
     }
 
     const refusal = Option.orElse(
-      frozenWriteRefusal({ after: write.layout, proposals: current }),
+      Option.orElse(
+        agentChangeRefusal({ after: write.layout, before: current.layout }),
+        () => frozenWriteRefusal({ after: write.layout, proposals: current })
+      ),
       () =>
         layoutRefusal({
           accepted: layoutUnderProposals({

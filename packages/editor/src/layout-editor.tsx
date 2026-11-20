@@ -119,7 +119,7 @@ const movesChange = (
   moves: ReadonlyArray<StructureMove>
 ): ReadonlyArray<LayoutChange> =>
   Arr.isReadonlyArrayNonEmpty(moves)
-    ? [{ id: "preview", kind: "move", moves }]
+    ? [{ by: "engineer", id: "preview", kind: "move", moves }]
     : [];
 
 /** Where each of `ids` goes when the pressed structure goes from `start` to `next`. */
@@ -152,6 +152,7 @@ const previewChanges = (
   drag.resizing
     ? [
         {
+          by: "engineer",
           footprint: { d: drag.next.d, w: drag.next.w },
           id: "preview",
           kind: "resize",

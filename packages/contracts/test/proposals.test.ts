@@ -3,6 +3,7 @@ import { Array as Arr, Option, Result, Schema } from "effect";
 
 import {
   acceptRefusal,
+  agentChangeRefusal,
   applyLayoutChanges,
   checkProposals,
   discardChange,
@@ -43,6 +44,7 @@ const move = (
   structureId: string,
   to: readonly [number, number]
 ): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "move",
   moves: [
@@ -59,6 +61,7 @@ const resize = (
   structureId: string,
   size: readonly [number, number]
 ): LayoutChange => ({
+  by: "engineer",
   footprint: { d: size[1], w: size[0] },
   id,
   kind: "resize",
@@ -155,6 +158,7 @@ describe("applying pending layout changes", () => {
 
   it("applies changes in list order, so a later one wins", () => {
     const group: LayoutChange = {
+      by: "engineer",
       id: "g",
       kind: "move",
       moves: [
@@ -189,6 +193,7 @@ const reroute = (
   id: string,
   points: ReadonlyArray<{ x: number; y: number }> | null
 ): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "reroute",
   points,
@@ -305,6 +310,7 @@ describe("rerouting", () => {
       accepted,
       after: [
         {
+          by: "engineer",
           id: "r1",
           kind: "reroute",
           points: via,
@@ -442,7 +448,7 @@ describe("carrying routes along with a move", () => {
     Arr.drop(
       withCarriedRoutes({
         changes: Arr.isReadonlyArrayNonEmpty(moves)
-          ? [{ id: "m", kind: "move", moves }]
+          ? [{ by: "engineer", id: "m", kind: "move", moves }]
           : [],
         hops,
         id: (hop) => `r-${hop}`,
@@ -459,6 +465,7 @@ describe("carrying routes along with a move", () => {
   it("shifts an override whose two ends move by the same amount", () => {
     assert.deepStrictEqual(shift(both), [
       {
+        by: "engineer",
         id: "r-h-ab",
         kind: "reroute",
         points: Arr.map(via, ({ x, y }) => ({ x, y: y + 6 })),
@@ -489,8 +496,8 @@ describe("carrying routes along with a move", () => {
 
     const carried = withCarriedRoutes({
       changes: [
-        { id: "out", kind: "move", moves: both },
-        { id: "back", kind: "move", moves: back },
+        { by: "engineer", id: "out", kind: "move", moves: both },
+        { by: "engineer", id: "back", kind: "move", moves: back },
       ],
       hops,
       id: (hop) => `r-${hop}`,
@@ -509,8 +516,8 @@ describe("carrying routes along with a move", () => {
     assert.deepStrictEqual(
       layoutAfterChanges({
         changes: [
-          { id: "out", kind: "move", moves: both },
-          { id: "back", kind: "move", moves: back },
+          { by: "engineer", id: "out", kind: "move", moves: both },
+          { by: "engineer", id: "back", kind: "move", moves: back },
         ],
         hops,
         layout: routed,
@@ -521,7 +528,7 @@ describe("carrying routes along with a move", () => {
 
   it("gives the layout after the changes with the override shifted", () => {
     const shown = layoutAfterChanges({
-      changes: [{ id: "m", kind: "move", moves: both }],
+      changes: [{ by: "engineer", id: "m", kind: "move", moves: both }],
       hops,
       layout: routed,
     });
@@ -535,7 +542,7 @@ describe("carrying routes along with a move", () => {
 
   it("makes a group move that the refusal accepts", () => {
     const changes: Array<LayoutChange> = [
-      { id: "g", kind: "move", moves: [both[0], both[1]] },
+      { by: "engineer", id: "g", kind: "move", moves: [both[0], both[1]] },
       ...shift(both),
     ];
 
@@ -579,6 +586,7 @@ describe("a group's members", () => {
 });
 
 const groupMoveTo = (to: readonly [number, number]): LayoutChange => ({
+  by: "engineer",
   id: "g",
   kind: "move",
   moves: [
@@ -611,6 +619,7 @@ const waitingOn = (frozen: LayoutChange, open: LayoutChange): P => ({
 const hopA = [{ from: "a", id: "a", to: "b" }];
 
 const rerouteA = (id: string): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "reroute",
   points: via,
@@ -707,6 +716,7 @@ describe("placing a structure", () => {
 
   it("puts the structure's own change after a group move, so it wins", () => {
     const group: LayoutChange = {
+      by: "engineer",
       id: "g",
       kind: "move",
       moves: [
@@ -767,6 +777,7 @@ describe("refusing layout changes", () => {
 
   it("checks every structure of a move of several", () => {
     const group: LayoutChange = {
+      by: "engineer",
       id: "g",
       kind: "move",
       moves: [
@@ -846,6 +857,7 @@ describe("the proposals.json schema", () => {
     assert.isTrue(
       decodes([
         {
+          by: "engineer",
           id: "g",
           kind: "move",
           moves: [
@@ -858,7 +870,9 @@ describe("the proposals.json schema", () => {
   });
 
   it("refuses a move of nothing", () => {
-    assert.isFalse(decodesRaw([{ id: "g", kind: "move", moves: [] }]));
+    assert.isFalse(
+      decodesRaw([{ by: "engineer", id: "g", kind: "move", moves: [] }])
+    );
   });
 
   it("refuses two changes with one id", () => {
@@ -871,6 +885,7 @@ describe("the proposals.json schema", () => {
     assert.isFalse(
       decodesRaw([
         {
+          by: "engineer",
           kind: "move",
           moves: [
             { position: at(0, 6), target: { id: "a", kind: "structure" } },
@@ -949,5 +964,127 @@ describe("a hop's name", () => {
     assert.strictEqual(hopLabelOf(named, "h1"), "pins a note");
     assert.strictEqual(hopLabelOf(named)("h1"), "pins a note");
     assert.strictEqual(hopLabelOf(named)("gone"), "gone");
+  });
+});
+
+/** The authors of the changes in a proposals file holding `layout`, or the failure. */
+const authors = (layout: ReadonlyArray<object>) =>
+  Result.map(decode({ format: 1, layout, revision: 0 }), (decoded) =>
+    Arr.map(decoded.layout, ({ by }) => by)
+  );
+
+describe("who made a layout change", () => {
+  const moving = {
+    id: "m1",
+    kind: "move",
+    moves: [
+      { position: { x: 4, y: 2 }, target: { id: "a", kind: "structure" } },
+    ],
+  } as const;
+
+  const resizing = {
+    footprint: { d: 2, w: 3 },
+    id: "r1",
+    kind: "resize",
+    target: { id: "a", kind: "structure" },
+  } as const;
+
+  const rerouting = {
+    id: "h1",
+    kind: "reroute",
+    points: null,
+    target: { id: "h-ab", kind: "hop" },
+  } as const;
+
+  it("reads a change written before authors as the engineer's", () => {
+    assert.deepStrictEqual(
+      authors([moving, resizing, rerouting]),
+      Result.succeed(["engineer", "engineer", "engineer"])
+    );
+  });
+
+  it("keeps an agent change as the agent's", () => {
+    assert.deepStrictEqual(
+      authors([{ ...moving, by: "agent" }]),
+      Result.succeed(["agent"])
+    );
+  });
+
+  it("writes the author out, so every saved change carries it", () => {
+    const { layout } = Result.getOrThrow(
+      decode({ format: 1, layout: [moving], revision: 0 })
+    );
+
+    const written = Schema.encodeUnknownResult(Proposals)({
+      format: 1,
+      layout,
+      revision: 0,
+    });
+
+    const encoded = Result.getOrThrow(written);
+
+    assert.deepStrictEqual(
+      Arr.map(encoded.layout, ({ by }) => by),
+      ["engineer"]
+    );
+  });
+
+  it("rejects an author that is neither", () => {
+    assert.isFalse(decodesRaw([{ ...moving, by: "robot" }]));
+  });
+
+  it("carries a route along with the author of the move that shifts it", () => {
+    const layout: Layout = {
+      ...accepted,
+      routes: { "h-ab": [at(2, 1), at(4, 1)] },
+    };
+
+    const both: LayoutChange = {
+      by: "agent",
+      id: "m1",
+      kind: "move",
+      moves: [
+        { position: at(0, 2), target: { id: "a", kind: "structure" } },
+        { position: at(4, 2), target: { id: "b", kind: "structure" } },
+      ],
+    };
+
+    const carried = withCarriedRoutes({
+      changes: [both],
+      hops,
+      id: (hop) => `carried-${hop}`,
+      layout,
+    });
+
+    assert.deepStrictEqual(
+      Arr.map(carried, ({ by, kind }) => `${kind} ${by}`),
+      ["move agent", "reroute agent"]
+    );
+  });
+
+  it("refuses a change from the page that is the agent's and not already pending", () => {
+    const mine = move("m1", "a", [0, 2]);
+    const theirs: LayoutChange = { ...move("m2", "b", [4, 2]), by: "agent" };
+
+    assert.isTrue(
+      Option.isSome(
+        agentChangeRefusal({ after: [mine, theirs], before: [mine] })
+      )
+    );
+    const edited: LayoutChange = { ...move("m2", "b", [9, 9]), by: "agent" };
+    const editing = agentChangeRefusal({ after: [edited], before: [theirs] });
+
+    assert.isTrue(Option.isSome(editing));
+  });
+
+  it("lets the page keep an agent change that is already pending", () => {
+    const theirs: LayoutChange = { ...move("m2", "b", [4, 2]), by: "agent" };
+
+    const kept = agentChangeRefusal({
+      after: [theirs, move("m1", "a", [0, 2])],
+      before: [theirs],
+    });
+
+    assert.isTrue(Option.isNone(kept));
   });
 });
