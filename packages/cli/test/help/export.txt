@@ -1,5 +1,5 @@
 DESCRIPTION
-  Write the map as an SVG, a PNG or an Excalidraw file, like the page's Export menu. Validates the map first, and writes nothing if it has an error.
+  Write the map as an SVG, a PNG or an Excalidraw file, like the page's Export menu. Validates the map first, and writes nothing if it has an error. With --proposed, draws the map with its open layout changes applied.
 
 USAGE
   axonometric export [flags] <home>
@@ -13,6 +13,7 @@ FLAGS
   --chapter string       The chapter to draw, by its number from 1 or its id. Without it, the last chapter, which shows the whole map. Excalidraw files ignore it.
   --flow string          In the last chapter, the flow to play: a flow's id, or all. The spotlight holds that flow's hops and fades the rest; all fades nothing. Without it, the chapter's own hops.
   --background choice    The background colour (choices: paper, white)
+  --proposed             Draw the map with every open layout change applied, the engineer's and the agent's, before they are accepted. Without it, the accepted layout
   --output, -o string    The file to write. Without it, the page's file name, next to SYSTEM.md. Missing folders are created.
 
 GLOBAL FLAGS

@@ -5,7 +5,6 @@ import {
   formatProblem,
   frozenLayoutChanges,
   frozenWriteRefusal,
-  layoutAfterChanges,
   layoutRefusal,
   layoutUnderProposals,
   maxReasonLength,
@@ -588,9 +587,8 @@ const propose = Effect.fn("propose")(function* (
   ]);
 
   const { problems } = yield* inspectMap(paths, {
-    arrange: (data, saved) =>
-      layoutAfterChanges({ changes: after, hops: data.hops, layout: saved }),
     drawingWarnings: true,
+    proposed: true,
   });
 
   yield* Effect.forEach(
