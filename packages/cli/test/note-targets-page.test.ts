@@ -343,7 +343,7 @@ describe("zoom to fit", () => {
           yield* goToChapterPaused(page, "c-all");
           yield* showView(page, view);
           yield* waitFor(page, '[data-note-marker^="spot:"]');
-          yield* click(page, 'button[title="Zoom to fit (0)"]');
+          yield* click(page, 'button:has-text("Zoom to fit")');
           yield* Effect.promise(() => page.waitForTimeout(500));
 
           const ringsShown = yield* ringsOnScreen(page);
@@ -440,7 +440,14 @@ describe("the keyboard", () => {
         );
         yield* Effect.promise(() => page.keyboard.press("Enter"));
         yield* waitFor(page, "[data-spot-cursor]");
-        yield* Effect.promise(() => page.locator("body").focus());
+
+        // Focus stays on the Note button, inside the toolbar, whose own
+        // arrow keys must not take the cursor's.
+        const onNote = yield* Effect.promise(() =>
+          page.locator('[data-control="note-tool"]:focus').count()
+        );
+
+        assert.strictEqual(onNote, 1);
 
         const readout = () => textOf(page, "[data-spot-readout]");
         const start = yield* readout();
@@ -580,7 +587,7 @@ describe("hop rings at fit", () => {
             yield* Effect.promise(() => page.keyboard.press("Escape"));
           }
 
-          yield* click(page, 'button[title="Zoom to fit (0)"]');
+          yield* click(page, 'button:has-text("Zoom to fit")');
           yield* Effect.promise(() => page.waitForTimeout(500));
 
           const gaps = yield* ringToLinePixels(page);

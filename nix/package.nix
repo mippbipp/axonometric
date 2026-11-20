@@ -75,7 +75,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
-    outputHash = "sha256-7SDuDm08h0IB+lo8xKfH0F8/iH5Z4+2yTVKXZOamstg=";
+    outputHash = "sha256-yqcCIJOGFFubYNPEMlaT0YXEDU6piOMk0OvTfkXL32g=";
   };
 
   nativeBuildInputs = [

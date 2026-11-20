@@ -1,9 +1,9 @@
-import { cn } from "@axonometric/ui/lib/utils";
+import { Toggle } from "@axonometric/ui/components/toggle";
 import { Array as Arr } from "effect";
 
 import { legendOrder, looks } from "./compare-looks.ts";
 import type { CompareKind } from "./compare-looks.ts";
-import { controlClass } from "./control-class.ts";
+import { controlClass, uiControlClass } from "./control-class.ts";
 import { fullDate } from "./relative-time.ts";
 
 /** What differs, as the banner counts it. */
@@ -88,15 +88,14 @@ export function RevisionBanner({
         editing is off.
       </p>
       <div className="flex flex-wrap gap-1.5">
-        <button
-          aria-pressed={comparing}
-          className={cn(controlClass, comparing && "bg-ink text-paper")}
+        <Toggle
+          className={uiControlClass}
           data-control="compare"
-          onClick={onCompare}
-          type="button"
+          onPressedChange={onCompare}
+          pressed={comparing}
         >
           Compare with accepted
-        </button>
+        </Toggle>
         <button
           className={controlClass}
           data-control="restore"

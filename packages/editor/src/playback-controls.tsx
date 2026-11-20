@@ -1,3 +1,5 @@
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
+
 import { controlClass } from "./control-class.ts";
 import { reducedMotionNote, usePlayback } from "./playback.ts";
 
@@ -18,16 +20,26 @@ export function PlaybackControls() {
           ‖ Pause
         </button>
       ) : (
-        <button
-          className={controlClass}
-          data-control="play"
-          disabled={nothingToPlay || reducedMotion}
-          onClick={play}
-          title={reducedMotion ? reducedMotionNote : undefined}
-          type="button"
+        <WithTooltip
+          control={
+            <button
+              aria-disabled={nothingToPlay || reducedMotion}
+              className={controlClass}
+              data-control="play"
+              onClick={() => {
+                if (!nothingToPlay && !reducedMotion) {
+                  play();
+                }
+              }}
+              type="button"
+            >
+              ▸ Play
+            </button>
+          }
+          disabled={!reducedMotion}
         >
-          ▸ Play
-        </button>
+          {reducedMotionNote}
+        </WithTooltip>
       )}
       <button
         className={controlClass}

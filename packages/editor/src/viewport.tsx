@@ -4,6 +4,7 @@ import type {
   CanvasSize,
   GroundProjection,
 } from "@axonometric/contracts";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -493,36 +494,47 @@ export function Viewport({
         </g>
       </svg>
       <div className="absolute right-3 bottom-3 flex gap-1.5 font-mono">
-        <button
-          aria-label="Zoom in"
-          className={controlClass}
-          onClick={() => {
-            zoomBy(zoomStep);
-          }}
-          title="Zoom in (+)"
-          type="button"
+        <WithTooltip
+          control={
+            <button
+              aria-label="Zoom in"
+              className={controlClass}
+              onClick={() => {
+                zoomBy(zoomStep);
+              }}
+              type="button"
+            >
+              +
+            </button>
+          }
         >
-          +
-        </button>
-        <button
-          aria-label="Zoom out"
-          className={controlClass}
-          onClick={() => {
-            zoomBy(1 / zoomStep);
-          }}
-          title="Zoom out (-)"
-          type="button"
+          Zoom in (+)
+        </WithTooltip>
+        <WithTooltip
+          control={
+            <button
+              aria-label="Zoom out"
+              className={controlClass}
+              onClick={() => {
+                zoomBy(1 / zoomStep);
+              }}
+              type="button"
+            >
+              −
+            </button>
+          }
         >
-          −
-        </button>
-        <button
-          className={controlClass}
-          onClick={zoomToFit}
-          title="Zoom to fit (0)"
-          type="button"
+          Zoom out (-)
+        </WithTooltip>
+        <WithTooltip
+          control={
+            <button className={controlClass} onClick={zoomToFit} type="button">
+              Zoom to fit
+            </button>
+          }
         >
-          Zoom to fit
-        </button>
+          Zoom to fit (0)
+        </WithTooltip>
       </div>
     </div>
   );

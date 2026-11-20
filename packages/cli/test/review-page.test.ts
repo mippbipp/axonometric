@@ -7,6 +7,8 @@ import {
   assertCount,
   assertTextIncludes,
   click,
+  inPage,
+  press,
   textOf,
   waitFor,
   waitGone,
@@ -145,7 +147,7 @@ describe("the Ready for review button", () => {
         yield* pinNote(page, "Why a server?");
         yield* waitFor(page, '[data-note-marker="server"]');
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
 
         const copied = yield* copiedText(page);
         const prompt = copied[0] ?? "";
@@ -170,7 +172,7 @@ describe("the Ready for review button", () => {
         assert.strictEqual(frozen.notes?.length, 0);
 
         yield* click(page, "[data-review-close]");
-        yield* waitGone(page, "[data-review-dialog][open]");
+        yield* waitGone(page, "[data-review-dialog][data-open]");
 
         // The frozen note waits for the agent, with no Discard.
         yield* click(page, '[role="tab"][data-tab="pending"]');
@@ -191,7 +193,7 @@ describe("the Ready for review button", () => {
         yield* pinNote(page, "Second question");
         yield* waitFor(page, '[data-panel-note][data-note-state="open"]');
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
 
         yield* assertTextIncludes(page, "[data-review-title]", "Batch 2");
         assert.include((yield* copiedText(page)).at(-1) ?? "", "batch 2");
@@ -213,6 +215,43 @@ describe("the Ready for review button", () => {
   );
 
   it.live(
+    "is named by its title, covers the page, and closes on Escape",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview();
+        const covered = `document.querySelector("[data-map-layer]").closest("[inert]") !== null`;
+
+        yield* pinServer(page);
+        yield* pinNote(page, "Why a server?");
+        yield* waitFor(page, '[data-note-marker="server"]');
+        yield* click(page, "[data-ready-for-review]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
+
+        const named = yield* Effect.promise(() =>
+          page.getByRole("dialog", { name: /^Batch 1 is ready/u }).count()
+        );
+
+        assert.strictEqual(named, 1);
+        const whileOpen = yield* inPage<boolean>(page, covered);
+
+        assert.isTrue(whileOpen);
+
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-review-dialog][data-open]");
+
+        const afterwards = yield* inPage<boolean>(page, covered);
+
+        assert.isFalse(afterwards);
+
+        // Escape only closes the dialog: batch 1 was frozen once, on the press.
+        const proposals = yield* readProposals(home);
+
+        assert.strictEqual(proposals.batches?.length, 1);
+      }),
+    60_000
+  );
+
+  it.live(
     "shows the prompt in a box with its text selected when the clipboard is blocked",
     () =>
       Effect.gen(function* () {
@@ -222,7 +261,7 @@ describe("the Ready for review button", () => {
         yield* pinNote(page, "Why a server?");
         yield* waitFor(page, '[data-note-marker="server"]');
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
 
         yield* assertTextIncludes(
           page,
@@ -266,9 +305,9 @@ const sendOne = Effect.fnUntraced(function* (page: Page, text: string) {
   yield* pinNote(page, text);
   yield* waitFor(page, '[data-note-marker="server"]');
   yield* click(page, "[data-ready-for-review]");
-  yield* waitFor(page, "[data-review-dialog][open]");
+  yield* waitFor(page, "[data-review-dialog][data-open]");
   yield* click(page, "[data-review-close]");
-  yield* waitGone(page, "[data-review-dialog][open]");
+  yield* waitGone(page, "[data-review-dialog][data-open]");
 });
 
 /** The id of the only item in batch 1. */
@@ -383,7 +422,7 @@ describe("the agent's verdicts", () => {
         assert.deepStrictEqual(open.replaces, { [note.id]: id });
 
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
 
         const proposals = yield* readProposals(home);
         const second = Option.getOrThrow(Arr.get(proposals.batches ?? [], 1));

@@ -153,6 +153,7 @@ export const structureKind: KindSpec<StructureItem> = {
         ? []
         : [
             {
+              by: "engineer" as const,
               id: `${item.id}-move`,
               kind: "move" as const,
               moves: [{ position: { x, y }, target }] as const,
@@ -162,6 +163,7 @@ export const structureKind: KindSpec<StructureItem> = {
         ? []
         : [
             {
+              by: "engineer" as const,
               footprint: { d, w },
               id: `${item.id}-size`,
               kind: "resize" as const,

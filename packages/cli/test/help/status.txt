@@ -1,5 +1,5 @@
 DESCRIPTION
-  Print the URL and process ID of the server running for the map, if any
+  Print the URL, process ID and connected page count of the server running for the map, if any
 
 USAGE
   axonometric status [flags] <home>
@@ -8,7 +8,8 @@ ARGUMENTS
   home directory    The map's home folder, holding data.mjs and layout.json
 
 FLAGS
-  --json    Print { home, running, url, pid, since } as JSON instead of text
+  --json            Print { home, running, url, pid, since, pages, now } as JSON instead of text
+  --since string    With --json, also list the engineer's accepts and discards of your changes after this time, such as the now of an earlier status --json
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information

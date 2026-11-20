@@ -93,6 +93,7 @@ export const moveOf = (
   structure: string,
   to: GridPoint
 ): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "move",
   moves: [{ position: to, target: { id: structure, kind: "structure" } }],
@@ -103,6 +104,7 @@ export const resizeOf = (
   structure: string,
   footprint: Footprint
 ): LayoutChange => ({
+  by: "engineer",
   footprint,
   id,
   kind: "resize",

@@ -2,19 +2,25 @@ import { Array as Arr, Match, Option, Predicate, Result } from "effect";
 
 import {
   acceptLayoutChanges,
+  agentHeldWriteRefusal,
   emptyProposals,
+  agentChangeRefusal,
+  frozenLayoutChanges,
   frozenWriteRefusal,
   isQueued,
   LayoutChangeRefused,
   layoutRefusal,
   layoutUnderProposals,
   pendingView,
+  proposeAgentChange,
+  sameLayoutChanges,
   StaleProposals,
   startPending,
   stepPending,
 } from "../src/index.ts";
 import type {
   Accepted,
+  AgentProposal,
   ChangeId,
   LayoutChange,
   MapState,
@@ -43,6 +49,15 @@ export interface InMemoryPage {
   readonly dispatch: (input: PendingInput) => string | undefined;
   /** What the server holds. */
   readonly server: {
+    /**
+     * The agent proposes `proposal` for `reason`, as `layout --propose`
+     * does, and the page hears of it. Returns why it was refused, when it
+     * was, and then writes nothing.
+     */
+    readonly propose: (
+      proposal: AgentProposal,
+      reason: string
+    ) => string | undefined;
     /**
      * `proposals.json` is replaced on disk by `proposals`. With `mapBroken`,
      * the map files don't make a map, so the page is sent the proposals alone.
@@ -106,8 +121,16 @@ export const inMemoryPage = (initial: MapState): InMemoryPage => {
       };
     }
 
+    const listed = { after: write.layout, before: current.layout };
+
+    const asAgent = Option.orElse(agentChangeRefusal(listed), () =>
+      agentHeldWriteRefusal(listed)
+    );
+
     const refusal = Option.orElse(
-      frozenWriteRefusal({ after: write.layout, proposals: current }),
+      Option.orElse(asAgent, () =>
+        frozenWriteRefusal({ after: write.layout, proposals: current })
+      ),
       () =>
         layoutRefusal({
           accepted: layoutUnderProposals({
@@ -223,9 +246,68 @@ export const inMemoryPage = (initial: MapState): InMemoryPage => {
     }
   };
 
+  const agentIds = countingIds();
+
+  const propose = (
+    proposal: AgentProposal,
+    reason: string
+  ): string | undefined => {
+    const current = proposalsOf(server);
+
+    const base = layoutUnderProposals({
+      data: server.data,
+      layout: server.layout,
+      proposals: current,
+    });
+
+    const proposed = Result.flatMap(
+      proposeAgentChange({
+        base,
+        changes: current.layout,
+        frozen: frozenLayoutChanges(current),
+        newId: () => `agent-${agentIds()}`,
+        proposal,
+        reason,
+      }),
+      (after) =>
+        Option.match(
+          Option.orElse(frozenWriteRefusal({ after, proposals: current }), () =>
+            layoutRefusal({
+              accepted: base,
+              after,
+              before: current.layout,
+              hops: server.data.hops,
+            })
+          ),
+          {
+            onNone: () => Result.succeed(after),
+            onSome: (why) => Result.fail(why),
+          }
+        )
+    );
+
+    if (
+      Result.isSuccess(proposed) &&
+      !sameLayoutChanges(proposed.success, current.layout)
+    ) {
+      server = {
+        ...server,
+        proposals: {
+          ...current,
+          layout: proposed.success,
+          revision: current.revision + 1,
+        },
+      };
+      tell();
+    }
+
+    return Option.getOrUndefined(Result.getFailure(proposed));
+  };
+
   return {
     dispatch,
     server: {
+      propose,
       replaceProposals: (proposals, { mapBroken }) => {
         server = { ...server, proposals };
 

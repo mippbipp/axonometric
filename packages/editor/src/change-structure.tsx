@@ -4,14 +4,16 @@ import {
   removedMark,
 } from "@axonometric/contracts";
 import type { Structure } from "@axonometric/contracts";
+import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Option } from "effect";
-import { useId, useState } from "react";
+import { useState } from "react";
 
+import { ChoiceSelect } from "./choice-select.tsx";
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { DeletionNotice } from "./deletion-notice.tsx";
-import { fieldClass } from "./field-class.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { useProposed } from "./proposed-context.ts";
 import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
 import { usePropose } from "./use-propose.ts";
@@ -35,8 +37,8 @@ export function ChangeStructure({
   const connections = useConnections();
   const drafting = useHopDraft();
   const { state } = useWalkthrough();
-  const { canPropose, clear, failure, send } = usePropose();
-  const renameId = useId();
+  const { canPropose, clear, failure, send: sendChange } = usePropose();
+  const [lastSent, setLastSent] = useState<"name" | "other">("other");
   const [name, setName] = useState<string | undefined>();
 
   if (proposing === null) {
@@ -60,6 +62,15 @@ export function ChangeStructure({
 
   const typed = name ?? structure.name;
 
+  // A refusal belongs to the name box when the rename was the last thing sent.
+  const send = (change: Parameters<typeof sendChange>[0], from = "other") => {
+    setLastSent(from === "name" ? "name" : "other");
+    sendChange(change);
+  };
+
+  const nameFailure = lastSent === "name" ? failure : undefined;
+  const otherFailure = lastSent === "name" ? undefined : failure;
+
   const choose = ({
     label,
     onChange,
@@ -71,24 +82,15 @@ export function ChangeStructure({
     readonly options: ReadonlyArray<{ label: string; value: string }>;
     readonly value: string;
   }) => (
-    <label className="flex items-center justify-between gap-2 text-xs">
-      <span className="opacity-70">{label}</span>
-      <select
-        className={fieldClass}
-        data-change={label.toLowerCase()}
-        disabled={!canPropose || deleted}
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-        value={value}
-      >
-        {Arr.map(options, (option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <ChoiceSelect
+      choices={options}
+      className="flex items-center justify-between gap-2 text-xs"
+      disabled={!canPropose || deleted}
+      label={label}
+      onChange={onChange}
+      trigger={{ "data-change": label.toLowerCase() }}
+      value={value}
+    />
   );
 
   return (
@@ -104,32 +106,34 @@ export function ChangeStructure({
         />
       ) : null}
       <form
-        className="flex gap-1.5"
+        className="flex items-start gap-1.5"
         onSubmit={(event) => {
           event.preventDefault();
 
           if (typed.trim() !== structure.name) {
-            send(changeFor.rename(structure, typed.trim()));
+            send(changeFor.rename(structure, typed.trim()), "name");
           }
         }}
       >
-        <label className="sr-only" htmlFor={renameId}>
-          Name
-        </label>
-        <input
-          autoComplete="off"
-          className={`${fieldClass} min-w-0 flex-1`}
-          data-change="name"
+        <LabelledField
+          className="min-w-0 flex-1"
           disabled={!canPropose || deleted}
-          id={renameId}
-          maxLength={maxStructureNameLength}
-          onChange={(event) => {
-            clear();
-            setName(event.target.value);
-          }}
-          type="text"
-          value={typed}
-        />
+          failure={nameFailure}
+          failureProps={{ "data-change-failure": "" }}
+          hideLabel
+          label="Name"
+        >
+          <Input
+            autoComplete="off"
+            data-change="name"
+            maxLength={maxStructureNameLength}
+            onValueChange={(next) => {
+              clear();
+              setName(next);
+            }}
+            value={typed}
+          />
+        </LabelledField>
         <button
           className={controlClass}
           data-change="rename"
@@ -181,13 +185,13 @@ export function ChangeStructure({
         options: statusChoices,
         value: structure.status,
       })}
-      {failure === undefined ? null : (
+      {otherFailure === undefined ? null : (
         <p
           className="border-refused border-l-2 pl-2 text-xs"
           data-change-failure
           role="alert"
         >
-          {failure}
+          {otherFailure}
         </p>
       )}
       <div className="flex flex-wrap gap-1.5">

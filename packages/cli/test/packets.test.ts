@@ -8,6 +8,8 @@ import {
   attributesOf,
   click,
   goToChapter,
+  press,
+  tooltipOn,
   waitFor,
 } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
@@ -229,16 +231,15 @@ describe("packets", () => {
             .isDisabled()
         );
 
-        const playTitle = yield* attributeOf(
+        const playTooltip = yield* tooltipOn(
           page,
-          '[data-playback-controls] [data-control="play"]',
-          "title"
+          '[data-playback-controls] [data-control="play"]'
         );
 
         assert.deepStrictEqual(after, before);
         assert.isTrue(playDisabled);
-        assert.include(playTitle ?? "", "reduced motion");
-        assert.include(playTitle ?? "", "Step");
+        assert.include(playTooltip, "reduced motion");
+        assert.include(playTooltip, "Step");
         const restingPacketIds = yield* packetIds(page);
         // At rest, the packet waits on the chapter's first hop.
         assert.deepStrictEqual(restingPacketIds, ["h-note"]);
@@ -264,7 +265,7 @@ describe("the flow picker", () => {
         yield* goToChapter(page, "c-all");
 
         const buttons = yield* Effect.promise(() =>
-          page.locator("[data-flow-picker] button").allTextContents()
+          page.locator("[data-flow-picker] [role=radio]").allTextContents()
         );
 
         assert.strictEqual(early, 0);
@@ -285,7 +286,7 @@ describe("the flow picker", () => {
         yield* assertAttribute(
           page,
           {
-            name: "aria-pressed",
+            name: "aria-checked",
             selector: '[data-flow-picker] [data-flow="all"]',
           },
           "true"
@@ -294,7 +295,7 @@ describe("the flow picker", () => {
         yield* waitFor(page, '[data-packet][data-run="f-accept"]');
 
         yield* click(page, '[data-flow-picker] [data-flow="f-accept"]');
-        yield* waitFor(page, '[data-flow="f-accept"][aria-pressed="true"]');
+        yield* waitFor(page, '[data-flow="f-accept"][aria-checked="true"]');
 
         const runs = yield* attributesOf(page, "[data-packet]", "data-run");
 
@@ -318,5 +319,29 @@ describe("the flow picker", () => {
         assert.include(eyebrow ?? "", "Accepting");
       })
     )
+  );
+
+  it.live(
+    "moves the choice with the arrow keys, without changing chapter",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* twoFlowPage;
+
+          yield* goToChapter(page, "c-all");
+          yield* Effect.promise(() =>
+            page.locator('[data-flow-picker] [data-flow="all"]').focus()
+          );
+          yield* press(page, "ArrowLeft");
+          yield* waitFor(page, '[data-flow="f-accept"][aria-checked="true"]');
+          yield* press(page, "ArrowLeft");
+          yield* waitFor(page, '[data-flow="f-note"][aria-checked="true"]');
+
+          const runs = yield* attributesOf(page, "[data-packet]", "data-run");
+
+          assert.deepStrictEqual(runs, ["f-note"]);
+          yield* waitFor(page, '[data-walkthrough][data-chapter="c-all"]');
+        })
+      )
   );
 });

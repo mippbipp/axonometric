@@ -27,7 +27,7 @@ The home folder holds:
 | File | Who edits it |
 |---|---|
 | `data.mjs` | Only you. The map's meaning. The page never writes it. See `data`. |
-| `layout.json` | The `layout` command, the engineer's page, and you by hand for a reroute. |
+| `layout.json` | The `layout` command and the engineer's page. Never edit it by hand. |
 | `proposals.json` | The page and `verdict`. Leave it alone. |
 | `history/` | `commit`. One file per revision. Leave it alone. |
 | `.axonometric/` | The server's URL, process ID and lock. Leave it alone. |
@@ -65,7 +65,7 @@ No text overlaps. `check` is where these are reported. `build` doesn't draw ever
 axonometric check <home>
 ```
 
-Fix each warning with `layout`, or by editing `layout.json`, then run `check` again.
+Fix each warning with `layout`, then run `check` again.
 
 ```sh
 axonometric layout <home> <structure> --x 14 --y 12
@@ -74,11 +74,35 @@ axonometric layout <home> <structure> --w 3 --d 2
 
 Values land on half units. A field you leave out keeps its value. `layout` takes the map's lock, so it is safe while a server runs.
 
-`layout` doesn't reroute hops. For a route the router gets wrong, edit `layout.json` and add an entry under `routes`, keyed by the hop's id. List grid points from the edge of one footprint to the edge of the other, with each point sharing `x` or `y` with the one before. Run `check` afterwards: it reports a route that doesn't start and end on a footprint's edge.
+To reroute a hop the router gets wrong, give `layout` the hop's id and its route:
 
-```json
-"routes": { "h-save": [{ "x": 9, "y": 2 }, { "x": 9, "y": 5 }] }
+```sh
+axonometric layout <home> --hop h-save --route "6,1 7,1 7,-1 9,-1 9,0"
+axonometric layout <home> --hop h-save --route auto
 ```
+
+List grid points from the edge of one footprint to the edge of the other, separated by spaces, with each point sharing `x` or `y` with the one before. `layout` refuses a route that doesn't start and end on the footprints' edges, has a diagonal leg or names a hop `data.mjs` lacks, and writes nothing. `--route auto` clears the override so the hop routes itself. It takes the map's lock and checks the file revision, like a move.
+
+Before you change the layout, find out whether an engineer is watching:
+
+```sh
+axonometric status <home> --json
+```
+
+While `pages` is above 0, a page is open, so propose with `layout --propose --reason` and let the engineer decide. With 0 pages, or when no server runs, apply the change directly.
+
+To learn what the engineer decided, pass `--since <time>` with `--json`. The first reply's `now` is the time to pass next. `decisions` then lists the engineer's accepts and discards of your changes after that time, oldest first, each with its `at`, your `change` and the `decision`. A change the engineer takes over by editing the same structure counts as discarded. A discard carries no reason. The server keeps the last 50 in memory, so a restart empties them. When the engineer decided more than 50 since your `--since`, the oldest are gone, and the reply says `"truncated": true`. You missed some decisions, so don't assume a change you can't find in `decisions` is still pending or was accepted: reread `proposals.json` for what is pending and `layout.json` for what landed. `truncated` is `false` when `decisions` holds everything after `--since`. Each reply gives a new `now`, so nothing is missed or listed twice.
+
+To leave a move, resize or reroute for the engineer instead of applying it, add `--propose` and say why with `--reason`:
+
+```sh
+axonometric layout <home> server --x 14 --y 12 --propose --reason "Give the server room beside the page"
+axonometric layout <home> --hop h-save --route auto --propose --reason "Let the router take the save hop"
+```
+
+The change waits in `proposals.json` as yours, and `layout.json` stays as it is. The engineer sees it in the page's Pending tab, grouped with your other changes that give the same reason, and accepts or discards it. A second proposal for the same structure or hop replaces your first. `layout` refuses a structure or hop the engineer has a pending change to, names their change, and writes nothing. After it writes, `layout` prints the drawing warnings of the map with every pending layout change applied.
+
+Never edit `layout.json` by hand. A hand edit skips the lock and the revision check, so it can overwrite what the engineer just did in the page. Run `check` afterwards: it reports a route that doesn't start and end on a footprint's edge, or runs under a box.
 
 Done when `check` prints 0 warnings, or you can say why each remaining warning is acceptable.
 

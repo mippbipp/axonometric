@@ -1,4 +1,7 @@
 import {
+  agentChangeRefusal,
+  agentHeldWriteRefusal,
+  authorChangeRefusal,
   frozenWriteRefusal,
   layoutUnderProposals,
   LayoutChangeRefused,
@@ -187,13 +190,22 @@ const usedElsewhere = (
  * written, when `write.baseFileRevision` isn't the file's revision, or when a
  * new or changed change would leave footprints overlapping in the layout
  * the page shows, name a hop `hops` lacks, or leave a route override off its
- * footprints. `written` runs under the lock, once the file is saved, to
- * tell the open pages. Returns what `proposals.json` holds after the write.
+ * footprints. It is refused too when it makes or changes an agent change, or
+ * leaves an engineer change it adds beside an agent change on one target.
+ * `written` runs under the lock, once the file is saved, to
+ * tell the open pages. It also gets the agent changes the write removed,
+ * which the engineer discarded. An engineer's edit that takes over an agent
+ * change removes it too, so that counts as a discard. A move that only loses
+ * some structures keeps its id and isn't one. Returns what `proposals.json`
+ * holds after the write.
  */
 export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   paths: HomePaths,
   { data, hops, write }: PendingWrite,
-  written: (proposals: Proposals) => Effect.Effect<void>
+  written: (
+    proposals: Proposals,
+    discarded: ReadonlyArray<LayoutChange>
+  ) => Effect.Effect<void>
 ) {
   // The files are read in this order, one at a time, so when both are
   // unreadable the error names proposals.json.
@@ -221,6 +233,25 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
     layout: accepted,
     proposals: current,
   });
+
+  // Only the CLI acts as the agent. The page may send an agent change back
+  // as it stands, never make or change one, and takes over an agent change
+  // before it edits the same target.
+  const listed = { after: write.layout, before: current.layout };
+
+  const forged = Option.orElse(
+    Option.orElse(agentChangeRefusal(listed), () =>
+      authorChangeRefusal(listed)
+    ),
+    () => agentHeldWriteRefusal(listed)
+  );
+
+  if (Option.isSome(forged)) {
+    return yield* LayoutChangeRefused.make({
+      proposals: current,
+      reason: forged.value,
+    });
+  }
 
   // The server holds this line for every client, the page's undo included:
   // a write can't touch what a frozen item acts on.
@@ -259,7 +290,15 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
 
   // Still under the lock, so two quick writes tell the pages in the order
   // they were made.
-  yield* written(next);
+  yield* written(
+    next,
+    Arr.filter(
+      current.layout,
+      (change) =>
+        change.by === "agent" &&
+        !Arr.some(write.layout, ({ id }) => id === change.id)
+    )
+  );
 
   return next;
 }, Effect.scoped);

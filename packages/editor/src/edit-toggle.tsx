@@ -1,6 +1,7 @@
-import { cn } from "@axonometric/ui/lib/utils";
+import { Toggle } from "@axonometric/ui/components/toggle";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useEditSwitch } from "./edit-context.ts";
 import { editKey, useSwitchEdit } from "./edit-toggle-key.ts";
 
@@ -17,19 +18,19 @@ export function EditToggle() {
   }
 
   return (
-    <button
-      aria-pressed={edit.on}
-      className={cn(controlClass, edit.on && "bg-ink text-paper")}
-      data-edit-toggle=""
-      onClick={() => {
-        switchEdit(!edit.on);
-      }}
-      title={
-        edit.on ? `Stop editing (${editKey})` : `Edit the map (${editKey})`
+    <WithTooltip
+      control={
+        <Toggle
+          className={uiControlClass}
+          data-edit-toggle=""
+          onPressedChange={switchEdit}
+          pressed={edit.on}
+        >
+          Edit
+        </Toggle>
       }
-      type="button"
     >
-      Edit
-    </button>
+      {edit.on ? `Stop editing (${editKey})` : `Edit the map (${editKey})`}
+    </WithTooltip>
   );
 }

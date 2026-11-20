@@ -42,6 +42,7 @@ const at = "2026-11-01T09:00:00.000Z";
 
 const moveItem: BatchItem = {
   change: {
+    by: "engineer",
     id: "move-engineer",
     kind: "move",
     moves: [
@@ -57,6 +58,7 @@ const moveItem: BatchItem = {
 
 const resizeItem = (w: number): BatchItem => ({
   change: {
+    by: "engineer",
     footprint: { d: 2, w },
     id: "resize-page",
     kind: "resize",

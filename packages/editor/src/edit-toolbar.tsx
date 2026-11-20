@@ -1,11 +1,18 @@
 import { alignMoves, distributeMoves } from "@axonometric/contracts";
 import type { Alignment, Axis, View } from "@axonometric/contracts";
+import { Toggle } from "@axonometric/ui/components/toggle";
+import {
+  Toolbar,
+  ToolbarButton,
+  ToolbarSeparator,
+} from "@axonometric/ui/components/toolbar";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useEditing } from "./editing-context.ts";
 import { useNewGroupForm } from "./new-group-context.ts";
 import { NoteToolButton, NoteToolHint } from "./note-tool.tsx";
@@ -189,7 +196,7 @@ function Icon({
 }
 
 const iconButton = cn(
-  controlClass,
+  uiControlClass,
   "flex h-6 min-w-6 items-center justify-center px-0.5 py-0"
 );
 
@@ -252,117 +259,141 @@ export function EditToolbar({
       className={cn("flex flex-col items-end gap-1.5", className)}
       data-edit-toolbar
     >
-      <div
+      <Toolbar
         aria-label="Undo and redo"
-        className="flex gap-1.5"
+        className="gap-1.5"
         data-history-toolbar
-        role="toolbar"
       >
-        <button
-          aria-label="Undo"
-          className={controlClass}
-          data-control="undo"
-          disabled={!canUndo}
-          onClick={() => {
-            setRefusal(undefined);
-            undo();
-          }}
-          title="Undo (Ctrl+Z)"
-          type="button"
+        <WithTooltip
+          control={
+            <ToolbarButton
+              aria-label="Undo"
+              className={uiControlClass}
+              data-control="undo"
+              disabled={!canUndo}
+              onClick={() => {
+                setRefusal(undefined);
+                undo();
+              }}
+            >
+              <span aria-hidden="true">↶ Undo</span>
+            </ToolbarButton>
+          }
         >
-          <span aria-hidden="true">↶ Undo</span>
-        </button>
-        <button
-          aria-expanded={placing?.open === true}
-          className={controlClass}
-          data-control="add-structure"
-          disabled={proposing === null || !proposing.canPropose}
-          onClick={() => {
-            placing?.setOpen(!placing.open);
-          }}
-          title="Propose a new structure"
-          type="button"
+          Undo (Ctrl+Z)
+        </WithTooltip>
+        <WithTooltip
+          control={
+            <Toggle
+              className={uiControlClass}
+              data-control="add-structure"
+              disabled={proposing === null || !proposing.canPropose}
+              onPressedChange={(open) => {
+                placing?.setOpen(open);
+              }}
+              pressed={placing?.open === true}
+            >
+              + Structure
+            </Toggle>
+          }
         >
-          + Structure
-        </button>
-        <button
-          aria-expanded={newGroup?.open === true}
-          className={controlClass}
-          data-control="add-group"
-          disabled={proposing === null || !proposing.canPropose}
-          onClick={() => {
-            newGroup?.setOpen(!newGroup.open);
-          }}
-          title="Create a group, from the selected structures or empty"
-          type="button"
+          Propose a new structure
+        </WithTooltip>
+        <WithTooltip
+          control={
+            <Toggle
+              className={uiControlClass}
+              data-control="add-group"
+              disabled={proposing === null || !proposing.canPropose}
+              onPressedChange={(open) => {
+                newGroup?.setOpen(open);
+              }}
+              pressed={newGroup?.open === true}
+            >
+              + Group
+            </Toggle>
+          }
         >
-          + Group
-        </button>
-        <button
-          aria-label="Redo"
-          className={controlClass}
-          data-control="redo"
-          disabled={!canRedo}
-          onClick={() => {
-            setRefusal(undefined);
-            redo();
-          }}
-          title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
-          type="button"
+          Create a group, from the selected structures or empty
+        </WithTooltip>
+        <WithTooltip
+          control={
+            <ToolbarButton
+              aria-label="Redo"
+              className={uiControlClass}
+              data-control="redo"
+              disabled={!canRedo}
+              onClick={() => {
+                setRefusal(undefined);
+                redo();
+              }}
+            >
+              <span aria-hidden="true">Redo ↷</span>
+            </ToolbarButton>
+          }
         >
-          <span aria-hidden="true">Redo ↷</span>
-        </button>
+          Redo (Ctrl+Shift+Z or Ctrl+Y)
+        </WithTooltip>
         <NoteToolButton />
-      </div>
+      </Toolbar>
       <NoteToolHint />
       {many ? (
         <div
-          aria-label={`Arrange ${ids.length} selected structures`}
           className="border-ink bg-paper flex flex-col items-end gap-1 border p-1.5"
           data-arrange-toolbar
-          role="toolbar"
         >
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <Toolbar
+            aria-label={`Arrange ${ids.length} selected structures`}
+            className="flex-wrap justify-end gap-1.5"
+          >
             <span className="px-1 text-xs tracking-widest uppercase opacity-70">
               {ids.length} selected
             </span>
             {Arr.map(alignments, ({ how, icon, label }) => (
-              <button
-                aria-label={label[view]}
-                className={iconButton}
-                data-align={how}
+              <WithTooltip
+                control={
+                  <ToolbarButton
+                    aria-label={label[view]}
+                    className={iconButton}
+                    data-align={how}
+                    {...hintFor(label[view])}
+                    onClick={() => {
+                      run((placements) => alignMoves({ how, ids, placements }));
+                    }}
+                  >
+                    <Icon view={view}>{icon}</Icon>
+                  </ToolbarButton>
+                }
                 key={how}
-                title={label[view]}
-                type="button"
-                {...hintFor(label[view])}
-                onClick={() => {
-                  run((placements) => alignMoves({ how, ids, placements }));
-                }}
               >
-                <Icon view={view}>{icon}</Icon>
-              </button>
+                {label[view]}
+              </WithTooltip>
             ))}
-            <span aria-hidden="true" className="bg-ink h-4 w-px opacity-40" />
+            <ToolbarSeparator className="bg-ink h-4 opacity-40" />
             {Arr.map(distributions, ({ axis, icon, label }) => (
-              <button
-                aria-label={label[view]}
-                className={iconButton}
-                data-distribute={axis}
-                disabled={!canDistribute}
+              <WithTooltip
+                control={
+                  <ToolbarButton
+                    aria-label={label[view]}
+                    className={iconButton}
+                    data-distribute={axis}
+                    disabled={!canDistribute}
+                    {...hintFor(label[view])}
+                    onClick={() => {
+                      run((placements) =>
+                        distributeMoves({ axis, ids, placements })
+                      );
+                    }}
+                  >
+                    <Icon view={view}>{icon}</Icon>
+                  </ToolbarButton>
+                }
                 key={axis}
-                title={canDistribute ? label[view] : distributeNeedsThree}
-                type="button"
-                {...hintFor(label[view])}
-                onClick={() => {
-                  run((placements) =>
-                    distributeMoves({ axis, ids, placements })
-                  );
-                }}
               >
-                <Icon view={view}>{icon}</Icon>
-              </button>
+                {canDistribute ? label[view] : distributeNeedsThree}
+              </WithTooltip>
             ))}
-          </div>
+          </Toolbar>
           {(hint ?? (canDistribute ? "" : distributeNeedsThree)) ===
           "" ? null : (
             <p

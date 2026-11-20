@@ -1,4 +1,5 @@
 import type { DifferenceLine } from "@axonometric/contracts";
+import { Toggle } from "@axonometric/ui/components/toggle";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
@@ -9,6 +10,22 @@ import { useSelection } from "./selection-context.ts";
 
 const itemsText = (count: number) =>
   `${count} ${count === 1 ? "item" : "items"}`;
+
+/** Who made the accepted layout changes, such as "2 by you, 1 by the agent". */
+const authorsText = ({
+  agent,
+  engineer,
+}: {
+  readonly agent: number;
+  readonly engineer: number;
+}) =>
+  Arr.join(
+    [
+      ...(engineer === 0 ? [] : [`${engineer} by you`]),
+      ...(agent === 0 ? [] : [`${agent} by the agent`]),
+    ],
+    ", "
+  );
 
 /**
  * One difference as text. When it names a structure, choosing it selects
@@ -79,23 +96,19 @@ export function HistoryTab() {
         </p>
       ) : (
         <ol className="flex flex-col gap-1.5">
-          {Arr.map(entries, ({ items, message, revision, savedAt }) => {
+          {Arr.map(entries, ({ by, items, message, revision, savedAt }) => {
             const isOpen = opened === revision;
 
             return (
               <li key={revision}>
-                <button
+                <Toggle
                   aria-label={`Revision ${revision}: ${message}, ${itemsText(items)}`}
-                  aria-pressed={isOpen}
-                  className={cn(
-                    "border-ink focus-visible:outline-ink flex w-full cursor-pointer flex-col gap-0.5 border px-2 py-1.5 text-left text-xs focus-visible:outline-2 focus-visible:outline-offset-1",
-                    isOpen ? "bg-ink text-paper" : "bg-paper text-ink"
-                  )}
+                  className="border-ink focus-visible:outline-ink bg-paper text-ink data-[pressed]:bg-ink data-[pressed]:text-paper hover:bg-paper hover:text-ink data-[pressed]:hover:bg-ink data-[pressed]:hover:text-paper flex h-auto w-full min-w-0 cursor-pointer flex-col items-stretch justify-start gap-0.5 rounded-none border px-2 py-1.5 text-left text-xs font-normal whitespace-normal transition-none focus-visible:outline-2 focus-visible:outline-offset-1"
                   data-revision={revision}
-                  onClick={() => {
+                  onPressedChange={() => {
                     open(revision);
                   }}
-                  type="button"
+                  pressed={isOpen}
                 >
                   <span className="flex gap-2">
                     <b className="font-medium">#{revision}</b>
@@ -109,8 +122,14 @@ export function HistoryTab() {
                     </time>
                     <span>·</span>
                     <span data-revision-items>{itemsText(items)}</span>
+                    {by.engineer + by.agent === 0 ? null : (
+                      <>
+                        <span>·</span>
+                        <span data-revision-authors>{authorsText(by)}</span>
+                      </>
+                    )}
                   </span>
-                </button>
+                </Toggle>
               </li>
             );
           })}

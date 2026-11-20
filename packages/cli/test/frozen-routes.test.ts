@@ -26,6 +26,7 @@ const rerouteOf = (
   hop: string,
   points: typeof detour | null
 ): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "reroute",
   points,

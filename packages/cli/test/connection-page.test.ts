@@ -26,6 +26,7 @@ import {
   waitFor,
   waitForAttributes,
   waitTimeout,
+  choose,
 } from "./browser.ts";
 import { openReviewMap, proposalsOrEmpty, runCli, homeAt } from "./harness.ts";
 import { post } from "./revisions.ts";
@@ -95,6 +96,22 @@ const waitForFlowHops = (
       undefined,
       waitTimeout
     )
+  );
+
+/** Focuses the grip of hop `hop` in the hops list of flow `flow`. */
+const focusGrip = (page: Page, flow: string, hop: string) =>
+  Effect.promise(() =>
+    page
+      .locator(`[data-sortable="hops:${flow}"] [data-sort-grip="${hop}"]`)
+      .focus()
+  );
+
+/** Presses `keys` one after the other. */
+const pressKeys = (page: Page, keys: ReadonlyArray<string>) =>
+  Effect.forEach(
+    keys,
+    (key) => Effect.promise(() => page.keyboard.press(key)),
+    { concurrency: 1, discard: true }
   );
 
 /**
@@ -467,9 +484,7 @@ describe("the keyboard path to drawing a hop", () => {
 
         assert.isTrue(drawSubmitDisabled);
 
-        yield* Effect.promise(() =>
-          page.locator('[data-draw="to"]').selectOption("proposals")
-        );
+        yield* choose(page, '[data-draw="to"]', "proposals");
         yield* Effect.promise(() =>
           page.locator('[data-draw="label"]').fill("looks at")
         );
@@ -571,7 +586,7 @@ describe("the hop panel and menu", () => {
         );
         yield* Effect.promise(() =>
           page.waitForFunction(
-            `document.querySelector('[data-hop-flow="f-note"]').checked === true`,
+            `document.querySelector('[data-hop-flow="f-note"]').getAttribute("aria-checked") === "true"`,
             undefined,
             waitTimeout
           )
@@ -593,7 +608,7 @@ describe("the hop panel and menu", () => {
         );
         yield* Effect.promise(() =>
           page.waitForFunction(
-            `document.querySelector('[data-hop-flow="f-note"]').checked === false`,
+            `document.querySelector('[data-hop-flow="f-note"]').getAttribute("aria-checked") === "false"`,
             undefined,
             waitTimeout
           )
@@ -683,15 +698,25 @@ describe("the hop panel and menu", () => {
 
 describe("the flows editor", () => {
   it.live(
-    "reorders the hops in a flow with the move buttons",
+    "reorders the hops in a flow by picking a grip up with the keyboard",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
-        yield* click(page, '[data-sort-down="h-note"]');
+        yield* focusGrip(page, "f-note", "h-note");
+        yield* pressKeys(page, ["Space", "ArrowDown"]);
+
+        // Picked up and moved, not dropped: the row has moved on the page,
+        // and nothing has been proposed.
         yield* waitForFlowHops(page, "f-note", ["h-save", "h-note", "h-store"]);
+
+        assert.deepStrictEqual((yield* proposalsOrEmpty(home)).flows ?? [], []);
+
+        yield* pressKeys(page, ["Space"]);
+
+        yield* waitForFlowProposal(home, (hops) => hops[0] === "h-save");
 
         const [saved] = (yield* proposalsOrEmpty(home)).flows ?? [];
 
@@ -705,20 +730,45 @@ describe("the flows editor", () => {
   );
 
   it.live(
-    "reorders the hops in a flow from the keyboard with Alt and the arrow keys",
+    "proposes a two-step keyboard move as one change",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-all");
         yield* openFlows(page);
-        yield* Effect.promise(() =>
-          page
-            .locator('[data-sortable="hops:f-note"] [data-sort-grip="h-store"]')
-            .focus()
-        );
-        yield* Effect.promise(() => page.keyboard.press("Alt+ArrowUp"));
+        yield* focusGrip(page, "f-note", "h-store");
+        yield* pressKeys(page, ["Space", "ArrowUp", "ArrowUp", "Space"]);
+        yield* waitForFlowHops(page, "f-note", ["h-store", "h-note", "h-save"]);
+        yield* waitForFlowProposal(home, (hops) => hops[0] === "h-store");
+
+        const { flows } = yield* proposalsOrEmpty(home);
+
+        assert.lengthOf(flows ?? [], 1);
+
+        const [saved] = flows ?? [];
+
+        assert.deepStrictEqual(saved?.change, {
+          action: "hops",
+          flow: "f-note",
+          hops: ["h-store", "h-note", "h-save"],
+        });
+      }),
+    60_000
+  );
+
+  it.live(
+    "reorders the hops in a flow with Space, an arrow key and Space",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+        yield* openFlows(page);
+        yield* focusGrip(page, "f-note", "h-store");
+        yield* pressKeys(page, ["Space", "ArrowUp", "Space"]);
         yield* waitForFlowHops(page, "f-note", ["h-note", "h-store", "h-save"]);
+        yield* waitForFlowProposal(home, (hops) => hops[1] === "h-store");
 
         const [saved] = (yield* proposalsOrEmpty(home)).flows ?? [];
 
@@ -726,6 +776,37 @@ describe("the flows editor", () => {
           saved?.change.action === "hops" ? saved.change.hops : [],
           ["h-note", "h-store", "h-save"]
         );
+      }),
+    60_000
+  );
+
+  it.live(
+    "puts a picked-up hop back on Escape and proposes nothing",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+        yield* openFlows(page);
+        yield* focusGrip(page, "f-note", "h-note");
+        yield* pressKeys(page, ["Space", "ArrowDown", "ArrowDown"]);
+        yield* waitForFlowHops(page, "f-note", ["h-save", "h-store", "h-note"]);
+        yield* pressKeys(page, ["Escape"]);
+        yield* waitForFlowHops(page, "f-note", ["h-note", "h-save", "h-store"]);
+
+        // A drop would have reached the server by now: give it the time the
+        // other tests wait for it.
+        yield* Effect.sleep("1500 millis");
+
+        assert.deepStrictEqual((yield* proposalsOrEmpty(home)).flows ?? [], []);
+
+        const pressed = yield* attributeOf(
+          page,
+          '[data-sortable="hops:f-note"] [data-sort-grip="h-note"]',
+          "aria-pressed"
+        );
+
+        assert.strictEqual(pressed, "false");
       }),
     60_000
   );
@@ -752,6 +833,7 @@ describe("the flows editor", () => {
         yield* Effect.promise(() => page.mouse.up());
 
         yield* waitForFlowHops(page, "f-note", ["h-save", "h-store", "h-note"]);
+        yield* waitForFlowProposal(home, (hops) => hops[2] === "h-note");
 
         const [saved] = (yield* proposalsOrEmpty(home)).flows ?? [];
 
@@ -861,12 +943,8 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="name"]').fill(fields.name)
   );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="shape"]').selectOption("store")
-  );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="status"]').selectOption("planned")
-  );
+  yield* choose(page, '[data-add="shape"]', "store");
+  yield* choose(page, '[data-add="status"]', "planned");
   yield* Effect.promise(() =>
     page.locator('[data-add="x"]').fill(String(fields.x))
   );
@@ -1145,7 +1223,7 @@ describe("a hop proposed for deletion", () => {
         yield* click(page, '[data-hop-delete="h-save"]');
         yield* waitFor(page, '[data-removed-hop-mark="h-save"]');
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* waitFor(page, "[data-hop-panel] [data-deletion-waiting]");
 
@@ -1189,7 +1267,7 @@ describe("a structure proposed for deletion", () => {
         yield* click(page, '[data-change="delete"]');
         yield* waitFor(page, '[data-removed-mark="upstream"]');
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
         yield* Effect.promise(() => page.keyboard.press("Escape"));
         yield* waitFor(page, "[data-change-structure] [data-deletion-waiting]");
 
@@ -1253,7 +1331,7 @@ describe("the open page after verdict changed --as on a hop and a flow", () => {
         yield* click(page, '[data-tab="details"]');
         yield* waitFor(page, `[data-hop-panel="${hopId}"]`);
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
         yield* Effect.promise(() => page.keyboard.press("Escape"));
 
         const fs = yield* FileSystem.FileSystem;
@@ -1318,7 +1396,7 @@ describe("the open page after verdict changed --as on a hop and a flow", () => {
 
 describe("a flow that lists a hop proposed for deletion", () => {
   it.live(
-    "can still be reordered with the move buttons",
+    "can still be reordered from the keyboard",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* served;
@@ -1331,12 +1409,14 @@ describe("a flow that lists a hop proposed for deletion", () => {
           '[data-hop="h-save"][data-hop-state="removed"]'
         );
         yield* openFlows(page);
-        yield* click(page, '[data-sort-down="h-note"]');
+        yield* focusGrip(page, "f-note", "h-note");
+        yield* pressKeys(page, ["Space", "ArrowDown", "Space"]);
         yield* waitForFlowHops(page, "f-note", ["h-save", "h-note", "h-store"]);
+        yield* waitForFlowProposal(home, (hops) => hops[0] === "h-save");
 
         yield* assertCount(page, "[data-flow-failure]", 0);
 
-        // The row says so in words, and the buttons carry it in their names.
+        // The row says so in words, and its grip carries it in its name.
         // The hop is still reorderable.
         const note = yield* Effect.promise(() =>
           page.locator('[data-sort-note="h-save"]').textContent()
@@ -1346,7 +1426,7 @@ describe("a flow that lists a hop proposed for deletion", () => {
 
         const label = yield* attributeOf(
           page,
-          '[data-sortable="hops:f-note"] [data-sort-up="h-save"]',
+          '[data-sortable="hops:f-note"] [data-sort-grip="h-save"]',
           "aria-label"
         );
 

@@ -22,6 +22,7 @@ import {
   click,
   literal,
   openUrl,
+  press,
   textOf,
   waitFor,
   waitGone,
@@ -249,6 +250,53 @@ describe("the History panel", () => {
   );
 
   it.live(
+    "shows who made the accepted layout changes, the agent's included",
+    () =>
+      Effect.gen(function* () {
+        const pending = yield* Schema.encodeEffect(
+          Schema.fromJsonString(Proposals)
+        )({
+          format: 1,
+          layout: [
+            {
+              ...moveOf("agent-moves-page", "page", { x: 4, y: 4 }),
+              by: "agent",
+            },
+          ],
+          revision: 1,
+        });
+
+        const { serve, url } = yield* serveReviewMap(
+          { [mapKeys("review").proposalsFile]: `${pending}\n` },
+          []
+        );
+
+        yield* acceptChanges(serve, {
+          base: 1,
+          changes: [
+            {
+              ...moveOf("agent-moves-page", "page", { x: 4, y: 4 }),
+              by: "agent",
+            },
+            moveOf("engineer-down", "engineer", { x: 0, y: 4 }),
+          ],
+          message: "Tidy up",
+        });
+
+        const { errors, page } = yield* openUrl(url);
+
+        yield* openHistory(page);
+        yield* assertTextIncludes(
+          page,
+          '[data-revision="1"] [data-revision-authors]',
+          "1 by you, 1 by the agent"
+        );
+        assert.deepStrictEqual(errors, []);
+      }),
+    60_000
+  );
+
+  it.live(
     "adds a line when a revision is saved, without a reload",
     () =>
       Effect.gen(function* () {
@@ -325,8 +373,8 @@ describe("the History panel", () => {
 
         yield* assertAttribute(
           page,
-          { name: "disabled", selector: '[data-tab="pending"]' },
-          ""
+          { name: "aria-disabled", selector: '[data-tab="pending"]' },
+          "true"
         );
         yield* assertTextIncludes(page, '[data-tab="pending"]', "Pending · 0");
         const tabsAfter = yield* tabBoxes(page);
@@ -366,10 +414,10 @@ describe("the History panel", () => {
         const pendingTabDisabled = yield* attributeOf(
           page,
           '[data-tab="pending"]',
-          "disabled"
+          "aria-disabled"
         );
 
-        assert.strictEqual(pendingTabDisabled, null);
+        assert.notStrictEqual(pendingTabDisabled, "true");
 
         const back = yield* centreOf(page, '[data-structure="engineer"]');
 
@@ -718,6 +766,34 @@ describe("the History panel", () => {
         );
         assert.deepStrictEqual(errors, []);
       }).pipe(Effect.scoped),
+    90_000
+  );
+
+  it.live(
+    "names the restore dialog by its title, and Escape closes it like the Close button",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* servedWithTwo;
+
+        yield* openHistory(page);
+        yield* openRevision(page, 1);
+        yield* click(page, '[data-control="restore"]');
+        yield* waitFor(page, "[data-restore-dialog]");
+
+        const named = yield* Effect.promise(() =>
+          page.getByRole("dialog", { name: "Restore revision 1" }).count()
+        );
+
+        assert.strictEqual(named, 1);
+
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-restore-dialog]");
+
+        // The page is back on the current map, with the restore pending.
+        yield* assertCount(page, "[data-past-revision]", 0);
+        yield* assertCount(page, '[data-structure][data-pending="true"]', 3);
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
     90_000
   );
 

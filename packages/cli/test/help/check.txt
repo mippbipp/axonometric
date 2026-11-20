@@ -1,5 +1,5 @@
 DESCRIPTION
-  Report the map's errors and warnings without writing anything. Exits 1 on errors.
+  Report the map's errors and warnings without writing anything. Exits 1 on errors. With --proposed, checks the map with its open layout changes applied.
 
 USAGE
   axonometric check [flags] <home>
@@ -8,7 +8,8 @@ ARGUMENTS
   home directory    The map's home folder, holding data.mjs and layout.json
 
 FLAGS
-  --json    Print { home, ok, errors, warnings } as JSON instead of text
+  --json        Print { home, ok, errors, warnings } as JSON instead of text
+  --proposed    Check the map as the page shows it with every open layout change applied, the engineer's and the agent's, before they are accepted
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information

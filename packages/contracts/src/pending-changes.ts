@@ -1,6 +1,14 @@
-import { Array as Arr, Match, Option, Predicate, String as Str } from "effect";
+import {
+  Array as Arr,
+  Match,
+  Option,
+  Predicate,
+  Result,
+  String as Str,
+} from "effect";
 import { dual } from "effect/Function";
 
+import { engineerTakesOver } from "./agent-changes.ts";
 import { appendMove } from "./arrange.ts";
 import type { Placements } from "./arrange.ts";
 import { restoreChanges } from "./diff.ts";
@@ -9,8 +17,9 @@ import type { GridPoint, Layout, Placement } from "./layout.ts";
 import type { MapState } from "./map-state.ts";
 import type { MapProblem } from "./problems.ts";
 import {
+  agentChangeMade,
   applyLayoutChanges,
-  discardChange,
+  discardChanges,
   emptyProposals,
   layoutRefusal,
   placeRoute,
@@ -34,14 +43,16 @@ import type {
   StaleProposals,
 } from "./server.ts";
 import {
+  dropConflicted,
   emptyHistory,
   observeFile,
   pushStep,
   redoStep,
+  replayStep,
+  stepOf,
   undoStep,
-  wroteFile,
 } from "./undo-history.ts";
-import type { UndoHistory } from "./undo-history.ts";
+import type { StepDirection, UndoHistory, UndoStep } from "./undo-history.ts";
 
 /** Why the last edit didn't save, as the page tells the engineer. */
 export interface EditNotice {
@@ -70,8 +81,11 @@ export type PendingEdit =
       readonly hop: string;
       readonly points: ReadonlyArray<GridPoint> | null;
     }
-  /** Removes one pending change. */
-  | { readonly _tag: "Discard"; readonly change: ChangeId }
+  /** Removes pending changes, such as one change or an agent group, as one step. */
+  | {
+      readonly _tag: "Discard";
+      readonly changes: Arr.NonEmptyReadonlyArray<ChangeId>;
+    }
   /** Puts every structure where a past revision has it. */
   | { readonly _tag: "Restore"; readonly revision: MapSnapshot };
 
@@ -110,9 +124,6 @@ type Edit = (
   accepted: Layout
 ) => ReadonlyArray<LayoutChange>;
 
-/** The pending lists the session has been through, for undo and redo. */
-type History = UndoHistory<ReadonlyArray<LayoutChange>>;
-
 /**
  * A write of the whole pending list, asked for and not answered. The page
  * sends `layout` based on file revision `base`.
@@ -120,18 +131,29 @@ type History = UndoHistory<ReadonlyArray<LayoutChange>>;
 export interface LayoutWrite {
   /** The file revision the write is based on, fixed when it was made. */
   readonly base: number;
-  /** The edit, to run again on a fresher list. */
-  readonly edit: Edit;
   /** The history as it was before this write, to put back if it fails. */
-  readonly historyBefore: History;
+  readonly historyBefore: UndoHistory;
   /** The whole list the write sets. */
   readonly layout: ReadonlyArray<LayoutChange>;
-  /**
-   * What made it: an edit, an undo or redo, whose list is never rebuilt, or
-   * the edits sent again after another writer got in first.
-   */
-  readonly origin: "edit" | "step" | "retry";
+  /** What made the write, which says how to make it again on a fresher list. */
+  readonly made: Made;
 }
+
+/** What made a layout write. */
+type Made =
+  /** An edit, run again as it is. */
+  | { readonly _tag: "Edit"; readonly edit: Edit }
+  /**
+   * An undo or redo, replayed again. It conflicts once someone else changed
+   * one of its targets.
+   */
+  | {
+      readonly _tag: "Step";
+      readonly direction: StepDirection;
+      readonly step: UndoStep;
+    }
+  /** The writes sent again after another writer got in first, never a third time. */
+  | { readonly _tag: "Retry" };
 
 /** A write the page sends to the server, one at a time in this order. */
 export type PendingWrite =
@@ -157,7 +179,11 @@ export interface PendingSession {
    * the accept takes.
    */
   readonly accepting: boolean;
-  readonly history: History;
+  /**
+   * The edits the engineer can undo and redo. Each is replayed on the list
+   * as it is then, so a write by someone else to other targets keeps them.
+   */
+  readonly history: UndoHistory;
   /** Makes the id of each change an edit adds. */
   readonly newId: () => ChangeId;
   /** Why the last edit didn't save, until the next edit. */
@@ -250,7 +276,7 @@ export const startPending = ({
   readonly newId: () => ChangeId;
 }): PendingSession => ({
   accepting: false,
-  history: emptyHistory(fileRevision(initial)),
+  history: emptyHistory,
   newId,
   notice: null,
   pending: savedLayout(initial),
@@ -282,7 +308,7 @@ const clearedHistoryMessage =
   "Accepted changes can't be undone. Edits before this point are cleared from undo.";
 
 const stepConflictMessage =
-  "The pending changes changed on disk since your last edit, so nothing was undone or redone. The page shows what's saved, and your steps are kept. Make an edit to start the history again.";
+  "The pending changes changed on disk since your last edit, so nothing was undone or redone. The page shows what's saved. That step is cleared from undo, with any earlier step on the same structures or hops, and your other steps are kept.";
 
 const acceptingMessage =
   "Accepting the pending changes. Make this edit once that's saved.";
@@ -378,7 +404,6 @@ const show = (
   const observed = Option.map(Option.fromUndefinedOr(next.state), (state) =>
     observeFile({
       acceptedChanged: state.layout.revision !== session.state.layout.revision,
-      fileRevision: fileRevision(state),
       history: session.history,
     })
   );
@@ -411,11 +436,6 @@ const show = (
 const pendingAfter = (session: PendingSession, state: MapState) =>
   session.queue.length === 0 ? savedLayout(state) : session.pending;
 
-/** Whether someone else has written the file since the session's last write. */
-const outdated = (session: PendingSession) =>
-  session.queue.length === 0 &&
-  fileRevision(session.state) !== session.history.revision;
-
 const receive = (session: PendingSession, incoming: MapState) => {
   const state = withFreshestProposals(session.state, incoming);
 
@@ -432,7 +452,7 @@ const adopt = ({
   readonly notice: EditNotice | null;
   readonly proposals: Proposals;
   /** The history to keep: as it is, unless given. */
-  readonly restore?: History;
+  readonly restore?: UndoHistory;
   readonly session: PendingSession;
 }) =>
   show(
@@ -444,7 +464,11 @@ const adopt = ({
     }
   );
 
-const failed = (session: PendingSession, message: string, restore: History) =>
+const failed = (
+  session: PendingSession,
+  message: string,
+  restore: UndoHistory
+) =>
   show(
     { ...session, history: restore, queue: [] },
     { notice: { kind: "failed", message }, pending: savedLayout(session.state) }
@@ -463,22 +487,44 @@ const enqueue = (
   writes: [{ _tag: "Layout", write }],
 });
 
-/**
- * The edits run again on a fresh list: the list so far, or why one failed.
- * `trail` holds the list before each edit that went through.
- */
+/** Why a write made again on a fresher list no longer fits. */
+type RerunFailure =
+  | {
+      readonly _tag: "Conflicted";
+      readonly direction: StepDirection;
+      readonly step: UndoStep;
+    }
+  | { readonly _tag: "Refused"; readonly reason: string };
+
+/** The writes made again on a fresh list: the list so far, or why one failed. */
 interface Rerun {
+  readonly failure: Option.Option<RerunFailure>;
   readonly layout: ReadonlyArray<LayoutChange>;
-  readonly reason: Option.Option<string>;
-  readonly trail: ReadonlyArray<ReadonlyArray<LayoutChange>>;
 }
+
+/** The list `made` makes from `changes` once more, or why it can't. */
+const madeAgain = (
+  made: Made,
+  changes: ReadonlyArray<LayoutChange>,
+  accepted: Layout
+): Result.Result<ReadonlyArray<LayoutChange>, RerunFailure> =>
+  Match.valueTags(made, {
+    Edit: ({ edit }) => Result.succeed(edit(changes, accepted)),
+    Retry: () => Result.succeed(changes),
+    Step: ({ direction, step }) =>
+      Result.fromOption(
+        replayStep({ current: changes, direction, step }),
+        (): RerunFailure => ({ _tag: "Conflicted", direction, step })
+      ),
+  });
 
 /**
  * The server's file moved on before `stale` was sent. Drops the queue, and
- * runs its edits again on `fresh`, the file as it is now. When they all
- * still fit, they're sent once more, based on `fresh`'s revision; when one
+ * makes its writes again on `fresh`, the file as it is now. When they all
+ * still fit, they're sent once more, based on `fresh`'s revision. When one
  * doesn't, or that write was already a retry, the page keeps `fresh` and
- * says the edit conflicted.
+ * says the write conflicted. An undo or redo that conflicted leaves undo,
+ * as it does when it conflicts on the page.
  */
 const recover = (
   session: PendingSession,
@@ -487,77 +533,69 @@ const recover = (
 ): PendingOutcome => {
   const accepted = baseLayout(session);
 
-  const start: Rerun = {
-    layout: fresh.layout,
-    reason: Option.none(),
-    trail: [],
-  };
+  const start: Rerun = { failure: Option.none(), layout: fresh.layout };
 
-  const rerun = Arr.reduce(session.queue, start, (so, { edit }): Rerun => {
-    if (Option.isSome(so.reason)) {
+  const rerun = Arr.reduce(session.queue, start, (so, { made }): Rerun => {
+    if (Option.isSome(so.failure)) {
       return so;
     }
 
-    const after = edit(so.layout, accepted);
+    const again = Result.flatMap(
+      madeAgain(made, so.layout, accepted),
+      (after) =>
+        Option.match(
+          layoutRefusal({
+            accepted,
+            after,
+            before: so.layout,
+            hops: session.state.data.hops,
+          }),
+          {
+            onNone: () => Result.succeed(after),
+            onSome: (reason): Result.Result<never, RerunFailure> =>
+              Result.fail({ _tag: "Refused", reason }),
+          }
+        )
+    );
 
-    const refusal = layoutRefusal({
-      accepted,
-      after,
-      before: so.layout,
-      hops: session.state.data.hops,
+    return Result.match(again, {
+      onFailure: (failure) => ({ ...so, failure: Option.some(failure) }),
+      onSuccess: (layout) => ({ ...so, layout }),
     });
-
-    return Option.isNone(refusal)
-      ? {
-          layout: after,
-          reason: Option.none(),
-          trail: [...so.trail, so.layout],
-        }
-      : { ...so, reason: refusal };
   });
 
-  // An undo or redo sets a whole earlier list, so run on a fresher file it
-  // would erase what the other writer did. It never reruns.
-  if (Arr.some(session.queue, ({ origin }) => origin === "step")) {
-    return settled(
+  const conflicted = (notice: string, restore: UndoHistory) =>
+    settled(
       adopt({
-        notice: { kind: "conflict", message: stepConflictMessage },
+        notice: { kind: "conflict", message: notice },
         proposals: fresh,
-        restore: stale.historyBefore,
+        restore,
         session,
       })
     );
+
+  if (Option.isSome(rerun.failure)) {
+    return Match.valueTags(rerun.failure.value, {
+      Conflicted: ({ direction, step }) =>
+        conflicted(
+          stepConflictMessage,
+          dropConflicted({ direction, history: stale.historyBefore, step })
+        ),
+      Refused: ({ reason }) =>
+        conflicted(conflictMessage(Option.some(reason)), stale.historyBefore),
+    });
   }
 
-  if (stale.origin === "retry" || Option.isSome(rerun.reason)) {
-    return settled(
-      adopt({
-        notice: { kind: "conflict", message: conflictMessage(rerun.reason) },
-        proposals: fresh,
-        restore: stale.historyBefore,
-        session,
-      })
-    );
+  if (Predicate.isTagged(stale.made, "Retry")) {
+    return conflicted(conflictMessage(Option.none()), stale.historyBefore);
   }
 
-  // The steps before the other writer's change no longer fit the file, so
-  // the history starts again from the file as it is now.
-  const rebuilt: History = {
-    future: [],
-    past: rerun.trail.slice(-historyDepth),
-    revision: fresh.revision,
-  };
-
-  return enqueue(
-    adopt({ notice: null, proposals: fresh, restore: rebuilt, session }),
-    {
-      base: fresh.revision,
-      edit: (changes) => changes,
-      historyBefore: rebuilt,
-      layout: rerun.layout,
-      origin: "retry",
-    }
-  );
+  return enqueue(adopt({ notice: null, proposals: fresh, session }), {
+    base: fresh.revision,
+    historyBefore: stale.historyBefore,
+    layout: rerun.layout,
+    made: { _tag: "Retry" },
+  });
 };
 
 const written = (
@@ -596,14 +634,7 @@ const written = (
         proposals,
       });
 
-      const kept = {
-        ...session,
-        history: wroteFile({
-          history: session.history,
-          revision: proposals.revision,
-        }),
-        queue,
-      };
+      const kept = { ...session, queue };
 
       // The notice stays: a late answer to an earlier write must not wipe a
       // refusal shown since. The next edit clears it.
@@ -674,9 +705,7 @@ const reviewed = (
 
   const kept = {
     ...session,
-    history: endsUndo
-      ? emptyHistory<ReadonlyArray<LayoutChange>>(fileRevision(state))
-      : wroteFile({ history: session.history, revision: fileRevision(state) }),
+    history: endsUndo ? emptyHistory : session.history,
   };
 
   return show(kept, {
@@ -802,6 +831,43 @@ const restoring = (session: PendingSession, revision: MapSnapshot): Edit => {
 };
 
 /**
+ * Change ids made by `newId` the first time an edit asks for them and kept,
+ * so each run of the edit is given the same ids in the same order.
+ */
+const reservedIds = (newId: () => ChangeId) => {
+  const made: Array<ChangeId> = [];
+
+  return () => {
+    let used = 0;
+
+    return () => {
+      const id = made[used] ?? newId();
+
+      made[used] = id;
+      used += 1;
+
+      return id;
+    };
+  };
+};
+
+/**
+ * `edit`, after which the engineer takes over the agent's changes on what it
+ * touched. Rerun on a fresher list, it takes over again, with the same ids.
+ */
+const takingOver = (session: PendingSession, edit: Edit): Edit => {
+  const ids = reservedIds(session.newId);
+
+  return (changes, base) =>
+    engineerTakesOver({
+      after: edit(changes, base),
+      base,
+      before: changes,
+      newId: ids(),
+    });
+};
+
+/**
  * How an edit runs: the list it makes, whether one that changes nothing is
  * still written, and whether a refusal is also a notice.
  */
@@ -815,28 +881,28 @@ interface EditPlan {
 const planOf = (session: PendingSession, input: PendingEdit): EditPlan =>
   Match.valueTags(input, {
     Arrange: ({ plan }) => ({
-      edit: arranging(session, plan),
+      edit: takingOver(session, arranging(session, plan)),
       showsRefusal: true,
       skipUnchanged: true,
     }),
-    Discard: ({ change }) => ({
+    Discard: ({ changes: ids }) => ({
       edit: (changes: ReadonlyArray<LayoutChange>) =>
-        discardChange(changes, change),
+        discardChanges(changes, ids),
       showsRefusal: false,
       skipUnchanged: false,
     }),
     Place: ({ next, structure }) => ({
-      edit: placing(session, structure, next),
+      edit: takingOver(session, placing(session, structure, next)),
       showsRefusal: false,
       skipUnchanged: false,
     }),
     Reroute: ({ hop, points }) => ({
-      edit: rerouting(session, hop, points),
+      edit: takingOver(session, rerouting(session, hop, points)),
       showsRefusal: true,
       skipUnchanged: true,
     }),
     Restore: ({ revision }) => ({
-      edit: restoring(session, revision),
+      edit: takingOver(session, restoring(session, revision)),
       showsRefusal: false,
       skipUnchanged: true,
     }),
@@ -885,7 +951,9 @@ const tryEdit = (session: PendingSession, edit: Edit) => {
 /** Why a discard can't touch a change: it waits in a batch for the agent. */
 const frozenOf = (session: PendingSession, edit: PendingEdit) =>
   Predicate.isTagged(edit, "Discard")
-    ? frozenRefusal(proposalsOf(session.state), edit.change)
+    ? Arr.findFirst(edit.changes, (id) =>
+        frozenRefusal(proposalsOf(session.state), id)
+      )
     : Option.none();
 
 /**
@@ -909,15 +977,13 @@ const submit = (
   session: PendingSession,
   {
     after,
-    edit,
+    made,
     next,
-    origin,
   }: {
     readonly after: ReadonlyArray<LayoutChange>;
-    readonly edit: Edit;
+    readonly made: Made;
     /** The history once this write is made. */
-    readonly next: History;
-    readonly origin: "edit" | "step";
+    readonly next: UndoHistory;
   }
 ): PendingOutcome => {
   // The next write is built on the one before it, so it's based on the
@@ -929,10 +995,9 @@ const submit = (
     { ...session, history: next },
     {
       base: last === undefined ? fileRevision(session.state) : last.base + 1,
-      edit,
       historyBefore: session.history,
       layout: after,
-      origin,
+      made,
     }
   );
 
@@ -971,54 +1036,72 @@ const apply = (session: PendingSession, input: PendingEdit): PendingOutcome => {
     );
   }
 
-  // An edit after someone else's write starts the history again: the
-  // earlier steps would put back a list that lacks their change.
-  const next = same
-    ? session.history
-    : pushStep({
-        before: session.pending,
-        cap: historyDepth,
-        fileRevision:
-          session.queue.length === 0
-            ? fileRevision(session.state)
-            : session.history.revision,
-        history: session.history,
-      });
+  const next = Option.match(stepOf({ after, before: session.pending }), {
+    onNone: () => session.history,
+    onSome: (step) =>
+      pushStep({ cap: historyDepth, history: session.history, step }),
+  });
 
-  return submit(session, { after, edit, next, origin: "edit" });
+  return submit(session, { after, made: { _tag: "Edit", edit }, next });
 };
 
-/** Undoes or redoes one step: sets the pending list to the one it holds. */
+/**
+ * Undoes or redoes one step, replayed on the list the page shows. When
+ * someone else changed one of its targets since, it is cleared from undo
+ * and nothing is sent.
+ */
 const stepThrough = (
   session: PendingSession,
-  direction: "undo" | "redo"
+  direction: StepDirection
 ): PendingOutcome => {
-  const before = session.pending;
-
-  const stepped = (direction === "undo" ? undoStep : redoStep)({
-    current: before,
-    history: session.history,
-  });
+  const stepped = (direction === "undo" ? undoStep : redoStep)(session.history);
 
   if (Option.isNone(stepped)) {
     return settled(session);
   }
 
-  if (outdated(session)) {
+  const { history: next, step } = stepped.value;
+  const before = session.pending;
+  const replayed = replayStep({ current: before, direction, step });
+
+  if (Option.isNone(replayed)) {
     return settled(
-      show(session, {
-        notice: { kind: "conflict", message: stepConflictMessage },
-      })
+      show(
+        {
+          ...session,
+          history: dropConflicted({
+            direction,
+            history: session.history,
+            step,
+          }),
+        },
+        { notice: { kind: "conflict", message: stepConflictMessage } }
+      )
     );
   }
 
-  const { history: next, target } = stepped.value;
+  const after = replayed.value;
 
-  const refusal = refusalOfList(session, {
-    accepted: baseLayout(session),
-    after: target,
-    before,
+  // The server refuses an agent change from the page, so a step that would
+  // bring one back is refused here, and nothing is sent.
+  const broughtBack = agentChangeMade({
+    after,
+    before: savedLayout(session.state),
   });
+
+  const refusal = Option.orElse(
+    Option.map(
+      broughtBack,
+      ({ id }) =>
+        `This step would bring back the agent's change ${id}, which only the agent can propose. Nothing was undone or redone.`
+    ),
+    () =>
+      refusalOfList(session, {
+        accepted: baseLayout(session),
+        after,
+        before,
+      })
+  );
 
   if (Option.isSome(refusal)) {
     return settled(
@@ -1027,10 +1110,9 @@ const stepThrough = (
   }
 
   return submit(session, {
-    after: target,
-    edit: () => target,
+    after,
+    made: { _tag: "Step", direction, step },
     next,
-    origin: "step",
   });
 };
 
@@ -1051,10 +1133,10 @@ const accept = (
  * The session after `input`, with the writes it asks the page to send, in
  * order and one at a time, and why an edit was refused.
  *
- * Undo restores the list before the edit it takes back. Steps are only good
- * while the file is as the session's last write left it: once someone else
- * writes it, undo is refused with a conflict, and the next edit starts the
- * history again. Accepting a change ends the history.
+ * Undo and redo replay the engineer's edit on the list as it is then, so
+ * what someone else wrote since to other targets stays. A step whose
+ * targets they changed is refused with a conflict and cleared from undo.
+ * Accepting a change ends the history.
  */
 export const stepPending: {
   (input: PendingInput): (session: PendingSession) => PendingOutcome;

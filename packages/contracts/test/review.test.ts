@@ -42,6 +42,7 @@ const layout: Layout = {
 };
 
 const move = (id: string, to: readonly [number, number]): LayoutChange => ({
+  by: "engineer",
   id,
   kind: "move",
   moves: [
@@ -199,6 +200,40 @@ describe("freezing", () => {
     const result = freezeOpen({
       at,
       proposals: { format: 1, layout: [], revision: 0 },
+    });
+
+    assert.isTrue(Result.isFailure(result));
+  });
+
+  it("leaves the agent's layout changes open, out of the batch", () => {
+    const agents: LayoutChange = {
+      ...move("a1", [0, 9]),
+      by: "agent",
+      reason: "Tidy",
+    };
+
+    const { batch, proposals } = unwrap(
+      freezeOpen({
+        at,
+        proposals: { ...open, layout: [agents, ...open.layout] },
+      })
+    );
+
+    assert.deepStrictEqual(
+      Arr.map(batch.items, ({ id }) => id),
+      ["m1", "n1"]
+    );
+    assert.deepStrictEqual(proposals.layout, [agents]);
+  });
+
+  it("refuses when only the agent's layout changes are open", () => {
+    const result = freezeOpen({
+      at,
+      proposals: {
+        format: 1,
+        layout: [{ ...move("a1", [0, 9]), by: "agent" }],
+        revision: 0,
+      },
     });
 
     assert.isTrue(Result.isFailure(result));
@@ -719,6 +754,7 @@ describe("accepting while a batch is frozen", () => {
 
   it("goes ahead for another structure", () => {
     const other: LayoutChange = {
+      by: "engineer",
       id: "open",
       kind: "move",
       moves: [
@@ -740,6 +776,7 @@ describe("accepting while a batch is frozen", () => {
     // The frozen move puts "a" at y 6. An open move of "b" onto that spot
     // overlaps it, though it doesn't in the accepted layout.
     const onto: LayoutChange = {
+      by: "engineer",
       id: "open",
       kind: "move",
       moves: [
@@ -828,6 +865,7 @@ describe("a reroute in the prompt", () => {
     format: 1,
     layout: [
       {
+        by: "engineer",
         id: "r1",
         kind: "reroute",
         points: route,
@@ -890,6 +928,7 @@ describe("a reroute in the prompt", () => {
       ...unwrap(freezeOpen({ at, proposals: rerouted })).proposals,
       layout: [
         {
+          by: "engineer",
           id: "r2",
           kind: "reroute",
           points: null,

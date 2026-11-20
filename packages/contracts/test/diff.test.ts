@@ -364,6 +364,7 @@ describe("restoreChanges()", () => {
 
         assert.deepStrictEqual(changes, [
           {
+            by: "engineer",
             id: "r-1",
             kind: "move",
             moves: [
@@ -374,6 +375,7 @@ describe("restoreChanges()", () => {
             ],
           },
           {
+            by: "engineer",
             id: "r-2",
             kind: "move",
             moves: [
@@ -384,6 +386,7 @@ describe("restoreChanges()", () => {
             ],
           },
           {
+            by: "engineer",
             footprint: { d: 2, w: 3 },
             id: "r-3",
             kind: "resize",
@@ -404,6 +407,7 @@ describe("restoreChanges()", () => {
         const accepted = yield* review;
 
         const pending: LayoutChange = {
+          by: "engineer",
           id: "mine",
           kind: "move",
           moves: [
@@ -446,6 +450,7 @@ describe("restoreChanges()", () => {
         const accepted = yield* review;
 
         const pending: LayoutChange = {
+          by: "engineer",
           id: "mine",
           kind: "move",
           moves: [

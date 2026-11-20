@@ -190,6 +190,7 @@ describe("accepting pending layout changes over HTTP", () => {
         yield* pend(url, 0, [
           moveOf("m1", "page", { x: 4, y: 3 }),
           {
+            by: "engineer",
             footprint: { d: 2, w: 3 },
             id: "r1",
             kind: "resize",

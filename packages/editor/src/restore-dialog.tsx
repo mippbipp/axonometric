@@ -1,6 +1,12 @@
 import type { DifferenceLine } from "@axonometric/contracts";
+import {
+  Dialog,
+  DialogBackdrop,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@axonometric/ui/components/dialog";
 import { Array as Arr } from "effect";
-import { useEffect, useId, useRef } from "react";
 
 import { controlClass } from "./control-class.ts";
 
@@ -41,8 +47,10 @@ function Lines({
 
 /**
  * Says what a restore did, and lists the differences it couldn't turn into
- * pending layout changes, so none is dropped without a word. A modal dialog:
- * it takes focus, Escape closes it, and focus returns to where it came from.
+ * pending layout changes, so none is dropped without a word. A modal dialog
+ * on ui-sdk's `Dialog`: it takes focus, traps Tab, Escape closes it, and
+ * focus returns to where it came from. It is open while it is mounted, and
+ * `onClose` is how it asks to be unmounted.
  */
 export function RestoreDialog({
   onClose,
@@ -51,85 +59,68 @@ export function RestoreDialog({
   readonly onClose: () => void;
   readonly report: RestoreReport;
 }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
   const { meaning, refusal, restored, revision, routes } = report;
 
-  useEffect(() => {
-    const dialog = ref.current;
-
-    if (dialog !== null && !dialog.open) {
-      dialog.showModal();
-    }
-
-    return () => {
-      dialog?.close();
-    };
-  }, []);
-
   return (
-    <dialog
-      aria-labelledby={titleId}
-      className="border-ink bg-paper text-ink m-auto max-h-[80svh] w-[min(36rem,90vw)] overflow-auto border-2 p-4 font-mono text-xs backdrop:bg-black/40"
-      data-restore-dialog
-      onClose={onClose}
-      ref={ref}
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+      open
     >
-      <div className="flex flex-col gap-3">
-        <h2
-          className="text-sm font-medium tracking-widest uppercase"
-          id={titleId}
-        >
-          Restore revision {revision}
-        </h2>
-        {refusal === undefined ? (
-          restored.length > 0 ? (
-            <>
-              <p data-restore-done>{restoredText(restored.length)}</p>
-              <Lines lines={restored} name="layout" />
-            </>
+      <DialogBackdrop />
+      <DialogContent
+        className="border-ink bg-paper text-ink"
+        data-restore-dialog
+      >
+        <div className="flex flex-col gap-3">
+          <DialogTitle className="tracking-widest uppercase">
+            Restore revision {revision}
+          </DialogTitle>
+          {refusal === undefined ? (
+            restored.length > 0 ? (
+              <>
+                <p data-restore-done>{restoredText(restored.length)}</p>
+                <Lines lines={restored} name="layout" />
+              </>
+            ) : (
+              <p data-restore-done>
+                Revision {revision} has the same layout as the accepted map, so
+                no layout changes were made.
+              </p>
+            )
           ) : (
-            <p data-restore-done>
-              Revision {revision} has the same layout as the accepted map, so no
-              layout changes were made.
+            <p data-restore-refused role="alert">
+              The layout wasn&apos;t restored: {refusal}
             </p>
-          )
-        ) : (
-          <p data-restore-refused role="alert">
-            The layout wasn&apos;t restored: {refusal}
-          </p>
-        )}
-        {meaning.length === 0 ? null : (
-          <>
-            <p data-restore-meaning>
-              These differences change the map&apos;s meaning and can&apos;t be
-              restored as layout changes:
-            </p>
-            <Lines lines={meaning} name="meaning" />
-          </>
-        )}
-        {routes.length === 0 ? null : (
-          <>
-            <p data-restore-routes>
-              These route overrides differ, and routes aren&apos;t pending
-              changes yet:
-            </p>
-            <Lines lines={routes} name="routes" />
-          </>
-        )}
-        <div className="flex justify-end">
-          <button
-            className={controlClass}
-            data-control="close-restore"
-            onClick={() => {
-              ref.current?.close();
-            }}
-            type="button"
-          >
-            Close
-          </button>
+          )}
+          {meaning.length === 0 ? null : (
+            <>
+              <p data-restore-meaning>
+                These differences change the map&apos;s meaning and can&apos;t
+                be restored as layout changes:
+              </p>
+              <Lines lines={meaning} name="meaning" />
+            </>
+          )}
+          {routes.length === 0 ? null : (
+            <>
+              <p data-restore-routes>
+                These route overrides differ, and routes aren&apos;t pending
+                changes yet:
+              </p>
+              <Lines lines={routes} name="routes" />
+            </>
+          )}
+          <div className="flex justify-end">
+            <DialogClose className={controlClass} data-control="close-restore">
+              Close
+            </DialogClose>
+          </div>
         </div>
-      </div>
-    </dialog>
+      </DialogContent>
+    </Dialog>
   );
 }

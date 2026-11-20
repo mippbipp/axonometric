@@ -79,7 +79,7 @@ You are the only one who edits `data.mjs`. Fold in what you accept. The line for
 
 **Layout changes**
 
-- `move`, `resize` and `reroute`: `commit` applies an accepted one by itself. To take one in another form, set the layout yourself with `axonometric layout <home> <structure> --x 14 --y 12`, then give it the verdict `changed`. A reroute has no command: edit the hop's entry under `routes` in `layout.json`, then give it the verdict `changed`.
+- `move`, `resize` and `reroute`: `commit` applies an accepted one by itself. To take one in another form, set the layout yourself with `axonometric layout <home> <structure> --x 14 --y 12`, then give it the verdict `changed`. To take a reroute in another form, run `axonometric layout <home> --hop <hop> --route "6,1 8,1"` (or `--route auto` to clear it), then give it the verdict `changed`. Never edit `layout.json` by hand.
 
 Run `axonometric check <home>` as you go. Edit `data.mjs` before you record verdicts that depend on it.
 

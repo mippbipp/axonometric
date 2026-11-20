@@ -1,10 +1,15 @@
 /* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
-import { Schema, SchemaTransformation } from "effect";
+import { Array as Arr, Schema, SchemaTransformation } from "effect";
 
 import { Layout } from "./layout.ts";
 import { MapState } from "./map-state.ts";
 import { MapProblem } from "./problems.ts";
-import { ChangeId, LayoutChanges, Proposals } from "./proposals.ts";
+import {
+  ChangeId,
+  LayoutChange,
+  LayoutChanges,
+  Proposals,
+} from "./proposals.ts";
 import type { Revision } from "./revisions.ts";
 
 /**
@@ -26,6 +31,7 @@ export const serverPaths = {
   page: "/",
   state: "/api/state",
   events: "/api/events",
+  status: "/api/status",
   pendingLayout: "/api/proposals/layout",
   accept: "/api/proposals/accept",
   notes: "/api/notes",
@@ -45,6 +51,39 @@ export const serverPaths = {
   history: "/api/history",
   revision: "/api/history/:n",
 } as const;
+
+/** The engineer's decision on a change the agent proposed. */
+export const AgentDecision = Schema.Struct({
+  /** When the server recorded the decision. Strictly increasing across decisions and status replies. */
+  at: Schema.DateTimeUtcFromString,
+  /** The agent's change, as it stood when decided. */
+  change: LayoutChange,
+  /**
+   * `discarded` also covers an engineer's edit that takes the change over,
+   * since the change leaves the pending list either way.
+   */
+  decision: Schema.Literals(["accepted", "discarded"]),
+});
+
+export type AgentDecision = typeof AgentDecision.Type;
+
+/** What `status --json` asks the running server for. */
+export const ServerStatus = Schema.Struct({
+  /** How many pages hold the events stream open, so how many are watching. */
+  pages: Schema.Int,
+  /** The server's time for this reply. Pass it as `since` next time to miss and repeat nothing. */
+  now: Schema.DateTimeUtcFromString,
+  /** The decisions after `since`, oldest first. Empty without `since`. */
+  decisions: Schema.Array(AgentDecision),
+  /**
+   * Whether the server dropped decisions after `since`, because it keeps only
+   * the newest 50. When true, `decisions` starts partway through what the
+   * engineer decided. Always false without `since`.
+   */
+  truncated: Schema.Boolean,
+});
+
+export type ServerStatus = typeof ServerStatus.Type;
 
 /** The largest request body the server reads, in bytes. */
 export const maxWriteBytes = 256 * 1024;
@@ -175,6 +214,8 @@ export const HistoryEntry = Schema.Struct({
   savedAt: Schema.String,
   /** How many items the revision decided on: those it accepted and rejected. */
   items: Schema.Int,
+  /** How many of the revision's accepted layout changes each author made. */
+  by: Schema.Struct({ engineer: Schema.Int, agent: Schema.Int }),
 });
 
 export type HistoryEntry = typeof HistoryEntry.Type;
@@ -184,12 +225,22 @@ export const HistoryList = Schema.Array(HistoryEntry);
 
 export type HistoryList = typeof HistoryList.Type;
 
+const countBy = (revision: Revision, who: "engineer" | "agent") =>
+  Arr.filter(
+    revision.accepted,
+    (item) => item.kind === "layout" && item.change.by === who
+  ).length;
+
 /** The History panel's line for `revision`. */
 export const historyEntryOf = (revision: Revision): HistoryEntry => ({
   revision: revision.revision,
   message: revision.message,
   savedAt: revision.savedAt,
   items: revision.accepted.length + revision.rejected.length,
+  by: {
+    engineer: countBy(revision, "engineer"),
+    agent: countBy(revision, "agent"),
+  },
 });
 
 /** No revision has this number. */

@@ -1,9 +1,20 @@
 import type { FreezeAnswer } from "@axonometric/contracts";
-import { Result } from "effect";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  Dialog,
+  DialogBackdrop,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@axonometric/ui/components/dialog";
+import { Textarea } from "@axonometric/ui/components/textarea";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
+import { Array as Arr, Result } from "effect";
+import { useEffect, useRef, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useEditingIgnoringEdit } from "./editing-context.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { useReview } from "./review-context.ts";
 
 /** What the dialog shows once a batch is frozen. */
@@ -52,7 +63,6 @@ function PromptBox({
   readonly selectOnOpen: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  const id = useId();
 
   useEffect(() => {
     if (selectOnOpen) {
@@ -62,17 +72,13 @@ function PromptBox({
   }, [selectOnOpen]);
 
   return (
-    <div className="flex flex-col gap-1">
-      <label
-        className="text-xs tracking-widest uppercase opacity-70"
-        htmlFor={id}
-      >
-        Prompt for your agent
-      </label>
-      <textarea
-        className="border-ink bg-face text-ink focus-visible:outline-ink resize-y border p-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
+    <LabelledField
+      label="Prompt for your agent"
+      labelClassName="tracking-widest uppercase"
+    >
+      <Textarea
+        className="bg-face p-2"
         data-review-prompt
-        id={id}
         onFocus={(event) => {
           event.currentTarget.select();
         }}
@@ -82,7 +88,7 @@ function PromptBox({
         spellCheck={false}
         value={prompt}
       />
-    </div>
+    </LabelledField>
   );
 }
 
@@ -96,33 +102,18 @@ function PromptBox({
 export function ReadyForReview() {
   const review = useReview();
   const editing = useEditingIgnoringEdit();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
   const [sent, setSent] = useState<Sent | null>(null);
   const [failure, setFailure] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    const element = dialog.current;
-
-    if (element === null) {
-      return;
-    }
-
-    if (sent === null) {
-      if (element.open) {
-        element.close();
-      }
-    } else if (!element.open) {
-      element.showModal();
-    }
-  }, [sent]);
 
   if (review === null) {
     return null;
   }
 
-  const open = (editing?.pending.length ?? 0) + review.openText;
+  // The agent's layout changes stay open when the batch freezes.
+  const open =
+    Arr.filter(editing?.pending ?? [], ({ by }) => by === "engineer").length +
+    review.openText;
 
   const press = () => {
     setBusy(true);
@@ -162,20 +153,27 @@ export function ReadyForReview() {
   return (
     <>
       {showButton ? (
-        <button
-          className={controlClass}
-          data-ready-for-review
-          disabled={!review.canWrite || busy || open === 0}
-          onClick={press}
-          title={
-            open === 0
-              ? "Add a note, a suggestion or an answer, or move a structure first"
-              : "Freeze these into a batch and copy a prompt for your agent"
+        <WithTooltip
+          control={
+            <button
+              aria-disabled={!review.canWrite || busy || open === 0}
+              className={controlClass}
+              data-ready-for-review
+              onClick={() => {
+                if (review.canWrite && !busy && open > 0) {
+                  press();
+                }
+              }}
+              type="button"
+            >
+              {busy ? "Saving…" : `Ready for review · ${open}`}
+            </button>
           }
-          type="button"
         >
-          {busy ? "Saving…" : `Ready for review · ${open}`}
-        </button>
+          {open === 0
+            ? "Add a note, a suggestion or an answer, or move a structure first"
+            : "Freeze these into a batch and copy a prompt for your agent"}
+        </WithTooltip>
       ) : null}
       {failure === undefined ? null : (
         <output
@@ -185,57 +183,58 @@ export function ReadyForReview() {
           {failure}
         </output>
       )}
-      <dialog
-        aria-labelledby={titleId}
-        className="border-ink bg-paper text-ink m-auto max-w-lg overscroll-contain border-2 p-0 font-mono backdrop:bg-black/40"
-        data-review-dialog
-        onClose={() => {
-          setSent(null);
+      <Dialog
+        onOpenChange={(next) => {
+          if (!next) {
+            setSent(null);
+          }
         }}
-        ref={dialog}
+        open={sent !== null}
       >
-        {sent === null ? null : (
-          <div className="flex flex-col gap-3 p-4 text-sm">
-            <h2
-              className="text-base font-medium text-balance"
-              data-review-title
-              id={titleId}
-            >
-              Batch {sent.frozen.batch.number} is ready for your agent
-            </h2>
-            <p data-review-copied={sent.copied}>
-              {sent.copied
-                ? "The prompt is copied. Paste it into your agent."
-                : "Your browser blocked the clipboard. The prompt is selected below. Copy it and paste it into your agent."}
-            </p>
-            <p className="text-xs opacity-80" data-review-summary-note>
-              The list in the prompt is a summary. The full details are in{" "}
-              <code translate="no">{sent.frozen.home}/proposals.json</code>.
-            </p>
-            <PromptBox
-              prompt={sent.frozen.prompt}
-              selectOnOpen={!sent.copied}
-            />
-            <p className="text-xs opacity-80">
-              You can keep editing. New changes go in batch{" "}
-              {sent.frozen.batch.number + 1}.
-            </p>
-            <form className="flex gap-1.5" method="dialog">
-              <button
-                className={controlClass}
-                data-review-copy
-                onClick={copyAgain}
-                type="button"
-              >
-                Copy the prompt
-              </button>
-              <button className={controlClass} data-review-close type="submit">
-                Close
-              </button>
-            </form>
-          </div>
-        )}
-      </dialog>
+        <DialogBackdrop />
+        <DialogContent
+          className="border-ink bg-paper text-ink w-fit max-w-[min(32rem,90vw)] overscroll-contain p-0"
+          data-review-dialog
+        >
+          {sent === null ? null : (
+            <div className="flex flex-col gap-3 p-4 text-sm">
+              <DialogTitle className="text-base text-balance" data-review-title>
+                Batch {sent.frozen.batch.number} is ready for your agent
+              </DialogTitle>
+              <DialogDescription data-review-copied={sent.copied}>
+                {sent.copied
+                  ? "The prompt is copied. Paste it into your agent."
+                  : "Your browser blocked the clipboard. The prompt is selected below. Copy it and paste it into your agent."}
+              </DialogDescription>
+              <p className="text-xs opacity-80" data-review-summary-note>
+                The list in the prompt is a summary. The full details are in{" "}
+                <code translate="no">{sent.frozen.home}/proposals.json</code>.
+              </p>
+              <PromptBox
+                prompt={sent.frozen.prompt}
+                selectOnOpen={!sent.copied}
+              />
+              <p className="text-xs opacity-80">
+                You can keep editing. New changes go in batch{" "}
+                {sent.frozen.batch.number + 1}.
+              </p>
+              <div className="flex gap-1.5">
+                <button
+                  className={controlClass}
+                  data-review-copy
+                  onClick={copyAgain}
+                  type="button"
+                >
+                  Copy the prompt
+                </button>
+                <DialogClose className={controlClass} data-review-close>
+                  Close
+                </DialogClose>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

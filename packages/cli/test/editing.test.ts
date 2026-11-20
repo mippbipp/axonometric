@@ -17,6 +17,7 @@ import type { Page, Route } from "playwright";
 import {
   assertAttribute,
   assertCount,
+  attributesOf,
   attributeOf,
   boxesOf,
   centreOf,
@@ -24,6 +25,7 @@ import {
   goToChapter,
   literal,
   openPage,
+  press,
   showView,
   strokeOf,
   unitOnScreen,
@@ -111,6 +113,7 @@ describe("moving structures", () => {
 
         assert.deepStrictEqual(withoutIds(saved.layout), [
           {
+            by: "engineer",
             kind: "move",
             moves: [
               {
@@ -323,6 +326,7 @@ describe("resizing structures", () => {
 
         assert.deepStrictEqual(withoutIds(saved.layout), [
           {
+            by: "engineer",
             footprint: { d: 3, w: 2.5 },
             kind: "resize",
             target: { id: "engineer", kind: "structure" },
@@ -449,6 +453,169 @@ describe("the side panel tabs", () => {
           }
         }
       })
+  );
+});
+
+describe("the side panel's tab list", () => {
+  it.live(
+    "moves between tabs with the arrow keys, is one Tab stop, and keeps the chosen tab until the selection changes",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
+        const tabs = page.locator('[role="tab"]');
+        const selectedTab = () =>
+          attributeOf(page, '[role="tab"][aria-selected="true"]', "data-tab");
+
+        yield* waitFor(page, '[role="tab"][data-tab="history"]');
+
+        const stops = yield* attributesOf(page, '[role="tab"]', "tabindex");
+
+        assert.strictEqual(
+          Arr.filter(stops, (index) => index === "0").length,
+          1,
+          "one Tab stop in the list"
+        );
+
+        const chapter = () =>
+          attributeOf(page, "[data-walkthrough]", "data-chapter");
+        const chapterBefore = yield* chapter();
+
+        yield* Effect.promise(() => tabs.first().focus());
+        yield* press(page, "ArrowRight");
+        yield* waitFor(
+          page,
+          '[role="tab"][data-tab="questions"][aria-selected="true"]'
+        );
+
+        const focused = yield* Effect.promise(() =>
+          page.evaluate(
+            "document.activeElement?.getAttribute('data-tab') ?? null"
+          )
+        );
+
+        assert.strictEqual(focused, "questions");
+
+        yield* press(page, "End");
+        yield* waitFor(
+          page,
+          '[role="tab"][data-tab="history"][aria-selected="true"]'
+        );
+        yield* waitFor(page, "[data-history-list]");
+        yield* press(page, "ArrowRight");
+        yield* waitFor(
+          page,
+          '[role="tab"][data-tab="details"][aria-selected="true"]'
+        );
+
+        yield* press(page, "ArrowLeft");
+        yield* waitFor(
+          page,
+          '[role="tab"][data-tab="history"][aria-selected="true"]'
+        );
+
+        // The chosen tab stays chosen after focus leaves the list.
+        yield* press(page, "Tab");
+
+        const chosen = yield* selectedTab();
+
+        assert.strictEqual(chosen, "history");
+        const chapterAfter = yield* chapter();
+
+        assert.strictEqual(
+          chapterAfter,
+          chapterBefore,
+          "the arrow keys moved tabs, not chapters"
+        );
+        yield* assertCount(page, '[role="tabpanel"]', 1);
+      }),
+    60_000
+  );
+});
+
+/** Where focus is after Tab from the selected tab: the element's role, whether the tab panel holds it, and its tag. */
+const afterTab = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<{
+      readonly inPanel: boolean;
+      readonly role: string | null;
+      readonly tag: string;
+    }>(
+      `(() => {
+          const element = document.activeElement;
+          return {
+            inPanel: element?.closest('[role="tabpanel"]') !== null && element?.getAttribute("role") !== "tabpanel",
+            role: element?.getAttribute("role") ?? null,
+            tag: element?.tagName.toLowerCase() ?? "",
+          };
+        })()`
+    )
+  );
+
+const chooseAndFocus = Effect.fnUntraced(function* (page: Page, tab: string) {
+  const selector = `[role="tab"][data-tab="${tab}"]`;
+
+  yield* waitFor(page, selector);
+  yield* Effect.promise(() => page.locator(selector).click());
+  yield* waitFor(page, `${selector}[aria-selected="true"]`);
+  yield* Effect.promise(() => page.locator(selector).focus());
+});
+
+describe("the side panel's tab panel", () => {
+  it.live(
+    "is not a Tab stop when it holds no control, so Tab leaves the panel",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
+
+        yield* chooseAndFocus(page, "pending");
+        yield* waitFor(page, "[data-pending-empty]");
+        yield* press(page, "Tab");
+
+        const focus = yield* afterTab(page);
+
+        assert.notStrictEqual(focus.role, "tabpanel");
+        assert.isFalse(focus.inPanel);
+      }),
+    60_000
+  );
+
+  it.live(
+    "sends Tab from the selected tab to the panel's first control, not the panel",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview;
+
+        yield* chooseAndFocus(page, "questions");
+        yield* waitFor(page, "[data-questions-tab] button");
+
+        const first = yield* Effect.promise(() =>
+          page.evaluate(
+            `(() => {
+              const panel = document.querySelector('[data-side-panel] [role="tabpanel"]');
+              const control = panel?.querySelector("button, a[href], input, select, textarea");
+              return control === null || control === undefined ? null : control.outerHTML.slice(0, 120);
+            })()`
+          )
+        );
+
+        assert.isNotNull(first);
+
+        yield* press(page, "Tab");
+
+        const focus = yield* afterTab(page);
+
+        assert.notStrictEqual(focus.role, "tabpanel");
+        assert.isTrue(focus.inPanel);
+
+        const landed = yield* Effect.promise(() =>
+          page.evaluate(
+            "document.activeElement?.outerHTML.slice(0, 120) ?? null"
+          )
+        );
+
+        assert.strictEqual(landed, first);
+      }),
+    60_000
   );
 });
 

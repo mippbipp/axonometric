@@ -3,6 +3,7 @@ import type { SceneStructure, View } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
 import {
+  agentStructures,
   pendingStructures,
   useEditingIgnoringEdit,
 } from "./editing-context.ts";
@@ -26,6 +27,7 @@ export function AcceptedOutlines({
   }
 
   const changed = pendingStructures(editing);
+  const byAgent = agentStructures(editing);
 
   return (
     <g aria-hidden="true" className="pointer-events-none">
@@ -38,6 +40,9 @@ export function AcceptedOutlines({
               <polygon
                 className="stroke-pending fill-none opacity-50"
                 data-accepted-outline={structure.id}
+                data-pending-by={
+                  byAgent.has(structure.id) ? "agent" : "engineer"
+                }
                 key={structure.id}
                 points={toPoints(
                   groundOutline(accepted, groundProjections[view])

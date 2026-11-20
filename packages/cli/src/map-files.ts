@@ -7,6 +7,7 @@ import {
   checkProposals,
   describeCause,
   emptyProposals,
+  layoutAfterChanges,
   formatCount,
   formatProblem,
   LayoutFile,
@@ -327,6 +328,12 @@ export interface InspectOptions {
    */
   readonly drawingWarnings?: boolean | undefined;
   /**
+   * Whether to apply every open layout change, the engineer's and the
+   * agent's, to the layout `arrange` returns before checking it, as the page
+   * shows it while changes are pending. Nothing is written.
+   */
+  readonly proposed?: boolean | undefined;
+  /**
    * Whether a file in `history/` that isn't a valid revision is an error, as
    * `check` reports it. Otherwise it's a warning: a damaged old revision
    * doesn't stop `build` or `serve`.
@@ -381,7 +388,16 @@ export const inspectMap = Effect.fnUntraced(function* (
 
   if (Result.isSuccess(data) && Result.isSuccess(saved)) {
     const links = yield* existingLinks(paths.output, data.success);
-    const layout = arrange(data.success, saved.success);
+    const arranged = arrange(data.success, saved.success);
+
+    const layout =
+      options.proposed === true
+        ? layoutAfterChanges({
+            changes: proposals.found.layout,
+            hops: data.success.hops,
+            layout: arranged,
+          })
+        : arranged;
     const sources = yield* sourceContext(paths, data.success);
 
     const sourceFacts = Option.isSome(sources.repo)
@@ -398,7 +414,7 @@ export const inspectMap = Effect.fnUntraced(function* (
         }
       ),
       ...proposals.problems,
-      ...checkProposals(data.success, layout, proposals.found),
+      ...checkProposals(data.success, arranged, proposals.found),
       ...checkOpenItems(data.success, proposals.found),
       ...checkConnectionProposals(data.success, proposals.found),
       ...history,
@@ -438,6 +454,8 @@ export interface LoadRequest {
   /** As for `InspectOptions`. */
   readonly drawingWarnings?: boolean;
   readonly paths: HomePaths;
+  /** As for `InspectOptions`. */
+  readonly proposed?: boolean;
   readonly strictHistory?: boolean;
   readonly strictProposals?: boolean;
 }
@@ -451,12 +469,14 @@ export const loadMap = Effect.fnUntraced(function* ({
   command,
   drawingWarnings,
   paths,
+  proposed,
   strictHistory,
   strictProposals,
 }: LoadRequest) {
   const { map, problems, sourcesSkipped } = yield* inspectMap(paths, {
     arrange,
     drawingWarnings,
+    proposed,
     strictHistory,
     strictProposals,
   });

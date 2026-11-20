@@ -172,7 +172,7 @@ A meaning change to one chapter of the walkthrough: which structures it reveals,
 _Avoid_: walkthrough change, chapter edit
 
 **Pending change**:
-An edit that hasn't been accepted.
+An edit that hasn't been accepted. A pending layout change is the engineer's or the agent's. Every other pending change is the engineer's.
 _Avoid_: draft, unsaved change
 
 **Proposal**:
@@ -214,6 +214,10 @@ _Avoid_: preview, draft map
 **Verdict**:
 The agent's decision on one proposal: accepted, changed or rejected, with a reason.
 _Avoid_: decision
+
+**Page tools**:
+The tools a map page offers an agent's browser for reading the map and moving the engineer's view. They never change the map.
+_Avoid_: WebMCP tools, agent tools
 
 **Revision**:
 An accepted state of the map, saved in its history. Not to be confused with a file revision.

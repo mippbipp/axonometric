@@ -96,6 +96,12 @@
   fill: color-mix(in oklab, var(--face), var(--pending) 14%);
 }
 
+/* The agent's pending change is told from the engineer's by a dashed
+   outline, so it reads as proposed, not made. The face tint stays. */
+[data-structure][data-pending-by="agent"] {
+  stroke-dasharray: 5 3;
+}
+
 /* A hop a proposal draws or relabels: the pending blue, line and head. One
    proposed for deletion is dashed in the refused red; the strike across it
    is drawn by the page's editing layer (see RemovedHopMarks). */
@@ -179,13 +185,34 @@
 }
 
 /* The menu comes from the UI package, which paints with shadcn's tokens.
-   Inside a menu they take the map's colours, so it reads as part of the page. */
+   Inside a menu or a tooltip they take the map's colours, so it reads as part
+   of the page. */
 [data-slot="menu-content"],
-[data-slot="menu-sub-content"] {
+[data-slot="menu-sub-content"],
+[data-slot="select-content"],
+[data-slot="tooltip-content"] {
   --popover: var(--paper);
   --popover-foreground: var(--ink);
   --border: var(--ink);
   --accent: var(--ink);
   --accent-foreground: var(--paper);
   --muted: var(--face);
+}
+
+/* The form controls come from the UI package too. They take the map's
+   colours, with the ink for their borders and the checked box. */
+[data-slot="select-trigger"],
+[data-slot="number-input-control"],
+[data-slot="input"],
+[data-slot="textarea"],
+[data-slot="checkbox"],
+[data-slot="sortable-list-item"],
+[data-slot="sortable-list-handle"] {
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --input: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --ring: var(--ink);
+  --destructive: var(--refused);
 }

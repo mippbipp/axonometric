@@ -4,12 +4,14 @@ import type { Page } from "playwright";
 
 import {
   assertCount,
+  attributeOf,
   assertTextIncludes,
   click,
   goToChapterPaused,
   showViewFitted,
   waitFor,
   waitTimeout,
+  choose,
 } from "./browser.ts";
 import { crosses, drawingReport } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
@@ -199,6 +201,34 @@ describe("renaming a group", () => {
           "[data-group-failure]",
           "already has a group"
         );
+
+        // The refusal is the title box's own error: the box is named by its
+        // label, marked invalid, and described by the refusal.
+        const titleBox = page.getByLabel("Title", { exact: true });
+        const failureId = yield* attributeOf(
+          page,
+          "[data-group-failure]",
+          "id"
+        );
+
+        const value = yield* Effect.promise(() =>
+          titleBox.getAttribute("aria-invalid")
+        );
+        assert.strictEqual(value, "true");
+        assert.include(
+          (yield* Effect.promise(() =>
+            titleBox.getAttribute("aria-describedby")
+          )) ?? "",
+          failureId ?? "no id"
+        );
+
+        // Typing again takes the refusal away.
+        yield* Effect.promise(() => titleBox.fill("People 2"));
+        yield* assertCount(page, "[data-group-failure]", 0);
+        const after = yield* Effect.promise(() =>
+          titleBox.getAttribute("aria-invalid")
+        );
+        assert.strictEqual(after, null);
       }),
     90_000
   );
@@ -355,9 +385,7 @@ describe("a chapter proposal", () => {
         const { home, page } = yield* served;
 
         yield* goToChapterPaused(page, "c-page");
-        yield* Effect.promise(() =>
-          page.locator("[data-add-play-hop]").selectOption("h-store")
-        );
+        yield* choose(page, "[data-add-play-hop]", "h-store");
         yield* click(page, "[data-add-play-submit]");
         yield* waitForChapters(page, home, 1);
         yield* waitFor(page, '[data-play="h-store"][data-play-pending="play"]');
@@ -614,9 +642,7 @@ describe("the chapter details for a proposal", () => {
           "Proposed to stop playing"
         );
 
-        yield* Effect.promise(() =>
-          page.locator("[data-add-play-hop]").selectOption("h-pr")
-        );
+        yield* choose(page, "[data-add-play-hop]", "h-pr");
         yield* click(page, "[data-add-play-submit]");
         yield* waitFor(page, '[data-play-pending="play"]');
 

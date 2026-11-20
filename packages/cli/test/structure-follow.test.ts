@@ -25,6 +25,7 @@ import {
   textOf,
   waitFor,
   waitTimeout,
+  choose,
 } from "./browser.ts";
 import { drawingReport, overlap } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
@@ -175,9 +176,7 @@ describe("the add form", () => {
           );
 
           for (const group of ["people", "loop", "outside"]) {
-            yield* Effect.promise(() =>
-              page.locator('[data-add="group"]').selectOption(group)
-            );
+            yield* choose(page, '[data-add="group"]', group);
             yield* Effect.promise(() => page.waitForTimeout(600));
             yield* waitFor(page, "[data-spot-outline]");
 
@@ -287,9 +286,7 @@ describe("the add form", () => {
 
         const first = yield* x();
 
-        yield* Effect.promise(() =>
-          page.locator('[data-add="group"]').selectOption("outside")
-        );
+        yield* choose(page, '[data-add="group"]', "outside");
         yield* Effect.promise(() =>
           page.waitForFunction(
             `document.querySelector('[data-add="x"]').value !== ${literal(first)}`,
@@ -301,9 +298,7 @@ describe("the add form", () => {
 
         // Once a spot is typed, the group no longer moves it.
         yield* Effect.promise(() => page.locator('[data-add="x"]').fill("30"));
-        yield* Effect.promise(() =>
-          page.locator('[data-add="group"]').selectOption("people")
-        );
+        yield* choose(page, '[data-add="group"]', "people");
         const typedX = yield* x();
         assert.strictEqual(typedX, "30");
       }).pipe(Effect.provide(NodeServices.layer)),
@@ -362,9 +357,7 @@ describe("the add form", () => {
         yield* Effect.promise(() =>
           page.locator('[data-add="name"]').fill("Build cache")
         );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="group"]').selectOption("people")
-        );
+        yield* choose(page, '[data-add="group"]', "people");
         // Far from the engineer, in the middle of the loop group.
         yield* Effect.promise(() => page.locator('[data-add="x"]').fill("14"));
         yield* Effect.promise(() => page.locator('[data-add="y"]').fill("0"));
@@ -398,9 +391,7 @@ describe("the add form", () => {
 
         yield* click(page, '[data-structure="upstream"]');
         yield* waitFor(page, '[data-structure-panel="upstream"]');
-        yield* Effect.promise(() =>
-          page.locator('[data-change="group"]').selectOption("people")
-        );
+        yield* choose(page, '[data-change="group"]', "people");
         yield* waitFor(page, "[data-drag-warnings]");
 
         const fromPanel = yield* zoneWarnings;
@@ -508,7 +499,7 @@ describe("the open page after verdict changed --as and commit", () => {
         yield* waitFor(page, "[data-panel-note]");
 
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
 
         // The agent adds the structure under another id, says so, and commits.
         const fs = yield* FileSystem.FileSystem;

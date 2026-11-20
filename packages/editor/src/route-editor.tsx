@@ -16,7 +16,12 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
-import { pendingHops, useEditing } from "./editing-context.ts";
+import {
+  agentHops,
+  pendingHops,
+  useEditing,
+  useEditingIgnoringEdit,
+} from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
@@ -136,6 +141,33 @@ function Segments({
 }
 
 /**
+ * The route of each hop with a pending reroute, drawn in the pending blue
+ * whether or not Edit is on, as the structures' pending look is.
+ */
+function PendingRoutes({ hops }: { readonly hops: ReadonlyArray<SceneHop> }) {
+  const editing = useEditingIgnoringEdit();
+  const rerouted = pendingHops(editing);
+  const byAgent = agentHops(editing);
+
+  return Arr.map(
+    Arr.filter(hops, ({ hop }) => rerouted.has(hop.id)),
+    (routed) => (
+      <polyline
+        aria-hidden="true"
+        className="stroke-pending pointer-events-none"
+        data-hop-pending={routed.hop.id}
+        data-pending-by={byAgent.has(routed.hop.id) ? "agent" : "engineer"}
+        fill="none"
+        key={routed.hop.id}
+        points={toPoints(routed.points)}
+        strokeLinejoin="round"
+        strokeWidth={2}
+      />
+    )
+  );
+}
+
+/**
  * Reroutes hops by dragging their segments, while the page can edit. It
  * wraps the hops' drawing (`children`), inside the viewport's transformed
  * group, and lays a wide invisible line over each segment.
@@ -162,7 +194,6 @@ export function RouteEditor({
   readonly view: View;
 }) {
   const editing = useEditing();
-  const rerouted = pendingHops(editing);
   const { selectedHop, selectHop } = useSelection();
   const preview = useDragPreview();
   const root = useRef<SVGGElement>(null);
@@ -205,6 +236,7 @@ export function RouteEditor({
     preview?.show({
       changes: [
         {
+          by: "engineer",
           id: "preview",
           kind: "reroute",
           points: drag.points,
@@ -399,21 +431,7 @@ export function RouteEditor({
           strokeWidth={7}
         />
       ) : null}
-      {Arr.map(
-        Arr.filter(hops, ({ hop }) => rerouted.has(hop.id)),
-        (routed) => (
-          <polyline
-            aria-hidden="true"
-            className="stroke-pending pointer-events-none"
-            data-hop-pending={routed.hop.id}
-            fill="none"
-            key={routed.hop.id}
-            points={toPoints(routed.points)}
-            strokeLinejoin="round"
-            strokeWidth={2}
-          />
-        )
-      )}
+      <PendingRoutes hops={hops} />
       {live
         ? Arr.map(hops, (routed) => (
             <Segments

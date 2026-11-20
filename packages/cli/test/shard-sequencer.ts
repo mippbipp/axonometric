@@ -19,6 +19,7 @@ import type { TestSpecification } from "vitest/node";
  * holds more than 60% of the weight.
  */
 export const fileSeconds = {
+  "agent-changes-page.test.ts": 10,
   "connection-page.test.ts": 57,
   "drag-warnings-big-map.test.ts": 11,
   "edit-toggle.test.ts": 8,
@@ -36,6 +37,7 @@ export const fileSeconds = {
   "rerouting.test.ts": 50,
   "review-page.test.ts": 12,
   "selection-edit.test.ts": 56,
+  "status.test.ts": 12,
   "structure-follow.test.ts": 24,
   "structure-page.test.ts": 15,
   "structures.test.ts": 19,

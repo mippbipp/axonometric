@@ -233,6 +233,7 @@ describe("selecting with a box", () => {
 
 describe("appending a move to the pending changes", () => {
   const existing: LayoutChange = {
+    by: "engineer",
     id: "m1",
     kind: "move",
     moves: [{ position: at(1, 1), target: { id: "a", kind: "structure" } }],
@@ -246,7 +247,7 @@ describe("appending a move to the pending changes", () => {
 
     assert.deepStrictEqual(
       appendMove({ changes: [existing], id: "m2", moves }),
-      [existing, { id: "m2", kind: "move", moves }]
+      [existing, { by: "engineer", id: "m2", kind: "move", moves }]
     );
   });
 

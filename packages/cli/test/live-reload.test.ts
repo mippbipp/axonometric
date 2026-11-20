@@ -75,7 +75,7 @@ const overlaps = (a: Box, b: Box) =>
 
 /** The controls a notice must never cover. */
 const controls =
-  '[data-chapter-rail], [data-chapter-rail] button, [data-playback-bar], button[aria-label="Zoom in"], button[aria-label="Zoom out"], button[title="Zoom to fit (0)"]';
+  '[data-chapter-rail], [data-chapter-rail] button, [data-playback-bar], button[aria-label="Zoom in"], button[aria-label="Zoom out"], button:has-text("Zoom to fit")';
 
 /** Asserts that no box matching `notice` overlaps a control. */
 const assertClearOfControls = Effect.fnUntraced(function* (

@@ -1,6 +1,7 @@
 import { groundProjections, maxRouteReach } from "@axonometric/contracts";
 import type { GridPoint, Placement, View } from "@axonometric/contracts";
-import { cn } from "@axonometric/ui/lib/utils";
+import { Toggle } from "@axonometric/ui/components/toggle";
+import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { Array as Arr } from "effect";
 import {
   useCallback,
@@ -13,7 +14,7 @@ import {
 import type { ReactNode } from "react";
 
 import { isTyping } from "./chapter-keys.ts";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { groundAt } from "./ground-at.ts";
 import { NoteToolContext, useNoteTool } from "./note-tool-context.ts";
 import type { NoteTool } from "./note-tool-context.ts";
@@ -158,10 +159,12 @@ export function NoteToolProvider({
   });
 
   useEffect(() => {
-    globalThis.addEventListener("keydown", onKeyDown);
+    // In the capture phase, so an armed tool gets the arrow keys before the
+    // toolbar that holds focus moves along its buttons with them.
+    globalThis.addEventListener("keydown", onKeyDown, true);
 
     return () => {
-      globalThis.removeEventListener("keydown", onKeyDown);
+      globalThis.removeEventListener("keydown", onKeyDown, true);
     };
   }, []);
 
@@ -199,19 +202,23 @@ export function NoteToolButton() {
   }
 
   return (
-    <button
-      aria-pressed={tool.armed}
-      className={cn(controlClass, tool.armed && "bg-ink text-paper")}
-      data-control="note-tool"
-      disabled={!review.canWrite}
-      onClick={() => {
-        tool.arm(!tool.armed);
-      }}
-      title="Pin a note to an empty spot on the map"
-      type="button"
+    <WithTooltip
+      control={
+        <Toggle
+          className={uiControlClass}
+          data-control="note-tool"
+          disabled={!review.canWrite}
+          onPressedChange={(on) => {
+            tool.arm(on);
+          }}
+          pressed={tool.armed}
+        >
+          Note
+        </Toggle>
+      }
     >
-      Note
-    </button>
+      Pin a note to an empty spot on the map
+    </WithTooltip>
   );
 }
 

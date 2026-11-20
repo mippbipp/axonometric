@@ -16,10 +16,12 @@ import {
   count,
   goToChapterPaused,
   inPage,
+  press,
   showViewFitted,
   strokeOf,
   waitFor,
   waitTimeout,
+  choose,
 } from "./browser.ts";
 import { crosses, drawingReport, nameTagClashes } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
@@ -89,12 +91,8 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="name"]').fill(fields.name)
   );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="shape"]').selectOption("store")
-  );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="status"]').selectOption("planned")
-  );
+  yield* choose(page, '[data-add="shape"]', "store");
+  yield* choose(page, '[data-add="status"]', "planned");
   yield* Effect.promise(() =>
     page.locator('[data-add="x"]').fill(String(fields.x))
   );
@@ -157,6 +155,22 @@ describe("adding a structure from the toolbar", () => {
           assert.strictEqual(addFieldCount, 1, field);
         }
 
+        for (const name of ["Shape", "Group", "Status"]) {
+          const named = yield* Effect.promise(() =>
+            page.getByRole("combobox", { exact: true, name }).count()
+          );
+
+          assert.strictEqual(named, 1, `${name} select is named`);
+        }
+
+        for (const name of ["x", "y"]) {
+          const named = yield* Effect.promise(() =>
+            page.getByRole("textbox", { exact: true, name }).count()
+          );
+
+          assert.strictEqual(named, 1, `${name} number input is named`);
+        }
+
         const addSubmitDisabled = yield* Effect.promise(() =>
           page.locator('[data-add="submit"]').isDisabled()
         );
@@ -168,15 +182,9 @@ describe("adding a structure from the toolbar", () => {
         yield* Effect.promise(() =>
           page.locator('[data-add="name"]').fill("Build cache")
         );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="shape"]').selectOption("store")
-        );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="group"]').selectOption("outside")
-        );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="status"]').selectOption("planned")
-        );
+        yield* choose(page, '[data-add="shape"]', "store");
+        yield* choose(page, '[data-add="group"]', "outside");
+        yield* choose(page, '[data-add="status"]', "planned");
         yield* click(page, '[data-add="submit"]');
         yield* Effect.promise(() =>
           page.waitForFunction(
@@ -457,6 +465,67 @@ describe("deleting a structure", () => {
 });
 
 describe("the context menu on a structure", () => {
+  it.live(
+    "opens from the keyboard on a focused structure, and Escape gives focus back to it",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+
+        const focusedStructure = `document.activeElement?.getAttribute("data-structure")`;
+        const focusedMenuEntry = `document.activeElement?.closest("[data-structure-menu]") !== null && document.activeElement?.getAttribute("role") === "menuitem"`;
+
+        // macOS Chromium sends Shift+F10 with no contextmenu event, and the
+        // other systems send one. Dropping the event makes every system take
+        // the macOS path, which the page has to handle itself.
+        yield* Effect.promise(() =>
+          page.evaluate(
+            `addEventListener("contextmenu", (event) => { if (event.button !== 2) { event.stopImmediatePropagation(); } }, true)`
+          )
+        );
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="engineer"]').focus()
+        );
+        yield* press(page, "Shift+F10");
+        yield* waitFor(page, '[data-structure-menu="engineer"]');
+        yield* Effect.promise(() =>
+          page.waitForFunction(focusedMenuEntry, undefined, waitTimeout)
+        );
+        yield* press(page, "ArrowDown");
+        yield* press(page, "Escape");
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-structure-menu]")
+            .waitFor({ state: "detached", ...waitTimeout })
+        );
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `${focusedStructure} === "engineer"`,
+            undefined,
+            waitTimeout
+          )
+        );
+
+        yield* rightClick(page, "server");
+        yield* waitFor(page, '[data-structure-menu="server"]');
+        yield* press(page, "Escape");
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-structure-menu]")
+            .waitFor({ state: "detached", ...waitTimeout })
+        );
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `${focusedStructure} === "server"`,
+            undefined,
+            waitTimeout
+          )
+        );
+      }),
+    60_000
+  );
+
   it.live(
     "offers a rename, a shape, a group, a status and a deletion in both views, and proposes each",
     () =>

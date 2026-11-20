@@ -263,15 +263,23 @@ export type {
 export { MapState, mapStateElementId } from "./map-state.ts";
 
 export {
+  dropConflicted,
   emptyHistory,
   observeFile,
   pushStep,
   redoStep,
+  replayStep,
+  stepOf,
   undoStep,
-  wroteFile,
 } from "./undo-history.ts";
 
-export type { Observed, Stepped, UndoHistory } from "./undo-history.ts";
+export type {
+  Observed,
+  StepDirection,
+  Stepped,
+  UndoHistory,
+  UndoStep,
+} from "./undo-history.ts";
 
 export {
   isQueued,
@@ -309,7 +317,7 @@ export {
   ChangeId,
   checkProposals,
   clashOf,
-  discardChange,
+  discardChanges,
   emptyProposals,
   Footprint,
   hopsOf,
@@ -318,6 +326,8 @@ export {
   layoutAfterChanges,
   layoutChangeKey,
   LayoutChanges,
+  agentChangeMade,
+  agentChangeRefusal,
   layoutRefusal,
   MoveChange,
   newChangeId,
@@ -336,11 +346,23 @@ export {
   withCarriedRoutes,
 } from "./proposals.ts";
 
-export type { Clash, Placing, PlacingRoute } from "./proposals.ts";
+export type { Author, Clash, Placing, PlacingRoute } from "./proposals.ts";
+
+export {
+  agentHeldWriteRefusal,
+  authorChangeRefusal,
+  agentTargetRefusal,
+  engineerTakesOver,
+  pendingRows,
+  proposeAgentChange,
+} from "./agent-changes.ts";
+
+export type { AgentProposal, PendingRow } from "./agent-changes.ts";
 
 export {
   Accepted,
   AcceptWrite,
+  AgentDecision,
   HistoryEntry,
   historyEntryOf,
   HistoryList,
@@ -357,6 +379,7 @@ export {
   ServerEvent,
   serverPaths,
   ServerState,
+  ServerStatus,
 } from "./server.ts";
 
 export {
@@ -769,5 +792,3 @@ export { lineBreak, oneLineText } from "./text-schemas.ts";
 export { hopActionOf, hopActions } from "./hop-actions.ts";
 
 export { flowActionOf, hopsWith } from "./flow-actions.ts";
-
-export { moveItem } from "./reorder.ts";

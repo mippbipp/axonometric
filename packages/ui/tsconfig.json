@@ -4,11 +4,17 @@
     "jsx": "react-jsx",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "noEmit": true,
-    "types": [],
+    "types": ["vitest/globals"],
     "paths": {
       "@axonometric/ui/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "vitest.config.ts"
+  ],
   "exclude": ["node_modules"]
 }

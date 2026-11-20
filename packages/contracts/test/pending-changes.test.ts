@@ -1,7 +1,12 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Record as Rec } from "effect";
 
-import { alignMoves, distributeMoves, nudgeMoves } from "../src/index.ts";
+import {
+  alignMoves,
+  applyLayoutChanges,
+  distributeMoves,
+  nudgeMoves,
+} from "../src/index.ts";
 import type {
   Alignment,
   Axis,
@@ -58,6 +63,23 @@ const movesOf = (layout: ReadonlyArray<LayoutChange>) => {
 
 const clearedHistory =
   "Accepted changes can't be undone. Edits before this point are cleared from undo.";
+
+const stepConflict =
+  "The pending changes changed on disk since your last edit, so nothing was undone or redone. The page shows what's saved. That step is cleared from undo, with any earlier step on the same structures or hops, and your other steps are kept.";
+
+const moveOf = (
+  id: string,
+  structure: string,
+  position: GridPoint
+): LayoutChange => ({
+  by: "engineer",
+  id,
+  kind: "move",
+  moves: [{ position, target: { id: structure, kind: "structure" } }],
+});
+
+const savedOf = (page: ReturnType<typeof inMemoryPage>) =>
+  page.server.state().proposals?.layout ?? [];
 
 describe("pending changes on a served page", () => {
   it.effect(
@@ -188,7 +210,7 @@ describe("pending changes on a served page", () => {
   );
 
   it.effect(
-    "undo keeps the step and shows a conflict when the file changed underneath, and writes nothing",
+    "undo after an outside write to another target takes back only the engineer's change, and redo puts it back",
     () =>
       Effect.gen(function* () {
         const page = yield* servedReview;
@@ -196,35 +218,126 @@ describe("pending changes on a served page", () => {
         page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3.5 })));
         page.settle();
 
-        const mine = page.server.state().proposals?.layout ?? [];
-        const other: LayoutChange = {
-          id: "other-writer",
-          kind: "move",
-          moves: [
-            {
-              position: { x: 18, y: 4 },
-              target: { id: "upstream", kind: "structure" },
-            },
-          ],
-        };
+        const mine = savedOf(page);
+        const other = moveOf("other-writer", "upstream", { x: 18, y: 4 });
 
         page.server.writeLayout([...mine, other]);
-
-        assert.deepStrictEqual(idsOf(page.view().pending), [
-          ...idsOf(mine),
-          "other-writer",
-        ]);
-
         page.dispatch({ _tag: "Undo" });
         page.settle();
 
-        assert.strictEqual(page.view().notice?.kind, "conflict");
-        assert.strictEqual(page.server.sent().length, 1);
-        assert.strictEqual(page.server.state().proposals?.revision, 2);
-        const savedIds = idsOf(page.server.state().proposals?.layout ?? []);
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), [other]);
+        assert.deepStrictEqual(page.view().pending, [other]);
+        assert.isFalse(page.view().canUndo);
+        assert.isTrue(page.view().canRedo);
 
-        assert.deepStrictEqual(savedIds, [...idsOf(mine), "other-writer"]);
+        page.dispatch({ _tag: "Redo" });
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), [other, ...mine]);
         assert.isTrue(page.view().canUndo);
+        assert.deepStrictEqual(
+          Arr.map(
+            page.server.sent(),
+            ({ baseFileRevision }) => baseFileRevision
+          ),
+          [0, 2, 3]
+        );
+      })
+  );
+
+  it.effect(
+    "undo after an outside write to the same target is refused with a conflict, writes nothing, and clears only that step",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["server"], { x: 0, y: 3 })));
+        page.settle();
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3.5 })));
+        page.settle();
+
+        const mine = savedOf(page);
+        const over = moveOf("other-writer", "engineer", { x: 0, y: 9 });
+
+        page.server.writeLayout([...mine, over]);
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.deepStrictEqual(page.view().notice, {
+          kind: "conflict",
+          message: stepConflict,
+        });
+        assert.strictEqual(page.server.sent().length, 2);
+        assert.deepStrictEqual(savedOf(page), [...mine, over]);
+        assert.isTrue(page.view().canUndo);
+
+        // The next undo takes back the earlier edit, of the server.
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), [...Arr.drop(mine, 1), over]);
+        assert.isFalse(page.view().canUndo);
+        assert.isTrue(page.view().canRedo);
+      })
+  );
+
+  it.effect(
+    "an undo sent after an outside write to another target got in first is replayed on the fresher file and saved",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3.5 })));
+        page.settle();
+
+        const other = moveOf("other-writer", "upstream", { x: 18, y: 4 });
+
+        page.dispatch({ _tag: "Undo" });
+        page.server.writeLayout([...savedOf(page), other]);
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(
+          Arr.map(
+            page.server.sent(),
+            ({ baseFileRevision }) => baseFileRevision
+          ),
+          [0, 1, 2]
+        );
+        assert.deepStrictEqual(savedOf(page), [other]);
+        assert.deepStrictEqual(page.view().pending, [other]);
+        assert.isTrue(page.view().canRedo);
+      })
+  );
+
+  it.effect(
+    "an undo sent after an outside write to the same target got in first conflicts, and keeps their change",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["engineer"], { x: 0, y: 3.5 })));
+        page.settle();
+
+        const over = moveOf("other-writer", "engineer", { x: 0, y: 9 });
+        const written = [...savedOf(page), over];
+
+        page.dispatch({ _tag: "Undo" });
+        page.server.writeLayout(written);
+        page.settle();
+
+        assert.deepStrictEqual(page.view().notice, {
+          kind: "conflict",
+          message: stepConflict,
+        });
+        assert.strictEqual(page.server.sent().length, 2);
+        assert.deepStrictEqual(savedOf(page), written);
+        assert.deepStrictEqual(page.view().pending, written);
+        assert.isFalse(page.view().canUndo);
+        assert.isFalse(page.view().canRedo);
       })
   );
 
@@ -239,6 +352,7 @@ describe("pending changes on a served page", () => {
         // Another writer gets in before the page's write is sent.
         page.server.writeLayout([
           {
+            by: "engineer",
             id: "other-writer",
             kind: "move",
             moves: [
@@ -275,6 +389,7 @@ describe("pending changes on a served page", () => {
         page.dispatch(apply(nudge(["engineer"], { x: 0, y: 4 })));
         page.server.writeLayout([
           {
+            by: "engineer",
             id: "other-writer",
             kind: "move",
             moves: [
@@ -351,14 +466,44 @@ describe("pending changes on a served page", () => {
   );
 });
 
-const moveOf = (
-  id: string,
-  structure: string,
-  position: GridPoint
-): LayoutChange => ({
-  id,
-  kind: "move",
-  moves: [{ position, target: { id: structure, kind: "structure" } }],
+describe("who made the pending changes", () => {
+  it.effect(
+    "the page's edits are the engineer's, and an agent change already pending stays the agent's",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.server.writeLayout([
+          {
+            by: "agent",
+            id: "agent-1",
+            kind: "move",
+            moves: [
+              {
+                position: { x: 18, y: 6 },
+                target: { id: "upstream", kind: "structure" },
+              },
+            ],
+          },
+        ]);
+
+        const nudged = nudge(["engineer", "page"], { x: 0, y: 0.5 });
+
+        assert.isUndefined(page.dispatch(apply(nudged)));
+        page.settle();
+
+        const saved = page.server.state().proposals?.layout ?? [];
+
+        assert.deepStrictEqual(
+          Arr.map(saved, ({ by, id }) => `${id} ${by}`),
+          ["agent-1 agent", "c1 engineer"]
+        );
+        assert.deepStrictEqual(
+          Arr.map(page.view().pending, ({ by }) => by),
+          ["agent", "engineer"]
+        );
+      })
+  );
 });
 
 describe("pending changes with writes in flight", () => {
@@ -426,7 +571,7 @@ describe("pending changes with writes in flight", () => {
         assert.strictEqual(reroute?.kind, "reroute");
 
         const refusal = page.dispatch(
-          apply({ _tag: "Discard", change: move?.id ?? "" })
+          apply({ _tag: "Discard", changes: [move?.id ?? ""] })
         );
 
         page.settle();
@@ -437,6 +582,47 @@ describe("pending changes with writes in flight", () => {
           move?.id,
           reroute?.id,
         ]);
+      })
+  );
+
+  it.effect(
+    "undoing an arrange after an outside write to another target takes back its move and the reroute it carried",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout: saved } = yield* fixture("review");
+
+        // h-store takes a detour right of the server and the proposals.
+        const layout: Layout = {
+          ...saved,
+          routes: {
+            "h-store": [
+              { x: 9, y: 2 },
+              { x: 9, y: 4 },
+              { x: 13, y: 4 },
+              { x: 13, y: 7 },
+              { x: 10, y: 7 },
+            ],
+          },
+        };
+
+        const page = inMemoryPage({ data, layout, system: "review" });
+
+        page.dispatch(apply(nudge(["server", "proposals"], { x: 0, y: 2 })));
+        page.settle();
+
+        assert.deepStrictEqual(
+          Arr.map(page.view().pending, ({ kind }) => kind),
+          ["move", "reroute"]
+        );
+
+        const other = moveOf("other-writer", "upstream", { x: 18, y: 4 });
+
+        page.server.writeLayout([...savedOf(page), other]);
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), [other]);
       })
   );
 
@@ -492,6 +678,430 @@ describe("pending changes with writes in flight", () => {
           idsOf(page.server.state().proposals?.layout ?? []),
           ["c1"]
         );
+      })
+  );
+});
+
+/** A placement in the review map, as `{ x, y, w, d }` with a 2 by 2 footprint. */
+const square = (x: number, y: number) => ({ d: 2, w: 2, x, y });
+
+/** The saved list as `kind by structure-or-hop`, for comparing who holds what. */
+const holders = (changes: ReadonlyArray<LayoutChange>) =>
+  Arr.map(
+    changes,
+    (change) =>
+      `${change.kind} ${change.by} ${Arr.join(
+        change.kind === "move"
+          ? Arr.map(change.moves, ({ target }) => target.id)
+          : [change.target.id],
+        ","
+      )}`
+  );
+
+const shownAt = (page: ReturnType<typeof inMemoryPage>, id: string) =>
+  applyLayoutChanges(page.view().state.layout, page.view().pending).structures[
+    id
+  ];
+
+describe("the agent's proposals beside the engineer's edits", () => {
+  it.effect("a second proposal for the same structure replaces the first", () =>
+    Effect.gen(function* () {
+      const page = yield* servedReview;
+
+      assert.isUndefined(
+        page.server.propose(
+          { _tag: "Place", next: square(18, 4), structure: "upstream" },
+          "Line up the outside"
+        )
+      );
+      assert.isUndefined(
+        page.server.propose(
+          { _tag: "Place", next: square(18, 6), structure: "upstream" },
+          "Line up with the pull request"
+        )
+      );
+
+      const saved = savedOf(page);
+
+      assert.deepStrictEqual(holders(saved), ["move agent upstream"]);
+      assert.strictEqual(saved[0]?.reason, "Line up with the pull request");
+      assert.strictEqual(page.server.state().proposals?.revision, 2);
+      assert.deepStrictEqual(shownAt(page, "upstream"), square(18, 6));
+    })
+  );
+
+  it.effect(
+    "is refused on a structure the engineer has pending, naming their change, and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(apply(nudge(["page"], { x: 0, y: 3 })));
+        page.settle();
+
+        const before = page.server.state().proposals;
+        const [mine] = before?.layout ?? [];
+
+        const refusal = page.server.propose(
+          { _tag: "Place", next: square(4, 9), structure: "page" },
+          "Tidy"
+        );
+
+        assert.strictEqual(
+          refusal,
+          `The engineer has a pending move of "page" (change ${mine?.id}). Propose changes to other structures, or wait until they accept or discard change ${mine?.id}.`
+        );
+        assert.deepStrictEqual(page.server.state().proposals, before);
+      })
+  );
+
+  it.effect(
+    "is refused on a hop whose reroute waits in a batch, and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        const frozen: LayoutChange = {
+          by: "engineer",
+          id: "frozen-route",
+          kind: "reroute",
+          points: null,
+          target: { id: "h-pr", kind: "hop" },
+        };
+
+        page.server.replaceProposals(
+          {
+            batches: [
+              {
+                frozenAt: "2026-11-01T09:00:00.000Z",
+                items: [{ change: frozen, id: frozen.id, kind: "layout" }],
+                number: 1,
+                verdicts: {},
+              },
+            ],
+            format: 1,
+            layout: [],
+            revision: 3,
+          },
+          { mapBroken: false }
+        );
+
+        const before = page.server.state().proposals;
+
+        const refusal = page.server.propose(
+          {
+            _tag: "Reroute",
+            hop: "h-pr",
+            points: [
+              { x: 10, y: 7 },
+              { x: 12, y: 7 },
+            ],
+          },
+          "Straighten"
+        );
+
+        assert.include(
+          refusal ?? "",
+          'The engineer has a pending reroute of hop "h-pr" (change frozen-route).'
+        );
+        assert.deepStrictEqual(page.server.state().proposals, before);
+      })
+  );
+
+  it.effect(
+    "the engineer's drag of a structure the agent moved replaces the agent's change",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.server.propose(
+          { _tag: "Place", next: square(18, 4), structure: "upstream" },
+          "Tidy"
+        );
+        const [agents] = savedOf(page);
+        const drag = apply({
+          _tag: "Place",
+          next: square(18, 9),
+          structure: "upstream",
+        });
+
+        assert.isUndefined(page.dispatch(drag));
+        page.settle();
+
+        const saved = savedOf(page);
+
+        assert.deepStrictEqual(holders(saved), ["move engineer upstream"]);
+        assert.notStrictEqual(saved[0]?.id, agents?.id);
+        assert.deepStrictEqual(shownAt(page, "upstream"), square(18, 9));
+        assert.isNull(page.view().notice);
+      })
+  );
+
+  it.effect(
+    "the engineer's resize of a structure the agent moved keeps it where the agent put it, as the engineer's move",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.server.propose(
+          { _tag: "Place", next: square(18, 4), structure: "upstream" },
+          "Tidy"
+        );
+        const [agents] = savedOf(page);
+
+        page.dispatch(
+          apply({
+            _tag: "Place",
+            next: { d: 2, w: 3, x: 18, y: 4 },
+            structure: "upstream",
+          })
+        );
+        page.settle();
+
+        const saved = savedOf(page);
+
+        assert.sameMembers(holders(saved), [
+          "move engineer upstream",
+          "resize engineer upstream",
+        ]);
+        assert.notInclude(idsOf(saved), agents?.id);
+        assert.deepStrictEqual(shownAt(page, "upstream"), {
+          d: 2,
+          w: 3,
+          x: 18,
+          y: 4,
+        });
+      })
+  );
+
+  it.effect(
+    "arranging a set that holds a structure the agent moved takes it over, and leaves the agent's other changes",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.server.propose(
+          { _tag: "Place", next: square(18, 4), structure: "upstream" },
+          "Tidy"
+        );
+        page.server.propose(
+          { _tag: "Place", next: square(0, 9), structure: "engineer" },
+          "Tidy"
+        );
+
+        page.dispatch(apply(nudge(["server", "upstream"], { x: 0, y: 0.5 })));
+        page.settle();
+
+        assert.deepStrictEqual(holders(savedOf(page)), [
+          "move agent engineer",
+          "move engineer server,upstream",
+        ]);
+        assert.deepStrictEqual(shownAt(page, "upstream"), square(18, 4.5));
+        assert.deepStrictEqual(shownAt(page, "engineer"), square(0, 9));
+      })
+  );
+
+  it.effect(
+    "dragging one member of an agent's move of several takes over that member only",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.server.writeLayout([
+          {
+            by: "agent",
+            id: "agent-pair",
+            kind: "move",
+            moves: [
+              {
+                position: { x: 18, y: 4 },
+                target: { id: "upstream", kind: "structure" },
+              },
+              {
+                position: { x: 0, y: 9 },
+                target: { id: "engineer", kind: "structure" },
+              },
+            ],
+            reason: "Tidy",
+          },
+        ]);
+
+        page.dispatch(
+          apply({ _tag: "Place", next: square(18, 9), structure: "upstream" })
+        );
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(holders(savedOf(page)), [
+          "move agent engineer",
+          "move engineer upstream",
+        ]);
+        assert.strictEqual(savedOf(page)[0]?.id, "agent-pair");
+        assert.deepStrictEqual(shownAt(page, "engineer"), square(0, 9));
+        assert.deepStrictEqual(shownAt(page, "upstream"), square(18, 9));
+      })
+  );
+
+  it.effect(
+    "the engineer's reroute of a hop the agent rerouted replaces the agent's change",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+        const engineers = [
+          { x: 10, y: 7 },
+          { x: 12, y: 7 },
+        ];
+
+        page.server.propose(
+          {
+            _tag: "Reroute",
+            hop: "h-pr",
+            points: [
+              { x: 10, y: 6.5 },
+              { x: 12, y: 6.5 },
+            ],
+          },
+          "Straighten"
+        );
+
+        page.dispatch(
+          apply({ _tag: "Reroute", hop: "h-pr", points: engineers })
+        );
+        page.settle();
+
+        const saved = savedOf(page);
+
+        assert.deepStrictEqual(holders(saved), ["reroute engineer h-pr"]);
+        assert.deepStrictEqual(
+          applyLayoutChanges(page.view().state.layout, saved).routes,
+          { "h-pr": engineers }
+        );
+      })
+  );
+
+  it.effect(
+    "Reset route on a hop only the agent rerouted leaves nothing pending",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.server.propose(
+          {
+            _tag: "Reroute",
+            hop: "h-pr",
+            points: [
+              { x: 10, y: 6.5 },
+              { x: 12, y: 6.5 },
+            ],
+          },
+          "Straighten"
+        );
+
+        page.dispatch(apply({ _tag: "Reroute", hop: "h-pr", points: null }));
+        page.settle();
+
+        assert.deepStrictEqual(savedOf(page), []);
+        assert.deepStrictEqual(page.view().pending, []);
+      })
+  );
+
+  it.effect(
+    "the engineer's edit still wins when the agent proposed while it was on its way",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(
+          apply({ _tag: "Place", next: square(18, 9), structure: "upstream" })
+        );
+        page.server.propose(
+          { _tag: "Place", next: square(18, 4), structure: "upstream" },
+          "Tidy"
+        );
+        page.settle();
+
+        assert.deepStrictEqual(
+          Arr.map(
+            page.server.sent(),
+            ({ baseFileRevision }) => baseFileRevision
+          ),
+          [0, 1]
+        );
+        assert.deepStrictEqual(holders(savedOf(page)), [
+          "move engineer upstream",
+        ]);
+        assert.deepStrictEqual(shownAt(page, "upstream"), square(18, 9));
+        assert.isNull(page.view().notice);
+      })
+  );
+
+  it.effect(
+    "undo after the agent proposes for another structure takes back the engineer's edit and keeps the agent's change",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.dispatch(
+          apply({ _tag: "Place", next: square(0, 4), structure: "engineer" })
+        );
+        page.settle();
+
+        assert.isUndefined(
+          page.server.propose(
+            { _tag: "Place", next: square(18, 4), structure: "upstream" },
+            "Tidy"
+          )
+        );
+
+        const agents = Arr.filter(savedOf(page), ({ by }) => by === "agent");
+
+        assert.strictEqual(agents.length, 1);
+
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.isNull(page.view().notice);
+        assert.deepStrictEqual(savedOf(page), agents);
+        assert.deepStrictEqual(shownAt(page, "engineer"), square(0, 0));
+        assert.isTrue(page.view().canRedo);
+      })
+  );
+
+  it.effect(
+    "discarding an agent group is one write and one undo step, and undoing it is refused with a notice",
+    () =>
+      Effect.gen(function* () {
+        const page = yield* servedReview;
+
+        page.server.propose(
+          { _tag: "Place", next: square(18, 4), structure: "upstream" },
+          "Tidy"
+        );
+        page.server.propose(
+          { _tag: "Place", next: square(0, 9), structure: "engineer" },
+          "Tidy"
+        );
+
+        const [first, second] = idsOf(savedOf(page));
+
+        page.dispatch(
+          apply({ _tag: "Discard", changes: [first ?? "", second ?? ""] })
+        );
+        page.settle();
+
+        assert.strictEqual(page.server.sent().length, 1);
+        assert.deepStrictEqual(savedOf(page), []);
+        assert.isTrue(page.view().canUndo);
+
+        page.dispatch({ _tag: "Undo" });
+        page.settle();
+
+        assert.strictEqual(page.server.sent().length, 1);
+        assert.deepStrictEqual(savedOf(page), []);
+        assert.deepStrictEqual(page.view().notice, {
+          kind: "refused",
+          message: `This step would bring back the agent's change ${first}, which only the agent can propose. Nothing was undone or redone.`,
+        });
       })
   );
 });

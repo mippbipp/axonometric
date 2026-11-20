@@ -3,17 +3,21 @@ import {
   hopsOf,
   layoutChangeKey,
   maxMessageLength,
+  pendingRows,
   structuresOf,
 } from "@axonometric/contracts";
 import type { ChangeId, LayoutChange } from "@axonometric/contracts";
-import { Array as Arr, Record as Rec } from "effect";
-import { useId, useState } from "react";
+import { Button } from "@axonometric/ui/components/button";
+import { Input } from "@axonometric/ui/components/input";
+import { Array as Arr, Predicate, Record as Rec } from "effect";
+import { useState } from "react";
 
 import { useAccepting } from "./accepting-context.ts";
-import { controlClass } from "./control-class.ts";
+import { controlClass, uiControlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditOn } from "./edit-context.ts";
 import { useEditingIgnoringEdit } from "./editing-context.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { listedEntries, useReview } from "./review-context.ts";
 import { ReviewList } from "./review-list.tsx";
 import { useStructuresById } from "./structures.ts";
@@ -35,7 +39,6 @@ export function PendingTab() {
   const { state } = useWalkthrough();
   const [refusal, setRefusal] = useState<string | undefined>();
   const [message, setMessage] = useState("");
-  const messageId = useId();
 
   if (editing === null) {
     return null;
@@ -55,17 +58,120 @@ export function PendingTab() {
       ", "
     );
 
-  const discardWith = (change: LayoutChange) => {
-    setRefusal(discard(change.id));
+  const discardWith = (ids: Arr.NonEmptyReadonlyArray<ChangeId>) => {
+    setRefusal(discard(ids));
   };
 
-  const acceptWith = (ids: "all" | readonly [ChangeId]) => {
+  const acceptWith = (ids: "all" | Arr.NonEmptyReadonlyArray<ChangeId>) => {
     setRefusal(undefined);
     accepting?.accept(ids, message);
     setMessage("");
   };
 
   const acceptable = canEdit && accepting?.canAccept === true;
+
+  const changeRow = (change: LayoutChange) => {
+    const names = namesOf(change);
+
+    return (
+      <li
+        className="border-pending flex items-start gap-2 border-l-2 pl-2 text-sm"
+        data-pending-by={change.by}
+        data-pending-change={change.kind}
+        data-pending-hop={hopsOf(change)[0]}
+        data-pending-id={change.id}
+        data-pending-structure={structuresOf(change)[0]}
+        key={layoutChangeKey(change)}
+      >
+        <span className="min-w-0 flex-1">
+          {Arr.join(
+            describeChange(change, accepted, {
+              hop: hopName,
+              structure: nameOf,
+            }),
+            "; "
+          )}
+        </span>
+        {acceptable ? (
+          <button
+            aria-label={`Accept the ${change.kind} of ${names}`}
+            className={controlClass}
+            data-accept-change={change.id}
+            disabled={accepting.busy}
+            onClick={() => {
+              acceptWith([change.id]);
+            }}
+            type="button"
+          >
+            Accept
+          </button>
+        ) : null}
+        {canEdit ? (
+          <button
+            aria-label={`Discard the ${change.kind} of ${names}`}
+            className={controlClass}
+            onClick={() => {
+              discardWith([change.id]);
+            }}
+            type="button"
+          >
+            Discard
+          </button>
+        ) : null}
+      </li>
+    );
+  };
+
+  const groupRow = (
+    changes: Arr.NonEmptyReadonlyArray<LayoutChange>,
+    reason: string | undefined
+  ) => {
+    const ids = Arr.map(changes, ({ id }) => id);
+    const heading =
+      reason === undefined
+        ? "Proposed by the agent"
+        : `Proposed by the agent: ${reason}`;
+    const subject = reason === undefined ? "" : ` for ${reason}`;
+
+    return (
+      <li
+        className="border-ink/40 flex flex-col gap-1.5 border-t border-dashed pt-2"
+        data-pending-group
+        data-pending-reason={reason}
+        key={layoutChangeKey(changes[0])}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="w-full text-xs opacity-70">{heading}</h3>
+          {changes.length > 1 && acceptable ? (
+            <Button
+              aria-label={`Accept the agent's changes${subject}`}
+              className={uiControlClass}
+              data-accept-group
+              disabled={accepting.busy}
+              onClick={() => {
+                acceptWith(ids);
+              }}
+            >
+              Accept group
+            </Button>
+          ) : null}
+          {changes.length > 1 && canEdit ? (
+            <Button
+              aria-label={`Discard the agent's changes${subject}`}
+              className={uiControlClass}
+              data-discard-group
+              onClick={() => {
+                discardWith(ids);
+              }}
+            >
+              Discard group
+            </Button>
+          ) : null}
+        </div>
+        <ul className="flex flex-col gap-2">{Arr.map(changes, changeRow)}</ul>
+      </li>
+    );
+  };
 
   // Nothing is pending only when no layout change is, and no proposal is
   // either: the review list below shows the proposals.
@@ -105,22 +211,18 @@ export function PendingTab() {
         <>
           {acceptable ? (
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs opacity-70" htmlFor={messageId}>
-                Revision message (optional)
-              </label>
-              <input
-                className="border-ink bg-paper text-ink focus-visible:outline-ink border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1"
-                data-accept-message
+              <LabelledField
                 disabled={accepting.busy}
-                id={messageId}
-                maxLength={maxMessageLength}
-                onChange={(event) => {
-                  setMessage(event.target.value);
-                }}
-                placeholder="Leave empty to write one from the changes"
-                type="text"
-                value={message}
-              />
+                label="Revision message (optional)"
+              >
+                <Input
+                  data-accept-message
+                  maxLength={maxMessageLength}
+                  onValueChange={setMessage}
+                  placeholder="Leave empty to write one from the changes"
+                  value={message}
+                />
+              </LabelledField>
               <button
                 className={`${controlClass} self-start`}
                 data-accept-all
@@ -135,56 +237,11 @@ export function PendingTab() {
             </div>
           ) : null}
           <ul className="flex flex-col gap-2">
-            {Arr.map(pending, (change) => {
-              const names = namesOf(change);
-
-              return (
-                <li
-                  className="border-pending flex items-start gap-2 border-l-2 pl-2 text-sm"
-                  data-pending-change={change.kind}
-                  data-pending-hop={hopsOf(change)[0]}
-                  data-pending-id={change.id}
-                  data-pending-structure={structuresOf(change)[0]}
-                  key={layoutChangeKey(change)}
-                >
-                  <span className="min-w-0 flex-1">
-                    {Arr.join(
-                      describeChange(change, accepted, {
-                        hop: hopName,
-                        structure: nameOf,
-                      }),
-                      "; "
-                    )}
-                  </span>
-                  {acceptable ? (
-                    <button
-                      aria-label={`Accept the ${change.kind} of ${names}`}
-                      className={controlClass}
-                      data-accept-change={change.id}
-                      disabled={accepting.busy}
-                      onClick={() => {
-                        acceptWith([change.id]);
-                      }}
-                      type="button"
-                    >
-                      Accept
-                    </button>
-                  ) : null}
-                  {canEdit ? (
-                    <button
-                      aria-label={`Discard the ${change.kind} of ${names}`}
-                      className={controlClass}
-                      onClick={() => {
-                        discardWith(change);
-                      }}
-                      type="button"
-                    >
-                      Discard
-                    </button>
-                  ) : null}
-                </li>
-              );
-            })}
+            {Arr.map(pendingRows(pending), (row) =>
+              Predicate.isTagged(row, "Change")
+                ? changeRow(row.change)
+                : groupRow(row.changes, row.reason)
+            )}
           </ul>
         </>
       )}

@@ -1,18 +1,22 @@
 DESCRIPTION
-  Move or resize one structure in layout.json, under the map's lock. Values land on half units, such as 4 or 4.5. Fields you leave out keep their value.
+  Move or resize one structure, or reroute one hop, in layout.json, under the map's lock. Values land on half units, such as 4 or 4.5. Fields you leave out keep their value. With --propose, the change waits in proposals.json for the engineer instead.
 
 USAGE
-  axonometric layout [flags] <home> <structure>
+  axonometric layout [flags] <home> [<structure>]
 
 ARGUMENTS
   home directory      The map's home folder, holding data.mjs and layout.json
-  structure string    The id of the structure to move or resize
+  structure string    The id of the structure to move or resize (optional)
 
 FLAGS
-  --x number    Position along the grid's x axis, in grid units
-  --y number    Position along the grid's y axis, in grid units
-  --w number    Footprint width along x, in grid units
-  --d number    Footprint depth along y, in grid units
+  --x number         Position along the grid's x axis, in grid units
+  --y number         Position along the grid's y axis, in grid units
+  --w number         Footprint width along x, in grid units
+  --d number         Footprint depth along y, in grid units
+  --hop string       The id of the hop to reroute, with --route
+  --route string     The hop's route: grid points from one footprint's edge to the other's, such as "4,2 4,6 9,6", or auto to clear the override
+  --propose          Write the change to proposals.json as the agent's pending layout change, for the engineer to accept or discard in the Pending tab, instead of to layout.json. Needs --reason
+  --reason string    Why you propose the change, with --propose. The engineer reads it in the Pending tab
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information
@@ -27,3 +31,12 @@ EXAMPLES
 
   # Resize its footprint
   axonometric layout docs/pipeline/map gate --w 3 --d 2
+
+  # Reroute a hop through grid points
+  axonometric layout docs/pipeline/map --hop h-save --route "4,2 4,6 9,6"
+
+  # Clear the hop's route override
+  axonometric layout docs/pipeline/map --hop h-save --route auto
+
+  # Propose a move for the engineer to accept or discard
+  axonometric layout docs/pipeline/map gate --x 8 --propose --reason "Line up the ingest row"

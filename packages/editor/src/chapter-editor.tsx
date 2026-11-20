@@ -5,9 +5,9 @@ import type { DragEvent } from "react";
 
 import { ChapterLegend } from "./chapter-legend.tsx";
 import { useAcceptedPlays, useChapterMarks } from "./chapter-marks-context.ts";
+import { ChoiceSelect } from "./choice-select.tsx";
 import { controlClass } from "./control-class.ts";
 import { useEditOn } from "./edit-context.ts";
-import { fieldClass } from "./field-class.ts";
 import { useChapterPropose } from "./use-chapter-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -258,26 +258,20 @@ export function ChapterEditor() {
               }
             }}
           >
-            <label className="sr-only" htmlFor="add-play-hop">
-              Hop to play in this chapter
-            </label>
-            <select
-              className={`${fieldClass} min-w-0 flex-1`}
-              data-add-play-hop
+            <ChoiceSelect
+              choices={Arr.map(playable, ({ from, id, label, to }) => ({
+                label: `${label} (${nameOf(from)} → ${nameOf(to)})`,
+                value: id,
+              }))}
+              className="min-w-0 flex-1"
               disabled={!canPropose}
-              id="add-play-hop"
-              onChange={(event) => {
-                setAddHop(event.target.value);
-              }}
+              hideLabel
+              label="Hop to play in this chapter"
+              onChange={setAddHop}
+              placeholder="Add a hop…"
+              trigger={{ "data-add-play-hop": "" }}
               value={addHop}
-            >
-              <option value="">Add a hop…</option>
-              {Arr.map(playable, ({ from, id, label, to }) => (
-                <option key={id} value={id}>
-                  {label} ({nameOf(from)} → {nameOf(to)})
-                </option>
-              ))}
-            </select>
+            />
             <button
               className={controlClass}
               data-add-play-submit

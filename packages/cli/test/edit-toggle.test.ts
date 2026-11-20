@@ -4,6 +4,7 @@ import type { Page } from "playwright";
 
 import {
   assertCount,
+  attributeOf,
   attributesOf,
   boxesOf,
   centreOf,
@@ -12,6 +13,7 @@ import {
   press,
   showView,
   textOf,
+  tooltipOn,
   unitOnScreen,
   waitFor,
   waitGone,
@@ -182,6 +184,29 @@ describe("turning Edit on", () => {
       })
   );
 
+  it.live("e still toggles Edit with focus on a chapter rail button", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* firstVisit;
+
+        yield* waitFor(page, editButton);
+        const before = yield* pressed(page);
+        assert.strictEqual(before, "false");
+
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-chapter-rail] button[data-chapter]")
+            .first()
+            .focus()
+        );
+        yield* press(page, "e");
+        yield* waitFor(page, toolbar);
+        const after = yield* pressed(page);
+        assert.strictEqual(after, "true");
+      })
+    )
+  );
+
   it.live("e is left alone while typing in a field", () =>
     Effect.gen(function* () {
       const { page } = yield* firstVisit;
@@ -209,6 +234,56 @@ describe("turning Edit on", () => {
       yield* waitGone(page, "[data-add-structure-panel]");
       yield* waitGone(page, toolbar);
     })
+  );
+
+  it.live(
+    "the toolbar is one Tab stop, and the arrow keys move along it without changing the chapter",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* openReviewMap({});
+
+        yield* goToChapter(page, "c-all");
+
+        const chapter = () => textOf(page, "[data-chapter-story] h2");
+        const before = yield* chapter();
+
+        // Roving focus leaves one button at tabindex 0 and the rest at -1.
+        const stops = yield* Effect.promise(() =>
+          page
+            .locator(
+              '[data-history-toolbar] button:not([tabindex="-1"]):not([disabled])'
+            )
+            .count()
+        );
+
+        assert.strictEqual(stops, 1);
+
+        yield* Effect.promise(() =>
+          page.locator('[data-control="undo"]').focus()
+        );
+        yield* press(page, "ArrowRight");
+
+        const focusCount = (control: string) =>
+          Effect.promise(() =>
+            page.locator(`[data-control="${control}"]:focus`).count()
+          );
+
+        // Space presses the focused toggle, which says so.
+        yield* press(page, "Space");
+        yield* waitFor(
+          page,
+          '[data-control="add-structure"][aria-pressed="true"]'
+        );
+        yield* waitFor(page, "[data-add-structure-panel]");
+
+        yield* press(page, "ArrowLeft");
+
+        const backOnUndo = yield* focusCount("undo");
+        const after = yield* chapter();
+
+        assert.strictEqual(backOnUndo, 1);
+        assert.strictEqual(after, before);
+      })
   );
 
   it.live("keeps the toolbar clear of the chapter title at 1280 × 800", () =>
@@ -244,6 +319,49 @@ describe("turning Edit on", () => {
         }
       }
     })
+  );
+});
+
+describe("the toolbar's tooltips", () => {
+  it.live(
+    "name each control on hover, and explain a disabled Undo without letting it run",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* openReviewMap({});
+
+        yield* goToChapter(page, "c-all");
+
+        const note = yield* tooltipOn(page, '[data-control="note-tool"]');
+        const edit = yield* tooltipOn(page, editButton);
+        const group = yield* tooltipOn(page, '[data-control="add-group"]');
+        const undo = yield* tooltipOn(page, '[data-control="undo"]');
+
+        assert.include(note, "Pin a note");
+        assert.include(edit, "Stop editing");
+        assert.include(group, "Create a group");
+        assert.include(undo, "Undo (Ctrl+Z)");
+        const disabledBefore = yield* attributeOf(
+          page,
+          '[data-control="undo"]',
+          "aria-disabled"
+        );
+
+        assert.strictEqual(disabledBefore, "true");
+
+        // Playwright won't click an aria-disabled button without force.
+        yield* Effect.promise(() =>
+          page.locator('[data-control="undo"]').click({ force: true })
+        );
+
+        const disabledAfter = yield* attributeOf(
+          page,
+          '[data-control="undo"]',
+          "aria-disabled"
+        );
+
+        assert.strictEqual(disabledAfter, "true");
+      }),
+    60_000
   );
 });
 

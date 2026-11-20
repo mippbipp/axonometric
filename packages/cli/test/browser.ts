@@ -185,6 +185,16 @@ export const waitGone = (page: Page, selector: string) =>
 export const click = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).click());
 
+/**
+ * Opens the select whose trigger matches `selector` and picks the option with
+ * the value `choice`, the way an engineer does: a click on the trigger, then
+ * a click on the option in the list.
+ */
+export const choose = (page: Page, selector: string, choice: string) =>
+  click(page, selector).pipe(
+    Effect.andThen(click(page, `[role="option"][data-choice="${choice}"]`))
+  );
+
 /** Presses `key`, such as `+` or `Control+z`, on the page. */
 export const press = (page: Page, key: string) =>
   Effect.promise(() => page.keyboard.press(key));
@@ -192,6 +202,30 @@ export const press = (page: Page, key: string) =>
 /** How many elements match `selector`, shown or hidden. */
 export const count = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).count());
+
+/**
+ * What the tooltip says when the pointer rests on the element matching
+ * `selector`: moves the pointer away first so a tooltip left open by an
+ * earlier hover is gone, hovers the element, waits for ui-sdk to open its
+ * tooltip, and returns the text. Fails if none opens.
+ */
+export const tooltipOn = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string
+) {
+  const open = page.locator("[role=tooltip][data-open]").first();
+
+  yield* Effect.promise(() => page.mouse.move(0, 0));
+  yield* Effect.promise(() =>
+    open.waitFor({ state: "detached", ...waitTimeout })
+  );
+  yield* Effect.promise(() => page.locator(selector).first().hover());
+  yield* Effect.promise(() => open.waitFor(waitTimeout));
+
+  return yield* Effect.promise(() =>
+    open.textContent().then((text) => text ?? "")
+  );
+});
 
 /** The text of the first element matching `selector`, or "" when it has none. */
 export const textOf = (page: Page, selector: string) =>

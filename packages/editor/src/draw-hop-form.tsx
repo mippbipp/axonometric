@@ -1,12 +1,14 @@
 import { maxHopLabelLength, newHopId } from "@axonometric/contracts";
+import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Option, Result } from "effect";
-import { useEffect, useEffectEvent, useId, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 
+import { ChoiceSelect } from "./choice-select.tsx";
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { useChangePreview } from "./drag-preview-context.ts";
-import { fieldClass } from "./field-class.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -32,7 +34,6 @@ export function DrawHopForm() {
   const [label, setLabel] = useState("");
   const [failure, setFailure] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
-  const id = useId();
 
   const draft = drafting?.draft;
 
@@ -134,49 +135,37 @@ export function DrawHopForm() {
         {draft.to === null ? "" : " to "}
         {draft.to === null ? null : <b data-draw-to>{nameOf(draft.to)}</b>}
       </p>
-      <label className="flex flex-col gap-1" htmlFor={`${id}-to`}>
-        <span className="opacity-70">To</span>
-        <select
-          className={fieldClass}
-          data-draw="to"
-          id={`${id}-to`}
-          onChange={(event) => {
-            drafting.pick(
-              event.target.value === "" ? null : event.target.value
-            );
-          }}
-          value={draft.to ?? ""}
-        >
-          <option value="">Pick a structure…</option>
-          {Arr.map(targets, (other) => (
-            <option key={other} value={other}>
-              {nameOf(other)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1" htmlFor={`${id}-label`}>
-        <span className="opacity-70">Label</span>
-        <input
+      <ChoiceSelect
+        choices={Arr.map(targets, (other) => ({
+          label: nameOf(other),
+          value: other,
+        }))}
+        className="flex flex-col gap-1"
+        label="To"
+        onChange={(next) => {
+          drafting.pick(next === "" ? null : next);
+        }}
+        placeholder="Pick a structure…"
+        trigger={{ "data-draw": "to" }}
+        value={draft.to ?? ""}
+      />
+      <LabelledField
+        failure={failure}
+        failureProps={{ "data-draw-failure": "" }}
+        label="Label"
+      >
+        <Input
           autoComplete="off"
-          className={fieldClass}
           data-draw="label"
-          id={`${id}-label`}
           maxLength={maxHopLabelLength}
-          onChange={(event) => {
+          onValueChange={(next) => {
             setFailure(undefined);
-            setLabel(event.target.value);
+            setLabel(next);
           }}
           ref={focusOnOpen}
-          type="text"
           value={label}
         />
-      </label>
-      {failure === undefined ? null : (
-        <p className="border-refused border-l-2 pl-2" data-draw-failure>
-          {failure}
-        </p>
-      )}
+      </LabelledField>
       <div className="flex gap-1.5">
         <button
           className={controlClass}
