@@ -149,6 +149,10 @@ export {
 
 export type { FlowChoice, Spotlight, SpotlightTarget } from "./spotlight.ts";
 
+export { svgRequestOf } from "./svg-request.ts";
+
+export type { SvgRequest } from "./svg-request.ts";
+
 export { routeHops, routeRevealed } from "./routing.ts";
 
 export {

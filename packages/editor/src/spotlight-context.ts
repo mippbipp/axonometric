@@ -1,4 +1,4 @@
-import type { Spotlight } from "@axonometric/contracts";
+import type { Spotlight, SpotlightTarget } from "@axonometric/contracts";
 import { createContext, use } from "react";
 
 /**
@@ -12,13 +12,20 @@ export interface SpotlightState {
   readonly spotlight: Spotlight | null;
 }
 
+/** What the spotlight follows: the pointer's target and the pinned one. */
+export interface SpotlightTargets {
+  readonly hovered: SpotlightTarget | null;
+  readonly pinned: SpotlightTarget | null;
+}
+
 /** What doesn't change as the pointer moves. */
 export interface SpotlightActions {
   /**
-   * The spotlight as it is when called, for what acts on a press, such as
-   * an export. Reading it doesn't redraw the reader as the pointer moves.
+   * What the pointer is on and what is pinned, as they are when called, for
+   * what acts on a press, such as an export. Reading them doesn't redraw the
+   * reader as the pointer moves.
    */
-  readonly current: () => Spotlight | null;
+  readonly current: () => SpotlightTargets;
   /** Called with the hop's id while the pointer is on its line, else null. */
   readonly hoverHop: (hop: string | null) => void;
 }

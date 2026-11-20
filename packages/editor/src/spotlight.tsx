@@ -10,7 +10,11 @@ import {
   SpotlightActionsContext,
   SpotlightContext,
 } from "./spotlight-context.ts";
-import type { SpotlightActions, SpotlightState } from "./spotlight-context.ts";
+import type {
+  SpotlightActions,
+  SpotlightState,
+  SpotlightTargets,
+} from "./spotlight-context.ts";
 import { HoveredIdContext } from "./tooltip-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -56,33 +60,34 @@ export function SpotlightProvider({
       : { from: draft.from, over: draft.to };
   }, [stretch, draft]);
 
+  const hovered = useMemo(
+    () => hopTarget(hoveredHop) ?? structureTarget(hoveredStructure),
+    [hoveredHop, hoveredStructure]
+  );
+
+  const pinned = useMemo(
+    () => hopTarget(pinnedHop) ?? structureTarget(pinnedStructure),
+    [pinnedHop, pinnedStructure]
+  );
+
   const spotlight = useMemo(
     () =>
       chapterSpotlightOf({
         choice: flowChoice,
         data: state.data,
         drawing,
-        hovered: hopTarget(hoveredHop) ?? structureTarget(hoveredStructure),
-        pinned: hopTarget(pinnedHop) ?? structureTarget(pinnedStructure),
+        hovered,
+        pinned,
         stop,
       }),
-    [
-      state.data,
-      stop,
-      flowChoice,
-      hoveredHop,
-      hoveredStructure,
-      pinnedHop,
-      pinnedStructure,
-      drawing,
-    ]
+    [state.data, stop, flowChoice, hovered, pinned, drawing]
   );
 
-  const latest = useRef(spotlight);
+  const latest = useRef<SpotlightTargets>({ hovered, pinned });
 
   useLayoutEffect(() => {
-    latest.current = spotlight;
-  }, [spotlight]);
+    latest.current = { hovered, pinned };
+  });
 
   const shown = useMemo(
     (): SpotlightState => ({ hoveredHop, spotlight }),
