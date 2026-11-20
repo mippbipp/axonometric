@@ -210,10 +210,12 @@ export interface ServedStore {
   /** Proposals to change what a chapter reveals and plays. */
   readonly chapters: ChapterStoreOps;
   /**
-   * Removes the pending change with `id`. Returns why it was refused, or
-   * `undefined`.
+   * Removes the pending changes with `ids`, as one write and one undo step.
+   * Returns why it was refused, or `undefined`.
    */
-  readonly discard: (id: ChangeId) => string | undefined;
+  readonly discard: (
+    ids: Arr.NonEmptyReadonlyArray<ChangeId>
+  ) => string | undefined;
   /** Proposals to create and rename flows, and to order their hops and the flows. */
   readonly flows: FlowOps;
   readonly getSnapshot: () => ServedView;
@@ -1181,7 +1183,7 @@ export const connectServed = ({
     refusalOf: (structure, next) =>
       pendingRefusal(session, { _tag: "Place", next, structure }),
     place: (structure, next) => apply({ _tag: "Place", next, structure }),
-    discard: (change) => apply({ _tag: "Discard", change }),
+    discard: (changes) => apply({ _tag: "Discard", changes }),
     refusalOfMoves: (moves) =>
       pendingRefusal(session, { _tag: "Arrange", plan: () => moves }),
     arrange: (plan) => apply({ _tag: "Arrange", plan }),

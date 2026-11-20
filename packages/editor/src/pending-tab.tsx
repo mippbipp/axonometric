@@ -56,7 +56,7 @@ export function PendingTab() {
     );
 
   const discardWith = (change: LayoutChange) => {
-    setRefusal(discard(change.id));
+    setRefusal(discard([change.id]));
   };
 
   const acceptWith = (ids: "all" | readonly [ChangeId]) => {

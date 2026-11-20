@@ -6,7 +6,7 @@ import {
   agentChangeRefusal,
   applyLayoutChanges,
   checkProposals,
-  discardChange,
+  discardChanges,
   groupMembers,
   hopLabelOf,
   layoutAfterChanges,
@@ -741,10 +741,14 @@ describe("placing a structure", () => {
     assert.deepStrictEqual(place([], id, { d: 1, w: 1, x: 0, y: 0 }), []);
   });
 
-  it("discards a change by id", () => {
-    const changes = [move("m1", "a", [0, 6]), resize("r1", "b", [3, 2])];
+  it("discards changes by id", () => {
+    const changes = [
+      move("m1", "a", [0, 6]),
+      resize("r1", "b", [3, 2]),
+      resize("r2", "a", [3, 2]),
+    ];
 
-    assert.deepStrictEqual(discardChange(changes, "m1"), [
+    assert.deepStrictEqual(discardChanges(changes, ["m1", "r2"]), [
       resize("r1", "b", [3, 2]),
     ]);
   });
