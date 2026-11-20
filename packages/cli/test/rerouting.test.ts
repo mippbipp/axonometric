@@ -455,7 +455,7 @@ describe("a reroute in the review loop", () => {
     yield* Effect.promise(() =>
       page.locator("[data-ready-for-review]").first().click()
     );
-    yield* waitFor(page, "[data-review-dialog][open]");
+    yield* waitFor(page, "[data-review-dialog][data-open]");
     yield* Effect.promise(() =>
       page.locator("[data-review-close]").first().click()
     );

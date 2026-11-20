@@ -508,7 +508,7 @@ describe("the open page after verdict changed --as and commit", () => {
         yield* waitFor(page, "[data-panel-note]");
 
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
 
         // The agent adds the structure under another id, says so, and commits.
         const fs = yield* FileSystem.FileSystem;

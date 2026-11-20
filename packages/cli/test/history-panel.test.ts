@@ -22,6 +22,7 @@ import {
   click,
   literal,
   openUrl,
+  press,
   textOf,
   waitFor,
   waitGone,
@@ -765,6 +766,34 @@ describe("the History panel", () => {
         );
         assert.deepStrictEqual(errors, []);
       }).pipe(Effect.scoped),
+    90_000
+  );
+
+  it.live(
+    "names the restore dialog by its title, and Escape closes it like the Close button",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* servedWithTwo;
+
+        yield* openHistory(page);
+        yield* openRevision(page, 1);
+        yield* click(page, '[data-control="restore"]');
+        yield* waitFor(page, "[data-restore-dialog]");
+
+        const named = yield* Effect.promise(() =>
+          page.getByRole("dialog", { name: "Restore revision 1" }).count()
+        );
+
+        assert.strictEqual(named, 1);
+
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-restore-dialog]");
+
+        // The page is back on the current map, with the restore pending.
+        yield* assertCount(page, "[data-past-revision]", 0);
+        yield* assertCount(page, '[data-structure][data-pending="true"]', 3);
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
     90_000
   );
 

@@ -344,7 +344,7 @@ describe("a question", () => {
         yield* assertTextIncludes(page, "[data-ready-for-review]", "· 1");
 
         yield* click(page, "[data-ready-for-review]");
-        yield* waitFor(page, "[data-review-dialog][open]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
 
         const proposals = yield* readProposals(home);
 
@@ -533,7 +533,7 @@ describe("a frozen suggestion", () => {
     );
     yield* waitFor(page, `${panel} [data-suggested]`);
     yield* click(page, "[data-ready-for-review]");
-    yield* waitFor(page, "[data-review-dialog][open]");
+    yield* waitFor(page, "[data-review-dialog][data-open]");
     yield* click(page, "[data-review-close]");
 
     return world;
