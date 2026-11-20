@@ -45,11 +45,13 @@ If you change when a page region is ready, update every test that waits on that 
 
 ```sh
 bun run perf --head . --check --headless              # does the bench run? No verdict.
-bun run perf --head . --aa --headless                 # same build both sides: should read "same"
+bun run perf --head . --aa --headless                 # same build both sides: checks the method, no change expected
 bun run perf --base main --head . --headless          # is this branch faster or slower than main?
 ```
 
-On a machine with no display, add `--headless`. Close other work first: strobe refuses a verdict on a busy machine.
+An A/A run compares a build with itself, so a trustworthy result reads `same`. On a noisy machine it can read `unclear` or `underpowered` instead, which means the machine is too noisy for a verdict. Run it again on a quieter machine.
+
+On a machine with no display, add `--headless`. Close other work first. Strobe refuses a verdict on a busy machine.
 
 ## The agent guide
 
