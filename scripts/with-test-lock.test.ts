@@ -1,19 +1,22 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import {
+import fs, {
   existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, before, describe, it } from "node:test";
+import { after, before, describe, it, mock } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { Option, Schema } from "effect";
+
+import { takeOverStale, tryCreate } from "./with-test-lock.ts";
 
 const script = join(import.meta.dirname, "with-test-lock.ts");
 
@@ -87,6 +90,21 @@ const holderIn = (lockPath: string) =>
   Option.getOrThrow(
     Schema.decodeOption(Holder)(readFileSync(lockPath, "utf8"))
   );
+
+const fakeHolder = (pid: number) => ({
+  command: "turbo run test",
+  pid,
+  startedAt: `2026-01-01T00:00:0${pid % 10}.000Z`,
+});
+
+const fsCalls = [
+  "existsSync",
+  "linkSync",
+  "readFileSync",
+  "renameSync",
+  "unlinkSync",
+  "writeFileSync",
+] as const;
 
 const waitsFor = (file: string): string =>
   `const fs = require("node:fs"); const t = setInterval(() => { if (fs.existsSync(${JSON.stringify(file)})) { clearInterval(t); } }, 20);`;
@@ -193,6 +211,59 @@ void describe("with-test-lock", () => {
     const run = await start(lock, "process.exit(3)").finished;
     assert.equal(run.code, 3);
     assert.equal(existsSync(lock), false);
+  });
+
+  void it("keeps a taken-over lock in place while a slower waiter clears the same stale lock", () => {
+    const lock = join(dir, "race.lock");
+    const dead = fakeHolder(900_001);
+    const first = fakeHolder(900_002);
+
+    writeFileSync(lock, JSON.stringify(dead));
+    takeOverStale(lock, dead, first);
+    assert.equal(tryCreate(lock, first), true);
+
+    // The slower waiter read `dead` before `first` took over. After each file
+    // call it makes, a third run tries to take the lock.
+    let thirdGotIn = false;
+    let probing = false;
+    const probe = (): void => {
+      if (!probing) {
+        probing = true;
+        thirdGotIn ||= tryCreate(lock, fakeHolder(900_004));
+        probing = false;
+      }
+    };
+    for (const name of fsCalls) {
+      const original: (
+        ...args: Array<never>
+      ) => ReturnType<(typeof fs)[typeof name]> = fs[name];
+      mock.method(fs, name, (...args: Array<never>) => {
+        const result = original(...args);
+        probe();
+
+        return result;
+      });
+    }
+
+    syncBuiltinESMExports();
+    let error = "";
+
+    try {
+      takeOverStale(lock, dead, fakeHolder(900_003));
+    } catch (error_) {
+      error = String(error_);
+    } finally {
+      mock.restoreAll();
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(
+      thirdGotIn,
+      false,
+      "a third run took the lock while the first held it"
+    );
+    assert.equal(error, "");
+    assert.deepEqual(holderIn(lock), first);
   });
 
   void it(

@@ -77,6 +77,7 @@ export default defineConfig({
         "effecttsgo/async-function": "off",
         "effecttsgo/global-date": "off",
         "effecttsgo/global-json": "off",
+        "effecttsgo/missing-pipeable-signature": "off",
         "effecttsgo/new-promise": "off",
         "effecttsgo/node-builtin-import": "off",
         "effecttsgo/prefer-effect-array": "off",
