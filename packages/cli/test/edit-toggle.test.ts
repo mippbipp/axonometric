@@ -211,6 +211,56 @@ describe("turning Edit on", () => {
     })
   );
 
+  it.live(
+    "the toolbar is one Tab stop, and the arrow keys move along it without changing the chapter",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* openReviewMap({});
+
+        yield* goToChapter(page, "c-all");
+
+        const chapter = () => textOf(page, "[data-chapter-story] h2");
+        const before = yield* chapter();
+
+        // Roving focus leaves one button at tabindex 0 and the rest at -1.
+        const stops = yield* Effect.promise(() =>
+          page
+            .locator(
+              '[data-history-toolbar] button:not([tabindex="-1"]):not([disabled])'
+            )
+            .count()
+        );
+
+        assert.strictEqual(stops, 1);
+
+        yield* Effect.promise(() =>
+          page.locator('[data-control="undo"]').focus()
+        );
+        yield* press(page, "ArrowRight");
+
+        const focusCount = (control: string) =>
+          Effect.promise(() =>
+            page.locator(`[data-control="${control}"]:focus`).count()
+          );
+
+        // Space presses the focused toggle, which says so.
+        yield* press(page, "Space");
+        yield* waitFor(
+          page,
+          '[data-control="add-structure"][aria-pressed="true"]'
+        );
+        yield* waitFor(page, "[data-add-structure-panel]");
+
+        yield* press(page, "ArrowLeft");
+
+        const backOnUndo = yield* focusCount("undo");
+        const after = yield* chapter();
+
+        assert.strictEqual(backOnUndo, 1);
+        assert.strictEqual(after, before);
+      })
+  );
+
   it.live("keeps the toolbar clear of the chapter title at 1280 × 800", () =>
     Effect.gen(function* () {
       const { page } = yield* openReviewMap({});
