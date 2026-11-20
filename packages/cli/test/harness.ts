@@ -1,3 +1,6 @@
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- the path helpers below are plain functions that tests call in object keys and module-level constants, outside any Effect, so they need a path object that needs no layer to build
+import platformPath from "node:path";
+
 import {
   emptyProposals,
   MapState,
@@ -244,16 +247,6 @@ export const startServe = Effect.fnUntraced(function* (
   } satisfies RunningServe;
 });
 
-// oxlint-disable-next-line node/no-sync -- the path service is a plain object, read once at import so path helpers can be plain functions.
-const platformPath = Effect.runSync(
-  Path.Path.use(Effect.succeed).pipe(Effect.provide(NodeServices.layer))
-);
-
-// oxlint-disable-next-line node/no-sync -- same as above, with the `/`-separating path the file listings use.
-const posixNames = Effect.runSync(
-  Path.Path.use(Effect.succeed).pipe(Effect.provide(Path.layer))
-);
-
 /** The paths of the map whose home folder is `home`, for the running platform. */
 export const homeAt = (home: string) => makeHomePaths(platformPath, home);
 
@@ -265,7 +258,8 @@ export const mapIn = (root: string, system: string) =>
   homeAt(platformPath.join(root, system, "map"));
 
 /** The paths of the map whose home folder is `home`, joined with `/`. */
-export const posixHomeAt = (home: string) => makeHomePaths(posixNames, home);
+export const posixHomeAt = (home: string) =>
+  makeHomePaths(platformPath.posix, home);
 
 /**
  * The names `runCli` lists the files of a root folder by, for the map whose
@@ -273,13 +267,13 @@ export const posixHomeAt = (home: string) => makeHomePaths(posixNames, home);
  * `pipeline/map/layout.json`.
  */
 export const mapKeys = (system: string) =>
-  makeHomePaths(posixNames, `${system}/map`);
+  makeHomePaths(platformPath.posix, `${system}/map`);
 
 /**
  * The names `runCli` lists the files by when it's given the home folder
  * itself: `homeKeys.proposalsFile` is `proposals.json`.
  */
-export const homeKeys = makeHomePaths(posixNames, "");
+export const homeKeys = makeHomePaths(platformPath.posix, "");
 
 /**
  * Builds the map in `files` whose home folder is `<system>/map/`, then opens
