@@ -1,16 +1,16 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Clock, Effect, Order } from "effect";
+import { Array as Arr, Clock, Effect } from "effect";
 import type { Page } from "playwright";
 
-import { goToChapterPaused, inPage, openUrl, waitFor } from "./browser.ts";
+import { goToChapterPaused, inPage, openUrl } from "./browser.ts";
 import { pipelineMap } from "./fixtures.ts";
 import { makeHome, startServe, mapIn } from "./harness.ts";
 
-// The drag warnings on a map big enough that checking every chapter takes
-// seconds: the flake pipeline, with 15 structures, 29 hops and 8 chapters.
-// The check runs in a worker, the chapter on screen first, so the page keeps
-// up with the pointer while the rest come in.
+// A drag on a map big enough that checking every chapter takes seconds: the
+// flake pipeline, with 15 structures, 29 hops and 8 chapters. The check runs
+// in a worker, so the page keeps up with the pointer. The order and the
+// answers of the check are tested in contracts, on the same map.
 
 const served = Effect.gen(function* () {
   const pipelineMapFiles = yield* pipelineMap;
@@ -53,16 +53,9 @@ const slowestMove = Effect.fnUntraced(function* (
   return Arr.reduce(times, 0, Math.max);
 });
 
-/** Each drag warning's message, sorted. */
-const shownWarnings = (page: Page) =>
-  inPage<ReadonlyArray<string>>(
-    page,
-    `[...document.querySelectorAll("[data-drag-warning] [data-warning-message]")].map((item) => item.textContent)`
-  ).pipe(Effect.map((shown) => Arr.sort(shown, Order.String)));
-
 describe("the drag warnings on a big map", () => {
   it.live(
-    "check the chapter on screen first, keep the drag smooth, and end with every chapter",
+    "keeps painting every move of a drag",
     () =>
       Effect.gen(function* () {
         const { errors, page } = yield* served;
@@ -88,29 +81,6 @@ describe("the drag warnings on a big map", () => {
         const slowest = yield* slowestMove(page, { from, moves: 16 });
 
         assert.isBelow(slowest, 1000, `a move took ${slowest} ms to paint`);
-
-        // Some chapters come in while the rest are still checked.
-        yield* waitFor(page, "[data-drag-warnings-heading][data-checking]");
-
-        const early = yield* shownWarnings(page);
-
-        // Then every chapter, and the heading stops saying it's checking.
-        yield* Effect.promise(() =>
-          page
-            .locator("[data-drag-warnings-heading]:not([data-checking])")
-            .first()
-            .waitFor({ timeout: 90_000 })
-        );
-
-        const all = yield* shownWarnings(page);
-
-        assert.isAtLeast(all.length, early.length);
-        assert.isTrue(
-          Arr.some(all, (message) =>
-            /in chapter "(?!c-monday")/u.test(message)
-          ),
-          "the other chapters' warnings are in"
-        );
 
         yield* Effect.promise(() => page.mouse.up());
         assert.deepStrictEqual(errors, []);

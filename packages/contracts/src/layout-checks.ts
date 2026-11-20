@@ -529,12 +529,12 @@ const clashFindings = ({
  * rule (chips, zone titles, labels and routes). Each warning is reported
  * once per view, at the first chapter it shows in.
  */
-/** Which chapters a drawing check covers: all, or the one being viewed. */
-type Scope =
-  | { readonly of: "all" }
+/** Where a check looks: the whole map, or one chapter's drawing. */
+export type CheckScope =
+  | { readonly of: "map" }
   | { readonly chapter: string | undefined; readonly of: "chapter" };
 
-const everyChapter: Scope = { of: "all" };
+const everyChapter: CheckScope = { of: "map" };
 
 /**
  * A warning about one chapter's drawing, and the key `check` reports it once
@@ -560,7 +560,7 @@ const byMessage = keyedBy(({ message }) => message);
 const findingsOf = (
   { data, layout }: Checkable,
   { id, plays, revealed }: ChapterView,
-  scope: Scope
+  scope: CheckScope
 ): ReadonlyArray<ChapterFinding> => {
   const routes = routeRevealed({ data, layout, revealed });
   const where = id === undefined ? "" : ` in chapter "${id}"`;
@@ -603,7 +603,7 @@ const findingsOf = (
   // whole map's zones; a proposal to a chapter is judged by the zones that
   // chapter draws.
   const zones =
-    scope.of === "all"
+    scope.of === "map"
       ? []
       : byMessage(overlappingZones({ data, layout, revealed, where }));
 
@@ -632,10 +632,10 @@ export const firstShown = (
   );
 };
 
-const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
+const chapterWarnings = (data: MapData, layout: Layout, scope: CheckScope) => {
   const shown = Arr.filter(
     chapterViews(data),
-    ({ id }) => scope.of === "all" || id === scope.chapter
+    ({ id }) => scope.of === "map" || id === scope.chapter
   );
 
   return firstShown(
@@ -645,22 +645,32 @@ const chapterWarnings = (data: MapData, layout: Layout, scope: Scope) => {
 
 /**
  * The checks of `checkLayout` that look at the whole layout, not at any one
- * chapter's drawing. They don't route or draw, so they are quick.
+ * chapter's drawing. They don't route or draw, so they are quick. `zones` are
+ * apart because a chapter judges them by the structures it has revealed.
  */
+const layoutWide = (data: MapData, layout: Layout) => {
+  const placed = placedStructures(data, layout);
+
+  return {
+    others: [
+      ...staleEntries(data, layout),
+      ...staleRoutes(data, layout),
+      ...offEndOverrides(data.hops, layout),
+      ...overlaps(placed),
+      ...coveredTags(placed),
+    ],
+    zones: overlappingZones({ data, layout }),
+  };
+};
+
+/** The layout-wide checks of `checkLayout`, in the order it reports them. */
 export const layoutWideProblems: {
   (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
   (data: MapData, layout: Layout): ReadonlyArray<MapProblem>;
 } = dual(2, (data: MapData, layout: Layout): ReadonlyArray<MapProblem> => {
-  const placed = placedStructures(data, layout);
+  const { others, zones } = layoutWide(data, layout);
 
-  return [
-    ...staleEntries(data, layout),
-    ...staleRoutes(data, layout),
-    ...offEndOverrides(data.hops, layout),
-    ...overlaps(placed),
-    ...coveredTags(placed),
-    ...overlappingZones({ data, layout }),
-  ];
+  return [...others, ...zones];
 });
 
 /**
@@ -684,43 +694,28 @@ const byHop = Order.mapInput(
   ([hop]: readonly [string, unknown]) => hop
 );
 
-/** How many chapter drawings `chapterFindings` remembers for one map's data. */
+/** How many chapter drawings a `ChapterDrawings` remembers. */
 const findingsKept = 256;
 
-const findingsCache = new WeakMap<
-  MapData,
-  Map<string, ReadonlyArray<ChapterFinding>>
->();
-
-const findingsFor = (data: MapData) => {
-  const found = findingsCache.get(data);
-
-  if (found !== undefined) {
-    return found;
-  }
-
-  const made = new Map<string, ReadonlyArray<ChapterFinding>>();
-
-  findingsCache.set(data, made);
-
-  return made;
-};
+/**
+ * Draws one chapter as `check` covers it and returns its findings, with every
+ * warning keyed. See `rememberedDrawings`.
+ */
+export type ChapterDrawings = (
+  map: Checkable,
+  view: ChapterView
+) => ReadonlyArray<ChapterFinding>;
 
 /**
- * `findingsOf` for one chapter as `check` covers it, remembered by what the
- * chapter draws. A drag that moves one structure leaves the chapters that
- * don't reveal it alone, so they aren't routed or drawn again.
+ * A `ChapterDrawings` that remembers each chapter by what it draws. A drag
+ * that moves one structure leaves the chapters that don't reveal it alone, so
+ * they aren't routed or drawn again. A memory belongs to one map's data: its
+ * keys don't name the data.
  */
-export const chapterFindings: {
-  (view: ChapterView): (map: Checkable) => ReadonlyArray<ChapterFinding>;
-  (map: Checkable, view: ChapterView): ReadonlyArray<ChapterFinding>;
-} = dual(
-  2,
-  (
-    { data, layout }: Checkable,
-    view: ChapterView
-  ): ReadonlyArray<ChapterFinding> => {
-    const cache = findingsFor(data);
+export const rememberedDrawings = (): ChapterDrawings => {
+  const cache = new Map<string, ReadonlyArray<ChapterFinding>>();
+
+  return ({ data, layout }, view) => {
     const key = `${view.id ?? ""}\n${drawnKeyOf(layout, view)}`;
     const cached = cache.get(key);
 
@@ -742,8 +737,25 @@ export const chapterFindings: {
     cache.set(key, found);
 
     return found;
+  };
+};
+
+const drawingsOfData = new WeakMap<MapData, ChapterDrawings>();
+
+/** The chapter drawings of callers that ask again about the same data. */
+const drawingsFor = (data: MapData): ChapterDrawings => {
+  const found = drawingsOfData.get(data);
+
+  if (found !== undefined) {
+    return found;
   }
-);
+
+  const made = rememberedDrawings();
+
+  drawingsOfData.set(data, made);
+
+  return made;
+};
 
 /**
  * The warnings from routing and drawing each chapter in both views: routes
@@ -757,7 +769,7 @@ export const drawingProblems: {
 } = dual(2, (data: MapData, layout: Layout): ReadonlyArray<MapProblem> =>
   firstShown(
     Arr.map(chapterViews(data), (view) =>
-      chapterFindings({ data, layout }, view)
+      drawingsFor(data)({ data, layout }, view)
     )
   )
 );
@@ -782,30 +794,18 @@ export const checkLayout: {
 ]);
 
 /**
- * `checkLayout`, for the drawing of one chapter alone: the footprint, tag and
- * zone checks of the whole map, and the routing, zone and drawing checks of
- * `chapter` as the walkthrough draws it. A proposal to a chapter is judged
+ * `checkLayout`, for the drawing of one chapter alone: the layout-wide checks
+ * of the whole map except its zones, and the routing, zone and drawing checks
+ * of `chapter` as the walkthrough draws it. A proposal to a chapter is judged
  * here against the chapter the engineer is viewing, not every chapter at once.
  */
-export const checkChapter: {
-  (chapter: string | undefined): (map: Checkable) => ReadonlyArray<MapProblem>;
-  (map: Checkable, chapter: string | undefined): ReadonlyArray<MapProblem>;
-} = dual(
-  2,
-  (map: Checkable, chapter: string | undefined): ReadonlyArray<MapProblem> => {
-    const { data, layout } = map;
-    const placed = placedStructures(data, layout);
-
-    return [
-      ...staleEntries(data, layout),
-      ...staleRoutes(data, layout),
-      ...offEndOverrides(data.hops, layout),
-      ...overlaps(placed),
-      ...coveredTags(placed),
-      ...chapterWarnings(data, layout, { chapter, of: "chapter" }),
-    ];
-  }
-);
+const checkChapter = (
+  map: Checkable,
+  chapter: string | undefined
+): ReadonlyArray<MapProblem> => [
+  ...layoutWide(map.data, map.layout).others,
+  ...chapterWarnings(map.data, map.layout, { chapter, of: "chapter" }),
+];
 
 const lineOf = (problem: MapProblem) =>
   `${problem.severity} ${problem.file} ${problem.path}: ${problem.message}`;
@@ -817,15 +817,39 @@ export interface DraggedProblem {
   readonly problem: MapProblem;
 }
 
+/** `after`'s problems, each marked `added` when `before` doesn't have it. */
+export const markedAdded: {
+  (
+    before: ReadonlyArray<MapProblem>
+  ): (after: ReadonlyArray<MapProblem>) => ReadonlyArray<DraggedProblem>;
+  (
+    after: ReadonlyArray<MapProblem>,
+    before: ReadonlyArray<MapProblem>
+  ): ReadonlyArray<DraggedProblem>;
+} = dual(
+  2,
+  (
+    after: ReadonlyArray<MapProblem>,
+    before: ReadonlyArray<MapProblem>
+  ): ReadonlyArray<DraggedProblem> => {
+    const known = new Set(Arr.map(before, lineOf));
+
+    return Arr.map(after, (problem) => ({
+      added: !known.has(lineOf(problem)),
+      problem,
+    }));
+  }
+);
+
 const checked = new WeakMap<
   MapData,
   WeakMap<Layout, ReadonlyArray<MapProblem>>
 >();
 
 /**
- * `checkLayout`, remembered for this data and this layout. A drag asks about
- * the same layout before it again at every step, and the check is the slow
- * part.
+ * `checkLayout`, remembered for this data and this layout. A proposal asks
+ * about the same layout before again at every change, and the check is the
+ * slow part.
  */
 const checkLayoutOnce = (data: MapData, layout: Layout) => {
   const byLayout = checked.get(data) ?? new WeakMap();
@@ -846,114 +870,31 @@ export interface Checkable {
 /**
  * Everything `check` would report for the map `after`, in the order it
  * reports it, each marked `added` when the map `before` didn't have it. It
- * is the check `check` runs, on the map a drag or a proposal would leave, so
- * the page lists exactly what `check` would then print, and can set apart
- * what the change made.
+ * is the check `check` runs, on the map a proposal would leave, so the page
+ * lists exactly what `check` would then print, and can set apart what the
+ * change made. A proposal can change the data as well as the layout, such as
+ * a structure's group, which moves it between zones, so both maps are whole.
  *
- * A drag changes the layout alone, so `draggedProblems` takes one `data`. A
- * proposal can change the data as well, such as a structure's group, which
- * moves it between zones; `changedProblems` takes both maps whole.
+ * With a chapter `scope`, it is what `checkChapter` would report for that
+ * chapter alone, so a proposal that changes how a chapter draws, such as a
+ * new group or a structure revealed in it, is judged by what that chapter
+ * shows. A drag the page checks a chapter at a time uses `dragCheckOf`.
  */
-export const changedProblems: {
-  (before: Checkable): (after: Checkable) => ReadonlyArray<DraggedProblem>;
-  (after: Checkable, before: Checkable): ReadonlyArray<DraggedProblem>;
-} = dual(
-  2,
-  (after: Checkable, before: Checkable): ReadonlyArray<DraggedProblem> => {
-    const known = new Set(
-      Arr.map(checkLayoutOnce(before.data, before.layout), lineOf)
-    );
-
-    return Arr.map(checkLayoutOnce(after.data, after.layout), (problem) => ({
-      added: !known.has(lineOf(problem)),
-      problem,
-    }));
-  }
-);
-
-/**
- * `changedProblems` for the drawing of one chapter: what `checkChapter` would
- * report for the map `after`, each marked `added` when the map `before` didn't
- * have it. A proposal that changes how a chapter draws, such as a new group
- * or a structure revealed in it, is judged by what that chapter shows.
- */
-export const changedChapterProblems = ({
+export const changedProblems = ({
   after,
   before,
-  chapter,
+  scope = { of: "map" },
 }: {
   readonly after: Checkable;
   readonly before: Checkable;
-  readonly chapter: string | undefined;
-}): ReadonlyArray<DraggedProblem> => {
-  const known = new Set(Arr.map(checkChapter(before, chapter), lineOf));
-
-  return Arr.map(checkChapter(after, chapter), (problem) => ({
-    added: !known.has(lineOf(problem)),
-    problem,
-  }));
-};
-
-/**
- * `draggedProblems`, from the chapters checked so far: the whole-layout
- * checks, and the drawing checks of `chapters` alone, in `check`'s order
- * whatever order they were checked in. A problem is marked added when the
- * layout before doesn't have it in the same chapters. With every chapter,
- * this is `draggedProblems`.
- *
- * `check` names a drawing warning by the first chapter it shows in, so until
- * every chapter before one is checked, a warning may name that chapter where
- * `check` would name an earlier one. The page says it is still checking until
- * then.
- *
- * It lets the page check the chapter on screen first and the rest one at a
- * time, without holding up a drag for the whole map.
- */
-export const draggedProblemsIn = ({
-  after,
-  before,
-  chapters,
-  data,
-}: {
-  readonly after: Layout;
-  readonly before: Layout;
-  /** Which of `chapterViews(data)` to draw, by id. */
-  readonly chapters: ReadonlySet<string | undefined>;
-  readonly data: MapData;
-}): ReadonlyArray<DraggedProblem> => {
-  const shown = Arr.filter(chapterViews(data), ({ id }) => chapters.has(id));
-
-  const problemsOf = (layout: Layout) => [
-    ...layoutWideProblems(data, layout),
-    ...firstShown(
-      Arr.map(shown, (view) => chapterFindings({ data, layout }, view))
-    ),
-  ];
-
-  const known = new Set(Arr.map(problemsOf(before), lineOf));
-
-  return Arr.map(problemsOf(after), (problem) => ({
-    added: !known.has(lineOf(problem)),
-    problem,
-  }));
-};
-
-/**
- * `changedProblems` for a change to the layout alone, such as a drag: the
- * map's data is the same before and after.
- */
-export const draggedProblems: {
-  (
-    before: Layout,
-    after: Layout
-  ): (data: MapData) => ReadonlyArray<DraggedProblem>;
-  (data: MapData, before: Layout, after: Layout): ReadonlyArray<DraggedProblem>;
-} = dual(
-  3,
-  (
-    data: MapData,
-    before: Layout,
-    after: Layout
-  ): ReadonlyArray<DraggedProblem> =>
-    changedProblems({ data, layout: after }, { data, layout: before })
-);
+  readonly scope?: CheckScope;
+}): ReadonlyArray<DraggedProblem> =>
+  scope.of === "map"
+    ? markedAdded(
+        checkLayoutOnce(after.data, after.layout),
+        checkLayoutOnce(before.data, before.layout)
+      )
+    : markedAdded(
+        checkChapter(after, scope.chapter),
+        checkChapter(before, scope.chapter)
+      );

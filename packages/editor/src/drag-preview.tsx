@@ -113,7 +113,7 @@ const startChecker = (answer: (found: CheckAnswer) => void): DragChecker => {
 /**
  * Holds what the drag in progress would leave. A refused drop is reported at
  * once, with its reason. Otherwise the check is the one `check` runs
- * (`draggedProblems`), on the layout the page shows with the drag's changes
+ * (`dragCheckOf`), on the layout the page shows with the drag's changes
  * applied.
  *
  * The check routes and draws every chapter, which takes seconds on a big map,

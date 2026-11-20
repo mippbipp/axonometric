@@ -324,16 +324,16 @@ export const defaultSpotFor = ({
 
   const addedAt = (spot: Placement): number =>
     Arr.filter(
-      changedProblems(
-        {
+      changedProblems({
+        after: {
           data: withProbe,
           layout: {
             ...layout,
             structures: { ...layout.structures, [probeId]: spot },
           },
         },
-        before
-      ),
+        before,
+      }),
       ({ added }) => added
     ).length;
 
