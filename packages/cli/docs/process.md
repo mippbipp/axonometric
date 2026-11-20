@@ -27,7 +27,7 @@ The home folder holds:
 | File | Who edits it |
 |---|---|
 | `data.mjs` | Only you. The map's meaning. The page never writes it. See `data`. |
-| `layout.json` | The `layout` command, the engineer's page, and you by hand for a reroute. |
+| `layout.json` | The `layout` command and the engineer's page. Never edit it by hand. |
 | `proposals.json` | The page and `verdict`. Leave it alone. |
 | `history/` | `commit`. One file per revision. Leave it alone. |
 | `.axonometric/` | The server's URL, process ID and lock. Leave it alone. |
@@ -65,7 +65,7 @@ No text overlaps. `check` is where these are reported. `build` doesn't draw ever
 axonometric check <home>
 ```
 
-Fix each warning with `layout`, or by editing `layout.json`, then run `check` again.
+Fix each warning with `layout`, then run `check` again.
 
 ```sh
 axonometric layout <home> <structure> --x 14 --y 12
@@ -74,11 +74,16 @@ axonometric layout <home> <structure> --w 3 --d 2
 
 Values land on half units. A field you leave out keeps its value. `layout` takes the map's lock, so it is safe while a server runs.
 
-`layout` doesn't reroute hops. For a route the router gets wrong, edit `layout.json` and add an entry under `routes`, keyed by the hop's id. List grid points from the edge of one footprint to the edge of the other, with each point sharing `x` or `y` with the one before. Run `check` afterwards: it reports a route that doesn't start and end on a footprint's edge.
+To reroute a hop the router gets wrong, give `layout` the hop's id and its route:
 
-```json
-"routes": { "h-save": [{ "x": 9, "y": 2 }, { "x": 9, "y": 5 }] }
+```sh
+axonometric layout <home> --hop h-save --route "6,1 7,1 7,-1 9,-1 9,0"
+axonometric layout <home> --hop h-save --route auto
 ```
+
+List grid points from the edge of one footprint to the edge of the other, separated by spaces, with each point sharing `x` or `y` with the one before. `layout` refuses a route that doesn't start and end on the footprints' edges, has a diagonal leg or names a hop `data.mjs` lacks, and writes nothing. `--route auto` clears the override so the hop routes itself. It takes the map's lock and checks the file revision, like a move.
+
+Never edit `layout.json` by hand. A hand edit skips the lock and the revision check, so it can overwrite what the engineer just did in the page. Run `check` afterwards: it reports a route that doesn't start and end on a footprint's edge, or runs under a box.
 
 Done when `check` prints 0 warnings, or you can say why each remaining warning is acceptable.
 
