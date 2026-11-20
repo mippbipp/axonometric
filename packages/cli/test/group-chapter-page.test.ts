@@ -4,6 +4,7 @@ import type { Page } from "playwright";
 
 import {
   assertCount,
+  attributeOf,
   assertTextIncludes,
   click,
   goToChapterPaused,
@@ -200,6 +201,34 @@ describe("renaming a group", () => {
           "[data-group-failure]",
           "already has a group"
         );
+
+        // The refusal is the title box's own error: the box is named by its
+        // label, marked invalid, and described by the refusal.
+        const titleBox = page.getByLabel("Title", { exact: true });
+        const failureId = yield* attributeOf(
+          page,
+          "[data-group-failure]",
+          "id"
+        );
+
+        const value = yield* Effect.promise(() =>
+          titleBox.getAttribute("aria-invalid")
+        );
+        assert.strictEqual(value, "true");
+        assert.include(
+          (yield* Effect.promise(() =>
+            titleBox.getAttribute("aria-describedby")
+          )) ?? "",
+          failureId ?? "no id"
+        );
+
+        // Typing again takes the refusal away.
+        yield* Effect.promise(() => titleBox.fill("People 2"));
+        yield* assertCount(page, "[data-group-failure]", 0);
+        const value = yield* Effect.promise(() =>
+          titleBox.getAttribute("aria-invalid")
+        );
+        assert.strictEqual(value, null);
       }),
     90_000
   );

@@ -4,12 +4,15 @@ import {
   stepNameField,
 } from "@axonometric/contracts";
 import type { Step, TextField } from "@axonometric/contracts";
+import { Input } from "@axonometric/ui/components/input";
+import { Textarea } from "@axonometric/ui/components/textarea";
 import { Array as Arr, Option, Record as Rec, Result } from "effect";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import { controlClass } from "./control-class.ts";
 import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
+import { LabelledField } from "./labelled-field.tsx";
 import { useReview } from "./review-context.ts";
 import {
   DiscardSuggestion,
@@ -24,9 +27,6 @@ import {
   wasTaken,
 } from "./suggestions.ts";
 import type { Entry } from "./suggestions.ts";
-
-const inputClass =
-  "border-ink bg-paper text-ink focus-visible:outline-ink w-full border px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-1 disabled:opacity-50";
 
 /** One part of a step: its field, the text data.mjs has, and the suggestion for it. */
 interface Part {
@@ -74,7 +74,6 @@ function StepForm({
   readonly structure: string;
 }) {
   const review = useReview();
-  const id = useId();
 
   const [values, setValues] = useState<Readonly<Record<string, string>>>(() =>
     Rec.fromEntries(
@@ -85,7 +84,10 @@ function StepForm({
     )
   );
 
-  const [failure, setFailure] = useState<string | undefined>();
+  const [failures, setFailures] = useState<Readonly<Record<string, string>>>(
+    {}
+  );
+
   const [sending, setSending] = useState(false);
 
   if (review === null) {
@@ -119,31 +121,32 @@ function StepForm({
   };
 
   const send = () => {
-    const failures: Array<string> = [];
+    const refused: Record<string, string> = {};
     let left = changes.length;
 
     setSending(true);
 
-    const finish = (outcome: Result.Result<unknown, string>) => {
-      left -= 1;
+    const finish =
+      (field: string) => (outcome: Result.Result<unknown, string>) => {
+        left -= 1;
 
-      if (Result.isFailure(outcome)) {
-        failures.push(outcome.failure);
-      }
-
-      if (left === 0) {
-        setSending(false);
-        setFailure(failures[0]);
-
-        if (failures.length === 0) {
-          onDone();
+        if (Result.isFailure(outcome)) {
+          refused[field] = outcome.failure;
         }
-      }
-    };
+
+        if (left === 0) {
+          setSending(false);
+          setFailures(refused);
+
+          if (Rec.isEmptyRecord(refused)) {
+            onDone();
+          }
+        }
+      };
 
     // The writes queue behind each other in the store, so they all start now.
     Arr.forEach(changes, (part) => {
-      sendPart(part, (values[part.field] ?? "").trim(), finish);
+      sendPart(part, (values[part.field] ?? "").trim(), finish(part.field));
     });
   };
 
@@ -158,59 +161,43 @@ function StepForm({
     >
       {Arr.map(parts, ({ field, found, label }) => {
         const locked = !canSuggest(found);
+        const edit = (next: string) => {
+          setValues({ ...values, [field]: next });
+        };
 
         return (
-          <div className="flex flex-col gap-1" key={field}>
-            <label
-              className="text-xs tracking-widest uppercase opacity-70"
-              htmlFor={`${id}-${field}`}
-            >
-              Step {index + 1} {label}
-            </label>
+          <LabelledField
+            description={
+              locked
+                ? "A suggestion for this is in a batch, waiting for the agent."
+                : undefined
+            }
+            disabled={sending || locked}
+            failure={failures[field]}
+            failureProps={{ "data-step-failure": field }}
+            key={field}
+            label={`Step ${index + 1} ${label}`}
+            labelClassName="tracking-widest uppercase"
+          >
             {field === parts[0]?.field ? (
-              <input
-                className={inputClass}
+              <Input
                 data-step-text={field}
-                disabled={sending || locked}
-                id={`${id}-${field}`}
                 maxLength={maxSuggestionLength}
-                onChange={(event) => {
-                  setValues({ ...values, [field]: event.target.value });
-                }}
-                type="text"
+                onValueChange={edit}
                 value={values[field] ?? ""}
               />
             ) : (
-              <textarea
-                className={inputClass}
+              <Textarea
                 data-step-text={field}
-                disabled={sending || locked}
-                id={`${id}-${field}`}
                 maxLength={maxSuggestionLength}
-                onChange={(event) => {
-                  setValues({ ...values, [field]: event.target.value });
-                }}
+                onValueChange={edit}
                 rows={3}
                 value={values[field] ?? ""}
               />
             )}
-            {locked ? (
-              <span className="text-xs opacity-70">
-                A suggestion for this is in a batch, waiting for the agent.
-              </span>
-            ) : null}
-          </div>
+          </LabelledField>
         );
       })}
-      {failure === undefined ? null : (
-        <p
-          className="border-refused border-l-2 pl-2 text-xs"
-          data-step-failure
-          role="alert"
-        >
-          {failure}
-        </p>
-      )}
       <div className="flex gap-1.5">
         <button
           className={controlClass}

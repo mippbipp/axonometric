@@ -1,10 +1,11 @@
 import { maxGroupTitleLength } from "@axonometric/contracts";
 import type { BatchItem, CheckScope, Group } from "@axonometric/contracts";
+import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr } from "effect";
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { fieldClass } from "./field-class.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { groupItem } from "./proposal-items.ts";
 import { useGroupOps } from "./proposal-ops-context.ts";
 import { useSelection } from "./selection-context.ts";
@@ -23,7 +24,6 @@ export function GroupPanel({ group }: { readonly group: Group }) {
   const { state } = useWalkthrough();
   const { selectGroup } = useSelection();
   const { stop } = useWalkthrough();
-  const titleId = useId();
   const [typed, setTyped] = useState<string | undefined>();
   const { clear, failure, run } = useSending();
 
@@ -97,42 +97,33 @@ export function GroupPanel({ group }: { readonly group: Group }) {
             });
           }}
         >
-          <label className="text-xs opacity-70" htmlFor={titleId}>
-            Title
-          </label>
-          <div className="flex gap-1.5">
-            <input
-              autoComplete="off"
-              className={`${fieldClass} min-w-0 flex-1`}
-              data-group-title
-              disabled={!ops.canPropose}
-              id={titleId}
-              maxLength={maxGroupTitleLength}
-              onChange={(event) => {
-                clear();
-                setTyped(event.target.value);
-              }}
-              type="text"
-              value={title}
-            />
-            <button
-              className={controlClass}
-              data-group-rename
-              disabled={!canSubmit}
-              type="submit"
-            >
-              Rename
-            </button>
-          </div>
-          {failure === undefined ? null : (
-            <p
-              className="border-refused border-l-2 pl-2 text-xs"
-              data-group-failure
-              role="alert"
-            >
-              {failure}
-            </p>
-          )}
+          <LabelledField
+            disabled={!ops.canPropose}
+            failure={failure}
+            failureProps={{ "data-group-failure": "" }}
+            label="Title"
+          >
+            <div className="flex gap-1.5">
+              <Input
+                autoComplete="off"
+                data-group-title
+                maxLength={maxGroupTitleLength}
+                onValueChange={(next) => {
+                  clear();
+                  setTyped(next);
+                }}
+                value={title}
+              />
+              <button
+                className={controlClass}
+                data-group-rename
+                disabled={!canSubmit}
+                type="submit"
+              >
+                Rename
+              </button>
+            </div>
+          </LabelledField>
         </form>
       )}
       <div className="flex gap-1.5">

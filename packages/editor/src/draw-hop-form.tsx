@@ -1,13 +1,14 @@
 import { maxHopLabelLength, newHopId } from "@axonometric/contracts";
+import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Option, Result } from "effect";
-import { useEffect, useEffectEvent, useId, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import { ChoiceSelect } from "./choice-select.tsx";
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { useChangePreview } from "./drag-preview-context.ts";
-import { fieldClass } from "./field-class.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -33,7 +34,6 @@ export function DrawHopForm() {
   const [label, setLabel] = useState("");
   const [failure, setFailure] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
-  const id = useId();
 
   const draft = drafting?.draft;
 
@@ -149,28 +149,23 @@ export function DrawHopForm() {
         trigger={{ "data-draw": "to" }}
         value={draft.to ?? ""}
       />
-      <label className="flex flex-col gap-1" htmlFor={`${id}-label`}>
-        <span className="opacity-70">Label</span>
-        <input
+      <LabelledField
+        failure={failure}
+        failureProps={{ "data-draw-failure": "" }}
+        label="Label"
+      >
+        <Input
           autoComplete="off"
-          className={fieldClass}
           data-draw="label"
-          id={`${id}-label`}
           maxLength={maxHopLabelLength}
-          onChange={(event) => {
+          onValueChange={(next) => {
             setFailure(undefined);
-            setLabel(event.target.value);
+            setLabel(next);
           }}
           ref={focusOnOpen}
-          type="text"
           value={label}
         />
-      </label>
-      {failure === undefined ? null : (
-        <p className="border-refused border-l-2 pl-2" data-draw-failure>
-          {failure}
-        </p>
-      )}
+      </LabelledField>
       <div className="flex gap-1.5">
         <button
           className={controlClass}

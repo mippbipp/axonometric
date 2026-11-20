@@ -8,11 +8,12 @@ import type {
   CheckScope,
   GroupChange,
 } from "@axonometric/contracts";
+import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr } from "effect";
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { controlClass } from "./control-class.ts";
-import { fieldClass } from "./field-class.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { groupItem, structureItem } from "./proposal-items.ts";
 import { useGroupOps } from "./proposal-ops-context.ts";
 import { useSelection } from "./selection-context.ts";
@@ -31,7 +32,6 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
   const ops = useGroupOps();
   const { multiSelection } = useSelection();
   const byId = useStructuresById();
-  const titleId = useId();
   const { stop } = useWalkthrough();
   const [title, setTitle] = useState("");
   const { clear, failure, run, sending } = useSending();
@@ -106,22 +106,22 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
         }, onDone);
       }}
     >
-      <label className="text-xs opacity-70" htmlFor={titleId}>
-        Group title
-      </label>
-      <input
-        autoComplete="off"
-        className={fieldClass}
-        data-new-group-title
-        id={titleId}
-        maxLength={maxGroupTitleLength}
-        onChange={(event) => {
-          clear();
-          setTitle(event.target.value);
-        }}
-        type="text"
-        value={title}
-      />
+      <LabelledField
+        failure={failure}
+        failureProps={{ "data-new-group-failure": "" }}
+        label="Group title"
+      >
+        <Input
+          autoComplete="off"
+          data-new-group-title
+          maxLength={maxGroupTitleLength}
+          onValueChange={(next) => {
+            clear();
+            setTitle(next);
+          }}
+          value={title}
+        />
+      </LabelledField>
       <p className="text-xs opacity-70" data-new-group-members>
         {members.length === 0
           ? "No structures are selected, so the group starts empty."
@@ -130,15 +130,6 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
               ", "
             )} into it.`}
       </p>
-      {failure === undefined ? null : (
-        <p
-          className="border-refused border-l-2 pl-2 text-xs"
-          data-new-group-failure
-          role="alert"
-        >
-          {failure}
-        </p>
-      )}
       <div className="flex gap-1.5">
         <button
           className={controlClass}

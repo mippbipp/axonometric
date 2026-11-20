@@ -7,12 +7,13 @@ import {
 } from "@axonometric/contracts";
 import type { Flow } from "@axonometric/contracts";
 import { Checkbox } from "@axonometric/ui/components/checkbox";
+import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Option, Result } from "effect";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
-import { fieldClass } from "./field-class.ts";
+import { LabelledField } from "./labelled-field.tsx";
 import { SortableList } from "./sortable-list.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -25,8 +26,9 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
   const connections = useConnections();
   const { state } = useWalkthrough();
   const [name, setName] = useState<string | undefined>();
-  const [failure, setFailure] = useState<string | undefined>();
-  const id = useId();
+  const [refused, setRefused] = useState<
+    { readonly on: "name" | "hops"; readonly why: string } | undefined
+  >();
 
   if (connections === null) {
     return null;
@@ -43,17 +45,20 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
   );
 
   const send = (change: Parameters<typeof connections.proposeFlow>[0]) => {
+    const on = change.action === "rename" ? "name" : "hops";
     const refusal = connections.refusalOfFlow(change);
 
     if (refusal !== undefined) {
-      setFailure(refusal);
+      setRefused({ on, why: refusal });
 
       return;
     }
 
-    setFailure(undefined);
+    setRefused(undefined);
     connections.proposeFlow(change, (outcome) => {
-      setFailure(failureOf(outcome));
+      const why = failureOf(outcome);
+
+      setRefused(why === undefined ? undefined : { on, why });
     });
   };
 
@@ -63,27 +68,24 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
       data-flow-editor={flow.id}
     >
       <div className="flex items-end gap-1.5">
-        <label
-          className="flex min-w-0 flex-1 flex-col gap-1 text-xs"
-          htmlFor={`${id}-name`}
+        <LabelledField
+          className="min-w-0 flex-1 text-xs"
+          disabled={!canPropose}
+          failure={refused?.on === "name" ? refused.why : undefined}
+          failureProps={{ "data-flow-failure": "" }}
+          label={`Name${proposedHere ? " (proposed)" : ""}`}
         >
-          <span className="opacity-70">
-            Name{proposedHere ? " (proposed)" : ""}
-          </span>
-          <input
+          <Input
             autoComplete="off"
-            className={fieldClass}
             data-flow-name={flow.id}
-            disabled={!canPropose}
-            id={`${id}-name`}
             maxLength={maxFlowNameLength}
-            onChange={(event) => {
-              setName(event.target.value);
+            onValueChange={(next) => {
+              setRefused(undefined);
+              setName(next);
             }}
-            type="text"
             value={name ?? flow.name}
           />
-        </label>
+        </LabelledField>
         {name !== undefined &&
         name.trim() !== "" &&
         name.trim() !== flow.name ? (
@@ -117,11 +119,11 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
           prefix: `${index + 1}. `,
         }))}
       />
-      {failure === undefined ? null : (
+      {refused?.on === "hops" ? (
         <p className="border-refused border-l-2 pl-2 text-xs" data-flow-failure>
-          {failure}
+          {refused.why}
         </p>
-      )}
+      ) : null}
     </li>
   );
 }
@@ -132,7 +134,6 @@ function NewFlowForm() {
   const [name, setName] = useState("");
   const [picked, setPicked] = useState<ReadonlyArray<string>>([]);
   const [failure, setFailure] = useState<string | undefined>();
-  const id = useId();
 
   if (connections === null) {
     return null;
@@ -189,23 +190,23 @@ function NewFlowForm() {
         });
       }}
     >
-      <label className="flex flex-col gap-1" htmlFor={`${id}-name`}>
-        <span className="opacity-70">New flow</span>
-        <input
+      <LabelledField
+        disabled={!connections.canPropose}
+        failure={failure}
+        failureProps={{ "data-new-flow-failure": "" }}
+        label="New flow"
+      >
+        <Input
           autoComplete="off"
-          className={fieldClass}
           data-new-flow-name
-          disabled={!connections.canPropose}
-          id={`${id}-name`}
           maxLength={maxFlowNameLength}
-          onChange={(event) => {
+          onValueChange={(next) => {
             setFailure(undefined);
-            setName(event.target.value);
+            setName(next);
           }}
-          type="text"
           value={name}
         />
-      </label>
+      </LabelledField>
       <fieldset className="flex flex-col gap-1">
         <legend className="opacity-70">Starts with these hops</legend>
         <ul className="flex max-h-32 flex-col gap-1 overflow-y-auto">
@@ -230,11 +231,6 @@ function NewFlowForm() {
           ))}
         </ul>
       </fieldset>
-      {failure === undefined ? null : (
-        <p className="border-refused border-l-2 pl-2" data-new-flow-failure>
-          {failure}
-        </p>
-      )}
       <button
         className={`${controlClass} self-start`}
         data-new-flow-submit

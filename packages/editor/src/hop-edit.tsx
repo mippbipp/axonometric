@@ -1,14 +1,19 @@
 import { maxHopLabelLength } from "@axonometric/contracts";
 import type { HopChange } from "@axonometric/contracts";
+import { Input } from "@axonometric/ui/components/input";
 import { Option, Result } from "effect";
 import { useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
 import { controlClass } from "./control-class.ts";
 import { DeletionNotice } from "./deletion-notice.tsx";
-import { fieldClass } from "./field-class.ts";
 import { HopFlows } from "./hop-flows.tsx";
 import { useHopProposals } from "./hop-proposals.ts";
+import { LabelledField } from "./labelled-field.tsx";
+
+/** The box a refusal of `change` belongs to: the label's, or the panel's. */
+const refusalSite = (change: HopChange): "label" | "other" =>
+  change.action === "relabel" ? "label" : "other";
 
 /**
  * A hop's panel section for proposing changes: a label to relabel, the flows
@@ -26,7 +31,9 @@ export function HopEdit({
 }) {
   const connections = useConnections();
   const proposals = useHopProposals(id);
-  const [failure, setFailure] = useState<string | undefined>();
+  const [refused, setRefused] = useState<
+    { readonly on: "label" | "other"; readonly why: string } | undefined
+  >();
   const [typed, setTyped] = useState<string | undefined>();
 
   if (connections === null) {
@@ -41,13 +48,18 @@ export function HopEdit({
     const refusal = connections.refusalOfHop(change);
 
     if (refusal !== undefined) {
-      setFailure(refusal);
+      setRefused({ on: refusalSite(change), why: refusal });
 
       return;
     }
 
     connections.proposeHop(change, (outcome) => {
-      setFailure(Option.getOrUndefined(Result.getFailure(outcome)));
+      setRefused(
+        Option.map(Result.getFailure(outcome), (why) => ({
+          on: refusalSite(change),
+          why,
+        })).pipe(Option.getOrUndefined)
+      );
       after?.();
     });
   };
@@ -66,35 +78,33 @@ export function HopEdit({
           )}
         />
       ) : null}
-      <label
-        className="flex flex-col gap-1 text-xs"
-        htmlFor={`hop-label-${id}`}
+      <LabelledField
+        className="text-xs"
+        disabled={!connections.canPropose || deleted}
+        failure={refused?.on === "label" ? refused.why : undefined}
+        failureProps={{ "data-hop-change-failure": "" }}
+        label="Label"
       >
-        <span className="opacity-70">Label</span>
-        <input
+        <Input
           autoComplete="off"
-          className={fieldClass}
           data-hop-label-field
-          disabled={!connections.canPropose || deleted}
-          id={`hop-label-${id}`}
           maxLength={maxHopLabelLength}
-          onChange={(event) => {
-            setTyped(event.target.value);
-            setFailure(undefined);
+          onValueChange={(next) => {
+            setTyped(next);
+            setRefused(undefined);
           }}
-          type="text"
           value={typed ?? label}
         />
-      </label>
+      </LabelledField>
       <HopFlows hop={id} />
-      {failure === undefined ? null : (
+      {refused?.on === "other" ? (
         <p
           className="border-refused border-l-2 pl-2 text-xs"
           data-hop-change-failure
         >
-          {failure}
+          {refused.why}
         </p>
-      )}
+      ) : null}
       <div className="flex flex-wrap gap-1.5">
         {changed ? (
           <button
