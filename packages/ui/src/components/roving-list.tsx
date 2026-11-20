@@ -5,7 +5,6 @@ import {
   definePrimitive,
 } from "@ui-sdk/core";
 import { createParts } from "@ui-sdk/react/primitive";
-import { Array as Arr, Option } from "effect";
 import type { ComponentProps } from "react";
 
 interface RovingListOptions {
@@ -36,17 +35,36 @@ const rovingList = definePrimitive({
 
     const recovery = createFocusRecovery({
       fallback: (lost) => {
-        const remaining = new Map(
-          Arr.map(roving.items(), ({ el, key }) => [key, el] as const)
-        );
-        const at = order.indexOf(lost.key);
-        const after = order.slice(at + 1);
-        const before = Arr.reverse(order.slice(0, Math.max(at, 0)));
+        const remaining = new Map<string, HTMLElement>();
 
-        return Arr.findFirst(
-          Arr.map([lost.key, ...after, ...before], (key) => remaining.get(key)),
-          (el) => el !== undefined
-        ).pipe(Option.getOrNull);
+        for (const { el, key } of roving.items()) {
+          remaining.set(key, el);
+        }
+
+        const at = order.indexOf(lost.key);
+        const nearest = remaining.get(lost.key);
+
+        if (nearest !== undefined) {
+          return nearest;
+        }
+
+        for (let next = at + 1; next < order.length; next += 1) {
+          const el = remaining.get(order[next] ?? "");
+
+          if (el !== undefined) {
+            return el;
+          }
+        }
+
+        for (let previous = at - 1; previous >= 0; previous -= 1) {
+          const el = remaining.get(order[previous] ?? "");
+
+          if (el !== undefined) {
+            return el;
+          }
+        }
+
+        return null;
       },
     });
 
@@ -54,7 +72,10 @@ const rovingList = definePrimitive({
       recovery,
       roving,
       track: () => {
-        order = Arr.map(roving.items(), ({ key }) => key);
+        order = [];
+        for (const { key } of roving.items()) {
+          order.push(key);
+        }
       },
     };
   },
