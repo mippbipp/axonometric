@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/missing-pipeable-signature -- these take the path service and a path in hand, and are never piped. */
 import { historyFolder, revisionFileName } from "@axonometric/contracts";
 import type { MapFile } from "@axonometric/contracts";
 import { Array as Arr, Effect, Path, String as Str } from "effect";
@@ -56,6 +55,7 @@ export type PathParts = Pick<
   "basename" | "dirname" | "join" | "relative" | "sep"
 >;
 
+// oxlint-disable effecttsgo/missing-pipeable-signature -- callers pass a path object and a home folder together, and nothing pipes a home folder into a path object.
 /**
  * The paths of the map whose home folder is `home`, joined the way `path`
  * joins them. Tests pass `node:path`'s `posix` to get the `/`-separated names
@@ -85,14 +85,17 @@ export const makeHomePaths = (path: PathParts, home: string): HomePaths => {
     systemMdFile: path.join(output, "SYSTEM.md"),
   };
 };
+// oxlint-enable effecttsgo/missing-pipeable-signature
 
 /** The paths of the map whose home folder is `home`. */
 export const homePaths = (home: string) =>
   Path.Path.use((path) => Effect.succeed(makeHomePaths(path, home)));
 
+// oxlint-disable effecttsgo/missing-pipeable-signature -- callers have the path object and the file in hand, and nothing pipes a file name into a path object.
 /**
  * `file` with `/` between its parts on every platform. Reports and tests
  * name files this way, so one name holds on Windows too.
  */
 export const posixPath = (path: Pick<Path.Path, "sep">, file: string) =>
   Arr.join(Str.split(file, path.sep), "/");
+// oxlint-enable effecttsgo/missing-pipeable-signature
