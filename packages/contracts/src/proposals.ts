@@ -1138,12 +1138,15 @@ const shiftedRoutes = ({
   moves,
   id,
   by,
+  reason,
 }: {
   readonly by: ChangedBy;
   readonly hops: ReadonlyArray<HopEnds>;
   readonly id: (hop: string) => ChangeId;
   readonly layout: Layout;
   readonly moves: ReadonlyArray<StructureMove>;
+  /** The reason of the move the reroutes travel with, which they share. */
+  readonly reason: Reason | undefined;
 }): ReadonlyArray<LayoutChange> => {
   const deltas = new Map(
     Arr.flatMap(moves, ({ target, position }) => {
@@ -1178,18 +1181,18 @@ const shiftedRoutes = ({
         return [];
       }
 
-      return [
-        {
-          id: id(hop),
-          kind: "reroute",
-          by,
-          target: { kind: "hop", id: hop },
-          points: Arr.map(points, ({ x, y }) => ({
-            x: x + start.x,
-            y: y + start.y,
-          })),
-        },
-      ];
+      const carried: RerouteChange = {
+        id: id(hop),
+        kind: "reroute",
+        by,
+        target: { kind: "hop", id: hop },
+        points: Arr.map(points, ({ x, y }) => ({
+          x: x + start.x,
+          y: y + start.y,
+        })),
+      };
+
+      return [reason === undefined ? carried : { ...carried, reason }];
     }
   );
 };
@@ -1228,6 +1231,7 @@ export const withCarriedRoutes = ({
               id,
               layout: now,
               moves: change.moves,
+              reason: change.reason,
             })
           : [];
 

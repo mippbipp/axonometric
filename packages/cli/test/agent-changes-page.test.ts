@@ -10,6 +10,7 @@ import {
   assertTextIncludes,
   attributesOf,
   click,
+  goToChapter,
   waitFor,
   waitGone,
 } from "./browser.ts";
@@ -77,6 +78,21 @@ const tidyRow = [
     y: 3,
   }),
 ];
+
+/** The agent's reroute of h-store, down the server's right edge, for the same reason. */
+const storeRoute = {
+  by: "agent",
+  id: "tidy-store",
+  kind: "reroute",
+  points: [
+    { x: 10, y: 1 },
+    { x: 10.5, y: 1 },
+    { x: 10.5, y: 7 },
+    { x: 10, y: 7 },
+  ],
+  reason: "Tidy the loop",
+  target: { id: "h-store", kind: "hop" },
+};
 
 const openPending = Effect.fnUntraced(function* (
   files: ReturnType<typeof proposalsOf>,
@@ -272,12 +288,27 @@ describe("the agent's layout changes in the page", () => {
   );
 
   it.live(
-    "shows no Accept or Discard while Edit is off",
+    "marks the agent's changes on the map but shows no Accept or Discard while Edit is off",
     () =>
       Effect.gen(function* () {
-        const { page } = yield* openPending(proposalsOf(tidyRow), {
-          edit: false,
-        });
+        const { page } = yield* openPending(
+          proposalsOf([...tidyRow, storeRoute]),
+          { edit: false }
+        );
+
+        yield* assertAttribute(
+          page,
+          { name: "data-pending-by", selector: '[data-structure="page"]' },
+          "agent"
+        );
+
+        // h-store is drawn from the chapter that plays it.
+        yield* goToChapter(page, "c-save");
+        yield* assertAttribute(
+          page,
+          { name: "data-pending-by", selector: '[data-hop-pending="h-store"]' },
+          "agent"
+        );
 
         const buttons = [
           "[data-accept-group]",
@@ -287,7 +318,7 @@ describe("the agent's layout changes in the page", () => {
         ];
 
         yield* assertCount(page, "[data-pending-group]", 1);
-        yield* assertCount(page, "[data-pending-id]", 2);
+        yield* assertCount(page, "[data-pending-id]", 3);
 
         for (const selector of buttons) {
           yield* assertCount(page, selector, 0);

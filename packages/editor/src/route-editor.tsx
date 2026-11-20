@@ -16,8 +16,12 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
-import { agentHops, pendingHops, useEditing } from "./editing-context.ts";
-import type { Editing } from "./editing-context.ts";
+import {
+  agentHops,
+  pendingHops,
+  useEditing,
+  useEditingIgnoringEdit,
+} from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
@@ -136,14 +140,12 @@ function Segments({
   );
 }
 
-/** The route of each hop with a pending reroute, drawn in the pending blue. */
-function PendingRoutes({
-  editing,
-  hops,
-}: {
-  readonly editing: Editing | null;
-  readonly hops: ReadonlyArray<SceneHop>;
-}) {
+/**
+ * The route of each hop with a pending reroute, drawn in the pending blue
+ * whether or not Edit is on, as the structures' pending look is.
+ */
+function PendingRoutes({ hops }: { readonly hops: ReadonlyArray<SceneHop> }) {
+  const editing = useEditingIgnoringEdit();
   const rerouted = pendingHops(editing);
   const byAgent = agentHops(editing);
 
@@ -429,7 +431,7 @@ export function RouteEditor({
           strokeWidth={7}
         />
       ) : null}
-      <PendingRoutes editing={editing} hops={hops} />
+      <PendingRoutes hops={hops} />
       {live
         ? Arr.map(hops, (routed) => (
             <Segments

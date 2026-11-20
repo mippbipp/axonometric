@@ -474,6 +474,19 @@ describe("carrying routes along with a move", () => {
     ]);
   });
 
+  it("gives an override carried with the agent's move the move's author and reason", () => {
+    const [, carried] = withCarriedRoutes({
+      changes: [
+        { by: "agent", id: "m", kind: "move", moves: both, reason: "Tidy" },
+      ],
+      hops,
+      id: (hop) => `r-${hop}`,
+      layout: routed,
+    });
+
+    assert.deepInclude(carried, { by: "agent", reason: "Tidy" });
+  });
+
   it("leaves an override alone when only one end moves", () => {
     assert.deepStrictEqual(shift(both.slice(0, 1)), []);
   });
