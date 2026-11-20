@@ -22,10 +22,11 @@ import {
   FileSystem,
   Option,
   Order,
-  Path,
   Result,
   Schema,
 } from "effect";
+
+import type { HomePaths } from "./home-paths.ts";
 
 const encodeRevisionFile = Schema.encodeEffect(RevisionFile);
 
@@ -48,12 +49,11 @@ export const revisionFileOf = (n: number): MapFile =>
  * holds none. Anything in the folder that isn't named like a revision file,
  * such as a temporary file, is left out.
  */
-export const revisionsIn = Effect.fnUntraced(function* (home: string) {
+export const revisionsIn = Effect.fnUntraced(function* (paths: HomePaths) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
 
   const names = yield* fs
-    .readDirectory(path.join(home, historyFolder))
+    .readDirectory(paths.historyFolder)
     .pipe(
       Effect.catchReason("PlatformError", "NotFound", () =>
         Effect.succeed<ReadonlyArray<string>>([])
@@ -67,8 +67,8 @@ export const revisionsIn = Effect.fnUntraced(function* (home: string) {
 });
 
 /** The number the next revision takes: one more than the highest saved. */
-export const nextRevision = (home: string) =>
-  revisionsIn(home).pipe(Effect.map((saved) => (saved.at(-1) ?? 0) + 1));
+export const nextRevision = (paths: HomePaths) =>
+  revisionsIn(paths).pipe(Effect.map((saved) => (saved.at(-1) ?? 0) + 1));
 
 /**
  * Reads every file in `history/` and reports each one that isn't a valid
@@ -78,11 +78,10 @@ export const nextRevision = (home: string) =>
  * `serve`.
  */
 export const checkHistory = Effect.fnUntraced(function* (
-  home: string,
+  paths: HomePaths,
   strict: boolean
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const make = strict ? mapError : mapWarning;
   const suffix = strict ? "" : " This revision is ignored until it is fixed.";
 
@@ -90,7 +89,7 @@ export const checkHistory = Effect.fnUntraced(function* (
     const file = revisionFileOf(n);
 
     const text = yield* fs
-      .readFileString(path.join(home, historyFolder, revisionFileName(n)))
+      .readFileString(paths.revisionFile(n))
       .pipe(Effect.result);
 
     if (Result.isFailure(text)) {
@@ -127,7 +126,7 @@ export const checkHistory = Effect.fnUntraced(function* (
         ];
   });
 
-  const revisions = yield* revisionsIn(home);
+  const revisions = yield* revisionsIn(paths);
   const found = yield* Effect.forEach(revisions, check, { concurrency: 1 });
 
   return Arr.flatten(found);
@@ -139,14 +138,13 @@ export const checkHistory = Effect.fnUntraced(function* (
  * `revisionFileName` alone, so no text from a request reaches the file system.
  */
 export const readRevision = Effect.fnUntraced(function* (
-  home: string,
+  paths: HomePaths,
   n: number
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
 
   const text = yield* fs
-    .readFileString(path.join(home, historyFolder, revisionFileName(n)))
+    .readFileString(paths.revisionFile(n))
     .pipe(Effect.result);
 
   if (Result.isFailure(text)) {
@@ -169,10 +167,10 @@ export const readRevision = Effect.fnUntraced(function* (
  * until it does; `serve` and `check` report it.
  */
 export const loadHistory = Effect.fnUntraced(function* (
-  home: string,
+  paths: HomePaths,
   known: ReadonlyArray<HistoryEntry>
 ) {
-  const saved = yield* revisionsIn(home);
+  const saved = yield* revisionsIn(paths);
   const kept = new Map(Arr.map(known, (entry) => [entry.revision, entry]));
 
   const entries = yield* Effect.forEach(
@@ -181,7 +179,7 @@ export const loadHistory = Effect.fnUntraced(function* (
       const entry = kept.get(n);
 
       return entry === undefined
-        ? Effect.map(readRevision(home, n), Option.map(historyEntryOf))
+        ? Effect.map(readRevision(paths, n), Option.map(historyEntryOf))
         : Effect.succeedSome(entry);
     },
     { concurrency: 1 }
@@ -196,13 +194,13 @@ export const loadHistory = Effect.fnUntraced(function* (
  * one of them. With no revision, nothing is known, and those checks are
  * skipped for a batch frozen without its own lists.
  */
-export const acceptedIds = Effect.fnUntraced(function* (home: string) {
-  const saved = yield* revisionsIn(home);
+export const acceptedIds = Effect.fnUntraced(function* (paths: HomePaths) {
+  const saved = yield* revisionsIn(paths);
 
   const newest = saved.at(-1);
 
   const found =
-    newest === undefined ? undefined : yield* readRevision(home, newest);
+    newest === undefined ? undefined : yield* readRevision(paths, newest);
 
   const data =
     found === undefined || Option.isNone(found) ? undefined : found.value.data;

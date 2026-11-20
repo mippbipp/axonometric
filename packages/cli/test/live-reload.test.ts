@@ -16,7 +16,7 @@ import {
   waitTimeout,
 } from "./browser.ts";
 import { commitAll, git, initRepo, noGit } from "./git.ts";
-import { openReviewMap, runCli, startServe } from "./harness.ts";
+import { openReviewMap, runCli, startServe, mapIn, homeAt } from "./harness.ts";
 
 // These tests run a real serve in-process on a free port, open its page in
 // Chromium, change the map files on disk and check what the page shows.
@@ -32,8 +32,7 @@ const editData = Effect.fnUntraced(function* (
   edit: (text: string) => string
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, "data.mjs");
+  const file = homeAt(home).dataFile;
 
   const fileText = yield* fs.readFileString(file);
   yield* fs.writeFileString(file, edit(fileText));
@@ -105,7 +104,6 @@ describe("live reload", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { errors, home, page, root } = yield* servedReview;
         const scale = yield* settle(page);
 
@@ -120,12 +118,10 @@ describe("live reload", () => {
         );
 
         const systemMd = yield* fs.readFileString(
-          path.join(root, "review", "SYSTEM.md")
+          mapIn(root, "review").systemMdFile
         );
 
-        const html = yield* fs.readFileString(
-          path.join(root, "review", "review.html")
-        );
+        const html = yield* fs.readFileString(mapIn(root, "review").pageFile);
 
         yield* assertAttribute(
           page,
@@ -307,7 +303,7 @@ export default data;
         yield* waitFor(page, link);
 
         const systemMd = yield* fs.readFileString(
-          path.join(root, "review", "SYSTEM.md")
+          mapIn(root, "review").systemMdFile
         );
 
         const linkHref = yield* attributeOf(page, link, "href");

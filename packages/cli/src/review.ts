@@ -34,6 +34,7 @@ import {
 } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
+import { homePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
 import { loadReviewMap, structureNames } from "./review-shared.ts";
 
@@ -185,10 +186,11 @@ const listedBySection = (
 
 const review = Effect.fn("review")(function* (home: string, json: boolean) {
   const path = yield* Path.Path;
+  const paths = yield* homePaths(home);
 
-  yield* withLock(home, "review");
+  yield* withLock(paths, "review");
 
-  const map = yield* loadReviewMap(home, "review");
+  const map = yield* loadReviewMap(paths, "review");
 
   // A structure the engineer proposed has a name on the page and none in
   // data.mjs yet, so review names it from the proposed map.
@@ -201,6 +203,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
 
   const oldest = oldestOpenBatch(map.proposals);
   const absolute = path.resolve(home);
+  const absolutePaths = yield* homePaths(absolute);
 
   const items = Option.match(oldest, {
     onNone: () => [],
@@ -246,7 +249,7 @@ const review = Effect.fn("review")(function* (home: string, json: boolean) {
     Arr.join(
       [
         `Batch ${number}, frozen ${frozenAt}: ${items.length} ${noun}, ${undecided.length} without a verdict.`,
-        `Full details are in ${path.join(absolute, "proposals.json")}.`,
+        `Full details are in ${absolutePaths.proposalsFile}.`,
         engineerTextNotice,
         changedLayoutNotice,
         ...kindNotices(oldest.value.items),

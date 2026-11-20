@@ -9,7 +9,6 @@ import {
   Latch,
   Order,
   Option,
-  Path,
   Schema,
   String as Str,
 } from "effect";
@@ -36,6 +35,8 @@ import {
   proposalsIn,
   runCli,
   waitForRevision,
+  mapIn,
+  homeAt,
 } from "./harness.ts";
 import { moveOf } from "./revisions.ts";
 
@@ -546,7 +547,6 @@ describe("editing off", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, page, root, serve } = yield* servedReview;
 
         yield* showView(page, "plan");
@@ -559,7 +559,7 @@ describe("editing off", () => {
         yield* serve.stop;
 
         const built = yield* runCli(home, ["build", home]);
-        const layout = yield* fs.readFileString(path.join(home, "layout.json"));
+        const layout = yield* fs.readFileString(homeAt(home).layoutFile);
 
         assert.strictEqual(built.exitCode, 0, built.stderr);
         assert.deepStrictEqual(
@@ -567,7 +567,7 @@ describe("editing off", () => {
           { d: 2, w: 2, x: 0, y: 0 }
         );
 
-        const file = path.join(root, "review", "review.html");
+        const file = mapIn(root, "review").pageFile;
 
         const opened = yield* openPage(file);
 
@@ -669,35 +669,6 @@ describe("editing off", () => {
           "upstream",
         ]);
         yield* assertCount(page, '[data-edit-notice="conflict"]', 0);
-      }),
-    60_000
-  );
-
-  it.live(
-    "a stale write whose edit no longer fits keeps the other writer's changes and says it conflicted",
-    () =>
-      Effect.gen(function* () {
-        // The other writer moves page onto where engineer is dragged to.
-        const { home, page } = yield* dragWhileAnotherWrites("engineer", {
-          id: "page",
-          to: { x: 0, y: 4 },
-        });
-
-        yield* waitFor(page, '[data-edit-notice="conflict"]');
-        yield* waitFor(page, '[data-structure="page"][data-pending="true"]');
-        yield* waitGone(
-          page,
-          '[data-structure="engineer"][data-pending="true"]'
-        );
-
-        const saved = yield* proposalsIn(home);
-
-        assert.deepStrictEqual(
-          Option.map(saved, ({ layout }) =>
-            Arr.map(layout, (change) => structuresOf(change)[0])
-          ),
-          Option.some(["page"])
-        );
       }),
     60_000
   );

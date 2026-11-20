@@ -7,7 +7,6 @@ import {
   FileSystem,
   Option,
   Order,
-  Path,
   pipe,
   Record as Rec,
   Schema,
@@ -29,7 +28,7 @@ import {
 } from "./browser.ts";
 import { drawingReport, overlap } from "./drawing-report.ts";
 import type { DrawingReport } from "./drawing-report.ts";
-import { openReviewMap, readProposals, runCli } from "./harness.ts";
+import { openReviewMap, readProposals, runCli, homeAt } from "./harness.ts";
 
 // Seam 2, for the gaps: what a proposal adds to check's report, where the add
 // form puts a structure and where it sits on the page, dragging a structure
@@ -58,8 +57,7 @@ const chapter = Effect.fnUntraced(function* (page: Page, id: string) {
  */
 const savedProposals = Effect.fnUntraced(function* (home: string) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, "proposals.json");
+  const file = homeAt(home).proposalsFile;
 
   for (let tries = 0; tries < 150; tries++) {
     if (yield* fs.exists(file)) {
@@ -204,11 +202,8 @@ describe("the add form", () => {
       Effect.gen(function* () {
         const { home, page } = yield* served;
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
 
-        const layoutText = yield* fs.readFileString(
-          path.join(home, "layout.json")
-        );
+        const layoutText = yield* fs.readFileString(homeAt(home).layoutFile);
 
         const { structures } = yield* decodeLayout(layoutText);
 
@@ -517,8 +512,7 @@ describe("the open page after verdict changed --as and commit", () => {
 
         // The agent adds the structure under another id, says so, and commits.
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const dataFile = path.join(home, "data.mjs");
+        const { dataFile } = homeAt(home);
         const data = yield* fs.readFileString(dataFile);
 
         yield* fs.writeFileString(

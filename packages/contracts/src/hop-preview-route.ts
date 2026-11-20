@@ -1,16 +1,18 @@
-import {
-  drawnRoutes,
-  groundProjections,
-  routeRevealed,
-} from "@axonometric/contracts";
-import type {
-  GridPoint,
-  Layout,
-  MapData,
-  ScreenPoint,
-  View,
-} from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
+
+import { drawnRoutes } from "./fans.ts";
+import { rectPolygon, segmentsOf } from "./geometry.ts";
+import type { Segment } from "./geometry.ts";
+import type { ScreenPoint } from "./iso.ts";
+import type { GridPoint, Layout } from "./layout.ts";
+import type { MapData } from "./map-data.ts";
+import { gapAt } from "./note-markers.ts";
+import { groundProjections } from "./plan.ts";
+import type { View } from "./plan.ts";
+import { routeRevealed } from "./routing.ts";
+import { sceneFactsOf } from "./scene-facts.ts";
+import type { Scene } from "./scene.ts";
+import { grown, outsideHoles } from "./strike.ts";
 
 /** The id the preview's probe hop is routed under; no real hop has it. */
 const probeId = "__hop-preview__";
@@ -76,3 +78,25 @@ export const straightLine = ({
   start,
   groundProjections[view].toScreen(end),
 ];
+
+/**
+ * The pieces of the hop preview `line` that lie clear of text in `scene`: the
+ * line is cut where it meets a name tag, code chip or hop label, and keeps
+ * `gapAt(zoom)` from each. The scene placed no text around a hop that does
+ * not exist yet, so the cut is made here.
+ */
+export const previewPieces = ({
+  line,
+  scene,
+}: {
+  readonly line: ReadonlyArray<ScreenPoint>;
+  readonly scene: Scene;
+}): ReadonlyArray<Segment> => {
+  const { texts, zoom } = sceneFactsOf(scene);
+  const gap = gapAt(zoom);
+  const holes = Arr.map(texts, (rect) => rectPolygon(grown(rect, gap)));
+
+  return Arr.flatMap(segmentsOf(line), (segment) =>
+    outsideHoles(segment, holes, 1)
+  );
+};

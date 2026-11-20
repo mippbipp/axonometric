@@ -9,12 +9,12 @@ import {
   Console,
   Effect,
   Option,
-  Path,
   Record as Rec,
   Schema,
 } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/cli";
 
+import { homePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
 import { encodeLayout, loadMap } from "./map-files.ts";
 import { writeAll } from "./write-files.ts";
@@ -79,7 +79,7 @@ const layout = Effect.fn("layout")(function* (
   id: string,
   changes: Changes
 ) {
-  const path = yield* Path.Path;
+  const paths = yield* homePaths(home);
   const problems = invalidValues(changes);
 
   if (Arr.every(fields, (field) => Option.isNone(changes[field]))) {
@@ -92,12 +92,12 @@ const layout = Effect.fn("layout")(function* (
     return yield* reject(Arr.join(problems, " "));
   }
 
-  yield* withLock(home, "layout");
+  yield* withLock(paths, "layout");
 
   const map = yield* loadMap({
     command: "layout",
-    home,
-    output: path.dirname(home),
+    drawingWarnings: true,
+    paths,
   });
 
   const ids = Arr.map(map.data.structures, (structure) => structure.id);
@@ -162,7 +162,7 @@ const layout = Effect.fn("layout")(function* (
   yield* writeAll([
     {
       content: yield* encodeLayout(next),
-      file: path.join(home, "layout.json"),
+      file: paths.layoutFile,
     },
   ]);
 

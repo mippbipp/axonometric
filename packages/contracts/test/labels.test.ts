@@ -2,7 +2,6 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option, String as Str } from "effect";
 
 import {
-  checkLayout,
   groundProjections,
   routeRevealed,
   sceneClashes,
@@ -11,6 +10,7 @@ import {
 } from "../src/index.ts";
 import type { MapData, Layout, Scene, ScreenRect, View } from "../src/index.ts";
 import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
+import { layoutProblems } from "./layout-problems.ts";
 import {
   crossesPolygon,
   labelReach,
@@ -281,7 +281,7 @@ describe("hop labels", () => {
 
     const hiddenLabelWarnings = (data: MapData) =>
       Arr.filter(
-        Arr.map(checkLayout(data, layout), ({ message }) => message),
+        Arr.map(layoutProblems(data, layout), ({ message }) => message),
         Str.includes("has no clear spot beside its route")
       );
 

@@ -1,11 +1,10 @@
-import { marked, removedHopMark } from "@axonometric/contracts";
-import type { SceneHop, ScreenPoint } from "@axonometric/contracts";
+import { hopStrikeOf, marked, removedHopMark } from "@axonometric/contracts";
+import type { ScreenPoint } from "@axonometric/contracts";
 import { Array as Arr, Option } from "effect";
 import { use } from "react";
 
 import { useProposedHopsIgnoringEdit } from "./connections-context.ts";
 import { EditorSceneContext } from "./editor-view.ts";
-import { strikeOnRoute } from "./hop-strike.ts";
 
 /**
  * A hop proposed for deletion, struck: a small cross across its route, in the
@@ -14,24 +13,20 @@ import { strikeOnRoute } from "./hop-strike.ts";
  *
  * This is an editing layer: a file's drawing never includes it.
  */
-export function RemovedHopMarks({
-  hops,
-}: {
-  readonly hops: ReadonlyArray<SceneHop>;
-}) {
-  const { outlines, texts } = use(EditorSceneContext);
+export function RemovedHopMarks() {
+  const scene = use(EditorSceneContext);
   const proposed = useProposedHopsIgnoringEdit();
 
   const removes =
     proposed === undefined ? undefined : marked(proposed, removedHopMark);
 
-  if (removes === undefined || removes.size === 0) {
+  if (scene === null || removes === undefined || removes.size === 0) {
     return null;
   }
 
-  const struck = Arr.flatMap(hops, ({ hop, points }) =>
+  const struck = Arr.flatMap(scene.hops, ({ hop }) =>
     removes.has(hop.id)
-      ? Option.match(strikeOnRoute({ outlines, route: points, texts }), {
+      ? Option.match(hopStrikeOf({ hop: hop.id, scene }), {
           onNone: () => [],
           onSome: (strike) => [{ id: hop.id, strike }],
         })

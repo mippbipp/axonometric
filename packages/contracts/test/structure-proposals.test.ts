@@ -11,7 +11,6 @@ import {
 
 import {
   breakageOf,
-  checkLayout,
   commitBatch,
   defaultSpotFor,
   discardProposal,
@@ -39,6 +38,7 @@ import type {
   Proposals,
 } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
+import { layoutProblems } from "./layout-problems.ts";
 import { asOf, changedAs, changedOf, unwrap } from "./review-helpers.ts";
 
 // Seam 3: the pure functions behind structure proposals, with plain data.
@@ -1275,7 +1275,7 @@ const newWarnings = ({
   readonly mapData: MapData;
   readonly spot: Spot;
 }) => {
-  const before = new Set(Arr.map(checkLayout(mapData, map), lineOf));
+  const before = new Set(Arr.map(layoutProblems(mapData, map), lineOf));
 
   const shown = proposedMap({
     proposals: withStructures([
@@ -1290,7 +1290,7 @@ const newWarnings = ({
   });
 
   return Arr.filter(
-    Arr.map(checkLayout(shown.state.data, shown.state.layout), lineOf),
+    Arr.map(layoutProblems(shown.state.data, shown.state.layout), lineOf),
     (line) => !before.has(line)
   );
 };

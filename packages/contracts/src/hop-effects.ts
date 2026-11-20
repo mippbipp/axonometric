@@ -189,7 +189,10 @@ export const hopCandidateProblems = ({
   readonly before: Checkable;
   readonly change: HopChange;
 }): ReadonlyArray<DraggedProblem> =>
-  changedProblems(
-    { data: hopChangeToData(before.data, change), layout: before.layout },
-    before
-  );
+  changedProblems({
+    after: {
+      data: hopChangeToData(before.data, change),
+      layout: before.layout,
+    },
+    before,
+  });

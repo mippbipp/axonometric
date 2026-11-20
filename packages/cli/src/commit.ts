@@ -3,16 +3,18 @@ import type { Option } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
 import { commitOldestBatch } from "./commit-writes.ts";
+import { homePaths } from "./home-paths.ts";
 
 const commit = Effect.fn("commit")(function* (
   home: string,
   message: Option.Option<string>
 ) {
   const path = yield* Path.Path;
-  const done = yield* commitOldestBatch(home, message);
+  const paths = yield* homePaths(path.resolve(home));
+  const done = yield* commitOldestBatch(paths, message);
 
   return yield* Console.log(
-    `Committed batch ${done.batch.number} as revision ${done.revision}: ${done.accepted} accepted, ${done.changed} changed, ${done.rejected} rejected. Rebuilt ${path.dirname(path.resolve(home))}; open pages update on their own.`
+    `Committed batch ${done.batch.number} as revision ${done.revision}: ${done.accepted} accepted, ${done.changed} changed, ${done.rejected} rejected. Rebuilt ${paths.output}; open pages update on their own.`
   );
 });
 

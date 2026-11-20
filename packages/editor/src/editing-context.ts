@@ -1,5 +1,6 @@
 import { hopsOf, structuresOf } from "@axonometric/contracts";
 import type {
+  Arrangement,
   ChangeId,
   GridPoint,
   Layout,
@@ -11,7 +12,6 @@ import { Array as Arr } from "effect";
 import { createContext, use } from "react";
 
 import { useWhileEditOn } from "./edit-context.ts";
-import type { Arrangement } from "./served-store.ts";
 
 /**
  * Editing the layout, for a page that `serve` serves. The read-only file

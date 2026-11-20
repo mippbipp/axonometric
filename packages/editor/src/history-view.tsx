@@ -3,15 +3,8 @@ import {
   describeDifferences,
   diffMaps,
   ghostedMap,
-  newChangeId,
-  restoreChanges,
 } from "@axonometric/contracts";
-import type {
-  ChangeId,
-  CompareMarks,
-  MapState,
-  Revision,
-} from "@axonometric/contracts";
+import type { CompareMarks, MapState } from "@axonometric/contracts";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -19,41 +12,7 @@ import type { HistoryPanel } from "./history-context.ts";
 import { useOpenedRevision } from "./opened-revision.ts";
 import type { RestoreReport } from "./restore-dialog.tsx";
 import { RevisionBanner } from "./revision-banner.tsx";
-import type { Edit, ServedView, ServedStore } from "./served-store.ts";
-
-/**
- * The edit that restores `revision`: it puts every structure where the
- * revision has it. It is pure: the ids of the changes it adds come from
- * `base`, so running it again on a fresher list gives the same answer.
- */
-export const restoring = ({
-  accepted,
-  base,
-  revision,
-}: {
-  readonly accepted: MapState;
-  /** A fresh change id, which the added changes' ids are built from. */
-  readonly base: ChangeId;
-  readonly revision: Revision;
-}): Edit => {
-  const snapshot = { data: revision.data, layout: revision.layout };
-
-  return (changes, layout) => {
-    let used = 0;
-
-    return restoreChanges({
-      accepted: layout,
-      changes,
-      current: accepted.data,
-      newId: () => {
-        used += 1;
-
-        return `${base}-${used}`;
-      },
-      revision: snapshot,
-    });
-  };
-};
+import type { ServedView, ServedStore } from "./served-store.ts";
 
 /** What the page does with a past revision that is open. */
 export interface HistoryViewState {
@@ -163,9 +122,7 @@ export const useHistoryView = ({
       return;
     }
 
-    const refusal = store.restore(
-      restoring({ accepted: state, base: newChangeId(), revision: past })
-    );
+    const refusal = store.restore({ data: past.data, layout: past.layout });
 
     setReport({
       meaning: lines.meaning,

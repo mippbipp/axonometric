@@ -8,7 +8,6 @@ import {
   FileSystem,
   Option,
   Order,
-  Path,
   Schema,
   String as Str,
 } from "effect";
@@ -37,6 +36,9 @@ import {
   runCli,
   startServe,
   waitForRevision,
+  mapKeys,
+  mapIn,
+  homeAt,
 } from "./harness.ts";
 
 // Rerouting arrows and moving groups in a page that a real serve serves. The
@@ -826,9 +828,8 @@ describe("the warnings panel", () => {
     "stays inside the side panel, keeps the heading in view while a long list scrolls, and reaches its last line",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const files = yield* fullMap;
-        const layoutFile = "review/map/layout.json";
+        const { layoutFile } = mapKeys("review");
         const saved = yield* decodeLayout(files[layoutFile] ?? "");
 
         // Four structures stacked on one spot's tags give check many
@@ -845,7 +846,7 @@ describe("the warnings panel", () => {
           }),
         });
 
-        const home = path.join(root, "review", "map");
+        const { home } = mapIn(root, "review");
         const serve = yield* startServe(home, ["--port", "0"]);
         const { page } = yield* openUrl(serve.url);
 
@@ -1014,9 +1015,8 @@ describe("the panel for what a drag would leave", () => {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
         const { home, page } = yield* servedReview;
-        const layoutPath = path.join(home, "layout.json");
+        const layoutPath = homeAt(home).layoutFile;
 
         const layoutPathText = yield* fs.readFileString(layoutPath);
         const accepted = yield* decodeLayout(layoutPathText);
@@ -1118,7 +1118,7 @@ describe("the panel for what a drag would leave", () => {
             revision: resized.revision + 1,
           });
 
-          yield* fs.writeFileString(path.join(home, "proposals.json"), emptied);
+          yield* fs.writeFileString(homeAt(home).proposalsFile, emptied);
 
           const printed = yield* runCli(home, ["check", "--json", home]);
 
@@ -1293,97 +1293,6 @@ describe("a group drag's hops", () => {
 });
 
 describe("the warnings while dragging", () => {
-  it.live(
-    "show the same text that check prints for the layout the drop would leave",
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const { home, page } = yield* servedReview;
-
-        yield* showView(page, "plan");
-
-        const unit = yield* unitOnScreen(page, "plan");
-        const from = yield* middleOf(page, segmentSelector("h-store", 0));
-
-        // The review map is clean to begin with, as check says.
-        const before = yield* runCli(home, ["check", home]);
-
-        assert.include(before.stdout, ": 0 errors, 0 warnings.");
-
-        // Pull h-store's leg 4 units along x, to x 13, which runs under the
-        // pull request at x 12–14, y 6–7.5.
-        yield* pressAndMove(
-          page,
-          from,
-          screenDelta("plan", unit, { x: 4, y: 0 })
-        );
-        yield* waitForAllWarnings(page);
-
-        const shown = yield* warningsOf(page);
-
-        const dropped = yield* attributeOf(
-          page,
-          '[data-route-preview="h-store"]',
-          "data-refused"
-        );
-
-        assert.strictEqual(dropped, "false");
-        assert.isAbove(shown.length, 0);
-
-        yield* Effect.promise(() => page.mouse.up());
-
-        const saved = yield* waitForRevision(home, 1);
-        const [change] = reroutesIn(saved);
-
-        const layoutText = yield* fs.readFileString(
-          path.join(home, "layout.json")
-        );
-
-        // Write that route into layout.json, as accepting it would, and run
-        // check on the result.
-        const layout = yield* decodeLayout(layoutText);
-
-        const rerouted = yield* Schema.encodeEffect(LayoutFile)({
-          ...layout,
-          routes: { "h-store": change?.points ?? [] },
-        });
-
-        yield* fs.writeFileString(path.join(home, "layout.json"), rerouted);
-
-        const printed = yield* runCli(home, ["check", "--json", home]);
-
-        const report = yield* decodeReport(printed.stdout);
-
-        // The page shows check's problems as objects: the message, and the
-        // file and field under it. Same problems, not check's printed line.
-        assert.deepStrictEqual(
-          Arr.sort(Arr.map(shown, placed), Order.String),
-          Arr.sort(
-            Arr.map(report.warnings, (problem) =>
-              placed({
-                message: problem.message,
-                where:
-                  problem.path === ""
-                    ? problem.file
-                    : `${problem.file} ${problem.path}`,
-              })
-            ),
-            Order.String
-          )
-        );
-
-        for (const item of shown) {
-          assert.notInclude(item.message, "warning layout.json");
-        }
-
-        // Every warning check reports is listed, and the ones this drag made
-        // are marked: the review map had none before, so all are new.
-        assert.isTrue(Arr.every(shown, ({ isNew }) => isNew));
-      }).pipe(Effect.provide(NodeServices.layer)),
-    120_000
-  );
-
   it.live(
     "show nothing while a drag leaves the layout as clean as it was",
     () =>

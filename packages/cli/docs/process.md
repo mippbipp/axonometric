@@ -44,13 +44,13 @@ This writes a starter `data.mjs`. Replace its contents with the real system, fol
 axonometric build <home>
 ```
 
-`build` runs `check`, saves the positions it chose to `layout.json`, and writes `SYSTEM.md` and the page. Errors block it, and each one names the field and the fix. Fix every error in one pass, then build again.
+`build` checks the map for errors, saves the positions it chose to `layout.json`, and writes `SYSTEM.md` and the page. Errors block it, and each one names the field and the fix. Fix every error in one pass, then build again.
 
 Done when `build` succeeds.
 
 ## 5. Make it legible
 
-No text overlaps. `check` reports these, and each warning names the structures or hop involved:
+No text overlaps. `check` is where these are reported. `build` doesn't draw every chapter to look for them, so it prints none of them. Each warning names the structures or hop involved:
 
 - overlapping boxes
 - name tags on boxes

@@ -8,13 +8,14 @@ import {
   discardChange,
   groupMembers,
   hopLabelOf,
+  layoutAfterChanges,
   layoutRefusal,
   maxRoutePoints,
   maxRouteReach,
   placeRoute,
   placeStructure,
   Proposals,
-  shiftedRoutes,
+  withCarriedRoutes,
 } from "../src/index.ts";
 import type {
   Layout,
@@ -22,6 +23,7 @@ import type {
   MapData,
   Proposals as P,
   Structure,
+  StructureMove,
 } from "../src/index.ts";
 
 const accepted: Layout = {
@@ -436,13 +438,18 @@ describe("placing a route", () => {
 describe("carrying routes along with a move", () => {
   const routed: Layout = { ...accepted, routes: { "h-ab": via } };
 
-  const shift = (moves: Parameters<typeof shiftedRoutes>[0]["moves"]) =>
-    shiftedRoutes({
-      hops,
-      id: (hop) => `r-${hop}`,
-      layout: routed,
-      moves,
-    });
+  const shift = (moves: ReadonlyArray<StructureMove>) =>
+    Arr.drop(
+      withCarriedRoutes({
+        changes: Arr.isReadonlyArrayNonEmpty(moves)
+          ? [{ id: "m", kind: "move", moves }]
+          : [],
+        hops,
+        id: (hop) => `r-${hop}`,
+        layout: routed,
+      }),
+      1
+    );
 
   const both = [
     { position: at(0, 6), target: { id: "a", kind: "structure" as const } },
@@ -471,6 +478,58 @@ describe("carrying routes along with a move", () => {
         { position: at(4, 8), target: { id: "b", kind: "structure" } },
       ]),
       []
+    );
+  });
+
+  it("takes each move from the layout the changes before it leave", () => {
+    const back = Arr.map(both, ({ position, target }) => ({
+      position: at(position.x, position.y - 6),
+      target,
+    }));
+
+    const carried = withCarriedRoutes({
+      changes: [
+        { id: "out", kind: "move", moves: both },
+        { id: "back", kind: "move", moves: back },
+      ],
+      hops,
+      id: (hop) => `r-${hop}`,
+      layout: routed,
+    });
+
+    assert.deepStrictEqual(
+      Arr.map(carried, ({ id }) => id),
+      ["out", "r-h-ab", "back", "r-h-ab"]
+    );
+    assert.deepStrictEqual(
+      layoutAfterChanges({ changes: carried.slice(0, 2), hops, layout: routed })
+        .routes?.["h-ab"],
+      Arr.map(via, ({ x, y }) => ({ x, y: y + 6 }))
+    );
+    assert.deepStrictEqual(
+      layoutAfterChanges({
+        changes: [
+          { id: "out", kind: "move", moves: both },
+          { id: "back", kind: "move", moves: back },
+        ],
+        hops,
+        layout: routed,
+      }).routes,
+      routed.routes
+    );
+  });
+
+  it("gives the layout after the changes with the override shifted", () => {
+    const shown = layoutAfterChanges({
+      changes: [{ id: "m", kind: "move", moves: both }],
+      hops,
+      layout: routed,
+    });
+
+    assert.deepStrictEqual(shown.structures.a, { d: 2, w: 2, x: 0, y: 6 });
+    assert.deepStrictEqual(
+      shown.routes?.["h-ab"],
+      Arr.map(via, ({ x, y }) => ({ x, y: y + 6 }))
     );
   });
 

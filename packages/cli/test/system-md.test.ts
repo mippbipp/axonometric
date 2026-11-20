@@ -9,7 +9,7 @@ import {
 } from "effect";
 
 import { fullMap, minimalMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
 /** The full map's SYSTEM.md text, built once for the tests that share it. */
 class BuiltSystemMd extends Context.Service<BuiltSystemMd, string>()(
@@ -20,11 +20,11 @@ class BuiltSystemMd extends Context.Service<BuiltSystemMd, string>()(
     Effect.gen(function* () {
       const fullMapFiles = yield* fullMap;
       const home = yield* makeHome(fullMapFiles);
-      const result = yield* runCli(home, ["build", `${home}/review/map`]);
+      const result = yield* runCli(home, ["build", mapIn(home, "review").home]);
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
 
-      return result.files["review/SYSTEM.md"] ?? "";
+      return result.files[mapKeys("review").systemMdFile] ?? "";
     })
   );
 }
@@ -196,8 +196,11 @@ layer(BuiltSystemMd.layer)("the SYSTEM.md build writes", (it) => {
     Effect.gen(function* () {
       const minimalMapFiles = yield* minimalMap;
       const home = yield* makeHome(minimalMapFiles);
-      const result = yield* runCli(home, ["build", `${home}/pipeline/map`]);
-      const systemMd = result.files["pipeline/SYSTEM.md"] ?? "";
+      const result = yield* runCli(home, [
+        "build",
+        mapIn(home, "pipeline").home,
+      ]);
+      const systemMd = result.files[mapKeys("pipeline").systemMdFile] ?? "";
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       assert.deepStrictEqual(

@@ -1,5 +1,6 @@
 import {
   placeMovingNameTags,
+  settledScale,
   textSizes,
   textZoomOf,
 } from "@axonometric/contracts";
@@ -27,7 +28,6 @@ import {
   pointAlong,
 } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
-import { settledScale } from "./settled-scale.ts";
 
 /** Height of a step's box above the ground, in screen units. */
 const boxHeight = 34;

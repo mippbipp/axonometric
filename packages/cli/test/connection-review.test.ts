@@ -8,10 +8,10 @@ import type {
 } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Path, Schema, String as Str } from "effect";
+import { Array as Arr, Effect, Schema, String as Str } from "effect";
 
 import { fullMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, homeKeys, mapIn } from "./harness.ts";
 
 // Seam 1: a hop and a flow proposed on the page, through freeze, verdict and
 // commit. The review map has the hops h-note, h-save, h-store and h-pr, and
@@ -51,13 +51,14 @@ const homeWith = (
   dataEdit: (data: string) => string = (data) => data
 ) =>
   Effect.gen(function* () {
-    const path = yield* Path.Path;
     const files = yield* fullMap;
 
     const root = yield* makeHome({
       ...files,
-      "review/map/data.mjs": dataEdit(files["review/map/data.mjs"] ?? ""),
-      "review/map/proposals.json": fileOf({
+      [mapKeys("review").dataFile]: dataEdit(
+        files[mapKeys("review").dataFile] ?? ""
+      ),
+      [mapKeys("review").proposalsFile]: fileOf({
         batches: [batchOf(items, verdicts)],
         format: 1,
         layout: [],
@@ -66,7 +67,7 @@ const homeWith = (
       }),
     });
 
-    return { home: path.join(root, "review", "map"), root };
+    return { home: mapIn(root, "review").home, root };
   }).pipe(Effect.provide(NodeServices.layer));
 
 /** data.mjs with a hop `id` from the engineer to the server, played by the first chapter's neighbour. */
@@ -140,7 +141,7 @@ describe("a hop drawn on the page, through freeze, verdict and commit", () => {
         );
 
         const proposals = yield* decodeProposals(
-          committed.files["proposals.json"] ?? ""
+          committed.files[homeKeys.proposalsFile] ?? ""
         );
 
         assert.isDefined(proposals.batches?.[0]?.committed);

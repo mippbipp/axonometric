@@ -1,74 +1,64 @@
 /* oxlint-disable perfectionist/sort-objects -- schema and table field order sets encoded JSON key order, message order and listing order, so it stays as written */
 import {
-  appendMove,
-  applyLayoutChanges,
   Accepted,
   AcceptWrite,
-  discardChange,
-  emptyHistory,
-  emptyProposals,
   ChapterWrite,
+  emptyProposals,
   FlowWrite,
-  FreezeWrite,
   FreezeAnswer,
-  frozenRefusal,
+  FreezeWrite,
   GroupWrite,
   HopWrite,
-  frozenWriteRefusal,
+  isQueued,
+  ItemEdit,
   ItemWrite,
   LayoutChangeRefused,
-  layoutRefusal,
-  layoutUnderProposals,
   MapFilesUnreadable,
   newChangeId,
   NoteAdd,
-  ItemEdit,
   QuestionAdd,
   SuggestionAdd,
   AnswerAdd,
-  observeFile,
   PendingLayoutWrite,
-  placeRoute,
-  placeStructure,
+  pendingRefusal,
+  pendingView,
   ProposalRefused,
   Proposals,
   proposedMap,
   proposeFlow,
   proposeHop,
   proposeStructure,
-  pushStep,
-  redoStep,
   ReopenWrite,
-  sameLayoutChanges,
   ServedPage,
-  shiftedRoutes,
   servedPageElementId,
   ServerEvent,
   StaleProposals,
+  startPending,
+  stepPending,
   StructureWrite,
-  undoStep,
-  wroteFile,
 } from "@axonometric/contracts";
 import type {
+  Arrangement,
   ChangeId,
   ChapterChange,
   FlowChange,
   GroupChange,
-  HopChange,
-  NoteTarget,
-  TextField,
   GridPoint,
-  HopEnds,
   HistoryList,
-  Layout,
-  LayoutChange,
+  HopChange,
+  LayoutWrite,
   MapProblem,
+  MapSnapshot,
   MapState,
+  NoteTarget,
+  PendingEdit,
+  PendingInput,
+  PendingView,
   Placement,
-  Placements,
   StructureChange,
   StructureMove,
-  UndoHistory,
+  TextField,
+  WriteAnswer,
 } from "@axonometric/contracts";
 import {
   Array as Arr,
@@ -181,58 +171,23 @@ export interface Rejection {
   readonly summary: string;
 }
 
-/** Why the last edit didn't save, as the page tells the engineer. */
-export interface EditNotice {
-  readonly kind: "conflict" | "refused" | "failed" | "info";
-  readonly message: string;
-}
-
 /** The revision an accept just saved, shown for a few seconds. */
 export interface SavedRevision {
   readonly message: string;
   readonly revision: number;
 }
 
-/** What a served page shows. */
-export interface ServedView {
-  /**
-   * Whether an accept is waiting for the saves before it, or on its way to
-   * the server. Edits are refused meanwhile, because they'd be saved over
-   * the changes the accept takes.
-   */
-  readonly accepting: boolean;
-  /** Whether there is an undone edit to redo. */
-  readonly canRedo: boolean;
-  /** Whether there is an edit to undo. */
-  readonly canUndo: boolean;
+/** What a served page shows: the pending changes, and how the server is. */
+export interface ServedView extends PendingView {
   /** The revisions, newest first, or null until the server has said. */
   readonly history: HistoryList | null;
-  /** Why the last edit didn't save, until the next edit. */
-  readonly notice: EditNotice | null;
-  /**
-   * The pending layout changes the page shows: those saved, with any edit
-   * still on its way to the server.
-   */
-  readonly pending: ReadonlyArray<LayoutChange>;
   /** Why the map files on disk don't make a map, or null when they do. */
   readonly rejection: Rejection | null;
   /** The revision the last accept saved, for a few seconds. */
   readonly saved: SavedRevision | null;
-  /** The last good map, with what `proposals.json` held at last word. */
-  readonly state: MapState;
   /** Whether the page has lost its connection to the server. */
   readonly stopped: boolean;
 }
-
-/**
- * An edit to the pending layout changes: the list it makes from `changes`,
- * given the accepted layout. It must give the same answer each time it's
- * run, ids included, so it can be run again on a fresher list.
- */
-export type Edit = (
-  changes: ReadonlyArray<LayoutChange>,
-  accepted: Layout
-) => ReadonlyArray<LayoutChange>;
 
 export interface ServedStore {
   /**
@@ -302,12 +257,12 @@ export interface ServedStore {
     points: ReadonlyArray<GridPoint> | null
   ) => string | undefined;
   /**
-   * Runs `edit` on the pending changes as any other edit: shown at once,
-   * saved, and one undo step. An edit that changes nothing is not a step.
-   * Returns why it was refused, or `undefined`. A refusal is not a notice:
-   * the caller says it.
+   * Puts every structure where `revision` has it, as any other edit: shown
+   * at once, saved, and one undo step. An edit that changes nothing is not a
+   * step. Returns why it was refused, or `undefined`. A refusal is not a
+   * notice: the caller says it.
    */
-  readonly restore: (edit: Edit) => string | undefined;
+  readonly restore: (revision: MapSnapshot) => string | undefined;
   /** Notes and the review loop. */
   readonly review: ReviewOps;
   /** Proposals to add, delete or change structures. */
@@ -489,130 +444,6 @@ export interface ReviewOps {
   ) => void;
 }
 
-/** The moves that arrange a set, given where its structures sit now. */
-export type Arrangement = (
-  placements: Placements
-) => ReadonlyArray<StructureMove>;
-
-/** The pending lists the session has been through, for undo and redo. */
-type History = UndoHistory<ReadonlyArray<LayoutChange>>;
-
-/** How many edits the session remembers. */
-const historyDepth = 100;
-
-/**
- * The edits run again on a fresh list: the list so far, or why one failed.
- * `trail` holds the list before each edit that went through.
- */
-interface Rerun {
-  readonly layout: ReadonlyArray<LayoutChange>;
-  readonly reason: Option.Option<string>;
-  readonly trail: ReadonlyArray<ReadonlyArray<LayoutChange>>;
-}
-
-/**
- * An edit that arranges a set as one change, with its id fixed up front. The
- * moves are planned from the list the edit runs on.
- */
-const arranging = (
-  plan: Arrangement,
-  hops: ReadonlyArray<HopEnds> = []
-): Edit => {
-  const id = newChangeId();
-  const reroutes = new Map<string, ChangeId>();
-
-  const rerouteId = (hop: string) => {
-    const made = reroutes.get(hop) ?? newChangeId();
-
-    reroutes.set(hop, made);
-
-    return made;
-  };
-
-  return (changes, accepted) => {
-    const shown = applyLayoutChanges(accepted, changes);
-    const moves = plan(shown.structures);
-
-    // A route override travels with its hop when both ends move together.
-    const carried = shiftedRoutes({
-      layout: shown,
-      hops,
-      moves,
-      id: rerouteId,
-    });
-
-    return Arr.reduce(
-      carried,
-      appendMove({ changes, id, moves }),
-      (so, change) =>
-        change.kind === "reroute"
-          ? placeRoute({
-              changes: so,
-              accepted,
-              hop: change.target.id,
-              points: change.points,
-              newId: () => change.id,
-            })
-          : so
-    );
-  };
-};
-
-/** An edit that gives `hop` the route override `points`, or none. */
-const rerouting = (
-  hop: string,
-  points: ReadonlyArray<GridPoint> | null
-): Edit => {
-  const id = newChangeId();
-
-  return (changes, accepted) =>
-    placeRoute({ changes, accepted, hop, points, newId: () => id });
-};
-
-const moving = (
-  moves: ReadonlyArray<StructureMove>,
-  hops: ReadonlyArray<HopEnds>
-): Edit => arranging(() => moves, hops);
-
-/** An edit that puts `id` at `next`, with change ids fixed up front. */
-const placing = (id: string, next: Placement): Edit => {
-  const ids = [newChangeId(), newChangeId()];
-
-  return (changes, accepted) => {
-    let used = 0;
-
-    return placeStructure({
-      changes,
-      accepted,
-      id,
-      next,
-      newId: () => {
-        const made = ids[used] ?? newChangeId();
-
-        used += 1;
-
-        return made;
-      },
-    });
-  };
-};
-
-/** A write waiting its turn to be sent. */
-interface Queued {
-  /** The file revision the write is based on, fixed when it was made. */
-  readonly base: number;
-  /** The edit, to run again on a fresher list. */
-  readonly edit: Edit;
-  /** The history as it was before this write, to put back if it fails. */
-  readonly historyBefore: History;
-  /** The whole list the write sets. */
-  readonly layout: ReadonlyArray<LayoutChange>;
-  /** Whether this is the write sent again after a conflict. */
-  readonly retried: boolean;
-  /** Whether this is an undo or redo, whose list is never rebuilt. */
-  readonly step: boolean;
-}
-
 /** How long to wait before reconnecting a stream the browser gave up on. */
 const retryDelay = Duration.seconds(2);
 
@@ -630,63 +461,11 @@ export interface ServedSource {
 const proposalsOf = (state: MapState): Proposals =>
   state.proposals ?? emptyProposals;
 
-/**
- * `incoming`, unless the file it carries is older than the one `current`
- * holds. Events and answers can arrive out of order, and an older file must
- * not take the page back.
- */
-const withFreshestProposals = (
-  current: MapState,
-  incoming: MapState
-): MapState =>
-  proposalsOf(incoming).revision < proposalsOf(current).revision
-    ? { ...incoming, proposals: proposalsOf(current) }
-    : incoming;
-
-const savedLayout = (state: MapState) => proposalsOf(state).layout;
-
-const clearedHistoryMessage =
-  "Accepted changes can't be undone. Edits before this point are cleared from undo.";
-
-const stepConflictMessage =
-  "The pending changes changed on disk since your last edit, so nothing was undone or redone. The page shows what's saved, and your steps are kept. Make an edit to start the history again.";
-
-const conflictMessage = (reason: Option.Option<string>) =>
-  `The pending changes changed on disk before this edit saved. The page now shows what's saved. ${Option.match(
-    reason,
-    {
-      onNone: () => "Make the edit again.",
-      onSome: (why) => `Your edit no longer fits: ${why}`,
-    }
-  )}`;
-
 const problemsText = (problems: ReadonlyArray<MapProblem>) =>
   Arr.join(
     Arr.map(problems, (problem) => problem.message),
     " "
   );
-
-/** What the page says when the server refuses a write. */
-const noticeOf = Match.type<typeof WriteRefusal.Type>().pipe(
-  Match.tagsExhaustive({
-    ProposalRefused: ({ reason }): EditNotice => ({
-      kind: "refused",
-      message: reason,
-    }),
-    StaleProposals: (): EditNotice => ({
-      kind: "conflict",
-      message: conflictMessage(Option.none()),
-    }),
-    LayoutChangeRefused: ({ reason }): EditNotice => ({
-      kind: "refused",
-      message: reason,
-    }),
-    MapFilesUnreadable: ({ problems }): EditNotice => ({
-      kind: "failed",
-      message: `The edit wasn't saved: ${problemsText(problems)}`,
-    }),
-  })
-);
 
 /** Where an item of this kind is added, on the page `served` describes. */
 const urlOfNew = (served: ServedPage, item: NewItem): string =>
@@ -734,10 +513,63 @@ const encodeNew = (item: NewItem, id: ChangeId, base: number) =>
   );
 
 /**
+ * Sends a write with `body` to `url`, and reads the answer as `decode` and
+ * `decodeRefusal` say.
+ */
+const send = <A>({
+  body,
+  decode,
+  method,
+  url,
+}: {
+  readonly body: Effect.Effect<string>;
+  readonly decode: (text: string) => Option.Option<A>;
+  readonly method: "put" | "post";
+  readonly url: string;
+}): Effect.Effect<WriteAnswer<A>, never, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const text = yield* body;
+    const client = yield* HttpClient.HttpClient;
+
+    const response = yield* client.execute(
+      HttpClientRequest[method](new URL(url, document.baseURI)).pipe(
+        HttpClientRequest.bodyText(text, "application/json")
+      )
+    );
+
+    const { status } = response;
+    const answer = yield* response.text;
+
+    if (status >= 200 && status < 300) {
+      return Option.match(decode(answer), {
+        onNone: (): WriteAnswer<A> => ({ _tag: "Garbled" }),
+        onSome: (value): WriteAnswer<A> => ({ _tag: "Saved", value }),
+      });
+    }
+
+    return Option.match(decodeRefusal(answer), {
+      onNone: (): WriteAnswer<A> => ({
+        _tag: "Unexplained",
+        status,
+        text: answer,
+      }),
+      onSome: (refusal): WriteAnswer<A> => ({ _tag: "Refused", refusal }),
+    });
+  }).pipe(
+    Effect.catchTag("HttpClientError", () =>
+      Effect.succeed<WriteAnswer<A>>({ _tag: "Unreachable" })
+    )
+  );
+
+/**
  * Connects to the server's events and keeps the latest map. The browser
  * reconnects a dropped stream on its own. It gives up instead after an error
  * response, such as a reverse proxy's 502 while the server is down, and then
  * the store starts a new stream.
+ *
+ * The pending layout changes, undo and redo are a `PendingSession` from
+ * contracts. The store feeds it what the engineer does and what the server
+ * says, and sends the writes it asks for, one at a time.
  */
 export const connectServed = ({
   initial,
@@ -745,122 +577,62 @@ export const connectServed = ({
 }: ServedSource): ServedStore => {
   const listeners = new Set<() => void>();
 
+  let session = startPending({ initial, newId: newChangeId });
+
   let view: ServedView = {
-    state: initial,
+    ...pendingView(session),
     rejection: null,
     stopped: false,
-    pending: savedLayout(initial),
-    notice: null,
-    canUndo: false,
-    canRedo: false,
     saved: null,
     history: null,
-    accepting: false,
   };
 
-  let history: History = emptyHistory(proposalsOf(initial).revision);
-
-  /** The accepted layout's revision. Accepting a change moves it. */
-  let acceptedRevision = initial.layout.revision;
-
-  /**
-   * The layout open changes land on: the accepted layout with the items
-   * frozen in batches applied and the structures the engineer proposed
-   * placed, as the server checks them. Frozen changes aren't accepted yet,
-   * but they stay drawn and can't be edited.
-   */
-  const baseLayout = () =>
-    layoutUnderProposals({
-      data: view.state.data,
-      layout: view.state.layout,
-      proposals: proposalsOf(view.state),
-    });
-
-  /**
-   * The writes asked for and not answered, oldest first. Each holds the
-   * file revision it was made against and the list it makes, both fixed
-   * when the edit was made, so a write can't be sent against a revision it
-   * wasn't built on.
-   */
-  let queue: ReadonlyArray<Queued> = [];
-
-  /** Goes up when the queue is dropped, so waiting writes know to skip. */
-  let generation = 0;
-
-  /**
-   * Shows `next`. Whenever it brings a map, however it got here, the history
-   * hears of it: accepting a change makes the accepted layout's revision go
-   * up, undo doesn't reach past that, and the engineer is told.
-   */
-  const update = (next: Partial<ServedView>) => {
-    const { state } = next;
-
-    const observed =
-      state === undefined
-        ? undefined
-        : observeFile({
-            history,
-            fileRevision: proposalsOf(state).revision,
-            acceptedChanged: state.layout.revision !== acceptedRevision,
-          });
-
-    if (state !== undefined) {
-      ({ revision: acceptedRevision } = state.layout);
-    }
-
-    if (observed !== undefined) {
-      ({ history } = observed);
-    }
-
-    const told: EditNotice | null =
-      observed?.cleared === true && (next.notice ?? null) === null
-        ? { kind: "info", message: clearedHistoryMessage }
-        : next.notice === undefined
-          ? view.notice
-          : next.notice;
-
-    view = {
-      ...view,
-      ...next,
-      notice: told,
-      canUndo: history.past.length > 0,
-      canRedo: history.future.length > 0,
-    };
+  const publish = (next: Partial<ServedView> = {}) => {
+    view = { ...view, ...next, ...pendingView(session) };
 
     for (const listener of listeners) {
       listener();
     }
   };
 
-  /**
-   * The pending changes to show once `state` is the latest word: what it
-   * saved, unless a write is still on its way.
-   */
-  const pendingAfter = (state: MapState) =>
-    queue.length === 0 ? savedLayout(state) : view.pending;
+  /** Writes go to the server one at a time, in the order they were made. */
+  const writeTurn = Semaphore.makeUnsafe(1);
 
-  /** Whether someone else has written the file since the session's last write. */
-  const outdated = () =>
-    queue.length === 0 && proposalsOf(view.state).revision !== history.revision;
+  /** Steps the session, publishes it, and starts the writes it asks for. */
+  const dispatch = (input: PendingInput, next: Partial<ServedView> = {}) => {
+    const stepped = stepPending(session, input);
+    const changed = stepped.session !== session;
 
-  /** Takes the map the server holds. */
-  const receive = (incoming: MapState) => {
-    const state = withFreshestProposals(view.state, incoming);
+    ({ session } = stepped);
 
-    update({
-      state,
-      rejection: null,
-      stopped: false,
-      pending: pendingAfter(state),
-    });
+    if (changed || Object.keys(next).length > 0) {
+      publish(next);
+    }
+
+    for (const write of stepped.writes) {
+      Effect.runFork(
+        writeTurn
+          .withPermit(
+            Match.valueTags(write, {
+              Layout: ({ write: layout }) => sendLayout(layout),
+              Accept: ({ ids, message }) => sendAccept(ids, message),
+            })
+          )
+          .pipe(Effect.provide(FetchHttpClient.layer))
+      );
+    }
+
+    return stepped.refusal;
   };
+
+  const apply = (edit: PendingEdit) => dispatch({ _tag: "Apply", edit });
 
   const connect = () => {
     const source = new EventSource(new URL(served.events, document.baseURI));
 
     source.addEventListener("open", () => {
       if (view.stopped) {
-        update({ stopped: false });
+        publish({ stopped: false });
       }
     });
 
@@ -873,21 +645,19 @@ export const connectServed = ({
 
       ServerEvent.match(decoded.success, {
         MapUpdated: ({ state }) => {
-          receive(state);
+          dispatch(
+            { _tag: "Receive", state },
+            { rejection: null, stopped: false }
+          );
         },
         MapRejected: ({ summary, problems }) => {
-          update({ rejection: { summary, problems }, stopped: false });
+          publish({ rejection: { summary, problems }, stopped: false });
         },
         PendingUpdated: ({ proposals }) => {
-          const state = withFreshestProposals(view.state, {
-            ...view.state,
-            proposals,
-          });
-
-          update({ state, pending: pendingAfter(state) });
+          dispatch({ _tag: "ReceiveProposals", proposals });
         },
         HistoryUpdated: ({ history: revisions }) => {
-          update({ history: revisions });
+          publish({ history: revisions });
         },
         Heartbeat: () => {},
       });
@@ -895,7 +665,7 @@ export const connectServed = ({
 
     source.addEventListener("error", () => {
       if (!view.stopped) {
-        update({ stopped: true });
+        publish({ stopped: true });
       }
 
       if (source.readyState === EventSource.CLOSED) {
@@ -909,372 +679,33 @@ export const connectServed = ({
     Effect.andThen(Effect.sync(connect))
   );
 
-  /** Writes go to the server one at a time, in the order they were made. */
-  const writeTurn = Semaphore.makeUnsafe(1);
-
-  /**
-   * Shows `proposals` as what's saved, with `notice`, and drops the queue.
-   * The history becomes `restore`, when given.
-   */
-  const adopt = (
-    proposals: Proposals,
-    notice: EditNotice | null,
-    restore: History = history
-  ) => {
-    generation += 1;
-    queue = [];
-    history = restore;
-    update({
-      state: { ...view.state, proposals },
-      pending: proposals.layout,
-      notice,
-    });
-  };
-
-  const failed = (message: string, restore: History) => {
-    generation += 1;
-    queue = [];
-    history = restore;
-    update({
-      pending: savedLayout(view.state),
-      notice: { kind: "failed", message },
-    });
-  };
-
-  /** The write at the front of the queue went through. */
-  const confirm = (sent: Queued, proposals: Proposals) => {
-    queue = Arr.filter(queue, (queued) => queued !== sent);
-
-    // The events stream can deliver a later revision before this answer
-    // does. The older file must not replace it.
-    const state = withFreshestProposals(view.state, {
-      ...view.state,
-      proposals,
-    });
-
-    // The notice stays: a late answer to an earlier write must not wipe a
-    // refusal shown since. The next edit clears it.
-    history = wroteFile({ history, revision: proposals.revision });
-    update({ state, pending: pendingAfter(state) });
-  };
-
-  /**
-   * The server's file moved on before a write was sent. Drops the queue, and
-   * runs the edits again on `fresh`, the file as it is now. When they all
-   * still fit, they're sent once more, based on `fresh`'s revision; when one
-   * doesn't, or that write is refused too, the page keeps `fresh` and says
-   * the edit conflicted.
-   */
-  const recover = (stale: Queued, fresh: Proposals) => {
-    const edits = Arr.map(queue, ({ edit }) => edit);
-    const accepted = baseLayout();
-
-    const start: Rerun = {
-      layout: fresh.layout,
-      reason: Option.none(),
-      trail: [],
-    };
-
-    const rerun = Arr.reduce(edits, start, (so, edit): Rerun => {
-      if (Option.isSome(so.reason)) {
-        return so;
-      }
-
-      const after = edit(so.layout, accepted);
-
-      const refusal = layoutRefusal({
-        accepted,
-        before: so.layout,
-        after,
-        hops: view.state.data.hops,
-      });
-
-      return Option.isNone(refusal)
-        ? {
-            layout: after,
-            reason: Option.none(),
-            trail: [...so.trail, so.layout],
-          }
-        : { ...so, reason: refusal };
-    });
-
-    // An undo or redo sets a whole earlier list, so run on a fresher file it
-    // would erase what the other writer did. It never reruns.
-    if (Arr.some(queue, ({ step }) => step)) {
-      adopt(
-        fresh,
-        { kind: "conflict", message: stepConflictMessage },
-        stale.historyBefore
-      );
-
-      return;
-    }
-
-    if (stale.retried || Option.isSome(rerun.reason)) {
-      adopt(
-        fresh,
-        { kind: "conflict", message: conflictMessage(rerun.reason) },
-        stale.historyBefore
-      );
-
-      return;
-    }
-
-    // The steps before the other writer's change no longer fit the file, so
-    // the history starts again from the file as it is now.
-    const rebuilt: History = {
-      past: rerun.trail.slice(-historyDepth),
-      future: [],
-      revision: fresh.revision,
-    };
-
-    adopt(fresh, null, rebuilt);
-    enqueue({
-      edit: (changes) => changes,
-      base: fresh.revision,
-      layout: rerun.layout,
-      retried: true,
-      step: false,
-      historyBefore: rebuilt,
-    });
-  };
-
-  const send = (sent: Queued, turn: number) =>
+  const sendLayout = (write: LayoutWrite) =>
     Effect.gen(function* () {
-      if (turn !== generation) {
+      // A failure or conflict dropped the queue while this one waited.
+      if (!isQueued(session, write)) {
         return;
       }
 
-      const body = yield* encodeWrite({
-        baseFileRevision: sent.base,
-        layout: sent.layout,
-      }).pipe(Effect.orDie);
-
-      const client = yield* HttpClient.HttpClient;
-
-      const response = yield* client.execute(
-        HttpClientRequest.put(
-          new URL(served.pendingLayout, document.baseURI)
-        ).pipe(HttpClientRequest.bodyText(body, "application/json"))
-      );
-
-      const { status } = response;
-      const ok = status >= 200 && status < 300;
-      const text = yield* response.text;
-
-      if (ok) {
-        Option.match(decodeSaved(text), {
-          onNone: () => {
-            failed(
-              "The server's answer didn't make sense. Reload the page.",
-              sent.historyBefore
-            );
-          },
-          onSome: (proposals) => {
-            confirm(sent, proposals);
-          },
-        });
-
-        return;
-      }
-
-      Option.match(decodeRefusal(text), {
-        onNone: () => {
-          failed(
-            `The server refused the edit (${status}): ${text.trim()}`,
-            sent.historyBefore
-          );
-        },
-        onSome: (refusal) => {
-          if (Predicate.isTagged(refusal, "StaleProposals")) {
-            recover(sent, refusal.proposals);
-          } else if (Predicate.isTagged(refusal, "LayoutChangeRefused")) {
-            adopt(refusal.proposals, noticeOf(refusal), sent.historyBefore);
-          } else {
-            failed(noticeOf(refusal).message, sent.historyBefore);
-          }
-        },
+      const answer = yield* send({
+        body: encodeWrite({
+          baseFileRevision: write.base,
+          layout: write.layout,
+        }).pipe(Effect.orDie),
+        decode: decodeSaved,
+        method: "put",
+        url: served.pendingLayout,
       });
-    }).pipe(
-      Effect.catchTag("HttpClientError", () =>
-        Effect.sync(() => {
-          failed(
-            "The edit wasn't saved: the server didn't answer. It may have stopped.",
-            sent.historyBefore
-          );
-        })
-      )
-    );
 
-  /** Queues a write and starts it when the ones before it are done. */
-  const enqueue = (queued: Queued) => {
-    queue = [...queue, queued];
-    update({ pending: queued.layout });
-
-    const turn = generation;
-
-    Effect.runFork(
-      writeTurn
-        .withPermit(send(queued, turn))
-        .pipe(Effect.provide(FetchHttpClient.layer))
-    );
-  };
-
-  /**
-   * Why the list `after` is refused: the server's check of a frozen item
-   * first, so every edit that would touch one gets the server's answer
-   * before it is sent, then the layout's.
-   */
-  const refusalOfList = ({
-    accepted,
-    before,
-    after,
-  }: {
-    readonly accepted: Layout;
-    readonly after: ReadonlyArray<LayoutChange>;
-    readonly before: ReadonlyArray<LayoutChange>;
-  }) =>
-    Option.orElse(
-      frozenWriteRefusal({ proposals: proposalsOf(view.state), after }),
-      () =>
-        layoutRefusal({
-          accepted,
-          before,
-          after,
-          hops: view.state.data.hops,
-        })
-    );
-
-  /** Why `edit` would be refused, and the list it would make. */
-  const tryEdit = (edit: Edit) => {
-    const accepted = baseLayout();
-    const before = view.pending;
-    const after = edit(before, accepted);
-
-    return { after, refusal: refusalOfList({ accepted, before, after }) };
-  };
-
-  /** Queues the write of list `after`, based on the revision the queue ends at. */
-  const submit = ({
-    edit,
-    after,
-    step,
-    next,
-  }: {
-    readonly after: ReadonlyArray<LayoutChange>;
-    readonly edit: Edit;
-    /** The history once this write is made. */
-    readonly next: History;
-    readonly step: boolean;
-  }) => {
-    // The next write is built on the one before it, so it's based on the
-    // revision that one will make. If someone else writes first, the server
-    // refuses it as stale instead.
-    const last = queue.at(-1);
-    const historyBefore = history;
-
-    history = next;
-    enqueue({
-      edit,
-      base:
-        last === undefined ? proposalsOf(view.state).revision : last.base + 1,
-      layout: after,
-      retried: false,
-      step,
-      historyBefore,
+      dispatch({ _tag: "Written", answer, write });
     });
-    update({ notice: null });
-  };
-
-  /** Runs `edit`, queues its write, or returns why it was refused. */
-  const run = (edit: Edit): string | undefined => {
-    if (view.accepting) {
-      return "Accepting the pending changes. Make this edit once that's saved.";
-    }
-
-    const { after, refusal } = tryEdit(edit);
-
-    if (Option.isSome(refusal)) {
-      return refusal.value;
-    }
-
-    // An edit after someone else's write starts the history again: the
-    // earlier steps would put back a list that lacks their change.
-    const next = sameLayoutChanges(view.pending, after)
-      ? history
-      : pushStep({
-          history,
-          before: view.pending,
-          fileRevision:
-            queue.length === 0
-              ? proposalsOf(view.state).revision
-              : history.revision,
-          cap: historyDepth,
-        });
-
-    submit({ edit, after, step: false, next });
-
-    return undefined;
-  };
-
-  /** Runs `edit`, and shows a refusal as a notice too. */
-  const runShowingRefusal = (edit: Edit): string | undefined => {
-    // An arrangement that changes nothing, such as aligning what is already
-    // aligned, is neither an edit nor an undo step.
-    const refusal = sameLayoutChanges(view.pending, tryEdit(edit).after)
-      ? undefined
-      : run(edit);
-
-    if (refusal !== undefined) {
-      update({ notice: { kind: "refused", message: refusal } });
-    }
-
-    return refusal;
-  };
-
-  /** Undoes or redoes one step: sets the pending list to the one it holds. */
-  const stepThrough = (direction: "undo" | "redo") => {
-    const before = view.pending;
-
-    const stepped = (direction === "undo" ? undoStep : redoStep)({
-      history,
-      current: before,
-    });
-
-    if (Option.isNone(stepped)) {
-      return;
-    }
-
-    if (outdated()) {
-      update({ notice: { kind: "conflict", message: stepConflictMessage } });
-
-      return;
-    }
-
-    const { target, history: next } = stepped.value;
-
-    const refusal = refusalOfList({
-      accepted: baseLayout(),
-      before,
-      after: target,
-    });
-
-    if (Option.isSome(refusal)) {
-      update({ notice: { kind: "refused", message: refusal.value } });
-
-      return;
-    }
-
-    submit({ edit: () => target, after: target, step: true, next });
-  };
 
   /** Shows the revision just saved, and takes it down after a few seconds. */
   const showSaved = (saved: SavedRevision) => {
-    update({ saved });
+    publish({ saved });
 
     const takeDown = Effect.sync(() => {
       if (view.saved === saved) {
-        update({ saved: null });
+        publish({ saved: null });
       }
     });
 
@@ -1290,84 +721,28 @@ export const connectServed = ({
       const text = message.trim();
 
       const base = {
-        baseFileRevision: proposalsOf(view.state).revision,
+        baseFileRevision: proposalsOf(session.state).revision,
         changeIds: ids,
       };
 
-      const body = yield* encodeAccept(
-        text === "" ? base : { ...base, message: text }
-      ).pipe(Effect.orDie);
-
-      const client = yield* HttpClient.HttpClient;
-
-      const response = yield* client.execute(
-        HttpClientRequest.post(new URL(served.accept, document.baseURI)).pipe(
-          HttpClientRequest.bodyText(body, "application/json")
-        )
-      );
-
-      const { status } = response;
-      const answer = yield* response.text;
-
-      if (status >= 200 && status < 300) {
-        Option.match(decodeAccepted(answer), {
-          onNone: () => {
-            failed(
-              "The server's answer didn't make sense. Reload the page.",
-              history
-            );
-          },
-          onSome: ({ revision, message: saved, layout, proposals }) => {
-            update({
-              state: { ...view.state, layout, proposals },
-              pending: proposals.layout,
-              // The events stream may already have said the history was
-              // cleared by this accept. That notice stays.
-              notice: view.notice?.kind === "info" ? view.notice : null,
-            });
-            showSaved({ revision, message: saved });
-          },
-        });
-
-        return;
-      }
-
-      Option.match(decodeRefusal(answer), {
-        onNone: () => {
-          failed(
-            `The server refused the accept (${status}): ${answer.trim()}`,
-            history
-          );
-        },
-        onSome: (refusal) => {
-          if (Predicate.isTagged(refusal, "StaleProposals")) {
-            adopt(refusal.proposals, {
-              kind: "conflict",
-              message:
-                "The pending changes changed on disk before this accept. The page now shows what's pending. Accept again if the changes are still right.",
-            });
-          } else if (Predicate.isTagged(refusal, "LayoutChangeRefused")) {
-            adopt(refusal.proposals, noticeOf(refusal));
-          } else {
-            failed(noticeOf(refusal).message, history);
-          }
-        },
+      const answer = yield* send({
+        body: encodeAccept(
+          text === "" ? base : { ...base, message: text }
+        ).pipe(Effect.orDie),
+        decode: decodeAccepted,
+        method: "post",
+        url: served.accept,
       });
-    }).pipe(
-      Effect.catchTag("HttpClientError", () =>
-        Effect.sync(() => {
-          failed(
-            "The accept wasn't saved: the server didn't answer. It may have stopped.",
-            history
-          );
-        })
-      ),
-      Effect.ensuring(
-        Effect.sync(() => {
-          update({ accepting: false });
-        })
-      )
-    );
+
+      dispatch({ _tag: "Accepted", answer });
+
+      if (Predicate.isTagged(answer, "Saved")) {
+        showSaved({
+          revision: answer.value.revision,
+          message: answer.value.message,
+        });
+      }
+    });
 
   /** One review write: where it goes, and how to send it and read the answer. */
   interface ReviewCall<A> {
@@ -1383,15 +758,7 @@ export const connectServed = ({
 
   /** Shows `proposals` as what the server holds, after one of our writes. */
   const adoptReviewed = (proposals: Proposals, endsUndo: boolean) => {
-    const state = withFreshestProposals(view.state, {
-      ...view.state,
-      proposals,
-    });
-
-    history = endsUndo
-      ? emptyHistory(proposalsOf(state).revision)
-      : wroteFile({ history, revision: proposalsOf(state).revision });
-    update({ state, pending: pendingAfter(state), notice: null });
+    dispatch({ _tag: "Reviewed", endsUndo, proposals });
   };
 
   /** The most times a review write is sent again on a fresher file. */
@@ -1811,43 +1178,26 @@ export const connectServed = ({
       };
     },
     getSnapshot: () => view,
-    refusalOf: (id, next) =>
-      Option.getOrUndefined(tryEdit(placing(id, next)).refusal),
-    place: (id, next) => run(placing(id, next)),
-    discard: (id) =>
-      Option.getOrUndefined(frozenRefusal(proposalsOf(view.state), id)) ??
-      run((changes) => discardChange(changes, id)),
+    refusalOf: (structure, next) =>
+      pendingRefusal(session, { _tag: "Place", next, structure }),
+    place: (structure, next) => apply({ _tag: "Place", next, structure }),
+    discard: (change) => apply({ _tag: "Discard", change }),
     refusalOfMoves: (moves) =>
-      Option.getOrUndefined(
-        tryEdit(moving(moves, view.state.data.hops)).refusal
-      ),
-    arrange: (plan) => runShowingRefusal(arranging(plan, view.state.data.hops)),
-    reroute: (hop, points) => runShowingRefusal(rerouting(hop, points)),
+      pendingRefusal(session, { _tag: "Arrange", plan: () => moves }),
+    arrange: (plan) => apply({ _tag: "Arrange", plan }),
+    reroute: (hop, points) => apply({ _tag: "Reroute", hop, points }),
     refusalOfReroute: (hop, points) =>
-      Option.getOrUndefined(tryEdit(rerouting(hop, points)).refusal),
+      pendingRefusal(session, { _tag: "Reroute", hop, points }),
     undo: () => {
-      stepThrough("undo");
+      dispatch({ _tag: "Undo" });
     },
     redo: () => {
-      stepThrough("redo");
+      dispatch({ _tag: "Redo" });
     },
-    restore: (edit) =>
-      sameLayoutChanges(view.pending, tryEdit(edit).after)
-        ? undefined
-        : run(edit),
+    restore: (revision) => apply({ _tag: "Restore", revision }),
     loadRevision: (n) => loadRevision({ served, n }),
     accept: (ids, message) => {
-      if (view.accepting || view.pending.length === 0) {
-        return;
-      }
-
-      update({ accepting: true, notice: null });
-
-      Effect.runFork(
-        writeTurn
-          .withPermit(sendAccept(ids, message))
-          .pipe(Effect.provide(FetchHttpClient.layer))
-      );
+      dispatch({ _tag: "Accept", ids, message });
     },
   };
 };

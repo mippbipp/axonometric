@@ -1,8 +1,10 @@
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- the path helpers below are plain functions that tests call in object keys and module-level constants, outside any Effect, so they need a path object that needs no layer to build
+import platformPath from "node:path";
+
 import {
   emptyProposals,
   MapState,
   ProposalsFile,
-  ServerState,
 } from "@axonometric/contracts";
 import type { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
@@ -11,7 +13,7 @@ import {
   Array as Arr,
   Cause,
   Console,
-  Duration,
+  Deferred,
   Effect,
   Exit,
   Fiber,
@@ -21,7 +23,6 @@ import {
   Path,
   Record as Rec,
   Runtime,
-  Schedule,
   Schema,
   Stdio,
   String as Str,
@@ -29,6 +30,7 @@ import {
 import { TerminalCapabilities } from "effect/cli";
 
 import { run } from "../src/cli.ts";
+import { makeHomePaths, mapFileNames, posixPath } from "../src/home-paths.ts";
 import { openPage, openUrl } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 
@@ -52,7 +54,7 @@ const plainTerminal: TerminalCapabilities.TerminalCapabilities = {
 const formatLine = (args: ReadonlyArray<unknown>) =>
   `${Arr.join(Arr.map(args, String), " ")}\n`;
 
-const captureConsole = () => {
+const captureConsole = (onStdout?: (line: string) => void) => {
   const output = { stderr: "", stdout: "" };
 
   const console: Console.Console = {
@@ -61,7 +63,10 @@ const captureConsole = () => {
       output.stderr += formatLine(args);
     },
     log: (...args: ReadonlyArray<unknown>) => {
-      output.stdout += formatLine(args);
+      const line = formatLine(args);
+
+      output.stdout += line;
+      onStdout?.(line);
     },
   };
 
@@ -89,7 +94,7 @@ const readFiles = Effect.fnUntraced(function* (home: string) {
     );
 
     if (Option.isSome(content)) {
-      files[Arr.join(Str.split(entry, path.sep), "/")] = content.value;
+      files[posixPath(path, entry)] = content.value;
     }
   }
 
@@ -112,13 +117,17 @@ export const readIn = Effect.fnUntraced(function* (root: string, file: string) {
 }, Effect.provide(NodeServices.layer));
 
 /**
- * Creates a temporary home folder holding `files`, removed when the test's
- * scope closes.
+ * Creates a temporary folder holding `files`, removed when the test's scope
+ * closes. Its path is the real one: the native `realpath` resolves a Windows
+ * runner's short `RUNNER~1` name to the long one that the CLI reports.
  */
 export const makeHome = Effect.fnUntraced(function* (files: HomeFiles) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const home = yield* fs.makeTempDirectoryScoped({ prefix: "axonometric-" });
+  const temporary = yield* fs.makeTempDirectoryScoped({
+    prefix: "axonometric-",
+  });
+  const home = yield* fs.realPath(temporary);
 
   for (const [name, content = ""] of Rec.toEntries(files)) {
     const absolute = path.join(home, ...Str.split(name, "/"));
@@ -131,8 +140,11 @@ export const makeHome = Effect.fnUntraced(function* (files: HomeFiles) {
 }, Effect.provide(NodeServices.layer));
 
 /** Runs the CLI in-process with `args`, writing its output to `output`. */
-const runCaptured = (args: ReadonlyArray<string>) => {
-  const { console, output } = captureConsole();
+const runCaptured = (
+  args: ReadonlyArray<string>,
+  onStdout?: (line: string) => void
+) => {
+  const { console, output } = captureConsole(onStdout);
   const stdio = Stdio.layerTest({ args: Effect.succeed(args) });
 
   const exit = run(args).pipe(
@@ -181,83 +193,47 @@ export const runCli = Effect.fnUntraced(function* (
   } satisfies CliResult;
 }, Effect.provide(NodeServices.layer));
 
-/** Where `serve` records itself for the map in `home`. */
-const serverStateFile = (home: string) =>
-  Path.Path.use((path) =>
-    Effect.succeed(path.join(home, ".axonometric", "server.json"))
-  );
-
-const decodeServerState = Schema.decodeUnknownOption(
-  Schema.fromJsonString(ServerState)
-);
-
-/** How often, and for how long, to look for a starting server. */
-const serverWait = Schedule.spaced(Duration.millis(25)).pipe(
-  Schedule.upTo({ duration: Duration.seconds(15) })
-);
-
-/**
- * Waits until `.axonometric/server.json` in `home` names a server other than
- * `previous`, and returns it.
- */
-const waitForServer = Effect.fnUntraced(function* (
-  home: string,
-  previous?: string
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const file = yield* serverStateFile(home);
-
-  const read = fs.readFileString(file).pipe(
-    Effect.map(decodeServerState),
-    Effect.orElseSucceed(() => Option.none<ServerState>()),
-    Effect.flatMap((state) =>
-      Option.isSome(state) && state.value.since !== previous
-        ? Effect.succeed(state.value)
-        : Effect.fail("no server yet")
-    )
-  );
-
-  return yield* read.pipe(Effect.retry(serverWait), Effect.orDie);
-});
-
 /** A `serve` running in-process, started by `startServe`. */
 export interface RunningServe {
   /** What it has printed so far. */
   readonly output: { readonly stderr: string; readonly stdout: string };
-  readonly state: ServerState;
   /** Stops it as Ctrl-C would, by interrupting it. */
   readonly stop: Effect.Effect<void>;
+  /** The URL on its "Serving <home> at <url>." line. */
   readonly url: string;
 }
 
+const servingLine = /^Serving .* at (?<url>\S+)\. Press Ctrl-C to stop\.$/mu;
+
 /**
  * Starts `axonometric serve` in-process with `args`, whose home folder is
- * `home`, and returns once it has written its state file. It stops when the
- * test's scope closes, if not before.
+ * `home`, and returns once it prints "Serving <home> at <url>.". Fails with
+ * what it printed if it exits first. It stops when the test's scope closes,
+ * if not before.
  */
 export const startServe = Effect.fnUntraced(function* (
   home: string,
   args: ReadonlyArray<string>
 ) {
-  const fs = yield* FileSystem.FileSystem;
-  const file = yield* serverStateFile(home);
+  const ready = yield* Deferred.make<string>();
 
-  const previous = yield* fs.readFileString(file).pipe(
-    Effect.map(decodeServerState),
-    Effect.map(Option.map((state) => state.since)),
-    Effect.orElseSucceed(() => Option.none<string>())
-  );
+  const { exit, output } = runCaptured(["serve", home, ...args], () => {
+    const url = servingLine.exec(output.stdout)?.groups?.url;
 
-  const { exit, output } = runCaptured(["serve", home, ...args]);
+    if (url !== undefined) {
+      Deferred.doneUnsafe(ready, Effect.succeed(url));
+    }
+  });
+
   const fiber = yield* Effect.forkScoped(exit);
 
-  const state = yield* Effect.raceFirst(
-    waitForServer(home, Option.getOrUndefined(previous)),
+  const url = yield* Effect.raceFirst(
+    Deferred.await(ready),
     Fiber.join(fiber).pipe(
       Effect.flatMap((ended) =>
         Effect.die(
           new Error(
-            `serve exited before it started, with exit code ${exitCodeOf(ended)}.\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}\nexit:\n${Exit.isFailure(ended) ? Cause.pretty(ended.cause) : "success"}`
+            `serve exited before it printed its URL, with exit code ${exitCodeOf(ended)}.\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}\nexit:\n${Exit.isFailure(ended) ? Cause.pretty(ended.cause) : "success"}`
           )
         )
       )
@@ -266,11 +242,38 @@ export const startServe = Effect.fnUntraced(function* (
 
   return {
     output,
-    state,
     stop: Fiber.interrupt(fiber),
-    url: state.url,
+    url,
   } satisfies RunningServe;
-}, Effect.provide(NodeServices.layer));
+});
+
+/** The paths of the map whose home folder is `home`, for the running platform. */
+export const homeAt = (home: string) => makeHomePaths(platformPath, home);
+
+/**
+ * The paths of the map whose home folder is `<system>/map/` in `root`, a
+ * folder `makeHome` made.
+ */
+export const mapIn = (root: string, system: string) =>
+  homeAt(platformPath.join(root, system, "map"));
+
+/** The paths of the map whose home folder is `home`, joined with `/`. */
+export const posixHomeAt = (home: string) =>
+  makeHomePaths(platformPath.posix, home);
+
+/**
+ * The names `runCli` lists the files of a root folder by, for the map whose
+ * home folder is `<system>/map/`: `mapKeys("pipeline").layoutFile` is
+ * `pipeline/map/layout.json`.
+ */
+export const mapKeys = (system: string) =>
+  makeHomePaths(platformPath.posix, `${system}/map`);
+
+/**
+ * The names `runCli` lists the files by when it's given the home folder
+ * itself: `homeKeys.proposalsFile` is `proposals.json`.
+ */
+export const homeKeys = makeHomePaths(platformPath.posix, "");
 
 /**
  * Builds the map in `files` whose home folder is `<system>/map/`, then opens
@@ -280,18 +283,20 @@ export const buildAndOpen = Effect.fnUntraced(function* (
   files: HomeFiles,
   system: string
 ) {
-  const path = yield* Path.Path;
-  const home = yield* makeHome(files);
-  const result = yield* runCli(home, ["build", path.join(home, system, "map")]);
+  const root = yield* makeHome(files);
+  const map = mapIn(root, system);
+  const result = yield* runCli(root, ["build", map.home]);
 
   assert.strictEqual(result.exitCode, 0, result.stderr);
 
-  return yield* openPage(path.join(home, system, `${system}.html`));
+  return yield* openPage(map.pageFile);
 }, Effect.provide(NodeServices.layer));
 
 /** The text of proposals.json in `home`, or "" when there's no file. */
 export const proposalsText = (home: string) =>
-  readHome(home).pipe(Effect.map((files) => files["proposals.json"] ?? ""));
+  readHome(home).pipe(
+    Effect.map((files) => files[mapFileNames.proposals] ?? "")
+  );
 
 /**
  * The review map in `fullMap`, with `files` added, served on a free port
@@ -302,12 +307,11 @@ export const serveReviewMap = Effect.fnUntraced(function* (
   files: HomeFiles,
   args: ReadonlyArray<string>
 ) {
-  const path = yield* Path.Path;
   const root = yield* makeHome({ ...(yield* fullMap), ...files });
-  const home = path.join(root, "review", "map");
-  const serve = yield* startServe(home, ["--port", "0", ...args]);
+  const paths = mapIn(root, "review");
+  const serve = yield* startServe(paths.home, ["--port", "0", ...args]);
 
-  return { home, root, serve, url: serve.url };
+  return { home: paths.home, paths, root, serve, url: serve.url };
 }, Effect.provide(NodeServices.layer));
 
 /**
@@ -333,8 +337,7 @@ const decodeProposals = Schema.decodeUnknownEffect(ProposalsFile);
 /** What proposals.json in `home` holds, or nothing when there's no file. */
 export const proposalsIn = Effect.fnUntraced(function* (home: string) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const file = path.join(home, "proposals.json");
+  const { proposalsFile: file } = homeAt(home);
 
   if (!(yield* fs.exists(file))) {
     return Option.none<Proposals>();
@@ -356,11 +359,8 @@ export const proposalsOrEmpty = (home: string) =>
 /** What proposals.json in `home` holds. Fails the test when there's no file. */
 export const readProposals = Effect.fnUntraced(function* (home: string) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
-  const proposalsJson = yield* fs.readFileString(
-    path.join(home, "proposals.json")
-  );
+  const { proposalsFile } = homeAt(home);
+  const proposalsJson = yield* fs.readFileString(proposalsFile);
 
   return yield* decodeProposals(proposalsJson);
 }, Effect.provide(NodeServices.layer));

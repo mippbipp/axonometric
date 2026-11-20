@@ -5,9 +5,9 @@ import { Array as Arr, Effect, FileSystem, Path, String as Str } from "effect";
 import { attributesOf, openPage } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { commitAll, git, initRepo, noGit } from "./git.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
-const dataFile = "review/map/data.mjs";
+const { dataFile } = mapKeys("review");
 
 /**
  * Builds the full map inside a git repo whose origin is on GitHub, with two
@@ -46,18 +46,15 @@ export default data;
 
   yield* fs.writeFileString(path.join(home, ...Str.split(dataFile, "/")), data);
 
-  const result = yield* runCli(home, [
-    "build",
-    path.join(home, "review", "map"),
-  ]);
+  const result = yield* runCli(home, ["build", mapIn(home, "review").home]);
 
   assert.strictEqual(result.exitCode, 0, result.stderr);
 
-  const opened = yield* openPage(path.join(home, "review", "review.html"));
+  const opened = yield* openPage(mapIn(home, "review").pageFile);
 
   return {
     commit,
-    systemMd: result.files["review/SYSTEM.md"] ?? "",
+    systemMd: result.files[mapKeys("review").systemMdFile] ?? "",
     ...opened,
   };
 }).pipe(Effect.provide(NodeServices.layer));

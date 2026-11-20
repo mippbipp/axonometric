@@ -21,12 +21,12 @@ import {
   Effect,
   Layer,
   Option,
-  Path,
   Result,
   String as Str,
 } from "effect";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
 
+import type { HomePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
 import { encodeProposals, loadLayout, loadProposals } from "./map-files.ts";
 import { writeAll } from "./write-files.ts";
@@ -135,8 +135,8 @@ export const loadForWrite = Effect.fnUntraced(function* <
   A extends { readonly proposals: Proposals },
   E,
   R,
->(home: string, baseFileRevision: number, load: Effect.Effect<A, E, R>) {
-  yield* withLock(home, "serve");
+>(paths: HomePaths, baseFileRevision: number, load: Effect.Effect<A, E, R>) {
+  yield* withLock(paths, "serve");
 
   const loaded = yield* load;
 
@@ -182,7 +182,7 @@ const usedElsewhere = (
 };
 
 /**
- * Replaces the pending layout changes in `proposals.json` in `home` with
+ * Replaces the pending layout changes in `proposals.json` with
  * those in `write`, under the lock. The write is refused, and nothing
  * written, when `write.baseFileRevision` isn't the file's revision, or when a
  * new or changed change would leave footprints overlapping in the layout
@@ -191,26 +191,24 @@ const usedElsewhere = (
  * tell the open pages. Returns what `proposals.json` holds after the write.
  */
 export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
-  home: string,
+  paths: HomePaths,
   { data, hops, write }: PendingWrite,
   written: (proposals: Proposals) => Effect.Effect<void>
 ) {
-  const path = yield* Path.Path;
-
   // The files are read in this order, one at a time, so when both are
   // unreadable the error names proposals.json.
   /* oxlint-disable perfectionist/sort-objects -- Effect.all runs the fields in key order, which picks the error shown when both files fail */
   const readFiles = Effect.all(
     {
-      proposals: Effect.flatMap(loadProposals(home), unreadable),
-      accepted: Effect.flatMap(loadLayout(home), unreadable),
+      proposals: Effect.flatMap(loadProposals(paths), unreadable),
+      accepted: Effect.flatMap(loadLayout(paths), unreadable),
     },
     { concurrency: 1 }
   );
   /* oxlint-enable perfectionist/sort-objects */
 
   const { accepted, proposals: current } = yield* loadForWrite(
-    home,
+    paths,
     write.baseFileRevision,
     readFiles
   );
@@ -255,7 +253,7 @@ export const writePendingLayout = Effect.fn("writePendingLayout")(function* (
   yield* writeAll([
     {
       content: yield* encodeProposals(next),
-      file: path.join(home, "proposals.json"),
+      file: paths.proposalsFile,
     },
   ]);
 

@@ -1,31 +1,48 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Clock, Effect, Order, Path } from "effect";
+import { Array as Arr, Clock, Effect } from "effect";
 import type { Page } from "playwright";
 
-import { goToChapterPaused, inPage, openUrl, waitFor } from "./browser.ts";
+import { goToChapterPaused, inPage, openUrl } from "./browser.ts";
 import { pipelineMap } from "./fixtures.ts";
-import { makeHome, startServe } from "./harness.ts";
+import { makeHome, startServe, mapIn } from "./harness.ts";
 
-// The drag warnings on a map big enough that checking every chapter takes
-// seconds: the flake pipeline, with 15 structures, 29 hops and 8 chapters.
-// The check runs in a worker, the chapter on screen first, so the page keeps
-// up with the pointer while the rest come in.
+// A drag on a map big enough that checking every chapter takes seconds: the
+// flake pipeline, with 15 structures, 29 hops and 8 chapters. The check runs
+// in a worker, so the page keeps up with the pointer. The order and the
+// answers of the check are tested in contracts, on the same map.
+//
+// A slow runner slows every move, so the test doesn't hold a move to a fixed
+// time. It drags twice in the same run, once with the drag check turned off,
+// and holds the real drag's slowest move to a factor of the other's.
 
-const served = Effect.gen(function* () {
-  const path = yield* Path.Path;
-  const pipelineMapFiles = yield* pipelineMap;
-  const root = yield* makeHome(pipelineMapFiles);
-  const home = path.join(root, "flake-pipeline", "map");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const { errors, page } = yield* openUrl(serve.url);
+/** The real drag's slowest move may be this many times the baseline's. */
+const factor = 5;
 
-  yield* Effect.promise(() =>
-    page.setViewportSize({ height: 900, width: 1600 })
-  );
+/** Added to the allowance, so a baseline of a few milliseconds isn't a limit of tens. */
+const floorMillis = 300;
 
-  return { errors, page };
-}).pipe(Effect.provide(NodeServices.layer));
+/**
+ * Runs before the page's own scripts. With it set the page starts no drag
+ * check, and a drag paints as it would if the check were free. Only a test
+ * sets it: nothing on the page does.
+ */
+const checkOff = "globalThis.axonometricDragCheckOff = true;";
+
+const served = (options?: { readonly initScript?: string }) =>
+  Effect.gen(function* () {
+    const pipelineMapFiles = yield* pipelineMap;
+    const root = yield* makeHome(pipelineMapFiles);
+    const { home } = mapIn(root, "flake-pipeline");
+    const serve = yield* startServe(home, ["--port", "0"]);
+    const { errors, page } = yield* openUrl(serve.url, options);
+
+    yield* Effect.promise(() =>
+      page.setViewportSize({ height: 900, width: 1600 })
+    );
+
+    return { errors, page };
+  }).pipe(Effect.provide(NodeServices.layer));
 
 /**
  * The longest the page took to paint after a pointer move, in milliseconds,
@@ -54,67 +71,52 @@ const slowestMove = Effect.fnUntraced(function* (
   return Arr.reduce(times, 0, Math.max);
 });
 
-/** Each drag warning's message, sorted. */
-const shownWarnings = (page: Page) =>
-  inPage<ReadonlyArray<string>>(
-    page,
-    `[...document.querySelectorAll("[data-drag-warning] [data-warning-message]")].map((item) => item.textContent)`
-  ).pipe(Effect.map((shown) => Arr.sort(shown, Order.String)));
+/** Drags `updater` in the last chapter on a fresh serve, and gives its slowest move. */
+const draggedOnce = Effect.fnUntraced(function* (options?: {
+  readonly initScript?: string;
+}) {
+  const { errors, page } = yield* served(options);
+
+  yield* goToChapterPaused(page, "c-monday");
+
+  const box = yield* Effect.promise(() =>
+    page.locator('[data-structure="updater"]').first().boundingBox()
+  );
+
+  assert.isNotNull(box);
+
+  const from = {
+    x: (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    y: (box?.y ?? 0) + (box?.height ?? 0) / 2,
+  };
+
+  yield* Effect.promise(() => page.mouse.move(from.x, from.y));
+  yield* Effect.promise(() => page.mouse.down());
+
+  const slowest = yield* slowestMove(page, { from, moves: 16 });
+
+  yield* Effect.promise(() => page.mouse.up());
+  assert.deepStrictEqual(errors, []);
+
+  return slowest;
+});
 
 describe("the drag warnings on a big map", () => {
   it.live(
-    "check the chapter on screen first, keep the drag smooth, and end with every chapter",
+    "keeps painting every move of a drag",
     () =>
       Effect.gen(function* () {
-        const { errors, page } = yield* served;
-
-        yield* goToChapterPaused(page, "c-monday");
-
-        const box = yield* Effect.promise(() =>
-          page.locator('[data-structure="updater"]').first().boundingBox()
-        );
-
-        assert.isNotNull(box);
-
-        const from = {
-          x: (box?.x ?? 0) + (box?.width ?? 0) / 2,
-          y: (box?.y ?? 0) + (box?.height ?? 0) / 2,
-        };
-
-        yield* Effect.promise(() => page.mouse.move(from.x, from.y));
-        yield* Effect.promise(() => page.mouse.down());
-
         // On the main thread, checking every chapter held each move for
         // seconds. With the check in a worker, no move waits on it.
-        const slowest = yield* slowestMove(page, { from, moves: 16 });
+        const baseline = yield* draggedOnce({ initScript: checkOff });
+        const slowest = yield* draggedOnce();
+        const allowed = baseline * factor + floorMillis;
 
-        assert.isBelow(slowest, 1000, `a move took ${slowest} ms to paint`);
-
-        // Some chapters come in while the rest are still checked.
-        yield* waitFor(page, "[data-drag-warnings-heading][data-checking]");
-
-        const early = yield* shownWarnings(page);
-
-        // Then every chapter, and the heading stops saying it's checking.
-        yield* Effect.promise(() =>
-          page
-            .locator("[data-drag-warnings-heading]:not([data-checking])")
-            .first()
-            .waitFor({ timeout: 90_000 })
+        assert.isAtMost(
+          slowest,
+          allowed,
+          `a move took ${slowest} ms to paint, where ${baseline} ms was the slowest with no check`
         );
-
-        const all = yield* shownWarnings(page);
-
-        assert.isAtLeast(all.length, early.length);
-        assert.isTrue(
-          Arr.some(all, (message) =>
-            /in chapter "(?!c-monday")/u.test(message)
-          ),
-          "the other chapters' warnings are in"
-        );
-
-        yield* Effect.promise(() => page.mouse.up());
-        assert.deepStrictEqual(errors, []);
       }).pipe(Effect.provide(NodeServices.layer)),
     180_000
   );

@@ -7,7 +7,7 @@ import {
   String as Str,
 } from "effect";
 
-import { checkLayout, routeHops } from "../src/index.ts";
+import { routeHops } from "../src/index.ts";
 import type {
   Hop,
   HopRoute,
@@ -16,6 +16,7 @@ import type {
   Placement,
   Structure,
 } from "../src/index.ts";
+import { layoutProblems } from "./layout-problems.ts";
 import {
   edgeOf,
   facingEdges,
@@ -412,7 +413,7 @@ describe("route checks", () => {
         );
 
         assert.deepStrictEqual(
-          Arr.map(checkLayout(data, layout), ({ message }) => message),
+          Arr.map(layoutProblems(data, layout), ({ message }) => message),
           [
             'the route of hop "h" is drawn over the box of "m". Move the structures apart, so the drawing has room.',
             'the route of hop "h" is drawn over the box of "m" in Plan view. Move the structures apart, so the drawing has room.',
@@ -435,7 +436,7 @@ describe("route checks", () => {
         [hop("s", "t")]
       );
 
-      const warnings = Arr.filter(checkLayout(data, layout), ({ message }) =>
+      const warnings = Arr.filter(layoutProblems(data, layout), ({ message }) =>
         Str.includes("runs under")(message)
       );
 
@@ -463,7 +464,7 @@ describe("route checks", () => {
       );
 
       assert.deepStrictEqual(
-        Arr.map(checkLayout(data, layout), ({ file, message, path }) => ({
+        Arr.map(layoutProblems(data, layout), ({ file, message, path }) => ({
           file,
           message,
           path,
@@ -502,11 +503,14 @@ describe("route checks", () => {
       );
 
       assert.deepStrictEqual(
-        Arr.map(checkLayout(data, layout), ({ message, path, severity }) => ({
-          message,
-          path,
-          severity,
-        })),
+        Arr.map(
+          layoutProblems(data, layout),
+          ({ message, path, severity }) => ({
+            message,
+            path,
+            severity,
+          })
+        ),
         [
           {
             message:
@@ -536,7 +540,7 @@ describe("route checks", () => {
         }
       );
 
-      assert.deepStrictEqual(checkLayout(data, layout), []);
+      assert.deepStrictEqual(layoutProblems(data, layout), []);
     })
   );
 
@@ -554,7 +558,7 @@ describe("route checks", () => {
       );
 
       const errors = Arr.filter(
-        checkLayout(data, layout),
+        layoutProblems(data, layout),
         ({ severity }) => severity === "error"
       );
 
@@ -589,7 +593,7 @@ describe("route checks", () => {
       );
 
       const long = Option.getOrUndefined(
-        Arr.findFirst(checkLayout(data, layout), ({ message }) =>
+        Arr.findFirst(layoutProblems(data, layout), ({ message }) =>
           Str.includes("long way round")(message)
         )
       );
@@ -610,7 +614,7 @@ describe("route checks", () => {
       });
 
       assert.deepStrictEqual(
-        Arr.map(checkLayout(data, layout), ({ message, path }) => ({
+        Arr.map(layoutProblems(data, layout), ({ message, path }) => ({
           message,
           path,
         })),
@@ -627,7 +631,7 @@ describe("route checks", () => {
 
   it.effect("is quiet when every route is clear", () =>
     Effect.sync(() => {
-      assert.deepStrictEqual(checkLayout(blocked.data, blocked.layout), []);
+      assert.deepStrictEqual(layoutProblems(blocked.data, blocked.layout), []);
     })
   );
 });

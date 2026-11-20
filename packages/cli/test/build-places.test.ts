@@ -10,11 +10,11 @@ import {
 } from "effect";
 
 import { minimalMap, pipelineMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapKeys, mapIn } from "./harness.ts";
 
-const dataFile = "pipeline/map/data.mjs";
+const { dataFile } = mapKeys("pipeline");
 
-const layoutFile = "pipeline/map/layout.json";
+const { layoutFile } = mapKeys("pipeline");
 
 const decodeLayout = Schema.decodeUnknownEffect(LayoutFile);
 
@@ -64,7 +64,7 @@ const sixStructures = dataWith(
 );
 
 const buildIn = Effect.fnUntraced(function* (home: string) {
-  return yield* runCli(home, ["build", `${home}/pipeline/map`]);
+  return yield* runCli(home, ["build", mapIn(home, "pipeline").home]);
 });
 
 const layoutOf = Effect.fnUntraced(function* (
@@ -97,9 +97,12 @@ describe("build places structures", () => {
           "queue",
         ]);
         assert.strictEqual(layout.revision, 1);
-        assert.isString(result.files["pipeline/SYSTEM.md"]);
+        assert.isString(result.files[mapKeys("pipeline").systemMdFile]);
 
-        const checked = yield* runCli(home, ["check", `${home}/pipeline/map`]);
+        const checked = yield* runCli(home, [
+          "check",
+          mapIn(home, "pipeline").home,
+        ]);
 
         assert.include(checked.stdout, ": 0 errors, 0 warnings.");
       })
@@ -175,7 +178,10 @@ describe("build places structures", () => {
           }),
         });
 
-        const checked = yield* runCli(home, ["check", `${home}/pipeline/map`]);
+        const checked = yield* runCli(home, [
+          "check",
+          mapIn(home, "pipeline").home,
+        ]);
 
         assert.strictEqual(checked.exitCode, 0);
         assert.include(
@@ -220,7 +226,10 @@ describe("build places structures", () => {
           }),
         });
 
-        const checked = yield* runCli(home, ["check", `${home}/pipeline/map`]);
+        const checked = yield* runCli(home, [
+          "check",
+          mapIn(home, "pipeline").home,
+        ]);
 
         assert.strictEqual(checked.exitCode, 0);
         assert.include(
@@ -282,8 +291,8 @@ describe("build places structures", () => {
 
       assert.strictEqual(result.exitCode, 0, result.stderr);
       // Taking the lock makes .axonometric/ with its .gitignore.
-      assert.isDefined(result.files["pipeline/map/.axonometric/.gitignore"]);
-      assert.isUndefined(result.files["pipeline/map/.axonometric/lock"]);
+      assert.isDefined(result.files[mapKeys("pipeline").gitignoreFile]);
+      assert.isUndefined(result.files[mapKeys("pipeline").lockFile]);
     })
   );
 });

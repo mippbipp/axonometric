@@ -5,18 +5,14 @@ import type { Page } from "playwright";
 
 import { click, openPage } from "./browser.ts";
 import { crowdedMap, pipelineMap } from "./fixtures.ts";
-import { makeHome, runCli } from "./harness.ts";
+import { makeHome, runCli, mapIn } from "./harness.ts";
 import { decodePng } from "./png.ts";
 
 // Seam 1: `export --format svg` writes the SVG the page's Export menu saves.
-// Both call `svgFileOf`, so they should be byte-equal, and a difference is a
-// bug. What can differ is what each feeds it: the page's embedded state and
-// the files on disk, the theme and the chapter. The flake pipeline has every
-// kind of part, so its first and last chapters, and one that fades what it
-// doesn't play, in both views stand for the rest. The drawing itself is tested in shapes, pipeline-drawing and
-// routes-drawn. The tests open the built page in Chromium.
-
-const decoder = new TextDecoder();
+// Both build their request with `svgRequestOf`, and svg-request.test.ts
+// checks in Node that the two give the same request and file. The tests here
+// keep the PNG comparison, which needs a browser. The drawing itself is
+// tested in shapes, pipeline-drawing and routes-drawn.
 
 /** Opens the Export menu, picks `item`, and returns the file it saved. */
 const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
@@ -35,14 +31,6 @@ const exportFile = Effect.fnUntraced(function* (page: Page, item: string) {
   return yield* fs.readFile(file);
 });
 
-/** The flake pipeline's chapters to compare, with their numbers from 1. */
-const chapters: ReadonlyArray<readonly [id: string, number: number]> = [
-  ["c-monday", 1],
-  // Plays one of the two hops it draws, so the other one fades.
-  ["c-pr", 2],
-  ["c-all", 8],
-];
-
 /** The size in pixels an SVG file says it is. */
 const sizeOf = (text: string) => {
   const header =
@@ -55,80 +43,6 @@ const sizeOf = (text: string) => {
 
 describe("export --format svg", () => {
   it.live(
-    "equals the page's SVG for the flake pipeline, in both views and three of its chapters",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const path = yield* Path.Path;
-          const fs = yield* FileSystem.FileSystem;
-          const pipelineMapFiles = yield* pipelineMap;
-          const home = yield* makeHome(pipelineMapFiles);
-          const map = path.join(home, "flake-pipeline", "map");
-          const built = yield* runCli(home, ["build", map]);
-
-          assert.strictEqual(built.exitCode, 0, built.stderr);
-
-          const { page } = yield* openPage(
-            path.join(home, "flake-pipeline", "flake-pipeline.html")
-          );
-
-          yield* Effect.promise(() =>
-            page.setViewportSize({ height: 800, width: 1280 })
-          );
-
-          for (const view of ["iso", "plan"] as const) {
-            yield* click(page, `[data-view-toggle] [data-view="${view}"]`);
-
-            for (const [id, number] of chapters) {
-              yield* click(
-                page,
-                `[data-chapter-rail] button[data-chapter="${id}"]`
-              );
-              yield* Effect.promise(() =>
-                page
-                  .locator(
-                    `[data-walkthrough][data-chapter="${id}"][data-view="${view}"]`
-                  )
-                  .waitFor()
-              );
-
-              const target = path.join(home, "out", `${view}-${number}.svg`);
-
-              const exported = yield* runCli(home, [
-                "export",
-                map,
-                "--format",
-                "svg",
-                "--view",
-                view,
-                "--chapter",
-                String(number),
-                "--output",
-                target,
-              ]);
-
-              assert.strictEqual(exported.exitCode, 0, exported.stderr);
-
-              const exportedSvg = yield* exportFile(page, "svg");
-              const fromPage = decoder.decode(exportedSvg);
-              const fromCli = yield* fs.readFileString(target);
-
-              assert.isTrue(
-                fromPage === fromCli,
-                `${view} chapter ${number}: the CLI's SVG differs from the page's`
-              );
-              assert.include(
-                fromCli,
-                `flake-pipeline-${view}-chapter-${number}-title`
-              );
-            }
-          }
-        }).pipe(Effect.provide(NodeServices.layer))
-      ),
-    120_000
-  );
-
-  it.live(
     "marks the hops and structures a chapter fades",
     () =>
       Effect.scoped(
@@ -137,7 +51,7 @@ describe("export --format svg", () => {
           const fs = yield* FileSystem.FileSystem;
           const pipelineMapFiles = yield* pipelineMap;
           const home = yield* makeHome(pipelineMapFiles);
-          const map = path.join(home, "flake-pipeline", "map");
+          const map = mapIn(home, "flake-pipeline").home;
 
           const target = path.join(home, "faded.svg");
 
@@ -201,63 +115,6 @@ describe("export --format svg", () => {
       ),
     120_000
   );
-
-  it.live(
-    "the CLI's SVG is the page's on white too",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const path = yield* Path.Path;
-          const fs = yield* FileSystem.FileSystem;
-          const crowdedMapFiles = yield* crowdedMap;
-          const home = yield* makeHome(crowdedMapFiles);
-          const map = path.join(home, "crowded", "map");
-
-          assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
-
-          const { page } = yield* openPage(
-            path.join(home, "crowded", "crowded.html")
-          );
-
-          yield* click(page, '[data-control="export"]');
-          yield* click(page, '[data-export-item="background"]');
-          yield* Effect.promise(() => page.keyboard.press("Escape"));
-
-          const target = path.join(home, "white.svg");
-
-          yield* runCli(home, [
-            "export",
-            map,
-            "--format",
-            "svg",
-            "--chapter",
-            "2",
-            "--background",
-            "white",
-            "-o",
-            target,
-          ]);
-
-          const firstChapterSvg = yield* exportFile(page, "svg");
-          const fromPage = decoder.decode(firstChapterSvg);
-
-          // The page opens on chapter 1, so compare the same chapter.
-          yield* click(
-            page,
-            '[data-chapter-rail] button[data-chapter="c-all"]'
-          );
-
-          const lastChapterSvg = yield* exportFile(page, "svg");
-          const lastFromPage = decoder.decode(lastChapterSvg);
-          const fromCli = yield* fs.readFileString(target);
-
-          assert.isFalse(fromPage === fromCli);
-          assert.isTrue(lastFromPage === fromCli);
-          assert.include(fromCli, 'fill="#ffffff"');
-        }).pipe(Effect.provide(NodeServices.layer))
-      ),
-    120_000
-  );
 });
 
 /**
@@ -295,12 +152,12 @@ describe("export --format png", () => {
           const fs = yield* FileSystem.FileSystem;
           const pipelineMapFiles = yield* pipelineMap;
           const home = yield* makeHome(pipelineMapFiles);
-          const map = path.join(home, "flake-pipeline", "map");
+          const map = mapIn(home, "flake-pipeline").home;
 
           assert.strictEqual((yield* runCli(home, ["build", map])).exitCode, 0);
 
           const { page } = yield* openPage(
-            path.join(home, "flake-pipeline", "flake-pipeline.html")
+            mapIn(home, "flake-pipeline").pageFile
           );
 
           yield* Effect.promise(() =>
@@ -354,7 +211,7 @@ describe("export --format png", () => {
         const fs = yield* FileSystem.FileSystem;
         const crowdedMapFiles = yield* crowdedMap;
         const home = yield* makeHome(crowdedMapFiles);
-        const map = path.join(home, "crowded", "map");
+        const map = mapIn(home, "crowded").home;
 
         const corner = Effect.fnUntraced(function* (background: string) {
           const svg = path.join(home, `${background}.svg`);

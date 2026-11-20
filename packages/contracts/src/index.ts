@@ -73,13 +73,9 @@ export {
 export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 
 export {
-  changedChapterProblems,
   changedProblems,
   chapterViews,
-  checkChapter,
-  checkLayout,
-  draggedProblems,
-  draggedProblemsIn,
+  drawingProblems,
   footprintsOverlap,
   offEndFindings,
   onOutline,
@@ -87,9 +83,14 @@ export {
   spanOf,
 } from "./layout-checks.ts";
 
+export { dragCheckOf } from "./drag-check.ts";
+
+export type { DragAnswer, DragCheck, DragStep } from "./drag-check.ts";
+
 export type {
   ChapterView,
   Checkable,
+  CheckScope,
   DraggedProblem,
   HopEnds,
   OffEnd,
@@ -148,6 +149,10 @@ export {
 
 export type { FlowChoice, Spotlight, SpotlightTarget } from "./spotlight.ts";
 
+export { svgRequestOf } from "./svg-request.ts";
+
+export type { SvgRequest } from "./svg-request.ts";
+
 export { routeHops, routeRevealed } from "./routing.ts";
 
 export {
@@ -164,7 +169,28 @@ export {
 
 export { detourAllowance, detourOf, isDetour } from "./detours.ts";
 
-export { fitFloorOf, textZoomOf } from "./fit-floor.ts";
+export {
+  drawnIn,
+  fitFloorOf,
+  fitKeyOf,
+  fitPadding,
+  fittedViewOf,
+  maxFitZoom,
+  sceneExtentOf,
+  settledScale,
+  structureExtentOf,
+  textZoomOf,
+} from "./fitted-view.ts";
+
+export type {
+  Camera,
+  CanvasSize,
+  Drawn,
+  FittedView,
+  FittedViewSource,
+} from "./fitted-view.ts";
+
+export { cachedRoutesOf, cachedSceneOf } from "./scene-cache.ts";
 
 export { textGrowthAt, textSizes } from "./text-size.ts";
 
@@ -248,6 +274,27 @@ export {
 export type { Observed, Stepped, UndoHistory } from "./undo-history.ts";
 
 export {
+  isQueued,
+  pendingRefusal,
+  pendingView,
+  startPending,
+  stepPending,
+} from "./pending-changes.ts";
+
+export type {
+  Arrangement,
+  EditNotice,
+  LayoutWrite,
+  PendingEdit,
+  PendingInput,
+  PendingOutcome,
+  PendingSession,
+  PendingView,
+  PendingWrite,
+  WriteAnswer,
+} from "./pending-changes.ts";
+
+export {
   alignMoves,
   appendMove,
   distributeMoves,
@@ -268,6 +315,7 @@ export {
   hopsOf,
   HopTarget,
   LayoutChange,
+  layoutAfterChanges,
   layoutChangeKey,
   LayoutChanges,
   layoutRefusal,
@@ -280,12 +328,12 @@ export {
   RerouteChange,
   ResizeChange,
   sameLayoutChanges,
-  shiftedRoutes,
   StructureMove,
   StructureTarget,
   structuresOf,
   Target,
   targetIdsOf,
+  withCarriedRoutes,
 } from "./proposals.ts";
 
 export type { Clash, Placing, PlacingRoute } from "./proposals.ts";
@@ -333,7 +381,33 @@ export {
   splitProblems,
 } from "./problems.ts";
 
-export { outsideHoles, strikeSegments } from "./strike.ts";
+export {
+  hopStrikeOf,
+  outsideHoles,
+  strikeSegments,
+  structureStrikeOf,
+} from "./strike.ts";
+
+export type { HopStrike } from "./strike.ts";
+
+export { sceneFactsOf } from "./scene-facts.ts";
+
+export type { SceneFacts } from "./scene-facts.ts";
+
+export {
+  edgeSpotsOf,
+  handleRadius,
+  handleStroke,
+  sides,
+} from "./edge-handle-spots.ts";
+
+export type { EdgeSpot, Side } from "./edge-handle-spots.ts";
+
+export {
+  previewPieces,
+  previewRoute,
+  straightLine,
+} from "./hop-preview-route.ts";
 
 export { clearOfText, outlineClearance, textBoxesOf } from "./clear-of-text.ts";
 
@@ -485,8 +559,6 @@ export type { Mappable, MarkQuery, ProposedMap } from "./proposed-map.ts";
 export { namesOf } from "./review-names.ts";
 
 export { proposalProblems } from "./proposal-problems.ts";
-
-export type { CheckScope } from "./proposal-problems.ts";
 
 export {
   FinalId,

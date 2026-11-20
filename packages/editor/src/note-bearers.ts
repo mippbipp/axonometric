@@ -115,22 +115,3 @@ export const spotRingCorners = (
           { sx: sx + reach, sy: sy + reach },
         ]
       );
-
-/**
- * The spot rings as things drawn, for `fitOf`. A ring belongs to no
- * structure, so it counts whenever the fit is of everything; when the fit is
- * of the chapter's structures, `fitIds` lists them and `fitOf` keeps only
- * what belongs to them, so a ring is tied to the structures in `fitIds`.
- */
-export const spotDrawn = (
-  scene: Scene,
-  bearers: NoteBearers | null,
-  fitIds: ReadonlyArray<string>
-): ReadonlyArray<{
-  readonly ids: ReadonlyArray<string>;
-  readonly points: ReadonlyArray<ScreenPoint>;
-}> => {
-  const points = spotRingCorners(scene, bearers);
-
-  return points.length === 0 ? [] : [{ ids: fitIds, points }];
-};

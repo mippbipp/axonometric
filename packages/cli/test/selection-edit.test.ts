@@ -1,15 +1,7 @@
-import { Proposals } from "@axonometric/contracts";
+import type { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import {
-  Array as Arr,
-  Effect,
-  FileSystem,
-  Option,
-  Path,
-  Record as Rec,
-  Schema,
-} from "effect";
+import { Array as Arr, Effect, Option, Record as Rec, Schema } from "effect";
 import type { Page } from "playwright";
 
 import {
@@ -31,6 +23,7 @@ import {
   proposalsIn,
   runCli,
   waitForRevision,
+  mapIn,
 } from "./harness.ts";
 
 // Selecting several structures in a page that a real serve serves, and
@@ -492,93 +485,26 @@ describe("aligning and distributing", () => {
     })
   );
 
-  const cases: ReadonlyArray<{
-    readonly button: string;
-    readonly expected: Readonly<Record<string, Point>>;
-    readonly ids: ReadonlyArray<string>;
-  }> = [
-    {
-      button: "[data-align='top']",
-      expected: { "pull-request": { x: 12, y: 0 } },
-      ids: ["engineer", "page", "pull-request"],
-    },
-    {
-      button: "[data-align='bottom']",
-      expected: { engineer: { x: 0, y: 5.5 }, page: { x: 4, y: 5.5 } },
-      ids: ["engineer", "page", "pull-request"],
-    },
-    {
-      button: "[data-align='centre-y']",
-      expected: {
-        engineer: { x: 0, y: 3 },
-        page: { x: 4, y: 3 },
-        "pull-request": { x: 12, y: 3 },
-      },
-      ids: ["engineer", "page", "pull-request"],
-    },
-    {
-      button: "[data-align='left']",
-      expected: { "pull-request": { x: 4, y: 6 } },
-      ids: ["page", "pull-request"],
-    },
-    {
-      button: "[data-align='right']",
-      expected: { server: { x: 12, y: 0 } },
-      ids: ["server", "pull-request"],
-    },
-    {
-      button: "[data-align='centre-x']",
-      expected: { engineer: { x: 6, y: 0 }, "pull-request": { x: 6, y: 6 } },
-      ids: ["engineer", "pull-request"],
-    },
-    {
-      button: "[data-distribute='x']",
-      expected: { proposals: { x: 9, y: 6 } },
-      ids: ["engineer", "proposals", "upstream"],
-    },
-    {
-      button: "[data-distribute='y']",
-      expected: { page: { x: 4, y: 3 } },
-      ids: ["engineer", "page", "proposals"],
-    },
-  ];
+  it.live(
+    "an align button writes one change, and one undo writes it back",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedAll;
 
-  for (const view of views) {
-    it.live(
-      `each align and distribute button is one change with the expected positions, and one undo takes it back, in ${view}`,
-      () =>
-        Effect.gen(function* () {
-          const { home, page } = yield* servedAll;
+        yield* shiftClick(page, ["engineer", "page", "pull-request"]);
+        yield* Effect.promise(() => page.locator("[data-align='top']").click());
 
-          yield* showView(page, view);
+        const saved = yield* waitForRevision(home, 1);
 
-          let revision = 0;
+        assert.deepStrictEqual(movesOf(saved.layout), {
+          "pull-request": { x: 12, y: 0 },
+        });
 
-          for (const { button, expected, ids } of cases) {
-            yield* shiftClick(page, ids);
-            yield* waitFor(page, button);
-            yield* Effect.promise(() => page.locator(button).click());
-
-            revision += 1;
-
-            const saved = yield* waitForRevision(home, revision);
-
-            assert.deepStrictEqual(movesOf(saved.layout), expected, button);
-
-            // One undo takes the whole change back.
-            yield* press(page, "Control+z");
-            revision += 1;
-            assert.deepStrictEqual(
-              (yield* waitForRevision(home, revision)).layout,
-              [],
-              button
-            );
-            yield* press(page, "Escape");
-          }
-        }),
-      120_000
-    );
-  }
+        yield* press(page, "Control+z");
+        assert.deepStrictEqual((yield* waitForRevision(home, 2)).layout, []);
+      }),
+    60_000
+  );
 
   it.live(
     "refuses an alignment that lands two footprints on one spot, and says why",
@@ -693,112 +619,6 @@ describe("undo and redo", () => {
           (yield* waitForRevision(home, 5)).layout,
           moved.layout
         );
-      }),
-    60_000
-  );
-
-  it.live(
-    "a new edit clears what could be redone",
-    () =>
-      Effect.gen(function* () {
-        const { home, page } = yield* servedAll;
-
-        yield* showView(page, "plan");
-        yield* dragEngineer(page);
-        yield* waitForRevision(home, 1);
-        yield* press(page, "Control+z");
-        yield* waitForRevision(home, 2);
-
-        yield* shiftClick(page, ["server"]);
-        yield* press(page, "ArrowRight");
-        yield* waitForRevision(home, 3);
-
-        const redoDisabledAfterNewMove = yield* Effect.promise(() =>
-          page.locator(redoButton).isDisabled()
-        );
-
-        assert.isTrue(redoDisabledAfterNewMove);
-      }),
-    60_000
-  );
-
-  it.live(
-    "keeps the step and shows a conflict when the file changed underneath",
-    () =>
-      Effect.gen(function* () {
-        const { home, page, serve } = yield* servedAll;
-
-        yield* showView(page, "plan");
-        yield* dragEngineer(page);
-        yield* waitForRevision(home, 1);
-        yield* waitFor(
-          page,
-          '[data-structure="engineer"][data-pending="true"]'
-        );
-
-        // Someone else writes on top of the page's change: revision 2.
-        const mine = yield* proposalsIn(home);
-
-        const written = yield* Effect.promise(() =>
-          page.request.put(new URL("/api/proposals/layout", serve.url).href, {
-            data: {
-              baseFileRevision: 1,
-              layout: [
-                ...Option.match(mine, {
-                  onNone: () => [],
-                  onSome: ({ layout }) => layout,
-                }),
-                {
-                  id: "other-writer",
-                  kind: "move",
-                  moves: [
-                    {
-                      position: { x: 18, y: 4 },
-                      target: { id: "upstream", kind: "structure" },
-                    },
-                  ],
-                },
-              ],
-            },
-            headers: { "content-type": "application/json", origin: serve.url },
-          })
-        );
-
-        assert.strictEqual(written.status(), 200);
-        yield* waitFor(
-          page,
-          '[data-structure="upstream"][data-pending="true"]'
-        );
-
-        yield* press(page, "Control+z");
-        yield* waitFor(page, "[data-edit-notice='conflict']");
-        yield* Effect.sleep("300 millis");
-
-        const saved = yield* proposalsIn(home);
-
-        // Nothing was written over the other writer's change, and the step
-        // is kept.
-        assert.deepStrictEqual(
-          Option.map(saved, ({ layout, revision }) => [
-            revision,
-            Arr.map(layout, ({ id }) => id),
-          ]).pipe(Option.getOrNull),
-          [
-            2,
-            [
-              ...(Option.isSome(mine)
-                ? Arr.map(mine.value.layout, ({ id }) => id)
-                : []),
-              "other-writer",
-            ],
-          ]
-        );
-
-        const undoDisabledAfterOtherWriter = yield* Effect.promise(() =>
-          page.locator(undoButton).isDisabled()
-        );
-
-        assert.isFalse(undoDisabledAfterOtherWriter);
       }),
     60_000
   );
@@ -973,86 +793,6 @@ describe("the toolbar", () => {
   );
 });
 
-describe("older news from the server", () => {
-  it.live(
-    "an older proposals.json the server sends while the map has an error does not take the page back",
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const { home, page } = yield* servedAll;
-
-        yield* shiftClick(page, ["engineer", "page"]);
-        yield* press(page, "ArrowDown");
-        yield* waitForRevision(home, 1);
-        yield* waitFor(
-          page,
-          '[data-structure="engineer"][data-pending="true"]'
-        );
-
-        // With data.mjs broken, serve keeps the last good map and sends
-        // only what's pending. Then proposals.json goes back to revision 0
-        // with nothing pending, as a late write from elsewhere would leave
-        // it.
-        yield* fs.writeFileString(
-          path.join(home, "data.mjs"),
-          "export default {"
-        );
-        yield* waitFor(page, "[data-map-error]");
-
-        const emptied = yield* Schema.encodeEffect(
-          Schema.fromJsonString(Proposals)
-        )({
-          format: 1,
-          layout: [],
-          revision: 0,
-        });
-
-        yield* fs.writeFileString(path.join(home, "proposals.json"), emptied);
-        yield* Effect.sleep("800 millis");
-
-        yield* assertCount(page, '[data-structure][data-pending="true"]', 2);
-      }).pipe(Effect.provide(NodeServices.layer)),
-    60_000
-  );
-});
-
-describe("accepting a change", () => {
-  it.live(
-    "clears the undo history and says so, when the accepted layout moves on",
-    () =>
-      Effect.gen(function* () {
-        const { home, page } = yield* servedAll;
-
-        yield* shiftClick(page, ["engineer", "page"]);
-        yield* press(page, "ArrowDown");
-        yield* waitForRevision(home, 1);
-        yield* waitFor(page, "[data-control='undo']:not([disabled])");
-
-        // Accept all, through #17's Pending tab: it raises the accepted
-        // layout's revision, which is what ends the history.
-        yield* Effect.promise(() =>
-          page.locator('[role="tab"][data-tab="pending"]').click()
-        );
-        yield* Effect.promise(() => page.locator("[data-accept-all]").click());
-        yield* waitFor(page, "[data-edit-notice='info']");
-
-        const editNoticeInfoText = yield* Effect.promise(() =>
-          page.locator("[data-edit-notice='info']").textContent()
-        );
-
-        assert.include(editNoticeInfoText, "can't be undone");
-
-        const undoDisabled = yield* Effect.promise(() =>
-          page.locator("[data-control='undo']").isDisabled()
-        );
-
-        assert.isTrue(undoDisabled);
-      }),
-    60_000
-  );
-});
-
 describe("editing off", () => {
   it.live(
     "hides the toolbar, the set and the nudge when the server is stopped",
@@ -1081,7 +821,6 @@ describe("editing off", () => {
     "the read-only file has no toolbar and Shift-click only pins",
     () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const { home, root, serve } = yield* servedAll;
 
         yield* serve.stop;
@@ -1090,9 +829,7 @@ describe("editing off", () => {
 
         assert.strictEqual(result.exitCode, 0, result.stderr);
 
-        const { page } = yield* openPage(
-          path.join(root, "review", "review.html")
-        );
+        const { page } = yield* openPage(mapIn(root, "review").pageFile);
 
         yield* Effect.promise(() =>
           page

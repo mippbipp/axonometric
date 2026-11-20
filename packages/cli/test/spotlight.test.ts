@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Path } from "effect";
+import { Effect, FileSystem } from "effect";
 import type { Page } from "playwright";
 
 import {
@@ -12,7 +12,7 @@ import {
   waitForAttributes,
 } from "./browser.ts";
 import { pipelineMap } from "./fixtures.ts";
-import { buildAndOpen, makeHome, startServe } from "./harness.ts";
+import { buildAndOpen, makeHome, startServe, mapIn } from "./harness.ts";
 
 // Seam 2: parts outside the spotlight are faded on the page, in both views.
 // The flake pipeline's chapter 2 reveals updater, main, upstream and pr, and
@@ -355,14 +355,13 @@ describe("a faded structure", () => {
   it.live("stays fainter than the rest while it is dragged", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const pipelineMapFiles = yield* pipelineMap;
         const root = yield* makeHome(pipelineMapFiles);
 
-        const serve = yield* startServe(
-          path.join(root, "flake-pipeline", "map"),
-          ["--port", "0"]
-        );
+        const serve = yield* startServe(mapIn(root, "flake-pipeline").home, [
+          "--port",
+          "0",
+        ]);
 
         const { page } = yield* openUrl(serve.url);
 

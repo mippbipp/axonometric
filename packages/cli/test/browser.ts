@@ -48,7 +48,11 @@ const openContext = Effect.acquireRelease(
  */
 export const openUrl = Effect.fnUntraced(function* (
   url: string,
-  options?: { readonly edit?: boolean }
+  options?: {
+    readonly edit?: boolean;
+    /** Runs in the page before its own scripts, as `page.addInitScript` does. */
+    readonly initScript?: string;
+  }
 ) {
   const context = yield* openContext;
   const page = yield* Effect.promise(() => context.newPage());
@@ -66,6 +70,10 @@ export const openUrl = Effect.fnUntraced(function* (
         }
       }, editStorage)
     );
+  }
+
+  if (options?.initScript !== undefined) {
+    yield* Effect.promise(() => page.addInitScript(options.initScript ?? ""));
   }
 
   const requests: Array<string> = [];

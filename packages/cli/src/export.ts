@@ -1,5 +1,4 @@
 import {
-  chapterSpotlightOf,
   chapterStopsOf,
   defaultFlowChoice,
   excalidrawOf,
@@ -7,6 +6,7 @@ import {
   exportName,
   placeStructures,
   pngScale,
+  svgRequestOf,
   views,
   whiteBackground,
 } from "@axonometric/contracts";
@@ -29,6 +29,7 @@ import {
 import { Argument, CliError, Command, Flag } from "effect/cli";
 
 import { printNotes } from "./build.ts";
+import { homePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
 import { loadMap } from "./map-files.ts";
 import { rasterise } from "./rasterise.ts";
@@ -197,7 +198,7 @@ export const defaultExportFile = ({
   );
 
 /** What an SVG or PNG of the map draws. */
-interface Drawing {
+export interface Drawing {
   readonly background: Background;
   /** The chapter's index, from 0. */
   readonly chapter: number;
@@ -206,6 +207,22 @@ interface Drawing {
   readonly state: MapState;
   readonly view: View;
 }
+
+/**
+ * The request an exported SVG is drawn from: the page's, in the light theme
+ * with nothing hovered or pinned, since a file has neither.
+ */
+export const svgRequestOfExport = (drawing: Drawing) =>
+  svgRequestOf({
+    background: drawing.background,
+    chapter: drawing.chapter,
+    choice: drawing.choice,
+    hovered: null,
+    pinned: null,
+    state: drawing.state,
+    theme: "light",
+    view: drawing.view,
+  });
 
 /**
  * A format's file: text, or the bytes of a PNG. The SVG comes from the same
@@ -231,30 +248,7 @@ const contentOf = Effect.fnUntraced(function* (
     );
   }
 
-  const { chapter, choice, state } = drawing;
-  const stop = chapterStopsOf(state)[chapter];
-
-  // Nothing is hovered or pinned in a file, so the spotlight is what the
-  // chapter or the picked flow plays: the page's, with no hover and no pin.
-  const spotlight =
-    stop === undefined
-      ? null
-      : chapterSpotlightOf({
-          choice,
-          data: state.data,
-          hovered: null,
-          pinned: null,
-          stop,
-        });
-
-  const { text } = svgFileOf({
-    background: drawing.background,
-    chapter,
-    spotlight,
-    state,
-    theme: "light",
-    view: drawing.view,
-  });
+  const { text } = svgFileOf(svgRequestOfExport(drawing));
 
   return format === "svg" ? text : yield* rasterise(text, pngScale);
 });
@@ -262,10 +256,11 @@ const contentOf = Effect.fnUntraced(function* (
 const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
-  const { background, format, home, view } = request;
-  const output = path.dirname(home);
+  const { background, format, view } = request;
+  const paths = yield* homePaths(request.home);
+  const { output } = paths;
 
-  yield* withLock(home, "export");
+  yield* withLock(paths, "export");
 
   // Structures with no saved position are placed as `build` would, but
   // nothing is saved: export writes only the file it was asked for.
@@ -273,12 +268,15 @@ const exportMap = Effect.fn("export")(function* (request: ExportRequest) {
     yield* loadMap({
       arrange: (mapData, saved) => placeStructures(mapData, saved).layout,
       command: "export",
-      home,
-      output,
+      paths,
     });
 
-  const system = path.basename(output);
-  const state: MapState = { data, layout, sourceLinks, system };
+  const state: MapState = {
+    data,
+    layout,
+    sourceLinks,
+    system: paths.system,
+  };
   const stops = chapterStopsOf(state);
 
   const index = yield* Option.match(request.chapter, {
