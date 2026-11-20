@@ -225,10 +225,10 @@ describe("renaming a group", () => {
         // Typing again takes the refusal away.
         yield* Effect.promise(() => titleBox.fill("People 2"));
         yield* assertCount(page, "[data-group-failure]", 0);
-        const value = yield* Effect.promise(() =>
+        const after = yield* Effect.promise(() =>
           titleBox.getAttribute("aria-invalid")
         );
-        assert.strictEqual(value, null);
+        assert.strictEqual(after, null);
       }),
     90_000
   );
