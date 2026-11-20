@@ -769,8 +769,8 @@ export const serve = Effect.fn("serve")(function* (options: ServeOptions) {
     // server waits for its connections to close.
     yield* Scope.addFinalizer(scope, stopping.open);
 
-    // Printed before the state file is written: whatever waits for the file
-    // has then already seen the warning.
+    // Printed before the "Serving" line: whatever waits for that line has
+    // then already seen the warning.
     if (!Arr.some(loopbackHosts, (name) => name === bound)) {
       yield* Console.error(
         `serve is listening on ${host}, so other machines on the network can reach it. It still only answers requests addressed to ${loopbackList}${wildcardHosts.has(host) ? "" : `, ${host}`} or a host given with --allow-host.`
