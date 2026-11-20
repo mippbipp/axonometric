@@ -35,6 +35,22 @@ If you change when a page region is ready, update every test that waits on that 
 
 `bun run test` runs through `scripts/with-test-lock.ts`, which holds a lock file in the temp folder so two suites on one machine never run at once. A second run waits and prints the process id and command of the run that holds the lock. A lock whose process has exited is taken over. `CI=true` skips the lock. The lock also covers a single test file when you run it through the same script, such as `node scripts/with-test-lock.ts -- bun run --cwd packages/cli vitest run test/check.test.ts`. Do that when other sessions share the machine.
 
+## Benchmarks
+
+`perf/` holds strobe benches, which compare a branch against `main` with strobe's verdicts. CI doesn't run them. The strobe skill in `.agents/skills/strobe/SKILL.md` says how to read the results.
+
+`perf/drag.bench.ts` drags `updater` on the flake pipeline map's last chapter and times each pointer move until the page paints it, then waits until the drag warnings panel has checked every chapter. Its setup copies the fixture into a fresh temporary home folder, starts the variant's own `axonometric serve` from `packages/cli/dist` on a free port, and stops it by process id. A variant is a build of the whole repository, so strobe runs `bun run build` in it.
+
+`bun run perf` runs `strobe bench perf/drag.bench.ts` through the test lock, so it waits for any running suite. Pass strobe's flags after it:
+
+```sh
+bun run perf --head . --check --headless              # does the bench run? No verdict.
+bun run perf --head . --aa --headless                 # same build both sides: should read "same"
+bun run perf --base main --head . --headless          # is this branch faster or slower than main?
+```
+
+On a machine with no display, add `--headless`. Close other work first: strobe refuses a verdict on a busy machine.
+
 ## The agent guide
 
 The text `axonometric docs` prints lives in `packages/cli/docs/*.md`, one file per topic, plus `overview.md`. `tsdown` embeds the files in the bundle, so edit the Markdown and run `bun run build`. A new topic needs its file and an entry in `topics` in `packages/cli/src/docs.ts`, which also adds it to the topic list that `axonometric docs` prints.

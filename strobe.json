@@ -1,13 +1,10 @@
 {
   "$schema": "./node_modules/@hona/strobe/schema/strobe.v1.json",
+  // The bench starts `axonometric serve` itself, from each variant's own
+  // packages/cli/dist, so a variant is the CLI bundle (which embeds the
+  // editor page) and nothing is served from here.
   "build": {
     "command": "bun run build",
-    "cwd": "packages/editor",
-    "output": "packages/editor/dist"
-  },
-  "serve": {
-    "command": "bun run vite preview --host 127.0.0.1 --port {port} --strictPort",
-    "cwd": "packages/editor",
-    "dir": "packages/editor/dist"
+    "output": "packages/cli/dist"
   }
 }

@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": true
   },
-  // Root-owned files only
-  "include": ["*.config.ts", "scripts/*.ts"],
+  // Root-owned files only, and the strobe benches
+  "include": ["*.config.ts", "scripts/*.ts", "perf/*.ts"],
   "exclude": ["node_modules"]
 }

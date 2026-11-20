@@ -49,6 +49,7 @@
     "build": "turbo run build",
     "test": "node scripts/with-test-lock.ts -- turbo run test //#test:scripts",
     "test:scripts": "node --test scripts/*.test.ts",
+    "perf": "node scripts/with-test-lock.ts -- strobe bench perf/drag.bench.ts",
     "ox": "turbo run lint format typecheck",
     "ox:fix": "turbo run typecheck format:fix",
     "lint": "oxlint",
