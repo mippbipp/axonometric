@@ -1,21 +1,22 @@
-import type { MapState, SceneStructure, View } from "@axonometric/contracts";
+import type {
+  CanvasSize,
+  MapState,
+  SceneStructure,
+  View,
+} from "@axonometric/contracts";
 import {
+  cachedSceneOf,
   dashes,
-  fitFloorOf,
+  fitKeyOf,
+  fittedViewOf,
   marked as marksOf,
   proposedHopMark,
   removedHopMark,
   groundOutline,
   groundProjections,
-  textZoomOf,
   toPoints,
 } from "@axonometric/contracts";
-import {
-  DrawingContext,
-  drawnIn,
-  MapDrawing,
-  viewDrawings,
-} from "@axonometric/drawing";
+import { DrawingContext, MapDrawing, viewDrawings } from "@axonometric/drawing";
 import type { HopState } from "@axonometric/drawing";
 import { Array as Arr, String as Str } from "effect";
 import { use, useCallback, useId, useMemo, useState } from "react";
@@ -29,22 +30,19 @@ import { useDraftSpot } from "./draft-spot.ts";
 import { DragOutlines } from "./drop-outline.tsx";
 import { stableFactsOf } from "./edge-handle-spots.ts";
 import { EditorSceneContext, EditorViewContext } from "./editor-view.ts";
-import { fitOf } from "./fit.ts";
 import { GroupEditor } from "./group-editor.tsx";
 import { HopDraftLine } from "./hop-draft-line.tsx";
 import { NewStructureSpot } from "./new-structure-spot.tsx";
-import { spotDrawn, useNoteBearers } from "./note-bearers.ts";
+import { spotRingCorners, useNoteBearers } from "./note-bearers.ts";
 import { NoteMarkers } from "./note-markers.tsx";
 import { SpotCursor, SpotPicker } from "./note-tool.tsx";
 import { pageDrawing } from "./page-environment.ts";
 import { AcceptedOutlines } from "./pending-look.tsx";
 import { PendingZones } from "./pending-zones.tsx";
 import { PlaybackContext } from "./playback.ts";
-import { routesOf } from "./projection.ts";
 import { RemovedHopMarks } from "./removed-hop-marks.tsx";
 import { RemovedMarks } from "./removed-marks.tsx";
 import { RouteEditor } from "./route-editor.tsx";
-import { cachedSceneOf } from "./scene-cache.ts";
 import { SelectionMarker } from "./selection-marker.tsx";
 import { useSpotlight, useSpotlightActions } from "./spotlight-context.ts";
 import { Viewport } from "./viewport.tsx";
@@ -156,23 +154,20 @@ export function MapView({
     ]);
   }, [proposedHops]);
 
-  // Fitting tries a few zooms, and the one it settles on is the one drawn,
-  // so scenes are cached per zoom the text is sized for.
-  const sceneAt = useCallback(
-    (zoom: number) =>
+  // The scene at the zoom the text is sized for. It's the one the fit drew
+  // when the viewport is at the fitted zoom, as the cache returns it.
+  const scene = useMemo(
+    () =>
       cachedSceneOf({
         data: state.data,
         labelFirst,
         layout: state.layout,
         revealed,
-        routes: routesOf({ data: state.data, layout: state.layout, revealed }),
         view,
-        zoom,
+        zoom: textZoom,
       }),
-    [state.data, state.layout, revealed, labelFirst, view]
+    [state.data, state.layout, revealed, labelFirst, view, textZoom]
   );
-
-  const scene = sceneAt(textZoom);
 
   // A hop a proposal draws or deletes stays at full strength, whichever
   // chapter is showing: no chapter plays it, and fading it would hide the
@@ -196,8 +191,6 @@ export function MapView({
       )
     : [];
 
-  const fitIds = useMemo(() => [...fitTo], [fitTo]);
-
   const bearers = useNoteBearers();
 
   // The new structure's footprint counts in the fit while the form is open,
@@ -213,44 +206,23 @@ export function MapView({
     [candidateSpot, view]
   );
 
-  const fitAt = useCallback(
-    (zoom: number) => {
-      const fitted = sceneAt(textZoomOf(zoom));
-
-      // A spot can lie far from everything else, so its ring counts in the
-      // fit. It is the page's editing layer, so an export's extent, which
-      // `drawnIn` alone gives, leaves it out.
-      const drawn = [
-        ...drawnIn({ drawing, scene: fitted }),
-        ...spotDrawn(fitted, bearers, fitIds),
-        ...(candidateCorners.length === 0
-          ? []
-          : [{ ids: fitIds, points: candidateCorners }]),
-      ];
-
-      return fitOf({ drawn, fitTo: fitIds }).bounds;
-    },
-    [sceneAt, drawing, fitIds, bearers, candidateCorners]
-  );
-
-  // The floor looks at name tags only, which place quickly.
-  const fitFloor = useCallback(
-    (scale: number) =>
-      fitFloorOf(
-        {
-          data: state.data,
-          layout: state.layout,
-          revealed,
-          routes: routesOf({
-            data: state.data,
-            layout: state.layout,
-            revealed,
-          }),
-          view,
-        },
-        scale
-      ),
-    [state.data, state.layout, revealed, view]
+  const fit = useCallback(
+    (size: CanvasSize) =>
+      fittedViewOf({
+        chapter: { plays: labelFirst ?? [], revealed },
+        // A spot can lie far from everything else, so its ring counts in the
+        // fit. It is the page's editing layer, so an export's extent leaves
+        // it out.
+        extra: (fitted) => [
+          ...spotRingCorners(fitted, bearers),
+          ...candidateCorners,
+        ],
+        fitTo,
+        size,
+        state,
+        view,
+      }).camera,
+    [labelFirst, revealed, bearers, candidateCorners, fitTo, state, view]
   );
 
   // The view fits again when the form opens and when it picks a new default
@@ -262,7 +234,7 @@ export function MapView({
         ? "+adding"
         : `+adding ${candidate.spot.x},${candidate.spot.y}`;
 
-  const key = `${fitKey ?? fitOf({ drawn: [], fitTo: fitIds }).key}${candidateKey}`;
+  const key = `${fitKey ?? fitKeyOf(fitTo)}${candidateKey}`;
 
   const facts = stableFactsOf(scene);
 
@@ -276,8 +248,7 @@ export function MapView({
       <EditorViewContext value={editorView}>
         <EditorSceneContext value={facts}>
           <Viewport
-            fitAt={fitAt}
-            fitFloor={fitFloor}
+            fit={fit}
             fitKey={key}
             ground={groundProjections[view]}
             onTextZoom={setTextZoom}

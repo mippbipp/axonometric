@@ -1,10 +1,4 @@
-import { corners, isoHeights, tagDrop } from "@axonometric/contracts";
-import type {
-  SceneStructure,
-  SceneZone,
-  ScreenPoint,
-  View,
-} from "@axonometric/contracts";
+import type { SceneZone, View } from "@axonometric/contracts";
 import type { ComponentType } from "react";
 
 import { PlanStructure } from "./plan-shapes.tsx";
@@ -14,8 +8,6 @@ import { IsoPlate, PlanPlate } from "./zones.tsx";
 
 /** Everything the drawing does differently in each view. */
 export interface ViewDrawing {
-  /** The screen points a structure's drawing reaches, tag included. */
-  readonly extentOf: (placed: SceneStructure) => ReadonlyArray<ScreenPoint>;
   /** Whether bends get the diamond markers system-atlas draws. */
   readonly markBends: boolean;
   /**
@@ -32,23 +24,6 @@ export interface ViewDrawing {
 
 export const viewDrawings: Readonly<Record<View, ViewDrawing>> = {
   iso: {
-    extentOf: ({ placement, structure, tag }) => {
-      const ground = corners(placement, 0);
-      const top = corners(placement, isoHeights[structure.shape]);
-
-      return [
-        top.back,
-        top.left,
-        top.right,
-        ground.left,
-        ground.right,
-        { sx: tag.left, sy: ground.front.sy + tagDrop },
-        { sx: tag.right, sy: ground.front.sy + tagDrop },
-        // A grown tag may move off the front corner and reach further.
-        { sx: tag.left, sy: tag.top },
-        { sx: tag.right, sy: tag.bottom },
-      ];
-    },
     markBends: true,
     newRing: true,
     Plate: IsoPlate,
@@ -61,11 +36,6 @@ export const viewDrawings: Readonly<Record<View, ViewDrawing>> = {
     title: "Plan view",
     // From above a bend is plain to see, and a dot there reads as a
     // junction.
-    extentOf: ({ outline, tag }) => [
-      ...outline,
-      { sx: tag.left, sy: tag.top },
-      { sx: tag.right, sy: tag.bottom },
-    ],
     markBends: false,
     newRing: false,
   },

@@ -5,6 +5,7 @@ import {
   exportName,
   palette,
   routeRevealed,
+  sceneExtentOf,
   sceneOf,
   whiteBackground,
 } from "@axonometric/contracts";
@@ -14,7 +15,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { DrawingContext } from "./drawing-context.ts";
 import type { DrawingEnvironment, Paint } from "./drawing-context.ts";
-import { extentOf } from "./extent.ts";
 import { FileFrame } from "./file-frame.tsx";
 import { fontFaceCss } from "./font-face.ts";
 import { MapDrawing } from "./map-drawing.tsx";
@@ -126,7 +126,7 @@ export const svgFileOf = ({
     zoom: exportZoom,
   });
 
-  const extent = extentOf({ scene, view });
+  const extent = sceneExtentOf(scene);
   const x = extent.left - margin;
   const y = extent.top - margin;
   const width = Math.ceil(extent.right - extent.left + margin * 2);
