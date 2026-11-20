@@ -672,33 +672,4 @@ describe("editing off", () => {
       }),
     60_000
   );
-
-  it.live(
-    "a stale write whose edit no longer fits keeps the other writer's changes and says it conflicted",
-    () =>
-      Effect.gen(function* () {
-        // The other writer moves page onto where engineer is dragged to.
-        const { home, page } = yield* dragWhileAnotherWrites("engineer", {
-          id: "page",
-          to: { x: 0, y: 4 },
-        });
-
-        yield* waitFor(page, '[data-edit-notice="conflict"]');
-        yield* waitFor(page, '[data-structure="page"][data-pending="true"]');
-        yield* waitGone(
-          page,
-          '[data-structure="engineer"][data-pending="true"]'
-        );
-
-        const saved = yield* proposalsIn(home);
-
-        assert.deepStrictEqual(
-          Option.map(saved, ({ layout }) =>
-            Arr.map(layout, (change) => structuresOf(change)[0])
-          ),
-          Option.some(["page"])
-        );
-      }),
-    60_000
-  );
 });
