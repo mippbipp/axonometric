@@ -1,14 +1,33 @@
 import {
+  applyLayoutChanges,
   defaultFootprint,
   footprintsOverlap,
   formatProblem,
+  frozenLayoutChanges,
+  frozenWriteRefusal,
+  layoutAfterChanges,
+  layoutRefusal,
+  layoutUnderProposals,
+  maxReasonLength,
+  newChangeId,
   onOutline,
+  proposeAgentChange,
+  sameLayoutChanges,
 } from "@axonometric/contracts";
-import type { GridPoint, Layout, Placement } from "@axonometric/contracts";
+import type {
+  AgentProposal,
+  GridPoint,
+  Hop,
+  Layout,
+  MapData,
+  Placement,
+  Reason,
+} from "@axonometric/contracts";
 import {
   Array as Arr,
   Console,
   Effect,
+  Match,
   Option,
   Record as Rec,
   Result,
@@ -19,7 +38,12 @@ import { Argument, CliError, Command, Flag } from "effect/cli";
 
 import { homePaths } from "./home-paths.ts";
 import { withLock } from "./lock.ts";
-import { encodeLayout, loadMap } from "./map-files.ts";
+import {
+  encodeLayout,
+  encodeProposals,
+  inspectMap,
+  loadMap,
+} from "./map-files.ts";
 import { writeAll } from "./write-files.ts";
 
 /** A `layout` request the map can't take. `layout` wrote nothing. */
@@ -44,7 +68,7 @@ const describePlacement = ({ d, w, x, y }: Placement) =>
   `x ${x}, y ${y}, w ${w}, d ${d}`;
 
 /** Every problem with the values given, before the map is read. */
-const invalidValues = (changes: Changes) =>
+const invalidValues = (changes: Changes): ReadonlyArray<string> =>
   Arr.flatMap(fields, (field) =>
     Option.match(changes[field], {
       onNone: () => [],
@@ -76,6 +100,38 @@ const describeChanges = (before: Placement, after: Placement) =>
   );
 
 const reject = (reason: string) => Effect.fail(LayoutRejected.make({ reason }));
+
+/** Why the values given can't move or resize a structure, before the map is read. */
+const valuesProblem = (changes: Changes): Option.Option<string> => {
+  if (Arr.every(fields, (field) => Option.isNone(changes[field]))) {
+    return Option.some(
+      `Say what to change. Give at least one of --x, --y, --w and --d.`
+    );
+  }
+
+  const problems = invalidValues(changes);
+
+  return problems.length > 0
+    ? Option.some(Arr.join(problems, " "))
+    : Option.none();
+};
+
+/** The placement `changes` make of `before`: the fields given replace its own. */
+const placedFrom = (before: Placement, changes: Changes): Placement => ({
+  d: Option.getOrElse(changes.d, () => before.d),
+  w: Option.getOrElse(changes.w, () => before.w),
+  x: Option.getOrElse(changes.x, () => before.x),
+  y: Option.getOrElse(changes.y, () => before.y),
+});
+
+const unknownStructure = (id: string, ids: ReadonlyArray<string>) =>
+  `No structure in data.mjs has the id "${id}". Use one of: ${Arr.join(ids, ", ")}.`;
+
+const unknownHop = (id: string, hops: ReadonlyArray<Hop>) =>
+  `No hop in data.mjs has the id "${id}". Use one of: ${Arr.join(
+    Arr.map(hops, (hop) => hop.id),
+    ", "
+  )}.`;
 
 const routeExample = `"4,2 4,6 9,6"`;
 
@@ -113,6 +169,18 @@ const parseRoute = (
 
   return Result.succeed(Arr.getSuccesses(points));
 };
+
+/** The route `--route` asks for: grid points, or `null` for auto. */
+const routeOf = (
+  text: string
+): Result.Result<ReadonlyArray<GridPoint> | null, string> =>
+  Str.trim(text) === "auto" ? Result.succeed(null) : parseRoute(text);
+
+const describeRoute = (points: ReadonlyArray<GridPoint>) =>
+  Arr.join(
+    Arr.map(points, ({ x, y }) => `${x},${y}`),
+    " "
+  );
 
 /** Why a route can't be a hop's override, or nothing when it can. */
 const routeProblem = (
@@ -180,11 +248,7 @@ const reroute = Effect.fn("reroute")(function* (
   routeText: string
 ) {
   const paths = yield* homePaths(home);
-
-  const route =
-    Str.trim(routeText) === "auto"
-      ? Result.succeed(null)
-      : parseRoute(routeText);
+  const route = routeOf(routeText);
 
   if (Result.isFailure(route)) {
     return yield* reject(route.failure);
@@ -201,12 +265,7 @@ const reroute = Effect.fn("reroute")(function* (
   const hop = Arr.findFirst(map.data.hops, ({ id }) => id === hopId);
 
   if (Option.isNone(hop)) {
-    return yield* reject(
-      `No hop in data.mjs has the id "${hopId}". Use one of: ${Arr.join(
-        Arr.map(map.data.hops, ({ id }) => id),
-        ", "
-      )}.`
-    );
+    return yield* reject(unknownHop(hopId, map.data.hops));
   }
 
   const current = map.saved.routes?.[hopId];
@@ -266,10 +325,7 @@ const reroute = Effect.fn("reroute")(function* (
   return yield* Console.log(
     points === null
       ? `${hopId}: route override cleared, so the hop routes itself. layout.json is at revision ${revision}.`
-      : `${hopId}: route saved through ${Arr.join(
-          Arr.map(points, ({ x, y }) => `${x},${y}`),
-          " "
-        )}. layout.json is at revision ${revision}.`
+      : `${hopId}: route saved through ${describeRoute(points)}. layout.json is at revision ${revision}.`
   );
 }, Effect.scoped);
 
@@ -279,16 +335,10 @@ const layout = Effect.fn("layout")(function* (
   changes: Changes
 ) {
   const paths = yield* homePaths(home);
-  const problems = invalidValues(changes);
+  const problem = valuesProblem(changes);
 
-  if (Arr.every(fields, (field) => Option.isNone(changes[field]))) {
-    return yield* reject(
-      `Say what to change. Give at least one of --x, --y, --w and --d.`
-    );
-  }
-
-  if (problems.length > 0) {
-    return yield* reject(Arr.join(problems, " "));
+  if (Option.isSome(problem)) {
+    return yield* reject(problem.value);
   }
 
   yield* withLock(paths, "layout");
@@ -302,9 +352,7 @@ const layout = Effect.fn("layout")(function* (
   const ids = Arr.map(map.data.structures, (structure) => structure.id);
 
   if (!ids.includes(id)) {
-    return yield* reject(
-      `No structure in data.mjs has the id "${id}". Use one of: ${Arr.join(ids, ", ")}.`
-    );
+    return yield* reject(unknownStructure(id, ids));
   }
 
   const before = Option.fromNullishOr(map.saved.structures[id]);
@@ -324,12 +372,7 @@ const layout = Effect.fn("layout")(function* (
     ...defaultFootprint,
   }));
 
-  const after: Placement = {
-    d: Option.getOrElse(changes.d, () => base.d),
-    w: Option.getOrElse(changes.w, () => base.w),
-    x: Option.getOrElse(changes.x, () => base.x),
-    y: Option.getOrElse(changes.y, () => base.y),
-  };
+  const after = placedFrom(base, changes);
 
   const clash = Arr.findFirst(
     Rec.toEntries(map.saved.structures),
@@ -381,6 +424,223 @@ const layout = Effect.fn("layout")(function* (
   );
 }, Effect.scoped);
 
+/** What `--propose` asks for, read from the arguments before the map is. */
+type Ask =
+  | {
+      readonly _tag: "Place";
+      readonly changes: Changes;
+      readonly structure: string;
+    }
+  | {
+      readonly _tag: "Reroute";
+      readonly hop: string;
+      readonly points: ReadonlyArray<GridPoint> | null;
+    };
+
+/** A proposal for the map, and what it changes, for the line `layout` prints. */
+interface Asked {
+  readonly id: string;
+  readonly proposal: AgentProposal;
+  readonly what: string;
+}
+
+/**
+ * The proposal `ask` makes of the map as the page shows it, `shown`, or why
+ * it can't make one. The fields given replace the ones shown.
+ */
+const proposalOf = (
+  ask: Ask,
+  { data, shown }: { readonly data: MapData; readonly shown: Layout }
+): Result.Result<Asked, string> =>
+  Match.valueTags(ask, {
+    Place: ({ changes, structure }) => {
+      const ids = Arr.map(data.structures, ({ id }) => id);
+
+      if (!ids.includes(structure)) {
+        return Result.fail(unknownStructure(structure, ids));
+      }
+
+      return Option.match(Rec.get(shown.structures, structure), {
+        onNone: () =>
+          Result.fail(
+            `"${structure}" has no position yet, so there is nothing to propose a change to. Place it with layout without --propose, or run axonometric build.`
+          ),
+        onSome: (before) => {
+          const next = placedFrom(before, changes);
+
+          return Result.succeed<Asked>({
+            id: structure,
+            proposal: { _tag: "Place", next, structure },
+            what: describeChanges(before, next),
+          });
+        },
+      });
+    },
+    Reroute: ({ hop: hopId, points }) =>
+      Option.match(
+        Arr.findFirst(data.hops, ({ id }) => id === hopId),
+        {
+          onNone: () => Result.fail(unknownHop(hopId, data.hops)),
+          onSome: (hop) => {
+            const problem =
+              points === null
+                ? Option.none()
+                : routeProblem(points, hop, shown.structures);
+
+            return Option.match(problem, {
+              onNone: () =>
+                Result.succeed<Asked>({
+                  id: hopId,
+                  proposal: { _tag: "Reroute", hop: hopId, points },
+                  what:
+                    points === null
+                      ? "automatic routing"
+                      : `route through ${describeRoute(points)}`,
+                }),
+              onSome: Result.fail,
+            });
+          },
+        }
+      ),
+  });
+
+/**
+ * Proposes `ask` to the engineer as the agent's pending layout change, for
+ * `reason`, in proposals.json under the map's lock. layout.json is never
+ * written: the change waits until the engineer accepts it.
+ */
+const propose = Effect.fn("propose")(function* (
+  home: string,
+  ask: Ask,
+  reason: Reason
+) {
+  const paths = yield* homePaths(home);
+
+  yield* withLock(paths, "layout");
+
+  const map = yield* loadMap({ command: "layout", paths });
+  const { proposals } = map;
+
+  const base = layoutUnderProposals({
+    data: map.data,
+    layout: map.saved,
+    proposals,
+  });
+
+  const asked = proposalOf(ask, {
+    data: map.data,
+    shown: applyLayoutChanges(base, proposals.layout),
+  });
+
+  if (Result.isFailure(asked)) {
+    return yield* reject(asked.failure);
+  }
+
+  const { id, proposal, what } = asked.success;
+
+  const proposed = proposeAgentChange({
+    base,
+    changes: proposals.layout,
+    frozen: frozenLayoutChanges(proposals),
+    newId: newChangeId,
+    proposal,
+    reason,
+  });
+
+  if (Result.isFailure(proposed)) {
+    return yield* reject(proposed.failure);
+  }
+
+  const after = proposed.success;
+
+  // The page refuses the same lists, so the agent can't propose one the
+  // engineer couldn't make.
+  const refusal = Option.orElse(frozenWriteRefusal({ after, proposals }), () =>
+    layoutRefusal({
+      accepted: base,
+      after,
+      before: proposals.layout,
+      hops: map.data.hops,
+    })
+  );
+
+  if (Option.isSome(refusal)) {
+    return yield* reject(refusal.value);
+  }
+
+  if (sameLayoutChanges(after, proposals.layout)) {
+    return yield* Console.log(
+      `${id}: the map already shows that. Nothing changed.`
+    );
+  }
+
+  const revision = proposals.revision + 1;
+
+  yield* writeAll([
+    {
+      content: yield* encodeProposals({
+        ...proposals,
+        layout: after,
+        revision,
+      }),
+      file: paths.proposalsFile,
+    },
+  ]);
+
+  const { problems } = yield* inspectMap(paths, {
+    arrange: (data, saved) =>
+      layoutAfterChanges({ changes: after, hops: data.hops, layout: saved }),
+    drawingWarnings: true,
+  });
+
+  yield* Effect.forEach(
+    problems,
+    (problem) => Console.error(formatProblem(problem)),
+    { concurrency: 1, discard: true }
+  );
+
+  return yield* Console.log(
+    `${id}: proposed ${what}, for "${reason}". proposals.json is at revision ${revision}. The engineer accepts or discards it in the Pending tab.`
+  );
+}, Effect.scoped);
+
+/**
+ * The reason `--propose --reason` gives, nothing without `--propose`, or why
+ * the pair can't go together.
+ */
+const reasonOf = (
+  proposing: boolean,
+  given: Option.Option<string>
+): Result.Result<Option.Option<Reason>, string> => {
+  if (!proposing) {
+    return Option.isSome(given)
+      ? Result.fail(
+          `--reason goes with --propose. Add --propose to leave the change for the engineer to accept, or leave --reason out to apply it now.`
+        )
+      : Result.succeed(Option.none());
+  }
+
+  return Option.match(Option.map(given, Str.trim), {
+    onNone: () =>
+      Result.fail(
+        `--propose needs --reason, saying why the engineer should take the change. Add --reason "...".`
+      ),
+    onSome: (text) => {
+      if (Str.isEmpty(text)) {
+        return Result.fail(
+          `--reason is empty. Say why you propose the change, such as --reason "Line up the ingest row".`
+        );
+      }
+
+      return text.length > maxReasonLength
+        ? Result.fail(
+            `The reason is ${text.length} characters, over the limit of ${maxReasonLength}. Say it shorter.`
+          )
+        : Result.succeed(Option.some(text));
+    },
+  });
+};
+
 const gridFlag = (name: Field, description: string) =>
   Flag.Finite(name).pipe(Flag.withDescription(description), Flag.optional);
 
@@ -411,12 +671,32 @@ export const layoutCommand = Command.make(
       ),
       Flag.optional
     ),
+    propose: Flag.Boolean("propose").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription(
+        "Write the change to proposals.json as the agent's pending layout change, for the engineer to accept or discard in the Pending tab, instead of to layout.json. Needs --reason"
+      )
+    ),
+    reason: Flag.String("reason").pipe(
+      Flag.withDescription(
+        "Why you propose the change, with --propose. The engineer reads it in the Pending tab"
+      ),
+      Flag.optional
+    ),
   },
   /* oxlint-enable perfectionist/sort-objects */
-  ({ d, home, hop, route, structure, w, x, y }) => {
+  ({ d, home, hop, propose: proposing, reason, route, structure, w, x, y }) => {
     const grid = Arr.some(fields, (field) =>
       Option.isSome({ d, w, x, y }[field])
     );
+
+    const given = reasonOf(proposing, reason);
+
+    if (Result.isFailure(given)) {
+      return reject(given.failure);
+    }
+
+    const proposed = given.success;
 
     if (Option.isSome(hop) || Option.isSome(route)) {
       if (Option.isNone(hop) || Option.isNone(route)) {
@@ -425,22 +705,48 @@ export const layoutCommand = Command.make(
         );
       }
 
-      return Option.isSome(structure) || grid
-        ? reject(
-            `Rerouting a hop takes --hop and --route alone. Run layout again for a structure's --x, --y, --w and --d.`
-          )
-        : reroute(home, hop.value, route.value);
+      if (Option.isSome(structure) || grid) {
+        return reject(
+          `Rerouting a hop takes --hop and --route alone. Run layout again for a structure's --x, --y, --w and --d.`
+        );
+      }
+
+      return Option.match(proposed, {
+        onNone: () => reroute(home, hop.value, route.value),
+        onSome: (why) =>
+          Result.match(routeOf(route.value), {
+            onFailure: reject,
+            onSuccess: (points) =>
+              propose(home, { _tag: "Reroute", hop: hop.value, points }, why),
+          }),
+      });
     }
 
-    return Option.isNone(structure)
-      ? reject(
-          `Say what to change. Name a structure to move or resize, or give --hop and --route to reroute a hop.`
-        )
-      : layout(home, structure.value, { d, w, x, y });
+    if (Option.isNone(structure)) {
+      return reject(
+        `Say what to change. Name a structure to move or resize, or give --hop and --route to reroute a hop.`
+      );
+    }
+
+    const changes = { d, w, x, y };
+
+    return Option.match(proposed, {
+      onNone: () => layout(home, structure.value, changes),
+      onSome: (why) =>
+        Option.match(valuesProblem(changes), {
+          onNone: () =>
+            propose(
+              home,
+              { _tag: "Place", changes, structure: structure.value },
+              why
+            ),
+          onSome: reject,
+        }),
+    });
   }
 ).pipe(
   Command.withDescription(
-    "Move or resize one structure, or reroute one hop, in layout.json, under the map's lock. Values land on half units, such as 4 or 4.5. Fields you leave out keep their value."
+    "Move or resize one structure, or reroute one hop, in layout.json, under the map's lock. Values land on half units, such as 4 or 4.5. Fields you leave out keep their value. With --propose, the change waits in proposals.json for the engineer instead."
   ),
   Command.withExamples([
     {
@@ -459,6 +765,11 @@ export const layoutCommand = Command.make(
     {
       command: "axonometric layout docs/pipeline/map --hop h-save --route auto",
       description: "Clear the hop's route override",
+    },
+    {
+      command:
+        'axonometric layout docs/pipeline/map gate --x 8 --propose --reason "Line up the ingest row"',
+      description: "Propose a move for the engineer to accept or discard",
     },
   ])
 );

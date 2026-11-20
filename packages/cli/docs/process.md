@@ -83,6 +83,15 @@ axonometric layout <home> --hop h-save --route auto
 
 List grid points from the edge of one footprint to the edge of the other, separated by spaces, with each point sharing `x` or `y` with the one before. `layout` refuses a route that doesn't start and end on the footprints' edges, has a diagonal leg or names a hop `data.mjs` lacks, and writes nothing. `--route auto` clears the override so the hop routes itself. It takes the map's lock and checks the file revision, like a move.
 
+To leave a move, resize or reroute for the engineer instead of applying it, add `--propose` and say why with `--reason`:
+
+```sh
+axonometric layout <home> server --x 14 --y 12 --propose --reason "Give the server room beside the page"
+axonometric layout <home> --hop h-save --route auto --propose --reason "Let the router take the save hop"
+```
+
+The change waits in `proposals.json` as yours, and `layout.json` stays as it is. The engineer sees it in the page's Pending tab, grouped with your other changes that give the same reason, and accepts or discards it. A second proposal for the same structure or hop replaces your first. `layout` refuses a structure or hop the engineer has a pending change to, names their change, and writes nothing. After it writes, `layout` prints the drawing warnings of the map with every pending layout change applied.
+
 Never edit `layout.json` by hand. A hand edit skips the lock and the revision check, so it can overwrite what the engineer just did in the page. Run `check` afterwards: it reports a route that doesn't start and end on a footprint's edge, or runs under a box.
 
 Done when `check` prints 0 warnings, or you can say why each remaining warning is acceptable.
