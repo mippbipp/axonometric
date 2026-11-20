@@ -38,6 +38,7 @@ import {
   RevisionNumber,
   ServerEvent,
   serverPaths,
+  ServerStatus,
   StaleProposals,
 } from "./server.ts";
 
@@ -54,6 +55,10 @@ export class MapApiGroup extends HttpApiGroup.make("map").add(
   }),
   HttpApiEndpoint.get("events", serverPaths.events, {
     success: HttpApiSchema.StreamSse({ data: ServerEvent }),
+  }),
+  HttpApiEndpoint.get("status", serverPaths.status, {
+    query: { since: Schema.optionalKey(Schema.DateTimeUtcFromString) },
+    success: ServerStatus,
   })
 ) {}
 
