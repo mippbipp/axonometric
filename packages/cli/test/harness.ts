@@ -2,7 +2,6 @@ import {
   emptyProposals,
   MapState,
   ProposalsFile,
-  ServerState,
 } from "@axonometric/contracts";
 import type { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
@@ -11,7 +10,7 @@ import {
   Array as Arr,
   Cause,
   Console,
-  Duration,
+  Deferred,
   Effect,
   Exit,
   Fiber,
@@ -21,7 +20,6 @@ import {
   Path,
   Record as Rec,
   Runtime,
-  Schedule,
   Schema,
   Stdio,
   String as Str,
@@ -53,7 +51,7 @@ const plainTerminal: TerminalCapabilities.TerminalCapabilities = {
 const formatLine = (args: ReadonlyArray<unknown>) =>
   `${Arr.join(Arr.map(args, String), " ")}\n`;
 
-const captureConsole = () => {
+const captureConsole = (onStdout?: (line: string) => void) => {
   const output = { stderr: "", stdout: "" };
 
   const console: Console.Console = {
@@ -62,7 +60,10 @@ const captureConsole = () => {
       output.stderr += formatLine(args);
     },
     log: (...args: ReadonlyArray<unknown>) => {
-      output.stdout += formatLine(args);
+      const line = formatLine(args);
+
+      output.stdout += line;
+      onStdout?.(line);
     },
   };
 
@@ -136,8 +137,11 @@ export const makeHome = Effect.fnUntraced(function* (files: HomeFiles) {
 }, Effect.provide(NodeServices.layer));
 
 /** Runs the CLI in-process with `args`, writing its output to `output`. */
-const runCaptured = (args: ReadonlyArray<string>) => {
-  const { console, output } = captureConsole();
+const runCaptured = (
+  args: ReadonlyArray<string>,
+  onStdout?: (line: string) => void
+) => {
+  const { console, output } = captureConsole(onStdout);
   const stdio = Stdio.layerTest({ args: Effect.succeed(args) });
 
   const exit = run(args).pipe(
@@ -186,77 +190,47 @@ export const runCli = Effect.fnUntraced(function* (
   } satisfies CliResult;
 }, Effect.provide(NodeServices.layer));
 
-const decodeServerState = Schema.decodeUnknownOption(
-  Schema.fromJsonString(ServerState)
-);
-
-/** How often, and for how long, to look for a starting server. */
-const serverWait = Schedule.spaced(Duration.millis(25)).pipe(
-  Schedule.upTo({ duration: Duration.seconds(15) })
-);
-
-/**
- * Waits until the server state file of the map in `home` names a server
- * other than `previous`, and returns it.
- */
-const waitForServer = Effect.fnUntraced(function* (
-  home: string,
-  previous?: string
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const { serverStateFile: file } = homeAt(home);
-
-  const read = fs.readFileString(file).pipe(
-    Effect.map(decodeServerState),
-    Effect.orElseSucceed(() => Option.none<ServerState>()),
-    Effect.flatMap((state) =>
-      Option.isSome(state) && state.value.since !== previous
-        ? Effect.succeed(state.value)
-        : Effect.fail("no server yet")
-    )
-  );
-
-  return yield* read.pipe(Effect.retry(serverWait), Effect.orDie);
-});
-
 /** A `serve` running in-process, started by `startServe`. */
 export interface RunningServe {
   /** What it has printed so far. */
   readonly output: { readonly stderr: string; readonly stdout: string };
-  readonly state: ServerState;
   /** Stops it as Ctrl-C would, by interrupting it. */
   readonly stop: Effect.Effect<void>;
+  /** The URL on its "Serving <home> at <url>." line. */
   readonly url: string;
 }
 
+const servingLine = /^Serving .* at (?<url>\S+)\. Press Ctrl-C to stop\.$/mu;
+
 /**
  * Starts `axonometric serve` in-process with `args`, whose home folder is
- * `home`, and returns once it has written its state file. It stops when the
- * test's scope closes, if not before.
+ * `home`, and returns once it prints "Serving <home> at <url>.". Fails with
+ * what it printed if it exits first. It stops when the test's scope closes,
+ * if not before.
  */
 export const startServe = Effect.fnUntraced(function* (
   home: string,
   args: ReadonlyArray<string>
 ) {
-  const fs = yield* FileSystem.FileSystem;
-  const { serverStateFile: file } = homeAt(home);
+  const ready = yield* Deferred.make<string>();
 
-  const previous = yield* fs.readFileString(file).pipe(
-    Effect.map(decodeServerState),
-    Effect.map(Option.map((state) => state.since)),
-    Effect.orElseSucceed(() => Option.none<string>())
-  );
+  const { exit, output } = runCaptured(["serve", home, ...args], () => {
+    const url = servingLine.exec(output.stdout)?.groups?.url;
 
-  const { exit, output } = runCaptured(["serve", home, ...args]);
+    if (url !== undefined) {
+      Deferred.doneUnsafe(ready, Effect.succeed(url));
+    }
+  });
+
   const fiber = yield* Effect.forkScoped(exit);
 
-  const state = yield* Effect.raceFirst(
-    waitForServer(home, Option.getOrUndefined(previous)),
+  const url = yield* Effect.raceFirst(
+    Deferred.await(ready),
     Fiber.join(fiber).pipe(
       Effect.flatMap((ended) =>
         Effect.die(
           new Error(
-            `serve exited before it started, with exit code ${exitCodeOf(ended)}.\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}\nexit:\n${Exit.isFailure(ended) ? Cause.pretty(ended.cause) : "success"}`
+            `serve exited before it printed its URL, with exit code ${exitCodeOf(ended)}.\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}\nexit:\n${Exit.isFailure(ended) ? Cause.pretty(ended.cause) : "success"}`
           )
         )
       )
@@ -265,11 +239,10 @@ export const startServe = Effect.fnUntraced(function* (
 
   return {
     output,
-    state,
     stop: Fiber.interrupt(fiber),
-    url: state.url,
+    url,
   } satisfies RunningServe;
-}, Effect.provide(NodeServices.layer));
+});
 
 // oxlint-disable-next-line node/no-sync -- the path service is a plain object, read once at import so path helpers can be plain functions.
 const platformPath = Effect.runSync(
