@@ -13,12 +13,15 @@ import {
   createMenuController,
 } from "@axonometric/ui/components/menu";
 import { Array as Arr, Option } from "effect";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
-import { openContextMenu } from "./open-context-menu.ts";
+import { useContextMenu } from "./open-context-menu.ts";
 import { useSelection } from "./selection-context.ts";
 import { useHopFlowToggle } from "./use-hop-flow-toggle.ts";
+
+const idOfSegment = (target: Element) =>
+  target.closest<SVGElement>("[data-route-segment]")?.dataset.hopId;
 
 /**
  * The context menu on a hop: a right-click on one of its segments opens a
@@ -41,34 +44,15 @@ export function HopMenu() {
 
   const canPropose = connections?.canPropose === true;
 
-  useEffect(() => {
-    const onContextMenu = (event: MouseEvent) => {
-      if (!canPropose) {
-        return;
-      }
-
-      const id =
-        event.target instanceof Element
-          ? event.target.closest<SVGElement>("[data-route-segment]")?.dataset
-              .hopId
-          : undefined;
-
-      if (id === undefined) {
-        return;
-      }
-
-      event.preventDefault();
+  useContextMenu({
+    enabled: canPropose,
+    idOf: idOfSegment,
+    menu,
+    onOpen: (id) => {
       selectHop(id);
       setOpened(id);
-      openContextMenu({ event, menu });
-    };
-
-    document.addEventListener("contextmenu", onContextMenu);
-
-    return () => {
-      document.removeEventListener("contextmenu", onContextMenu);
-    };
-  }, [canPropose, menu, selectHop]);
+    },
+  });
 
   const hop =
     opened === null || connections === null

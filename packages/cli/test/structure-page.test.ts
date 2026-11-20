@@ -469,6 +469,14 @@ describe("the context menu on a structure", () => {
         const focusedStructure = `document.activeElement?.getAttribute("data-structure")`;
         const focusedMenuEntry = `document.activeElement?.closest("[data-structure-menu]") !== null && document.activeElement?.getAttribute("role") === "menuitem"`;
 
+        // macOS Chromium sends Shift+F10 with no contextmenu event, and the
+        // other systems send one. Dropping the event makes every system take
+        // the macOS path, which the page has to handle itself.
+        yield* Effect.promise(() =>
+          page.evaluate(
+            `addEventListener("contextmenu", (event) => { if (event.button !== 2) { event.stopImmediatePropagation(); } }, true)`
+          )
+        );
         yield* Effect.promise(() =>
           page.locator('[data-structure="engineer"]').focus()
         );

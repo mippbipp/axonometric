@@ -14,12 +14,12 @@ import {
   createMenuController,
 } from "@axonometric/ui/components/menu";
 import { Array as Arr, Option } from "effect";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useRevealToggle } from "./chapter-reveal.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
 import { useNewGroupForm } from "./new-group-context.ts";
-import { openContextMenu } from "./open-context-menu.ts";
+import { useContextMenu } from "./open-context-menu.ts";
 import { useProposed } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { changeFor, shapeChoices, statusChoices } from "./structure-actions.ts";
@@ -27,6 +27,9 @@ import { useStructuresById } from "./structures.ts";
 import { useChapterPropose } from "./use-chapter-propose.ts";
 import { usePropose } from "./use-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
+
+const idOfStructure = (target: Element) =>
+  target.closest<SVGElement>("[data-structure]")?.dataset.structure;
 
 /**
  * The context menu on a structure: a right-click on it opens a menu to
@@ -50,34 +53,15 @@ export function StructureMenu() {
 
   const canPropose = proposing?.canPropose === true;
 
-  useEffect(() => {
-    const onContextMenu = (event: MouseEvent) => {
-      if (!canPropose) {
-        return;
-      }
-
-      const id =
-        event.target instanceof Element
-          ? event.target.closest<SVGElement>("[data-structure]")?.dataset
-              .structure
-          : undefined;
-
-      if (id === undefined) {
-        return;
-      }
-
-      event.preventDefault();
+  useContextMenu({
+    enabled: canPropose,
+    idOf: idOfStructure,
+    menu,
+    onOpen: (id) => {
       select(id);
       setOpened(id);
-      openContextMenu({ event, menu });
-    };
-
-    document.addEventListener("contextmenu", onContextMenu);
-
-    return () => {
-      document.removeEventListener("contextmenu", onContextMenu);
-    };
-  }, [canPropose, menu, select]);
+    },
+  });
 
   const structure: Structure | undefined =
     opened === null ? undefined : byId.get(opened);
