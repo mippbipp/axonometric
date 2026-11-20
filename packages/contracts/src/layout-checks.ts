@@ -644,7 +644,7 @@ const chapterWarnings = (data: MapData, layout: Layout, scope: CheckScope) => {
 };
 
 /**
- * The checks of `checkLayout` that look at the whole layout, not at any one
+ * The checks of `checkMap` that look at the whole layout, not at any one
  * chapter's drawing. They don't route or draw, so they are quick. `zones` are
  * apart because a chapter judges them by the structures it has revealed.
  */
@@ -663,7 +663,7 @@ const layoutWide = (data: MapData, layout: Layout) => {
   };
 };
 
-/** The layout-wide checks of `checkLayout`, in the order it reports them. */
+/** The layout-wide checks of `checkMap`, in the order it reports them. */
 export const layoutWideProblems: {
   (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
   (data: MapData, layout: Layout): ReadonlyArray<MapProblem>;
@@ -761,7 +761,7 @@ const drawingsFor = (data: MapData): ChapterDrawings => {
  * The warnings from routing and drawing each chapter in both views: routes
  * that share a segment or run under boxes, and anything else the Iso view or
  * Plan view would draw over something in some chapter. This is the slow part
- * of `checkLayout`, so callers ask for it only when they report it.
+ * of `checkMap`, so callers ask for it only when they report it.
  */
 export const drawingProblems: {
   (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
@@ -775,26 +775,7 @@ export const drawingProblems: {
 );
 
 /**
- * Problems with how the layout reads. Errors for route overrides whose ends
- * aren't on their hop's footprints; warnings for entries for structures
- * that no longer exist, route overrides for hops that no longer exist,
- * overrides that share a segment with another route, footprints that
- * overlap, name tags drawn over other boxes, zones that overlap, routes that
- * run under boxes, and anything else the Iso view or Plan view would draw
- * over something in some chapter. A structure with no placement gets nothing, because
- * `build` places it. The first group is `layoutWideProblems`, which is quick,
- * and the drawing warnings are `drawingProblems`, which isn't.
- */
-export const checkLayout: {
-  (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
-  (data: MapData, layout: Layout): ReadonlyArray<MapProblem>;
-} = dual(2, (data: MapData, layout: Layout): ReadonlyArray<MapProblem> => [
-  ...layoutWideProblems(data, layout),
-  ...drawingProblems(data, layout),
-]);
-
-/**
- * `checkLayout`, for the drawing of one chapter alone: the layout-wide checks
+ * `checkMap`, for the drawing of one chapter alone: the layout-wide checks
  * of the whole map except its zones, and the routing, zone and drawing checks
  * of `chapter` as the walkthrough draws it. A proposal to a chapter is judged
  * here against the chapter the engineer is viewing, not every chapter at once.
@@ -810,7 +791,7 @@ const checkChapter = (
 const lineOf = (problem: MapProblem) =>
   `${problem.severity} ${problem.file} ${problem.path}: ${problem.message}`;
 
-/** A problem `checkLayout` finds in a dragged layout, and whether the drag made it. */
+/** A problem `checkMap` finds in a dragged layout, and whether the drag made it. */
 export interface DraggedProblem {
   /** Whether the layout before the drag didn't have it. */
   readonly added: boolean;
@@ -847,13 +828,17 @@ const checked = new WeakMap<
 >();
 
 /**
- * `checkLayout`, remembered for this data and this layout. A proposal asks
- * about the same layout before again at every change, and the check is the
- * slow part.
+ * Problems with how the layout reads: the layout-wide checks, then the
+ * drawing warnings. Remembered for this data and this layout, since a proposal
+ * asks about the same layout before again at every change, and the drawing
+ * warnings are the slow part.
  */
 const checkLayoutOnce = (data: MapData, layout: Layout) => {
   const byLayout = checked.get(data) ?? new WeakMap();
-  const found = byLayout.get(layout) ?? checkLayout(data, layout);
+  const found = byLayout.get(layout) ?? [
+    ...layoutWideProblems(data, layout),
+    ...drawingProblems(data, layout),
+  ];
 
   byLayout.set(layout, found);
   checked.set(data, byLayout);

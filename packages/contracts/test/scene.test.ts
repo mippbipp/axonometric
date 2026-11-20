@@ -11,7 +11,6 @@ import {
   arrowheadOf,
   arrowHalfWidth,
   arrowPolygon,
-  checkLayout,
   corners,
   groundProjections,
   routeRevealed,
@@ -33,6 +32,7 @@ import type {
 } from "../src/index.ts";
 import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
 import { placementOf } from "./footprints.ts";
+import { layoutProblems } from "./layout-problems.ts";
 import {
   edgeOf,
   facingEdges,
@@ -751,7 +751,7 @@ describe("scene", () => {
         const { data, layout } = yield* fixture("flake-pipeline");
 
         const warned = new Set(
-          Arr.flatMap(checkLayout(data, layout), ({ message, path }) =>
+          Arr.flatMap(layoutProblems(data, layout), ({ message, path }) =>
             Str.includes("long way round")(message) ? [path] : []
           )
         );
@@ -1033,7 +1033,7 @@ const groundClashesOf = (map: ReturnType<typeof groundMap>) =>
 
 /** What `check` warns about a map, by message. */
 const warningsOf = (map: ReturnType<typeof groundMap>) =>
-  Arr.map(checkLayout(map.data, map.layout), ({ message }) => message);
+  Arr.map(layoutProblems(map.data, map.layout), ({ message }) => message);
 
 /** The warning `check` gives in each view for a clash between two things. */
 const drawnOver = (first: string, second: string) =>

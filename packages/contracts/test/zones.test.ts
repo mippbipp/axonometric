@@ -1,12 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option, String as Str } from "effect";
 
-import {
-  checkLayout,
-  footprintsOverlap,
-  placeStructures,
-  zonesOf,
-} from "../src/index.ts";
+import { footprintsOverlap, placeStructures, zonesOf } from "../src/index.ts";
 import type {
   Layout,
   MapData,
@@ -15,6 +10,7 @@ import type {
   Structure,
 } from "../src/index.ts";
 import { grow } from "./footprints.ts";
+import { layoutProblems } from "./layout-problems.ts";
 
 type MapParts = Pick<MapData, "groups" | "structures">;
 
@@ -162,7 +158,7 @@ describe("zone overlap check", () => {
   it.effect("warns once when two zones overlap, naming both groups", () =>
     Effect.sync(() => {
       const crowded = layoutOf({ ...layout.structures, web: at(3, 0) });
-      const problems = checkLayout(mapOf(data), crowded);
+      const problems = layoutProblems(mapOf(data), crowded);
 
       assert.deepStrictEqual(zoneWarnings(problems), [
         {
@@ -180,7 +176,7 @@ describe("zone overlap check", () => {
     Effect.sync(() => {
       // With web at x 2, front's zone ends at x 5, where back's starts.
       const touching = layoutOf({ ...layout.structures, web: at(2, 0) });
-      const problems = checkLayout(mapOf(data), touching);
+      const problems = layoutProblems(mapOf(data), touching);
 
       assert.deepStrictEqual(zoneWarnings(problems), []);
     })

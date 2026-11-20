@@ -2,7 +2,6 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Record as Rec, String as Str } from "effect";
 
 import {
-  checkLayout,
   footprintsOverlap,
   placeStructures,
   sceneOf,
@@ -18,6 +17,7 @@ import type {
 } from "../src/index.ts";
 import { placedFixture } from "./fixture-maps.ts";
 import { grow, placementOf } from "./footprints.ts";
+import { layoutProblems } from "./layout-problems.ts";
 
 /** What `check` says of a hop whose Plan label has no spot in a chapter. */
 const hiddenLabel = (id: string, chapter: string) =>
@@ -145,7 +145,7 @@ const assertTidy = (data: MapData, layout: Layout) => {
   }
 
   assert.deepStrictEqual(
-    checkLayout(data, layout),
+    layoutProblems(data, layout),
     [],
     "placement left layout warnings"
   );
@@ -215,7 +215,7 @@ describe("placement", () => {
         const { data, layout } = yield* placedFixture("update-pipeline");
 
         assert.deepStrictEqual(
-          Arr.map(checkLayout(data, layout), ({ message }) => message),
+          Arr.map(layoutProblems(data, layout), ({ message }) => message),
           [
             hiddenLabel("h-bg-checks", "c-scope"),
             hiddenLabel("h-merge", "c-watchdog"),
@@ -640,13 +640,13 @@ describe("layout checks", () => {
 
       const layout = layoutOf({ a: at(0, 0), b: at(4, 0) });
 
-      assert.deepStrictEqual(checkLayout(data, layout), []);
+      assert.deepStrictEqual(layoutProblems(data, layout), []);
     })
   );
 
   it.effect("warns about an entry for a structure that no longer exists", () =>
     Effect.sync(() => {
-      const problems = checkLayout(
+      const problems = layoutProblems(
         mapOf([structure("a")]),
         layoutOf({ a: at(0, 0), gone: at(4, 0) })
       );
@@ -673,7 +673,7 @@ describe("layout checks", () => {
     "warns once about two overlapping footprints, naming the other",
     () =>
       Effect.sync(() => {
-        const problems = checkLayout(
+        const problems = layoutProblems(
           mapOf([structure("a"), structure("b")]),
           layoutOf({ a: sized({ d: 4, w: 4, x: 0, y: 0 }), b: at(3, 3) })
         );
@@ -713,7 +713,7 @@ describe("layout checks", () => {
       // b sits right in front of a's front corner, where a's tag hangs.
       const data = mapOf([structure("a"), structure("b")]);
 
-      const problems = checkLayout(
+      const problems = layoutProblems(
         data,
         layoutOf({ a: at(0, 0), b: at(2, 2) })
       );
@@ -760,7 +760,7 @@ describe("layout checks", () => {
         ] as const;
 
         for (const [what, tagged, shape, behind, covered] of cases) {
-          const problems = checkLayout(
+          const problems = layoutProblems(
             mapOf([tagged, { ...structure("b"), shape }]),
             layoutOf({ a: at(0, 0), b: behind })
           );

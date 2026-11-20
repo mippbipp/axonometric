@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, String as Str } from "effect";
 
-import { checkLayout, checkMap } from "../src/index.ts";
+import { checkMap } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
+import { layoutProblems } from "./layout-problems.ts";
 
 const options = { linkExists: () => true };
 
@@ -21,16 +22,21 @@ describe("checkMap's drawing warnings", () => {
     })
   );
 
-  it.effect("give every layout problem checkLayout gives when asked for", () =>
-    Effect.gen(function* () {
-      const files = yield* fixture("shapes");
-      const reported = checkMap(files, { ...options, drawingWarnings: true });
-      const inLayout = Arr.filter(
-        reported,
-        ({ file }) => file === "layout.json"
-      );
+  it.effect(
+    "give every layout problem layoutProblems gives when asked for",
+    () =>
+      Effect.gen(function* () {
+        const files = yield* fixture("shapes");
+        const reported = checkMap(files, { ...options, drawingWarnings: true });
+        const inLayout = Arr.filter(
+          reported,
+          ({ file }) => file === "layout.json"
+        );
 
-      assert.deepStrictEqual(inLayout, checkLayout(files.data, files.layout));
-    })
+        assert.deepStrictEqual(
+          inLayout,
+          layoutProblems(files.data, files.layout)
+        );
+      })
   );
 });

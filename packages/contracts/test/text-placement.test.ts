@@ -2,7 +2,6 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, Option } from "effect";
 
 import {
-  checkLayout,
   gapBetween,
   fitFloorOf,
   routeRevealed,
@@ -12,6 +11,7 @@ import {
 } from "../src/index.ts";
 import type { Scene, SceneSource, SceneStructure } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
+import { layoutProblems } from "./layout-problems.ts";
 
 const names = [
   "flake-pipeline",
@@ -167,7 +167,7 @@ describe("name tags at full size", () => {
 
         const warned = new Set(
           Arr.map(
-            checkLayout(data, layout),
+            layoutProblems(data, layout),
             ({ message, path }) => `${path}: ${message}`
           )
         );

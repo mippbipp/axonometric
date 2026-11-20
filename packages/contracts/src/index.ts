@@ -75,7 +75,6 @@ export type { Corners, GridPosition, ScreenPoint, ScreenRect } from "./iso.ts";
 export {
   changedProblems,
   chapterViews,
-  checkLayout,
   drawingProblems,
   footprintsOverlap,
   offEndFindings,

@@ -5,7 +5,6 @@ import {
   applyLayoutChanges,
   changedProblems,
   chapterViews,
-  checkLayout,
   checkMap,
   dragCheckOf,
   layoutAfterChanges,
@@ -20,6 +19,7 @@ import type {
   MapProblem,
 } from "../src/index.ts";
 import { fixture } from "./fixture-maps.ts";
+import { layoutProblems } from "./layout-problems.ts";
 
 /** How far to move a structure, in grid units. */
 interface Nudge {
@@ -277,11 +277,11 @@ describe("the drag preview and the layout a drop saves", () => {
         );
 
         assert.isAbove(shown.length, 0);
-        assert.deepStrictEqual(shown, checkLayout(data, savedLayout));
+        assert.deepStrictEqual(shown, layoutProblems(data, savedLayout));
         // Without the carried override the layout reads differently, so the
         // comparison would notice a preview that left it behind.
         assert.notDeepEqual(
-          checkLayout(data, applyLayoutChanges(layout, changes)),
+          layoutProblems(data, applyLayoutChanges(layout, changes)),
           shown
         );
       })
