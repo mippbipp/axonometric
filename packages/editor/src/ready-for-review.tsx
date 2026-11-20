@@ -1,4 +1,12 @@
 import type { FreezeAnswer } from "@axonometric/contracts";
+import {
+  Dialog,
+  DialogBackdrop,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@axonometric/ui/components/dialog";
 import { Array as Arr, Result } from "effect";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -96,27 +104,9 @@ function PromptBox({
 export function ReadyForReview() {
   const review = useReview();
   const editing = useEditingIgnoringEdit();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
   const [sent, setSent] = useState<Sent | null>(null);
   const [failure, setFailure] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    const element = dialog.current;
-
-    if (element === null) {
-      return;
-    }
-
-    if (sent === null) {
-      if (element.open) {
-        element.close();
-      }
-    } else if (!element.open) {
-      element.showModal();
-    }
-  }, [sent]);
 
   if (review === null) {
     return null;
@@ -188,57 +178,58 @@ export function ReadyForReview() {
           {failure}
         </output>
       )}
-      <dialog
-        aria-labelledby={titleId}
-        className="border-ink bg-paper text-ink m-auto max-w-lg overscroll-contain border-2 p-0 font-mono backdrop:bg-black/40"
-        data-review-dialog
-        onClose={() => {
-          setSent(null);
+      <Dialog
+        onOpenChange={(next) => {
+          if (!next) {
+            setSent(null);
+          }
         }}
-        ref={dialog}
+        open={sent !== null}
       >
-        {sent === null ? null : (
-          <div className="flex flex-col gap-3 p-4 text-sm">
-            <h2
-              className="text-base font-medium text-balance"
-              data-review-title
-              id={titleId}
-            >
-              Batch {sent.frozen.batch.number} is ready for your agent
-            </h2>
-            <p data-review-copied={sent.copied}>
-              {sent.copied
-                ? "The prompt is copied. Paste it into your agent."
-                : "Your browser blocked the clipboard. The prompt is selected below. Copy it and paste it into your agent."}
-            </p>
-            <p className="text-xs opacity-80" data-review-summary-note>
-              The list in the prompt is a summary. The full details are in{" "}
-              <code translate="no">{sent.frozen.home}/proposals.json</code>.
-            </p>
-            <PromptBox
-              prompt={sent.frozen.prompt}
-              selectOnOpen={!sent.copied}
-            />
-            <p className="text-xs opacity-80">
-              You can keep editing. New changes go in batch{" "}
-              {sent.frozen.batch.number + 1}.
-            </p>
-            <form className="flex gap-1.5" method="dialog">
-              <button
-                className={controlClass}
-                data-review-copy
-                onClick={copyAgain}
-                type="button"
-              >
-                Copy the prompt
-              </button>
-              <button className={controlClass} data-review-close type="submit">
-                Close
-              </button>
-            </form>
-          </div>
-        )}
-      </dialog>
+        <DialogBackdrop />
+        <DialogContent
+          className="border-ink bg-paper text-ink w-fit max-w-[min(32rem,90vw)] overscroll-contain p-0"
+          data-review-dialog
+        >
+          {sent === null ? null : (
+            <div className="flex flex-col gap-3 p-4 text-sm">
+              <DialogTitle className="text-base text-balance" data-review-title>
+                Batch {sent.frozen.batch.number} is ready for your agent
+              </DialogTitle>
+              <DialogDescription data-review-copied={sent.copied}>
+                {sent.copied
+                  ? "The prompt is copied. Paste it into your agent."
+                  : "Your browser blocked the clipboard. The prompt is selected below. Copy it and paste it into your agent."}
+              </DialogDescription>
+              <p className="text-xs opacity-80" data-review-summary-note>
+                The list in the prompt is a summary. The full details are in{" "}
+                <code translate="no">{sent.frozen.home}/proposals.json</code>.
+              </p>
+              <PromptBox
+                prompt={sent.frozen.prompt}
+                selectOnOpen={!sent.copied}
+              />
+              <p className="text-xs opacity-80">
+                You can keep editing. New changes go in batch{" "}
+                {sent.frozen.batch.number + 1}.
+              </p>
+              <div className="flex gap-1.5">
+                <button
+                  className={controlClass}
+                  data-review-copy
+                  onClick={copyAgain}
+                  type="button"
+                >
+                  Copy the prompt
+                </button>
+                <DialogClose className={controlClass} data-review-close>
+                  Close
+                </DialogClose>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

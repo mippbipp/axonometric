@@ -6,6 +6,7 @@ import {
   newFlowId,
 } from "@axonometric/contracts";
 import type { Flow } from "@axonometric/contracts";
+import { Checkbox } from "@axonometric/ui/components/checkbox";
 import { Array as Arr, Option, Result } from "effect";
 import { useId, useState } from "react";
 
@@ -211,18 +212,17 @@ function NewFlowForm() {
           {Arr.map(hops, ({ id: hop, label }) => (
             <li key={hop}>
               <label className="flex items-center gap-2">
-                <input
+                <Checkbox
                   checked={picked.includes(hop)}
                   data-new-flow-hop={hop}
                   disabled={!connections.canPropose}
-                  onChange={(event) => {
+                  onCheckedChange={(next) => {
                     setPicked(
-                      event.target.checked
+                      next === true
                         ? [...picked, hop]
                         : Arr.filter(picked, (other) => other !== hop)
                     );
                   }}
-                  type="checkbox"
                 />
                 <span className="min-w-0 break-words">{label}</span>
               </label>

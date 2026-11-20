@@ -23,7 +23,17 @@ const pipelinePage = Effect.gen(function* () {
 
 const overviewButton = "header [data-control='overview']";
 
-const overviewPage = "dialog[open][data-overview-page]";
+const overviewPage = "[role='dialog'][data-overview-page][data-open]";
+
+/** Waits until the chapter on the page is no longer `before`. */
+const waitForChapterChange = (page: Page, before: string) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `document.querySelector("[data-walkthrough]")?.getAttribute("data-chapter") !== ${literal(before)}`,
+      undefined,
+      { timeout: 15_000 }
+    )
+  );
 
 const texts = (page: Page, selector: string) =>
   Effect.promise(() => page.locator(selector).allTextContents());
@@ -228,6 +238,68 @@ describe("the How it's built page", () => {
         assert.isTrue(focusAfterToggle);
       })
     )
+  );
+
+  it.live(
+    "keeps Tab inside, covers the map, and leaves the map's keys off while open",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* reviewPage;
+          const chapter =
+            'document.querySelector("[data-walkthrough]").dataset.chapter';
+
+          const before = yield* inPage<string>(page, chapter);
+
+          yield* openOverview(page);
+
+          // Everything the page covers is inert, so a click or Tab can't
+          // reach it.
+          const covered = yield* inPage<boolean>(
+            page,
+            `document.querySelector("[data-map-layer]").closest("[inert]") !== null`
+          );
+
+          assert.isTrue(covered);
+
+          // Tab many times: focus never leaves the page or the header
+          // button, which stays live to close it.
+          for (let step = 0; step < 12; step += 1) {
+            yield* press(page, "Tab");
+            const inside = yield* inPage<boolean>(
+              page,
+              `(() => {
+                const active = document.activeElement;
+                return active === document.body || active.closest(${literal(overviewPage)}) !== null || active === document.querySelector(${literal(overviewButton)});
+              })()`
+            );
+
+            assert.isTrue(inside, `Tab ${step + 1} stayed in the page`);
+          }
+
+          // ] goes to the next chapter on the map. With the page open it
+          // does nothing.
+          yield* press(page, "]");
+          yield* press(page, "ArrowRight");
+          const during = yield* inPage<string>(page, chapter);
+
+          assert.strictEqual(during, before);
+
+          yield* press(page, "Escape");
+          yield* waitGone(page, overviewPage);
+
+          const uncovered = yield* inPage<boolean>(
+            page,
+            `document.querySelector("[data-map-layer]").closest("[inert]") === null`
+          );
+
+          assert.isTrue(uncovered);
+
+          // Closed, the keys work again.
+          yield* press(page, "]");
+          yield* waitForChapterChange(page, before);
+        })
+      )
   );
 
   it.live("keeps the chapter, the selection and the zoom", () =>

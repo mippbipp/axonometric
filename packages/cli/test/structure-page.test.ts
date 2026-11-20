@@ -21,6 +21,7 @@ import {
   strokeOf,
   waitFor,
   waitTimeout,
+  choose,
 } from "./browser.ts";
 import { crosses, drawingReport, nameTagClashes } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
@@ -90,12 +91,8 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="name"]').fill(fields.name)
   );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="shape"]').selectOption("store")
-  );
-  yield* Effect.promise(() =>
-    page.locator('[data-add="status"]').selectOption("planned")
-  );
+  yield* choose(page, '[data-add="shape"]', "store");
+  yield* choose(page, '[data-add="status"]', "planned");
   yield* Effect.promise(() =>
     page.locator('[data-add="x"]').fill(String(fields.x))
   );
@@ -158,6 +155,22 @@ describe("adding a structure from the toolbar", () => {
           assert.strictEqual(addFieldCount, 1, field);
         }
 
+        for (const name of ["Shape", "Group", "Status"]) {
+          const named = yield* Effect.promise(() =>
+            page.getByRole("combobox", { exact: true, name }).count()
+          );
+
+          assert.strictEqual(named, 1, `${name} select is named`);
+        }
+
+        for (const name of ["x", "y"]) {
+          const named = yield* Effect.promise(() =>
+            page.getByRole("textbox", { exact: true, name }).count()
+          );
+
+          assert.strictEqual(named, 1, `${name} number input is named`);
+        }
+
         const addSubmitDisabled = yield* Effect.promise(() =>
           page.locator('[data-add="submit"]').isDisabled()
         );
@@ -169,15 +182,9 @@ describe("adding a structure from the toolbar", () => {
         yield* Effect.promise(() =>
           page.locator('[data-add="name"]').fill("Build cache")
         );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="shape"]').selectOption("store")
-        );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="group"]').selectOption("outside")
-        );
-        yield* Effect.promise(() =>
-          page.locator('[data-add="status"]').selectOption("planned")
-        );
+        yield* choose(page, '[data-add="shape"]', "store");
+        yield* choose(page, '[data-add="group"]', "outside");
+        yield* choose(page, '[data-add="status"]', "planned");
         yield* click(page, '[data-add="submit"]');
         yield* Effect.promise(() =>
           page.waitForFunction(
