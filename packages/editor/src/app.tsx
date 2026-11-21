@@ -31,6 +31,7 @@ import {
   OverviewPageProvider,
 } from "./overview-page.tsx";
 import { PacketLayer } from "./packets.tsx";
+import { PageTools } from "./page-tools.tsx";
 import { PlacingProvider } from "./placing-provider.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
@@ -227,6 +228,7 @@ function WalkthroughPage({ notices }: Notices) {
               view={view}
             >
               <PacketLayer routeOf={routeOf} />
+              <PageTools view={view} />
             </MapView>
             <div className="pointer-events-none absolute inset-x-3 top-3 bottom-2/3 flex flex-col items-start gap-2">
               {/* The toolbar shares the rail's row and wraps below it when
