@@ -134,8 +134,10 @@ export default defineConfig({
       // The canvas narrows pointer and key targets to DOM nodes the same way.
       files: [
         "packages/ui/src/components/canvas-items.tsx",
+        "packages/ui/src/components/connect-ports.tsx",
         "packages/ui/src/components/ground-drag.tsx",
         "packages/ui/src/components/pannable-canvas.tsx",
+        "packages/ui/test/connect-ports.test.tsx",
         "packages/ui/test/pannable-canvas.test.tsx",
       ],
       rules: {

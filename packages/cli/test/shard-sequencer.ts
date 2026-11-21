@@ -13,6 +13,7 @@ import type { TestSpecification } from "vitest/node";
  * Windows, from two sharded CI runs, 44635861872 and 44637425745. The
  * connection-page and structure-page entries are scaled by their ubuntu change
  * in #160 (run 44682017583). export-svg and export are scaled by their ubuntu change in #165 (run 44684926905).
+ * connection-page is scaled again in #144, whose tests added 8.4 s to a 71 s local run.
  * Files not listed take `defaultSeconds`.
  * A file that grows or a new slow one only skews the split until someone
  * updates this table, and `shard-sequencer.test.ts` fails when a shard
@@ -20,7 +21,7 @@ import type { TestSpecification } from "vitest/node";
  */
 export const fileSeconds = {
   "agent-changes-page.test.ts": 10,
-  "connection-page.test.ts": 57,
+  "connection-page.test.ts": 65,
   "drag-warnings-big-map.test.ts": 11,
   "edit-toggle.test.ts": 8,
   "editing.test.ts": 29,
