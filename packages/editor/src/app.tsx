@@ -89,7 +89,7 @@ const hintsOf = ({
 
   if (multiSelected > 0) {
     return [
-      "Alt+arrows nudge half a unit",
+      "Alt+arrows nudge half a unit, Shift too by two",
       "drag to move them together",
       "Esc clears the selection",
       "Ctrl+Z undo",
