@@ -30,11 +30,10 @@ export const closeBrowser = () => {
 
 const openContext = Effect.acquireRelease(
   Effect.promise(() => {
-    // WebMCPTesting adds navigator.modelContextTesting, which runs a
-    // registered tool as an agent would. Chromium 147 has no
-    // document.modelContext.executeTool.
+    // WebMCP puts document.modelContext on the page, and its executeTool
+    // runs a registered tool as an agent would.
     browser ??= chromium.launch({
-      args: ["--enable-features=WebMCPTesting"],
+      args: ["--enable-features=WebMCP"],
     });
 
     return browser.then((launched) =>
@@ -477,7 +476,7 @@ export const pointOnHop = (page: Page, id: string) =>
 export const toolsOf = (page: Page) =>
   inPage<Array<{ description: string; name: string }>>(
     page,
-    `navigator.modelContextTesting.listTools()`
+    `document.modelContext.getTools().then((tools) => tools.map(({ description, name }) => ({ description, name })))`
   );
 
 const decodeJson = <S extends Schema.Top>(schema: S) =>
@@ -497,11 +496,11 @@ export const callToolWith = <S extends Schema.Top>(
   call: { readonly input: ToolInput; readonly name: string },
   schema: S
 ) => {
-  const text = JSON.stringify(JSON.stringify(call.input));
+  const input = JSON.stringify(call.input);
 
   return inPage<string>(
     page,
-    `navigator.modelContextTesting.executeTool(${literal(call.name)}, ${text})`
+    `document.modelContext.getTools().then((tools) => document.modelContext.executeTool(tools.find((tool) => tool.name === ${literal(call.name)}), ${input}))`
   ).pipe(Effect.flatMap(decodeJson(schema)), Effect.orDie);
 };
 
