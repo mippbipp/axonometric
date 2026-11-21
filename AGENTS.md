@@ -10,9 +10,9 @@ Lint, format and typecheck with `bun run ox`; fix with `bun run ox:fix`.
 ## Using ui-sdk
 
 Wherever ui-sdk ships a component or a behavior for something in the editor,
-use it, including the SVG targets on the map. This section describes where the
-editor is heading. Parts of it may not use ui-sdk yet. The ui-sdk docs are in
-`packages/ui/node_modules/@ui-sdk/react/docs/`. The kitchen sink at
+use it, including the SVG targets on the map. The editor uses ui-sdk. The
+ui-sdk docs are in `packages/ui/node_modules/@ui-sdk/react/docs/`. The kitchen
+sink at
 https://ui-sdk.dev/sink (source `apps/docs/app/sink/` in `vercel-labs/ui`)
 shows how each control is wired.
 
