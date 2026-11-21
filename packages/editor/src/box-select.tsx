@@ -1,55 +1,37 @@
 import { groundProjections, structuresInBox } from "@axonometric/contracts";
 import type { GridPoint, Placement, View } from "@axonometric/contracts";
+import { announce } from "@axonometric/ui/lib/announce";
+import { bindCanvasDrag } from "@axonometric/ui/lib/canvas-drag";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import { groundOutline, toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
-
-/** How far a press must move before it draws a box, in pixels. */
-const dragThreshold = 4;
+import { outlineOf } from "./selection-outline.ts";
 
 interface Box {
   readonly from: GridPoint;
   readonly to: GridPoint;
 }
 
-/** The handlers a box selection needs on the canvas. */
-interface Handlers {
-  readonly onClick: (event: MouseEvent) => void;
-  readonly onDown: (event: PointerEvent) => void;
-  readonly onMove: (event: PointerEvent) => void;
-  readonly onUp: (event: PointerEvent) => void;
-}
+/** Selected structures, as a screen reader hears the count. */
+const messageOf = (count: number) =>
+  `${count} ${count === 1 ? "structure" : "structures"} selected.`;
 
-/** Listens with `handlers` on `svg`, and returns a function that stops. */
-const listenOn = (svg: SVGSVGElement, handlers: Handlers) => {
-  svg.addEventListener("pointerdown", handlers.onDown);
-  svg.addEventListener("pointermove", handlers.onMove);
-  svg.addEventListener("pointerup", handlers.onUp);
-  svg.addEventListener("pointercancel", handlers.onUp);
-  svg.addEventListener("click", handlers.onClick, { capture: true });
+/** Listens for presses on `svg`, and returns a function that stops. */
+const listen = (
+  svg: SVGSVGElement,
+  onDown: (event: PointerEvent) => void,
+  onStop: () => void
+) => {
+  svg.addEventListener("pointerdown", onDown);
 
   return () => {
-    svg.removeEventListener("pointerdown", handlers.onDown);
-    svg.removeEventListener("pointermove", handlers.onMove);
-    svg.removeEventListener("pointerup", handlers.onUp);
-    svg.removeEventListener("pointercancel", handlers.onUp);
-    svg.removeEventListener("click", handlers.onClick, { capture: true });
+    svg.removeEventListener("pointerdown", onDown);
+    onStop();
   };
 };
-
-/** A Shift-press on empty canvas, until it's released. */
-interface Press {
-  /** The ground point the box started at. */
-  readonly from: GridPoint;
-  /** What was selected when the press began, which the box adds to. */
-  readonly kept: ReadonlySet<string>;
-  readonly pointer: number;
-  readonly x: number;
-  readonly y: number;
-}
 
 const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
   a.size === b.size && [...a].every((id) => b.has(id));
@@ -57,12 +39,21 @@ const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
 /**
  * Selects structures with a box: hold Shift and drag on empty canvas. A
  * plain drag on empty space still pans. The box is a rectangle on the
- * ground, so in the Iso view it's a diamond. It adds every structure whose
- * footprint it touches to the multi-selection, live as it grows, and keeps
- * what was already selected.
+ * ground, so in the Iso view it's a diamond. While it grows, the structures
+ * whose footprints it touches are outlined. When it lifts, they join what
+ * was selected when the press began, as one change, and a screen reader
+ * hears how many are selected. Escape lets go and selects nothing.
  *
  * It listens on the canvas that holds it, and draws inside the viewport's
- * transformed group, so the box pans and zooms with the map.
+ * transformed group, so the box pans and zooms with the map. The viewport
+ * leaves a Shift press alone (see `PannableCanvas`), so a box drag never pans.
+ *
+ * This is ui-sdk's `bindDrag` with `structuresInBox` and `announce`, not
+ * `createLasso`. The lasso hit-tests each item's screen bounding box against
+ * a screen rectangle, so in the Iso view it picks different structures from
+ * the ground box (0 of 6 drags agreed, measured in the #137 spike). It moves
+ * to `createLasso` once it takes a `touches` option:
+ * https://github.com/vercel-labs/ui/issues/961
  */
 export function BoxSelect({
   placements,
@@ -77,19 +68,22 @@ export function BoxSelect({
   const editing = useEditing();
   const { multiSelection, setMultiSelection } = useSelection();
   const anchor = useRef<SVGGElement>(null);
+  const stop = useRef<(() => void) | undefined>(undefined);
   const [box, setBox] = useState<Box | undefined>();
   const live = editing?.canEdit === true;
 
-  const press = useRef<Press | undefined>(undefined);
-  const dragging = useRef(false);
+  const hitsOf = useEffectEvent((at: Box): ReadonlyArray<string> =>
+    structuresInBox({ box: at, ids: [...revealed], placements })
+  );
 
   const onDown = useEffectEvent((event: PointerEvent) => {
     const element = anchor.current;
-
-    dragging.current = false;
+    const svg = element?.ownerSVGElement;
 
     if (
       element === null ||
+      svg === null ||
+      svg === undefined ||
       event.button !== 0 ||
       !event.shiftKey ||
       (event.target instanceof Element &&
@@ -102,118 +96,102 @@ export function BoxSelect({
 
     const from = groundAt({ element, event, view });
 
-    if (from !== undefined) {
-      press.current = {
-        from,
-        kept: multiSelection,
-        pointer: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-      };
-    }
-  });
-
-  const onMove = useEffectEvent((event: PointerEvent) => {
-    const { current } = press;
-    const element = anchor.current;
-
-    if (
-      current === undefined ||
-      element === null ||
-      event.pointerId !== current.pointer
-    ) {
+    if (from === undefined) {
       return;
     }
 
-    if (
-      !dragging.current &&
-      Math.hypot(event.clientX - current.x, event.clientY - current.y) <
-        dragThreshold
-    ) {
-      return;
-    }
+    const kept = multiSelection;
+    let latest: Box | undefined;
 
-    const to = groundAt({ element, event, view });
+    stop.current?.();
+    stop.current = bindCanvasDrag(svg, event, {
+      onEnd: ({ canceled }) => {
+        stop.current = undefined;
+        setBox(undefined);
 
-    if (to === undefined) {
-      return;
-    }
+        if (canceled || latest === undefined) {
+          return;
+        }
 
-    if (!dragging.current) {
-      dragging.current = true;
-      element.ownerSVGElement?.setPointerCapture(event.pointerId);
-    }
+        const next = new Set([...kept, ...hitsOf(latest)]);
 
-    const next = { from: current.from, to };
+        if (!sameIds(next, multiSelection)) {
+          setMultiSelection([...next]);
+          announce(messageOf(next.size));
+        }
+      },
+      onMove: (position) => {
+        const to = groundAt({ element, event: position, view });
 
-    setBox(next);
+        if (to === undefined) {
+          return;
+        }
 
-    const hit = new Set([
-      ...current.kept,
-      ...structuresInBox({
-        box: next,
-        ids: [...revealed],
-        placements,
-      }),
-    ]);
-
-    if (!sameIds(hit, multiSelection)) {
-      setMultiSelection([...hit]);
-    }
-  });
-
-  const onUp = useEffectEvent((event: PointerEvent) => {
-    if (
-      press.current !== undefined &&
-      event.pointerId === press.current.pointer
-    ) {
-      press.current = undefined;
-      setBox(undefined);
-    }
-  });
-
-  // The release ends in a click on whatever is under the pointer, which
-  // would clear the selection.
-  const onClick = useEffectEvent((event: MouseEvent) => {
-    if (dragging.current) {
-      dragging.current = false;
-      event.stopPropagation();
-      event.preventDefault();
-    }
+        latest = { from, to };
+        setBox(latest);
+      },
+    });
   });
 
   useEffect(() => {
     const svg = anchor.current?.ownerSVGElement;
 
     return live && svg !== null && svg !== undefined
-      ? listenOn(svg, { onClick, onDown, onMove, onUp })
+      ? listen(svg, onDown, () => {
+          stop.current?.();
+          stop.current = undefined;
+          setBox(undefined);
+        })
       : undefined;
   }, [live]);
 
+  const touched =
+    box === undefined
+      ? []
+      : structuresInBox({ box, ids: [...revealed], placements });
+
   const left = box === undefined ? 0 : Math.min(box.from.x, box.to.x);
   const top = box === undefined ? 0 : Math.min(box.from.y, box.to.y);
+  const ground = groundProjections[view];
 
   return (
     <g className="pointer-events-none" ref={anchor}>
       {box === undefined ? null : (
-        <polygon
-          aria-hidden="true"
-          className="fill-multi/10 stroke-multi"
-          data-selection-box=""
-          points={toPoints(
-            groundOutline(
-              {
-                d: Math.abs(box.to.y - box.from.y),
-                w: Math.abs(box.to.x - box.from.x),
-                x: left,
-                y: top,
-              },
-              groundProjections[view]
-            )
-          )}
-          strokeDasharray="5 3"
-          strokeWidth={1.5}
-        />
+        <>
+          {touched.map((id) => {
+            const at = placements[id];
+
+            return at === undefined ? null : (
+              <polygon
+                aria-hidden="true"
+                className="fill-multi/10 stroke-multi"
+                data-box-touched={id}
+                key={id}
+                points={toPoints(groundOutline(outlineOf(at), ground))}
+                strokeDasharray="5 3"
+                strokeWidth={1.5}
+              />
+            );
+          })}
+          <polygon
+            aria-hidden="true"
+            className="fill-multi/10 stroke-multi"
+            data-selection-box=""
+            points={toPoints(
+              groundOutline(
+                {
+                  d: Math.abs(box.to.y - box.from.y),
+                  w: Math.abs(box.to.x - box.from.x),
+                  x: left,
+                  y: top,
+                },
+                ground
+              )
+            )}
+            strokeDasharray="5 3"
+            strokeWidth={1.5}
+          />
+        </>
       )}
     </g>
   );
