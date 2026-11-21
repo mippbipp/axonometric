@@ -66,8 +66,8 @@ interface GroundDragOptions {
   readonly label?: (key: string) => string | undefined;
   /** How far Shift with the arrows moves. */
   readonly largeStep: number;
-  /** The smallest width and height. */
-  readonly minSize: number;
+  /** The smallest width and height. Defaults to `step`. */
+  readonly minSize?: number;
   /** Hears the draft each time it changes, and `null` when the drag ends. */
   readonly onDraft?: (draft: GroundDraft | null) => void;
   /**
@@ -78,8 +78,12 @@ interface GroundDragOptions {
     to: Readonly<Record<string, GroundPoint>>,
     details: { readonly input: GroundInput }
   ) => boolean;
-  /** One call per resize drop or resize key. Returns false when refused. */
-  readonly onResize: (
+  /**
+   * One call per resize drop or resize key. Returns false when refused.
+   * Without it a `GroundHandle` resizes nothing, so leave it out when there
+   * are no handles.
+   */
+  readonly onResize?: (
     key: string,
     box: GroundBox,
     details: { readonly input: GroundInput }
@@ -235,7 +239,11 @@ const groundDrag = definePrimitive({
       draft: "resizing",
       label: (key) => options().label?.(key),
       largeStep: () => options().largeStep,
-      min: () => ({ height: options().minSize, width: options().minSize }),
+      min: () => {
+        const size = options().minSize ?? options().step;
+
+        return { height: size, width: size };
+      },
       set: (value) => {
         const box = value[resizing];
 
@@ -247,7 +255,7 @@ const groundDrag = definePrimitive({
 
         return (
           box !== undefined &&
-          options().onResize(resizing, box, { input: call.input })
+          options().onResize?.(resizing, box, { input: call.input }) === true
         );
       },
       step: () => options().step,
