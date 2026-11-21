@@ -455,26 +455,25 @@ const offScreenStructure = Effect.fnUntraced(function* (page: Page) {
   return assert.fail("every structure is still on screen");
 });
 
-/** Waits until the element matching `selector` is at least partly inside the canvas. */
-const waitForOnScreen = Effect.fnUntraced(function* (
-  page: Page,
-  selector: string
-) {
-  const svg = yield* canvasOf(page);
-
-  yield* Effect.promise(() =>
+/**
+ * Waits until the element matching `selector` is at least partly inside the
+ * canvas. The canvas is measured on each check: between a scroll and the pan
+ * it turns into, the svg sits where the pane scrolled it.
+ */
+const waitForOnScreen = (page: Page, selector: string) =>
+  Effect.promise(() =>
     page.waitForFunction(
       `(() => {
         const box = document.querySelector(${literal(selector)}).getBoundingClientRect();
+        const canvas = document.querySelector("svg[data-scale]").getBoundingClientRect();
 
-        return box.left < ${svg.x + svg.width} && box.right > ${svg.x} &&
-          box.top < ${svg.y + svg.height} && box.bottom > ${svg.y};
+        return box.left < canvas.right && box.right > canvas.left &&
+          box.top < canvas.bottom && box.bottom > canvas.top;
       })()`,
       undefined,
       { timeout: 5000 }
     )
   );
-});
 
 describe.each(views)("the viewport in %s", (view) => {
   it.live("pans to a structure whose name the browser scrolls into view", () =>

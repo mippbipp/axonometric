@@ -442,7 +442,7 @@ function PannableCanvas({
                 character, not 5.4. */}
             <parts.Svg
               aria-labelledby={titleId}
-              className="touch-none text-end"
+              className="touch-none"
               textRendering="geometricPrecision"
             >
               <title id={titleId}>{title}</title>
