@@ -1,5 +1,6 @@
 import type {
   ChapterStop,
+  Flow,
   FlowChoice,
   Hop,
   MapState,
@@ -30,6 +31,38 @@ export interface ChapterOfMap {
  */
 export const flowChoiceKey = (choice: FlowChoice) =>
   choice.kind === "flow" ? `flow:${choice.id}` : choice.kind;
+
+/** One button of the flow picker. */
+export interface FlowOption {
+  readonly choice: FlowChoice;
+  readonly key: string;
+  readonly label: string;
+}
+
+/**
+ * The flow picker's options: the chapter's own hops when it plays any, each
+ * flow, and every flow at once.
+ */
+export const flowOptionsOf = ({
+  flows,
+  stop,
+}: {
+  readonly flows: ReadonlyArray<Pick<Flow, "id" | "name">>;
+  readonly stop: Pick<ChapterStop, "plays">;
+}): ReadonlyArray<FlowOption> =>
+  Arr.map(
+    [
+      ...(stop.plays.length === 0
+        ? []
+        : [{ choice: { kind: "chapter" } as const, label: "This chapter" }]),
+      ...Arr.map(flows, (flow) => ({
+        choice: { id: flow.id, kind: "flow" } as const,
+        label: flow.name,
+      })),
+      { choice: { kind: "all" } as const, label: "All flows" },
+    ],
+    ({ choice, label }) => ({ choice, key: flowChoiceKey(choice), label })
+  );
 
 /** What a chapter plays for one flow choice. */
 export interface ChapterPlay {

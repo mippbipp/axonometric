@@ -228,6 +228,14 @@ export default defineConfig({
       },
     },
     {
+      // These are pure functions with no browser, so the timeout in the CLI's
+      // vitest.config.ts is plenty.
+      files: ["packages/cli/test/view-tools.test.ts"],
+      rules: {
+        "vitest/require-test-timeout": "off",
+      },
+    },
+    {
       // Component tests drive the DOM through Testing Library, which is
       // Promise-based. There is no Effect code under test here.
       files: ["packages/ui/test/**/*.ts", "packages/ui/test/**/*.tsx"],

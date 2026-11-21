@@ -5,8 +5,16 @@ interface PageToolAnnotations {
   readonly untrustedContentHint?: boolean;
 }
 
+/** A value in what an agent passes a tool: JSON, as WebMCP delivers it. */
+export type PageToolValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<PageToolValue>;
+
 /** What an agent passes a tool, as named values. */
-export type PageToolInput = Readonly<Record<string, string | number | boolean>>;
+export type PageToolInput = Readonly<Record<string, PageToolValue>>;
 
 /** What a tool hands the agent: text, or an object WebMCP serializes. */
 type PageToolResult = string | object;
