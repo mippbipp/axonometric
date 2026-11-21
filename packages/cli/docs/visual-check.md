@@ -23,7 +23,7 @@ When your browser tool can call what a page registers through WebMCP, the check 
 
 - `read_view` lists every structure and hop the chapter shows, with its box on screen. Compare the boxes instead of reading pixels. A structure's box is its outline, which in Iso reaches up to its full height, so boxes can overlap with no text colliding. Overlapping boxes, or a hop box that doesn't reach the boxes of its `from` and `to`, tell you where to look in a screenshot.
 - `go_to_chapter` with a number from 1 walks every chapter, and `set_view` with `plan` or `iso` switches the view. Each call shows the engineer a notice, so tell them before you start. Don't use these on a page the engineer has open and is working in. Open your own tab on the served URL, or ask first.
-- `pin`, `go_inside` and `pick_flow` do what clicking does, so they cover steps 4 and 5 below. Then `read_view` shows `pinned`, `inside` and `spotlight`.
+- `pin`, `go_inside` and `pick_flow` do what clicking does, so they cover most of steps 4 and 5 below. Then `read_view` shows `pinned`, `inside` and `spotlight`. They don't open a packet or show the panel's text, so click a packet in a browser as the last section says.
 
 A box shows where something is, not whether it reads well. Keep looking at a screenshot of each chapter in both views. Without page tools, or without WebMCP in your browser, click and export as below.
 

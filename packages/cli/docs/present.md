@@ -30,7 +30,7 @@ List the tools of the engineer's tab. The page has seven: `read_view`, `go_to_ch
 
 ## 3. Read the view
 
-`read_view` takes no input. Call it before you move anything, and again after the engineer says they moved. It returns:
+`read_view` takes no input. Call it before you move anything, and again after the engineer says they moved. While `inside` is set, the map is hidden, so its boxes are not on screen. It returns:
 
 - `chapter`, with its `id` and `title`.
 - `view`, `iso` or `plan`.
@@ -49,22 +49,22 @@ Tell the engineer in chat what you are about to show, call one tool, then explai
 
 | Tool | Input | Does what the page's own control does |
 | --- | --- | --- |
-| `go_to_chapter` | `chapter`: a number from 1, as the rail shows it, or a chapter id | Goes to the chapter. The pin and the inside view end. |
+| `go_to_chapter` | `chapter`: a number from 1, as the rail shows it, or a chapter id | Goes to the chapter. Going to another chapter ends the pin and the inside view. |
 | `set_view` | `view`: `iso` or `plan` | Switches the view. |
 | `pin` | `structure`: an id shown in this chapter, or `null` | Pins the structure, or unpins. It also closes the inside view. |
-| `go_inside` | `structure`: an id shown in this chapter that has steps | Opens its inside view. |
-| `pick_flow` | `flow`: `chapter`, `all` or `flow:<id>` | Picks what the flow picker plays. The last chapter has the picker. |
-| `spotlight` | `structures` and `hops`: lists of ids, all drawn in this chapter | Lights those and fades the rest. Empty lists clear it. |
+| `go_inside` | `structure`: an id shown in this chapter that has steps | Opens its inside view, and pins the structure. |
+| `pick_flow` | `flow`: `chapter`, `all` or `flow:<id>` | Picks what the flow picker plays. Only the last chapter has the picker, and a refusal lists its choices. |
+| `spotlight` | `structures` and `hops`: lists of ids, all drawn in this chapter | Lights each id as pointing at it does, and fades the rest. A hop lights its two ends. A structure lights its hops and the structures at their other ends. Empty lists clear it. |
 
-`spotlight` is how you point at one hop while you explain it. Your own `pin`, `go_inside`, `go_to_chapter` and `pick_flow` end a spotlight, so call `spotlight` last.
+`spotlight` is how you point at one hop while you explain it. Your own `pin`, `go_inside`, `go_to_chapter` and `pick_flow` end a spotlight when they change what is pinned, the chapter or the flow choice, so call `spotlight` last.
 
-Each tool returns `{ "ok": true, "notice": ... }`. The page shows the notice, such as "Agent went to chapter 4", so the engineer knows why their view moved. A tool that can't go ahead returns `{ "ok": false, "reason": ... }`. Read the reason. For a chapter or a flow it lists the valid choices, and for a structure or hop it says the id isn't shown in this chapter, so check `read_view`.
+Each tool returns `{ "ok": true, "notice": ... }`. The page shows the notice, such as "Agent went to chapter 4", so the engineer knows why their view moved. A tool that can't go ahead returns `{ "ok": false, "reason": ... }`. Read the reason. An unknown chapter id or flow lists the valid ones, a chapter number past the end gives the chapter count, and a structure or hop that isn't drawn says so, so check `read_view`.
 
 The engineer's next input wins. Any press, key or wheel on the page clears the notice and your spotlight, and a spotlight also ends when they point at something, pin, or change the chapter or flow. The chapter, view and pin stay where they are. When the engineer takes over, stop moving the page. Call `read_view`, and ask where they want to go.
 
 A view tool refuses while the engineer is dragging, has a dialog open or is typing in a field. `read_view` still works. Tell the engineer in chat that you are waiting. Call the tool again after they answer, and don't retry in a loop.
 
-`set_view` also refuses while an inside view or the How it's built page covers the map, and its reason names which. `pin` with `null` or `go_to_chapter` leaves an inside view.
+`set_view` also refuses while an inside view covers the map, and its reason says to come out of it. `pin` with `null` or `go_to_chapter` to another chapter leaves it. While the How it's built page is open, every view tool refuses with the dialog reason.
 
 ## 5. Without page tools
 
