@@ -484,6 +484,49 @@ describe("nudging a selection", () => {
   );
 
   it.live(
+    "Alt and an arrow nudge a lone focused structure half a unit, and Shift too by two",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
+
+        yield* showView(page, "plan");
+        yield* focusStructure(page, "engineer");
+        yield* press(page, "Alt+ArrowRight");
+
+        const first = yield* waitForRevision(home, 1);
+
+        assert.deepStrictEqual(withoutIds(first.layout), [
+          {
+            by: "engineer",
+            kind: "move",
+            moves: [
+              {
+                position: { x: 0.5, y: 0 },
+                target: { id: "engineer", kind: "structure" },
+              },
+            ],
+          },
+        ]);
+
+        yield* press(page, "Shift+Alt+ArrowDown");
+
+        const second = yield* waitForRevision(home, 2);
+
+        assert.deepStrictEqual(withoutIds(second.layout)[1], {
+          by: "engineer",
+          kind: "move",
+          moves: [
+            {
+              position: { x: 0.5, y: 2 },
+              target: { id: "engineer", kind: "structure" },
+            },
+          ],
+        });
+      }),
+    60_000
+  );
+
+  it.live(
     "refuses a nudge onto another footprint and writes nothing",
     () =>
       Effect.gen(function* () {

@@ -224,6 +224,34 @@ describe("moving structures", () => {
   );
 
   it.live(
+    "puts a structure back on Escape during a drag, and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* showView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* centreOf(page, '[data-structure="engineer"]');
+
+        yield* pressAndMove(page, from, { x: 0, y: unit * 2 });
+        yield* waitFor(page, '[data-layout-editor][data-dragging="engineer"]');
+        yield* waitFor(page, "[data-drag-outline]");
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-dragging]");
+        yield* waitGone(page, "[data-drag-outline]");
+        yield* Effect.promise(() => page.mouse.up());
+        yield* Effect.sleep("500 millis");
+
+        const savedProposals = yield* proposalsIn(home);
+
+        assert.isTrue(Option.isNone(savedProposals));
+        yield* assertCount(page, "[data-drag-shifted]", 0);
+      }),
+    60_000
+  );
+
+  it.live(
     "a click still pins a structure, and a double-click still goes inside",
     () =>
       Effect.gen(function* () {
@@ -390,6 +418,75 @@ describe("resizing structures", () => {
         } else {
           assert.fail("expected a resize");
         }
+      }),
+    60_000
+  );
+});
+
+describe("resizing from the keyboard and cancelling a resize", () => {
+  it.live(
+    "an arrow on a focused corner handle moves that corner half a unit, as one change",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* showView(page, "plan");
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="engineer"]').click()
+        );
+
+        const handle = page.getByRole("button", {
+          name: "Resize Engineer from its south-east corner",
+        });
+
+        yield* Effect.promise(() => handle.focus());
+        yield* press(page, "ArrowRight");
+
+        const saved = yield* waitForRevision(home, 1);
+
+        assert.deepStrictEqual(withoutIds(saved.layout), [
+          {
+            by: "engineer",
+            footprint: { d: 2, w: 2.5 },
+            kind: "resize",
+            target: { id: "engineer", kind: "structure" },
+          },
+        ]);
+        yield* assertAttribute(
+          page,
+          { name: "data-chapter", selector: "[data-walkthrough]" },
+          "c-all"
+        );
+      }),
+    60_000
+  );
+
+  it.live(
+    "Escape during a corner drag in the Iso view puts the footprint back and writes nothing",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="engineer"]').click()
+        );
+        yield* waitFor(page, '[data-resize-handle="se"]');
+
+        const unit = yield* unitOnScreen(page, "iso");
+        const corner = yield* centreOf(page, '[data-resize-handle="se"]');
+
+        yield* pressAndMove(page, corner, { x: 0, y: unit * 1.5 });
+        yield* waitFor(page, '[data-layout-editor][data-dragging="engineer"]');
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-dragging]");
+        yield* Effect.promise(() => page.mouse.up());
+        yield* Effect.sleep("500 millis");
+
+        const savedProposals = yield* proposalsIn(home);
+
+        assert.isTrue(Option.isNone(savedProposals));
+        // Escape belonged to the drag, so the structure stays selected.
+        yield* assertCount(page, '[data-resize-handle="se"]', 1);
       }),
     60_000
   );
