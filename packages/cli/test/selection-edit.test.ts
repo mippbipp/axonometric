@@ -1,7 +1,14 @@
 import type { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Option, Record as Rec, Schema } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Option,
+  Record as Rec,
+  Schema,
+  String as Str,
+} from "effect";
 import type { Page } from "playwright";
 
 import {
@@ -20,6 +27,7 @@ import {
   waitGone,
 } from "./browser.ts";
 import type { View } from "./browser.ts";
+import { fullMap } from "./fixtures.ts";
 import {
   openReviewMap,
   proposalsIn,
@@ -1039,6 +1047,60 @@ describe("editing off", () => {
 
         yield* assertCount(page, '[data-structure][data-selected="true"]', 1);
       }).pipe(Effect.provide(NodeServices.layer)),
+    60_000
+  );
+});
+
+/** What each Tab stop on the map is: a structure id, or a group title. */
+const tabStops = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<Array<string>>(
+      `[...document.querySelectorAll('[data-slot="canvas-items-item"][tabindex="0"]')].map((e) => e.dataset.structure ?? "title " + e.dataset.zoneTitleHit)`
+    )
+  );
+
+describe("a structure whose id looks like a group title's key", () => {
+  // The review map has a group "loop"; this renames upstream to group:loop.
+  const clashing = Effect.gen(function* () {
+    const files = yield* fullMap;
+    const renamed = Str.replaceAll('"upstream"', '"group:loop"');
+    const opened = yield* openReviewMap({
+      "review/map/data.mjs": renamed(files["review/map/data.mjs"] ?? ""),
+      "review/map/layout.json": renamed(files["review/map/layout.json"] ?? ""),
+    });
+
+    yield* goToChapter(opened.page, "c-all");
+
+    return opened;
+  });
+
+  it.live(
+    "keeps one Tab stop on the map, and pins and multi-selects the structure by its id",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* clashing;
+
+        yield* focusStructure(page, "group:loop");
+        yield* Effect.promise(() => page.keyboard.press(" "));
+        yield* waitFor(
+          page,
+          '[data-structure="group:loop"][data-selected="true"]'
+        );
+
+        const stops = yield* tabStops(page);
+
+        assert.deepStrictEqual(stops, ["group:loop"]);
+
+        yield* Effect.promise(() =>
+          page.locator('[data-zone-title-hit="loop"]').focus()
+        );
+        yield* Effect.promise(() => page.keyboard.press("Shift+Space"));
+        yield* shiftClick(page, ["engineer"]);
+
+        const selected = yield* multiSelectedIds(page);
+
+        assert.deepStrictEqual(selected, ["engineer", "group:loop"]);
+      }),
     60_000
   );
 });

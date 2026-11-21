@@ -17,6 +17,7 @@ import { useHopsDescription } from "./hop-description.ts";
 import { drawHopKey, useHopDraft } from "./hop-draft-context.ts";
 import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { structureKey } from "./structure-key.ts";
 import { useStructuresById } from "./structures.ts";
 import { useTooltipActions } from "./tooltip-context.ts";
 
@@ -150,7 +151,7 @@ export function StructureTarget({
             select(id);
           }}
           selectable
-          value={id}
+          value={structureKey(id)}
         />
       }
     >

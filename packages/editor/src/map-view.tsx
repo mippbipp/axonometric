@@ -53,6 +53,7 @@ import {
   useSpotlight,
   useSpotlightActions,
 } from "./spotlight-context.ts";
+import { structureIdsOf, structureKey } from "./structure-key.ts";
 import { Viewport } from "./viewport.tsx";
 
 /** A dashed outline around the footprint of a newly revealed structure. */
@@ -140,7 +141,11 @@ export function MapView({
   const { hoverHop } = useSpotlightActions();
   const { multiSelection, selected, setMultiSelection } = useSelection();
   const canEdit = useEditing()?.canEdit === true;
-  const multiSelected = useMemo(() => [...multiSelection], [multiSelection]);
+  // CanvasItems keys structures by structureKey; the selection holds ids.
+  const multiSelected = useMemo(
+    () => Arr.map([...multiSelection], structureKey),
+    [multiSelection]
+  );
   // The zoom the text is sized for, which the viewport reports as it zooms.
   const [textZoom, setTextZoom] = useState(1);
   const drawnShift = useRef<DragShift | undefined>(undefined);
@@ -269,8 +274,10 @@ export function MapView({
               >
                 <CanvasItems
                   multiple={canEdit}
-                  onSelectedChange={setMultiSelection}
-                  pinned={selected}
+                  onSelectedChange={(keys) => {
+                    setMultiSelection(structureIdsOf(keys));
+                  }}
+                  pinned={selected === null ? null : structureKey(selected)}
                   selected={multiSelected}
                 >
                   <MapDrawing
