@@ -4,6 +4,7 @@ import { Array as Arr } from "effect";
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 
+import { AgentNotice } from "./agent-notice.tsx";
 import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
@@ -143,6 +144,7 @@ function WalkthroughPage({ notices }: Notices) {
   // The view lives here, in memory, so switching it keeps every provider's
   // state: the chapter, the selection and the packets.
   const [view, setView] = useState<View>("iso");
+  const [agentNotice, setAgentNotice] = useState<string | null>(null);
 
   useChapterKeys(inside === null);
   useSelectionKeys();
@@ -228,7 +230,12 @@ function WalkthroughPage({ notices }: Notices) {
               view={view}
             >
               <PacketLayer routeOf={routeOf} />
-              <PageTools view={view} />
+              <PageTools
+                notify={setAgentNotice}
+                setView={setView}
+                view={view}
+                viewBlockedBecause={switchBlocked}
+              />
             </MapView>
             <div className="pointer-events-none absolute inset-x-3 top-3 bottom-2/3 flex flex-col items-start gap-2">
               {/* The toolbar shares the rail's row and wraps below it when
@@ -241,7 +248,12 @@ function WalkthroughPage({ notices }: Notices) {
                 />
               </div>
               {/* The inside view shows the notices instead, while it's open. */}
-              {insideStructure === undefined ? notices : null}
+              {insideStructure === undefined ? (
+                <>
+                  <AgentNotice notice={agentNotice} />
+                  {notices}
+                </>
+              ) : null}
             </div>
             {/* Stops short of the zoom controls at the bottom right, and wraps
                 upward when the flows don't fit on one line. */}
@@ -264,6 +276,7 @@ function WalkthroughPage({ notices }: Notices) {
                   className="pointer-events-auto shrink-0"
                   structure={insideStructure}
                 />
+                <AgentNotice notice={agentNotice} />
                 {notices}
               </div>
             </div>
