@@ -151,6 +151,31 @@ const movesOf = (layout: Proposals["layout"]) => {
     : {};
 };
 
+/** The ids of the structures the box outlines as it touches them, sorted. */
+const touchedIds = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<Array<string>>(
+      `[...document.querySelectorAll('[data-box-touched]')].map((e) => e.dataset.boxTouched).sort()`
+    )
+  );
+
+/** The corners of the selection box, in window pixels. */
+const boxCorners = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<Array<Point>>(
+      `(() => {
+        const polygon = document.querySelector('[data-selection-box]');
+        const matrix = polygon.getScreenCTM();
+
+        return [...polygon.points].map((p) => {
+          const at = new DOMPoint(p.x, p.y).matrixTransform(matrix);
+
+          return { x: Math.round(at.x * 100) / 100, y: Math.round(at.y * 100) / 100 };
+        });
+      })()`
+    )
+  );
+
 const views: ReadonlyArray<View> = ["iso", "plan"];
 
 describe("selecting several structures", () => {
@@ -235,12 +260,14 @@ describe("selecting several structures", () => {
     );
 
     it.live(
-      `Shift-dragging a box on empty canvas selects every structure it touches, in ${view}`,
+      `Shift-dragging a box on empty canvas selects every structure it touches when it lifts, in ${view}`,
       () =>
         Effect.gen(function* () {
           const { home, page } = yield* servedAll;
 
           yield* showView(page, view);
+
+          const before = yield* cameraOf(page);
 
           // Ground x -0.3 to 9.5 and y -0.3 to 2.6 reaches engineer, page
           // and server along the top row, and nothing below it.
@@ -252,9 +279,32 @@ describe("selecting several structures", () => {
             view,
           });
 
+          // While the box is held it outlines what it touches, and selects
+          // nothing yet.
           yield* waitFor(page, "[data-selection-box]");
-          const selectedByBox = yield* multiSelectedIds(page);
-          assert.deepStrictEqual(selectedByBox, ["engineer", "page", "server"]);
+          yield* waitFor(page, '[data-box-touched="server"]');
+          const touchedWhileHeld = yield* touchedIds(page);
+          assert.deepStrictEqual(touchedWhileHeld, [
+            "engineer",
+            "page",
+            "server",
+          ]);
+          const selectedWhileHeld = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedWhileHeld, []);
+
+          // The box is the ground rectangle, so it has four corners and, in
+          // the Iso view, none of its sides is level.
+          const corners = yield* boxCorners(page);
+          assert.strictEqual(corners.length, 4);
+          assert.strictEqual(
+            Arr.some(
+              corners,
+              (corner, at) =>
+                corner.y === corners[(at + 1) % 4]?.y &&
+                corner.x !== corners[(at + 1) % 4]?.x
+            ),
+            view === "plan"
+          );
 
           yield* Effect.promise(() => page.mouse.up());
           yield* Effect.promise(() => page.keyboard.up("Shift"));
@@ -266,9 +316,64 @@ describe("selecting several structures", () => {
             "page",
             "server",
           ]);
+          yield* waitFor(
+            page,
+            '[data-ui-sdk-announcer=""]:text("3 structures selected.")'
+          );
+
+          // A box drag never pans.
+          const after = yield* cameraOf(page);
+          assert.deepStrictEqual(after, before);
+
           const savedProposals = yield* proposalsIn(home);
           // Selecting writes nothing.
           assert.isTrue(Option.isNone(savedProposals));
+        }),
+      60_000
+    );
+
+    it.live(
+      `a box adds to what Shift-click already picked, and Escape lets go of it with nothing added, in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* servedAll;
+
+          yield* showView(page, view);
+          yield* shiftClick(page, ["engineer"]);
+
+          // Over server only.
+          yield* dragBox({
+            from: { x: 7.6, y: 2.6 },
+            page,
+            release: false,
+            to: { x: 9.5, y: -0.3 },
+            view,
+          });
+          yield* waitFor(page, '[data-box-touched="server"]');
+          yield* press(page, "Escape");
+          yield* waitGone(page, "[data-selection-box]");
+          yield* Effect.promise(() => page.mouse.up());
+          yield* Effect.promise(() => page.keyboard.up("Shift"));
+
+          const selectedAfterEscape = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedAfterEscape, ["engineer"]);
+
+          yield* dragBox({
+            from: { x: 7.6, y: 2.6 },
+            page,
+            to: { x: 9.5, y: -0.3 },
+            view,
+          });
+          yield* waitFor(
+            page,
+            '[data-structure="server"][data-multi-selected="true"]'
+          );
+          const selectedWithBox = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedWithBox, ["engineer", "server"]);
+          yield* waitFor(
+            page,
+            '[data-ui-sdk-announcer=""]:text("2 structures selected.")'
+          );
         }),
       60_000
     );

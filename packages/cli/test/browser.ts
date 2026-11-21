@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 
 import { editStorage } from "@axonometric/contracts";
 import { assert } from "@effect/vitest";
-import { Array as Arr, Effect, Record, String as Str } from "effect";
+import { Array as Arr, Effect, Record, Schema, String as Str } from "effect";
 import { chromium } from "playwright";
 import type { Browser, Page } from "playwright";
 
@@ -30,7 +30,12 @@ export const closeBrowser = () => {
 
 const openContext = Effect.acquireRelease(
   Effect.promise(() => {
-    browser ??= chromium.launch();
+    // WebMCPTesting adds navigator.modelContextTesting, which runs a
+    // registered tool as an agent would. Chromium 147 has no
+    // document.modelContext.executeTool.
+    browser ??= chromium.launch({
+      args: ["--enable-features=WebMCPTesting"],
+    });
 
     return browser.then((launched) =>
       launched.newContext({ viewport: { height: 640, width: 1024 } })
@@ -467,3 +472,27 @@ export const pointOnHop = (page: Page, id: string) =>
       return null;
     })(${literal(id)})`
   );
+
+/** The names of the tools the page has registered through WebMCP. */
+export const toolsOf = (page: Page) =>
+  inPage<Array<{ description: string; name: string }>>(
+    page,
+    `navigator.modelContextTesting.listTools()`
+  );
+
+const decodeJson = <S extends Schema.Top>(schema: S) =>
+  Schema.decodeUnknownEffect(Schema.fromJsonString(schema));
+
+/**
+ * Calls the WebMCP tool `name` as an agent would, and decodes the JSON it
+ * returns with `schema`.
+ */
+export const callTool = <S extends Schema.Top>(
+  page: Page,
+  name: string,
+  schema: S
+) =>
+  inPage<string>(
+    page,
+    `navigator.modelContextTesting.executeTool(${literal(name)}, "{}")`
+  ).pipe(Effect.flatMap(decodeJson(schema)), Effect.orDie);

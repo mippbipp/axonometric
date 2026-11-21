@@ -4,16 +4,7 @@ import { Array as Arr } from "effect";
 
 import { groundOutline, toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
-
-/** How far the outline reaches past the footprint, in grid units. */
-const pad = 0.35;
-
-const outlineOf = (placement: Placement) => ({
-  d: placement.d + pad * 2,
-  w: placement.w + pad * 2,
-  x: placement.x - pad,
-  y: placement.y - pad,
-});
+import { outlineOf } from "./selection-outline.ts";
 
 /**
  * A solid outline on the ground around the selected structure's footprint,
