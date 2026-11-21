@@ -40,6 +40,9 @@ ui-sdk provides the behavior and shadcn provides the design:
 
 ## Building UI
 
+Use `agent-browser` for browser automation. Before the first use, run
+`agent-browser skills get core` and follow it.
+
 When frontend skills disagree, the one higher in this list wins:
 
 1. `ui-sdk` and `shadcn` decide how components behave and look (see above).

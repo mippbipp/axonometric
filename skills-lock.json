@@ -1,14 +1,6 @@
 {
   "version": 2,
   "skills": {
-    "agent-browser": {
-      "source": "vercel-labs/agent-browser",
-      "commit": "a69c9190b40ced6ef99d3e64aabb9deab8716024",
-      "sourceType": "github",
-      "skillPath": "skills/agent-browser/SKILL.md",
-      "computedHash": "a0dfac7503f69bcf529b2660fc79964064c4f179eb65695904ddc45fc0d99d20",
-      "installMode": "copy"
-    },
     "effect-client-wrapper": {
       "source": "RhysSullivan/skills",
       "commit": "ab3a4551e277653cd4300107fd3d3197bc7e385b",
