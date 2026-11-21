@@ -14,6 +14,7 @@ import {
   press,
   showView,
   toolsOf,
+  waitFor,
   waitForScale,
 } from "./browser.ts";
 import type { View } from "./browser.ts";
@@ -39,6 +40,7 @@ const Spotlight = Schema.Struct({
 const Read = Schema.Struct({
   chapter: Schema.Struct({ id: Schema.String, title: Schema.String }),
   hops: Schema.Array(Boxed),
+  inside: Schema.NullOr(Schema.String),
   multiSelection: Schema.Array(Schema.String),
   pinned: Schema.NullOr(Schema.String),
   spotlight: Schema.NullOr(Spotlight),
@@ -218,6 +220,7 @@ describe("read_view", () => {
             assert.strictEqual(read.chapter.id, chapter);
             assert.sameMembers(structureIds(read), shown);
             assert.isNull(read.pinned);
+            assert.isNull(read.inside);
             assert.sameMembers([...(read.spotlight?.structures ?? [])], bright);
             assert.sameMembers([...(read.spotlight?.hops ?? [])], brightHops);
           })
@@ -278,6 +281,32 @@ describe("read_view", () => {
             assert.include([...(read.spotlight?.structures ?? [])], "updater");
           })
         )
+      );
+
+      it.live(
+        `says which structure's inside view covers the map in ${view}`,
+        () =>
+          Effect.scoped(
+            Effect.gen(function* () {
+              const { page } = yield* open;
+
+              yield* showView(page, view);
+              yield* click(page, '[data-structure="updater"]');
+              yield* click(page, '[data-control="go-inside"]');
+              yield* waitFor(page, '[data-inside-view="updater"]');
+
+              const read = yield* readView(page);
+
+              assert.strictEqual(read.inside, "updater");
+              assert.strictEqual(read.pinned, "updater");
+
+              yield* click(page, '[data-breadcrumb] [data-control="come-out"]');
+
+              const out = yield* readView(page);
+
+              assert.isNull(out.inside);
+            })
+          )
       );
     }
   });
