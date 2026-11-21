@@ -34,7 +34,7 @@ export const fileSeconds = {
   "note-targets-page.test.ts": 17,
   "plan-view.test.ts": 9,
   "readable-text-page.test.ts": 11,
-  "rerouting.test.ts": 50,
+  "rerouting.test.ts": 60,
   "review-page.test.ts": 12,
   "selection-edit.test.ts": 56,
   "status.test.ts": 12,
