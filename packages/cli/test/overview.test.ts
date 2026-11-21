@@ -5,7 +5,15 @@ import { assert, describe, it } from "@effect/vitest";
 import { Array as Arr, Effect, FileSystem } from "effect";
 import type { Page } from "playwright";
 
-import { click, inPage, literal, press, waitFor, waitGone } from "./browser.ts";
+import {
+  click,
+  inPage,
+  literal,
+  press,
+  waitFor,
+  waitGone,
+  waitTimeout,
+} from "./browser.ts";
 import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
 
@@ -255,12 +263,13 @@ describe("the How it's built page", () => {
 
           // Everything the page covers is inert, so a click or Tab can't
           // reach it.
-          const covered = yield* inPage<boolean>(
-            page,
-            `document.querySelector("[data-map-layer]").closest("[inert]") !== null`
+          yield* Effect.promise(() =>
+            page.waitForFunction(
+              `document.querySelector("[data-map-layer]").closest("[inert]") !== null`,
+              undefined,
+              waitTimeout
+            )
           );
-
-          assert.isTrue(covered);
 
           // Tab many times: focus never leaves the page or the header
           // button, which stays live to close it.

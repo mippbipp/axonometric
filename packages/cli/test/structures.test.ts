@@ -15,6 +15,7 @@ import {
   waitForCameraChange,
   waitFor,
   waitGone,
+  waitTimeout,
 } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
@@ -129,6 +130,18 @@ describe("the tooltip", () => {
           })
         );
         yield* waitFor(page, '[data-tooltip="upstream"]');
+        // ui-sdk places the tooltip again once it has measured its content.
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `(() => {
+              const canvas = document.querySelector("[data-map-surface]").getBoundingClientRect();
+              const tooltip = document.querySelector("[data-tooltip]").getBoundingClientRect();
+              return tooltip.right <= canvas.right && tooltip.left >= canvas.left;
+            })()`,
+            undefined,
+            waitTimeout
+          )
+        );
 
         const [canvas] = yield* boxesOf(page, "[data-map-surface]");
         const [tooltip] = yield* boxesOf(page, "[data-tooltip]");
