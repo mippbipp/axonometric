@@ -60,21 +60,23 @@ export const useDrop = () => {
     /** Why dropping structure `id` at `next` would be refused, or `undefined`. */
     refusalOf: (id: string, next: Placement): string | undefined =>
       proposing?.refusalOfPlace(id, next) ?? editing?.refusalOf(id, next),
-    /** Drops structure `id` at `next`. */
-    drop: (id: string, next: Placement) => {
+    /** Drops structure `id` at `next`. Returns why it was refused, or `undefined`. */
+    drop: (id: string, next: Placement): string | undefined => {
       if (proposing?.isOpenAdd(id) === true) {
-        proposing.place(id, next, (outcome) => {
+        return proposing.place(id, next, (outcome) => {
           const why = Option.getOrUndefined(Result.getFailure(outcome));
 
           if (why !== undefined) {
             panel?.show({ problems: [], refusal: why });
           }
         });
-
-        return;
       }
 
-      editing?.place(id, next);
+      const refusal = editing?.place(id, next);
+
+      if (refusal !== undefined) {
+        return refusal;
+      }
 
       // The zones the structure lands in are those of the proposed map with
       // the move applied, so the group is judged where it now stands.
@@ -91,6 +93,8 @@ export const useDrop = () => {
       if (group !== undefined) {
         proposeShown({ action: "group", group, structure: id }, { [id]: next });
       }
+
+      return undefined;
     },
   };
 };

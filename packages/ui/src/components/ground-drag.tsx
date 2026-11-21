@@ -646,7 +646,7 @@ function GroundHandle({
   );
 }
 
-export { GroundDrag, GroundHandle, groundDrag };
+export { GroundDrag, GroundHandle };
 export type {
   GroundBox,
   GroundCorner,
