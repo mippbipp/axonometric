@@ -1,4 +1,4 @@
-import { Checkbox } from "@axonometric/ui/components/checkbox";
+import { Checkbox, CheckboxGroup } from "@axonometric/ui/components/checkbox";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { checkPattern, settle } from "@ui-sdk/core/testing";
@@ -113,5 +113,75 @@ describe("checkbox", () => {
     await expect(
       checkPattern(screen.getByRole("checkbox"), "checkbox")
     ).resolves.toBeUndefined();
+  });
+});
+
+function Toppings({
+  onValueChange,
+}: {
+  readonly onValueChange: (next: ReadonlyArray<string>) => void;
+}) {
+  const [value, setValue] = useState<ReadonlyArray<string>>([]);
+
+  return (
+    <CheckboxGroup
+      aria-label="Toppings"
+      onValueChange={(next) => {
+        setValue(next);
+        onValueChange(next);
+      }}
+      value={[...value]}
+    >
+      {["cheese", "olives", "peppers"].map((topping) => (
+        <label key={topping}>
+          <Checkbox data-topping={topping} value={topping} />
+          <span>{topping}</span>
+        </label>
+      ))}
+    </CheckboxGroup>
+  );
+}
+
+describe("checkbox group", () => {
+  it("is a named group that keeps one list of checked values", async () => {
+    expect.hasAssertions();
+
+    const onValueChange = vi.fn<(next: ReadonlyArray<string>) => void>();
+    const user = userEvent.setup();
+
+    render(<Toppings onValueChange={onValueChange} />);
+
+    expect(screen.getByRole("group", { name: "Toppings" }).dataset.slot).toBe(
+      "checkbox-group"
+    );
+
+    await user.click(screen.getByText("peppers"));
+    await user.click(screen.getByText("cheese"));
+
+    expect(onValueChange).toHaveBeenLastCalledWith(["cheese", "peppers"]);
+
+    await user.click(screen.getByText("peppers"));
+
+    expect(onValueChange).toHaveBeenLastCalledWith(["cheese"]);
+  });
+
+  it("keeps each checkbox's own data attributes and locks them all while disabled", async () => {
+    expect.hasAssertions();
+
+    const user = userEvent.setup();
+
+    render(
+      <CheckboxGroup aria-label="Toppings" disabled>
+        <Checkbox data-topping="cheese" value="cheese" />
+      </CheckboxGroup>
+    );
+
+    const box = screen.getByRole("checkbox");
+
+    expect(box.dataset.topping).toBe("cheese");
+
+    await user.click(box);
+
+    expect(box.getAttribute("aria-checked")).toBe("false");
   });
 });

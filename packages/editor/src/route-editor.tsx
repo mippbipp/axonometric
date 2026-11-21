@@ -11,10 +11,9 @@ import type {
   SegmentGuide,
   View,
 } from "@axonometric/contracts";
-import { bindCanvasDrag } from "@axonometric/ui/lib/canvas-drag";
+import { GroundGesture } from "@axonometric/ui/components/ground-gesture";
 import { Array as Arr, Option } from "effect";
-import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
 import {
@@ -143,6 +142,28 @@ function PendingRoutes({ hops }: { readonly hops: ReadonlyArray<SceneHop> }) {
   );
 }
 
+/** What a press on a segment drags. */
+interface Press {
+  readonly axis: SegmentGuide["axis"];
+  readonly ends: { readonly from: Placement; readonly to: Placement };
+  readonly hop: string;
+  readonly route: ReadonlyArray<GridPoint>;
+  readonly segment: number;
+}
+
+/** The route a stroke from `from` to `to` leaves, square to the segment. */
+const pointsOf = (
+  { axis, ends, route, segment }: Press,
+  from: GridPoint,
+  to: GridPoint
+) =>
+  dragSegment({
+    ends,
+    offset: axis === "x" ? to.y - from.y : to.x - from.x,
+    points: route,
+    segment,
+  });
+
 /**
  * Reroutes hops by dragging their segments, while the page can edit. It
  * wraps the hops' drawing (`children`), inside the viewport's transformed
@@ -172,52 +193,8 @@ export function RouteEditor({
   const editing = useEditing();
   const { selectedHop, selectHop } = useSelection();
   const preview = useDragPreview();
-  const root = useRef<SVGGElement>(null);
-  const stop = useRef<(() => void) | undefined>(undefined);
   const [drag, setDrag] = useState<Drag | undefined>();
   const live = editing?.canEdit === true;
-
-  // A press that never reached the drag threshold is a click on the hop.
-  // The map surface listens for clicks natively and clears the selection on
-  // one that lands on nothing, so this one is handled natively too, first.
-  useEffect(() => {
-    const element = root.current;
-
-    const onClick = (event: MouseEvent) => {
-      const target =
-        event.target instanceof Element
-          ? event.target.closest<SVGElement>("[data-route-segment]")
-          : null;
-      const hop = target?.dataset.hopId;
-
-      if (hop === undefined) {
-        return;
-      }
-
-      event.stopPropagation();
-      event.preventDefault();
-      selectHop(hop);
-    };
-
-    element?.addEventListener("click", onClick, { capture: true });
-
-    return () => {
-      element?.removeEventListener("click", onClick, { capture: true });
-    };
-  }, [selectHop]);
-
-  useEffect(() => {
-    if (!live) {
-      stop.current?.();
-    }
-  }, [live]);
-
-  useEffect(
-    () => () => {
-      stop.current?.();
-    },
-    []
-  );
 
   useEffect(() => {
     if (drag === undefined) {
@@ -240,109 +217,86 @@ export function RouteEditor({
     });
   }, [drag, preview]);
 
-  const onPointerDown = (event: ReactPointerEvent<SVGGElement>) => {
+  const starts = (event: PointerEvent): Press | undefined => {
     const target =
       event.target instanceof Element
         ? event.target.closest<SVGElement>("[data-route-segment]")
         : null;
-
     const hop = target?.dataset.hopId;
-    const element = root.current;
 
-    if (
-      editing === null ||
-      !live ||
-      event.button !== 0 ||
-      event.shiftKey ||
-      target === null ||
-      hop === undefined ||
-      element === null
-    ) {
-      return;
+    if (event.shiftKey || target === null || hop === undefined) {
+      return undefined;
     }
 
     const routed = Arr.findFirst(hops, (item) => item.hop.id === hop);
-    const start = groundAt({ element, event, view });
 
-    if (Option.isNone(routed) || start === undefined) {
-      return;
+    if (Option.isNone(routed)) {
+      return undefined;
     }
 
     const from = placements[routed.value.hop.from];
     const to = placements[routed.value.hop.to];
 
-    if (from === undefined || to === undefined) {
-      return;
-    }
-
-    const axis = target.dataset.axis === "y" ? "y" : "x";
-    const route = routed.value.route.points;
-    const segment = Number(target.dataset.segment);
-    let latest: Drag | undefined;
-
-    stop.current?.();
-
-    const unbind = bindCanvasDrag(element, event.nativeEvent, {
-      onEnd: ({ canceled }) => {
-        stop.current = undefined;
-        setDrag(undefined);
-
-        if (
-          !canceled &&
-          latest !== undefined &&
-          latest.refusal === undefined &&
-          !samePoints(latest.points, routeVertices(route))
-        ) {
-          editing.reroute(hop, latest.points);
-        }
-      },
-      onMove: (position) => {
-        const ground = groundAt({ element, event: position, view });
-
-        if (ground === undefined) {
-          return;
-        }
-
-        // A segment along x moves along y, and the other way round.
-        const offset = axis === "x" ? ground.y - start.y : ground.x - start.x;
-
-        const points = dragSegment({
+    return from === undefined || to === undefined
+      ? undefined
+      : {
+          axis: target.dataset.axis === "y" ? "y" : "x",
           ends: { from, to },
-          offset,
-          points: route,
-          segment,
-        });
-
-        if (latest !== undefined && samePoints(latest.points, points)) {
-          return;
-        }
-
-        latest = {
           hop,
-          points,
-          refusal: samePoints(points, routeVertices(route))
-            ? undefined
-            : editing.refusalOfReroute(hop, points),
+          route: routed.value.route.points,
+          segment: Number(target.dataset.segment),
         };
-        setDrag(latest);
-      },
-    });
-
-    stop.current = () => {
-      unbind();
-      stop.current = undefined;
-      setDrag(undefined);
-    };
   };
 
   const selected = Arr.findFirst(hops, (item) => item.hop.id === selectedHop);
 
   return (
-    <g
+    <GroundGesture
       data-dragging-route={drag?.hop}
       data-route-editor={live ? "on" : "off"}
-      onPointerDown={live ? onPointerDown : undefined}
-      ref={root}
+      disabled={!live}
+      groundAt={(element, at) =>
+        element instanceof SVGGraphicsElement
+          ? groundAt({ element, event: at, view })
+          : undefined
+      }
+      onCommit={({ from, payload, to }) => {
+        const points = pointsOf(payload, from, to);
+
+        if (
+          editing !== null &&
+          !samePoints(points, routeVertices(payload.route)) &&
+          editing.refusalOfReroute(payload.hop, points) === undefined
+        ) {
+          editing.reroute(payload.hop, points);
+        }
+      }}
+      onDraft={(stroke) => {
+        if (stroke === null || editing === null) {
+          setDrag(undefined);
+
+          return;
+        }
+
+        const { payload } = stroke;
+        const points = pointsOf(payload, stroke.from, stroke.to);
+
+        setDrag((before) =>
+          before !== undefined && samePoints(before.points, points)
+            ? before
+            : {
+                hop: payload.hop,
+                points,
+                refusal: samePoints(points, routeVertices(payload.route))
+                  ? undefined
+                  : editing.refusalOfReroute(payload.hop, points),
+              }
+        );
+      }}
+      onPress={({ hop }) => {
+        selectHop(hop);
+      }}
+      starts={starts}
     >
       {Option.isSome(selected) ? (
         <polyline
@@ -386,6 +340,6 @@ export function RouteEditor({
           {drag.refusal === undefined ? null : <title>{drag.refusal}</title>}
         </polyline>
       )}
-    </g>
+    </GroundGesture>
   );
 }

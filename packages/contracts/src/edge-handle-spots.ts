@@ -64,7 +64,7 @@ const touches = ({
 
 /**
  * One handle: the structure and side it is on, and where it is drawn. A
- * handle is a port for drawing a hop, so it has a key of its own, and `at` is
+ * handle is a hop end, so it has a key of its own, and `at` is
  * the point a pointer or keyboard connection snaps to.
  */
 export interface EdgeSpot {

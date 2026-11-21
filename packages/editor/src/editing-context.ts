@@ -51,8 +51,9 @@ export interface Editing {
   /** The pending layout changes the page shows. */
   readonly pending: ReadonlyArray<LayoutChange>;
   /**
-   * Puts structure `id` at `next`, as pending changes. Returns why it was
-   * refused, such as an overlap, or `undefined` when it went ahead.
+   * Puts structure `id` at `next`, as pending changes. A refusal also shows
+   * as a notice. Returns why it was refused, such as an overlap, or
+   * `undefined` when it went ahead.
    */
   readonly place: (id: string, next: Placement) => string | undefined;
   /** Redoes the edit that `undo` took back. */

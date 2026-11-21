@@ -1,3 +1,4 @@
+import { dragThreshold } from "@axonometric/ui/lib/canvas-drag";
 import {
   createViewport,
   definePrimitive,
@@ -31,8 +32,8 @@ interface CameraDetails {
 }
 
 interface PannableCanvasOptions {
-  /** Presses that start on these belong to the content, so they never pan. */
-  readonly claims: (target: EventTarget | null) => boolean;
+  /** Presses that belong to the content, so they never pan. */
+  readonly claims: (event: PointerEvent) => boolean;
   /** The camera Zoom to fit shows for a canvas of the given size. */
   readonly fit: (size: CanvasSize) => Camera;
   /** The zoom limits, from the scale that Zoom to fit last showed. */
@@ -51,9 +52,6 @@ interface PannableCanvasState {
   readonly fitScale: number;
   readonly viewport: Camera;
 }
-
-/** How far a press may move before it counts as a drag, in pixels. */
-const panThreshold = 4;
 
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
@@ -90,7 +88,7 @@ const routePresses = ({
   root,
   viewport,
 }: {
-  readonly claims: (target: EventTarget | null) => boolean;
+  readonly claims: (event: PointerEvent) => boolean;
   readonly inControls: (target: EventTarget | null) => boolean;
   readonly root: HTMLElement;
   readonly viewport: ViewportApi;
@@ -101,13 +99,8 @@ const routePresses = ({
   const isPrimary = (event: PointerEvent) =>
     event.button === 0 && !inControls(event.target);
 
-  const startsPan = (event: PointerEvent) =>
-    isPrimary(event) &&
-    // A Shift-drag on empty space draws a selection box instead.
-    !event.shiftKey &&
-    !claims(event.target);
+  const startsPan = (event: PointerEvent) => isPrimary(event) && !claims(event);
 
-  // A press that won't pan on its own is still half a pinch.
   const firstPress = (event: PointerEvent): Press => {
     if (startsPan(event)) {
       return { down: event, kind: "pending" };
@@ -139,7 +132,6 @@ const routePresses = ({
       case "held":
       case "pending": {
         if (event.pointerId === press.down.pointerId) {
-          // The release of the last press never arrived.
           press = firstPress(event);
           break;
         }
@@ -170,7 +162,7 @@ const routePresses = ({
     const dx = event.clientX - down.clientX;
     const dy = event.clientY - down.clientY;
 
-    if (Math.hypot(dx, dy) < panThreshold) {
+    if (Math.abs(dx) < dragThreshold && Math.abs(dy) < dragThreshold) {
       return;
     }
 
@@ -252,7 +244,6 @@ const pannableCanvas = definePrimitive({
       fitScale: number,
       details?: CameraDetails
     ) => {
-      // The limits read fitScale, so it goes first.
       store.set({ fitScale });
       viewport.setViewport(camera, details);
     };
@@ -264,7 +255,7 @@ const pannableCanvas = definePrimitive({
     };
 
     return {
-      claims: (target: EventTarget | null) => context.options().claims(target),
+      claims: (event: PointerEvent) => context.options().claims(event),
       fit,
       fitScale: () => store.get().fitScale,
       inControls: (target: EventTarget | null) =>
@@ -309,7 +300,7 @@ const pannableCanvas = definePrimitive({
     root: slot({
       bind: (el, { api }) => {
         const unroute = routePresses({
-          claims: (target) => api.claims(target),
+          claims: api.claims,
           inControls: api.inControls,
           root: el,
           viewport: api.viewport,
@@ -334,8 +325,6 @@ const pannableCanvas = definePrimitive({
           );
         };
 
-        // On the window, so a key works wherever focus is, except where a
-        // handler above already took it.
         const onKeyDown = (event: KeyboardEvent) => {
           if (
             event.defaultPrevented ||
@@ -428,10 +417,10 @@ interface PannableCanvasProps extends PannableCanvasOptions {
 
 /**
  * An SVG canvas you can pan and zoom, on ui-sdk's viewport. Drag on empty
- * space to pan; a press that moves under 4 px is still a click on what it
- * landed on. A pinch or Ctrl and the wheel zooms at the pointer, the wheel
- * alone zooms too, `+` and `-` zoom from the middle and `0` shows what `fit`
- * returns. The browser's find in page and focus bring what they find into
+ * space to pan; a press that moves under 3 px along both axes, ui-sdk's drag
+ * threshold, is still a click on what it landed on. A pinch or Ctrl and the
+ * wheel zooms at the pointer, the wheel alone zooms too, `+` and `-` zoom
+ * from the middle and `0` shows what `fit` returns. The browser's find in page and focus bring what they find into
  * view. Everything is positioned in canvas units inside the world, whose
  * camera is one transform, so panning renders nothing. Reach the viewport
  * through `ref`, or `usePannableCanvas` from inside.

@@ -34,7 +34,13 @@ import {
   waitTimeout,
   choose,
 } from "./browser.ts";
-import { openReviewMap, proposalsOrEmpty, runCli, homeAt } from "./harness.ts";
+import {
+  openReviewMap,
+  proposalsOrEmpty,
+  runCli,
+  homeAt,
+  waitForRevision,
+} from "./harness.ts";
 import { post } from "./revisions.ts";
 
 // Seam 2: hop and flow proposals in a page that a real serve serves. The
@@ -472,7 +478,6 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
   );
 });
 
-/** The camera once two reads of it 150 ms apart agree. */
 const settledCamera = Effect.fnUntraced(function* (page: Page) {
   let last = yield* cameraOf(page);
 
@@ -492,7 +497,6 @@ const settledCamera = Effect.fnUntraced(function* (page: Page) {
   return yield* Effect.die(new Error("the camera never held still"));
 });
 
-/** Waits until the assertive announcer says `text`. */
 const waitForAlert = (page: Page, text: string) =>
   Effect.promise(() =>
     page.waitForFunction(
@@ -574,6 +578,34 @@ describe.each(["iso", "plan"] as const)(
     );
 
     it.live(
+      "keeps Enter and Space with nothing aimed at from the focused structure, which stays outside",
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* served;
+          const mapPage = page.locator('[data-structure="page"]');
+
+          yield* goToChapterPaused(page, "c-all");
+          yield* showViewFitted(page, which);
+          yield* Effect.promise(() => mapPage.focus());
+          yield* press(page, "h");
+          yield* waitFor(page, '[data-connecting="keyboard"]');
+          yield* press(page, "Enter");
+          yield* press(page, " ");
+          yield* Effect.sleep("300 millis");
+
+          yield* assertCount(page, "[data-inside-view]", 0);
+          yield* assertCount(page, "[data-draw-hop]", 0);
+          yield* assertCount(page, '[data-connecting="keyboard"]', 1);
+
+          yield* press(page, "Escape");
+          yield* Effect.promise(() => mapPage.focus());
+          yield* press(page, "Enter");
+          yield* waitFor(page, '[data-inside-view="page"]');
+        }),
+      60_000
+    );
+
+    it.live(
       "opens the label field for a drop far from every handle at zoom 2",
       () =>
         Effect.gen(function* () {
@@ -582,7 +614,6 @@ describe.each(["iso", "plan"] as const)(
           yield* goToChapterPaused(page, "c-all");
           yield* showViewFitted(page, which);
 
-          // Between the engineer and the map page, so both stay on screen.
           const groundOnScreen = (x: number, y: number) =>
             inPage<{ x: number; y: number }>(
               page,
@@ -607,7 +638,6 @@ describe.each(["iso", "plan"] as const)(
           yield* select(page, "engineer");
           yield* settledCamera(page);
 
-          // The map page's footprint is 4 to 6 along x and 0 to 2 along y.
           const middle = yield* groundOnScreen(5, 1);
           const nearest = yield* inPage<number>(
             page,
@@ -645,6 +675,97 @@ describe.each(["iso", "plan"] as const)(
   }
 );
 
+describe("a drawn hop and undo", () => {
+  const undoButton = "[data-control='undo']";
+
+  /**
+   * Waits for `hops` named hops on disk and on the map, then checks Undo
+   * stays disabled and Ctrl+Z writes nothing: the file stays at revision
+   * `hops`, one write per hop.
+   */
+  const undoLeavesHops = Effect.fnUntraced(function* (
+    page: Page,
+    home: string,
+    hops: number
+  ) {
+    yield* waitForRevision(home, hops);
+    yield* Effect.promise(() =>
+      page.waitForFunction(
+        `document.querySelectorAll('[data-hop][data-hop-state="proposed"]').length === ${hops}`,
+        undefined,
+        waitTimeout
+      )
+    );
+
+    const disabled = yield* Effect.promise(() =>
+      page.locator(undoButton).isDisabled()
+    );
+
+    assert.isTrue(disabled, "naming a hop is not an undo step");
+
+    yield* press(page, "Control+z");
+    yield* Effect.sleep("500 millis");
+
+    const saved = yield* waitForRevision(home, hops);
+
+    assert.strictEqual(saved.hops?.length, hops);
+    yield* assertCount(page, '[data-hop][data-hop-state="proposed"]', hops);
+  });
+
+  it.live(
+    "keeps a hop named after a pointer or keyboard draw as a pending proposal that undo leaves alone",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+        yield* drawHop(page, "asks for a map");
+        yield* undoLeavesHops(page, home, 1);
+
+        yield* press(page, "Escape");
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="page"]').focus()
+        );
+        yield* press(page, "h");
+        yield* press(page, "ArrowRight");
+        yield* press(page, "Enter");
+        yield* waitFor(page, "[data-draw-hop]");
+        yield* Effect.promise(() =>
+          page.locator('[data-draw="label"]').fill("reads")
+        );
+        yield* click(page, '[data-draw="submit"]');
+        yield* undoLeavesHops(page, home, 2);
+
+        yield* press(page, "Escape");
+
+        const from = yield* centreOf(page, '[data-structure="upstream"]');
+
+        yield* Effect.promise(() => page.mouse.move(from.x, from.y));
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() =>
+          page.mouse.move(from.x + 80, from.y + 40, { steps: 10 })
+        );
+        yield* Effect.promise(() => page.mouse.up());
+
+        const moved = yield* waitForRevision(home, 3);
+
+        assert.strictEqual(moved.layout.length, 1);
+
+        yield* click(page, undoButton);
+
+        const undone = yield* waitForRevision(home, 4);
+
+        assert.deepStrictEqual(undone.layout, []);
+        assert.strictEqual(
+          undone.hops?.length,
+          2,
+          "undo takes back the move only"
+        );
+      }),
+    90_000
+  );
+});
+
 describe("a structure's description", () => {
   it.live(
     "lists its hops whose other end is shown, and the key that draws one",
@@ -668,7 +789,6 @@ describe("a structure's description", () => {
         );
         assert.strictEqual(shortcut, "H");
 
-        // The first chapter shows the engineer and the page only.
         yield* goToChapterPaused(page, "c-page");
 
         const early = yield* Effect.promise(() =>

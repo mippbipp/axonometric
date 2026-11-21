@@ -1,4 +1,4 @@
-import { groupMembers, nudgeMoves, toPoints } from "@axonometric/contracts";
+import { groupMembers, toPoints } from "@axonometric/contracts";
 import type {
   GridPoint,
   Layout,
@@ -13,7 +13,7 @@ import { GroundDrag } from "@axonometric/ui/components/ground-drag";
 import type {
   GroundBox,
   GroundDraft,
-  GroundInput,
+  GroundPress,
 } from "@axonometric/ui/components/ground-drag";
 import { Array as Arr } from "effect";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -22,19 +22,23 @@ import { useDragPreview } from "./drag-preview-context.ts";
 import { shiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
-import { boxOf, largeStep, movesTo, step } from "./ground-moves.ts";
+import {
+  boxOf,
+  largeStep,
+  movesTo,
+  picks,
+  saveMove,
+  step,
+} from "./ground-moves.ts";
 import { useDropOutlines } from "./outlines-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
-/** A drag of a group by its zone's title, and where it would put it. */
 interface Drag {
   readonly by: GridPoint;
   readonly group: string;
-  /** Every member of the group and where it was shown at the press. */
   readonly members: ReadonlyArray<readonly [string, Placement]>;
-  /** Where each member goes, as the drop would put it. */
   readonly moves: ReadonlyArray<StructureMove>;
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
@@ -46,7 +50,6 @@ const shifted = (event: Event | undefined) =>
   (event instanceof MouseEvent || event instanceof KeyboardEvent) &&
   event.shiftKey;
 
-/** Selects the title box of the pinned group's panel, once it has drawn. */
 const selectTitleBox = () => {
   requestAnimationFrame(() => {
     document
@@ -191,50 +194,13 @@ export function GroupEditor({
     };
   };
 
-  /** The members of the group whose title `target` is, revealed or not. */
-  const keysFor = (target: Element | null) => {
+  const keysFor = (target: Element | null, press: GroundPress) => {
     const group =
       target?.closest<SVGElement>(titleSelector)?.dataset.zoneTitleHit;
 
-    return group === undefined ? [] : groupMembers({ data, group, layout });
-  };
-
-  const onMove = (
-    to: Readonly<Record<string, GridPoint>>,
-    { input }: { readonly input: GroundInput }
-  ) => {
-    const ids = Object.keys(to);
-    const [id] = ids;
-    const start = id === undefined ? undefined : layout.structures[id];
-    const at = id === undefined ? undefined : to[id];
-
-    if (
-      editing === null ||
-      id === undefined ||
-      start === undefined ||
-      at === undefined
-    ) {
-      return false;
-    }
-
-    // A nudge is planned on the latest list, so quick presses add up, and
-    // `arrange` shows a refusal as a notice.
-    if (input === "keyboard") {
-      const delta = { x: at.x - start.x, y: at.y - start.y };
-
-      return (
-        editing.arrange((latest) =>
-          nudgeMoves({ delta, ids, placements: latest })
-        ) === undefined
-      );
-    }
-
-    // The red outline already said why a drop is refused, so it writes
-    // nothing.
-    return (
-      editing.refusalOfMoves(movesTo(to)) === undefined &&
-      editing.arrange(() => movesTo(to)) === undefined
-    );
+    return group === undefined || picks(press)
+      ? []
+      : groupMembers({ data, group, layout });
   };
 
   const pin = (group: string, event: Event | undefined) => {
@@ -246,6 +212,7 @@ export function GroupEditor({
   return (
     <GroundDrag
       boxes={boxes}
+      data-dragging-group={drag?.group}
       data-group-editor={live ? "on" : "off"}
       disabled={!live}
       groundAt={(element, at) =>
@@ -259,7 +226,9 @@ export function GroupEditor({
       onDraft={(draft) => {
         setDrag(draft === null ? undefined : dragOf(draft));
       }}
-      onMove={onMove}
+      onMove={(to, { input }) =>
+        saveMove({ editing, input, placements: layout.structures, to })
+      }
       ref={root}
       step={step}
     >

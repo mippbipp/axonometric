@@ -1,9 +1,10 @@
+import { Button } from "@axonometric/ui/components/button";
 import { Toggle } from "@axonometric/ui/components/toggle";
 import { Array as Arr } from "effect";
 
 import { legendOrder, looks } from "./compare-looks.ts";
 import type { CompareKind } from "./compare-looks.ts";
-import { controlClass, uiControlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { fullDate } from "./relative-time.ts";
 
 /** What differs, as the banner counts it. */
@@ -96,23 +97,21 @@ export function RevisionBanner({
         >
           Compare with accepted
         </Toggle>
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-control="restore"
           disabled={!canRestore}
           onClick={onRestore}
-          type="button"
         >
           Restore
-        </button>
-        <button
-          className={controlClass}
+        </Button>
+        <Button
+          className={uiControlClass}
           data-control="back-to-current"
           onClick={onBack}
-          type="button"
         >
           Back to current
-        </button>
+        </Button>
       </div>
       {comparing ? (
         <div className="flex flex-col gap-1.5" data-compare-legend>

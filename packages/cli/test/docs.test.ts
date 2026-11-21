@@ -56,7 +56,6 @@ import { makeHome, runCli, startServe, mapKeys, mapIn } from "./harness.ts";
 // they show runs as written against the review fixture, so a renamed flag or
 // command fails here. Seam 1, the CLI on a temporary home folder.
 
-/** The topics the overview must list: the five the ticket names, data, and present. */
 const requiredTopics = [
   "process",
   "data",

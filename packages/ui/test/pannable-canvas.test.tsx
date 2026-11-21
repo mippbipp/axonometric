@@ -40,8 +40,10 @@ function Canvas({
 }) {
   return (
     <PannableCanvas
-      claims={(target) =>
-        target instanceof Element && target.closest("[data-claimed]") !== null
+      claims={(event) =>
+        event.shiftKey ||
+        (event.target instanceof Element &&
+          event.target.closest("[data-claimed]") !== null)
       }
       controls={
         <button data-controls-button="" type="button">
@@ -83,7 +85,6 @@ const world = () => find("[data-viewport]");
 
 const scale = () => Number(svg().dataset.scale);
 
-/** The world's translation in the pane's own pixels, rest offset included. */
 const translation = () => {
   const match = /translate\((?<x>[-\d.e]+)px,\s*(?<y>[-\d.e]+)px\)/u.exec(
     world().style.transform
@@ -108,7 +109,6 @@ const mouse = (extra: PointerExtras = {}) => ({
   ...extra,
 });
 
-/** Presses at (100, 100), moves by (dx, dy) and releases. */
 const drag = (
   target: Element,
   [dx, dy]: readonly [number, number],
@@ -239,7 +239,7 @@ describe("pannable canvas", () => {
   });
 
   describe("pressing", () => {
-    it("doesn't pan a press that moves under 4 px, and its click lands", () => {
+    it("doesn't pan a press that moves 2 px along each axis, and its click lands", () => {
       expect.hasAssertions();
 
       const onClick = vi.fn<() => void>();
@@ -256,7 +256,24 @@ describe("pannable canvas", () => {
       expect(onClick).toHaveBeenCalledExactlyOnceWith();
     });
 
-    it("pans by the pointer's offset from the press once it moves 4 px", () => {
+    it("pans exactly 3 px for a press that moves 3 px along one axis, and swallows its click", () => {
+      expect.hasAssertions();
+
+      const onClick = vi.fn<() => void>();
+
+      mount({ onClick });
+
+      const before = translation();
+      const target = find("[data-plain]");
+
+      drag(target, [3, 0]);
+      fireEvent.click(target);
+
+      expect(translation()).toStrictEqual({ x: before.x + 3, y: before.y });
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("pans by the pointer's offset from the press", () => {
       expect.hasAssertions();
 
       mount();
@@ -287,7 +304,7 @@ describe("pannable canvas", () => {
       expect(translation().x - before.x).toBe(40);
     });
 
-    it("doesn't pan with Shift held, with a right button or on a claimed target", () => {
+    it("doesn't pan a press `claims` takes, such as on a target or with Shift, nor a right button", () => {
       expect.hasAssertions();
 
       mount();
@@ -386,7 +403,7 @@ describe("pannable canvas", () => {
       expect(scale()).toBeCloseTo(3, 5);
     });
 
-    it("pinches when the first press is Shift", () => {
+    it("pinches when `claims` took the first press for its key", () => {
       expect.hasAssertions();
 
       mount();

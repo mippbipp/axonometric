@@ -1,8 +1,8 @@
 import { groundProjections, structuresInBox } from "@axonometric/contracts";
 import type { GridPoint, Placement, View } from "@axonometric/contracts";
+import { GroundGesture } from "@axonometric/ui/components/ground-gesture";
 import { announce } from "@axonometric/ui/lib/announce";
-import { bindCanvasDrag } from "@axonometric/ui/lib/canvas-drag";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useState } from "react";
 
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
@@ -15,26 +15,18 @@ interface Box {
   readonly to: GridPoint;
 }
 
-/** Selected structures, as a screen reader hears the count. */
 const messageOf = (count: number) =>
   `${count} ${count === 1 ? "structure" : "structures"} selected.`;
 
-/** Listens for presses on `svg`, and returns a function that stops. */
-const listen = (
-  svg: SVGSVGElement,
-  onDown: (event: PointerEvent) => void,
-  onStop: () => void
-) => {
-  svg.addEventListener("pointerdown", onDown);
-
-  return () => {
-    svg.removeEventListener("pointerdown", onDown);
-    onStop();
-  };
-};
-
 const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
   a.size === b.size && [...a].every((id) => b.has(id));
+
+/** Whether a Shift-press on `target` starts a box, not a press on an item. */
+const onEmptyCanvas = (target: EventTarget | null) =>
+  !(target instanceof Element) ||
+  target.closest(
+    "[data-structure], [data-packet], [data-resize-handle], [data-edge-handle]"
+  ) === null;
 
 /**
  * Selects structures with a box: hold Shift and drag on empty canvas. A
@@ -44,9 +36,9 @@ const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
  * was selected when the press began, as one change, and a screen reader
  * hears how many are selected. Escape lets go and selects nothing.
  *
- * It listens on the canvas that holds it, and draws inside the viewport's
+ * It hears presses anywhere on the canvas, and draws inside the viewport's
  * transformed group, so the box pans and zooms with the map. The viewport
- * leaves a Shift press alone (see `PannableCanvas`), so a box drag never pans.
+ * leaves a Shift press alone (see `Viewport`), so a box drag never pans.
  *
  * This is ui-sdk's `bindDrag` with `structuresInBox` and `announce`, not
  * `createLasso`. The lasso hit-tests each item's screen bounding box against
@@ -67,95 +59,42 @@ export function BoxSelect({
 }) {
   const editing = useEditing();
   const { multiSelection, setMultiSelection } = useSelection();
-  const anchor = useRef<SVGGElement>(null);
-  const stop = useRef<(() => void) | undefined>(undefined);
   const [box, setBox] = useState<Box | undefined>();
-  const live = editing?.canEdit === true;
 
-  const hitsOf = useEffectEvent((at: Box): ReadonlyArray<string> =>
-    structuresInBox({ box: at, ids: [...revealed], placements })
-  );
+  const hitsOf = (at: Box) =>
+    structuresInBox({ box: at, ids: [...revealed], placements });
 
-  const onDown = useEffectEvent((event: PointerEvent) => {
-    const element = anchor.current;
-    const svg = element?.ownerSVGElement;
-
-    if (
-      element === null ||
-      svg === null ||
-      svg === undefined ||
-      event.button !== 0 ||
-      !event.shiftKey ||
-      (event.target instanceof Element &&
-        event.target.closest(
-          "[data-structure], [data-packet], [data-resize-handle], [data-edge-handle]"
-        ) !== null)
-    ) {
-      return;
-    }
-
-    const from = groundAt({ element, event, view });
-
-    if (from === undefined) {
-      return;
-    }
-
-    const kept = multiSelection;
-    let latest: Box | undefined;
-
-    stop.current?.();
-    stop.current = bindCanvasDrag(svg, event, {
-      onEnd: ({ canceled }) => {
-        stop.current = undefined;
-        setBox(undefined);
-
-        if (canceled || latest === undefined) {
-          return;
-        }
-
-        const next = new Set([...kept, ...hitsOf(latest)]);
-
-        if (!sameIds(next, multiSelection)) {
-          setMultiSelection([...next]);
-          announce(messageOf(next.size));
-        }
-      },
-      onMove: (position) => {
-        const to = groundAt({ element, event: position, view });
-
-        if (to === undefined) {
-          return;
-        }
-
-        latest = { from, to };
-        setBox(latest);
-      },
-    });
-  });
-
-  useEffect(() => {
-    const svg = anchor.current?.ownerSVGElement;
-
-    return live && svg !== null && svg !== undefined
-      ? listen(svg, onDown, () => {
-          stop.current?.();
-          stop.current = undefined;
-          setBox(undefined);
-        })
-      : undefined;
-  }, [live]);
-
-  const touched =
-    box === undefined
-      ? []
-      : structuresInBox({ box, ids: [...revealed], placements });
-
+  const touched = box === undefined ? [] : hitsOf(box);
   const left = box === undefined ? 0 : Math.min(box.from.x, box.to.x);
   const top = box === undefined ? 0 : Math.min(box.from.y, box.to.y);
   const ground = groundProjections[view];
 
   return (
-    <g className="pointer-events-none" ref={anchor}>
+    <GroundGesture
+      className="pointer-events-none"
+      disabled={editing?.canEdit !== true}
+      groundAt={(element, at) =>
+        element instanceof SVGGraphicsElement
+          ? groundAt({ element, event: at, view })
+          : undefined
+      }
+      onCommit={({ from, payload: kept, to }) => {
+        const next = new Set([...kept, ...hitsOf({ from, to })]);
+
+        if (!sameIds(next, multiSelection)) {
+          setMultiSelection([...next]);
+          announce(messageOf(next.size));
+        }
+      }}
+      onDraft={(stroke) => {
+        setBox(stroke ?? undefined);
+      }}
+      starts={(event: PointerEvent) =>
+        event.shiftKey && onEmptyCanvas(event.target)
+          ? multiSelection
+          : undefined
+      }
+    >
       {box === undefined ? null : (
         <>
           {touched.map((id) => {
@@ -193,6 +132,6 @@ export function BoxSelect({
           />
         </>
       )}
-    </g>
+    </GroundGesture>
   );
 }

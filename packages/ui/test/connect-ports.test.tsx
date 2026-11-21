@@ -11,12 +11,11 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { settle } from "@ui-sdk/core/testing";
 import { describe, expect, it, vi } from "vitest";
 
-/** Each port's centre on screen, and the node it is on. */
 const ports = {
-  "a:east": { node: "a", x: 20, y: 50 },
-  "b:north": { node: "b", x: 150, y: 0 },
-  "b:west": { node: "b", x: 100, y: 50 },
-  "c:north": { node: "c", x: 20, y: 150 },
+  "a:east": { structure: "a", x: 20, y: 50 },
+  "b:north": { structure: "b", x: 150, y: 0 },
+  "b:west": { structure: "b", x: 100, y: 50 },
+  "c:north": { structure: "c", x: 20, y: 150 },
 } as const;
 
 type Port = keyof typeof ports;
@@ -25,7 +24,8 @@ const keys: ReadonlyArray<Port> = ["a:east", "b:north", "b:west", "c:north"];
 
 const isPort = (key: string): key is Port => key in ports;
 
-const nodeOf = (key: string) => (isPort(key) ? ports[key].node : undefined);
+const structureOf = (key: string) =>
+  isPort(key) ? ports[key].structure : undefined;
 
 const placed = (el: SVGCircleElement | null, key: Port) => {
   if (el !== null) {
@@ -49,11 +49,7 @@ const spies = (): Calls => ({
   onDraft: vi.fn<OnDraft>(),
 });
 
-/**
- * Nodes a, b and c, each a focusable `<g>`, and their ports. A pointer at
- * x 90 or more is over node b, whose nearest port is b:west below y 25.
- */
-function Nodes({
+function Structures({
   calls,
   disabled = false,
   shown = true,
@@ -66,14 +62,14 @@ function Nodes({
     <>
       <input aria-label="Name" />
       <svg>
-        {(["a", "b", "c"] as const).map((node) => (
-          <g data-node={node} key={node} tabIndex={0}>
+        {(["a", "b", "c"] as const).map((structure) => (
+          <g data-structure={structure} key={structure} tabIndex={0}>
             <rect height="10" width="10" />
           </g>
         ))}
         {shown ? (
           <ConnectPorts
-            canConnect={(from, to) => nodeOf(from) !== nodeOf(to)}
+            canConnect={(from, to) => structureOf(from) !== structureOf(to)}
             data-testid="root"
             disabled={disabled}
             label={(key) => `Port ${key}`}
@@ -94,12 +90,13 @@ function Nodes({
             }}
             point={(_el, { clientX, clientY }) => ({ x: clientX, y: clientY })}
             sourceOf={(target) => {
-              const node =
-                target.closest<SVGGElement>("[data-node]")?.dataset.node;
+              const structure =
+                target.closest<SVGGElement>("[data-structure]")?.dataset
+                  .structure;
 
-              return node === undefined
+              return structure === undefined
                 ? null
-                : `${node}:${node === "a" ? "east" : "north"}`;
+                : `${structure}:${structure === "a" ? "east" : "north"}`;
             }}
             startKey="h"
             targetAt={({ x, y }) =>
@@ -124,7 +121,7 @@ function Nodes({
 }
 
 const mount = async (calls = spies()) => {
-  const shown = render(<Nodes calls={calls} />);
+  const shown = render(<Structures calls={calls} />);
 
   await act(settle);
 
@@ -150,11 +147,11 @@ const port = (key: Port) => {
   return el;
 };
 
-const node = (key: string) => {
-  const el = document.querySelector<SVGGElement>(`[data-node="${key}"]`);
+const structure = (key: string) => {
+  const el = document.querySelector<SVGGElement>(`[data-structure="${key}"]`);
 
   if (el === null) {
-    throw new TypeError(`Node ${key} isn't mounted.`);
+    throw new TypeError(`Structure ${key} isn't mounted.`);
   }
 
   return el;
@@ -177,12 +174,10 @@ const announcement = () =>
       })
   );
 
-/** Presses `key` where focus is. */
 const keyDown = (key: string) => {
   fireEvent.keyDown(document.activeElement ?? document.body, { key });
 };
 
-/** Focuses `el` and presses `key` on it. */
 const pressOn = (el: Element, key: string, init: KeyboardEventInit = {}) => {
   if (el instanceof HTMLElement || el instanceof SVGElement) {
     el.focus();
@@ -192,14 +187,13 @@ const pressOn = (el: Element, key: string, init: KeyboardEventInit = {}) => {
 };
 
 const startFromA = async () => {
-  pressOn(node("a"), "h");
+  pressOn(structure("a"), "h");
 
   await waitFor(() => {
     expect(root()?.dataset.connecting).toBe("keyboard");
   });
 };
 
-/** Presses port a:east and moves the pointer to `to`, still pressed. */
 const dragTo = async (to: { readonly x: number; readonly y: number }) => {
   fireEvent.pointerDown(port("a:east"), pointer(20, 50));
   fireEvent.pointerMove(document, pointer(to.x, to.y));
@@ -211,7 +205,7 @@ const dragTo = async (to: { readonly x: number; readonly y: number }) => {
 
 describe("connect ports", () => {
   describe("from the keyboard", () => {
-    it("starts from the focused node's port on the start key, and says so", async () => {
+    it("starts from the focused structure's port on the start key, and says so", async () => {
       expect.hasAssertions();
 
       const { calls } = await mount();
@@ -240,7 +234,6 @@ describe("connect ports", () => {
 
       keyDown("ArrowDown");
 
-      // c:north is below b:west; a's own port never takes a connection.
       expect(port("c:north").dataset.connect).toBe("target");
     });
 
@@ -264,16 +257,16 @@ describe("connect ports", () => {
       expect(calls.onDraft).toHaveBeenLastCalledWith(null);
     });
 
-    it("keeps Enter with nothing aimed at from the focused node", async () => {
+    it("keeps Enter with nothing aimed at from the focused structure", async () => {
       expect.hasAssertions();
 
       const { calls } = await mount();
       const onKeyDown = vi.fn<() => void>();
 
       await startFromA();
-      node("a").addEventListener("keydown", onKeyDown);
-      fireEvent.keyDown(node("a"), { key: "Enter" });
-      node("a").removeEventListener("keydown", onKeyDown);
+      structure("a").addEventListener("keydown", onKeyDown);
+      fireEvent.keyDown(structure("a"), { key: "Enter" });
+      structure("a").removeEventListener("keydown", onKeyDown);
 
       expect(calls.onConnect).not.toHaveBeenCalled();
       expect(onKeyDown).not.toHaveBeenCalled();
@@ -316,21 +309,21 @@ describe("connect ports", () => {
       const { calls } = await mount();
 
       await startFromA();
-      fireEvent.pointerDown(node("c"), pointer(0, 0));
+      fireEvent.pointerDown(structure("c"), pointer(0, 0));
 
       expect(root()?.dataset.connecting).toBeUndefined();
       expect(calls.onDraft).toHaveBeenLastCalledWith(null);
     });
 
-    it("leaves the start key alone in a field, with a modifier, or off a node", async () => {
+    it("leaves the start key alone in a field, with a modifier, or off a structure", async () => {
       expect.hasAssertions();
 
       const { calls, getByRole } = await mount();
 
       pressOn(getByRole("textbox", { name: "Name" }), "h");
-      pressOn(node("a"), "h", { ctrlKey: true });
-      pressOn(node("a"), "h", { altKey: true });
-      pressOn(node("a"), "h", { metaKey: true });
+      pressOn(structure("a"), "h", { ctrlKey: true });
+      pressOn(structure("a"), "h", { altKey: true });
+      pressOn(structure("a"), "h", { metaKey: true });
       pressOn(document.body, "h");
 
       expect(calls.onDraft).not.toHaveBeenCalled();
@@ -442,11 +435,11 @@ describe("connect ports", () => {
       expect.hasAssertions();
 
       const calls = spies();
-      const { rerender } = render(<Nodes calls={calls} />);
+      const { rerender } = render(<Structures calls={calls} />);
 
       await act(settle);
       await dragTo({ x: 300, y: 50 });
-      rerender(<Nodes calls={calls} shown={false} />);
+      rerender(<Structures calls={calls} shown={false} />);
       await act(settle);
       fireEvent.pointerUp(document, pointer(300, 50));
 
@@ -459,11 +452,11 @@ describe("connect ports", () => {
       expect.hasAssertions();
 
       const calls = spies();
-      const { rerender } = render(<Nodes calls={calls} />);
+      const { rerender } = render(<Structures calls={calls} />);
 
       await act(settle);
       await startFromA();
-      rerender(<Nodes calls={calls} shown={false} />);
+      rerender(<Structures calls={calls} shown={false} />);
       await act(settle);
 
       expect(status()).toBe("idle");
@@ -475,16 +468,16 @@ describe("connect ports", () => {
     expect.hasAssertions();
 
     const calls = spies();
-    const { rerender } = render(<Nodes calls={calls} />);
+    const { rerender } = render(<Structures calls={calls} />);
 
     await act(settle);
     await startFromA();
-    rerender(<Nodes calls={calls} disabled />);
+    rerender(<Structures calls={calls} disabled />);
     await act(settle);
 
     expect(root()?.dataset.connecting).toBeUndefined();
 
-    pressOn(node("a"), "h");
+    pressOn(structure("a"), "h");
     fireEvent.pointerDown(port("a:east"), pointer(20, 50));
     fireEvent.pointerMove(document, pointer(300, 50));
     fireEvent.pointerUp(document, pointer(300, 50));

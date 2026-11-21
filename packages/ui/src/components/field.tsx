@@ -22,5 +22,11 @@ function FieldLabel({
   );
 }
 
-export { Field, FieldDescription, FieldError } from "@ui-sdk/react/field";
+export {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLegend,
+  FieldSet,
+} from "@ui-sdk/react/field";
 export { FieldLabel };

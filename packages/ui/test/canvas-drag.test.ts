@@ -40,7 +40,6 @@ const pointer = (clientX: number, clientY = 100) => ({
   pointerType: "mouse",
 });
 
-/** Presses at (100, 100) and starts a drag on the pressed element. */
 const press = (el: Element, handlers: Handlers) => {
   let down: PointerEvent | undefined;
 

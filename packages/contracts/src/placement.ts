@@ -268,9 +268,13 @@ const nearbyOf = (data: MapData, id: string) => {
   ]);
 };
 
+/** A slot placement tests against the ground, or one it draws to compare. */
+export type PlacementWork = "slot" | "drawing";
+
 /** A structure being placed, and the map placed around it so far. */
 interface Placing {
   readonly data: MapData;
+  readonly onWork: (work: PlacementWork) => void;
   readonly placed: ReadonlyArray<PlacedStructure>;
   readonly structure: Structure;
 }
@@ -316,7 +320,9 @@ const drawnAround = (
  * `check` reports, but placement counts them with the rest.
  */
 const drawnProblems = (placing: Placing, spot: Placement) => {
-  const { data, placed, structure } = placing;
+  const { data, onWork, placed, structure } = placing;
+
+  onWork("drawing");
 
   const structures = Rec.fromEntries([
     ...Arr.map(placed, (item) => [item.structure.id, item.placement] as const),
@@ -382,7 +388,7 @@ const fewestProblems = (
  * `drawnProblems`) and takes the one with the fewest problems.
  */
 const choose = (placing: Placing, drawn: number): Placement => {
-  const { data, placed, structure } = placing;
+  const { data, onWork, placed, structure } = placing;
 
   const neighbours = Arr.flatMap(neighboursOf(data, structure.id), (id) =>
     Option.toArray(
@@ -422,7 +428,11 @@ const choose = (placing: Placing, drawn: number): Placement => {
       ...slot,
       ...defaultFootprint,
     })),
-    (placement) => fits(ground, { placement, structure })
+    (placement) => {
+      onWork("slot");
+
+      return fits(ground, { placement, structure });
+    }
   );
 
   if (!Arr.isReadonlyArrayNonEmpty(candidates)) {
@@ -1319,26 +1329,11 @@ export interface PlacedLayout {
   readonly prunedRoutes: ReadonlyArray<string>;
 }
 
-/**
- * Gives every structure without a placement one, and drops entries for
- * structures that no longer exist and route overrides for hops that no
- * longer exist. Structures that already have a placement
- * keep it exactly.
- *
- * A group with nothing placed yet is laid out as a block about as wide as it
- * is deep, with structures joined by hops next to each other. The blocks
- * sit in rows and columns arranged to shorten the hops between groups, and
- * members move to the side of their block facing where their hops go. A new structure in a group that
- * already has placed members takes the free slot nearest its group and the
- * structures its hops connect to. Every new placement lands on a half unit
- * with a 2×2 footprint, clear of every other footprint and name tag, and
- * keeps its zone `groupGap` away from other groups' structures. The same
- * input always gives the same result. The revision is left as it is.
- */
-export const placeStructures: {
-  (layout: Layout): (data: MapData) => PlacedLayout;
-  (data: MapData, layout: Layout): PlacedLayout;
-} = dual(2, (data: MapData, layout: Layout): PlacedLayout => {
+const place = (
+  data: MapData,
+  layout: Layout,
+  onWork: (work: PlacementWork) => void
+): PlacedLayout => {
   const ids = new Set(Arr.map(data.structures, ({ id }) => id));
   const pruned = Arr.filter(Rec.keys(layout.structures), (id) => !ids.has(id));
 
@@ -1421,13 +1416,19 @@ export const placeStructures: {
     // A block spot is kept unless something placed by hand is in its way.
     const planned = Option.filter(
       Option.fromNullishOr(blockSpot.get(structure.id)),
-      (placement) =>
-        fits(groundFor(sofar, structure.group), { placement, structure })
+      (placement) => {
+        onWork("slot");
+
+        return fits(groundFor(sofar, structure.group), {
+          placement,
+          structure,
+        });
+      }
     );
 
     const spot = Option.getOrElse(planned, () =>
       choose(
-        { data, placed: sofar, structure },
+        { data, onWork, placed: sofar, structure },
         oneMemberGroups.has(structure.group) ? drawnEach : 1
       )
     );
@@ -1470,4 +1471,38 @@ export const placeStructures: {
     pruned,
     prunedRoutes,
   };
-});
+};
+
+/**
+ * Gives every structure without a placement one, and drops entries for
+ * structures that no longer exist and route overrides for hops that no
+ * longer exist. Structures that already have a placement
+ * keep it exactly.
+ *
+ * A group with nothing placed yet is laid out as a block about as wide as it
+ * is deep, with structures joined by hops next to each other. The blocks
+ * sit in rows and columns arranged to shorten the hops between groups, and
+ * members move to the side of their block facing where their hops go. A new structure in a group that
+ * already has placed members takes the free slot nearest its group and the
+ * structures its hops connect to. Every new placement lands on a half unit
+ * with a 2×2 footprint, clear of every other footprint and name tag, and
+ * keeps its zone `groupGap` away from other groups' structures. The same
+ * input always gives the same result. The revision is left as it is.
+ */
+export const placeStructures: {
+  (layout: Layout): (data: MapData) => PlacedLayout;
+  (data: MapData, layout: Layout): PlacedLayout;
+} = dual(2, (data: MapData, layout: Layout) => place(data, layout, () => {}));
+
+/** `placeStructures`, calling `onWork` for each slot it tests or draws. */
+export const placeStructuresWith: {
+  (
+    layout: Layout,
+    onWork: (work: PlacementWork) => void
+  ): (data: MapData) => PlacedLayout;
+  (
+    data: MapData,
+    layout: Layout,
+    onWork: (work: PlacementWork) => void
+  ): PlacedLayout;
+} = dual(3, place);

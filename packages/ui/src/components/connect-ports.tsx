@@ -112,9 +112,9 @@ const connectPorts = definePrimitive({
     };
 
     // createConnect's pointerdown snaps only to a port within a radius of
-    // the pointer, so it can't take a drop anywhere on a node. The drag goes
+    // the pointer, so it can't take a drop anywhere on a structure. The drag goes
     // through bindCanvasDrag, and the drop through target and commit. Move
-    // back once it can drop on a node: https://github.com/vercel-labs/ui/issues/960
+    // back once it can drop on a structure: https://github.com/vercel-labs/ui/issues/960
     const press = (event: PointerEvent, from: string) => {
       const root = context.element("root");
 
@@ -187,18 +187,6 @@ const connectPorts = definePrimitive({
           return;
         }
 
-        // Enter with nothing picked would reach the focused structure, which
-        // goes inside it.
-        if (
-          (event.key === "Enter" || event.key === " ") &&
-          current.to === null
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-
-          return;
-        }
-
         if (connect.keydown(event) && event.key !== "Tab") {
           event.stopPropagation();
         }
@@ -235,9 +223,6 @@ const connectPorts = definePrimitive({
       }
     };
 
-    // On the document in the capture phase, so while a hop is drawn from the
-    // keyboard its keys reach nothing else: not the focused item's own
-    // arrows, nor the page's.
     const listen = (el: HTMLElement) => {
       const doc = el.ownerDocument;
 
@@ -256,7 +241,6 @@ const connectPorts = definePrimitive({
       store.subscribe(() => {
         const { connecting } = store.get();
 
-        // bindCanvasDrag counts a pointer drag; a keyboard draft counts here.
         if (connecting?.keyboard === true) {
           releaseBusy ??= markDragging();
         } else {

@@ -488,7 +488,7 @@ export type ToolInput = Readonly<
 >;
 
 /**
- * Calls the WebMCP tool `name` as an agent would, with `input`, and decodes
+ * Calls the page tool `name` as an agent would, with `input`, and decodes
  * the JSON it returns with `schema`.
  */
 export const callToolWith = <S extends Schema.Top>(
@@ -504,7 +504,7 @@ export const callToolWith = <S extends Schema.Top>(
   ).pipe(Effect.flatMap(decodeJson(schema)), Effect.orDie);
 };
 
-/** Calls the WebMCP tool `name` with no input, as `callToolWith` does. */
+/** Calls the page tool `name` with no input, as `callToolWith` does. */
 export const callTool = <S extends Schema.Top>(
   page: Page,
   name: string,

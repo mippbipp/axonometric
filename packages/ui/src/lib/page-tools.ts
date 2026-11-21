@@ -34,7 +34,7 @@ interface ModelContext {
   readonly registerTool: (
     tool: PageTool,
     options: { readonly signal: AbortSignal }
-  ) => Promise<void> | void;
+  ) => Promise<void>;
   readonly unregisterTool?: (name: string) => void;
 }
 
@@ -54,6 +54,13 @@ const modelContextOf = (): ModelContext | undefined => {
 };
 
 /**
+ * How Chromium 156 refuses a registration: AbortError once the tools are
+ * withdrawn, and InvalidStateError for a name already registered, which
+ * leaves that tool on the page.
+ */
+const expected = new Set(["AbortError", "InvalidStateError"]);
+
+/**
  * Offers `tools` to an agent through WebMCP, on `document.modelContext`, or on
  * `navigator.modelContext` where that is where the browser puts it. Without
  * WebMCP nothing registers. Returns the function that withdraws them.
@@ -69,28 +76,23 @@ export const registerPageTools = (tools: ReadonlyArray<PageTool>) => {
   const registered: Array<string> = [];
 
   for (const tool of tools) {
-    try {
-      const result = context.registerTool(tool, {
-        signal: controller.signal,
+    registered.push(tool.name);
+    context
+      .registerTool(tool, { signal: controller.signal })
+      // oxlint-disable-next-line promise/prefer-await-to-callbacks -- effecttsgo/async-function bans the async form it asks for.
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && expected.has(error.name))) {
+          reportError(error);
+        }
       });
-
-      registered.push(tool.name);
-
-      // A later Chromium may return a promise that rejects with
-      // NotAllowedError or AbortError, which are not worth surfacing.
-      Promise.resolve(result).catch(() => {});
-    } catch {
-      // A name already registered throws InvalidStateError. The tool is on
-      // the page, so there is nothing more to do.
-    }
   }
 
   return () => {
     controller.abort();
 
-    // Chromium 147 ignores the abort: the tool stayed listed 1.5 s after it,
-    // and registering the name again threw InvalidStateError. unregisterTool
-    // removes it, so React's second effect run in development can register.
+    // Chromium 147 kept a tool listed after the abort, so registering the
+    // name again threw InvalidStateError until unregisterTool removed it.
+    // Chromium 156 withdraws on the abort and has no unregisterTool.
     for (const name of registered) {
       try {
         context.unregisterTool?.(name);

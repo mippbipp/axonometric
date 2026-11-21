@@ -1,8 +1,9 @@
 import type { ChangeId } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Option, Result } from "effect";
 import { useState } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import type { ReviewDone } from "./served-store.ts";
 
 /**
@@ -40,8 +41,8 @@ export function DeletionNotice({
           change until the agent commits.
         </p>
       ) : (
-        <button
-          className={`${controlClass} self-start`}
+        <Button
+          className={`${uiControlClass} self-start`}
           data-withdraw-deletion
           disabled={!canWrite}
           onClick={() => {
@@ -49,10 +50,9 @@ export function DeletionNotice({
               setFailure(Option.getOrUndefined(Result.getFailure(outcome)));
             });
           }}
-          type="button"
         >
           Withdraw deletion
-        </button>
+        </Button>
       )}
       {failure === undefined ? null : (
         <p className="border-refused border-l-2 pl-2" data-withdraw-failure>

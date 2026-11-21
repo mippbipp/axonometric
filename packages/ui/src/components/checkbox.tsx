@@ -1,6 +1,7 @@
 import { cn } from "@axonometric/ui/lib/utils";
 import {
   Checkbox as CheckboxPrimitive,
+  CheckboxGroup as CheckboxGroupPrimitive,
   CheckboxIndicator,
 } from "@ui-sdk/react/checkbox";
 import type { ComponentProps } from "react";
@@ -30,4 +31,25 @@ function Checkbox({
   );
 }
 
-export { Checkbox };
+/**
+ * Several checkboxes that share one list of checked values. Each `Checkbox`
+ * inside gives its `value`. Name the group with a `FieldLegend` in a
+ * `FieldSet`, or with `aria-label`. `onValueChange` gets the list in the order
+ * the checkboxes appear, so a caller that cares about the order the user
+ * ticked them in keeps its own.
+ */
+function CheckboxGroup({
+  className,
+  ...props
+}: Omit<ComponentProps<typeof CheckboxGroupPrimitive>, "className"> & {
+  readonly className?: string;
+}) {
+  return (
+    <CheckboxGroupPrimitive
+      className={cn("flex flex-col gap-1", className)}
+      {...props}
+    />
+  );
+}
+
+export { Checkbox, CheckboxGroup };

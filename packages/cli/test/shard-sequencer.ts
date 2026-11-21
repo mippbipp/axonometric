@@ -14,6 +14,9 @@ import type { TestSpecification } from "vitest/node";
  * connection-page and structure-page entries are scaled by their ubuntu change
  * in #160 (run 44682017583). export-svg and export are scaled by their ubuntu change in #165 (run 44684926905).
  * connection-page is scaled again in #144, whose tests added 8.4 s to a 71 s local run.
+ * Four entries are not CI times. viewport (#138) is from a 36 s local run.
+ * rerouting (#143), read-view (#154) and view-tools-page (#155) are
+ * estimates with no recorded run.
  * Files not listed take `defaultSeconds`.
  * A file that grows or a new slow one only skews the split until someone
  * updates this table, and `shard-sequencer.test.ts` fails when a shard

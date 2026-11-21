@@ -1,7 +1,8 @@
 import type { Structure } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { cn } from "@axonometric/ui/lib/utils";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useSelection } from "./selection-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -25,14 +26,13 @@ export function Breadcrumb({
       className={cn("flex flex-wrap items-center gap-2", className)}
       data-breadcrumb
     >
-      <button
-        className={controlClass}
+      <Button
+        className={uiControlClass}
         data-control="come-out"
         onClick={comeOut}
-        type="button"
       >
         ← Come out
-      </button>
+      </Button>
       <ol className="flex items-center gap-1.5 text-xs tracking-widest uppercase">
         <li className="opacity-70">
           {state.data.overview.title} · Chapter {index + 1}

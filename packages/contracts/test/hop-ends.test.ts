@@ -6,8 +6,8 @@ import {
   edgeSpotsOf,
   fittedViewOf,
   groundProjections,
-  hopPortAt,
-  hopPortsOf,
+  hopEndAt,
+  hopEndsOf,
   views,
 } from "../src/index.ts";
 import type { Scene, View } from "../src/index.ts";
@@ -15,20 +15,18 @@ import { fixture } from "./fixture-maps.ts";
 
 const canvas = { height: 800, width: 1280 };
 
-const fitted = (name: string, view: View) =>
-  Effect.gen(function* () {
-    const { data, layout } = yield* fixture(name);
-    const state = { data, layout, system: name };
-    const chapter = Arr.lastNonEmpty(chapterStopsOf(state));
-    const { scene } = fittedViewOf({ chapter, size: canvas, state, view });
-    const revealed = new Set(
-      Arr.map(scene.structures, ({ structure }) => structure.id)
-    );
+const fitted = Effect.fnUntraced(function* (name: string, view: View) {
+  const { data, layout } = yield* fixture(name);
+  const state = { data, layout, system: name };
+  const chapter = Arr.lastNonEmpty(chapterStopsOf(state));
+  const { scene } = fittedViewOf({ chapter, size: canvas, state, view });
+  const revealed = new Set(
+    Arr.map(scene.structures, ({ structure }) => structure.id)
+  );
 
-    return { layout, revealed, scene };
-  });
+  return { layout, revealed, scene };
+});
 
-/** `scene` with structure `id`'s name tag grown over its whole outline. */
 const tagOver = (scene: Scene, id: string): Scene => ({
   ...scene,
   structures: Arr.map(scene.structures, (item) =>
@@ -46,21 +44,21 @@ const tagOver = (scene: Scene, id: string): Scene => ({
   ),
 });
 
-describe("hop ports", () => {
+describe("hop ends", () => {
   it.effect("have one key each, an edge handle's id", () =>
     Effect.gen(function* () {
       const { revealed, scene } = yield* fitted("review", "iso");
-      const ports = hopPortsOf({ revealed, scene });
+      const ends = hopEndsOf({ revealed, scene });
       const spots = Arr.flatMap(scene.structures, ({ structure }) =>
         edgeSpotsOf({ scene, structure: structure.id })
       );
 
       assert.lengthOf(
-        Arr.dedupeWith(ports, (a, b) => a.key === b.key),
-        ports.length
+        Arr.dedupeWith(ends, (a, b) => a.key === b.key),
+        ends.length
       );
       assert.deepStrictEqual(
-        Arr.map(ports, ({ key }) => key),
+        Arr.map(ends, ({ key }) => key),
         Arr.map(spots, ({ id }) => id)
       );
     })
@@ -73,7 +71,7 @@ describe("hop ports", () => {
         Effect.gen(function* () {
           const { revealed, scene } = yield* fitted("crowded", view);
           const owners = new Set(
-            Arr.map(hopPortsOf({ revealed, scene }), ({ owner }) => owner)
+            Arr.map(hopEndsOf({ revealed, scene }), ({ owner }) => owner)
           );
 
           assert.deepStrictEqual(
@@ -85,7 +83,7 @@ describe("hop ports", () => {
   }
 
   it.effect(
-    "are one centre port for a structure with no room on any side",
+    "are one centre hop end for a structure with no room on any side",
     () =>
       Effect.gen(function* () {
         const { layout, revealed, scene } = yield* fitted("review", "plan");
@@ -107,7 +105,7 @@ describe("hop ports", () => {
 
         assert.deepStrictEqual(
           Arr.filter(
-            hopPortsOf({ revealed, scene: covered }),
+            hopEndsOf({ revealed, scene: covered }),
             ({ owner }) => owner === id
           ),
           [
@@ -134,7 +132,7 @@ describe("hop ports", () => {
 
       assert.isFalse(
         Arr.some(
-          hopPortsOf({ revealed: shown, scene }),
+          hopEndsOf({ revealed: shown, scene }),
           ({ owner }) => owner === hidden
         )
       );
@@ -142,14 +140,14 @@ describe("hop ports", () => {
   );
 });
 
-describe("the port a drop lands on", () => {
+describe("the hop end a drop lands on", () => {
   for (const view of views) {
     it.effect(
       `is the nearest of the structure's, however far from it, in the ${view} view`,
       () =>
         Effect.gen(function* () {
           const { layout, revealed, scene } = yield* fitted("review", view);
-          const ports = hopPortsOf({ revealed, scene });
+          const ends = hopEndsOf({ revealed, scene });
           const placements = layout.structures;
           const [from, to] = [...revealed];
 
@@ -160,22 +158,21 @@ describe("the port a drop lands on", () => {
 
           assert.isDefined(box);
 
-          // A quarter in from the north-west corner: far from every handle.
           const point = { x: box.x + box.w / 4, y: box.y + box.d / 4 };
           const { sx, sy } = groundProjections[view].toScreen(point);
-          const distance = (port: (typeof ports)[number]) =>
-            Math.hypot(port.at.sx - sx, port.at.sy - sy);
-          const own = Arr.filter(ports, ({ owner }) => owner === to);
-          const nearest = Arr.reduce(own, own[0], (best, port) =>
-            best === undefined || distance(port) < distance(best) ? port : best
+          const distance = (end: (typeof ends)[number]) =>
+            Math.hypot(end.at.sx - sx, end.at.sy - sy);
+          const own = Arr.filter(ends, ({ owner }) => owner === to);
+          const nearest = Arr.reduce(own, own[0], (best, end) =>
+            best === undefined || distance(end) < distance(best) ? end : best
           );
 
           assert.strictEqual(
-            hopPortAt({
+            hopEndAt({
+              ends,
               except: from,
               placements,
               point,
-              ports,
               revealed,
               view,
             }),
@@ -188,7 +185,7 @@ describe("the port a drop lands on", () => {
   it.effect("is never on the structure it starts from", () =>
     Effect.gen(function* () {
       const { layout, revealed, scene } = yield* fitted("review", "iso");
-      const ports = hopPortsOf({ revealed, scene });
+      const ends = hopEndsOf({ revealed, scene });
       const placements = layout.structures;
       const [from] = [...revealed];
 
@@ -199,16 +196,16 @@ describe("the port a drop lands on", () => {
       assert.isDefined(box);
 
       const point = { x: box.x + box.w / 2, y: box.y + box.d / 2 };
-      const port = hopPortAt({
+      const end = hopEndAt({
+        ends,
         except: from,
         placements,
         point,
-        ports,
         revealed,
         view: "iso",
       });
 
-      assert.notStrictEqual(port?.owner, from);
+      assert.notStrictEqual(end?.owner, from);
     })
   );
 
@@ -219,11 +216,11 @@ describe("the port a drop lands on", () => {
 
       assert.isDefined(from);
       assert.isNull(
-        hopPortAt({
+        hopEndAt({
+          ends: hopEndsOf({ revealed, scene }),
           except: from,
           placements: layout.structures,
           point: { x: -1000, y: -1000 },
-          ports: hopPortsOf({ revealed, scene }),
           revealed,
           view: "plan",
         })

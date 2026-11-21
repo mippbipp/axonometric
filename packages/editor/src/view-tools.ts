@@ -10,7 +10,7 @@ import { Array as Arr, Option, Result, Schema, SchemaIssue } from "effect";
 import type { FlowOption } from "./chapters.ts";
 
 /**
- * What a view tool returns. A refusal is a returned value: Chromium 147 loses
+ * What a view tool returns. A refusal is a returned value: Chromium 156 loses
  * the message of a tool that throws and hands the agent a bare UnknownError.
  */
 export type Outcome =

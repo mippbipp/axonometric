@@ -4,13 +4,14 @@ import type {
   CanvasSize,
   GroundProjection,
 } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { PannableCanvas } from "@axonometric/ui/components/pannable-canvas";
 import type { PannableCanvasApi } from "@axonometric/ui/components/pannable-canvas";
 import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import type { ReactNode } from "react";
 import { useCallback, useLayoutEffect, useRef } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 
 /** How much one press of + or - zooms. */
 const zoomStep = 1.25;
@@ -59,25 +60,27 @@ const reprojected = ({
 /**
  * Presses that start on a structure, a packet, a resize handle, a segment of
  * a hop's route or a zone's title don't pan, so clicks and drags on them
- * still land.
+ * still land. Nor does a Shift press, which draws a selection box.
  */
-const startsOnStructure = (target: EventTarget | null) =>
-  target instanceof Element &&
-  target.closest(
-    "[data-structure], [data-packet], [data-resize-handle], [data-edge-handle], [data-route-segment], [data-zone-title-hit]"
-  ) !== null;
+const claims = (event: PointerEvent) =>
+  event.shiftKey ||
+  (event.target instanceof Element &&
+    event.target.closest(
+      "[data-structure], [data-packet], [data-resize-handle], [data-edge-handle], [data-route-segment], [data-zone-title-hit]"
+    ) !== null);
 
 /**
  * An SVG canvas you can pan and zoom. It shows the camera `fit` returns for
  * its size on first draw, when `fitKey` changes, when it's resized and when
  * the engineer asks. Other changes, such as a moved structure, keep the
  * current zoom and pan; the next fit uses the new geometry. Drag on empty
- * space to pan (Shift-drag is left to the selection box); the wheel or a
- * pinch zooms; `+`, `-` and `0` zoom in, out and to fit. When `ground`
- * changes to another view's projection, the ground point in the middle stays
- * in the middle, and a grid unit keeps its length on screen. `onTextZoom`
- * hears the zoom the text should be sized for (see `textZoomOf`) whenever it
- * changes step.
+ * space to pan: a press becomes a pan once it moves 3 px along either axis,
+ * as every canvas drag does, and Shift-drag is left to the selection box.
+ * The wheel or a pinch zooms; `+`, `-` and `0` zoom in, out and to fit.
+ * When `ground` changes to another view's projection, the ground point in
+ * the middle stays in the middle, and a grid unit keeps its length on
+ * screen. `onTextZoom` hears the zoom the text should be sized for (see
+ * `textZoomOf`) whenever it changes step.
  */
 export function Viewport({
   children,
@@ -163,55 +166,52 @@ export function Viewport({
 
   return (
     <PannableCanvas
-      claims={startsOnStructure}
+      claims={claims}
       controls={
         <>
           <WithTooltip
             control={
-              <button
+              <Button
                 aria-label="Zoom in"
-                className={controlClass}
+                className={uiControlClass}
                 onClick={(event) => {
                   zoomBy(zoomStep, event.nativeEvent);
                 }}
-                type="button"
               >
                 +
-              </button>
+              </Button>
             }
           >
             Zoom in (+)
           </WithTooltip>
           <WithTooltip
             control={
-              <button
+              <Button
                 aria-label="Zoom out"
-                className={controlClass}
+                className={uiControlClass}
                 onClick={(event) => {
                   zoomBy(1 / zoomStep, event.nativeEvent);
                 }}
-                type="button"
               >
                 −
-              </button>
+              </Button>
             }
           >
             Zoom out (-)
           </WithTooltip>
           <WithTooltip
             control={
-              <button
-                className={controlClass}
+              <Button
+                className={uiControlClass}
                 onClick={(event) => {
                   canvas.current?.fit({
                     event: event.nativeEvent,
                     reason: "zoom-key",
                   });
                 }}
-                type="button"
               >
                 Zoom to fit
-              </button>
+              </Button>
             }
           >
             Zoom to fit (0)
