@@ -18,9 +18,10 @@ export const isTyping = (target: EventTarget | null) =>
 
 /**
  * Moves between chapters with → and ←, or ] and [. Pass `arrows: false`
- * while something else owns → and ←, such as a selected structure that they
- * take inside and out of; ] and [ keep working. Keys typed into a field, or
- * pressed with a modifier, are left alone.
+ * while something else owns → and ←, such as the inside view, where ← comes
+ * out; ] and [ keep working. The map's items take the arrows while they have
+ * focus, so → and ← change chapter only with focus outside the map. Keys
+ * typed into a field, or pressed with a modifier, are left alone.
  */
 export const useChapterKeys = (arrows: boolean) => {
   const { back: previousChapter, next: nextChapter } = useWalkthrough();

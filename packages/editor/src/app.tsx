@@ -9,7 +9,7 @@ import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
 import { DragPreviewProvider } from "./drag-preview.tsx";
 import { useEditSwitch } from "./edit-context.ts";
-import { useArrowOwner, useEditKeys } from "./edit-keys.ts";
+import { useEditKeys } from "./edit-keys.ts";
 import { useEditToggleKey } from "./edit-toggle-key.ts";
 import { EditToggle } from "./edit-toggle.tsx";
 import { EditToolbar } from "./edit-toolbar.tsx";
@@ -87,18 +87,18 @@ const hintsOf = ({
 
   if (multiSelected > 0) {
     return [
-      "arrows nudge half a unit",
+      "Alt+arrows nudge half a unit",
       "drag to move them together",
       "Esc clears the selection",
       "Ctrl+Z undo",
-      "Shift-click adds or removes",
+      "Shift-click or Shift+Space adds or removes",
     ];
   }
 
   return selected
     ? [
-        ...(canGoInside ? ["→ go inside"] : []),
-        "← or Esc unpin",
+        ...(canGoInside ? ["Enter goes inside"] : []),
+        "Esc unpins",
         "] next chapter",
         "[ back",
         ...editHint,
@@ -110,9 +110,10 @@ const hintsOf = ({
         "→ or ] next chapter",
         "← or [ back",
         ...editHint,
+        "Tab and arrows reach the map",
         "hover to read",
-        "click to pin",
-        "double-click to go inside",
+        "click or Space pins",
+        "double-click or Enter goes inside",
         "click a packet to read its payload",
         "+ and − zoom, 0 zooms to fit",
         "v switches view",
@@ -142,11 +143,9 @@ function WalkthroughPage({ notices }: Notices) {
   // state: the chapter, the selection and the packets.
   const [view, setView] = useState<View>("iso");
 
-  const arrowOwner = useArrowOwner();
-
-  useChapterKeys(arrowOwner === "chapter");
-  useSelectionKeys(arrowOwner === "selection");
-  useEditKeys(arrowOwner);
+  useChapterKeys(inside === null);
+  useSelectionKeys();
+  useEditKeys();
   useInsideFocus(inside);
 
   // Switching views while a page covers the map would change what's under
@@ -292,7 +291,8 @@ function WalkthroughPage({ notices }: Notices) {
               editable,
               editing: editing?.canEdit === true,
               inside: insideStructure !== undefined,
-              multiSelected: arrowOwner === "nudge" ? multiSelection.size : 0,
+              multiSelected:
+                editing?.canEdit === true ? multiSelection.size : 0,
               overviewOpen,
               selected: selected !== null,
             }),

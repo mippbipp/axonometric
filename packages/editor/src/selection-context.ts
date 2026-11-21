@@ -6,8 +6,8 @@ import { createContext, use } from "react";
  * the side panel agree.
  *
  * Beside the selection there is a multi-selection: the structures picked
- * together, with Shift-click or a selection box, to move, nudge, align and
- * distribute as one. It never opens a panel.
+ * together, with Shift and a press or a selection box, to move, nudge, align
+ * and distribute as one. It never opens a panel.
  */
 export interface Selection {
   /** Empties the multi-selection. The selection stays. */
@@ -54,12 +54,6 @@ export interface Selection {
   readonly selectHop: (id: string | null) => void;
   /** Makes the multi-selection exactly `ids`. */
   readonly setMultiSelection: (ids: ReadonlyArray<string>) => void;
-  /**
-   * Adds structure `id` to the multi-selection, or takes it out when it's
-   * there. When the multi-selection is empty and another structure is
-   * selected, that one joins it first.
-   */
-  readonly toggleMultiSelected: (id: string) => void;
 }
 
 export const SelectionContext = createContext<Selection | null>(null);

@@ -161,22 +161,6 @@ export function SelectionProvider({
           multiSelection: new Set(ids),
         }));
       },
-      toggleMultiSelected: (id) => {
-        setStored((before) => {
-          const here = inChapter(before, chapter);
-
-          const start =
-            here.multiSelection.size === 0 && here.selected !== null
-              ? [here.selected]
-              : [...here.multiSelection];
-
-          const next = start.includes(id)
-            ? Arr.filter(start, (other) => other !== id)
-            : [...start, id];
-
-          return { ...here, multiSelection: new Set(next) };
-        });
-      },
     }),
     [
       byId,
