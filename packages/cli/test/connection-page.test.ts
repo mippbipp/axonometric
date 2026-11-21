@@ -6,6 +6,7 @@ import {
   Effect,
   FileSystem,
   Option,
+  Order,
   Path,
   pipe,
   Schema,
@@ -16,6 +17,8 @@ import type { Page } from "playwright";
 import {
   assertCount,
   attributeOf,
+  attributesOf,
+  callTool,
   cameraOf,
   centreOf,
   click,
@@ -340,6 +343,71 @@ describe.each(["iso", "plan"] as const)(
     );
   }
 );
+
+const Ids = Schema.Array(Schema.String);
+
+const SpotlightRead = Schema.Struct({
+  spotlight: Schema.NullOr(Schema.Struct({ hops: Ids, structures: Ids })),
+});
+
+describe("a hop proposal outside the chapter's spotlight", () => {
+  it.live(
+    "is bright on the map and in read_view's spotlight",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        // The chapter plays h-note, h-save and h-store, not engineer → server.
+        yield* goToChapterPaused(page, "c-save");
+        yield* drawHop(page, "asks for a map");
+
+        const [proposed] = yield* attributesOf(
+          page,
+          '[data-hop][data-hop-state="proposed"]',
+          "data-hop"
+        );
+
+        assert.isDefined(proposed);
+
+        // Nothing pinned or hovered, so the chapter's spotlight shows.
+        yield* Effect.promise(() => page.mouse.move(5, 5));
+        yield* Effect.promise(() =>
+          page.evaluate("document.activeElement?.blur()")
+        );
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `document.querySelector('[data-structure][data-selected="true"], [data-hop-selected]') === null`,
+            undefined,
+            waitTimeout
+          )
+        );
+
+        const bright = yield* attributesOf(
+          page,
+          '[data-hop]:not([data-faded="true"])',
+          "data-hop"
+        );
+
+        assert.include(bright, proposed, "the page draws it bright");
+
+        const read = yield* callTool(page, "read_view", SpotlightRead);
+
+        assert.include(
+          read.spotlight?.hops ?? [],
+          proposed ?? "",
+          "read_view lists it in the spotlight"
+        );
+        assert.deepStrictEqual(
+          read.spotlight?.hops,
+          Arr.sort(Arr.dedupe(bright), Order.String),
+          "read_view's spotlight is what the page draws bright"
+        );
+      }),
+    60_000
+  );
+});
 
 describe("ending a drag without a target", () => {
   it.live(

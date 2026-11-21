@@ -1,16 +1,19 @@
 import { cachedSceneOf, textZoomOf, viewReadOf } from "@axonometric/contracts";
-import type { View } from "@axonometric/contracts";
+import type { Spotlight, View } from "@axonometric/contracts";
 import { usePannableCanvas } from "@axonometric/ui/components/pannable-canvas";
 import { registerPageTools } from "@axonometric/ui/lib/page-tools";
 import type { PageTool } from "@axonometric/ui/lib/page-tools";
 import { Array as Arr, Option, Result } from "effect";
 import type { Schema } from "effect";
-import { useEffect, useEffectEvent, useLayoutEffect, useRef } from "react";
+import { use, useEffect, useEffectEvent, useLayoutEffect, useRef } from "react";
 
 import { flowOptionsOf } from "./chapters.ts";
 import { busyReasonOf } from "./engineer-busy.ts";
 import { useSelection } from "./selection-context.ts";
-import { useSpotlight, useSpotlightActions } from "./spotlight-context.ts";
+import {
+  DrawnSpotlightContext,
+  useSpotlightActions,
+} from "./spotlight-context.ts";
 import { hasSteps } from "./structures.ts";
 import {
   agentSpotlightOf,
@@ -52,7 +55,8 @@ interface PageNow {
   readonly select: (id: string | null) => void;
   readonly selected: string | null;
   readonly setView: (view: View) => void;
-  readonly spotlight: ReturnType<typeof useSpotlight>["spotlight"];
+  /** The spotlight the map draws. */
+  readonly spotlight: Spotlight | null;
   readonly state: ReturnType<typeof useWalkthrough>["state"];
   readonly stop: ReturnType<typeof useWalkthrough>["stop"];
   readonly stops: ReturnType<typeof useWalkthrough>["stops"];
@@ -143,7 +147,7 @@ const useEngineerInput = (onPress: () => void) => {
  * calling what the page's own controls call, and say so in a notice. None
  * changes the map: an agent does that through the CLI
  * (docs/adr/0001-agents-write-through-the-cli.md). Draws nothing. Call it
- * inside the map's canvas, so it can read the camera.
+ * inside `MapView`, so it can read the camera and the spotlight drawn.
  */
 export function PageTools({
   notify,
@@ -162,7 +166,7 @@ export function PageTools({
   const { chooseFlow, goTo, isLast, revealed, state, stop, stops } =
     useWalkthrough();
   const { goInside, inside, multiSelection, select, selected } = useSelection();
-  const { spotlight } = useSpotlight();
+  const spotlight = use(DrawnSpotlightContext);
   const { lightUp } = useSpotlightActions();
 
   const now: PageNow = {
