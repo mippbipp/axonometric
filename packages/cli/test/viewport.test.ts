@@ -6,9 +6,14 @@ import {
   boxesOf,
   cameraChangedWithin,
   cameraOf,
+  inPage,
+  literal,
+  press,
   scaleExpression,
   scaleOf,
   waitForCameraChange,
+  showView,
+  waitFor,
   waitForScale,
 } from "./browser.ts";
 import { shapesMap } from "./fixtures.ts";
@@ -394,6 +399,207 @@ describe("the viewport", () => {
         );
 
         assert.isAbove(share, 0.7);
+      })
+    )
+  );
+});
+
+const views = ["iso", "plan"] as const;
+
+interface Box {
+  readonly height: number;
+  readonly width: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+const overlaps = (a: Box, b: Box) =>
+  a.x < b.x + b.width &&
+  b.x < a.x + a.width &&
+  a.y < b.y + b.height &&
+  b.y < a.y + a.height;
+
+/** Opens the shapes map in `view`, zoomed in on the middle until some structures are off screen. */
+const zoomedIn = Effect.fnUntraced(function* (
+  page: Page,
+  view: (typeof views)[number]
+) {
+  yield* showView(page, view);
+  yield* press(page, "0");
+
+  const fitted = yield* scaleOf(page);
+
+  for (let step = 0; step < 6; step += 1) {
+    yield* press(page, "+");
+  }
+
+  yield* waitForScale(page, `> ${fitted * 3}`);
+});
+
+/** The id of a structure that is entirely outside the canvas. */
+const offScreenStructure = Effect.fnUntraced(function* (page: Page) {
+  const svg = yield* canvasOf(page);
+  const ids = yield* inPage<ReadonlyArray<string>>(
+    page,
+    '[...document.querySelectorAll("[data-structure]")].map((el) => el.dataset.structure)'
+  );
+
+  for (const id of ids) {
+    const [box] = yield* boxesOf(page, `[data-structure="${id}"]`);
+
+    if (box !== undefined && !overlaps(box, svg)) {
+      return id;
+    }
+  }
+
+  return assert.fail("every structure is still on screen");
+});
+
+/** Waits until the element matching `selector` is at least partly inside the canvas. */
+const waitForOnScreen = Effect.fnUntraced(function* (
+  page: Page,
+  selector: string
+) {
+  const svg = yield* canvasOf(page);
+
+  yield* Effect.promise(() =>
+    page.waitForFunction(
+      `(() => {
+        const box = document.querySelector(${literal(selector)}).getBoundingClientRect();
+
+        return box.left < ${svg.x + svg.width} && box.right > ${svg.x} &&
+          box.top < ${svg.y + svg.height} && box.bottom > ${svg.y};
+      })()`,
+      undefined,
+      { timeout: 5000 }
+    )
+  );
+});
+
+describe.each(views)("the viewport in %s", (view) => {
+  it.live("pans to a structure whose name the browser scrolls into view", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+
+        yield* zoomedIn(page, view);
+
+        const id = yield* offScreenStructure(page);
+
+        const name = `[data-name-tag="${id}"] text`;
+
+        yield* inPage<null>(
+          page,
+          `document.querySelector(${literal(name)}).scrollIntoView() ?? null`
+        );
+        yield* waitForOnScreen(page, name);
+      })
+    )
+  );
+
+  it.live("brings a focused structure on screen", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+
+        yield* zoomedIn(page, view);
+
+        const id = yield* offScreenStructure(page);
+
+        yield* Effect.promise(() =>
+          page.locator(`[data-structure="${id}"]`).focus()
+        );
+        yield* waitForOnScreen(page, `[data-structure="${id}"]`);
+      })
+    )
+  );
+
+  it.live("keeps a pinned structure when a pan over empty space ends", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+
+        yield* showView(page, view);
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="box"]').click()
+        );
+        yield* waitFor(page, '[data-structure-panel="box"][data-pinned]');
+
+        const svg = yield* canvasOf(page);
+        const camera = yield* cameraOf(page);
+
+        yield* Effect.promise(() =>
+          page.mouse.move(svg.x + svg.width - 10, svg.y + 10)
+        );
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() =>
+          page.mouse.move(svg.x + svg.width - 70, svg.y + 40, { steps: 5 })
+        );
+        yield* Effect.promise(() => page.mouse.up());
+        yield* waitForCameraChange(page, camera);
+
+        const pinned = yield* inPage<number>(
+          page,
+          "document.querySelectorAll('[data-structure-panel=\"box\"][data-pinned]').length"
+        );
+
+        assert.strictEqual(pinned, 1);
+      })
+    )
+  );
+
+  it.live("zooms around the pointer with Ctrl and the wheel", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+
+        yield* showView(page, view);
+
+        const before = yield* cameraOf(page);
+        const svg = yield* canvasOf(page);
+        const at = {
+          x: svg.x + svg.width * 0.25,
+          y: svg.y + svg.height * 0.25,
+        };
+
+        yield* Effect.promise(() => page.mouse.move(at.x, at.y));
+        yield* Effect.promise(() => page.keyboard.down("Control"));
+        yield* Effect.promise(() => page.mouse.wheel(0, -200));
+        yield* Effect.promise(() => page.keyboard.up("Control"));
+        yield* waitForScale(page, `> ${before[0] * 1.1}`);
+
+        const [scale, x, y] = yield* cameraOf(page);
+        const ratio = scale / before[0];
+
+        // The drawing point under the pointer stays under it.
+        assert.closeTo(at.x - x, (at.x - before[1]) * ratio, 1);
+        assert.closeTo(at.y - y, (at.y - before[2]) * ratio, 1);
+      })
+    )
+  );
+
+  it.live("zooms with + and says so", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+
+        yield* showView(page, view);
+
+        const before = yield* scaleOf(page);
+
+        yield* press(page, "+");
+        yield* waitForScale(page, `> ${before * 1.2}`);
+
+        const after = yield* scaleOf(page);
+
+        assert.closeTo(after / before, 1.25, 0.001);
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `/^Zoom \\d+%$/.test(document.querySelector('[data-ui-sdk-announcer=""]')?.textContent ?? "")`,
+            undefined,
+            { timeout: 5000 }
+          )
+        );
       })
     )
   );
