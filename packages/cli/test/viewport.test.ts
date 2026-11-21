@@ -603,3 +603,78 @@ describe.each(views)("the viewport in %s", (view) => {
     )
   );
 });
+
+describe("the viewport's touch and controls", () => {
+  it.live("pinches to zoom even when a finger starts on a structure", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+        const [box] = yield* boxesOf(page, "[data-structure]");
+
+        assert.isDefined(box);
+
+        const x = (box?.x ?? 0) + (box?.width ?? 0) / 2;
+        const y = (box?.y ?? 0) + (box?.height ?? 0) / 2;
+        const before = yield* scaleOf(page);
+        const session = yield* Effect.promise(() =>
+          page.context().newCDPSession(page)
+        );
+
+        yield* Effect.promise(() =>
+          session.send("Emulation.setTouchEmulationEnabled", { enabled: true })
+        );
+
+        const fingers = (spread: number) => [
+          { id: 1, x: x - spread, y },
+          { id: 2, x: x + spread, y },
+        ];
+        const send = (
+          type: "touchEnd" | "touchMove" | "touchStart",
+          touchPoints: ReadonlyArray<{ id: number; x: number; y: number }>
+        ) =>
+          Effect.promise(() =>
+            session.send("Input.dispatchTouchEvent", {
+              touchPoints: [...touchPoints],
+              type,
+            })
+          );
+
+        // Both fingers start on the same structure.
+        yield* send("touchStart", fingers(5));
+
+        for (let step = 1; step <= 8; step += 1) {
+          yield* send("touchMove", fingers(5 + step * 10));
+        }
+
+        yield* send("touchEnd", []);
+        yield* waitForScale(page, `> ${before}`);
+      })
+    )
+  );
+
+  it.live("a wheel over the zoom buttons leaves the map alone", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+        const before = yield* cameraOf(page);
+        const button = page.getByRole("button", { name: "Zoom in" });
+        const at = yield* Effect.promise(() => button.boundingBox());
+
+        assert.isNotNull(at);
+
+        yield* Effect.promise(() =>
+          page.mouse.move(
+            (at?.x ?? 0) + (at?.width ?? 0) / 2,
+            (at?.y ?? 0) + (at?.height ?? 0) / 2
+          )
+        );
+        yield* Effect.promise(() => page.mouse.wheel(0, -600));
+        yield* Effect.promise(() => page.waitForTimeout(300));
+
+        const after = yield* cameraOf(page);
+
+        assert.deepStrictEqual(after, before);
+      })
+    )
+  );
+});

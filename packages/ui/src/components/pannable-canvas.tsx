@@ -70,6 +70,7 @@ const wheelZoomFactor = (event: WheelEvent) => {
 
 type Press =
   | { readonly kind: "idle" }
+  | { readonly down: PointerEvent; readonly kind: "held" }
   | { readonly down: PointerEvent; readonly kind: "pending" }
   | { readonly kind: "panning"; readonly pointers: ReadonlySet<number> };
 
@@ -97,12 +98,33 @@ const routePresses = ({
   let press: Press = idle;
   let swallow = false;
 
+  const isPrimary = (event: PointerEvent) =>
+    event.button === 0 && !inControls(event.target);
+
   const startsPan = (event: PointerEvent) =>
-    event.button === 0 &&
+    isPrimary(event) &&
     // A Shift-drag on empty space draws a selection box instead.
     !event.shiftKey &&
-    !claims(event.target) &&
-    !inControls(event.target);
+    !claims(event.target);
+
+  // A press that won't pan on its own is still half a pinch.
+  const firstPress = (event: PointerEvent): Press => {
+    if (startsPan(event)) {
+      return { down: event, kind: "pending" };
+    }
+
+    return isPrimary(event) ? { down: event, kind: "held" } : idle;
+  };
+
+  const startPinch = (first: PointerEvent, second: PointerEvent): Press => {
+    viewport.pointerdown(first);
+    viewport.pointerdown(second);
+
+    return {
+      kind: "panning",
+      pointers: new Set([first.pointerId, second.pointerId]),
+    };
+  };
 
   const onPointerDown = (event: PointerEvent) => {
     // Every press starts fresh. A touch pan fires no click, so waiting for
@@ -111,24 +133,18 @@ const routePresses = ({
 
     switch (press.kind) {
       case "idle": {
-        if (startsPan(event)) {
-          press = { down: event, kind: "pending" };
-        }
+        press = firstPress(event);
         break;
       }
+      case "held":
       case "pending": {
         if (event.pointerId === press.down.pointerId) {
           // The release of the last press never arrived.
-          press = startsPan(event) ? { down: event, kind: "pending" } : idle;
+          press = firstPress(event);
           break;
         }
 
-        viewport.pointerdown(press.down);
-        viewport.pointerdown(event);
-        press = {
-          kind: "panning",
-          pointers: new Set([press.down.pointerId, event.pointerId]),
-        };
+        press = startPinch(press.down, event);
         break;
       }
       case "panning": {
@@ -167,7 +183,7 @@ const routePresses = ({
   };
 
   const onPointerEnd = (event: PointerEvent) => {
-    if (press.kind === "pending") {
+    if (press.kind === "pending" || press.kind === "held") {
       if (event.pointerId === press.down.pointerId) {
         press = idle;
       }
@@ -300,6 +316,10 @@ const pannableCanvas = definePrimitive({
         });
 
         const onWheel = (event: WheelEvent) => {
+          if (api.inControls(event.target)) {
+            return;
+          }
+
           if (event.ctrlKey || event.metaKey) {
             api.viewport.wheel(event);
 

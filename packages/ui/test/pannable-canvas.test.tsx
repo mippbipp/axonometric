@@ -371,9 +371,64 @@ describe("pannable canvas", () => {
 
       expect(scale()).toBeCloseTo(3, 5);
     });
+
+    it("pinches when the first finger lands on the content", () => {
+      expect.hasAssertions();
+
+      mount();
+
+      const claimed = find("[data-claimed]");
+
+      fireEvent.pointerDown(claimed, touch(1, 100));
+      fireEvent.pointerDown(find("[data-empty]"), touch(2, 200));
+      fireEvent.pointerMove(claimed, touch(2, 300));
+
+      expect(scale()).toBeCloseTo(3, 5);
+    });
+
+    it("pinches when the first press is Shift", () => {
+      expect.hasAssertions();
+
+      mount();
+
+      const target = find("[data-empty]");
+
+      fireEvent.pointerDown(target, { ...touch(1, 100), shiftKey: true });
+      fireEvent.pointerDown(target, touch(2, 200));
+      fireEvent.pointerMove(target, touch(2, 300));
+
+      expect(scale()).toBeCloseTo(3, 5);
+    });
+
+    it("leaves a single press on the content to the content", () => {
+      expect.hasAssertions();
+
+      mount();
+
+      const before = translation();
+      const claimed = find("[data-claimed]");
+
+      fireEvent.pointerDown(claimed, mouse({ clientX: 100, clientY: 100 }));
+      fireEvent.pointerMove(claimed, mouse({ clientX: 160, clientY: 100 }));
+      fireEvent.pointerUp(claimed, mouse({ clientX: 160, clientY: 100 }));
+
+      expect(translation()).toStrictEqual(before);
+    });
   });
 
   describe("wheel", () => {
+    it("leaves the map alone over the controls", () => {
+      expect.hasAssertions();
+
+      mount();
+
+      const before = scale();
+
+      fireEvent.wheel(find("[data-controls-button]"), { deltaY: -300 });
+
+      expect(scale()).toBe(before);
+    });
+
     it("zooms with a plain wheel, and stops at the limits", () => {
       expect.hasAssertions();
 
