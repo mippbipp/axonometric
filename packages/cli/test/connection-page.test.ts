@@ -16,15 +16,21 @@ import type { Page } from "playwright";
 import {
   assertCount,
   attributeOf,
+  cameraOf,
   centreOf,
   click,
   count,
   goToChapterPaused,
+  inPage,
   literal,
   pointOnHop,
+  press,
+  scaleOf,
   showViewFitted,
+  textOf,
   waitFor,
   waitForAttributes,
+  waitForScale,
   waitTimeout,
   choose,
 } from "./browser.ts";
@@ -461,6 +467,217 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
         // Off every structure, so only the chapter's spotlight is left.
         yield* Effect.promise(() => page.mouse.move(700, 120));
         yield* faded("pull-request", "true");
+      }),
+    60_000
+  );
+});
+
+/** The camera once two reads of it 150 ms apart agree. */
+const settledCamera = Effect.fnUntraced(function* (page: Page) {
+  let last = yield* cameraOf(page);
+
+  for (let tries = 0; tries < 40; tries += 1) {
+    yield* Effect.sleep("150 millis");
+
+    const next = yield* cameraOf(page);
+    const held = String(next) === String(last);
+
+    if (held) {
+      return next;
+    }
+
+    last = next;
+  }
+
+  return yield* Effect.die(new Error("the camera never held still"));
+});
+
+/** Waits until the assertive announcer says `text`. */
+const waitForAlert = (page: Page, text: string) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `document.querySelector('[data-ui-sdk-announcer="assertive"]')?.textContent === ${literal(text)}`,
+      undefined,
+      waitTimeout
+    )
+  );
+
+const names = new Map([
+  ["engineer", "Engineer"],
+  ["page", "Map page"],
+  ["proposals", "Proposals"],
+  ["pull-request", "Pull request"],
+  ["server", "Save server"],
+  ["upstream", "Upstream atlas"],
+]);
+
+describe.each(["iso", "plan"] as const)(
+  "drawing a hop from the keyboard in the %s view",
+  (which) => {
+    it.live(
+      "starts on h, aims with the arrows, opens the label field on Enter, and says each step",
+      () =>
+        Effect.gen(function* () {
+          const { home, page } = yield* served;
+          const engineer = page.locator('[data-structure="engineer"]');
+
+          yield* goToChapterPaused(page, "c-all");
+          yield* showViewFitted(page, which);
+          yield* Effect.promise(() => engineer.focus());
+          yield* press(page, "h");
+          yield* waitForAlert(
+            page,
+            "Drawing a hop from Engineer. Arrows pick where it goes, Enter names it, Escape cancels."
+          );
+          yield* press(page, "Escape");
+          yield* waitForAlert(page, "Hop canceled.");
+          yield* assertCount(page, "[data-hop-preview]", 0);
+          yield* assertCount(page, "[data-draw-hop]", 0);
+
+          yield* Effect.promise(() => engineer.focus());
+          yield* press(page, "h");
+          yield* press(page, "ArrowRight");
+          yield* Effect.promise(() =>
+            page.waitForFunction(
+              `(document.querySelector("[data-hop-preview]")?.getAttribute("data-over") ?? "") !== ""`,
+              undefined,
+              waitTimeout
+            )
+          );
+
+          const over = yield* attributeOf(
+            page,
+            "[data-hop-preview]",
+            "data-over"
+          );
+          const name = names.get(over ?? "");
+
+          assert.isDefined(name, `aims at a structure: ${over}`);
+          assert.notStrictEqual(over, "engineer");
+
+          yield* press(page, "Enter");
+          yield* waitFor(page, "[data-draw-hop]");
+          yield* waitForAlert(
+            page,
+            `Hop from Engineer to ${name}. Name it to propose it.`
+          );
+
+          const drawTo = yield* textOf(page, "[data-draw-to]");
+
+          assert.strictEqual(drawTo, name);
+          assert.deepStrictEqual(
+            (yield* proposalsOrEmpty(home)).hops ?? [],
+            []
+          );
+        }),
+      60_000
+    );
+
+    it.live(
+      "opens the label field for a drop far from every handle at zoom 2",
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* served;
+
+          yield* goToChapterPaused(page, "c-all");
+          yield* showViewFitted(page, which);
+
+          // Between the engineer and the map page, so both stay on screen.
+          const groundOnScreen = (x: number, y: number) =>
+            inPage<{ x: number; y: number }>(
+              page,
+              `(() => {
+                const plan = ${literal(which)} === "plan";
+                const sx = plan ? ${x} * 60 : (${x} - ${y}) * 36;
+                const sy = plan ? ${y} * 60 : (${x} + ${y}) * 18;
+                const m = document.querySelector('[data-slot="connect-ports"]').getScreenCTM();
+                const at = new DOMPoint(sx, sy).matrixTransform(m);
+                return { x: at.x, y: at.y };
+              })()`
+            );
+
+          const anchor = yield* groundOnScreen(3, 1);
+          const scale = yield* scaleOf(page);
+
+          yield* Effect.promise(() => page.mouse.move(anchor.x, anchor.y));
+          yield* Effect.promise(() =>
+            page.mouse.wheel(0, -Math.log(2 / scale) / 0.0015)
+          );
+          yield* waitForScale(page, "> 1.95");
+          yield* select(page, "engineer");
+          yield* settledCamera(page);
+
+          // The map page's footprint is 4 to 6 along x and 0 to 2 along y.
+          const middle = yield* groundOnScreen(5, 1);
+          const nearest = yield* inPage<number>(
+            page,
+            `Math.min(...[...document.querySelectorAll('[data-slot="connect-ports-port"]')].map((circle) => {
+              const box = circle.getBoundingClientRect();
+              return Math.hypot(box.x + box.width / 2 - ${middle.x}, box.y + box.height / 2 - ${middle.y});
+            }))`
+          );
+
+          assert.isAbove(
+            nearest,
+            28,
+            "the drop is outside ui-sdk's snap radius of every port"
+          );
+
+          const handle = yield* centreOf(page, '[data-edge-owner="engineer"]');
+
+          yield* Effect.promise(() => page.mouse.move(handle.x, handle.y));
+          yield* Effect.promise(() => page.mouse.down());
+          yield* Effect.promise(() =>
+            page.mouse.move(middle.x, middle.y, { steps: 8 })
+          );
+          yield* waitForAttributes(page, "[data-hop-preview]", {
+            "data-over": "page",
+          });
+          yield* Effect.promise(() => page.mouse.up());
+          yield* waitFor(page, "[data-draw-hop]");
+
+          const drawTo = yield* textOf(page, "[data-draw-to]");
+
+          assert.strictEqual(drawTo, "Map page");
+        }),
+      60_000
+    );
+  }
+);
+
+describe("a structure's description", () => {
+  it.live(
+    "lists its hops whose other end is shown, and the key that draws one",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+
+        const server = page.locator('[data-structure="server"]');
+        const description = yield* Effect.promise(() =>
+          server.getAttribute("aria-description")
+        );
+        const shortcut = yield* Effect.promise(() =>
+          server.getAttribute("aria-keyshortcuts")
+        );
+
+        assert.strictEqual(
+          description,
+          'Hops to Proposals, "write batch". Hops from Map page, "POST /proposals".'
+        );
+        assert.strictEqual(shortcut, "H");
+
+        // The first chapter shows the engineer and the page only.
+        yield* goToChapterPaused(page, "c-page");
+
+        const early = yield* Effect.promise(() =>
+          page
+            .locator('[data-structure="page"]')
+            .getAttribute("aria-description")
+        );
+
+        assert.strictEqual(early, 'Hops from Engineer, "pins a note".');
       }),
     60_000
   );
