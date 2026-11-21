@@ -4,13 +4,14 @@ import type {
   CanvasSize,
   GroundProjection,
 } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { PannableCanvas } from "@axonometric/ui/components/pannable-canvas";
 import type { PannableCanvasApi } from "@axonometric/ui/components/pannable-canvas";
 import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import type { ReactNode } from "react";
 import { useCallback, useLayoutEffect, useRef } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 
 /** How much one press of + or - zooms. */
 const zoomStep = 1.25;
@@ -170,50 +171,47 @@ export function Viewport({
         <>
           <WithTooltip
             control={
-              <button
+              <Button
                 aria-label="Zoom in"
-                className={controlClass}
+                className={uiControlClass}
                 onClick={(event) => {
                   zoomBy(zoomStep, event.nativeEvent);
                 }}
-                type="button"
               >
                 +
-              </button>
+              </Button>
             }
           >
             Zoom in (+)
           </WithTooltip>
           <WithTooltip
             control={
-              <button
+              <Button
                 aria-label="Zoom out"
-                className={controlClass}
+                className={uiControlClass}
                 onClick={(event) => {
                   zoomBy(1 / zoomStep, event.nativeEvent);
                 }}
-                type="button"
               >
                 −
-              </button>
+              </Button>
             }
           >
             Zoom out (-)
           </WithTooltip>
           <WithTooltip
             control={
-              <button
-                className={controlClass}
+              <Button
+                className={uiControlClass}
                 onClick={(event) => {
                   canvas.current?.fit({
                     event: event.nativeEvent,
                     reason: "zoom-key",
                   });
                 }}
-                type="button"
               >
                 Zoom to fit
-              </button>
+              </Button>
             }
           >
             Zoom to fit (0)

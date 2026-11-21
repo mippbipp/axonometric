@@ -8,11 +8,12 @@ import type {
   CheckScope,
   GroupChange,
 } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr } from "effect";
 import { useMemo, useState } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { LabelledField } from "./labelled-field.tsx";
 import { groupItem, structureItem } from "./proposal-items.ts";
 import { useGroupOps } from "./proposal-ops-context.ts";
@@ -131,17 +132,17 @@ export function NewGroupForm({ onDone }: { readonly onDone: () => void }) {
             )} into it.`}
       </p>
       <div className="flex gap-1.5">
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-new-group-submit
           disabled={trimmed === "" || sending || ops?.canPropose !== true}
           type="submit"
         >
           {members.length === 0 ? "Create empty group" : "Create group"}
-        </button>
-        <button className={controlClass} onClick={onDone} type="button">
+        </Button>
+        <Button className={uiControlClass} onClick={onDone}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

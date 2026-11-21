@@ -1,8 +1,9 @@
 import { maxNoteLength } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Array as Arr, Option, Result } from "effect";
 import { useState } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
@@ -61,18 +62,17 @@ export function QuestionAnswer({
           <ItemStatusLine status={status} />
           {status.state === "open" ? (
             <span>
-              <button
+              <Button
                 aria-label={`Discard answer: ${question}`}
-                className={controlClass}
+                className={uiControlClass}
                 data-answer-discard={item.id}
                 disabled={!review.canWrite}
                 onClick={() => {
                   review.ops.discardProposal(item.id, noop);
                 }}
-                type="button"
               >
                 Discard
-              </button>
+              </Button>
             </span>
           ) : null}
         </div>
@@ -107,17 +107,16 @@ export function QuestionAnswer({
       ) : null}
       {!answering && !waiting && review.canWrite ? (
         <span>
-          <button
+          <Button
             aria-label={`${answers.length === 0 ? "Answer" : "Answer again"}: ${question}`}
-            className={controlClass}
+            className={uiControlClass}
             data-answer-open={question}
             onClick={() => {
               setAnswering(true);
             }}
-            type="button"
           >
             {answers.length === 0 ? "Answer" : "Answer again"}
-          </button>
+          </Button>
         </span>
       ) : null}
     </div>

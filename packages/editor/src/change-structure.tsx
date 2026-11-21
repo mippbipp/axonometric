@@ -4,13 +4,14 @@ import {
   removedMark,
 } from "@axonometric/contracts";
 import type { Structure } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Option } from "effect";
 import { useState } from "react";
 
 import { ChoiceSelect } from "./choice-select.tsx";
 import { useConnections } from "./connections-context.ts";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { DeletionNotice } from "./deletion-notice.tsx";
 import { useHopDraft } from "./hop-draft-context.ts";
 import { LabelledField } from "./labelled-field.tsx";
@@ -134,8 +135,8 @@ export function ChangeStructure({
             value={typed}
           />
         </LabelledField>
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-change="rename"
           disabled={
             !canPropose ||
@@ -146,7 +147,7 @@ export function ChangeStructure({
           type="submit"
         >
           Rename
-        </button>
+        </Button>
       </form>
       {choose({
         label: "Shape",
@@ -196,29 +197,27 @@ export function ChangeStructure({
       )}
       <div className="flex flex-wrap gap-1.5">
         {connections === null || drafting === null ? null : (
-          <button
-            className={controlClass}
+          <Button
+            className={uiControlClass}
             data-change="draw-hop"
             disabled={!connections.canPropose || deleted}
             onClick={() => {
               drafting.begin(structure.id);
             }}
-            type="button"
           >
             Draw hop from here
-          </button>
+          </Button>
         )}
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-change="delete"
           disabled={!canPropose || deleted}
           onClick={() => {
             send(changeFor.delete(structure));
           }}
-          type="button"
         >
           Propose deleting
-        </button>
+        </Button>
       </div>
     </section>
   );

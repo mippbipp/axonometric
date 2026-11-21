@@ -1,5 +1,6 @@
 import { flowsOfHop } from "@axonometric/contracts";
 import { Checkbox } from "@axonometric/ui/components/checkbox";
+import { FieldLegend, FieldSet } from "@axonometric/ui/components/field";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
@@ -37,10 +38,10 @@ export function HopFlows({ hop }: { readonly hop: string }) {
   const accepted = new Set(Arr.map(state.data.flows, ({ id }) => id));
 
   return (
-    <fieldset className="flex flex-col gap-1" data-hop-flows={hop}>
-      <legend className="text-xs tracking-widest uppercase opacity-70">
+    <FieldSet className="flex flex-col gap-1" data-hop-flows={hop}>
+      <FieldLegend className="text-xs tracking-widest uppercase opacity-70">
         Flows
-      </legend>
+      </FieldLegend>
       <ul className="flex flex-col gap-1">
         {Arr.map(flows, ({ id, name }) => (
           <li key={id}>
@@ -74,6 +75,6 @@ export function HopFlows({ hop }: { readonly hop: string }) {
           {failure}
         </p>
       )}
-    </fieldset>
+    </FieldSet>
   );
 }

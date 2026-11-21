@@ -4,12 +4,13 @@ import {
   stepNameField,
 } from "@axonometric/contracts";
 import type { Step, TextField } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Input } from "@axonometric/ui/components/input";
 import { Textarea } from "@axonometric/ui/components/textarea";
 import { Array as Arr, Option, Record as Rec, Result } from "effect";
 import { useState } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { LabelledField } from "./labelled-field.tsx";
@@ -199,17 +200,17 @@ function StepForm({
         );
       })}
       <div className="flex gap-1.5">
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-step-send
           disabled={sending || changes.length === 0}
           type="submit"
         >
           {sending ? "Saving…" : "Save suggestion"}
-        </button>
-        <button className={controlClass} onClick={onDone} type="button">
+        </Button>
+        <Button className={uiControlClass} onClick={onDone}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

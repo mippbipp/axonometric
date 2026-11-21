@@ -1,6 +1,7 @@
+import { Button } from "@axonometric/ui/components/button";
 import { WithTooltip } from "@axonometric/ui/components/tooltip";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { reducedMotionNote, usePlayback } from "./playback.ts";
 
 /** Play or pause, and step one hop. */
@@ -11,45 +12,35 @@ export function PlaybackControls() {
   return (
     <div className="flex items-center gap-1.5" data-playback-controls>
       {playing ? (
-        <button
-          className={controlClass}
-          data-control="pause"
-          onClick={pause}
-          type="button"
-        >
+        <Button className={uiControlClass} data-control="pause" onClick={pause}>
           ‖ Pause
-        </button>
+        </Button>
       ) : (
         <WithTooltip
           control={
-            <button
-              aria-disabled={nothingToPlay || reducedMotion}
-              className={controlClass}
+            <Button
+              className={uiControlClass}
               data-control="play"
-              onClick={() => {
-                if (!nothingToPlay && !reducedMotion) {
-                  play();
-                }
-              }}
-              type="button"
+              disabled={nothingToPlay || reducedMotion}
+              focusableWhenDisabled
+              onClick={play}
             >
               ▸ Play
-            </button>
+            </Button>
           }
           disabled={!reducedMotion}
         >
           {reducedMotionNote}
         </WithTooltip>
       )}
-      <button
-        className={controlClass}
+      <Button
+        className={uiControlClass}
         data-control="step"
         disabled={nothingToPlay}
         onClick={step}
-        type="button"
       >
         Step
-      </button>
+      </Button>
     </div>
   );
 }

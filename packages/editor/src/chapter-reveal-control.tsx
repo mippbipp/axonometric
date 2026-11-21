@@ -1,8 +1,9 @@
 import type { Structure } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { WithTooltip } from "@axonometric/ui/components/tooltip";
 
 import { useRevealToggle } from "./chapter-reveal.ts";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useChapterOps } from "./proposal-ops-context.ts";
 import { useChapterPropose } from "./use-chapter-propose.ts";
 
@@ -32,19 +33,17 @@ export function ChapterReveal({
       <div className="flex flex-col items-start gap-1.5">
         <WithTooltip
           control={
-            <button
-              aria-disabled={!canPropose || toggle.unavailable !== undefined}
-              className={controlClass}
+            <Button
+              className={uiControlClass}
               data-chapter-toggle={toggle.change.action}
+              disabled={!canPropose || toggle.unavailable !== undefined}
+              focusableWhenDisabled
               onClick={() => {
-                if (canPropose && toggle.unavailable === undefined) {
-                  send(toggle.change);
-                }
+                send(toggle.change);
               }}
-              type="button"
             >
               {toggle.label}
-            </button>
+            </Button>
           }
           disabled={toggle.unavailable === undefined}
         >

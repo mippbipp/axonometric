@@ -5,12 +5,13 @@ import {
   uniqueSources,
 } from "@axonometric/contracts";
 import type { Source, Structure } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Array as Arr, String as Str } from "effect";
 import type { ReactNode } from "react";
 
 import { ChangeStructure } from "./change-structure.tsx";
 import { ChapterReveal } from "./chapter-reveal-control.tsx";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { MapLink } from "./map-link.tsx";
 import { NotesSection } from "./notes-section.tsx";
 import { QuestionAnswer, RaisedQuestions } from "./question-actions.tsx";
@@ -195,27 +196,25 @@ export function StructurePanel({
       <ChapterReveal structure={structure} />
       <div className="flex gap-1.5">
         {hasSteps(structure) ? (
-          <button
-            className={controlClass}
+          <Button
+            className={uiControlClass}
             data-control="go-inside"
             onClick={() => {
               goInside(structure.id);
             }}
-            type="button"
           >
             → Go inside
-          </button>
+          </Button>
         ) : null}
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-control="unpin"
           onClick={() => {
             select(null);
           }}
-          type="button"
         >
           Unpin
-        </button>
+        </Button>
       </div>
     </section>
   );
