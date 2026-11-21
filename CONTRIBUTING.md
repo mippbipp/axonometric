@@ -2,7 +2,7 @@
 
 ## Development
 
-Work in the Nix flake's dev shell, with `nix develop -c <command>` or direnv's `.envrc`. It provides Bun, Node 24, agent-browser and the Chromium the page tests open. Bun installs dependencies and runs scripts, and Node runs the tests and the bundle, so npm users' runtime stays covered. Outside the shell, install Bun 1.4.4 and Node 24.22.1 (`.node-version`), and run `bunx playwright install chromium` in `packages/cli` to fetch the browser. Install with `bun install`.
+Work in the Nix flake's dev shell, with `nix develop -c <command>` or direnv's `.envrc`. It provides Bun, Node 24, agent-browser and the Chromium the page tests open. Bun installs dependencies and runs scripts, and Node runs the tests and the bundle, so npm users' runtime stays covered. Outside the shell, install Bun 1.4.4 and Node 24.22.2 (`.node-version`), and run `bunx playwright install chromium` in `packages/cli` to fetch the browser. Install with `bun install`.
 
 Stop `serve` with the process id that `axonometric status <home>` prints, for example `kill <pid>`. Never use `pkill -f axonometric`. It matches any command line that contains the text, including your own shell, and kills it.
 
