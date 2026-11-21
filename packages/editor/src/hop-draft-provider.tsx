@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { HopDraftContext } from "./hop-draft-context.ts";
 import type { HopDraft, HopDrafting, HopStretch } from "./hop-draft-context.ts";
+import { useMarkDragging } from "./use-mark-dragging.ts";
 
 /** Holds the hop being drawn, and the drag that draws it. */
 export function HopDraftProvider({
@@ -12,6 +13,8 @@ export function HopDraftProvider({
 }) {
   const [draft, setDraft] = useState<HopDraft | null>(null);
   const [stretch, setStretch] = useState<HopStretch | null>(null);
+
+  useMarkDragging(stretch !== null);
 
   const value = useMemo(
     (): HopDrafting => ({
