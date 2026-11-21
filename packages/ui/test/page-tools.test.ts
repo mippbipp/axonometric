@@ -73,7 +73,9 @@ describe("registering page tools", () => {
     install(navigator, { registerTool });
     registerPageTools([tool("a")]);
 
-    expect(registerTool).toHaveBeenCalledTimes(1);
+    expect(registerTool.mock.calls.map(([one]) => one.name)).toStrictEqual([
+      "a",
+    ]);
   });
 
   it("aborts the signal and unregisters each tool when withdrawn", () => {
