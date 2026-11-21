@@ -131,6 +131,16 @@ export default defineConfig({
       },
     },
     {
+      // The canvas narrows pointer and key targets to DOM nodes the same way.
+      files: [
+        "packages/ui/src/components/pannable-canvas.tsx",
+        "packages/ui/test/pannable-canvas.test.tsx",
+      ],
+      rules: {
+        "@nkzw/no-instanceof": "off",
+      },
+    },
+    {
       // The clipboard call hands its outcome to a callback, and either outcome
       // is reported, so there is no rejection left to catch.
       files: ["packages/editor/src/ready-for-review.tsx"],

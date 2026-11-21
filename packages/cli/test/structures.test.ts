@@ -7,11 +7,12 @@ import {
   assertTextIncludes,
   attributesOf,
   boxesOf,
+  cameraOf,
   click,
   goToChapter,
-  literal,
   press,
   textOf,
+  waitForCameraChange,
   waitFor,
   waitGone,
 } from "./browser.ts";
@@ -317,9 +318,7 @@ describe("clicking a structure", () => {
         const x = (canvas?.x ?? 0) + (canvas?.width ?? 0) - 20;
         const y = (canvas?.y ?? 0) + 80;
 
-        const before = yield* Effect.promise(() =>
-          page.locator("[data-viewport]").getAttribute("transform")
-        );
+        const before = yield* cameraOf(page);
 
         yield* Effect.promise(() => page.mouse.move(x, y));
         yield* Effect.promise(() => page.mouse.down());
@@ -328,11 +327,7 @@ describe("clicking a structure", () => {
         );
         yield* Effect.promise(() => page.mouse.up());
 
-        yield* Effect.promise(() =>
-          page.waitForFunction(
-            `document.querySelector("[data-viewport]").getAttribute("transform") !== ${literal(before ?? "")}`
-          )
-        );
+        yield* waitForCameraChange(page, before);
 
         yield* assertCount(
           page,

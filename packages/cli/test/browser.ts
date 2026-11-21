@@ -380,6 +380,51 @@ export const scaleExpression =
 export const scaleOf = (page: Page) => inPage<number>(page, scaleExpression);
 
 /**
+ * Where the drawing sits in the window: the world group's screen matrix as
+ * `[scale, x, y]`, run in the page. It includes the transform and the pane's
+ * scroll, so it is what a shape drawn at the origin shows.
+ */
+export const cameraExpression = `(() => {
+  const matrix = document.querySelector("[data-viewport]").getScreenCTM();
+
+  return [matrix.a, matrix.e, matrix.f];
+})()`;
+
+/** The world's `[scale, x, y]` in window pixels, see `cameraExpression`. */
+export const cameraOf = (page: Page) =>
+  inPage<[number, number, number]>(page, cameraExpression);
+
+/**
+ * Waits up to `timeout` ms until the pan or zoom differs from `previous`, as
+ * `cameraOf` read it, and says whether it did.
+ */
+export const cameraChangedWithin = (
+  page: Page,
+  previous: ReadonlyArray<number>,
+  timeout: number
+) =>
+  Effect.promise(() =>
+    page
+      .waitForFunction(
+        `${cameraExpression}.some((value, index) => value !== [${Arr.join(Arr.map(previous, String), ",")}][index])`,
+        undefined,
+        { timeout }
+      )
+      .then(() => true)
+      .catch(() => false)
+  );
+
+/** Waits until the pan or zoom differs from `previous`, as `cameraOf` read it. */
+export const waitForCameraChange = Effect.fnUntraced(function* (
+  page: Page,
+  previous: ReadonlyArray<number>
+) {
+  const changed = yield* cameraChangedWithin(page, previous, 5000);
+
+  assert.isTrue(changed, "the pan or zoom never changed");
+});
+
+/**
  * Waits until the zoom passes `test`, such as `> 2`. Input reaches the page
  * asynchronously, so a test waits for the new state instead of reading once.
  */
