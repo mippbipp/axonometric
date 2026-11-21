@@ -14,6 +14,8 @@ export const topics = {
   review:
     "The review loop: review, verdict and commit, for a prompt that starts 'Use the axonometric skill to review batch N'",
   "visual-check": "Looking at the finished map in a browser, or without one",
+  present:
+    "Presenting the map in the engineer's page with the page tools, and what to do without them",
 } as const;
 
 export const topicNames = Rec.keys(topics);

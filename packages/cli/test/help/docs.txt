@@ -5,7 +5,7 @@ USAGE
   axonometric docs [flags] [<topic>]
 
 ARGUMENTS
-  topic choice    One of process, data, chapters, design, review, visual-check. Without it, docs prints an overview and lists the topics. (optional)
+  topic choice    One of process, data, chapters, design, review, visual-check, present. Without it, docs prints an overview and lists the topics. (optional)
 
 GLOBAL FLAGS
   --help, -h                                                          Show help information

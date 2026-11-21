@@ -31,6 +31,7 @@ import {
   makeHome,
   mapIn,
   readHome,
+  runCli,
   startServe,
 } from "./harness.ts";
 
@@ -848,6 +849,35 @@ describe("view tools on the page", () => {
         );
       })
     )
+  );
+
+  it.live(
+    "docs present names the tools the page registers, and only those",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* builtPage;
+          const value = yield* toolsOf(page);
+          const registered = Arr.map(value, ({ name }) => name);
+          const home = yield* makeHome({});
+          const result = yield* runCli(home, ["docs", "present"]);
+
+          assert.strictEqual(result.exitCode, 0, result.stderr);
+
+          const named = Arr.map(
+            Arr.fromIterable(
+              Str.matchAll(/^\| `(?<name>[a-z_]+)` \|/gmu)(result.stdout)
+            ),
+            (found) => found.groups?.name ?? ""
+          );
+
+          assert.sameMembers(named, viewTools);
+
+          for (const name of registered) {
+            assert.include(result.stdout, `\`${name}\``, name);
+          }
+        })
+      )
   );
 
   describe.each(pages)("registration on $name", ({ open }) => {
