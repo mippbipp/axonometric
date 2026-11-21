@@ -483,16 +483,31 @@ export const toolsOf = (page: Page) =>
 const decodeJson = <S extends Schema.Top>(schema: S) =>
   Schema.decodeUnknownEffect(Schema.fromJsonString(schema));
 
+/** What an agent passes a tool: JSON values. */
+export type ToolInput = Readonly<
+  Record<string, string | number | null | ReadonlyArray<string>>
+>;
+
 /**
- * Calls the WebMCP tool `name` as an agent would, and decodes the JSON it
- * returns with `schema`.
+ * Calls the WebMCP tool `name` as an agent would, with `input`, and decodes
+ * the JSON it returns with `schema`.
  */
+export const callToolWith = <S extends Schema.Top>(
+  page: Page,
+  call: { readonly input: ToolInput; readonly name: string },
+  schema: S
+) => {
+  const text = JSON.stringify(JSON.stringify(call.input));
+
+  return inPage<string>(
+    page,
+    `navigator.modelContextTesting.executeTool(${literal(call.name)}, ${text})`
+  ).pipe(Effect.flatMap(decodeJson(schema)), Effect.orDie);
+};
+
+/** Calls the WebMCP tool `name` with no input, as `callToolWith` does. */
 export const callTool = <S extends Schema.Top>(
   page: Page,
   name: string,
   schema: S
-) =>
-  inPage<string>(
-    page,
-    `navigator.modelContextTesting.executeTool(${literal(name)}, "{}")`
-  ).pipe(Effect.flatMap(decodeJson(schema)), Effect.orDie);
+) => callToolWith(page, { input: {}, name }, schema);

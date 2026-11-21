@@ -43,6 +43,7 @@ export const fileSeconds = {
   "structure-page.test.ts": 15,
   "structures.test.ts": 19,
   "text-page.test.ts": 19,
+  "view-tools-page.test.ts": 45,
   "viewport.test.ts": 30,
 } as const satisfies Readonly<Record<string, number>>;
 
