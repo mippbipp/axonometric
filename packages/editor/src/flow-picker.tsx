@@ -1,4 +1,3 @@
-import type { FlowChoice } from "@axonometric/contracts";
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -7,7 +6,7 @@ import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr, Option } from "effect";
 import { useId } from "react";
 
-import { flowChoiceKey } from "./chapters.ts";
+import { flowChoiceKey, flowOptionsOf } from "./chapters.ts";
 import { uiSegmentClass } from "./control-class.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
@@ -27,19 +26,7 @@ export function FlowPicker({ className }: { readonly className?: string }) {
 
   const chosen = flowChoiceKey(flowChoice);
 
-  const options: ReadonlyArray<{
-    readonly choice: FlowChoice;
-    readonly label: string;
-  }> = [
-    ...(stop.plays.length === 0
-      ? []
-      : [{ choice: { kind: "chapter" } as const, label: "This chapter" }]),
-    ...Arr.map(flows, (flow) => ({
-      choice: { id: flow.id, kind: "flow" } as const,
-      label: flow.name,
-    })),
-    { choice: { kind: "all" }, label: "All flows" },
-  ];
+  const options = flowOptionsOf({ flows, stop });
 
   return (
     <div
@@ -56,10 +43,7 @@ export function FlowPicker({ className }: { readonly className?: string }) {
         aria-labelledby={labelId}
         className="flex min-w-0 flex-wrap gap-1.5"
         onValueChange={(next) => {
-          const option = Arr.findFirst(
-            options,
-            ({ choice }) => flowChoiceKey(choice) === next
-          );
+          const option = Arr.findFirst(options, ({ key }) => key === next);
 
           if (Option.isSome(option)) {
             chooseFlow(option.value.choice);
@@ -67,20 +51,16 @@ export function FlowPicker({ className }: { readonly className?: string }) {
         }}
         value={chosen}
       >
-        {Arr.map(options, ({ choice, label }) => {
-          const key = flowChoiceKey(choice);
-
-          return (
-            <SegmentedControlItem
-              className={cn(uiSegmentClass, "tracking-wider uppercase")}
-              data-flow={choice.kind === "flow" ? choice.id : choice.kind}
-              key={key}
-              value={key}
-            >
-              {label}
-            </SegmentedControlItem>
-          );
-        })}
+        {Arr.map(options, ({ choice, key, label }) => (
+          <SegmentedControlItem
+            className={cn(uiSegmentClass, "tracking-wider uppercase")}
+            data-flow={choice.kind === "flow" ? choice.id : choice.kind}
+            key={key}
+            value={key}
+          >
+            {label}
+          </SegmentedControlItem>
+        ))}
       </SegmentedControl>
     </div>
   );
