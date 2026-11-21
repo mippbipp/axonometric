@@ -1,4 +1,4 @@
-import { groupMembers, toPoints } from "@axonometric/contracts";
+import { groupMembers, nudgeMoves, toPoints } from "@axonometric/contracts";
 import type {
   GridPoint,
   Layout,
@@ -8,59 +8,66 @@ import type {
   StructureMove,
   View,
 } from "@axonometric/contracts";
+import { CanvasItem } from "@axonometric/ui/components/canvas-items";
+import { GroundDrag } from "@axonometric/ui/components/ground-drag";
+import type {
+  GroundBox,
+  GroundDraft,
+  GroundInput,
+} from "@axonometric/ui/components/ground-drag";
 import { Array as Arr } from "effect";
-import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
 import { shiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
+import { boxOf, largeStep, movesTo, step } from "./ground-moves.ts";
 import { useDropOutlines } from "./outlines-context.ts";
 import { useSelection } from "./selection-context.ts";
-import { snap } from "./snap.ts";
+import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
-/** How far a press must move before it drags a group, in pixels. */
-const dragThreshold = 4;
-
-/** One press on a zone's title, until it's released. */
-interface Press {
-  readonly from: { readonly x: number; readonly y: number };
-  readonly ground: GridPoint;
-  readonly group: string;
-  /** Every member of the group and where it was shown at the press. */
-  readonly members: ReadonlyArray<readonly [string, Placement]>;
-  readonly pointer: number;
-}
-
-/** A press past the threshold, and where it would put the group. */
+/** A drag of a group by its zone's title, and where it would put it. */
 interface Drag {
   readonly by: GridPoint;
   readonly group: string;
+  /** Every member of the group and where it was shown at the press. */
   readonly members: ReadonlyArray<readonly [string, Placement]>;
+  /** Where each member goes, as the drop would put it. */
+  readonly moves: ReadonlyArray<StructureMove>;
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
 }
 
-/** The moves that put every member `by` away from where it is. */
-const movesBy = (
-  members: ReadonlyArray<readonly [string, Placement]>,
-  by: GridPoint
-): ReadonlyArray<StructureMove> =>
-  Arr.map(members, ([id, at]) => ({
-    position: { x: at.x + by.x, y: at.y + by.y },
-    target: { id, kind: "structure" as const },
-  }));
+const titleSelector = "[data-zone-title-hit]";
+
+const shifted = (event: Event | undefined) =>
+  (event instanceof MouseEvent || event instanceof KeyboardEvent) &&
+  event.shiftKey;
+
+/** Selects the title box of the pinned group's panel, once it has drawn. */
+const selectTitleBox = () => {
+  requestAnimationFrame(() => {
+    document
+      .querySelector<HTMLInputElement>("[data-group-panel] [data-group-title]")
+      ?.select();
+  });
+};
 
 /**
- * Moves a whole group by dragging its zone's title, while the page can
- * edit. It wraps the zones' drawing (`children`), inside the viewport's
- * transformed group.
+ * Moves a whole group by dragging its zone's title, or with Alt and an arrow
+ * key on the focused title, while the page can edit. It wraps the zones'
+ * drawing, inside the viewport's transformed group, and works the same in
+ * both views.
  *
+ * - Each title is one of the map's canvas items, named for its group. A
+ *   click, Enter or Space opens the group's panel, with its rename form, and
+ *   a double-click goes on to the title box.
  * - Every structure the layout places in the group moves, as one change and
  *   one undo step, snapped to half units. That includes members the chapter
- *   hasn't revealed, so the group stays together.
+ *   hasn't revealed, so the group stays together. A nudge moves them half a
+ *   unit, and Shift too by two. Escape puts a drag back.
  * - The zone and its members follow the pointer, and the dashed outlines
  *   show where each member would land. They turn red, with the reason in
  *   their title, while a footprint would overlap a structure outside the
@@ -85,57 +92,20 @@ export function GroupEditor({
   const { selectGroup } = useSelection();
   const preview = useDragPreview();
   const setOutlines = useDropOutlines()?.set;
+  const byId = useStructuresById();
   const root = useRef<SVGGElement>(null);
-  const press = useRef<Press | undefined>(undefined);
-  const dragged = useRef(false);
-  // The title last pressed. Pointer capture sends the click to the group
-  // element, not the title, so the click can't say which one it was on.
-  const pressedTitle = useRef<string | undefined>(undefined);
   const [drag, setDrag] = useState<Drag | undefined>();
   const live = editing?.canEdit === true;
 
-  // A drag ends with a click on the title, which would clear the selection.
-  // A click that is no drag pins the group's panel, with its rename form, and
-  // a double-click goes on to the title box. Both stop here so the surface
-  // behind doesn't clear what they picked.
-  useEffect(() => {
-    const element = root.current;
+  const boxes = useMemo(() => {
+    const all: Record<string, GroundBox> = {};
 
-    const onClick = (event: MouseEvent) => {
-      if (dragged.current) {
-        dragged.current = false;
-        event.stopPropagation();
-        event.preventDefault();
+    for (const [id, placement] of Object.entries(layout.structures)) {
+      all[id] = boxOf(placement);
+    }
 
-        return;
-      }
-
-      const group = pressedTitle.current;
-
-      pressedTitle.current = undefined;
-
-      if (group !== undefined && !event.shiftKey) {
-        event.stopPropagation();
-        selectGroup(group);
-
-        if (event.detail >= 2) {
-          requestAnimationFrame(() => {
-            document
-              .querySelector<HTMLInputElement>(
-                "[data-group-panel] [data-group-title]"
-              )
-              ?.select();
-          });
-        }
-      }
-    };
-
-    element?.addEventListener("click", onClick, { capture: true });
-
-    return () => {
-      element?.removeEventListener("click", onClick, { capture: true });
-    };
-  }, [selectGroup]);
+    return all;
+  }, [layout.structures]);
 
   // The drawing is shifted from the whole canvas, because the members are
   // drawn in the structure layer, beside the zones.
@@ -171,47 +141,27 @@ export function GroupEditor({
   }, [drag, setOutlines]);
 
   useEffect(() => {
-    const moves = drag === undefined ? [] : movesBy(drag.members, drag.by);
-
-    if (drag === undefined || !Arr.isReadonlyArrayNonEmpty(moves)) {
+    if (drag === undefined || !Arr.isReadonlyArrayNonEmpty(drag.moves)) {
       preview?.clear();
 
       return;
     }
 
     preview?.show({
-      changes: [{ by: "engineer", id: "preview", kind: "move", moves }],
+      changes: [
+        { by: "engineer", id: "preview", kind: "move", moves: drag.moves },
+      ],
       refusal: drag.refusal,
     });
   }, [drag, preview]);
 
-  const onPointerDown = (event: ReactPointerEvent<SVGGElement>) => {
-    const target =
-      event.target instanceof Element
-        ? event.target.closest<SVGElement>("[data-zone-title-hit]")
-        : null;
-
-    const group = target?.dataset.zoneTitleHit;
-    const element = root.current;
-
-    if (
-      !live ||
-      event.button !== 0 ||
-      event.shiftKey ||
-      group === undefined ||
-      element === null
-    ) {
-      return;
-    }
-
-    const ground = groundAt({ element, event, view });
-
-    if (ground === undefined) {
-      return;
+  const dragOf = (draft: GroundDraft): Drag | undefined => {
+    if (draft.kind !== "move") {
+      return undefined;
     }
 
     const members = Arr.flatMap(
-      groupMembers({ data, group, layout }),
+      draft.keys,
       (id): ReadonlyArray<readonly [string, Placement]> => {
         const at = layout.structures[id];
 
@@ -219,149 +169,134 @@ export function GroupEditor({
       }
     );
 
-    dragged.current = false;
-    pressedTitle.current = group;
+    const [[first, start] = []] = members;
+    const group = first === undefined ? undefined : byId.get(first)?.group;
+    const at = first === undefined ? undefined : draft.to[first];
 
-    // A title is small, so the pointer leaves it within a step or two of
-    // a drag. Capturing at once keeps the moves coming.
-    element.setPointerCapture(event.pointerId);
-    press.current = {
-      from: { x: event.clientX, y: event.clientY },
-      ground,
+    if (group === undefined || start === undefined || at === undefined) {
+      return undefined;
+    }
+
+    const by = { x: at.x - start.x, y: at.y - start.y };
+
+    return {
+      by,
       group,
       members,
-      pointer: event.pointerId,
+      moves: movesTo(draft.to),
+      refusal:
+        by.x === 0 && by.y === 0
+          ? undefined
+          : editing?.refusalOfMoves(movesTo(draft.to)),
     };
   };
 
-  const onPointerMove = (event: ReactPointerEvent<SVGGElement>) => {
-    const { current } = press;
-    const element = root.current;
+  /** The members of the group whose title `target` is, revealed or not. */
+  const keysFor = (target: Element | null) => {
+    const group =
+      target?.closest<SVGElement>(titleSelector)?.dataset.zoneTitleHit;
+
+    return group === undefined ? [] : groupMembers({ data, group, layout });
+  };
+
+  const onMove = (
+    to: Readonly<Record<string, GridPoint>>,
+    { input }: { readonly input: GroundInput }
+  ) => {
+    const ids = Object.keys(to);
+    const [id] = ids;
+    const start = id === undefined ? undefined : layout.structures[id];
+    const at = id === undefined ? undefined : to[id];
 
     if (
       editing === null ||
-      current === undefined ||
-      element === null ||
-      event.pointerId !== current.pointer
+      id === undefined ||
+      start === undefined ||
+      at === undefined
     ) {
-      return;
+      return false;
     }
 
-    const travel = Math.hypot(
-      event.clientX - current.from.x,
-      event.clientY - current.from.y
-    );
+    // A nudge is planned on the latest list, so quick presses add up, and
+    // `arrange` shows a refusal as a notice.
+    if (input === "keyboard") {
+      const delta = { x: at.x - start.x, y: at.y - start.y };
 
-    if (!dragged.current && travel < dragThreshold) {
-      return;
-    }
-
-    const ground = groundAt({ element, event, view });
-
-    if (ground === undefined) {
-      return;
-    }
-
-    if (!dragged.current) {
-      dragged.current = true;
-
-      if (!element.hasPointerCapture(event.pointerId)) {
-        element.setPointerCapture(event.pointerId);
-      }
-    }
-
-    const by = {
-      x: snap(ground.x - current.ground.x),
-      y: snap(ground.y - current.ground.y),
-    };
-
-    setDrag((before) =>
-      before !== undefined && before.by.x === by.x && before.by.y === by.y
-        ? before
-        : {
-            by,
-            group: current.group,
-            members: current.members,
-            refusal:
-              by.x === 0 && by.y === 0
-                ? undefined
-                : editing.refusalOfMoves(movesBy(current.members, by)),
-          }
-    );
-  };
-
-  const end = (event: ReactPointerEvent<SVGGElement>, drop: boolean) => {
-    const { current } = press;
-
-    if (current === undefined || event.pointerId !== current.pointer) {
-      return;
-    }
-
-    press.current = undefined;
-
-    if (
-      drop &&
-      dragged.current &&
-      drag !== undefined &&
-      editing !== null &&
-      drag.refusal === undefined &&
-      (drag.by.x !== 0 || drag.by.y !== 0)
-    ) {
-      const { by } = drag;
-
-      editing.arrange((placements) =>
-        movesBy(
-          Arr.flatMap(current.members, ([id]) => {
-            const at = placements[id];
-
-            return at === undefined ? [] : [[id, at] as const];
-          }),
-          by
-        )
+      return (
+        editing.arrange((latest) =>
+          nudgeMoves({ delta, ids, placements: latest })
+        ) === undefined
       );
     }
 
-    setDrag(undefined);
+    // The red outline already said why a drop is refused, so it writes
+    // nothing.
+    return (
+      editing.refusalOfMoves(movesTo(to)) === undefined &&
+      editing.arrange(() => movesTo(to)) === undefined
+    );
+  };
+
+  const pin = (group: string, event: Event | undefined) => {
+    if (!shifted(event)) {
+      selectGroup(group);
+    }
   };
 
   return (
-    <g
-      data-dragging-group={drag?.group}
+    <GroundDrag
+      boxes={boxes}
       data-group-editor={live ? "on" : "off"}
-      onLostPointerCapture={(event) => {
-        end(event, false);
+      disabled={!live}
+      groundAt={(element, at) =>
+        element instanceof SVGGraphicsElement
+          ? groundAt({ element, event: at, view })
+          : undefined
+      }
+      keysFor={keysFor}
+      label={(id) => byId.get(id)?.name}
+      largeStep={largeStep}
+      onDraft={(draft) => {
+        setDrag(draft === null ? undefined : dragOf(draft));
       }}
-      onPointerCancel={(event) => {
-        end(event, false);
-      }}
-      onPointerDown={live ? onPointerDown : undefined}
-      onPointerMove={live ? onPointerMove : undefined}
-      onPointerUp={(event) => {
-        end(event, true);
-      }}
+      onMove={onMove}
       ref={root}
+      step={step}
     >
       {live
         ? Arr.flatMap(zones, ({ title, zone }) =>
             title === undefined
               ? []
               : [
-                  <polygon
-                    className="cursor-move"
+                  <CanvasItem
+                    aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight"
+                    aria-label={`Group ${zone.group.title}`}
+                    className="focus-visible:outline-ink cursor-move outline-none focus-visible:outline-1 focus-visible:outline-offset-4 focus-visible:outline-dashed"
                     data-zone-title-hit={zone.group.id}
-                    fill="transparent"
                     key={zone.group.id}
-                    points={toPoints(title)}
-                    stroke="none"
+                    onDoubleClick={() => {
+                      selectGroup(zone.group.id);
+                      selectTitleBox();
+                    }}
+                    onPress={(event) => {
+                      pin(zone.group.id, event);
+                    }}
+                    value={`group:${zone.group.id}`}
                   >
-                    <title>
-                      Click to open {zone.group.title}, double-click to rename
-                      it, drag to move every structure in it
-                    </title>
-                  </polygon>,
+                    <polygon
+                      fill="transparent"
+                      points={toPoints(title)}
+                      stroke="none"
+                    >
+                      <title>
+                        Click to open {zone.group.title}, double-click to rename
+                        it, drag to move every structure in it
+                      </title>
+                    </polygon>
+                  </CanvasItem>,
                 ]
           )
         : null}
-    </g>
+    </GroundDrag>
   );
 }

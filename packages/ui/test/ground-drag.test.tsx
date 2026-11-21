@@ -21,7 +21,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 type OnMove = GroundDragOptions["onMove"];
-type OnResize = GroundDragOptions["onResize"];
+type OnResize = NonNullable<GroundDragOptions["onResize"]>;
 type OnDraft = (draft: GroundDraft | null) => void;
 
 /**
@@ -503,6 +503,39 @@ describe("ground drag", () => {
       );
       expect(calls.onResize).toHaveBeenCalledTimes(2);
       expect(calls.onMove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("without handles", () => {
+    it("moves and nudges with no onResize or minSize, a drag and a key each one call", () => {
+      expect.hasAssertions();
+
+      const onMove = vi.fn<OnMove>(() => true);
+
+      render(
+        <svg>
+          <GroundDrag
+            boxes={{ z: { height: 1, width: 1, x: 2, y: 2 } }}
+            groundAt={(_el, at) => toGround(at)}
+            keysFor={() => ["z"]}
+            largeStep={2}
+            onMove={onMove}
+            step={0.5}
+          >
+            <g aria-label="Zone z" data-item="z" tabIndex={0}>
+              <rect height="10" width="10" />
+            </g>
+          </GroundDrag>
+        </svg>
+      );
+
+      dragBy(item("z"), { x: 1.2, y: 0 });
+      fireEvent.keyDown(item("z"), { altKey: true, key: "ArrowLeft" });
+
+      expect(vi.mocked(onMove).mock.calls).toStrictEqual([
+        [{ z: { x: 3, y: 2 } }, { input: "pointer" }],
+        [{ z: { x: 1.5, y: 2 } }, { input: "keyboard" }],
+      ]);
     });
   });
 });
