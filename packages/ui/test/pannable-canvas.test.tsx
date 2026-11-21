@@ -7,6 +7,7 @@ import type {
   CameraDetails,
   PannableCanvasApi,
 } from "@axonometric/ui/components/pannable-canvas";
+import { canvasDragging } from "@axonometric/ui/lib/canvas-drag";
 import {
   act,
   fireEvent,
@@ -138,6 +139,8 @@ const touch = (pointerId: number, clientX: number) => ({
 const preventDefault = (event: Event) => {
   event.preventDefault();
 };
+
+const status = () => (canvasDragging() ? "dragging" : "idle");
 
 const announced = () =>
   document.querySelector('[data-ui-sdk-announcer=""]')?.textContent;
@@ -430,6 +433,102 @@ describe("pannable canvas", () => {
       fireEvent.pointerUp(claimed, mouse({ clientX: 160, clientY: 100 }));
 
       expect(translation()).toStrictEqual(before);
+    });
+  });
+
+  describe("a pan in progress", () => {
+    it("counts as a canvas drag from the move past the threshold until the pointer lifts", () => {
+      expect.hasAssertions();
+
+      mount();
+
+      const target = find("[data-empty]");
+
+      fireEvent.pointerDown(target, mouse({ clientX: 100, clientY: 100 }));
+      fireEvent.pointerMove(target, mouse({ clientX: 102, clientY: 102 }));
+
+      expect(status()).toBe("idle");
+
+      fireEvent.pointerMove(target, mouse({ clientX: 103, clientY: 100 }));
+
+      expect(status()).toBe("dragging");
+
+      fireEvent.pointerMove(target, mouse({ clientX: 140, clientY: 100 }));
+      fireEvent.pointerUp(target, mouse({ clientX: 140, clientY: 100 }));
+
+      expect(status()).toBe("idle");
+    });
+
+    it("ends when the browser cancels the pointer", () => {
+      expect.hasAssertions();
+
+      mount();
+
+      const target = find("[data-empty]");
+
+      fireEvent.pointerDown(target, mouse({ clientX: 100, clientY: 100 }));
+      fireEvent.pointerMove(target, mouse({ clientX: 130, clientY: 100 }));
+
+      expect(status()).toBe("dragging");
+
+      fireEvent.pointerCancel(target, mouse({ clientX: 130, clientY: 100 }));
+
+      expect(status()).toBe("idle");
+    });
+
+    it("ends when the canvas leaves the page mid-pan", () => {
+      expect.hasAssertions();
+
+      const { unmount } = render(<Canvas />);
+      const target = find("[data-empty]");
+
+      fireEvent.pointerDown(target, mouse({ clientX: 100, clientY: 100 }));
+      fireEvent.pointerMove(target, mouse({ clientX: 130, clientY: 100 }));
+
+      expect(status()).toBe("dragging");
+
+      unmount();
+
+      expect(status()).toBe("idle");
+    });
+
+    it("lasts through a pinch until the last finger lifts", () => {
+      expect.hasAssertions();
+
+      mount();
+
+      const target = find("[data-empty]");
+
+      fireEvent.pointerDown(target, touch(1, 100));
+
+      expect(status()).toBe("idle");
+
+      fireEvent.pointerDown(target, touch(2, 200));
+
+      expect(status()).toBe("dragging");
+
+      fireEvent.pointerUp(target, touch(1, 100));
+
+      expect(status()).toBe("dragging");
+
+      fireEvent.pointerUp(target, touch(2, 200));
+
+      expect(status()).toBe("idle");
+    });
+
+    it("isn't one for a press on the content", () => {
+      expect.hasAssertions();
+
+      mount();
+
+      const claimed = find("[data-claimed]");
+
+      fireEvent.pointerDown(claimed, mouse({ clientX: 100, clientY: 100 }));
+      fireEvent.pointerMove(claimed, mouse({ clientX: 160, clientY: 100 }));
+
+      expect(status()).toBe("idle");
+
+      fireEvent.pointerUp(claimed, mouse({ clientX: 160, clientY: 100 }));
     });
   });
 

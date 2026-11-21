@@ -1,4 +1,4 @@
-import { dragThreshold } from "@axonometric/ui/lib/canvas-drag";
+import { dragThreshold, markDragging } from "@axonometric/ui/lib/canvas-drag";
 import {
   createViewport,
   definePrimitive,
@@ -80,7 +80,8 @@ type ViewportApi = ReturnType<typeof createViewport<PannableCanvasState>>;
  * Hands a press to ui-sdk's viewport only once it is a drag or a pinch.
  * `viewport.pointerdown` captures the pointer on the surface at once, and
  * then the click lands on the surface, so a plain click on the content
- * (the note tool's spot picker, say) would never arrive.
+ * (the note tool's spot picker, say) would never arrive. A pan or pinch
+ * counts as a canvas drag (`markDragging`) until its last pointer ends.
  */
 const routePresses = ({
   claims,
@@ -95,6 +96,18 @@ const routePresses = ({
 }) => {
   let press: Press = idle;
   let swallow = false;
+  let release: (() => void) | undefined;
+
+  const panning = (pointers: ReadonlySet<number>): Press => {
+    release ??= markDragging();
+
+    return { kind: "panning", pointers };
+  };
+
+  const letGo = () => {
+    release?.();
+    release = undefined;
+  };
 
   const isPrimary = (event: PointerEvent) =>
     event.button === 0 && !inControls(event.target);
@@ -113,10 +126,7 @@ const routePresses = ({
     viewport.pointerdown(first);
     viewport.pointerdown(second);
 
-    return {
-      kind: "panning",
-      pointers: new Set([first.pointerId, second.pointerId]),
-    };
+    return panning(new Set([first.pointerId, second.pointerId]));
   };
 
   const onPointerDown = (event: PointerEvent) => {
@@ -141,10 +151,7 @@ const routePresses = ({
       }
       case "panning": {
         viewport.pointerdown(event);
-        press = {
-          kind: "panning",
-          pointers: new Set([...press.pointers, event.pointerId]),
-        };
+        press = panning(new Set([...press.pointers, event.pointerId]));
         break;
       }
       default: {
@@ -171,7 +178,7 @@ const routePresses = ({
     viewport.pointerdown(down);
     viewport.panBy(dx, dy, { event, reason: "drag" });
     swallow = down.pointerType !== "touch";
-    press = { kind: "panning", pointers: new Set([down.pointerId]) };
+    press = panning(new Set([down.pointerId]));
   };
 
   const onPointerEnd = (event: PointerEvent) => {
@@ -183,7 +190,13 @@ const routePresses = ({
       const pointers = new Set(press.pointers);
 
       pointers.delete(event.pointerId);
-      press = pointers.size === 0 ? idle : { kind: "panning", pointers };
+
+      if (pointers.size === 0) {
+        press = idle;
+        letGo();
+      } else {
+        press = { kind: "panning", pointers };
+      }
     }
   };
 
@@ -213,6 +226,7 @@ const routePresses = ({
     root.removeEventListener("pointerup", onPointerEnd, capture);
     root.removeEventListener("pointercancel", onPointerEnd, capture);
     root.removeEventListener("click", onClick, capture);
+    letGo();
   };
 };
 

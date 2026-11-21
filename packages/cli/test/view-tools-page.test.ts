@@ -14,6 +14,7 @@ import {
   attributesOf,
   callTool,
   callToolWith,
+  cameraOf,
   centreOf,
   click,
   goToChapter,
@@ -22,6 +23,7 @@ import {
   textOf,
   toolsOf,
   waitFor,
+  waitForCameraChange,
   waitGone,
 } from "./browser.ts";
 import type { ToolInput } from "./browser.ts";
@@ -692,6 +694,31 @@ describe("view tools on the page", () => {
             );
           })
         )
+    );
+
+    it.live("refuses during a pan until the engineer lets go", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* servedPage;
+
+          const camera = yield* cameraOf(page);
+
+          // Empty canvas in the fixture, dragged away from the side panel.
+          yield* Effect.promise(() => page.mouse.move(600, 450));
+          yield* Effect.promise(() => page.mouse.down());
+          yield* Effect.promise(() => page.mouse.move(520, 490, { steps: 12 }));
+          yield* waitForCameraChange(page, camera);
+
+          yield* refusesEverything(page, dragReason);
+
+          yield* Effect.promise(() => page.mouse.up());
+          yield* says(
+            page,
+            { input: { chapter: 2 }, tool: "go_to_chapter" },
+            "Agent went to chapter 2"
+          );
+        })
+      )
     );
 
     it.live("refuses during a structure move until the engineer lets go", () =>
