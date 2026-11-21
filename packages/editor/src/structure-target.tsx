@@ -7,11 +7,14 @@ import type { FocusEvent, PointerEvent, SVGProps } from "react";
 
 import { useChapterPendingStructures } from "./chapter-marks-context.ts";
 import { spokenMarks, useCompare } from "./compare-context.ts";
+import { useConnections } from "./connections-context.ts";
 import {
   agentStructures,
   pendingStructures,
   useEditingIgnoringEdit,
 } from "./editing-context.ts";
+import { useHopsDescription } from "./hop-description.ts";
+import { drawHopKey, useHopDraft } from "./hop-draft-context.ts";
 import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
@@ -26,7 +29,8 @@ import { useTooltipActions } from "./tooltip-context.ts";
  * takes it out of the multi-selection (see `CanvasItems`). A pinned
  * structure reports `aria-pressed`; one in the multi-selection says so in
  * its accessible name, because ARIA has no multi-selection state for a
- * button.
+ * button. Its description lists its hops, and while a hop can be drawn,
+ * `h` starts one from it (see `EdgeHandles`).
  *
  * Presses use no pointer capture, so a pan-and-zoom wrapper that leaves
  * presses on `[data-structure]` alone can't swallow them. Pass the drawing
@@ -42,6 +46,9 @@ export function StructureTarget({
 
   const { controller, hide, show } = useTooltipActions();
   const name = useStructuresById().get(id)?.name ?? id;
+  const connections = useConnections();
+  const drafting = useHopDraft();
+  const canDrawHop = connections?.canPropose === true && drafting !== null;
   const isSelected = selected === id;
   const editingIgnoringEdit = useEditingIgnoringEdit();
   const isMultiSelected = multiSelection.has(id);
@@ -86,6 +93,8 @@ export function StructureTarget({
     }
   };
 
+  const hops = useHopsDescription(id);
+
   return (
     <TooltipTrigger
       controller={controller}
@@ -93,6 +102,8 @@ export function StructureTarget({
       render={
         <CanvasItem
           {...rest}
+          aria-description={hops}
+          aria-keyshortcuts={canDrawHop ? drawHopKey.toUpperCase() : undefined}
           aria-label={Arr.join(
             [
               isMultiSelected ? `${name}, in the multi-selection` : name,

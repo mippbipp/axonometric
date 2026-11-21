@@ -104,6 +104,7 @@ const hintsOf = ({
         "] next chapter",
         "[ back",
         ...editHint,
+        ...(editing ? ["h draws a hop"] : []),
         "+ and − zoom, 0 zooms to fit",
         "v switches view",
         "click empty space to unpin",
