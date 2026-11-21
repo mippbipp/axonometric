@@ -1,6 +1,12 @@
 // oxlint-disable effecttsgo/missing-pipeable-signature -- called with its arguments in hand from a pointerdown handler, never piped.
 import { bindDrag, dragThreshold } from "@ui-sdk/core";
 
+/**
+ * How far a press moves, along either axis, in pixels, before it is a drag:
+ * ui-sdk's, so every canvas drag starts at the same point.
+ */
+export { dragThreshold } from "@ui-sdk/core";
+
 const drags = { open: 0 };
 
 /** Whether a canvas drag is in progress, past its threshold. */

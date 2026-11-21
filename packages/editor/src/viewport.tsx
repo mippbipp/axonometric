@@ -73,12 +73,13 @@ const claims = (event: PointerEvent) =>
  * its size on first draw, when `fitKey` changes, when it's resized and when
  * the engineer asks. Other changes, such as a moved structure, keep the
  * current zoom and pan; the next fit uses the new geometry. Drag on empty
- * space to pan (Shift-drag is left to the selection box); the wheel or a
- * pinch zooms; `+`, `-` and `0` zoom in, out and to fit. When `ground`
- * changes to another view's projection, the ground point in the middle stays
- * in the middle, and a grid unit keeps its length on screen. `onTextZoom`
- * hears the zoom the text should be sized for (see `textZoomOf`) whenever it
- * changes step.
+ * space to pan: a press becomes a pan once it moves 3 px along either axis,
+ * as every canvas drag does, and Shift-drag is left to the selection box.
+ * The wheel or a pinch zooms; `+`, `-` and `0` zoom in, out and to fit.
+ * When `ground` changes to another view's projection, the ground point in
+ * the middle stays in the middle, and a grid unit keeps its length on
+ * screen. `onTextZoom` hears the zoom the text should be sized for (see
+ * `textZoomOf`) whenever it changes step.
  */
 export function Viewport({
   children,

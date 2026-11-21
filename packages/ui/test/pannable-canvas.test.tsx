@@ -241,7 +241,7 @@ describe("pannable canvas", () => {
   });
 
   describe("pressing", () => {
-    it("doesn't pan a press that moves under 4 px, and its click lands", () => {
+    it("doesn't pan a press that moves 2 px along each axis, and its click lands", () => {
       expect.hasAssertions();
 
       const onClick = vi.fn<() => void>();
@@ -258,7 +258,24 @@ describe("pannable canvas", () => {
       expect(onClick).toHaveBeenCalledExactlyOnceWith();
     });
 
-    it("pans by the pointer's offset from the press once it moves 4 px", () => {
+    it("pans exactly 3 px for a press that moves 3 px along one axis, and swallows its click", () => {
+      expect.hasAssertions();
+
+      const onClick = vi.fn<() => void>();
+
+      mount({ onClick });
+
+      const before = translation();
+      const target = find("[data-plain]");
+
+      drag(target, [3, 0]);
+      fireEvent.click(target);
+
+      expect(translation()).toStrictEqual({ x: before.x + 3, y: before.y });
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("pans by the pointer's offset from the press", () => {
       expect.hasAssertions();
 
       mount();

@@ -1,3 +1,4 @@
+import { dragThreshold } from "@axonometric/ui/lib/canvas-drag";
 import {
   createViewport,
   definePrimitive,
@@ -51,9 +52,6 @@ interface PannableCanvasState {
   readonly fitScale: number;
   readonly viewport: Camera;
 }
-
-/** How far a press may move before it counts as a drag, in pixels. */
-const panThreshold = 4;
 
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
@@ -166,7 +164,7 @@ const routePresses = ({
     const dx = event.clientX - down.clientX;
     const dy = event.clientY - down.clientY;
 
-    if (Math.hypot(dx, dy) < panThreshold) {
+    if (Math.abs(dx) < dragThreshold && Math.abs(dy) < dragThreshold) {
       return;
     }
 
@@ -424,10 +422,10 @@ interface PannableCanvasProps extends PannableCanvasOptions {
 
 /**
  * An SVG canvas you can pan and zoom, on ui-sdk's viewport. Drag on empty
- * space to pan; a press that moves under 4 px is still a click on what it
- * landed on. A pinch or Ctrl and the wheel zooms at the pointer, the wheel
- * alone zooms too, `+` and `-` zoom from the middle and `0` shows what `fit`
- * returns. The browser's find in page and focus bring what they find into
+ * space to pan; a press that moves under 3 px along both axes, ui-sdk's drag
+ * threshold, is still a click on what it landed on. A pinch or Ctrl and the
+ * wheel zooms at the pointer, the wheel alone zooms too, `+` and `-` zoom
+ * from the middle and `0` shows what `fit` returns. The browser's find in page and focus bring what they find into
  * view. Everything is positioned in canvas units inside the world, whose
  * camera is one transform, so panning renders nothing. Reach the viewport
  * through `ref`, or `usePannableCanvas` from inside.
