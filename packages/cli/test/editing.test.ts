@@ -165,7 +165,7 @@ describe("moving structures", () => {
   );
 
   it.live(
-    "refuses a drop onto another footprint, outlined in red during the drag, and writes nothing",
+    "refuses a drop onto another footprint, outlined in red during the drag and said as a notice after, and writes nothing",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* servedReview;
@@ -205,6 +205,7 @@ describe("moving structures", () => {
 
         yield* Effect.promise(() => page.mouse.up());
         yield* waitGone(page, "[data-drag-outline]");
+        yield* waitFor(page, "[data-edit-notice='refused']");
         yield* Effect.sleep("500 millis");
 
         const savedProposals = yield* proposalsIn(home);

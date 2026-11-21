@@ -40,8 +40,10 @@ function Canvas({
 }) {
   return (
     <PannableCanvas
-      claims={(target) =>
-        target instanceof Element && target.closest("[data-claimed]") !== null
+      claims={(event) =>
+        event.shiftKey ||
+        (event.target instanceof Element &&
+          event.target.closest("[data-claimed]") !== null)
       }
       controls={
         <button data-controls-button="" type="button">
@@ -287,7 +289,7 @@ describe("pannable canvas", () => {
       expect(translation().x - before.x).toBe(40);
     });
 
-    it("doesn't pan with Shift held, with a right button or on a claimed target", () => {
+    it("doesn't pan a press `claims` takes, such as on a target or with Shift, nor a right button", () => {
       expect.hasAssertions();
 
       mount();
@@ -386,7 +388,7 @@ describe("pannable canvas", () => {
       expect(scale()).toBeCloseTo(3, 5);
     });
 
-    it("pinches when the first press is Shift", () => {
+    it("pinches when `claims` took the first press for its key", () => {
       expect.hasAssertions();
 
       mount();

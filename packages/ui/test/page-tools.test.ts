@@ -16,7 +16,7 @@ const install = (
     registerTool: (
       tool: PageTool,
       options: { signal: AbortSignal }
-    ) => Promise<void> | void;
+    ) => Promise<void>;
     unregisterTool?: (name: string) => void;
   }
 ) => {
@@ -47,8 +47,9 @@ describe("registering page tools", () => {
     expect.hasAssertions();
     reset();
 
-    const registerTool =
-      vi.fn<(tool: PageTool, o: { signal: AbortSignal }) => void>();
+    const registerTool = vi.fn<
+      (tool: PageTool, o: { signal: AbortSignal }) => Promise<void>
+    >(async () => {});
 
     install(document, { registerTool });
     registerPageTools([tool("a"), tool("b")]);
@@ -67,8 +68,9 @@ describe("registering page tools", () => {
     expect.hasAssertions();
     reset();
 
-    const registerTool =
-      vi.fn<(tool: PageTool, o: { signal: AbortSignal }) => void>();
+    const registerTool = vi.fn<
+      (tool: PageTool, o: { signal: AbortSignal }) => Promise<void>
+    >(async () => {});
 
     install(navigator, { registerTool });
     registerPageTools([tool("a")]);
@@ -82,8 +84,9 @@ describe("registering page tools", () => {
     expect.hasAssertions();
     reset();
 
-    const registerTool =
-      vi.fn<(tool: PageTool, o: { signal: AbortSignal }) => void>();
+    const registerTool = vi.fn<
+      (tool: PageTool, o: { signal: AbortSignal }) => Promise<void>
+    >(async () => {});
     const unregisterTool = vi.fn<(name: string) => void>();
 
     install(document, { registerTool, unregisterTool });
@@ -102,51 +105,41 @@ describe("registering page tools", () => {
     ]);
   });
 
-  it("swallows a rejected NotAllowedError", async () => {
+  it.each(["AbortError", "InvalidStateError"])(
+    "lets a registration rejected with %s go",
+    async (name) => {
+      expect.hasAssertions();
+      reset();
+
+      const rejected = Promise.reject(new DOMException("refused", name));
+      const report = vi.spyOn(globalThis, "reportError");
+
+      install(document, { registerTool: () => rejected });
+      registerPageTools([tool("a")]);
+      await rejected.catch(() => {});
+
+      expect(report).not.toHaveBeenCalled();
+
+      report.mockRestore();
+    }
+  );
+
+  it("reports a registration rejected for any other reason", async () => {
     expect.hasAssertions();
     reset();
 
-    const rejected = Promise.reject(
-      new DOMException("not allowed", "NotAllowedError")
-    );
+    const error = new TypeError("bad schema");
+    const rejected = Promise.reject(error);
+    const report = vi
+      .spyOn(globalThis, "reportError")
+      .mockImplementation(() => {});
 
     install(document, { registerTool: () => rejected });
-
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
     registerPageTools([tool("a")]);
     await rejected.catch(() => {});
 
-    expect(warn).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledExactlyOnceWith(error);
 
-    warn.mockRestore();
-  });
-
-  it("swallows a synchronous InvalidStateError", () => {
-    expect.hasAssertions();
-    reset();
-
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    install(document, {
-      registerTool: () => {
-        throw new DOMException("duplicate", "InvalidStateError");
-      },
-    });
-
-    expect(() => registerPageTools([tool("a")])).not.toThrow();
-
-    warn.mockRestore();
-  });
-
-  it("works when registerTool returns nothing, as Chromium 147 does", () => {
-    expect.hasAssertions();
-    reset();
-
-    install(document, { registerTool: () => {} });
-
-    expect(() => {
-      registerPageTools([tool("a")])();
-    }).not.toThrow();
+    report.mockRestore();
   });
 });

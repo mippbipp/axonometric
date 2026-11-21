@@ -17,9 +17,11 @@ import { useWalkthrough } from "./walkthrough-context.ts";
  *   another group's zone, the group change is proposed as well. A drop in its
  *   own zone, or in none, is a layout change alone.
  *
- * What the group change would add to `check`'s report, or why it is refused,
- * shows in the warnings panel the drag used. The drop's layout change has
- * landed by then, so a refused group change says so rather than undoing it.
+ * A refused move of a proposed structure says why in the warnings panel the
+ * drag used, and any other refused move shows as a notice. What the group
+ * change would add to `check`'s report, or why it is refused, shows in the
+ * panel too. The drop's layout change has landed by then, so a refused group
+ * change says so rather than undoing it.
  */
 export const useDrop = () => {
   const editing = useEditing();
@@ -63,13 +65,19 @@ export const useDrop = () => {
     /** Drops structure `id` at `next`. Returns why it was refused, or `undefined`. */
     drop: (id: string, next: Placement): string | undefined => {
       if (proposing?.isOpenAdd(id) === true) {
-        return proposing.place(id, next, (outcome) => {
+        const refused = proposing.place(id, next, (outcome) => {
           const why = Option.getOrUndefined(Result.getFailure(outcome));
 
           if (why !== undefined) {
             panel?.show({ problems: [], refusal: why });
           }
         });
+
+        if (refused !== undefined) {
+          panel?.show({ problems: [], refusal: refused });
+        }
+
+        return refused;
       }
 
       const refusal = editing?.place(id, next);

@@ -28,6 +28,11 @@ type GroundCorner = "ne" | "nw" | "se" | "sw";
 /** What started a move or a resize. */
 type GroundInput = "keyboard" | "pointer";
 
+/** The event that asks `keysFor` what to move. */
+type GroundPress =
+  | { readonly event: KeyboardEvent; readonly input: "keyboard" }
+  | { readonly event: PointerEvent; readonly input: "pointer" };
+
 /** What a drag would do now, snapped by the same ui-sdk call that commits. */
 type GroundDraft =
   | {
@@ -56,11 +61,12 @@ interface GroundDragOptions {
   ) => GroundPoint | undefined;
   /**
    * The keys a press or an Alt+arrow on `target` moves, the pressed item
-   * first, or none. For a key, `target` is the focused element.
+   * first, or none. For a key, `target` is the focused element. A press or
+   * a key on something inside another `GroundDrag` is that one's.
    */
   readonly keysFor: (
     target: Element | null,
-    input: GroundInput
+    press: GroundPress
   ) => ReadonlyArray<string> | undefined;
   /** The name a screen reader hears for an item. */
   readonly label?: (key: string) => string | undefined;
@@ -139,6 +145,8 @@ const edgesOf = {
 >;
 
 const handleSelector = '[data-slot="ground-drag-handle"]';
+
+const rootSelector = '[data-slot="ground-drag"]';
 
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLElement &&
@@ -372,20 +380,25 @@ const groundDrag = definePrimitive({
       };
     };
 
+    const owns = (target: Element | null) => {
+      const nearest = target?.closest(rootSelector) ?? null;
+
+      return nearest === null || nearest === context.element("root");
+    };
+
     const press = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
 
-      // A Shift-press picks items or starts a selection box.
       if (
         event.button !== 0 ||
-        event.shiftKey ||
         options().disabled === true ||
-        target?.closest(handleSelector)
+        target?.closest(handleSelector) ||
+        !owns(target)
       ) {
         return;
       }
 
-      const keys = options().keysFor(target, "pointer");
+      const keys = options().keysFor(target, { event, input: "pointer" });
 
       if (keys === undefined || keys.length === 0) {
         return;
@@ -473,6 +486,7 @@ const groundDrag = definePrimitive({
 
     const nudge = (event: KeyboardEvent) => {
       const arrow = arrows.get(event.key);
+      const target = event.target instanceof Element ? event.target : null;
 
       if (
         arrow === undefined ||
@@ -481,15 +495,13 @@ const groundDrag = definePrimitive({
         event.metaKey ||
         event.defaultPrevented ||
         options().disabled === true ||
-        isTyping(event.target)
+        isTyping(event.target) ||
+        !owns(target)
       ) {
         return;
       }
 
-      const keys = options().keysFor(
-        event.target instanceof Element ? event.target : null,
-        "keyboard"
-      );
+      const keys = options().keysFor(target, { event, input: "keyboard" });
 
       if (keys === undefined || keys.length === 0) {
         return;
@@ -662,4 +674,5 @@ export type {
   GroundDragOptions,
   GroundInput,
   GroundPoint,
+  GroundPress,
 };

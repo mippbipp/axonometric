@@ -59,13 +59,14 @@ const reprojected = ({
 /**
  * Presses that start on a structure, a packet, a resize handle, a segment of
  * a hop's route or a zone's title don't pan, so clicks and drags on them
- * still land.
+ * still land. Nor does a Shift press, which draws a selection box.
  */
-const startsOnStructure = (target: EventTarget | null) =>
-  target instanceof Element &&
-  target.closest(
-    "[data-structure], [data-packet], [data-resize-handle], [data-edge-handle], [data-route-segment], [data-zone-title-hit]"
-  ) !== null;
+const claims = (event: PointerEvent) =>
+  event.shiftKey ||
+  (event.target instanceof Element &&
+    event.target.closest(
+      "[data-structure], [data-packet], [data-resize-handle], [data-edge-handle], [data-route-segment], [data-zone-title-hit]"
+    ) !== null);
 
 /**
  * An SVG canvas you can pan and zoom. It shows the camera `fit` returns for
@@ -163,7 +164,7 @@ export function Viewport({
 
   return (
     <PannableCanvas
-      claims={startsOnStructure}
+      claims={claims}
       controls={
         <>
           <WithTooltip

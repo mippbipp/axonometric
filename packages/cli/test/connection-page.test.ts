@@ -574,6 +574,34 @@ describe.each(["iso", "plan"] as const)(
     );
 
     it.live(
+      "keeps Enter and Space with nothing aimed at from the focused structure, which stays outside",
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* served;
+          const mapPage = page.locator('[data-structure="page"]');
+
+          yield* goToChapterPaused(page, "c-all");
+          yield* showViewFitted(page, which);
+          yield* Effect.promise(() => mapPage.focus());
+          yield* press(page, "h");
+          yield* waitFor(page, '[data-connecting="keyboard"]');
+          yield* press(page, "Enter");
+          yield* press(page, " ");
+          yield* Effect.sleep("300 millis");
+
+          yield* assertCount(page, "[data-inside-view]", 0);
+          yield* assertCount(page, "[data-draw-hop]", 0);
+          yield* assertCount(page, '[data-connecting="keyboard"]', 1);
+
+          yield* press(page, "Escape");
+          yield* Effect.promise(() => mapPage.focus());
+          yield* press(page, "Enter");
+          yield* waitFor(page, '[data-inside-view="page"]');
+        }),
+      60_000
+    );
+
+    it.live(
       "opens the label field for a drop far from every handle at zoom 2",
       () =>
         Effect.gen(function* () {

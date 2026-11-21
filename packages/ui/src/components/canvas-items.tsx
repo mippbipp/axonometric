@@ -149,8 +149,9 @@ const canvasItems = definePrimitive({
             api.roving.keydown(event, el);
           }
 
-          // At an edge nothing moves, and the arrow would reach the page's
-          // own arrow keys, which change chapter.
+          // The arrows are the group's even at an edge, where nothing moves.
+          // Left alone there, one would scroll the canvas's pane, which the
+          // viewport turns into a pan.
           if (
             arrows.has(event.key) &&
             !event.altKey &&
@@ -194,7 +195,8 @@ const itemSelector = '[data-slot="canvas-items-item"]';
 /**
  * The pressable items on a `PannableCanvas`, such as a map's structures,
  * sharing one Tab stop. The arrow keys move focus to the nearest item on
- * screen in their direction, Home and End to the first and last. Enter,
+ * screen in their direction, and stay the group's at an edge, so they reach
+ * no listener above it. Home and End go to the first and last. Enter,
  * Space and a click press an item; Enter opens it instead when it has
  * `onOpen`. With `multiple`, Shift and a press toggles a `selectable` item in
  * `selected`, which `onSelectedChange` reports. `pinned` holds the Tab stop

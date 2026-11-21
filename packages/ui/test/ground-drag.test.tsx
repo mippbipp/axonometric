@@ -83,7 +83,7 @@ function Canvas({
           boxes={shown}
           data-testid="root"
           groundAt={(_el, at) => toGround(at)}
-          keysFor={(target, input) => {
+          keysFor={(target, { input }) => {
             const key =
               target?.closest<SVGElement>("[data-item]")?.dataset.item;
 
@@ -503,6 +503,54 @@ describe("ground drag", () => {
       );
       expect(calls.onResize).toHaveBeenCalledTimes(2);
       expect(calls.onMove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("beside another ground drag", () => {
+    it("leaves a key or a press inside the other one to it", () => {
+      expect.hasAssertions();
+
+      const outer = vi.fn<OnMove>(() => true);
+      const inner = vi.fn<OnMove>(() => true);
+      const zone = { z: { height: 1, width: 1, x: 2, y: 2 } };
+
+      render(
+        <svg>
+          <GroundDrag
+            boxes={zone}
+            groundAt={(_el, at) => toGround(at)}
+            keysFor={() => ["z"]}
+            largeStep={2}
+            onMove={outer}
+            step={0.5}
+          >
+            <g aria-label="Outer" data-item="outer" tabIndex={0}>
+              <rect height="10" width="10" />
+            </g>
+          </GroundDrag>
+          <GroundDrag
+            boxes={zone}
+            groundAt={(_el, at) => toGround(at)}
+            keysFor={() => ["z"]}
+            largeStep={2}
+            onMove={inner}
+            step={0.5}
+          >
+            <g aria-label="Inner" data-item="inner" tabIndex={0}>
+              <rect height="10" width="10" />
+            </g>
+          </GroundDrag>
+        </svg>
+      );
+
+      fireEvent.keyDown(item("inner"), { altKey: true, key: "ArrowLeft" });
+      dragBy(item("inner"), { x: 1, y: 0 });
+
+      expect(outer).not.toHaveBeenCalled();
+      expect(vi.mocked(inner).mock.calls).toStrictEqual([
+        [{ z: { x: 1.5, y: 2 } }, { input: "keyboard" }],
+        [{ z: { x: 3, y: 2 } }, { input: "pointer" }],
+      ]);
     });
   });
 

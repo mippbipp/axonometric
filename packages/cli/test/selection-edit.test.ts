@@ -459,7 +459,7 @@ describe("moving a selection", () => {
     },
   ]) {
     it.live(
-      `refuses a drop of ${what} that puts any footprint on another, and writes nothing`,
+      `refuses a drop of ${what} that puts any footprint on another, says why as a nudge does, and writes nothing`,
       () =>
         Effect.gen(function* () {
           const { home, page } = yield* servedAll;
@@ -487,6 +487,7 @@ describe("moving a selection", () => {
 
           yield* Effect.promise(() => page.mouse.up());
           yield* waitGone(page, "[data-drag-outline]");
+          yield* waitFor(page, "[data-edit-notice='refused']");
           yield* Effect.sleep("500 millis");
 
           const savedProposals = yield* proposalsIn(home);

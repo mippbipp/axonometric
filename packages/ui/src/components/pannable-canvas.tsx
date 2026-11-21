@@ -31,8 +31,8 @@ interface CameraDetails {
 }
 
 interface PannableCanvasOptions {
-  /** Presses that start on these belong to the content, so they never pan. */
-  readonly claims: (target: EventTarget | null) => boolean;
+  /** Presses that belong to the content, so they never pan. */
+  readonly claims: (event: PointerEvent) => boolean;
   /** The camera Zoom to fit shows for a canvas of the given size. */
   readonly fit: (size: CanvasSize) => Camera;
   /** The zoom limits, from the scale that Zoom to fit last showed. */
@@ -90,7 +90,7 @@ const routePresses = ({
   root,
   viewport,
 }: {
-  readonly claims: (target: EventTarget | null) => boolean;
+  readonly claims: (event: PointerEvent) => boolean;
   readonly inControls: (target: EventTarget | null) => boolean;
   readonly root: HTMLElement;
   readonly viewport: ViewportApi;
@@ -101,11 +101,7 @@ const routePresses = ({
   const isPrimary = (event: PointerEvent) =>
     event.button === 0 && !inControls(event.target);
 
-  const startsPan = (event: PointerEvent) =>
-    isPrimary(event) &&
-    // A Shift-drag on empty space draws a selection box instead.
-    !event.shiftKey &&
-    !claims(event.target);
+  const startsPan = (event: PointerEvent) => isPrimary(event) && !claims(event);
 
   // A press that won't pan on its own is still half a pinch.
   const firstPress = (event: PointerEvent): Press => {
@@ -264,7 +260,7 @@ const pannableCanvas = definePrimitive({
     };
 
     return {
-      claims: (target: EventTarget | null) => context.options().claims(target),
+      claims: (event: PointerEvent) => context.options().claims(event),
       fit,
       fitScale: () => store.get().fitScale,
       inControls: (target: EventTarget | null) =>
@@ -309,7 +305,7 @@ const pannableCanvas = definePrimitive({
     root: slot({
       bind: (el, { api }) => {
         const unroute = routePresses({
-          claims: (target) => api.claims(target),
+          claims: api.claims,
           inControls: api.inControls,
           root: el,
           viewport: api.viewport,

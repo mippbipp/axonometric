@@ -1,8 +1,4 @@
-import {
-  groundProjections,
-  nudgeMoves,
-  samePosition,
-} from "@axonometric/contracts";
+import { groundProjections, samePosition } from "@axonometric/contracts";
 import type {
   GridPoint,
   LayoutChange,
@@ -18,7 +14,7 @@ import type {
   GroundBox,
   GroundCorner,
   GroundDraft,
-  GroundInput,
+  GroundPress,
 } from "@axonometric/ui/components/ground-drag";
 import { Array as Arr } from "effect";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -28,7 +24,14 @@ import { useDragPreview } from "./drag-preview-context.ts";
 import { shiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
-import { boxOf, largeStep, movesTo, step } from "./ground-moves.ts";
+import {
+  boxOf,
+  largeStep,
+  movesTo,
+  picks,
+  saveMove,
+  step,
+} from "./ground-moves.ts";
 import { useDropOutlines } from "./outlines-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
@@ -266,9 +269,10 @@ export function LayoutEditor({
     };
   };
 
-  const keysFor = (target: Element | null, input: GroundInput) => {
-    // A zone's title nudges its group, which `GroupEditor` handles.
-    if ((target?.closest("[data-zone-title-hit]") ?? null) !== null) {
+  const keysFor = (target: Element | null, press: GroundPress) => {
+    const { input } = press;
+
+    if (picks(press)) {
       return [];
     }
 
@@ -293,62 +297,8 @@ export function LayoutEditor({
       : [id];
   };
 
-  const onMove = (
-    to: Readonly<Record<string, GridPoint>>,
-    { input }: { readonly input: GroundInput }
-  ) => {
-    const ids = Object.keys(to);
-    const [id] = ids;
-
-    if (editing === null || id === undefined) {
-      return false;
-    }
-
-    const start = placements[id];
-    const at = to[id];
-
-    if (start === undefined || at === undefined) {
-      return false;
-    }
-
-    // A nudge is planned on the latest list, so quick presses add up, and
-    // `arrange` shows a refusal as a notice.
-    if (input === "keyboard") {
-      const delta = { x: at.x - start.x, y: at.y - start.y };
-
-      return (
-        editing.arrange((latest) =>
-          nudgeMoves({ delta, ids, placements: latest })
-        ) === undefined
-      );
-    }
-
-    // The red outline already said why a drop is refused, so it writes
-    // nothing.
-    const next = { ...start, ...at };
-
-    if (moveRefusal(to, id, next) !== undefined) {
-      return false;
-    }
-
-    return ids.length > 1
-      ? editing.arrange(() => movesTo(to)) === undefined
-      : dropping.drop(id, next) === undefined;
-  };
-
-  const onResize = (
-    id: string,
-    box: GroundBox,
-    { input }: { readonly input: GroundInput }
-  ) => {
-    const next = placementOf(box);
-
-    if (input === "pointer" && dropping.refusalOf(id, next) !== undefined) {
-      return false;
-    }
-
-    return dropping.drop(id, next) === undefined;
-  };
+  const onResize = (id: string, box: GroundBox) =>
+    dropping.drop(id, placementOf(box)) === undefined;
 
   const handlesAt =
     selected === null || multiSelection.size > 0
@@ -374,7 +324,15 @@ export function LayoutEditor({
       onDraft={(draft) => {
         setDrag(draft === null ? undefined : dragOf(draft));
       }}
-      onMove={onMove}
+      onMove={(to, { input }) =>
+        saveMove({
+          dropOne: dropping.drop,
+          editing,
+          input,
+          placements,
+          to,
+        })
+      }
       onResize={onResize}
       ref={root}
       step={step}

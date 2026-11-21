@@ -187,18 +187,6 @@ const connectPorts = definePrimitive({
           return;
         }
 
-        // Enter with nothing picked would reach the focused structure, which
-        // goes inside it.
-        if (
-          (event.key === "Enter" || event.key === " ") &&
-          current.to === null
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-
-          return;
-        }
-
         if (connect.keydown(event) && event.key !== "Tab") {
           event.stopPropagation();
         }

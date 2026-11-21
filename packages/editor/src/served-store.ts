@@ -227,7 +227,8 @@ export interface ServedStore {
   readonly loadRevision: (n: number) => Effect.Effect<LoadedRevision>;
   /**
    * Puts structure `id` at `next` as pending changes, shown at once and
-   * saved to `proposals.json`. Returns why it was refused, or `undefined`.
+   * saved to `proposals.json`. A refusal also shows as a notice. Returns why
+   * it was refused, or `undefined`.
    */
   readonly place: (id: string, next: Placement) => string | undefined;
   /** Redoes the edit that `undo` took back. */

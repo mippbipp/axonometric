@@ -136,8 +136,10 @@ export default defineConfig({
         "packages/ui/src/components/canvas-items.tsx",
         "packages/ui/src/components/connect-ports.tsx",
         "packages/ui/src/components/ground-drag.tsx",
+        "packages/ui/src/components/ground-gesture.tsx",
         "packages/ui/src/components/pannable-canvas.tsx",
         "packages/ui/test/connect-ports.test.tsx",
+        "packages/ui/test/ground-gesture.test.tsx",
         "packages/ui/test/pannable-canvas.test.tsx",
       ],
       rules: {

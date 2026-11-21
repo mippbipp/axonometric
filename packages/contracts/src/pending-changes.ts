@@ -893,7 +893,7 @@ const planOf = (session: PendingSession, input: PendingEdit): EditPlan =>
     }),
     Place: ({ next, structure }) => ({
       edit: takingOver(session, placing(session, structure, next)),
-      showsRefusal: false,
+      showsRefusal: true,
       skipUnchanged: false,
     }),
     Reroute: ({ hop, points }) => ({
