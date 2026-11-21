@@ -800,6 +800,192 @@ describe("moving a group by its zone title", () => {
   }
 });
 
+describe("moving a group from the keyboard", () => {
+  const title = '[data-zone-title-hit="loop"]';
+
+  const focusTitle = (page: Page) =>
+    Effect.promise(() => page.locator(title).focus());
+
+  for (const view of ["plan", "iso"] as const) {
+    it.live(
+      `the zone title is a named button, and Alt and an arrow on it move every member half a unit as one change, in ${view} view`,
+      () =>
+        Effect.gen(function* () {
+          const { errors, home, page } = yield* servedReview;
+
+          yield* showView(page, view);
+          yield* waitFor(page, title);
+
+          const name = yield* attributeOf(page, title, "aria-label");
+
+          assert.strictEqual(name, "Group The loop");
+          const role = yield* attributeOf(page, title, "role");
+
+          assert.strictEqual(role, "button");
+
+          yield* focusTitle(page);
+          yield* press(page, "Alt+ArrowRight");
+
+          const saved = yield* waitForRevision(home, 1);
+          const [change] = saved.layout;
+
+          assert.strictEqual(saved.layout.length, 1);
+          assert.strictEqual(change?.kind, "move");
+
+          const moved: ReadonlyArray<StructureMove> =
+            change?.kind === "move" ? change.moves : [];
+
+          assert.deepStrictEqual(
+            Arr.sort(
+              Arr.map(moved, ({ target }) => target.id),
+              Order.String
+            ),
+            loopMembers
+          );
+          assert.deepStrictEqual(
+            Arr.sort(
+              Arr.map(moved, ({ position }) => position.x),
+              Order.Number
+            ),
+            [4.5, 8.5, 8.5, 12.5]
+          );
+
+          // Shift moves two units, and the arrows only ever add to the last.
+          yield* press(page, "Shift+Alt+ArrowDown");
+
+          const second = yield* waitForRevision(home, 2);
+          const [, next] = second.layout;
+
+          assert.deepStrictEqual(
+            Arr.sort(
+              Arr.map(
+                next?.kind === "move" ? next.moves : [],
+                ({ position }) => position.y
+              ),
+              Order.Number
+            ),
+            [2, 2, 8, 8]
+          );
+
+          // Each press is one undo step.
+          yield* press(page, "Control+z");
+          yield* waitForRevision(home, 3);
+          yield* press(page, "Control+z");
+
+          const undone = yield* waitForRevision(home, 4);
+
+          assert.deepStrictEqual(undone.layout, []);
+          assert.deepStrictEqual(errors, []);
+        }),
+      90_000
+    );
+  }
+
+  it.live(
+    "Enter on the title pins the group's panel, and Escape puts a drag back with nothing written",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* showView(page, "plan");
+        yield* focusTitle(page);
+        yield* press(page, "Enter");
+        yield* waitFor(page, '[data-group-panel="loop"]');
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, title);
+
+        yield* pressAndMove(
+          page,
+          from,
+          screenDelta("plan", unit, { x: 0, y: 2 })
+        );
+        yield* waitFor(page, "[data-drag-outline]");
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-drag-outline]");
+        yield* assertCount(page, "[data-drag-shifted]", 0);
+        yield* Effect.promise(() => page.mouse.up());
+        yield* Effect.sleep("500 millis");
+
+        const saved = yield* proposalsIn(home);
+
+        assert.isTrue(Option.isNone(saved));
+      }),
+    90_000
+  );
+
+  it.live(
+    "a drag in a chapter that hides some of the group still moves every member",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* goToChapter(page, "c-page");
+        yield* showView(page, "plan");
+        yield* waitFor(page, title);
+
+        const shown = yield* count(
+          page,
+          '[data-structure="server"], [data-structure="proposals"], [data-structure="pull-request"]'
+        );
+
+        assert.strictEqual(shown, 0, "the chapter should hide three members");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, title);
+
+        yield* dragBy(page, from, screenDelta("plan", unit, { x: 0, y: 2 }));
+
+        const saved = yield* waitForRevision(home, 1);
+        const [change] = saved.layout;
+
+        assert.deepStrictEqual(
+          Arr.sort(
+            Arr.map(
+              change?.kind === "move" ? change.moves : [],
+              ({ target }) => target.id
+            ),
+            Order.String
+          ),
+          loopMembers
+        );
+      }),
+    90_000
+  );
+
+  it.live(
+    "a nudge on the title moves the group, not a multi-selection beside it",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* showView(page, "plan");
+        yield* Effect.promise(() =>
+          page
+            .locator('[data-structure="engineer"]')
+            .click({ modifiers: ["Shift"] })
+        );
+        yield* focusTitle(page);
+        yield* press(page, "Alt+ArrowDown");
+
+        const saved = yield* waitForRevision(home, 1);
+        const [change] = saved.layout;
+
+        assert.deepStrictEqual(
+          Arr.sort(
+            Arr.map(
+              change?.kind === "move" ? change.moves : [],
+              ({ target }) => target.id
+            ),
+            Order.String
+          ),
+          loopMembers
+        );
+      }),
+    90_000
+  );
+});
+
 describe("text while dragging", () => {
   // The proposals store has hops at both ends whose labels the last chapter
   // draws, so they would lie on the tags and zone around it.

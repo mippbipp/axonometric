@@ -28,20 +28,12 @@ import { useDragPreview } from "./drag-preview-context.ts";
 import { shiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
+import { boxOf, largeStep, movesTo, step } from "./ground-moves.ts";
 import { useDropOutlines } from "./outlines-context.ts";
 import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useDrop } from "./use-drop.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
-
-/** The grid drops land on, and how far an arrow moves, in grid units. */
-const step = 0.5;
-
-/**
- * How far Shift with the arrows moves: four steps. Ten, ui-sdk's default,
- * would jump past most neighbours on these maps.
- */
-const largeStep = 2;
 
 /** The smallest footprint side, in grid units. */
 const minSide = 0.5;
@@ -66,13 +58,6 @@ const cornerPoint = (
 ): GridPoint => ({
   x: isEast(corner) ? placement.x + placement.w : placement.x,
   y: isSouth(corner) ? placement.y + placement.d : placement.y,
-});
-
-const boxOf = ({ d, w, x, y }: Placement): GroundBox => ({
-  height: d,
-  width: w,
-  x,
-  y,
 });
 
 const placementOf = ({ height, width, x, y }: GroundBox): Placement => ({
@@ -100,15 +85,6 @@ interface Drag {
   readonly resizing: boolean;
   readonly start: Placement;
 }
-
-/** The moves that put each structure in `to` there. */
-const movesTo = (
-  to: Readonly<Record<string, GridPoint>>
-): ReadonlyArray<StructureMove> =>
-  Arr.map(Object.entries(to), ([id, position]) => ({
-    position,
-    target: { id, kind: "structure" as const },
-  }));
 
 /** The moves as the one move change a drop would make, or none. */
 const movesChange = (
@@ -291,6 +267,11 @@ export function LayoutEditor({
   };
 
   const keysFor = (target: Element | null, input: GroundInput) => {
+    // A zone's title nudges its group, which `GroupEditor` handles.
+    if ((target?.closest("[data-zone-title-hit]") ?? null) !== null) {
+      return [];
+    }
+
     if (input === "keyboard" && multiSelection.size > 0) {
       return [...multiSelection];
     }
