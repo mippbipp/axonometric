@@ -4,9 +4,11 @@ import type { Page } from "playwright";
 
 import {
   boxesOf,
-  literal,
+  cameraChangedWithin,
+  cameraOf,
   scaleExpression,
   scaleOf,
+  waitForCameraChange,
   waitForScale,
 } from "./browser.ts";
 import { shapesMap } from "./fixtures.ts";
@@ -17,22 +19,6 @@ const builtPage = Effect.gen(function* () {
 
   return yield* buildAndOpen(shapesMapFiles, "shapes");
 });
-
-const transformExpression =
-  'document.querySelector("[data-viewport]").getAttribute("transform")';
-
-const transformOf = (page: Page) =>
-  Effect.promise(() => page.evaluate<string>(transformExpression));
-
-/** Waits until the pan or zoom differs from `previous`. */
-const waitForMove = (page: Page, previous: string) =>
-  Effect.promise(() =>
-    page.waitForFunction(
-      `${transformExpression} !== ${literal(previous)}`,
-      undefined,
-      { timeout: 5000 }
-    )
-  );
 
 /** The box holding every structure and name tag on screen. */
 const drawingOf = Effect.fnUntraced(function* (page: Page) {
@@ -170,21 +156,12 @@ describe("the viewport", () => {
             let previous = yield* scaleOf(page);
 
             for (let turn = 0; turn < 10; turn += 1) {
-              const moved = yield* transformOf(page);
+              const moved = yield* cameraOf(page);
 
               yield* wheelAtCentre(page, deltaY);
 
               // Each turn either moves the view or, at the limit, does not.
-              yield* Effect.promise(() =>
-                page
-                  .waitForFunction(
-                    `${transformExpression} !== ${literal(moved)}`,
-                    undefined,
-                    { timeout: 1000 }
-                  )
-                  .then(() => true)
-                  .catch(() => false)
-              );
+              yield* cameraChangedWithin(page, moved, 1000);
 
               const now = yield* scaleOf(page);
 
@@ -218,7 +195,7 @@ describe("the viewport", () => {
         const { page } = yield* builtPage;
         const svg = yield* canvasOf(page);
         const before = yield* drawingOf(page);
-        const transform = yield* transformOf(page);
+        const camera = yield* cameraOf(page);
 
         // The top-right corner of the canvas is empty in the fixture.
         yield* Effect.promise(() =>
@@ -229,7 +206,7 @@ describe("the viewport", () => {
           page.mouse.move(svg.x + svg.width - 110, svg.y + 60, { steps: 5 })
         );
         yield* Effect.promise(() => page.mouse.up());
-        yield* waitForMove(page, transform);
+        yield* waitForCameraChange(page, camera);
 
         const after = yield* drawingOf(page);
 
@@ -280,7 +257,7 @@ describe("the viewport", () => {
         const { page } = yield* builtPage;
         const svg = yield* canvasOf(page);
         const before = yield* drawingOf(page);
-        const transform = yield* transformOf(page);
+        const camera = yield* cameraOf(page);
 
         yield* recordClicks(page);
 
@@ -314,7 +291,7 @@ describe("the viewport", () => {
         }
 
         yield* touch("touchEnd", right - 100, 60);
-        yield* waitForMove(page, transform);
+        yield* waitForCameraChange(page, camera);
 
         const after = yield* drawingOf(page);
         const [box] = yield* boxesOf(page, '[data-structure="box"]');
@@ -341,7 +318,7 @@ describe("the viewport", () => {
       Effect.gen(function* () {
         const { page } = yield* builtPage;
         const svg = yield* canvasOf(page);
-        const transform = yield* transformOf(page);
+        const camera = yield* cameraOf(page);
 
         yield* recordClicks(page);
         yield* Effect.promise(() =>
@@ -352,7 +329,7 @@ describe("the viewport", () => {
           page.mouse.move(svg.x + svg.width - 110, svg.y + 60, { steps: 5 })
         );
         yield* Effect.promise(() => page.mouse.up());
-        yield* waitForMove(page, transform);
+        yield* waitForCameraChange(page, camera);
 
         const [box] = yield* boxesOf(page, '[data-structure="box"]');
 

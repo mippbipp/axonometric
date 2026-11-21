@@ -8,6 +8,7 @@ import {
   assertAttribute,
   assertCount,
   attributeOf,
+  cameraOf,
   centreOf,
   goToChapter,
   openPage,
@@ -15,6 +16,7 @@ import {
   showView,
   unitOnScreen,
   waitFor,
+  waitForCameraChange,
   waitGone,
 } from "./browser.ts";
 import type { View } from "./browser.ts";
@@ -74,27 +76,12 @@ const groundToPage = Effect.fnUntraced(function* (
   view: View,
   ground: Point
 ) {
-  const [left, top, tx, ty, scale] = yield* Effect.promise(() =>
-    page.evaluate<Array<number>>(`(() => {
-      const svg = document.querySelector("svg[data-scale]");
-      const rect = svg.getBoundingClientRect();
-      const [tx, ty, scale] = svg
-        .querySelector("[data-viewport]")
-        .getAttribute("transform")
-        .match(/-?\\d+(?:\\.\\d+)?(?:e-?\\d+)?/g)
-        .map(Number);
-
-      return [rect.left, rect.top, tx, ty, scale];
-    })()`)
-  );
+  const [scale, x, y] = yield* cameraOf(page);
 
   const sx = view === "plan" ? ground.x * 60 : ((ground.x - ground.y) * 72) / 2;
   const sy = view === "plan" ? ground.y * 60 : ((ground.x + ground.y) * 36) / 2;
 
-  return {
-    x: (left ?? 0) + (tx ?? 0) + (scale ?? 1) * sx,
-    y: (top ?? 0) + (ty ?? 0) + (scale ?? 1) * sy,
-  };
+  return { x: x + scale * sx, y: y + scale * sy };
 });
 
 /** Holds Shift and drags a box between two ground points on empty canvas. */
@@ -235,17 +222,16 @@ describe("selecting several structures", () => {
       yield* showView(page, "plan");
 
       const start = yield* groundToPage(page, "plan", { x: -0.3, y: 2.6 });
-      const before = yield* attributeOf(page, "[data-viewport]", "transform");
+      const before = yield* cameraOf(page);
 
       yield* dragBy(page, start, { x: 30, y: 20 });
+      yield* waitForCameraChange(page, before);
 
-      const transformAfterDrag = yield* attributeOf(
-        page,
-        "[data-viewport]",
-        "transform"
-      );
+      const [scale, x, y] = yield* cameraOf(page);
 
-      assert.notStrictEqual(transformAfterDrag, before);
+      assert.strictEqual(scale, before[0]);
+      assert.closeTo(x - before[1], 30, 1);
+      assert.closeTo(y - before[2], 20, 1);
       const selectedAfterPan = yield* multiSelectedIds(page);
       assert.deepStrictEqual(selectedAfterPan, []);
     })
