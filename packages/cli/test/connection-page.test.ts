@@ -6,6 +6,7 @@ import {
   Effect,
   FileSystem,
   Option,
+  Order,
   Path,
   pipe,
   Schema,
@@ -16,19 +17,33 @@ import type { Page } from "playwright";
 import {
   assertCount,
   attributeOf,
+  attributesOf,
+  callTool,
+  cameraOf,
   centreOf,
   click,
   count,
   goToChapterPaused,
+  inPage,
   literal,
   pointOnHop,
+  press,
+  scaleOf,
   showViewFitted,
+  textOf,
   waitFor,
   waitForAttributes,
+  waitForScale,
   waitTimeout,
   choose,
 } from "./browser.ts";
-import { openReviewMap, proposalsOrEmpty, runCli, homeAt } from "./harness.ts";
+import {
+  openReviewMap,
+  proposalsOrEmpty,
+  runCli,
+  homeAt,
+  waitForRevision,
+} from "./harness.ts";
 import { post } from "./revisions.ts";
 
 // Seam 2: hop and flow proposals in a page that a real serve serves. The
@@ -329,6 +344,71 @@ describe.each(["iso", "plan"] as const)(
   }
 );
 
+const Ids = Schema.Array(Schema.String);
+
+const SpotlightRead = Schema.Struct({
+  spotlight: Schema.NullOr(Schema.Struct({ hops: Ids, structures: Ids })),
+});
+
+describe("a hop proposal outside the chapter's spotlight", () => {
+  it.live(
+    "is bright on the map and in read_view's spotlight",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        // The chapter plays h-note, h-save and h-store, not engineer → server.
+        yield* goToChapterPaused(page, "c-save");
+        yield* drawHop(page, "asks for a map");
+
+        const [proposed] = yield* attributesOf(
+          page,
+          '[data-hop][data-hop-state="proposed"]',
+          "data-hop"
+        );
+
+        assert.isDefined(proposed);
+
+        // Nothing pinned or hovered, so the chapter's spotlight shows.
+        yield* Effect.promise(() => page.mouse.move(5, 5));
+        yield* Effect.promise(() =>
+          page.evaluate("document.activeElement?.blur()")
+        );
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `document.querySelector('[data-structure][data-selected="true"], [data-hop-selected]') === null`,
+            undefined,
+            waitTimeout
+          )
+        );
+
+        const bright = yield* attributesOf(
+          page,
+          '[data-hop]:not([data-faded="true"])',
+          "data-hop"
+        );
+
+        assert.include(bright, proposed, "the page draws it bright");
+
+        const read = yield* callTool(page, "read_view", SpotlightRead);
+
+        assert.include(
+          read.spotlight?.hops ?? [],
+          proposed ?? "",
+          "read_view lists it in the spotlight"
+        );
+        assert.deepStrictEqual(
+          read.spotlight?.hops,
+          Arr.sort(Arr.dedupe(bright), Order.String),
+          "read_view's spotlight is what the page draws bright"
+        );
+      }),
+    60_000
+  );
+});
+
 describe("ending a drag without a target", () => {
   it.live(
     "creates nothing when the drop is on empty space, or when Escape ends the drag",
@@ -461,6 +541,331 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
         // Off every structure, so only the chapter's spotlight is left.
         yield* Effect.promise(() => page.mouse.move(700, 120));
         yield* faded("pull-request", "true");
+      }),
+    60_000
+  );
+});
+
+const settledCamera = Effect.fnUntraced(function* (page: Page) {
+  let last = yield* cameraOf(page);
+
+  for (let tries = 0; tries < 40; tries += 1) {
+    yield* Effect.sleep("150 millis");
+
+    const next = yield* cameraOf(page);
+    const held = String(next) === String(last);
+
+    if (held) {
+      return next;
+    }
+
+    last = next;
+  }
+
+  return yield* Effect.die(new Error("the camera never held still"));
+});
+
+const waitForAlert = (page: Page, text: string) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `document.querySelector('[data-ui-sdk-announcer="assertive"]')?.textContent === ${literal(text)}`,
+      undefined,
+      waitTimeout
+    )
+  );
+
+const names = new Map([
+  ["engineer", "Engineer"],
+  ["page", "Map page"],
+  ["proposals", "Proposals"],
+  ["pull-request", "Pull request"],
+  ["server", "Save server"],
+  ["upstream", "Upstream atlas"],
+]);
+
+describe.each(["iso", "plan"] as const)(
+  "drawing a hop from the keyboard in the %s view",
+  (which) => {
+    it.live(
+      "starts on h, aims with the arrows, opens the label field on Enter, and says each step",
+      () =>
+        Effect.gen(function* () {
+          const { home, page } = yield* served;
+          const engineer = page.locator('[data-structure="engineer"]');
+
+          yield* goToChapterPaused(page, "c-all");
+          yield* showViewFitted(page, which);
+          yield* Effect.promise(() => engineer.focus());
+          yield* press(page, "h");
+          yield* waitForAlert(
+            page,
+            "Drawing a hop from Engineer. Arrows pick where it goes, Enter names it, Escape cancels."
+          );
+          yield* press(page, "Escape");
+          yield* waitForAlert(page, "Hop canceled.");
+          yield* assertCount(page, "[data-hop-preview]", 0);
+          yield* assertCount(page, "[data-draw-hop]", 0);
+
+          yield* Effect.promise(() => engineer.focus());
+          yield* press(page, "h");
+          yield* press(page, "ArrowRight");
+          yield* Effect.promise(() =>
+            page.waitForFunction(
+              `(document.querySelector("[data-hop-preview]")?.getAttribute("data-over") ?? "") !== ""`,
+              undefined,
+              waitTimeout
+            )
+          );
+
+          const over = yield* attributeOf(
+            page,
+            "[data-hop-preview]",
+            "data-over"
+          );
+          const name = names.get(over ?? "");
+
+          assert.isDefined(name, `aims at a structure: ${over}`);
+          assert.notStrictEqual(over, "engineer");
+
+          yield* press(page, "Enter");
+          yield* waitFor(page, "[data-draw-hop]");
+          yield* waitForAlert(
+            page,
+            `Hop from Engineer to ${name}. Name it to propose it.`
+          );
+
+          const drawTo = yield* textOf(page, "[data-draw-to]");
+
+          assert.strictEqual(drawTo, name);
+          assert.deepStrictEqual(
+            (yield* proposalsOrEmpty(home)).hops ?? [],
+            []
+          );
+        }),
+      60_000
+    );
+
+    it.live(
+      "keeps Enter and Space with nothing aimed at from the focused structure, which stays outside",
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* served;
+          const mapPage = page.locator('[data-structure="page"]');
+
+          yield* goToChapterPaused(page, "c-all");
+          yield* showViewFitted(page, which);
+          yield* Effect.promise(() => mapPage.focus());
+          yield* press(page, "h");
+          yield* waitFor(page, '[data-connecting="keyboard"]');
+          yield* press(page, "Enter");
+          yield* press(page, " ");
+          yield* Effect.sleep("300 millis");
+
+          yield* assertCount(page, "[data-inside-view]", 0);
+          yield* assertCount(page, "[data-draw-hop]", 0);
+          yield* assertCount(page, '[data-connecting="keyboard"]', 1);
+
+          yield* press(page, "Escape");
+          yield* Effect.promise(() => mapPage.focus());
+          yield* press(page, "Enter");
+          yield* waitFor(page, '[data-inside-view="page"]');
+        }),
+      60_000
+    );
+
+    it.live(
+      "opens the label field for a drop far from every handle at zoom 2",
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* served;
+
+          yield* goToChapterPaused(page, "c-all");
+          yield* showViewFitted(page, which);
+
+          const groundOnScreen = (x: number, y: number) =>
+            inPage<{ x: number; y: number }>(
+              page,
+              `(() => {
+                const plan = ${literal(which)} === "plan";
+                const sx = plan ? ${x} * 60 : (${x} - ${y}) * 36;
+                const sy = plan ? ${y} * 60 : (${x} + ${y}) * 18;
+                const m = document.querySelector('[data-slot="connect-ports"]').getScreenCTM();
+                const at = new DOMPoint(sx, sy).matrixTransform(m);
+                return { x: at.x, y: at.y };
+              })()`
+            );
+
+          const anchor = yield* groundOnScreen(3, 1);
+          const scale = yield* scaleOf(page);
+
+          yield* Effect.promise(() => page.mouse.move(anchor.x, anchor.y));
+          yield* Effect.promise(() =>
+            page.mouse.wheel(0, -Math.log(2 / scale) / 0.0015)
+          );
+          yield* waitForScale(page, "> 1.95");
+          yield* select(page, "engineer");
+          yield* settledCamera(page);
+
+          const middle = yield* groundOnScreen(5, 1);
+          const nearest = yield* inPage<number>(
+            page,
+            `Math.min(...[...document.querySelectorAll('[data-slot="connect-ports-port"]')].map((circle) => {
+              const box = circle.getBoundingClientRect();
+              return Math.hypot(box.x + box.width / 2 - ${middle.x}, box.y + box.height / 2 - ${middle.y});
+            }))`
+          );
+
+          assert.isAbove(
+            nearest,
+            28,
+            "the drop is outside ui-sdk's snap radius of every port"
+          );
+
+          const handle = yield* centreOf(page, '[data-edge-owner="engineer"]');
+
+          yield* Effect.promise(() => page.mouse.move(handle.x, handle.y));
+          yield* Effect.promise(() => page.mouse.down());
+          yield* Effect.promise(() =>
+            page.mouse.move(middle.x, middle.y, { steps: 8 })
+          );
+          yield* waitForAttributes(page, "[data-hop-preview]", {
+            "data-over": "page",
+          });
+          yield* Effect.promise(() => page.mouse.up());
+          yield* waitFor(page, "[data-draw-hop]");
+
+          const drawTo = yield* textOf(page, "[data-draw-to]");
+
+          assert.strictEqual(drawTo, "Map page");
+        }),
+      60_000
+    );
+  }
+);
+
+describe("a drawn hop and undo", () => {
+  const undoButton = "[data-control='undo']";
+
+  /**
+   * Waits for `hops` named hops on disk and on the map, then checks Undo
+   * stays disabled and Ctrl+Z writes nothing: the file stays at revision
+   * `hops`, one write per hop.
+   */
+  const undoLeavesHops = Effect.fnUntraced(function* (
+    page: Page,
+    home: string,
+    hops: number
+  ) {
+    yield* waitForRevision(home, hops);
+    yield* Effect.promise(() =>
+      page.waitForFunction(
+        `document.querySelectorAll('[data-hop][data-hop-state="proposed"]').length === ${hops}`,
+        undefined,
+        waitTimeout
+      )
+    );
+
+    const disabled = yield* Effect.promise(() =>
+      page.locator(undoButton).isDisabled()
+    );
+
+    assert.isTrue(disabled, "naming a hop is not an undo step");
+
+    yield* press(page, "Control+z");
+    yield* Effect.sleep("500 millis");
+
+    const saved = yield* waitForRevision(home, hops);
+
+    assert.strictEqual(saved.hops?.length, hops);
+    yield* assertCount(page, '[data-hop][data-hop-state="proposed"]', hops);
+  });
+
+  it.live(
+    "keeps a hop named after a pointer or keyboard draw as a pending proposal that undo leaves alone",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+        yield* drawHop(page, "asks for a map");
+        yield* undoLeavesHops(page, home, 1);
+
+        yield* press(page, "Escape");
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="page"]').focus()
+        );
+        yield* press(page, "h");
+        yield* press(page, "ArrowRight");
+        yield* press(page, "Enter");
+        yield* waitFor(page, "[data-draw-hop]");
+        yield* Effect.promise(() =>
+          page.locator('[data-draw="label"]').fill("reads")
+        );
+        yield* click(page, '[data-draw="submit"]');
+        yield* undoLeavesHops(page, home, 2);
+
+        yield* press(page, "Escape");
+
+        const from = yield* centreOf(page, '[data-structure="upstream"]');
+
+        yield* Effect.promise(() => page.mouse.move(from.x, from.y));
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() =>
+          page.mouse.move(from.x + 80, from.y + 40, { steps: 10 })
+        );
+        yield* Effect.promise(() => page.mouse.up());
+
+        const moved = yield* waitForRevision(home, 3);
+
+        assert.strictEqual(moved.layout.length, 1);
+
+        yield* click(page, undoButton);
+
+        const undone = yield* waitForRevision(home, 4);
+
+        assert.deepStrictEqual(undone.layout, []);
+        assert.strictEqual(
+          undone.hops?.length,
+          2,
+          "undo takes back the move only"
+        );
+      }),
+    90_000
+  );
+});
+
+describe("a structure's description", () => {
+  it.live(
+    "lists its hops whose other end is shown, and the key that draws one",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+
+        const server = page.locator('[data-structure="server"]');
+        const description = yield* Effect.promise(() =>
+          server.getAttribute("aria-description")
+        );
+        const shortcut = yield* Effect.promise(() =>
+          server.getAttribute("aria-keyshortcuts")
+        );
+
+        assert.strictEqual(
+          description,
+          'Hops to Proposals, "write batch". Hops from Map page, "POST /proposals".'
+        );
+        assert.strictEqual(shortcut, "H");
+
+        yield* goToChapterPaused(page, "c-page");
+
+        const early = yield* Effect.promise(() =>
+          page
+            .locator('[data-structure="page"]')
+            .getAttribute("aria-description")
+        );
+
+        assert.strictEqual(early, 'Hops from Engineer, "pins a note".');
       }),
     60_000
   );

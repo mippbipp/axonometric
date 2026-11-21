@@ -1,8 +1,10 @@
 import { chapterSpotlightOf } from "@axonometric/contracts";
-import type { SpotlightTarget } from "@axonometric/contracts";
+import type { Spotlight, SpotlightTarget } from "@axonometric/contracts";
+import { Array as Arr } from "effect";
 import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { flowChoiceKey } from "./chapters.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
 import { PlaybackContext } from "./playback.ts";
 import { SelectionContext } from "./selection-context.ts";
@@ -83,6 +85,19 @@ export function SpotlightProvider({
     [state.data, stop, flowChoice, hovered, pinned, drawing]
   );
 
+  const [agent, setAgent] = useState<Spotlight | null>(null);
+  const choiceKey = flowChoiceKey(flowChoice);
+
+  // Cleared while rendering, not in an effect, so the stale spotlight is
+  // never drawn.
+  const watched = [hovered, pinned, drawing, stop.id, choiceKey] as const;
+  const [before, setBefore] = useState(watched);
+
+  if (Arr.some(watched, (value, i) => value !== before[i])) {
+    setBefore(watched);
+    setAgent(null);
+  }
+
   const latest = useRef<SpotlightTargets>({ hovered, pinned });
 
   useLayoutEffect(() => {
@@ -90,14 +105,15 @@ export function SpotlightProvider({
   });
 
   const shown = useMemo(
-    (): SpotlightState => ({ hoveredHop, spotlight }),
-    [spotlight, hoveredHop]
+    (): SpotlightState => ({ hoveredHop, spotlight: agent ?? spotlight }),
+    [agent, spotlight, hoveredHop]
   );
 
   const actions = useMemo(
     (): SpotlightActions => ({
       current: () => latest.current,
       hoverHop: setHoveredHop,
+      lightUp: setAgent,
     }),
     []
   );

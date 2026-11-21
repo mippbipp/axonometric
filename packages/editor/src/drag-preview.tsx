@@ -140,6 +140,7 @@ export function DragPreviewProvider({
 }) {
   const [drag, setDrag] = useState<DragPreviewInput | undefined>();
   const [checked, setChecked] = useState(unchecked);
+
   // The step the panel waits on, so an answer to an older one is dropped.
   const [waitingOn, setWaitingOn] = useState(0);
   const { stop } = useWalkthrough();

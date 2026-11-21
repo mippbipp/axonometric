@@ -1,4 +1,5 @@
 import type { FreezeAnswer } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import {
   Dialog,
   DialogBackdrop,
@@ -12,7 +13,7 @@ import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { Array as Arr, Result } from "effect";
 import { useEffect, useRef, useState } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useEditingIgnoringEdit } from "./editing-context.ts";
 import { LabelledField } from "./labelled-field.tsx";
 import { useReview } from "./review-context.ts";
@@ -155,19 +156,17 @@ export function ReadyForReview() {
       {showButton ? (
         <WithTooltip
           control={
-            <button
-              aria-disabled={!review.canWrite || busy || open === 0}
-              className={controlClass}
+            <Button
+              className={uiControlClass}
               data-ready-for-review
+              disabled={!review.canWrite || busy || open === 0}
+              focusableWhenDisabled
               onClick={() => {
-                if (review.canWrite && !busy && open > 0) {
-                  press();
-                }
+                press();
               }}
-              type="button"
             >
               {busy ? "Saving…" : `Ready for review · ${open}`}
-            </button>
+            </Button>
           }
         >
           {open === 0
@@ -219,15 +218,14 @@ export function ReadyForReview() {
                 {sent.frozen.batch.number + 1}.
               </p>
               <div className="flex gap-1.5">
-                <button
-                  className={controlClass}
+                <Button
+                  className={uiControlClass}
                   data-review-copy
                   onClick={copyAgain}
-                  type="button"
                 >
                   Copy the prompt
-                </button>
-                <DialogClose className={controlClass} data-review-close>
+                </Button>
+                <DialogClose className={uiControlClass} data-review-close>
                   Close
                 </DialogClose>
               </div>

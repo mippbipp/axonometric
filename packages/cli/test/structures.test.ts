@@ -7,13 +7,15 @@ import {
   assertTextIncludes,
   attributesOf,
   boxesOf,
+  cameraOf,
   click,
   goToChapter,
-  literal,
   press,
   textOf,
+  waitForCameraChange,
   waitFor,
   waitGone,
+  waitTimeout,
 } from "./browser.ts";
 import { fullMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
@@ -128,6 +130,18 @@ describe("the tooltip", () => {
           })
         );
         yield* waitFor(page, '[data-tooltip="upstream"]');
+        // ui-sdk places the tooltip again once it has measured its content.
+        yield* Effect.promise(() =>
+          page.waitForFunction(
+            `(() => {
+              const canvas = document.querySelector("[data-map-surface]").getBoundingClientRect();
+              const tooltip = document.querySelector("[data-tooltip]").getBoundingClientRect();
+              return tooltip.right <= canvas.right && tooltip.left >= canvas.left;
+            })()`,
+            undefined,
+            waitTimeout
+          )
+        );
 
         const [canvas] = yield* boxesOf(page, "[data-map-surface]");
         const [tooltip] = yield* boxesOf(page, "[data-tooltip]");
@@ -159,6 +173,12 @@ describe("the tooltip on keyboard focus and Escape", () => {
 
           yield* Effect.promise(() => page.mouse.move(0, 0));
           yield* press(page, "Tab");
+
+          const left = yield* focusedOn(page);
+
+          assert.notStrictEqual(left, "page");
+
+          yield* press(page, "Shift+Tab");
           yield* waitFor(page, "[role=tooltip][data-open]");
 
           const focused = yield* focusedOn(page);
@@ -172,7 +192,7 @@ describe("the tooltip on keyboard focus and Escape", () => {
 
           assert.isTrue(describedBy);
           assert.include(said, "·");
-          assert.notStrictEqual(focused, "page");
+          assert.strictEqual(focused, "page");
 
           // Escape closes the tooltip first. The pin is the next Escape's.
           yield* press(page, "Escape");
@@ -317,9 +337,7 @@ describe("clicking a structure", () => {
         const x = (canvas?.x ?? 0) + (canvas?.width ?? 0) - 20;
         const y = (canvas?.y ?? 0) + 80;
 
-        const before = yield* Effect.promise(() =>
-          page.locator("[data-viewport]").getAttribute("transform")
-        );
+        const before = yield* cameraOf(page);
 
         yield* Effect.promise(() => page.mouse.move(x, y));
         yield* Effect.promise(() => page.mouse.down());
@@ -328,11 +346,7 @@ describe("clicking a structure", () => {
         );
         yield* Effect.promise(() => page.mouse.up());
 
-        yield* Effect.promise(() =>
-          page.waitForFunction(
-            `document.querySelector("[data-viewport]").getAttribute("transform") !== ${literal(before ?? "")}`
-          )
-        );
+        yield* waitForCameraChange(page, before);
 
         yield* assertCount(
           page,
@@ -463,14 +477,13 @@ describe("the inside view", () => {
 
         yield* Effect.promise(() => page.locator(structure("page")).focus());
         yield* press(page, "Enter");
-        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
-        yield* press(page, "ArrowRight");
         yield* waitFor(page, '[data-inside-view="page"]');
         const focusedInside = yield* focusedOn(page);
         assert.strictEqual(focusedInside, "come-out");
 
         yield* press(page, "ArrowLeft");
         yield* waitGone(page, "[data-inside-view]");
+        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
         const focusedAfterComeOut = yield* focusedOn(page);
         assert.strictEqual(focusedAfterComeOut, "page");
 
@@ -521,7 +534,7 @@ describe("the inside view", () => {
   );
 
   it.live(
-    "opens from the Go inside button, a double-click or →, and Come out or ← returns",
+    "opens from the Go inside button, a double-click or Enter, and Come out or ← returns",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -541,7 +554,9 @@ describe("the inside view", () => {
           yield* press(page, "ArrowLeft");
           yield* expectOutWithPin(page, "c-save");
 
-          yield* press(page, "ArrowRight");
+          const focusedAfterComeOut = yield* focusedOn(page);
+          assert.strictEqual(focusedAfterComeOut, "page");
+          yield* press(page, "Enter");
           yield* expectInside(page);
           yield* press(page, "ArrowLeft");
           yield* expectOutWithPin(page, "c-save");
@@ -578,9 +593,10 @@ describe("the inside view", () => {
         yield* pin(page, "engineer");
         yield* assertCount(page, '[data-control="go-inside"]', 0);
 
-        // → stays on the structure rather than moving on a chapter.
-        yield* press(page, "ArrowRight");
-        yield* waitFor(page, '[data-walkthrough][data-chapter="c-page"]');
+        const focused = yield* focusedOn(page);
+        assert.strictEqual(focused, "engineer");
+        yield* press(page, "Enter");
+        yield* waitFor(page, '[data-structure-panel="engineer"][data-pinned]');
         yield* assertCount(page, "[data-inside-view]", 0);
       })
     )

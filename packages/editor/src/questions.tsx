@@ -1,4 +1,5 @@
 import type { Question, ResolvedQuestion } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Array as Arr } from "effect";
 
 import { QuestionAnswer } from "./question-actions.tsx";
@@ -32,7 +33,7 @@ export function QuestionBody({ question }: { readonly question: Question }) {
 }
 
 const headingButtonClass =
-  "focus-visible:outline-ink w-full cursor-pointer text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-1";
+  "focus-visible:outline-ink block h-auto w-full min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left font-normal whitespace-normal text-inherit transition-none hover:bg-transparent hover:text-inherit hover:underline active:translate-y-0 focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-solid";
 
 /**
  * One question: its ID and text as a button that selects its structure, then
@@ -55,9 +56,9 @@ function QuestionItem({
       data-state={question.state}
     >
       <h5>
-        <button className={headingButtonClass} onClick={onPick} type="button">
+        <Button className={headingButtonClass} onClick={onPick}>
           <b className="font-medium">{question.id}</b> {question.text}
-        </button>
+        </Button>
       </h5>
       {question.state === "resolved" ? (
         <Answer question={question} />

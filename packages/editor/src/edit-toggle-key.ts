@@ -29,7 +29,6 @@ export const useSwitchEdit = () => {
       placing?.setOpen(false);
       newGroup?.setOpen(false);
       drafting?.cancel();
-      drafting?.stretchTo(null);
       tool?.arm(false);
       clearMultiSelection();
     }

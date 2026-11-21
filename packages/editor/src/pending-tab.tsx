@@ -13,7 +13,7 @@ import { Array as Arr, Predicate, Record as Rec } from "effect";
 import { useState } from "react";
 
 import { useAccepting } from "./accepting-context.ts";
-import { controlClass, uiControlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditOn } from "./edit-context.ts";
 import { useEditingIgnoringEdit } from "./editing-context.ts";
@@ -93,9 +93,9 @@ export function PendingTab() {
           )}
         </span>
         {acceptable ? (
-          <button
+          <Button
             aria-label={`Accept the ${change.kind} of ${names}`}
-            className={controlClass}
+            className={uiControlClass}
             data-accept-change={change.id}
             disabled={accepting.busy}
             onClick={() => {
@@ -104,19 +104,19 @@ export function PendingTab() {
             type="button"
           >
             Accept
-          </button>
+          </Button>
         ) : null}
         {canEdit ? (
-          <button
+          <Button
             aria-label={`Discard the ${change.kind} of ${names}`}
-            className={controlClass}
+            className={uiControlClass}
             onClick={() => {
               discardWith([change.id]);
             }}
             type="button"
           >
             Discard
-          </button>
+          </Button>
         ) : null}
       </li>
     );
@@ -223,8 +223,8 @@ export function PendingTab() {
                   value={message}
                 />
               </LabelledField>
-              <button
-                className={`${controlClass} self-start`}
+              <Button
+                className={`${uiControlClass} self-start`}
                 data-accept-all
                 disabled={accepting.busy}
                 onClick={() => {
@@ -233,7 +233,7 @@ export function PendingTab() {
                 type="button"
               >
                 Accept all
-              </button>
+              </Button>
             </div>
           ) : null}
           <ul className="flex flex-col gap-2">
@@ -258,9 +258,9 @@ export function PendingTab() {
                 key={id}
               >
                 <span className="min-w-0 flex-1">{hopName(id)}</span>
-                <button
+                <Button
                   aria-label={`Reset the route ${hopName(id)}`}
-                  className={controlClass}
+                  className={uiControlClass}
                   data-reset-route={id}
                   onClick={() => {
                     setRefusal(editing.reroute(id, null));
@@ -268,7 +268,7 @@ export function PendingTab() {
                   type="button"
                 >
                   Reset route
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

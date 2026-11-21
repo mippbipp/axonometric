@@ -11,9 +11,9 @@ import type {
   SegmentGuide,
   View,
 } from "@axonometric/contracts";
-import { Array as Arr, Duration, Effect, Option } from "effect";
-import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { GroundGesture } from "@axonometric/ui/components/ground-gesture";
+import { Array as Arr, Option } from "effect";
+import { useEffect, useState } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
 import {
@@ -25,12 +25,6 @@ import {
 import { groundAt } from "./ground-at.ts";
 import { toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
-
-/** How far a press must move before it drags a segment, in pixels. */
-const dragThreshold = 4;
-
-/** How long after a press the click that follows it is still swallowed. */
-const clickWindow = Duration.millis(60);
 
 /** How wide a segment's invisible hit line is, in drawing units. */
 const hitWidth = 10;
@@ -48,25 +42,6 @@ const cursorOf = (view: View, axis: SegmentGuide["axis"]) => {
 
   return axis === "x" ? "cursor-nesw-resize" : "cursor-nwse-resize";
 };
-
-interface RouteEnds {
-  readonly from: Placement;
-  readonly to: Placement;
-}
-
-/** One press on a segment, until it's released. */
-interface Press {
-  readonly axis: SegmentGuide["axis"];
-  readonly ends: RouteEnds;
-  /** Where the press started, in window pixels. */
-  readonly from: { readonly x: number; readonly y: number };
-  /** The ground point under the press. */
-  readonly ground: GridPoint;
-  readonly hop: string;
-  readonly pointer: number;
-  readonly route: ReadonlyArray<GridPoint>;
-  readonly segment: number;
-}
 
 /** A press past the threshold, and the route it would leave. */
 interface Drag {
@@ -167,6 +142,28 @@ function PendingRoutes({ hops }: { readonly hops: ReadonlyArray<SceneHop> }) {
   );
 }
 
+/** What a press on a segment drags. */
+interface Press {
+  readonly axis: SegmentGuide["axis"];
+  readonly ends: { readonly from: Placement; readonly to: Placement };
+  readonly hop: string;
+  readonly route: ReadonlyArray<GridPoint>;
+  readonly segment: number;
+}
+
+/** The route a stroke from `from` to `to` leaves, square to the segment. */
+const pointsOf = (
+  { axis, ends, route, segment }: Press,
+  from: GridPoint,
+  to: GridPoint
+) =>
+  dragSegment({
+    ends,
+    offset: axis === "x" ? to.y - from.y : to.x - from.x,
+    points: route,
+    segment,
+  });
+
 /**
  * Reroutes hops by dragging their segments, while the page can edit. It
  * wraps the hops' drawing (`children`), inside the viewport's transformed
@@ -196,35 +193,8 @@ export function RouteEditor({
   const editing = useEditing();
   const { selectedHop, selectHop } = useSelection();
   const preview = useDragPreview();
-  const root = useRef<SVGGElement>(null);
-  const press = useRef<Press | undefined>(undefined);
-  const dragged = useRef(false);
-  // Set after a press ends, so the click that follows it is swallowed.
-  const swallow = useRef(false);
   const [drag, setDrag] = useState<Drag | undefined>();
   const live = editing?.canEdit === true;
-
-  // A drag ends with a click, which would pick the hop or clear the
-  // selection. The map surface listens for clicks natively, so the click is
-  // stopped natively too, on the way down.
-  useEffect(() => {
-    const element = root.current;
-
-    const onClick = (event: MouseEvent) => {
-      if (dragged.current || swallow.current) {
-        dragged.current = false;
-        swallow.current = false;
-        event.stopPropagation();
-        event.preventDefault();
-      }
-    };
-
-    element?.addEventListener("click", onClick, { capture: true });
-
-    return () => {
-      element?.removeEventListener("click", onClick, { capture: true });
-    };
-  }, []);
 
   useEffect(() => {
     if (drag === undefined) {
@@ -247,178 +217,86 @@ export function RouteEditor({
     });
   }, [drag, preview]);
 
-  const onPointerDown = (event: ReactPointerEvent<SVGGElement>) => {
+  const starts = (event: PointerEvent): Press | undefined => {
     const target =
       event.target instanceof Element
         ? event.target.closest<SVGElement>("[data-route-segment]")
         : null;
-
     const hop = target?.dataset.hopId;
-    const element = root.current;
 
-    if (
-      !live ||
-      event.button !== 0 ||
-      event.shiftKey ||
-      target === null ||
-      hop === undefined ||
-      element === null
-    ) {
-      return;
+    if (event.shiftKey || target === null || hop === undefined) {
+      return undefined;
     }
 
     const routed = Arr.findFirst(hops, (item) => item.hop.id === hop);
-    const ground = groundAt({ element, event, view });
 
-    if (Option.isNone(routed) || ground === undefined) {
-      return;
+    if (Option.isNone(routed)) {
+      return undefined;
     }
 
     const from = placements[routed.value.hop.from];
     const to = placements[routed.value.hop.to];
 
-    if (from === undefined || to === undefined) {
-      return;
-    }
-
-    dragged.current = false;
-    swallow.current = false;
-
-    // A segment is thin, so the pointer leaves it within a step or two of
-    // a drag. Capturing at once keeps the moves coming.
-    element.setPointerCapture(event.pointerId);
-    press.current = {
-      axis: target.dataset.axis === "y" ? "y" : "x",
-      ends: { from, to },
-      from: { x: event.clientX, y: event.clientY },
-      ground,
-      hop,
-      pointer: event.pointerId,
-      route: routed.value.route.points,
-      segment: Number(target.dataset.segment),
-    };
-  };
-
-  const onPointerMove = (event: ReactPointerEvent<SVGGElement>) => {
-    const { current } = press;
-    const element = root.current;
-
-    if (
-      editing === null ||
-      current === undefined ||
-      element === null ||
-      event.pointerId !== current.pointer
-    ) {
-      return;
-    }
-
-    const travel = Math.hypot(
-      event.clientX - current.from.x,
-      event.clientY - current.from.y
-    );
-
-    if (!dragged.current && travel < dragThreshold) {
-      return;
-    }
-
-    const ground = groundAt({ element, event, view });
-
-    if (ground === undefined) {
-      return;
-    }
-
-    // Capture only once it's a drag, so a plain click keeps its target.
-    if (!dragged.current) {
-      dragged.current = true;
-
-      if (!element.hasPointerCapture(event.pointerId)) {
-        element.setPointerCapture(event.pointerId);
-      }
-    }
-
-    // A segment along x moves along y, and the other way round.
-    const offset =
-      current.axis === "x"
-        ? ground.y - current.ground.y
-        : ground.x - current.ground.x;
-
-    const points = dragSegment({
-      ends: current.ends,
-      offset,
-      points: current.route,
-      segment: current.segment,
-    });
-
-    const unchanged = samePoints(points, routeVertices(current.route));
-
-    setDrag((before) =>
-      before !== undefined && samePoints(before.points, points)
-        ? before
-        : {
-            hop: current.hop,
-            points,
-            refusal: unchanged
-              ? undefined
-              : editing.refusalOfReroute(current.hop, points),
-          }
-    );
-  };
-
-  const end = (event: ReactPointerEvent<SVGGElement>, drop: boolean) => {
-    const { current } = press;
-
-    if (current === undefined || event.pointerId !== current.pointer) {
-      return;
-    }
-
-    press.current = undefined;
-
-    // The click that follows a press on a segment would clear the
-    // selection. A press that never moved picks the hop instead.
-    swallow.current = true;
-
-    const release = Effect.sync(() => {
-      swallow.current = false;
-    });
-
-    Effect.runFork(Effect.sleep(clickWindow).pipe(Effect.andThen(release)));
-
-    if (drop && !dragged.current) {
-      selectHop(current.hop);
-    }
-
-    if (
-      drop &&
-      dragged.current &&
-      drag !== undefined &&
-      editing !== null &&
-      drag.refusal === undefined &&
-      !samePoints(drag.points, routeVertices(current.route))
-    ) {
-      editing.reroute(drag.hop, drag.points);
-    }
-
-    setDrag(undefined);
+    return from === undefined || to === undefined
+      ? undefined
+      : {
+          axis: target.dataset.axis === "y" ? "y" : "x",
+          ends: { from, to },
+          hop,
+          route: routed.value.route.points,
+          segment: Number(target.dataset.segment),
+        };
   };
 
   const selected = Arr.findFirst(hops, (item) => item.hop.id === selectedHop);
 
   return (
-    <g
+    <GroundGesture
       data-dragging-route={drag?.hop}
       data-route-editor={live ? "on" : "off"}
-      onLostPointerCapture={(event) => {
-        end(event, false);
+      disabled={!live}
+      groundAt={(element, at) =>
+        element instanceof SVGGraphicsElement
+          ? groundAt({ element, event: at, view })
+          : undefined
+      }
+      onCommit={({ from, payload, to }) => {
+        const points = pointsOf(payload, from, to);
+
+        if (
+          editing !== null &&
+          !samePoints(points, routeVertices(payload.route)) &&
+          editing.refusalOfReroute(payload.hop, points) === undefined
+        ) {
+          editing.reroute(payload.hop, points);
+        }
       }}
-      onPointerCancel={(event) => {
-        end(event, false);
+      onDraft={(stroke) => {
+        if (stroke === null || editing === null) {
+          setDrag(undefined);
+
+          return;
+        }
+
+        const { payload } = stroke;
+        const points = pointsOf(payload, stroke.from, stroke.to);
+
+        setDrag((before) =>
+          before !== undefined && samePoints(before.points, points)
+            ? before
+            : {
+                hop: payload.hop,
+                points,
+                refusal: samePoints(points, routeVertices(payload.route))
+                  ? undefined
+                  : editing.refusalOfReroute(payload.hop, points),
+              }
+        );
       }}
-      onPointerDown={live ? onPointerDown : undefined}
-      onPointerMove={live ? onPointerMove : undefined}
-      onPointerUp={(event) => {
-        end(event, true);
+      onPress={({ hop }) => {
+        selectHop(hop);
       }}
-      ref={root}
+      starts={starts}
     >
       {Option.isSome(selected) ? (
         <polyline
@@ -462,6 +340,6 @@ export function RouteEditor({
           {drag.refusal === undefined ? null : <title>{drag.refusal}</title>}
         </polyline>
       )}
-    </g>
+    </GroundGesture>
   );
 }

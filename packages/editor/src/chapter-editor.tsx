@@ -1,4 +1,5 @@
 import { wholeMapChapterId } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Array as Arr, Option } from "effect";
 import { useState } from "react";
 import type { DragEvent } from "react";
@@ -6,7 +7,7 @@ import type { DragEvent } from "react";
 import { ChapterLegend } from "./chapter-legend.tsx";
 import { useAcceptedPlays, useChapterMarks } from "./chapter-marks-context.ts";
 import { ChoiceSelect } from "./choice-select.tsx";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useEditOn } from "./edit-context.ts";
 import { useChapterPropose } from "./use-chapter-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -193,37 +194,35 @@ export function ChapterEditor() {
                   </span>
                   {editOn ? (
                     <>
-                      <button
+                      <Button
                         aria-label={`Move ${labelOf(hop)} up`}
-                        className={controlClass}
+                        className={uiControlClass}
                         data-play-up={hop}
                         disabled={!canPropose || index === 0}
                         onClick={() => {
                           order(moved(plays, index, index - 1));
                         }}
-                        type="button"
                       >
                         ↑
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         aria-label={`Move ${labelOf(hop)} down`}
-                        className={controlClass}
+                        className={uiControlClass}
                         data-play-down={hop}
                         disabled={!canPropose || index === plays.length - 1}
                         onClick={() => {
                           order(moved(plays, index, index + 1));
                         }}
-                        type="button"
                       >
                         ↓
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         aria-label={
                           pending === "unplay"
                             ? `Keep ${labelOf(hop)} in this chapter`
                             : `Remove ${labelOf(hop)} from this chapter`
                         }
-                        className={controlClass}
+                        className={uiControlClass}
                         data-play-toggle={hop}
                         disabled={!canPropose}
                         onClick={() => {
@@ -233,10 +232,9 @@ export function ChapterEditor() {
                             hop,
                           });
                         }}
-                        type="button"
                       >
                         {pending === "unplay" ? "Keep" : "Remove"}
-                      </button>
+                      </Button>
                     </>
                   ) : null}
                 </li>
@@ -272,14 +270,14 @@ export function ChapterEditor() {
               trigger={{ "data-add-play-hop": "" }}
               value={addHop}
             />
-            <button
-              className={controlClass}
+            <Button
+              className={uiControlClass}
               data-add-play-submit
               disabled={!canPropose || addHop === "" || sending}
               type="submit"
             >
               Play it
-            </button>
+            </Button>
           </form>
         )}
       </div>
@@ -296,17 +294,16 @@ export function ChapterEditor() {
                 key={id}
               >
                 <span className="min-w-0 flex-1 break-words">{name}</span>
-                <button
-                  className={controlClass}
+                <Button
+                  className={uiControlClass}
                   data-reveal={id}
                   disabled={!canPropose}
                   onClick={() => {
                     send({ action: "reveal", chapter: stop.id, structure: id });
                   }}
-                  type="button"
                 >
                   Show in this chapter
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

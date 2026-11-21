@@ -1,13 +1,21 @@
 import type { Proposals } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Option, Record as Rec, Schema } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Option,
+  Record as Rec,
+  Schema,
+  String as Str,
+} from "effect";
 import type { Page } from "playwright";
 
 import {
   assertAttribute,
   assertCount,
   attributeOf,
+  cameraOf,
   centreOf,
   goToChapter,
   openPage,
@@ -15,9 +23,11 @@ import {
   showView,
   unitOnScreen,
   waitFor,
+  waitForCameraChange,
   waitGone,
 } from "./browser.ts";
 import type { View } from "./browser.ts";
+import { fullMap } from "./fixtures.ts";
 import {
   openReviewMap,
   proposalsIn,
@@ -55,6 +65,9 @@ const shiftClick = Effect.fnUntraced(function* (
   }
 });
 
+const focusStructure = (page: Page, id: string) =>
+  Effect.promise(() => page.locator(`[data-structure="${id}"]`).focus());
+
 /** The ids of the structures in the multi-selection, sorted. */
 const multiSelectedIds = (page: Page) =>
   Effect.promise(() =>
@@ -74,27 +87,12 @@ const groundToPage = Effect.fnUntraced(function* (
   view: View,
   ground: Point
 ) {
-  const [left, top, tx, ty, scale] = yield* Effect.promise(() =>
-    page.evaluate<Array<number>>(`(() => {
-      const svg = document.querySelector("svg[data-scale]");
-      const rect = svg.getBoundingClientRect();
-      const [tx, ty, scale] = svg
-        .querySelector("[data-viewport]")
-        .getAttribute("transform")
-        .match(/-?\\d+(?:\\.\\d+)?(?:e-?\\d+)?/g)
-        .map(Number);
-
-      return [rect.left, rect.top, tx, ty, scale];
-    })()`)
-  );
+  const [scale, x, y] = yield* cameraOf(page);
 
   const sx = view === "plan" ? ground.x * 60 : ((ground.x - ground.y) * 72) / 2;
   const sy = view === "plan" ? ground.y * 60 : ((ground.x + ground.y) * 36) / 2;
 
-  return {
-    x: (left ?? 0) + (tx ?? 0) + (scale ?? 1) * sx,
-    y: (top ?? 0) + (ty ?? 0) + (scale ?? 1) * sy,
-  };
+  return { x: x + scale * sx, y: y + scale * sy };
 });
 
 /** Holds Shift and drags a box between two ground points on empty canvas. */
@@ -160,6 +158,29 @@ const movesOf = (layout: Proposals["layout"]) => {
     : {};
 };
 
+const touchedIds = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<Array<string>>(
+      `[...document.querySelectorAll('[data-box-touched]')].map((e) => e.dataset.boxTouched).sort()`
+    )
+  );
+
+const boxCorners = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<Array<Point>>(
+      `(() => {
+        const polygon = document.querySelector('[data-selection-box]');
+        const matrix = polygon.getScreenCTM();
+
+        return [...polygon.points].map((p) => {
+          const at = new DOMPoint(p.x, p.y).matrixTransform(matrix);
+
+          return { x: Math.round(at.x * 100) / 100, y: Math.round(at.y * 100) / 100 };
+        });
+      })()`
+    )
+  );
+
 const views: ReadonlyArray<View> = ["iso", "plan"];
 
 describe("selecting several structures", () => {
@@ -189,12 +210,66 @@ describe("selecting several structures", () => {
     );
 
     it.live(
-      `Shift-dragging a box on empty canvas selects every structure it touches, in ${view}`,
+      `Shift+Enter and Shift+Space on a focused structure add it to the set and take it out, and the pinned one joins first, in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { errors, page } = yield* servedAll;
+
+          yield* showView(page, view);
+          yield* focusStructure(page, "engineer");
+          yield* press(page, "Shift+Enter");
+          yield* waitFor(
+            page,
+            '[data-structure="engineer"][data-multi-selected="true"]'
+          );
+          yield* focusStructure(page, "page");
+          yield* press(page, "Shift+Space");
+          yield* waitFor(
+            page,
+            '[data-structure="page"][data-multi-selected="true"]'
+          );
+          const selectedPair = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedPair, ["engineer", "page"]);
+
+          yield* focusStructure(page, "engineer");
+          yield* press(page, "Shift+Space");
+          yield* waitFor(
+            page,
+            '[data-structure="engineer"][data-multi-selected="false"]'
+          );
+          const selectedAfterToggle = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedAfterToggle, ["page"]);
+          yield* assertCount(page, "[data-inside-view]", 0);
+
+          yield* press(page, "Escape");
+          yield* waitGone(page, "[role=tooltip][data-open]");
+          yield* press(page, "Escape");
+          yield* waitGone(page, '[data-structure][data-multi-selected="true"]');
+          yield* focusStructure(page, "server");
+          yield* press(page, "Space");
+          yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
+          yield* focusStructure(page, "page");
+          yield* press(page, "Shift+Enter");
+          yield* waitFor(
+            page,
+            '[data-structure="page"][data-multi-selected="true"]'
+          );
+          const selectedWithPinned = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedWithPinned, ["page", "server"]);
+          assert.deepStrictEqual(errors, []);
+        }),
+      60_000
+    );
+
+    it.live(
+      `Shift-dragging a box on empty canvas selects every structure it touches when it lifts, in ${view}`,
       () =>
         Effect.gen(function* () {
           const { home, page } = yield* servedAll;
 
           yield* showView(page, view);
+
+          const before = yield* cameraOf(page);
 
           // Ground x -0.3 to 9.5 and y -0.3 to 2.6 reaches engineer, page
           // and server along the top row, and nothing below it.
@@ -207,8 +282,27 @@ describe("selecting several structures", () => {
           });
 
           yield* waitFor(page, "[data-selection-box]");
-          const selectedByBox = yield* multiSelectedIds(page);
-          assert.deepStrictEqual(selectedByBox, ["engineer", "page", "server"]);
+          yield* waitFor(page, '[data-box-touched="server"]');
+          const touchedWhileHeld = yield* touchedIds(page);
+          assert.deepStrictEqual(touchedWhileHeld, [
+            "engineer",
+            "page",
+            "server",
+          ]);
+          const selectedWhileHeld = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedWhileHeld, []);
+
+          const corners = yield* boxCorners(page);
+          assert.strictEqual(corners.length, 4);
+          assert.strictEqual(
+            Arr.some(
+              corners,
+              (corner, at) =>
+                corner.y === corners[(at + 1) % 4]?.y &&
+                corner.x !== corners[(at + 1) % 4]?.x
+            ),
+            view === "plan"
+          );
 
           yield* Effect.promise(() => page.mouse.up());
           yield* Effect.promise(() => page.keyboard.up("Shift"));
@@ -220,9 +314,62 @@ describe("selecting several structures", () => {
             "page",
             "server",
           ]);
+          yield* waitFor(
+            page,
+            '[data-ui-sdk-announcer=""]:text("3 structures selected.")'
+          );
+
+          const after = yield* cameraOf(page);
+          assert.deepStrictEqual(after, before);
+
           const savedProposals = yield* proposalsIn(home);
           // Selecting writes nothing.
           assert.isTrue(Option.isNone(savedProposals));
+        }),
+      60_000
+    );
+
+    it.live(
+      `a box adds to what Shift-click already picked, and Escape lets go of it with nothing added, in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* servedAll;
+
+          yield* showView(page, view);
+          yield* shiftClick(page, ["engineer"]);
+
+          yield* dragBox({
+            from: { x: 7.6, y: 2.6 },
+            page,
+            release: false,
+            to: { x: 9.5, y: -0.3 },
+            view,
+          });
+          yield* waitFor(page, '[data-box-touched="server"]');
+          yield* press(page, "Escape");
+          yield* waitGone(page, "[data-selection-box]");
+          yield* Effect.promise(() => page.mouse.up());
+          yield* Effect.promise(() => page.keyboard.up("Shift"));
+
+          const selectedAfterEscape = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedAfterEscape, ["engineer"]);
+
+          yield* dragBox({
+            from: { x: 7.6, y: 2.6 },
+            page,
+            to: { x: 9.5, y: -0.3 },
+            view,
+          });
+          yield* waitFor(
+            page,
+            '[data-structure="server"][data-multi-selected="true"]'
+          );
+          const selectedWithBox = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedWithBox, ["engineer", "server"]);
+          yield* waitFor(
+            page,
+            '[data-ui-sdk-announcer=""]:text("2 structures selected.")'
+          );
         }),
       60_000
     );
@@ -235,17 +382,16 @@ describe("selecting several structures", () => {
       yield* showView(page, "plan");
 
       const start = yield* groundToPage(page, "plan", { x: -0.3, y: 2.6 });
-      const before = yield* attributeOf(page, "[data-viewport]", "transform");
+      const before = yield* cameraOf(page);
 
       yield* dragBy(page, start, { x: 30, y: 20 });
+      yield* waitForCameraChange(page, before);
 
-      const transformAfterDrag = yield* attributeOf(
-        page,
-        "[data-viewport]",
-        "transform"
-      );
+      const [scale, x, y] = yield* cameraOf(page);
 
-      assert.notStrictEqual(transformAfterDrag, before);
+      assert.strictEqual(scale, before[0]);
+      assert.closeTo(x - before[1], 30, 1);
+      assert.closeTo(y - before[2], 20, 1);
       const selectedAfterPan = yield* multiSelectedIds(page);
       assert.deepStrictEqual(selectedAfterPan, []);
     })
@@ -309,7 +455,7 @@ describe("moving a selection", () => {
     },
   ]) {
     it.live(
-      `refuses a drop of ${what} that puts any footprint on another, and writes nothing`,
+      `refuses a drop of ${what} that puts any footprint on another, says why as a nudge does, and writes nothing`,
       () =>
         Effect.gen(function* () {
           const { home, page } = yield* servedAll;
@@ -337,6 +483,7 @@ describe("moving a selection", () => {
 
           yield* Effect.promise(() => page.mouse.up());
           yield* waitGone(page, "[data-drag-outline]");
+          yield* waitFor(page, "[data-edit-notice='refused']");
           yield* Effect.sleep("500 millis");
 
           const savedProposals = yield* proposalsIn(home);
@@ -352,7 +499,7 @@ describe("moving a selection", () => {
 describe("nudging a selection", () => {
   for (const view of views) {
     it.live(
-      `the arrow keys move the set half a unit along the ground and leave the chapter, in ${view}`,
+      `Alt and the arrow keys move the set half a unit along the ground and leave the chapter, in ${view}`,
       () =>
         Effect.gen(function* () {
           const { home, page } = yield* served;
@@ -360,7 +507,7 @@ describe("nudging a selection", () => {
           yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
 
-          yield* press(page, "ArrowRight");
+          yield* press(page, "Alt+ArrowRight");
 
           const first = yield* waitForRevision(home, 1);
 
@@ -370,7 +517,7 @@ describe("nudging a selection", () => {
           });
 
           // Each press is one change.
-          yield* press(page, "ArrowDown");
+          yield* press(page, "Alt+ArrowDown");
 
           const second = yield* waitForRevision(home, 2);
 
@@ -400,29 +547,83 @@ describe("nudging a selection", () => {
     );
   }
 
-  it.live("without a set the arrow keys still change chapter", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* served;
+  it.live(
+    "plain arrows change chapter with focus off the map, and on a structure move focus and nudge nothing",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
 
-      yield* press(page, "ArrowRight");
-      yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
+        yield* press(page, "ArrowRight");
+        yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
 
-      // With a set, they stop doing that.
-      yield* shiftClick(page, ["server"]);
-      yield* press(page, "ArrowRight");
-      yield* waitForRevision(home, 1);
+        yield* shiftClick(page, ["server"]);
+        yield* press(page, "ArrowRight");
+        yield* press(page, "ArrowLeft");
+        yield* Effect.sleep("300 millis");
 
-      yield* assertAttribute(
-        page,
-        { name: "data-chapter", selector: "[data-walkthrough]" },
-        "c-save"
-      );
+        const unchanged = yield* proposalsIn(home);
 
-      // Escape empties the set, and the arrows change chapter again.
-      yield* press(page, "Escape");
-      yield* press(page, "ArrowLeft");
-      yield* waitFor(page, '[data-walkthrough][data-chapter="c-page"]');
-    })
+        assert.isTrue(Option.isNone(unchanged), "a plain arrow nudged");
+        yield* assertAttribute(
+          page,
+          { name: "data-chapter", selector: "[data-walkthrough]" },
+          "c-save"
+        );
+
+        const focused = yield* Effect.promise(() =>
+          page.evaluate<boolean>(
+            "document.activeElement?.closest('[data-viewport]') !== null"
+          )
+        );
+
+        assert.isTrue(focused, "focus left the map");
+
+        yield* press(page, "BracketLeft");
+        yield* waitFor(page, '[data-walkthrough][data-chapter="c-page"]');
+      })
+  );
+
+  it.live(
+    "Alt and an arrow nudge a lone focused structure half a unit, and Shift too by two",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
+
+        yield* showView(page, "plan");
+        yield* focusStructure(page, "engineer");
+        yield* press(page, "Alt+ArrowRight");
+
+        const first = yield* waitForRevision(home, 1);
+
+        assert.deepStrictEqual(withoutIds(first.layout), [
+          {
+            by: "engineer",
+            kind: "move",
+            moves: [
+              {
+                position: { x: 0.5, y: 0 },
+                target: { id: "engineer", kind: "structure" },
+              },
+            ],
+          },
+        ]);
+
+        yield* press(page, "Shift+Alt+ArrowDown");
+
+        const second = yield* waitForRevision(home, 2);
+
+        assert.deepStrictEqual(withoutIds(second.layout)[1], {
+          by: "engineer",
+          kind: "move",
+          moves: [
+            {
+              position: { x: 0.5, y: 2 },
+              target: { id: "engineer", kind: "structure" },
+            },
+          ],
+        });
+      }),
+    60_000
   );
 
   it.live(
@@ -437,11 +638,11 @@ describe("nudging a selection", () => {
         yield* shiftClick(page, ["page"]);
 
         for (let presses = 0; presses < 4; presses++) {
-          yield* press(page, "ArrowLeft");
+          yield* press(page, "Alt+ArrowLeft");
         }
 
         yield* waitForRevision(home, 4);
-        yield* press(page, "ArrowLeft");
+        yield* press(page, "Alt+ArrowLeft");
         yield* waitFor(page, "[data-edit-notice='refused']");
         yield* Effect.sleep("300 millis");
 
@@ -846,6 +1047,60 @@ describe("editing off", () => {
 
         yield* assertCount(page, '[data-structure][data-selected="true"]', 1);
       }).pipe(Effect.provide(NodeServices.layer)),
+    60_000
+  );
+});
+
+/** What each Tab stop on the map is: a structure id, or a group title. */
+const tabStops = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<Array<string>>(
+      `[...document.querySelectorAll('[data-slot="canvas-items-item"][tabindex="0"]')].map((e) => e.dataset.structure ?? "title " + e.dataset.zoneTitleHit)`
+    )
+  );
+
+describe("a structure whose id looks like a group title's key", () => {
+  // The review map has a group "loop"; this renames upstream to group:loop.
+  const clashing = Effect.gen(function* () {
+    const files = yield* fullMap;
+    const renamed = Str.replaceAll('"upstream"', '"group:loop"');
+    const opened = yield* openReviewMap({
+      "review/map/data.mjs": renamed(files["review/map/data.mjs"] ?? ""),
+      "review/map/layout.json": renamed(files["review/map/layout.json"] ?? ""),
+    });
+
+    yield* goToChapter(opened.page, "c-all");
+
+    return opened;
+  });
+
+  it.live(
+    "keeps one Tab stop on the map, and pins and multi-selects the structure by its id",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* clashing;
+
+        yield* focusStructure(page, "group:loop");
+        yield* Effect.promise(() => page.keyboard.press(" "));
+        yield* waitFor(
+          page,
+          '[data-structure="group:loop"][data-selected="true"]'
+        );
+
+        const stops = yield* tabStops(page);
+
+        assert.deepStrictEqual(stops, ["group:loop"]);
+
+        yield* Effect.promise(() =>
+          page.locator('[data-zone-title-hit="loop"]').focus()
+        );
+        yield* Effect.promise(() => page.keyboard.press("Shift+Space"));
+        yield* shiftClick(page, ["engineer"]);
+
+        const selected = yield* multiSelectedIds(page);
+
+        assert.deepStrictEqual(selected, ["engineer", "group:loop"]);
+      }),
     60_000
   );
 });

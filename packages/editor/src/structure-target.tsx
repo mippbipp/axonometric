@@ -1,35 +1,41 @@
 import { marked as marksOf, removedMark } from "@axonometric/contracts";
+import { CanvasItem } from "@axonometric/ui/components/canvas-items";
 import { TooltipTrigger } from "@axonometric/ui/components/tooltip";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
-import type { FocusEvent, KeyboardEvent, PointerEvent, SVGProps } from "react";
+import type { FocusEvent, PointerEvent, SVGProps } from "react";
 
 import { useChapterPendingStructures } from "./chapter-marks-context.ts";
 import { spokenMarks, useCompare } from "./compare-context.ts";
+import { useConnections } from "./connections-context.ts";
 import {
   agentStructures,
   pendingStructures,
-  useEditing,
   useEditingIgnoringEdit,
 } from "./editing-context.ts";
+import { useHopsDescription } from "./hop-description.ts";
+import { drawHopKey, useHopDraft } from "./hop-draft-context.ts";
 import { useProposedMapIgnoringEdit } from "./proposed-context.ts";
 import { useSelection } from "./selection-context.ts";
+import { structureKey } from "./structure-key.ts";
 import { useStructuresById } from "./structures.ts";
 import { useTooltipActions } from "./tooltip-context.ts";
 
 /**
- * The `<g>` that draws structure `id` in a view, with `data-structure`,
- * `data-selected`, `data-multi-selected` and `data-pending` on it. Hover and
- * keyboard focus show the tooltip. A click pins the structure, and a
- * Shift-click adds it to or takes it out of the multi-selection. A
- * double-click goes inside it. A pinned structure reports `aria-pressed`;
- * one in the multi-selection says so in its accessible name, because ARIA
- * has no multi-selection state for a button. Enter and Space do what a click does, and
- * Shift+Enter and Shift+Space what a Shift-click does.
+ * The `<g>` that draws structure `id` in a view, one of the map's canvas
+ * items, with `data-structure`, `data-selected`, `data-multi-selected` and
+ * `data-pending` on it. Hover and keyboard focus show the tooltip. A click
+ * or Space pins the structure, and Enter or a double-click goes inside it.
+ * While the page can edit, Shift with a click, Enter or Space adds it to or
+ * takes it out of the multi-selection (see `CanvasItems`). A pinned
+ * structure reports `aria-pressed`; one in the multi-selection says so in
+ * its accessible name, because ARIA has no multi-selection state for a
+ * button. Its description lists its hops, and while a hop can be drawn,
+ * `h` starts one from it (see `EdgeHandles`).
  *
- * Clicks are plain `onClick`, with no pointer capture, so a pan-and-zoom
- * wrapper that leaves presses on `[data-structure]` alone can't swallow
- * them. Pass the drawing as `children` and any other attributes as props.
+ * Presses use no pointer capture, so a pan-and-zoom wrapper that leaves
+ * presses on `[data-structure]` alone can't swallow them. Pass the drawing
+ * as `children` and any other attributes as props.
  */
 export function StructureTarget({
   children,
@@ -37,13 +43,14 @@ export function StructureTarget({
   id,
   ...rest
 }: SVGProps<SVGGElement> & { readonly id: string }) {
-  const { goInside, multiSelection, select, selected, toggleMultiSelected } =
-    useSelection();
+  const { goInside, multiSelection, select, selected } = useSelection();
 
   const { controller, hide, show } = useTooltipActions();
   const name = useStructuresById().get(id)?.name ?? id;
+  const connections = useConnections();
+  const drafting = useHopDraft();
+  const canDrawHop = connections?.canPropose === true && drafting !== null;
   const isSelected = selected === id;
-  const editing = useEditing();
   const editingIgnoringEdit = useEditingIgnoringEdit();
   const isMultiSelected = multiSelection.has(id);
 
@@ -87,30 +94,17 @@ export function StructureTarget({
     }
   };
 
-  // Shift picks several structures to edit together. A page that can't edit
-  // has nothing to do with a set, so there it pins.
-  const activate = (shift: boolean) => {
-    if (shift && editing?.canEdit === true) {
-      toggleMultiSelected(id);
-    } else {
-      select(id);
-    }
-  };
-
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      activate(event.shiftKey);
-    }
-  };
+  const hops = useHopsDescription(id);
 
   return (
     <TooltipTrigger
       controller={controller}
       payload={id}
       render={
-        <g
+        <CanvasItem
           {...rest}
+          aria-description={hops}
+          aria-keyshortcuts={canDrawHop ? drawHopKey.toUpperCase() : undefined}
           aria-label={Arr.join(
             [
               isMultiSelected ? `${name}, in the multi-selection` : name,
@@ -141,22 +135,23 @@ export function StructureTarget({
           onBlur={() => {
             hide(id);
           }}
-          onClick={(event) => {
-            activate(event.shiftKey);
-          }}
           onDoubleClick={() => {
             goInside(id);
           }}
           onFocus={showOnKeyboardFocus}
-          onKeyDown={onKeyDown}
+          onOpen={() => {
+            goInside(id);
+          }}
           onPointerEnter={showAtPointer}
           onPointerLeave={() => {
             hide(id);
           }}
           onPointerMove={showAtPointer}
-          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the structure's group takes the button role.
-          role="button"
-          tabIndex={0}
+          onPress={() => {
+            select(id);
+          }}
+          selectable
+          value={structureKey(id)}
         />
       }
     >

@@ -28,9 +28,23 @@ export interface SpotlightActions {
   readonly current: () => SpotlightTargets;
   /** Called with the hop's id while the pointer is on its line, else null. */
   readonly hoverHop: (hop: string | null) => void;
+  /**
+   * Shows `spotlight` in place of the chapter's, for an agent presenting the
+   * map, or `null` to give the chapter's back. It also ends when the
+   * engineer's pointer, pin, drawing, chapter or flow choice changes what is
+   * lit.
+   */
+  readonly lightUp: (spotlight: Spotlight | null) => void;
 }
 
 export const SpotlightContext = createContext<SpotlightState | null>(null);
+
+/**
+ * The spotlight the map draws: `SpotlightState.spotlight` with the hops a
+ * proposal draws or deletes added, which stay at full strength. `MapView`
+ * provides it, for what reports the map as drawn, such as `read_view`.
+ */
+export const DrawnSpotlightContext = createContext<Spotlight | null>(null);
 
 export const SpotlightActionsContext = createContext<SpotlightActions | null>(
   null

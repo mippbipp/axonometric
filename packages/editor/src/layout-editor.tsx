@@ -1,8 +1,4 @@
-import {
-  groundProjections,
-  samePlacement,
-  samePosition,
-} from "@axonometric/contracts";
+import { groundProjections, samePosition } from "@axonometric/contracts";
 import type {
   GridPoint,
   LayoutChange,
@@ -10,94 +6,70 @@ import type {
   StructureMove,
   View,
 } from "@axonometric/contracts";
+import {
+  GroundDrag,
+  GroundHandle,
+} from "@axonometric/ui/components/ground-drag";
+import type {
+  GroundBox,
+  GroundCorner,
+  GroundDraft,
+  GroundPress,
+} from "@axonometric/ui/components/ground-drag";
 import { Array as Arr } from "effect";
-import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
-import { shiftDrawing } from "./drag-shift.ts";
+import { dragShiftOf, useShiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
+import {
+  boxOf,
+  largeStep,
+  movesTo,
+  picks,
+  saveMove,
+  step,
+} from "./ground-moves.ts";
 import { useDropOutlines } from "./outlines-context.ts";
 import { useSelection } from "./selection-context.ts";
-import { snap } from "./snap.ts";
+import { useStructuresById } from "./structures.ts";
 import { useDrop } from "./use-drop.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
-
-/** How far a press must move before it drags a structure, in pixels. */
-const dragThreshold = 4;
 
 /** The smallest footprint side, in grid units. */
 const minSide = 0.5;
 
-/** A footprint corner a resize handle sits on, by compass point on the grid. */
-type Corner = "nw" | "ne" | "se" | "sw";
+const corners: ReadonlyArray<GroundCorner> = ["nw", "ne", "se", "sw"];
 
-const corners: ReadonlyArray<Corner> = ["nw", "ne", "se", "sw"];
+const cornerNames = {
+  ne: "north-east",
+  nw: "north-west",
+  se: "south-east",
+  sw: "south-west",
+} as const satisfies Record<GroundCorner, string>;
 
-const isEast = (corner: Corner) => corner === "ne" || corner === "se";
+const isEast = (corner: GroundCorner) => corner === "ne" || corner === "se";
 
-const isSouth = (corner: Corner) => corner === "se" || corner === "sw";
+const isSouth = (corner: GroundCorner) => corner === "se" || corner === "sw";
 
 /** Where a corner sits on a footprint, on the ground. */
-const cornerPoint = (placement: Placement, corner: Corner): GridPoint => ({
+const cornerPoint = (
+  placement: Placement,
+  corner: GroundCorner
+): GridPoint => ({
   x: isEast(corner) ? placement.x + placement.w : placement.x,
   y: isSouth(corner) ? placement.y + placement.d : placement.y,
 });
 
-/**
- * The footprint after dragging `corner` of `start` by `delta` on the
- * ground, snapped to half units. The opposite corner stays put, and each
- * side keeps at least half a unit.
- */
-const resized = (
-  start: Placement,
-  corner: Corner,
-  delta: GridPoint
-): Placement => {
-  const right = start.x + start.w;
-  const bottom = start.y + start.d;
-
-  const x = isEast(corner)
-    ? start.x
-    : Math.min(snap(start.x + delta.x), right - minSide);
-
-  const y = isSouth(corner)
-    ? start.y
-    : Math.min(snap(start.y + delta.y), bottom - minSide);
-
-  return {
-    d: isSouth(corner)
-      ? Math.max(snap(start.d + delta.y), minSide)
-      : bottom - y,
-    w: isEast(corner) ? Math.max(snap(start.w + delta.x), minSide) : right - x,
-    x,
-    y,
-  };
-};
-
-/** The footprint after moving `start` by `delta`, snapped to half units. */
-const moved = (start: Placement, delta: GridPoint): Placement => ({
-  ...start,
-  x: snap(start.x + delta.x),
-  y: snap(start.y + delta.y),
+const placementOf = ({ height, width, x, y }: GroundBox): Placement => ({
+  d: height,
+  w: width,
+  x,
+  y,
 });
 
-/** One press on a structure or a handle, until it's released. */
-interface Press {
-  /** The handle's corner for a resize, or nothing for a move. */
-  readonly corner: Corner | undefined;
-  /** Where the press started, in window pixels. */
-  readonly from: { readonly x: number; readonly y: number };
-  /** The ground point under the press. */
-  readonly ground: GridPoint;
-  readonly id: string;
-  readonly pointer: number;
-  /** Where the structure was shown when the press started. */
-  readonly start: Placement;
-}
-
-/** A press past the threshold, and where it would put the structure. */
 interface Drag {
   /** The structure under the pointer. */
   readonly id: string;
@@ -106,6 +78,7 @@ interface Drag {
    * is on one of its structures, else just `id`.
    */
   readonly ids: ReadonlyArray<string>;
+  readonly moves: ReadonlyArray<StructureMove>;
   readonly next: Placement;
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
@@ -122,33 +95,8 @@ const movesChange = (
     ? [{ by: "engineer", id: "preview", kind: "move", moves }]
     : [];
 
-/** Where each of `ids` goes when the pressed structure goes from `start` to `next`. */
-const movesOf = (
-  ids: ReadonlyArray<string>,
-  placements: Readonly<Partial<Record<string, Placement>>>,
-  { next, start }: Pick<Drag, "start" | "next">
-): ReadonlyArray<StructureMove> =>
-  Arr.flatMap(ids, (id) => {
-    const at = placements[id];
-
-    return at === undefined
-      ? []
-      : [
-          {
-            position: {
-              x: at.x + next.x - start.x,
-              y: at.y + next.y - start.y,
-            },
-            target: { id, kind: "structure" as const },
-          },
-        ];
-  });
-
 /** The layout changes a drag would make, for the warnings beside the map. */
-const previewChanges = (
-  drag: Drag,
-  placements: Readonly<Partial<Record<string, Placement>>>
-): ReadonlyArray<LayoutChange> =>
+const previewChanges = (drag: Drag): ReadonlyArray<LayoutChange> =>
   drag.resizing
     ? [
         {
@@ -158,22 +106,27 @@ const previewChanges = (
           kind: "resize",
           target: { id: drag.id, kind: "structure" },
         },
-        ...(samePosition(drag.next, drag.start)
-          ? []
-          : movesChange(movesOf([drag.id], placements, drag)).slice(0, 1)),
+        ...(samePosition(drag.next, drag.start) ? [] : movesChange(drag.moves)),
       ]
-    : movesChange(movesOf(drag.ids, placements, drag));
+    : movesChange(drag.moves);
 
 /**
- * Moves and resizes structures by dragging, while the page can edit. It
- * wraps a view's drawing, inside the viewport's transformed group.
+ * Moves and resizes structures, while the page can edit. It wraps a view's
+ * drawing, inside the viewport's transformed group, and works the same in
+ * both views.
  *
- * - A press on a structure that moves a few pixels drags it, snapped to
- *   half units. A press that doesn't move is left to the structure's click
- *   and double-click.
+ * - A press on a structure that moves 3 px drags it along the ground,
+ *   snapped to half units, with the multi-selection when the structure is in
+ *   it. A press that doesn't move is left to the structure's click and
+ *   double-click. Escape puts the drag back.
+ * - Alt and an arrow key nudge the multi-selection, or else the focused
+ *   structure, by half a unit along the ground, and Shift too by two. Each
+ *   press is one change and one undo step. A held key's repeats are
+ *   ignored, so holding an arrow doesn't write a change per repeat; drag to
+ *   go far.
  * - The selected structure gets a handle on each corner of its footprint,
- *   on the ground in both views. Dragging one resizes the footprint, and
- *   the opposite corner stays put.
+ *   on the ground in both views. Dragging one, or an arrow key on it,
+ *   resizes the footprint, and the opposite corner stays put.
  * - While a drop would make footprints overlap, the footprint is outlined
  *   in red, and dropping there snaps the structure back.
  */
@@ -193,18 +146,26 @@ export function LayoutEditor({
   const setOutlines = useDropOutlines()?.set;
   const { state } = useWalkthrough();
   const { multiSelection, selected } = useSelection();
+  const byId = useStructuresById();
   const root = useRef<SVGGElement>(null);
-  const press = useRef<Press | undefined>(undefined);
-  const dragged = useRef(false);
   const [drag, setDrag] = useState<Drag | undefined>();
   const live = editing?.canEdit === true;
 
-  useEffect(() => {
-    // Hop labels are drawn outside this group, so look from the canvas.
-    const canvas = root.current?.ownerSVGElement;
+  const boxes = useMemo(() => {
+    const all: Record<string, GroundBox> = {};
 
-    if (canvas !== null && canvas !== undefined) {
-      shiftDrawing({
+    for (const [id, placement] of Object.entries(placements)) {
+      if (placement !== undefined) {
+        all[id] = boxOf(placement);
+      }
+    }
+
+    return all;
+  }, [placements]);
+
+  const shift = useMemo(
+    () =>
+      dragShiftOf({
         by:
           drag === undefined
             ? undefined
@@ -212,11 +173,12 @@ export function LayoutEditor({
         changing: drag?.ids,
         hops: state.data.hops,
         ids: drag === undefined || drag.resizing ? [] : drag.ids,
-        root: canvas,
         view,
-      });
-    }
-  }, [drag, view, state.data.hops]);
+      }),
+    [drag, view, state.data.hops]
+  );
+
+  useShiftDrawing({ root, shift });
 
   // Whatever is dragged or resized, the panel beside the map says what the
   // drop would leave: its reason when refused, else every warning `check`
@@ -228,10 +190,8 @@ export function LayoutEditor({
       return;
     }
 
-    const changes = previewChanges(drag, placements);
-
-    preview?.show({ changes, refusal: drag.refusal });
-  }, [drag, placements, preview]);
+    preview?.show({ changes: previewChanges(drag), refusal: drag.refusal });
+  }, [drag, preview]);
 
   // The outlines are drawn in a layer under the zones and the text.
   useEffect(() => {
@@ -241,192 +201,99 @@ export function LayoutEditor({
         : {
             moving: drag.resizing
               ? [{ from: drag.start, id: drag.id, to: drag.next }]
-              : Arr.flatMap(
-                  movesOf(drag.ids, placements, drag),
-                  ({ position, target }) => {
-                    const from = placements[target.id];
+              : Arr.flatMap(drag.moves, ({ position, target }) => {
+                  const from = placements[target.id];
 
-                    return from === undefined
-                      ? []
-                      : [{ from, id: target.id, to: { ...from, ...position } }];
-                  }
-                ),
+                  return from === undefined
+                    ? []
+                    : [{ from, id: target.id, to: { ...from, ...position } }];
+                }),
             refusal: drag.refusal,
           }
     );
   }, [drag, placements, setOutlines]);
 
-  // A drag ends with a click, which would pin the structure or, landing on
-  // the group, clear the selection. The map surface listens for clicks
-  // natively, so this has to stop the click natively too, on the way down.
-  useEffect(() => {
-    const element = root.current;
+  const moveRefusal = (
+    to: Readonly<Record<string, GridPoint>>,
+    id: string,
+    next: Placement
+  ) =>
+    Object.keys(to).length > 1
+      ? editing?.refusalOfMoves(movesTo(to))
+      : dropping.refusalOf(id, next);
 
-    const onClick = (event: MouseEvent) => {
-      if (dragged.current) {
-        dragged.current = false;
-        event.stopPropagation();
-        event.preventDefault();
-      }
-    };
+  const dragOf = (draft: GroundDraft): Drag | undefined => {
+    if (draft.kind === "resize") {
+      const start = placementOf(draft.from);
+      const next = placementOf(draft.to);
 
-    element?.addEventListener("click", onClick, { capture: true });
+      return {
+        id: draft.key,
+        ids: [draft.key],
+        moves: movesTo({ [draft.key]: { x: next.x, y: next.y } }),
+        next,
+        refusal: dropping.refusalOf(draft.key, next),
+        resizing: true,
+        start,
+      };
+    }
 
-    return () => {
-      element?.removeEventListener("click", onClick, { capture: true });
-    };
-  }, []);
+    const [id] = draft.keys;
 
-  const begin = (event: ReactPointerEvent, id: string, corner?: Corner) => {
+    if (id === undefined) {
+      return undefined;
+    }
+
     const start = placements[id];
-    const element = root.current;
+    const at = draft.to[id];
 
-    // A Shift-press picks structures or starts a selection box, and never
-    // drags.
-    if (
-      !live ||
-      event.button !== 0 ||
-      event.shiftKey ||
-      start === undefined ||
-      element === null
-    ) {
-      return;
+    if (start === undefined || at === undefined) {
+      return undefined;
     }
 
-    const ground = groundAt({ element, event, view });
+    const next = { ...start, ...at };
 
-    if (ground === undefined) {
-      return;
-    }
-
-    dragged.current = false;
-    press.current = {
-      corner,
-      from: { x: event.clientX, y: event.clientY },
-      ground,
+    return {
       id,
-      pointer: event.pointerId,
+      ids: Object.keys(draft.to),
+      moves: movesTo(draft.to),
+      next,
+      refusal: moveRefusal(draft.to, id, next),
+      resizing: false,
       start,
     };
-
-    // A handle is never a click target, so it takes the pointer at once,
-    // and moves keep coming once the pointer leaves the small square.
-    if (corner !== undefined) {
-      element.setPointerCapture(event.pointerId);
-    }
   };
 
-  const onPointerDown = (event: ReactPointerEvent<SVGGElement>) => {
-    const target =
-      event.target instanceof Element
-        ? event.target.closest<SVGElement>("[data-structure]")
-        : null;
+  const keysFor = (target: Element | null, press: GroundPress) => {
+    const { input } = press;
 
-    const id = target?.dataset.structure;
-
-    if (id !== undefined) {
-      begin(event, id);
-    }
-  };
-
-  const onPointerMove = (event: ReactPointerEvent<SVGGElement>) => {
-    const { current } = press;
-    const element = root.current;
-
-    if (
-      editing === null ||
-      current === undefined ||
-      element === null ||
-      event.pointerId !== current.pointer
-    ) {
-      return;
+    if (picks(press)) {
+      return [];
     }
 
-    const travel = Math.hypot(
-      event.clientX - current.from.x,
-      event.clientY - current.from.y
-    );
-
-    if (!dragged.current && travel < dragThreshold) {
-      return;
+    if (input === "keyboard" && multiSelection.size > 0) {
+      return [...multiSelection];
     }
 
-    const ground = groundAt({ element, event, view });
+    const id =
+      target?.closest<SVGElement>("[data-structure]")?.dataset.structure ??
+      (input === "keyboard"
+        ? target?.closest<SVGElement>("[data-resize-handles]")?.dataset
+            .resizeHandles
+        : undefined);
 
-    if (ground === undefined) {
-      return;
+    if (id === undefined) {
+      return [];
     }
-
-    // Capture only once it's a drag, so a plain click keeps its target.
-    if (!dragged.current) {
-      dragged.current = true;
-
-      if (!element.hasPointerCapture(event.pointerId)) {
-        element.setPointerCapture(event.pointerId);
-      }
-    }
-
-    const delta = {
-      x: ground.x - current.ground.x,
-      y: ground.y - current.ground.y,
-    };
-
-    const next =
-      current.corner === undefined
-        ? moved(current.start, delta)
-        : resized(current.start, current.corner, delta);
 
     // Pressing a structure of the multi-selection moves the whole set.
-    const ids =
-      current.corner === undefined && multiSelection.has(current.id)
-        ? [...multiSelection]
-        : [current.id];
-
-    const together = ids.length > 1;
-
-    setDrag((before) =>
-      before !== undefined && samePlacement(before.next, next)
-        ? before
-        : {
-            id: current.id,
-            ids,
-            next,
-            refusal: together
-              ? editing.refusalOfMoves(
-                  movesOf(ids, placements, { next, start: current.start })
-                )
-              : dropping.refusalOf(current.id, next),
-            resizing: current.corner !== undefined,
-            start: current.start,
-          }
-    );
+    return multiSelection.has(id)
+      ? [id, ...[...multiSelection].filter((other) => other !== id)]
+      : [id];
   };
 
-  const end = (event: ReactPointerEvent<SVGGElement>, drop: boolean) => {
-    const { current } = press;
-
-    if (current === undefined || event.pointerId !== current.pointer) {
-      return;
-    }
-
-    press.current = undefined;
-
-    if (
-      drop &&
-      drag !== undefined &&
-      editing !== null &&
-      drag.refusal === undefined &&
-      !samePlacement(drag.next, drag.start)
-    ) {
-      if (drag.ids.length > 1) {
-        editing.arrange(() => movesOf(drag.ids, placements, drag));
-      } else {
-        dropping.drop(drag.id, drag.next);
-      }
-    }
-
-    setDrag(undefined);
-  };
+  const onResize = (id: string, box: GroundBox) =>
+    dropping.drop(id, placementOf(box)) === undefined;
 
   const handlesAt =
     selected === null || multiSelection.size > 0
@@ -436,49 +303,59 @@ export function LayoutEditor({
         : placements[selected];
 
   return (
-    <g
-      data-dragging={drag?.id}
+    <GroundDrag
+      boxes={boxes}
       data-layout-editor={live ? "on" : "off"}
-      onLostPointerCapture={(event) => {
-        end(event, false);
+      disabled={!live}
+      groundAt={(element, at) =>
+        element instanceof SVGGraphicsElement
+          ? groundAt({ element, event: at, view })
+          : undefined
+      }
+      keysFor={keysFor}
+      label={(id) => byId.get(id)?.name}
+      largeStep={largeStep}
+      minSize={minSide}
+      onDraft={(draft) => {
+        setDrag(draft === null ? undefined : dragOf(draft));
       }}
-      onPointerCancel={(event) => {
-        end(event, false);
-      }}
-      onPointerDown={live ? onPointerDown : undefined}
-      onPointerMove={live ? onPointerMove : undefined}
-      onPointerUp={(event) => {
-        end(event, true);
-      }}
+      onMove={(to, { input }) =>
+        saveMove({
+          dropOne: dropping.drop,
+          editing,
+          input,
+          placements,
+          to,
+        })
+      }
+      onResize={onResize}
       ref={root}
+      step={step}
     >
       {children}
       {live && selected !== null && handlesAt !== undefined ? (
         <ResizeHandles
           id={selected}
-          onPress={(event, corner) => {
-            begin(event, selected, corner);
-          }}
+          name={byId.get(selected)?.name ?? selected}
           placement={handlesAt}
           view={view}
         />
       ) : null}
-    </g>
+    </GroundDrag>
   );
 }
 
 /** How big a resize handle is, in drawing units. */
 const handleSize = 12;
 
-/** A square handle on each corner of the selected structure's footprint. */
 function ResizeHandles({
   id,
-  onPress,
+  name,
   placement,
   view,
 }: {
   readonly id: string;
-  readonly onPress: (event: ReactPointerEvent, corner: Corner) => void;
+  readonly name: string;
   readonly placement: Placement;
   readonly view: View;
 }) {
@@ -490,15 +367,13 @@ function ResizeHandles({
         const at = ground.toScreen(cornerPoint(placement, corner));
 
         return (
-          <rect
-            aria-hidden="true"
-            className="fill-paper stroke-pending cursor-move"
-            data-resize-handle={corner}
+          <GroundHandle
+            aria-label={`Resize ${name} from its ${cornerNames[corner]} corner`}
+            className="fill-paper stroke-pending focus-visible:outline-ink outline-none focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-dashed"
+            corner={corner}
             height={handleSize}
             key={corner}
-            onPointerDown={(event) => {
-              onPress(event, corner);
-            }}
+            owner={id}
             strokeWidth={1.5}
             width={handleSize}
             x={at.sx - handleSize / 2}

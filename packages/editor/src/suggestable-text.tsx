@@ -1,11 +1,12 @@
 import { fieldLabel, maxSuggestionLength } from "@axonometric/contracts";
 import type { TextField } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Option, Result } from "effect";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useEditOn } from "./edit-context.ts";
 import { ItemStatusLine } from "./item-status.tsx";
 import { NoteForm } from "./note-form.tsx";
@@ -28,18 +29,17 @@ export function DiscardSuggestion({ entry }: { readonly entry: Entry }) {
   const review = useReview();
 
   return (
-    <button
+    <Button
       aria-label={`Discard suggestion: ${fieldLabel(entry.item.field)}`}
-      className={controlClass}
+      className={uiControlClass}
       data-suggestion-discard={entry.item.field}
       disabled={review?.canWrite !== true}
       onClick={() => {
         review?.ops.discardProposal(entry.item.id, noop);
       }}
-      type="button"
     >
       Discard
-    </button>
+    </Button>
   );
 }
 
@@ -54,16 +54,15 @@ export function EditSuggestion({
   const review = useReview();
 
   return (
-    <button
+    <Button
       aria-label={`Edit suggestion: ${fieldLabel(entry.item.field)}`}
-      className={controlClass}
+      className={uiControlClass}
       data-suggestion-edit={entry.item.field}
       disabled={review?.canWrite !== true}
       onClick={onEdit}
-      type="button"
     >
       Edit
-    </button>
+    </Button>
   );
 }
 
@@ -232,15 +231,14 @@ export function StartButton({
 
   return (
     <span>
-      <button
+      <Button
         aria-label={`${label}: ${what}`}
-        className={controlClass}
+        className={uiControlClass}
         data-suggest={field}
         onClick={onStart}
-        type="button"
       >
         {label}
-      </button>
+      </Button>
     </span>
   );
 }

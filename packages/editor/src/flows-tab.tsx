@@ -6,13 +6,15 @@ import {
   newFlowId,
 } from "@axonometric/contracts";
 import type { Flow } from "@axonometric/contracts";
-import { Checkbox } from "@axonometric/ui/components/checkbox";
+import { Button } from "@axonometric/ui/components/button";
+import { Checkbox, CheckboxGroup } from "@axonometric/ui/components/checkbox";
+import { FieldLegend, FieldSet } from "@axonometric/ui/components/field";
 import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Option, Result } from "effect";
 import { useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { LabelledField } from "./labelled-field.tsx";
 import { SortableList } from "./sortable-list.tsx";
 import { useWalkthrough } from "./walkthrough-context.ts";
@@ -89,18 +91,17 @@ function FlowEditor({ flow }: { readonly flow: Flow }) {
         {name !== undefined &&
         name.trim() !== "" &&
         name.trim() !== flow.name ? (
-          <button
-            className={controlClass}
+          <Button
+            className={uiControlClass}
             data-flow-rename={flow.id}
             disabled={!canPropose}
             onClick={() => {
               send({ action: "rename", flow: flow.id, name: name.trim() });
               setName(undefined);
             }}
-            type="button"
           >
             Rename
-          </button>
+          </Button>
         ) : null}
       </div>
       <SortableList
@@ -207,32 +208,33 @@ function NewFlowForm() {
           value={name}
         />
       </LabelledField>
-      <fieldset className="flex flex-col gap-1">
-        <legend className="opacity-70">Starts with these hops</legend>
-        <ul className="flex max-h-32 flex-col gap-1 overflow-y-auto">
+      <FieldSet className="flex flex-col gap-1">
+        <FieldLegend className="opacity-70">Starts with these hops</FieldLegend>
+        <CheckboxGroup
+          className="max-h-32 overflow-y-auto"
+          disabled={!connections.canPropose}
+          onValueChange={(next) => {
+            // The group lists values in screen order. A flow starts in the order hops were ticked.
+            setPicked([
+              ...Arr.filter(picked, (hop) => next.includes(hop)),
+              ...Arr.filter(next, (hop) => !picked.includes(hop)),
+            ]);
+          }}
+          render={<ul />}
+          value={[...picked]}
+        >
           {Arr.map(hops, ({ id: hop, label }) => (
             <li key={hop}>
               <label className="flex items-center gap-2">
-                <Checkbox
-                  checked={picked.includes(hop)}
-                  data-new-flow-hop={hop}
-                  disabled={!connections.canPropose}
-                  onCheckedChange={(next) => {
-                    setPicked(
-                      next === true
-                        ? [...picked, hop]
-                        : Arr.filter(picked, (other) => other !== hop)
-                    );
-                  }}
-                />
+                <Checkbox data-new-flow-hop={hop} value={hop} />
                 <span className="min-w-0 break-words">{label}</span>
               </label>
             </li>
           ))}
-        </ul>
-      </fieldset>
-      <button
-        className={`${controlClass} self-start`}
+        </CheckboxGroup>
+      </FieldSet>
+      <Button
+        className={`${uiControlClass} self-start`}
         data-new-flow-submit
         disabled={
           !connections.canPropose || name.trim() === "" || listed.length === 0
@@ -240,7 +242,7 @@ function NewFlowForm() {
         type="submit"
       >
         Create flow
-      </button>
+      </Button>
     </form>
   );
 }

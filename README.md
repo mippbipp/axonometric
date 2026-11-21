@@ -69,7 +69,9 @@ axonometric docs           # the overview and the list of topics
 axonometric docs process   # one topic
 ```
 
-`axonometric docs <topic>` prints one: `process`, `data`, `chapters`, `design`, `review` and `visual-check`.
+`axonometric docs <topic>` prints one: `process`, `data`, `chapters`, `design`, `review`, `visual-check` and `present`.
+
+To present, the agent drives your page with page tools: it reads what you are looking at and moves your view while it explains in chat. Each move shows a notice such as "Agent went to chapter 4", and your next input takes over. Page tools never change the map. They need a browser that supports WebMCP, which in Chrome means enabling "WebMCP for testing" at `chrome://flags/#enable-webmcp-testing` and relaunching Chrome. Without it, the agent tells you which chapter to open. `axonometric docs present` is the agent's guide.
 
 The skill from `npx skills add mippbipp/axonometric` is a short `SKILL.md` that sends the agent to `axonometric docs`. It triggers on requests to map, explain, review or present a system's architecture, and on the review prompt the page copies. Without the skill, add this to your `AGENTS.md`:
 

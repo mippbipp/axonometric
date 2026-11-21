@@ -1,10 +1,11 @@
 import { maxGroupTitleLength } from "@axonometric/contracts";
 import type { BatchItem, CheckScope, Group } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr } from "effect";
 import { useMemo, useState } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { LabelledField } from "./labelled-field.tsx";
 import { groupItem } from "./proposal-items.ts";
 import { useGroupOps } from "./proposal-ops-context.ts";
@@ -114,29 +115,28 @@ export function GroupPanel({ group }: { readonly group: Group }) {
                 }}
                 value={title}
               />
-              <button
-                className={controlClass}
+              <Button
+                className={uiControlClass}
                 data-group-rename
                 disabled={!canSubmit}
                 type="submit"
               >
                 Rename
-              </button>
+              </Button>
             </div>
           </LabelledField>
         </form>
       )}
       <div className="flex gap-1.5">
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-control="unpin"
           onClick={() => {
             selectGroup(null);
           }}
-          type="button"
         >
           Unpin
-        </button>
+        </Button>
       </div>
     </section>
   );

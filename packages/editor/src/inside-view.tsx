@@ -11,12 +11,13 @@ import type {
   Structure,
 } from "@axonometric/contracts";
 import { BoxShape, DrawingContext } from "@axonometric/drawing";
+import { Button } from "@axonometric/ui/components/button";
 import { WithTooltip } from "@axonometric/ui/components/tooltip";
 import { Array as Arr, String as Str } from "effect";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useFrameClock } from "./frame-clock.ts";
 import { clockAtNextHop, packetAt, travelSeconds } from "./packet-schedule.ts";
 import { pageDrawing } from "./page-environment.ts";
@@ -416,33 +417,29 @@ export function InsideView({ structure }: { readonly structure: Structure }) {
       {routes.length === 0 ? null : (
         <div className="absolute bottom-3 left-3 flex gap-1.5">
           {playing ? (
-            <button className={controlClass} onClick={pause} type="button">
+            <Button className={uiControlClass} onClick={pause}>
               ‖ Pause
-            </button>
+            </Button>
           ) : (
             <WithTooltip
               control={
-                <button
-                  aria-disabled={reducedMotion}
-                  className={controlClass}
-                  onClick={() => {
-                    if (!reducedMotion) {
-                      play();
-                    }
-                  }}
-                  type="button"
+                <Button
+                  className={uiControlClass}
+                  disabled={reducedMotion}
+                  focusableWhenDisabled
+                  onClick={play}
                 >
                   ▸ Play
-                </button>
+                </Button>
               }
               disabled={!reducedMotion}
             >
               {reducedMotionNote}
             </WithTooltip>
           )}
-          <button className={controlClass} onClick={step} type="button">
+          <Button className={uiControlClass} onClick={step}>
             Step
-          </button>
+          </Button>
         </div>
       )}
     </div>

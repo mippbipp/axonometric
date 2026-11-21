@@ -401,6 +401,24 @@ describe("the keyboard", () => {
         const boxRingCount = yield* Effect.promise(() => boxRing.count());
         assert.strictEqual(boxRingCount, 1);
 
+        const stops = yield* Effect.promise(() =>
+          page.evaluate<{ kinds: Array<string>; zero: number }>(
+            `(() => {
+              const items = [...document.querySelectorAll("[data-viewport] [tabindex]")];
+              const kind = (el) => el.hasAttribute("data-structure") ? "structure" : el.hasAttribute("data-packet") ? "packet" : el.hasAttribute("data-note-marker") ? "ring" : el.hasAttribute("data-zone-title-hit") ? "group" : "other";
+              return {
+                kinds: [...new Set(items.map(kind))].sort(),
+                zero: items.filter((el) => el.getAttribute("tabindex") === "0").length,
+              };
+            })()`
+          )
+        );
+
+        assert.deepStrictEqual(stops, {
+          kinds: ["group", "packet", "ring", "structure"],
+          zero: 1,
+        });
+
         yield* Effect.promise(() => hopRing.focus());
 
         // Focus shows: the ring has an outline.

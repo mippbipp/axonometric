@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 
 import { editStorage } from "@axonometric/contracts";
 import { assert } from "@effect/vitest";
-import { Array as Arr, Effect, Record, String as Str } from "effect";
+import { Array as Arr, Effect, Record, Schema, String as Str } from "effect";
 import { chromium } from "playwright";
 import type { Browser, Page } from "playwright";
 
@@ -30,7 +30,11 @@ export const closeBrowser = () => {
 
 const openContext = Effect.acquireRelease(
   Effect.promise(() => {
-    browser ??= chromium.launch();
+    // WebMCP puts document.modelContext on the page, and its executeTool
+    // runs a registered tool as an agent would.
+    browser ??= chromium.launch({
+      args: ["--enable-features=WebMCP"],
+    });
 
     return browser.then((launched) =>
       launched.newContext({ viewport: { height: 640, width: 1024 } })
@@ -380,6 +384,51 @@ export const scaleExpression =
 export const scaleOf = (page: Page) => inPage<number>(page, scaleExpression);
 
 /**
+ * Where the drawing sits in the window: the world group's screen matrix as
+ * `[scale, x, y]`, run in the page. It includes the transform and the pane's
+ * scroll, so it is what a shape drawn at the origin shows.
+ */
+export const cameraExpression = `(() => {
+  const matrix = document.querySelector("[data-viewport]").getScreenCTM();
+
+  return [matrix.a, matrix.e, matrix.f];
+})()`;
+
+/** The world's `[scale, x, y]` in window pixels, see `cameraExpression`. */
+export const cameraOf = (page: Page) =>
+  inPage<[number, number, number]>(page, cameraExpression);
+
+/**
+ * Waits up to `timeout` ms until the pan or zoom differs from `previous`, as
+ * `cameraOf` read it, and says whether it did.
+ */
+export const cameraChangedWithin = (
+  page: Page,
+  previous: ReadonlyArray<number>,
+  timeout: number
+) =>
+  Effect.promise(() =>
+    page
+      .waitForFunction(
+        `${cameraExpression}.some((value, index) => value !== [${Arr.join(Arr.map(previous, String), ",")}][index])`,
+        undefined,
+        { timeout }
+      )
+      .then(() => true)
+      .catch(() => false)
+  );
+
+/** Waits until the pan or zoom differs from `previous`, as `cameraOf` read it. */
+export const waitForCameraChange = Effect.fnUntraced(function* (
+  page: Page,
+  previous: ReadonlyArray<number>
+) {
+  const changed = yield* cameraChangedWithin(page, previous, 5000);
+
+  assert.isTrue(changed, "the pan or zoom never changed");
+});
+
+/**
  * Waits until the zoom passes `test`, such as `> 2`. Input reaches the page
  * asynchronously, so a test waits for the new state instead of reading once.
  */
@@ -422,3 +471,42 @@ export const pointOnHop = (page: Page, id: string) =>
       return null;
     })(${literal(id)})`
   );
+
+/** The names of the tools the page has registered through WebMCP. */
+export const toolsOf = (page: Page) =>
+  inPage<Array<{ description: string; name: string }>>(
+    page,
+    `document.modelContext.getTools().then((tools) => tools.map(({ description, name }) => ({ description, name })))`
+  );
+
+const decodeJson = <S extends Schema.Top>(schema: S) =>
+  Schema.decodeUnknownEffect(Schema.fromJsonString(schema));
+
+/** What an agent passes a tool: JSON values. */
+export type ToolInput = Readonly<
+  Record<string, string | number | null | ReadonlyArray<string>>
+>;
+
+/**
+ * Calls the page tool `name` as an agent would, with `input`, and decodes
+ * the JSON it returns with `schema`.
+ */
+export const callToolWith = <S extends Schema.Top>(
+  page: Page,
+  call: { readonly input: ToolInput; readonly name: string },
+  schema: S
+) => {
+  const input = JSON.stringify(call.input);
+
+  return inPage<string>(
+    page,
+    `document.modelContext.getTools().then((tools) => document.modelContext.executeTool(tools.find((tool) => tool.name === ${literal(call.name)}), ${input}))`
+  ).pipe(Effect.flatMap(decodeJson(schema)), Effect.orDie);
+};
+
+/** Calls the page tool `name` with no input, as `callToolWith` does. */
+export const callTool = <S extends Schema.Top>(
+  page: Page,
+  name: string,
+  schema: S
+) => callToolWith(page, { input: {}, name }, schema);

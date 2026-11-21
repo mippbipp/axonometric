@@ -1,9 +1,10 @@
 import type { DifferenceLine } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Toggle } from "@axonometric/ui/components/toggle";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useHistory } from "./history-context.ts";
 import { fullDate, relativeTime } from "./relative-time.ts";
 import { useSelection } from "./selection-context.ts";
@@ -40,15 +41,17 @@ function DifferenceItem({ line }: { readonly line: DifferenceLine }) {
       {structureId === undefined ? (
         line.text
       ) : (
-        <button
-          className={cn(controlClass, "w-full text-left")}
+        <Button
+          className={cn(
+            uiControlClass,
+            "w-full justify-start text-left whitespace-normal"
+          )}
           onClick={() => {
             select(structureId);
           }}
-          type="button"
         >
           {line.text}
-        </button>
+        </Button>
       )}
     </li>
   );

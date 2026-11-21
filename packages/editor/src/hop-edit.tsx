@@ -1,11 +1,12 @@
 import { maxHopLabelLength } from "@axonometric/contracts";
 import type { HopChange } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Input } from "@axonometric/ui/components/input";
 import { Option, Result } from "effect";
 import { useState } from "react";
 
 import { useConnections } from "./connections-context.ts";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { DeletionNotice } from "./deletion-notice.tsx";
 import { HopFlows } from "./hop-flows.tsx";
 import { useHopProposals } from "./hop-proposals.ts";
@@ -107,8 +108,8 @@ export function HopEdit({
       ) : null}
       <div className="flex flex-wrap gap-1.5">
         {changed ? (
-          <button
-            className={controlClass}
+          <Button
+            className={uiControlClass}
             data-hop-relabel={id}
             disabled={!connections.canPropose}
             onClick={() => {
@@ -116,23 +117,21 @@ export function HopEdit({
                 setTyped(undefined);
               });
             }}
-            type="button"
           >
             Propose relabel
-          </button>
+          </Button>
         ) : null}
         {deleted ? null : (
-          <button
-            className={controlClass}
+          <Button
+            className={uiControlClass}
             data-hop-delete={id}
             disabled={!connections.canPropose}
             onClick={() => {
               send({ action: "delete", hop: id });
             }}
-            type="button"
           >
             Propose deleting
-          </button>
+          </Button>
         )}
       </div>
     </section>

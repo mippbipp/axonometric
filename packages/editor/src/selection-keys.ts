@@ -4,20 +4,15 @@ import { isTyping } from "./chapter-keys.ts";
 import { useSelection } from "./selection-context.ts";
 
 /**
- * Keys for the selected structure: → goes inside it, and ← or Escape come
- * out of the inside view, or clear the selection when it's not open. Pair
- * it with `useChapterKeys(selected === null)`, so → and ← change chapter
- * only when nothing is selected.
- *
- * Escape first empties the multi-selection, and a second press clears the
- * selection. The arrow keys are handled only when `arrows` is true, which
- * is when this is their owner (see `useArrowOwner`).
+ * Escape empties the multi-selection, else clears the selected hop, else
+ * comes out of the inside view or clears the selection. In the inside view
+ * ← comes out too. Pair it with `useChapterKeys(inside === null)`, so ←
+ * doesn't also change chapter there.
  */
-export const useSelectionKeys = (arrows: boolean) => {
+export const useSelectionKeys = () => {
   const {
     clearMultiSelection,
     comeOut,
-    goInside,
     inside,
     multiSelection,
     select,
@@ -51,17 +46,11 @@ export const useSelectionKeys = (arrows: boolean) => {
       return;
     }
 
-    if (selected === null || (!arrows && event.key.startsWith("Arrow"))) {
+    if (selected === null) {
       return;
     }
 
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-
-      if (inside === null) {
-        goInside(selected);
-      }
-    } else if (event.key === "ArrowLeft" || event.key === "Escape") {
+    if (event.key === "Escape") {
       event.preventDefault();
 
       if (inside === null) {
@@ -69,6 +58,9 @@ export const useSelectionKeys = (arrows: boolean) => {
       } else {
         comeOut();
       }
+    } else if (event.key === "ArrowLeft" && inside !== null) {
+      event.preventDefault();
+      comeOut();
     }
   });
 

@@ -131,6 +131,22 @@ export default defineConfig({
       },
     },
     {
+      // The canvas narrows pointer and key targets to DOM nodes the same way.
+      files: [
+        "packages/ui/src/components/canvas-items.tsx",
+        "packages/ui/src/components/connect-ports.tsx",
+        "packages/ui/src/components/ground-drag.tsx",
+        "packages/ui/src/components/ground-gesture.tsx",
+        "packages/ui/src/components/pannable-canvas.tsx",
+        "packages/ui/test/connect-ports.test.tsx",
+        "packages/ui/test/ground-gesture.test.tsx",
+        "packages/ui/test/pannable-canvas.test.tsx",
+      ],
+      rules: {
+        "@nkzw/no-instanceof": "off",
+      },
+    },
+    {
       // The clipboard call hands its outcome to a callback, and either outcome
       // is reported, so there is no rejection left to catch.
       files: ["packages/editor/src/ready-for-review.tsx"],
@@ -211,6 +227,14 @@ export default defineConfig({
       // Every contracts test takes the timeout in vitest.config.ts and passes
       // none of its own, so the rule that requires one has nothing to check.
       files: ["packages/contracts/test/**/*.ts"],
+      rules: {
+        "vitest/require-test-timeout": "off",
+      },
+    },
+    {
+      // These are pure functions with no browser, so the timeout in the CLI's
+      // vitest.config.ts is plenty.
+      files: ["packages/cli/test/view-tools.test.ts"],
       rules: {
         "vitest/require-test-timeout": "off",
       },

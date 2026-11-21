@@ -1,4 +1,5 @@
 import type { GridPoint, Group, Structure } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import {
   Tabs,
   TabsList,
@@ -13,7 +14,7 @@ import type { ComponentProps } from "react";
 import { AddStructureForm } from "./add-structure.tsx";
 import { ChapterEditor } from "./chapter-editor.tsx";
 import { useConnections } from "./connections-context.ts";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { DragWarnings } from "./drag-preview.tsx";
 import { DrawHopForm } from "./draw-hop-form.tsx";
 import { useEditOn } from "./edit-context.ts";
@@ -83,22 +84,16 @@ function ChapterStory() {
       )}
       <ChapterEditor />
       <div className="flex gap-1.5">
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           disabled={index === 0}
           onClick={back}
-          type="button"
         >
           ◂ Back
-        </button>
-        <button
-          className={controlClass}
-          disabled={isLast}
-          onClick={next}
-          type="button"
-        >
+        </Button>
+        <Button className={uiControlClass} disabled={isLast} onClick={next}>
           Next ▸
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -136,22 +131,21 @@ function PacketDetails({ packet }: { readonly packet: SelectedPacket }) {
         </pre>
       )}
       <div className="flex gap-1.5">
-        <button className={controlClass} onClick={step} type="button">
+        <Button className={uiControlClass} onClick={step}>
           Step
-        </button>
+        </Button>
         {reducedMotion ? null : (
-          <button className={controlClass} onClick={play} type="button">
+          <Button className={uiControlClass} onClick={play}>
             ▸ Play
-          </button>
+          </Button>
         )}
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-control="close"
           onClick={closePacket}
-          type="button"
         >
           Close
-        </button>
+        </Button>
       </div>
     </section>
   );

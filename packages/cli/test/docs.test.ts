@@ -56,7 +56,6 @@ import { makeHome, runCli, startServe, mapKeys, mapIn } from "./harness.ts";
 // they show runs as written against the review fixture, so a renamed flag or
 // command fails here. Seam 1, the CLI on a temporary home folder.
 
-/** The topics the overview must list: the five the ticket names, and data. */
 const requiredTopics = [
   "process",
   "data",
@@ -64,6 +63,7 @@ const requiredTopics = [
   "design",
   "review",
   "visual-check",
+  "present",
 ] as const;
 
 /** Fields the schema rejects in data.mjs, which the docs mention only in passing. */
@@ -758,6 +758,29 @@ describe("axonometric docs", () => {
         [...topics],
         "the README's topic list"
       );
+    }).pipe(Effect.provide(NodeServices.layer))
+  );
+
+  it.effect("the README and the skill send an agent to present", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = path.join(import.meta.dirname, "..", "..", "..");
+
+      const readme = yield* fs.readFileString(path.join(root, "README.md"));
+
+      const skill = yield* fs.readFileString(
+        path.join(root, "skills", "axonometric", "SKILL.md")
+      );
+
+      const description = groupOf(
+        /^description: (?<text>.+)$/mu.exec(skill),
+        "text"
+      );
+
+      assert.include(readme, "page tools");
+      assert.include(readme, "`axonometric docs present`");
+      assert.match(description, /\bpresent\b/u);
     }).pipe(Effect.provide(NodeServices.layer))
   );
 

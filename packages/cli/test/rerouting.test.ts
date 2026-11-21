@@ -17,10 +17,12 @@ import {
   assertAttribute,
   assertCount,
   attributeOf,
+  cameraOf,
   count,
   goToChapter,
   literal,
   openUrl,
+  press,
   showView,
   unitOnScreen,
   waitFor,
@@ -297,7 +299,7 @@ describe("rerouting a hop by dragging a segment", () => {
     "shows a cursor for each segment's drag axis, and takes a press just off the line",
     () =>
       Effect.gen(function* () {
-        const { page } = yield* servedReview;
+        const { home, page } = yield* servedReview;
 
         for (const view of ["plan", "iso"] as const) {
           yield* showView(page, view);
@@ -343,6 +345,7 @@ describe("rerouting a hop by dragging a segment", () => {
         );
         yield* waitFor(page, '[data-route-preview="h-store"]');
         yield* Effect.promise(() => page.mouse.up());
+        yield* waitForRevision(home, 1);
       }),
     60_000
   );
@@ -432,6 +435,124 @@ describe("rerouting a hop by dragging a segment", () => {
 
         assert.deepStrictEqual(saved.layout, []);
         yield* waitGone(page, '[data-hop-pending="h-store"]');
+      }),
+    90_000
+  );
+
+  for (const view of ["plan", "iso"] as const) {
+    it.live(
+      `Escape mid-drag in ${view} view drops the preview and saves nothing`,
+      () =>
+        Effect.gen(function* () {
+          const { errors, home, page } = yield* servedReview;
+
+          yield* showView(page, view);
+
+          const unit = yield* unitOnScreen(page, view);
+          const by = screenDelta(view, unit, { x: 1, y: 0 });
+          const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+          yield* pressAndMove(page, from, by);
+          yield* waitFor(page, '[data-route-preview="h-store"]');
+          yield* press(page, "Escape");
+          yield* waitGone(page, "[data-route-preview]");
+          yield* waitGone(page, "[data-dragging-route]");
+          yield* Effect.promise(() => page.mouse.up());
+          yield* assertCount(page, "[data-hop-pending]", 0);
+
+          const value = yield* middleOf(page, segmentSelector("h-store", 0));
+          yield* dragBy(page, value, by);
+
+          const saved = yield* waitForRevision(home, 1);
+
+          assert.strictEqual(saved.layout.length, 1);
+          yield* waitFor(page, '[data-hop-pending="h-store"]');
+          assert.deepStrictEqual(errors, []);
+        }),
+      90_000
+    );
+
+    it.live(
+      `a segment drag in ${view} view does not pan the camera`,
+      () =>
+        Effect.gen(function* () {
+          const { home, page } = yield* servedReview;
+
+          yield* showView(page, view);
+
+          const unit = yield* unitOnScreen(page, view);
+          const before = yield* cameraOf(page);
+          const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+          yield* dragBy(page, from, screenDelta(view, unit, { x: 1, y: 0 }));
+          yield* waitForRevision(home, 1);
+
+          const value = yield* cameraOf(page);
+          assert.deepStrictEqual(value, before);
+        }),
+      90_000
+    );
+  }
+
+  it.live(
+    "one undo takes a segment drag back, and redo brings it back",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* showView(page, "plan");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, segmentSelector("h-store", 0));
+
+        yield* dragBy(page, from, screenDelta("plan", unit, { x: 1, y: 0 }));
+
+        const dragged = yield* waitForRevision(home, 1);
+
+        assert.strictEqual(dragged.layout.length, 1);
+
+        yield* Effect.promise(() =>
+          page.locator("[data-control='undo']").click()
+        );
+        assert.deepStrictEqual((yield* waitForRevision(home, 2)).layout, []);
+        yield* waitGone(page, "[data-hop-pending]");
+
+        yield* Effect.promise(() =>
+          page.locator("[data-control='redo']").click()
+        );
+        assert.deepStrictEqual(
+          (yield* waitForRevision(home, 3)).layout,
+          dragged.layout
+        );
+        yield* waitFor(page, '[data-hop-pending="h-store"]');
+      }),
+    90_000
+  );
+
+  it.live(
+    "a click on a segment pins the hop and keeps it pinned, even when the pointer slips under the drag threshold",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* showView(page, "plan");
+
+        const at = yield* middleOf(page, segmentSelector("h-store", 0));
+
+        yield* Effect.promise(() => page.mouse.click(at.x, at.y));
+        yield* waitFor(page, '[data-hop-panel="h-store"]');
+        yield* Effect.sleep("300 millis");
+        yield* assertCount(page, '[data-hop-panel="h-store"]', 1);
+
+        yield* Effect.promise(() => page.mouse.move(at.x, at.y));
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() => page.mouse.move(at.x + 2, at.y));
+        yield* Effect.promise(() => page.mouse.up());
+        yield* Effect.sleep("300 millis");
+        yield* assertCount(page, '[data-hop-panel="h-store"]', 1);
+        yield* assertCount(page, "[data-hop-pending]", 0);
+        const value = yield* proposalsIn(home);
+        assert.isTrue(Option.isNone(value));
       }),
     90_000
   );
@@ -674,6 +795,190 @@ describe("moving a group by its zone title", () => {
       90_000
     );
   }
+});
+
+describe("moving a group from the keyboard", () => {
+  const title = '[data-zone-title-hit="loop"]';
+
+  const focusTitle = (page: Page) =>
+    Effect.promise(() => page.locator(title).focus());
+
+  for (const view of ["plan", "iso"] as const) {
+    it.live(
+      `the zone title is a named button, and Alt and an arrow on it move every member half a unit as one change, in ${view} view`,
+      () =>
+        Effect.gen(function* () {
+          const { errors, home, page } = yield* servedReview;
+
+          yield* showView(page, view);
+          yield* waitFor(page, title);
+
+          const name = yield* attributeOf(page, title, "aria-label");
+
+          assert.strictEqual(name, "Group The loop");
+          const role = yield* attributeOf(page, title, "role");
+
+          assert.strictEqual(role, "button");
+
+          yield* focusTitle(page);
+          yield* press(page, "Alt+ArrowRight");
+
+          const saved = yield* waitForRevision(home, 1);
+          const [change] = saved.layout;
+
+          assert.strictEqual(saved.layout.length, 1);
+          assert.strictEqual(change?.kind, "move");
+
+          const moved: ReadonlyArray<StructureMove> =
+            change?.kind === "move" ? change.moves : [];
+
+          assert.deepStrictEqual(
+            Arr.sort(
+              Arr.map(moved, ({ target }) => target.id),
+              Order.String
+            ),
+            loopMembers
+          );
+          assert.deepStrictEqual(
+            Arr.sort(
+              Arr.map(moved, ({ position }) => position.x),
+              Order.Number
+            ),
+            [4.5, 8.5, 8.5, 12.5]
+          );
+
+          yield* press(page, "Shift+Alt+ArrowDown");
+
+          const second = yield* waitForRevision(home, 2);
+          const [, next] = second.layout;
+
+          assert.deepStrictEqual(
+            Arr.sort(
+              Arr.map(
+                next?.kind === "move" ? next.moves : [],
+                ({ position }) => position.y
+              ),
+              Order.Number
+            ),
+            [2, 2, 8, 8]
+          );
+
+          yield* press(page, "Control+z");
+          yield* waitForRevision(home, 3);
+          yield* press(page, "Control+z");
+
+          const undone = yield* waitForRevision(home, 4);
+
+          assert.deepStrictEqual(undone.layout, []);
+          assert.deepStrictEqual(errors, []);
+        }),
+      90_000
+    );
+  }
+
+  it.live(
+    "Enter on the title pins the group's panel, and Escape puts a drag back with nothing written",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* showView(page, "plan");
+        yield* focusTitle(page);
+        yield* press(page, "Enter");
+        yield* waitFor(page, '[data-group-panel="loop"]');
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, title);
+
+        yield* pressAndMove(
+          page,
+          from,
+          screenDelta("plan", unit, { x: 0, y: 2 })
+        );
+        yield* waitFor(page, "[data-drag-outline]");
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-drag-outline]");
+        yield* assertCount(page, "[data-drag-shifted]", 0);
+        yield* Effect.promise(() => page.mouse.up());
+        yield* Effect.sleep("500 millis");
+
+        const saved = yield* proposalsIn(home);
+
+        assert.isTrue(Option.isNone(saved));
+      }),
+    90_000
+  );
+
+  it.live(
+    "a drag in a chapter that hides some of the group still moves every member",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* goToChapter(page, "c-page");
+        yield* showView(page, "plan");
+        yield* waitFor(page, title);
+
+        const shown = yield* count(
+          page,
+          '[data-structure="server"], [data-structure="proposals"], [data-structure="pull-request"]'
+        );
+
+        assert.strictEqual(shown, 0, "the chapter should hide three members");
+
+        const unit = yield* unitOnScreen(page, "plan");
+        const from = yield* middleOf(page, title);
+
+        yield* dragBy(page, from, screenDelta("plan", unit, { x: 0, y: 2 }));
+
+        const saved = yield* waitForRevision(home, 1);
+        const [change] = saved.layout;
+
+        assert.deepStrictEqual(
+          Arr.sort(
+            Arr.map(
+              change?.kind === "move" ? change.moves : [],
+              ({ target }) => target.id
+            ),
+            Order.String
+          ),
+          loopMembers
+        );
+      }),
+    90_000
+  );
+
+  it.live(
+    "a nudge on the title moves the group, not a multi-selection beside it",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* servedReview;
+
+        yield* showView(page, "plan");
+        yield* Effect.promise(() =>
+          page
+            .locator('[data-structure="engineer"]')
+            .click({ modifiers: ["Shift"] })
+        );
+        yield* focusTitle(page);
+        yield* press(page, "Alt+ArrowDown");
+
+        const saved = yield* waitForRevision(home, 1);
+        const [change] = saved.layout;
+
+        assert.deepStrictEqual(
+          Arr.sort(
+            Arr.map(
+              change?.kind === "move" ? change.moves : [],
+              ({ target }) => target.id
+            ),
+            Order.String
+          ),
+          loopMembers
+        );
+      }),
+    90_000
+  );
 });
 
 describe("text while dragging", () => {
@@ -1309,6 +1614,7 @@ describe("the warnings while dragging", () => {
           from,
           screenDelta("plan", unit, { x: 0.5, y: 0 })
         );
+        yield* waitFor(page, '[data-dragging-route="h-store"]');
         yield* Effect.sleep("600 millis");
 
         yield* assertCount(page, "[data-drag-warnings]", 0);

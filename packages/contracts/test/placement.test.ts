@@ -15,6 +15,7 @@ import type {
   ScreenPoint,
   Structure,
 } from "../src/index.ts";
+import { placeStructuresWith } from "../src/placement.ts";
 import { placedFixture } from "./fixture-maps.ts";
 import { grow, placementOf } from "./footprints.ts";
 import { layoutProblems } from "./layout-problems.ts";
@@ -186,7 +187,7 @@ describe("placement", () => {
     })
   );
 
-  it.effect("places 40 one-member groups in under 750 ms", () =>
+  it.effect("places 40 one-member groups with bounded work", () =>
     Effect.sync(() => {
       const ids = Arr.map(Arr.range(0, 39), (index) => `s${index}`);
 
@@ -198,12 +199,17 @@ describe("placement", () => {
         }))
       );
 
-      // Each one-member group draws a few of its slots to compare them.
-      // Locally this takes about 0.4 s.
-      const started = performance.now();
-      const { layout } = placeStructures(data, layoutOf());
+      const work = { drawing: 0, slot: 0 };
+      const { layout } = placeStructuresWith(data, layoutOf(), (kind) => {
+        work[kind] += 1;
+      });
 
-      assert.isBelow(performance.now() - started, 750);
+      // Measured 11985 slot tests and no drawings, since a drawing budget of
+      // 12 shared by 40 groups leaves each none. The slot ceiling is about 1.7
+      // times the measured count, so a search twice as wide fails it. The
+      // drawing ceiling is the budget itself.
+      assert.isAtMost(work.slot, 20_000);
+      assert.isAtMost(work.drawing, 12);
       assert.lengthOf(Rec.keys(layout.structures), 40);
     })
   );

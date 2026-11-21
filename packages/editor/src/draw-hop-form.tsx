@@ -1,11 +1,12 @@
 import { maxHopLabelLength, newHopId } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Option, Result } from "effect";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { ChoiceSelect } from "./choice-select.tsx";
 import { useConnections } from "./connections-context.ts";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useChangePreview } from "./drag-preview-context.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
 import { LabelledField } from "./labelled-field.tsx";
@@ -167,8 +168,8 @@ export function DrawHopForm() {
         />
       </LabelledField>
       <div className="flex gap-1.5">
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-draw="submit"
           disabled={
             draft.to === null ||
@@ -179,15 +180,10 @@ export function DrawHopForm() {
           type="submit"
         >
           Propose hop
-        </button>
-        <button
-          className={controlClass}
-          data-draw="cancel"
-          onClick={close}
-          type="button"
-        >
+        </Button>
+        <Button className={uiControlClass} data-draw="cancel" onClick={close}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

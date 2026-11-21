@@ -1,8 +1,9 @@
 import { maxNoteLength } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { Textarea } from "@axonometric/ui/components/textarea";
 import { useState } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { LabelledField } from "./labelled-field.tsx";
 
 const always = () => true;
@@ -99,18 +100,18 @@ export function NoteForm({
         />
       </LabelledField>
       <div className="flex gap-1.5">
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-note-send
           disabled={sending || text.trim() === "" || !canSend(text.trim())}
           type="submit"
         >
           {sending ? "Saving…" : submit}
-        </button>
+        </Button>
         {onCancel === undefined ? null : (
-          <button className={controlClass} onClick={onCancel} type="button">
+          <Button className={uiControlClass} onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
     </form>

@@ -1,8 +1,9 @@
+import { Button } from "@axonometric/ui/components/button";
 import { Array as Arr, Option, Record as Rec } from "effect";
 import { useState } from "react";
 
 import { useProposedHopsIgnoringEdit } from "./connections-context.ts";
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import {
   pendingHops,
   useEditing,
@@ -78,27 +79,25 @@ export function HopPanel({ id }: { readonly id: string }) {
       )}
       <div className="flex flex-wrap gap-1.5">
         {editing?.canEdit === true && overridden && !removed ? (
-          <button
-            className={controlClass}
+          <Button
+            className={uiControlClass}
             data-reset-route={id}
             onClick={() => {
               setRefusal(editing.reroute(id, null));
             }}
-            type="button"
           >
             Reset route
-          </button>
+          </Button>
         ) : null}
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-control="close"
           onClick={() => {
             selectHop(null);
           }}
-          type="button"
         >
           Close
-        </button>
+        </Button>
       </div>
     </section>
   );

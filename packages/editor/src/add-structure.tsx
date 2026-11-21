@@ -1,6 +1,12 @@
 import { maxStructureNameLength } from "@axonometric/contracts";
 import type { GridPoint } from "@axonometric/contracts";
-import { Field, FieldLabel } from "@axonometric/ui/components/field";
+import { Button } from "@axonometric/ui/components/button";
+import {
+  Field,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@axonometric/ui/components/field";
 import { Input } from "@axonometric/ui/components/input";
 import {
   NumberInput,
@@ -11,7 +17,7 @@ import { Array as Arr, Option } from "effect";
 
 import { addChangeOf, previewId, sentId } from "./add-change.ts";
 import { ChoiceSelect } from "./choice-select.tsx";
-import { controlClass, uiControlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useDraftSpot } from "./draft-spot.ts";
 import type { DraftSpot } from "./draft-spot.ts";
 import { LabelledField } from "./labelled-field.tsx";
@@ -161,8 +167,8 @@ export function AddStructureForm() {
         trigger={{ "data-add": "group" }}
         value={draft.group}
       />
-      <fieldset className="flex flex-col gap-1">
-        <legend className="opacity-70">Position</legend>
+      <FieldSet className="flex flex-col gap-1">
+        <FieldLegend className="opacity-70">Position</FieldLegend>
         <div className="flex items-end gap-1.5">
           <Field className="flex w-16 flex-col gap-1">
             <FieldLabel className="opacity-70">x</FieldLabel>
@@ -202,7 +208,7 @@ export function AddStructureForm() {
         <p className="opacity-70" data-add-hint>
           {spotHint(placing.spot, drafted)}
         </p>
-      </fieldset>
+      </FieldSet>
       {failure === undefined ? null : (
         <p
           className="border-refused border-l-2 pl-2"
@@ -213,22 +219,17 @@ export function AddStructureForm() {
         </p>
       )}
       <div className="flex gap-1.5">
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-add="submit"
           disabled={!canPropose || sending || draftChange === undefined}
           type="submit"
         >
           {sending ? "Saving…" : "Propose"}
-        </button>
-        <button
-          className={controlClass}
-          data-add="cancel"
-          onClick={close}
-          type="button"
-        >
+        </Button>
+        <Button className={uiControlClass} data-add="cancel" onClick={close}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

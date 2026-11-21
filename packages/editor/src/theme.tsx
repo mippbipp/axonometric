@@ -1,6 +1,7 @@
+import { Button } from "@axonometric/ui/components/button";
 import { useSyncExternalStore } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { darkQuery, readChoice, readSystem } from "./theme-state.ts";
 import type { Theme } from "./theme-state.ts";
 
@@ -83,15 +84,14 @@ export function ThemeToggle() {
   const nextChoice = choice === "system" ? opposite[system] : "system";
 
   return (
-    <button
-      className={controlClass}
+    <Button
+      className={uiControlClass}
       data-theme-toggle=""
       onClick={() => {
         choose(nextChoice);
       }}
-      type="button"
     >
       {actions[nextChoice]}
-    </button>
+    </Button>
   );
 }

@@ -1,7 +1,7 @@
 import type { Hop } from "@axonometric/contracts";
+import { CanvasItem } from "@axonometric/ui/components/canvas-items";
 import { Array as Arr } from "effect";
 import { useMemo } from "react";
-import type { KeyboardEvent } from "react";
 
 import type { PacketRun } from "./chapters.ts";
 import { useDropOutlines } from "./outlines-context.ts";
@@ -52,28 +52,18 @@ function Packet({
 
   const isSelected = selected?.run.id === run.id;
 
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      selectPacket(runIndex);
-    }
-  };
-
   return (
-    <g
+    <CanvasItem
       aria-label={`Packet: ${hop.label}`}
       className="cursor-pointer outline-none"
       data-packet={hop.id}
       data-packet-hidden={hidden ? "" : undefined}
       data-run={run.id}
       data-selected={isSelected}
-      onClick={() => {
+      onPress={() => {
         selectPacket(runIndex);
       }}
-      onKeyDown={onKeyDown}
-      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the packet's group takes the button role.
-      role="button"
-      tabIndex={0}
+      value={`packet:${run.id}`}
     >
       {/* A wider, invisible target so the packet is easy to hit. */}
       <circle className="fill-transparent" cx={sx} cy={sy} r={12} />
@@ -95,7 +85,7 @@ function Packet({
         r={5.5}
         strokeWidth={1.6}
       />
-    </g>
+    </CanvasItem>
   );
 }
 

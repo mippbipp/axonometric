@@ -10,11 +10,12 @@ import type {
   Section,
   Verdict,
 } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr, Match, Option, Record as Rec, Result } from "effect";
 import { useState } from "react";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { describeChange } from "./describe-change.ts";
 import { useEditOn } from "./edit-context.ts";
 import { useEditingIgnoringEdit } from "./editing-context.ts";
@@ -206,33 +207,31 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
       ) : (
         <span className="flex flex-wrap gap-1.5">
           {status.state === "open" && canDiscard(item, editOn) ? (
-            <button
-              className={controlClass}
+            <Button
+              className={uiControlClass}
               disabled={!review.canWrite}
               onClick={() => {
                 review.ops.discardProposal(item.id, (outcome) => {
                   setFailure(failureOf(outcome));
                 });
               }}
-              type="button"
             >
               Discard
-            </button>
+            </Button>
           ) : null}
           {editOn && isRejected ? (
-            <button
-              className={controlClass}
+            <Button
+              className={uiControlClass}
               data-reopen={item.id}
               disabled={!review.canWrite}
               onClick={reopen}
-              type="button"
             >
               Edit again
-            </button>
+            </Button>
           ) : null}
           {editOn && status.state === "reviewed" ? (
-            <button
-              className={controlClass}
+            <Button
+              className={uiControlClass}
               data-dismiss={item.id}
               disabled={!review.canWrite}
               onClick={() => {
@@ -240,10 +239,9 @@ function ReviewRow({ entry }: { readonly entry: ReviewEntry }) {
                   setFailure(failureOf(outcome));
                 });
               }}
-              type="button"
             >
               Dismiss
-            </button>
+            </Button>
           ) : null}
         </span>
       )}

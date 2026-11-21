@@ -7,8 +7,8 @@ import {
   toPoints,
 } from "@axonometric/contracts";
 import type { NoteMarkerSpot, NoteTarget, Scene } from "@axonometric/contracts";
+import { CanvasItem } from "@axonometric/ui/components/canvas-items";
 import { Array as Arr, Match, Option } from "effect";
-import type { KeyboardEvent } from "react";
 
 import { placedMarkers, useNoteBearers } from "./note-bearers.ts";
 import { useNoteTool } from "./note-tool-context.ts";
@@ -60,29 +60,19 @@ function Ring({
   readonly onOpen: () => void;
   readonly tally: Tally;
 }) {
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onOpen();
-    }
-  };
-
   return (
-    <g
+    <CanvasItem
       aria-label={name}
       className="focus-visible:outline-ink cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-dashed"
       data-note-marker={id}
       data-note-placed="ring"
       data-note-rejected={tally.rejected}
-      onClick={(event) => {
-        event.stopPropagation();
+      onPress={(event) => {
+        event?.stopPropagation();
         onOpen();
       }}
-      onKeyDown={onKeyDown}
       pointerEvents="all"
-      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- SVG has no <button> element, so the ring's group takes the button role.
-      role="button"
-      tabIndex={0}
+      value={`note:${id}`}
     >
       <title>{name}</title>
       <circle
@@ -99,7 +89,7 @@ function Ring({
         r={noteMarkerRadius + 2}
         stroke="none"
       />
-    </g>
+    </CanvasItem>
   );
 }
 
@@ -113,8 +103,8 @@ function Ring({
  * the refused colour, the rest in the pending colour. The numbers and verdict
  * wording live in the side panel and the Pending tab.
  *
- * Each ring is a button, reachable with Tab and named for what it marks:
- * Enter, Space or a press opens the structure's, hop's or spot's panel.
+ * Each ring is one of the map's canvas items, named for what it marks: Enter,
+ * Space or a press opens the structure's, hop's or spot's panel.
  *
  * This is an editing layer: a file's drawing never includes it.
  */

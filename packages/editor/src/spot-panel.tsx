@@ -1,6 +1,7 @@
 import type { GridPoint } from "@axonometric/contracts";
+import { Button } from "@axonometric/ui/components/button";
 
-import { controlClass } from "./control-class.ts";
+import { uiControlClass } from "./control-class.ts";
 import { useNoteTool } from "./note-tool-context.ts";
 import { NotesSection } from "./notes-section.tsx";
 
@@ -26,16 +27,15 @@ export function SpotPanel({ spot }: { readonly spot: GridPoint }) {
       </p>
       <NotesSection target={{ kind: "spot", x: spot.x, y: spot.y }} />
       <div className="flex gap-1.5">
-        <button
-          className={controlClass}
+        <Button
+          className={uiControlClass}
           data-control="close"
           onClick={() => {
             tool?.pick(null);
           }}
-          type="button"
         >
           Close
-        </button>
+        </Button>
       </div>
     </section>
   );
