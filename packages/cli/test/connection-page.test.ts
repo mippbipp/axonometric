@@ -34,7 +34,13 @@ import {
   waitTimeout,
   choose,
 } from "./browser.ts";
-import { openReviewMap, proposalsOrEmpty, runCli, homeAt } from "./harness.ts";
+import {
+  openReviewMap,
+  proposalsOrEmpty,
+  runCli,
+  homeAt,
+  waitForRevision,
+} from "./harness.ts";
 import { post } from "./revisions.ts";
 
 // Seam 2: hop and flow proposals in a page that a real serve serves. The
@@ -672,6 +678,97 @@ describe.each(["iso", "plan"] as const)(
     );
   }
 );
+
+describe("a drawn hop and undo", () => {
+  const undoButton = "[data-control='undo']";
+
+  /**
+   * Waits for `hops` named hops on disk and on the map, then checks Undo
+   * stays disabled and Ctrl+Z writes nothing: the file stays at revision
+   * `hops`, one write per hop.
+   */
+  const undoLeavesHops = Effect.fnUntraced(function* (
+    page: Page,
+    home: string,
+    hops: number
+  ) {
+    yield* waitForRevision(home, hops);
+    yield* Effect.promise(() =>
+      page.waitForFunction(
+        `document.querySelectorAll('[data-hop][data-hop-state="proposed"]').length === ${hops}`,
+        undefined,
+        waitTimeout
+      )
+    );
+
+    const disabled = yield* Effect.promise(() =>
+      page.locator(undoButton).isDisabled()
+    );
+
+    assert.isTrue(disabled, "naming a hop is not an undo step");
+
+    yield* press(page, "Control+z");
+    yield* Effect.sleep("500 millis");
+
+    const saved = yield* waitForRevision(home, hops);
+
+    assert.strictEqual(saved.hops?.length, hops);
+    yield* assertCount(page, '[data-hop][data-hop-state="proposed"]', hops);
+  });
+
+  it.live(
+    "keeps a hop named after a pointer or keyboard draw as a pending proposal that undo leaves alone",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
+
+        yield* goToChapterPaused(page, "c-all");
+        yield* drawHop(page, "asks for a map");
+        yield* undoLeavesHops(page, home, 1);
+
+        yield* press(page, "Escape");
+        yield* Effect.promise(() =>
+          page.locator('[data-structure="page"]').focus()
+        );
+        yield* press(page, "h");
+        yield* press(page, "ArrowRight");
+        yield* press(page, "Enter");
+        yield* waitFor(page, "[data-draw-hop]");
+        yield* Effect.promise(() =>
+          page.locator('[data-draw="label"]').fill("reads")
+        );
+        yield* click(page, '[data-draw="submit"]');
+        yield* undoLeavesHops(page, home, 2);
+
+        yield* press(page, "Escape");
+
+        const from = yield* centreOf(page, '[data-structure="upstream"]');
+
+        yield* Effect.promise(() => page.mouse.move(from.x, from.y));
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() =>
+          page.mouse.move(from.x + 80, from.y + 40, { steps: 10 })
+        );
+        yield* Effect.promise(() => page.mouse.up());
+
+        const moved = yield* waitForRevision(home, 3);
+
+        assert.strictEqual(moved.layout.length, 1);
+
+        yield* click(page, undoButton);
+
+        const undone = yield* waitForRevision(home, 4);
+
+        assert.deepStrictEqual(undone.layout, []);
+        assert.strictEqual(
+          undone.hops?.length,
+          2,
+          "undo takes back the move only"
+        );
+      }),
+    90_000
+  );
+});
 
 describe("a structure's description", () => {
   it.live(

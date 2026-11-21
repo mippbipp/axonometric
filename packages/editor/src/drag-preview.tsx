@@ -28,7 +28,6 @@ import type {
 import { useEditing } from "./editing-context.ts";
 import { DropOutlinesContext } from "./outlines-context.ts";
 import type { DropOutlines } from "./outlines-context.ts";
-import { useMarkDragging } from "./use-mark-dragging.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 /** How long a drag rests before its warnings are worked out. */
@@ -142,7 +141,6 @@ export function DragPreviewProvider({
   const [drag, setDrag] = useState<DragPreviewInput | undefined>();
   const [checked, setChecked] = useState(unchecked);
 
-  useMarkDragging(drag !== undefined);
   // The step the panel waits on, so an answer to an older one is dropped.
   const [waitingOn, setWaitingOn] = useState(0);
   const { stop } = useWalkthrough();

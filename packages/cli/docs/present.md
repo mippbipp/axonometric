@@ -22,9 +22,9 @@ Several pages can be open. Each page's tools act on that page only. Your browser
 
 ## 2. Check for page tools
 
-The page registers its tools through WebMCP, which Chrome has behind `chrome://flags/#enable-webmcp-testing`. The engineer sets the flag to Enabled and relaunches Chrome. The served page and `<system>.html` register the same tools.
+The page registers its tools through WebMCP, which Chrome has behind `chrome://flags/#enable-webmcp-testing` ("WebMCP for testing"). The engineer sets the flag to Enabled and relaunches Chrome. The served page and `<system>.html` register the same tools.
 
-You need a browser tool that can list and call the page tools of a tab. If yours can't but it can run JavaScript in the page, `navigator.modelContextTesting.listTools()` and `navigator.modelContextTesting.executeTool(name, inputAsJson)` do the same, with the flag on. `executeTool` returns a JSON string.
+You need a browser tool that can list and call the page tools of a tab. If yours can't but it can run JavaScript in the page, use `document.modelContext`, with the flag on. `document.modelContext.getTools()` resolves to the tools, and `document.modelContext.executeTool(tool, input)` calls one, where `tool` is an object from `getTools()` and `input` is the input as an object, not a JSON string. It resolves to a JSON string. Older Chrome has `navigator.modelContextTesting.listTools()` and `navigator.modelContextTesting.executeTool(name, inputAsJson)` instead, which take the tool's name and the input as a JSON string.
 
 List the tools of the engineer's tab. The page has seven: `read_view`, `go_to_chapter`, `set_view`, `pin`, `go_inside`, `pick_flow` and `spotlight`. With none, go to step 5.
 
