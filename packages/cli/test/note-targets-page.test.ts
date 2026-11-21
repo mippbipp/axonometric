@@ -401,6 +401,25 @@ describe("the keyboard", () => {
         const boxRingCount = yield* Effect.promise(() => boxRing.count());
         assert.strictEqual(boxRingCount, 1);
 
+        // Structures, packets and rings share the map's one Tab stop.
+        const stops = yield* Effect.promise(() =>
+          page.evaluate<{ kinds: Array<string>; zero: number }>(
+            `(() => {
+              const items = [...document.querySelectorAll("[data-viewport] [tabindex]")];
+              const kind = (el) => el.hasAttribute("data-structure") ? "structure" : el.hasAttribute("data-packet") ? "packet" : el.hasAttribute("data-note-marker") ? "ring" : "other";
+              return {
+                kinds: [...new Set(items.map(kind))].sort(),
+                zero: items.filter((el) => el.getAttribute("tabindex") === "0").length,
+              };
+            })()`
+          )
+        );
+
+        assert.deepStrictEqual(stops, {
+          kinds: ["packet", "ring", "structure"],
+          zero: 1,
+        });
+
         yield* Effect.promise(() => hopRing.focus());
 
         // Focus shows: the ring has an outline.

@@ -57,6 +57,10 @@ const shiftClick = Effect.fnUntraced(function* (
   }
 });
 
+/** Gives a structure keyboard focus, as the arrow keys would. */
+const focusStructure = (page: Page, id: string) =>
+  Effect.promise(() => page.locator(`[data-structure="${id}"]`).focus());
+
 /** The ids of the structures in the multi-selection, sorted. */
 const multiSelectedIds = (page: Page) =>
   Effect.promise(() =>
@@ -170,6 +174,61 @@ describe("selecting several structures", () => {
           yield* press(page, "Escape");
           const selectedAfterEscape = yield* multiSelectedIds(page);
           assert.deepStrictEqual(selectedAfterEscape, []);
+          assert.deepStrictEqual(errors, []);
+        }),
+      60_000
+    );
+
+    it.live(
+      `Shift+Enter and Shift+Space on a focused structure add it to the set and take it out, and the pinned one joins first, in ${view}`,
+      () =>
+        Effect.gen(function* () {
+          const { errors, page } = yield* servedAll;
+
+          yield* showView(page, view);
+          yield* focusStructure(page, "engineer");
+          yield* press(page, "Shift+Enter");
+          yield* waitFor(
+            page,
+            '[data-structure="engineer"][data-multi-selected="true"]'
+          );
+          yield* focusStructure(page, "page");
+          yield* press(page, "Shift+Space");
+          yield* waitFor(
+            page,
+            '[data-structure="page"][data-multi-selected="true"]'
+          );
+          const selectedPair = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedPair, ["engineer", "page"]);
+
+          yield* focusStructure(page, "engineer");
+          yield* press(page, "Shift+Space");
+          yield* waitFor(
+            page,
+            '[data-structure="engineer"][data-multi-selected="false"]'
+          );
+          const selectedAfterToggle = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedAfterToggle, ["page"]);
+          yield* assertCount(page, "[data-inside-view]", 0);
+
+          // Escape closes the focused structure's tooltip, and the next one
+          // empties the set. Then a pinned structure joins the set with the
+          // first structure Shift adds.
+          yield* press(page, "Escape");
+          yield* waitGone(page, "[role=tooltip][data-open]");
+          yield* press(page, "Escape");
+          yield* waitGone(page, '[data-structure][data-multi-selected="true"]');
+          yield* focusStructure(page, "server");
+          yield* press(page, "Space");
+          yield* waitFor(page, '[data-structure-panel="server"][data-pinned]');
+          yield* focusStructure(page, "page");
+          yield* press(page, "Shift+Enter");
+          yield* waitFor(
+            page,
+            '[data-structure="page"][data-multi-selected="true"]'
+          );
+          const selectedWithPinned = yield* multiSelectedIds(page);
+          assert.deepStrictEqual(selectedWithPinned, ["page", "server"]);
           assert.deepStrictEqual(errors, []);
         }),
       60_000
@@ -338,7 +397,7 @@ describe("moving a selection", () => {
 describe("nudging a selection", () => {
   for (const view of views) {
     it.live(
-      `the arrow keys move the set half a unit along the ground and leave the chapter, in ${view}`,
+      `Alt and the arrow keys move the set half a unit along the ground and leave the chapter, in ${view}`,
       () =>
         Effect.gen(function* () {
           const { home, page } = yield* served;
@@ -346,7 +405,7 @@ describe("nudging a selection", () => {
           yield* showView(page, view);
           yield* shiftClick(page, ["engineer", "page"]);
 
-          yield* press(page, "ArrowRight");
+          yield* press(page, "Alt+ArrowRight");
 
           const first = yield* waitForRevision(home, 1);
 
@@ -356,7 +415,7 @@ describe("nudging a selection", () => {
           });
 
           // Each press is one change.
-          yield* press(page, "ArrowDown");
+          yield* press(page, "Alt+ArrowDown");
 
           const second = yield* waitForRevision(home, 2);
 
@@ -386,29 +445,42 @@ describe("nudging a selection", () => {
     );
   }
 
-  it.live("without a set the arrow keys still change chapter", () =>
-    Effect.gen(function* () {
-      const { home, page } = yield* served;
+  it.live(
+    "plain arrows change chapter with focus off the map, and on a structure move focus and nudge nothing",
+    () =>
+      Effect.gen(function* () {
+        const { home, page } = yield* served;
 
-      yield* press(page, "ArrowRight");
-      yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
+        yield* press(page, "ArrowRight");
+        yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
 
-      // With a set, they stop doing that.
-      yield* shiftClick(page, ["server"]);
-      yield* press(page, "ArrowRight");
-      yield* waitForRevision(home, 1);
+        // The Shift-click focuses server, so the arrows are the map's now.
+        yield* shiftClick(page, ["server"]);
+        yield* press(page, "ArrowRight");
+        yield* press(page, "ArrowLeft");
+        yield* Effect.sleep("300 millis");
 
-      yield* assertAttribute(
-        page,
-        { name: "data-chapter", selector: "[data-walkthrough]" },
-        "c-save"
-      );
+        const unchanged = yield* proposalsIn(home);
 
-      // Escape empties the set, and the arrows change chapter again.
-      yield* press(page, "Escape");
-      yield* press(page, "ArrowLeft");
-      yield* waitFor(page, '[data-walkthrough][data-chapter="c-page"]');
-    })
+        assert.isTrue(Option.isNone(unchanged), "a plain arrow nudged");
+        yield* assertAttribute(
+          page,
+          { name: "data-chapter", selector: "[data-walkthrough]" },
+          "c-save"
+        );
+
+        const focused = yield* Effect.promise(() =>
+          page.evaluate<boolean>(
+            "document.activeElement?.closest('[data-viewport]') !== null"
+          )
+        );
+
+        assert.isTrue(focused, "focus left the map");
+
+        // ] still changes chapter with focus on the map.
+        yield* press(page, "BracketLeft");
+        yield* waitFor(page, '[data-walkthrough][data-chapter="c-page"]');
+      })
   );
 
   it.live(
@@ -423,11 +495,11 @@ describe("nudging a selection", () => {
         yield* shiftClick(page, ["page"]);
 
         for (let presses = 0; presses < 4; presses++) {
-          yield* press(page, "ArrowLeft");
+          yield* press(page, "Alt+ArrowLeft");
         }
 
         yield* waitForRevision(home, 4);
-        yield* press(page, "ArrowLeft");
+        yield* press(page, "Alt+ArrowLeft");
         yield* waitFor(page, "[data-edit-notice='refused']");
         yield* Effect.sleep("300 millis");
 

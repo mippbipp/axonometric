@@ -5,14 +5,13 @@ import { useEffect, useEffectEvent } from "react";
 
 import { isTyping } from "./chapter-keys.ts";
 import { useEditing } from "./editing-context.ts";
-import { useNoteTool } from "./note-tool-context.ts";
 import { useSelection } from "./selection-context.ts";
 
-/** How far an arrow key nudges the multi-selection, in grid units. */
+/** How far Alt and an arrow key nudge the multi-selection, in grid units. */
 export const nudgeStep = 0.5;
 
 /**
- * Which way each arrow key nudges, along the ground axes. Plan view draws x
+ * Which way Alt and each arrow key nudge, along the ground axes. Plan view draws x
  * to the right and y down, so the keys point where the structures go. In
  * the Iso view the axes run diagonally, so → and ← move along x, down to
  * the right and up to the left, and ↓ and ↑ move along y, down to the left
@@ -30,37 +29,6 @@ const stepOf = (key: string): GridPoint | undefined =>
     Option.getOrUndefined
   );
 
-/** What the arrow keys do now. */
-export type ArrowOwner = "spot" | "nudge" | "selection" | "chapter";
-
-/**
- * The one place that decides what the arrow keys do:
- *
- * - `spot` moves the Note tool's grid cursor, while the tool is armed.
- * - `nudge` moves the multi-selection, while the page can edit and some
- *   structures are picked.
- * - `selection` takes → inside the pinned structure and ← out of it.
- * - `chapter` changes chapter, when nothing is picked.
- *
- * The chapter, selection and edit keys each act on the arrows only when
- * they are the owner.
- */
-export const useArrowOwner = (): ArrowOwner => {
-  const editing = useEditing();
-  const { multiSelection, selected } = useSelection();
-  const armed = useNoteTool()?.armed === true;
-
-  if (armed) {
-    return "spot";
-  }
-
-  if (editing?.canEdit === true && multiSelection.size > 0) {
-    return "nudge";
-  }
-
-  return selected === null ? "chapter" : "selection";
-};
-
 const isUndo = (event: KeyboardEvent) =>
   (event.ctrlKey || event.metaKey) &&
   !event.shiftKey &&
@@ -76,15 +44,15 @@ const isRedo = (event: KeyboardEvent) =>
 /**
  * The keys that edit the layout while the page can edit:
  *
- * - While `owner` is `nudge`, the arrow keys nudge the multi-selection by
- *   half a unit. Each press is one change and one undo step. A held key's
- *   repeats are ignored, so holding an arrow doesn't write a change per
- *   repeat; drag to go far.
+ * - Alt and an arrow key nudge the multi-selection by half a unit. Each
+ *   press is one change and one undo step. A held key's repeats are
+ *   ignored, so holding an arrow doesn't write a change per repeat; drag to
+ *   go far. Plain arrows are the map's, which move focus between its items.
  * - Ctrl or Cmd+Z undoes, and Ctrl or Cmd+Shift+Z or Ctrl+Y redoes.
  *
  * Keys typed into a field are left alone, so a field keeps its own undo.
  */
-export const useEditKeys = (owner: ArrowOwner) => {
+export const useEditKeys = () => {
   const editing = useEditing();
   const { multiSelection } = useSelection();
 
@@ -116,10 +84,10 @@ export const useEditKeys = (owner: ArrowOwner) => {
 
     if (
       step === undefined ||
-      owner !== "nudge" ||
+      multiSelection.size === 0 ||
+      !event.altKey ||
       event.ctrlKey ||
       event.metaKey ||
-      event.altKey ||
       event.shiftKey
     ) {
       return;

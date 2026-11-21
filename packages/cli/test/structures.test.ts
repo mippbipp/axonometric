@@ -158,8 +158,16 @@ describe("the tooltip on keyboard focus and Escape", () => {
           yield* goToChapter(page, "c-all");
           yield* pin(page, "page");
 
+          // The map is one Tab stop, so Tab leaves it and Shift+Tab comes
+          // back to the structure focused last.
           yield* Effect.promise(() => page.mouse.move(0, 0));
           yield* press(page, "Tab");
+
+          const left = yield* focusedOn(page);
+
+          assert.notStrictEqual(left, "page");
+
+          yield* press(page, "Shift+Tab");
           yield* waitFor(page, "[role=tooltip][data-open]");
 
           const focused = yield* focusedOn(page);
@@ -173,7 +181,7 @@ describe("the tooltip on keyboard focus and Escape", () => {
 
           assert.isTrue(describedBy);
           assert.include(said, "·");
-          assert.notStrictEqual(focused, "page");
+          assert.strictEqual(focused, "page");
 
           // Escape closes the tooltip first. The pin is the next Escape's.
           yield* press(page, "Escape");
@@ -458,14 +466,13 @@ describe("the inside view", () => {
 
         yield* Effect.promise(() => page.locator(structure("page")).focus());
         yield* press(page, "Enter");
-        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
-        yield* press(page, "ArrowRight");
         yield* waitFor(page, '[data-inside-view="page"]');
         const focusedInside = yield* focusedOn(page);
         assert.strictEqual(focusedInside, "come-out");
 
         yield* press(page, "ArrowLeft");
         yield* waitGone(page, "[data-inside-view]");
+        yield* waitFor(page, '[data-structure-panel="page"][data-pinned]');
         const focusedAfterComeOut = yield* focusedOn(page);
         assert.strictEqual(focusedAfterComeOut, "page");
 
@@ -516,7 +523,7 @@ describe("the inside view", () => {
   );
 
   it.live(
-    "opens from the Go inside button, a double-click or →, and Come out or ← returns",
+    "opens from the Go inside button, a double-click or Enter, and Come out or ← returns",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -536,7 +543,10 @@ describe("the inside view", () => {
           yield* press(page, "ArrowLeft");
           yield* expectOutWithPin(page, "c-save");
 
-          yield* press(page, "ArrowRight");
+          // Coming out focuses the structure, where Enter goes back inside.
+          const focusedAfterComeOut = yield* focusedOn(page);
+          assert.strictEqual(focusedAfterComeOut, "page");
+          yield* press(page, "Enter");
           yield* expectInside(page);
           yield* press(page, "ArrowLeft");
           yield* expectOutWithPin(page, "c-save");
@@ -573,9 +583,11 @@ describe("the inside view", () => {
         yield* pin(page, "engineer");
         yield* assertCount(page, '[data-control="go-inside"]', 0);
 
-        // → stays on the structure rather than moving on a chapter.
-        yield* press(page, "ArrowRight");
-        yield* waitFor(page, '[data-walkthrough][data-chapter="c-page"]');
+        // Enter on it only pins it.
+        const focused = yield* focusedOn(page);
+        assert.strictEqual(focused, "engineer");
+        yield* press(page, "Enter");
+        yield* waitFor(page, '[data-structure-panel="engineer"][data-pinned]');
         yield* assertCount(page, "[data-inside-view]", 0);
       })
     )
