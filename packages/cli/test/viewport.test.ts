@@ -475,6 +475,26 @@ const waitForOnScreen = (page: Page, selector: string) =>
     )
   );
 
+/**
+ * A structure on screen to start from, the structures off screen, and the
+ * arrow key that points from the start towards the first of them.
+ */
+const offScreenPlan = `(() => {
+  const canvas = document.querySelector("svg[data-scale]").getBoundingClientRect();
+  const centre = (box) => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+  const boxes = [...document.querySelectorAll("[data-structure]")].map((el) => ({ box: el.getBoundingClientRect(), id: el.dataset.structure }));
+  const on = ({ box }) => box.left < canvas.right && box.right > canvas.left && box.top < canvas.bottom && box.bottom > canvas.top;
+  const start = boxes.find(on);
+  const off = boxes.filter((item) => !on(item));
+  if (!start || off.length === 0) return { key: "ArrowRight", offScreen: [], start: null };
+  const from = centre(start.box);
+  const to = centre(off[0].box);
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const key = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "ArrowRight" : "ArrowLeft") : (dy > 0 ? "ArrowDown" : "ArrowUp");
+  return { key, offScreen: off.map(({ id }) => id), start: start.id };
+})()`;
+
 describe.each(views)("the viewport in %s", (view) => {
   it.live("pans to a structure whose name the browser scrolls into view", () =>
     Effect.scoped(
@@ -511,6 +531,119 @@ describe.each(views)("the viewport in %s", (view) => {
         yield* waitForOnScreen(page, `[data-structure="${id}"]`);
       })
     )
+  );
+
+  it.live("brings a structure the arrow keys reach on screen", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* builtPage;
+
+        yield* zoomedIn(page, view);
+
+        const plan = yield* inPage<{
+          readonly key: string;
+          readonly offScreen: ReadonlyArray<string>;
+          readonly start: string | null;
+        }>(page, offScreenPlan);
+
+        assert.isNotNull(plan.start, "no structure on screen to start from");
+
+        yield* Effect.promise(() =>
+          page.locator(`[data-structure="${plan.start ?? ""}"]`).focus()
+        );
+
+        const offScreen = new Set(plan.offScreen);
+        let reached: string | null = null;
+
+        for (let step = 0; step < 8 && reached === null; step += 1) {
+          yield* press(page, plan.key);
+
+          const focused = yield* inPage<string | null>(
+            page,
+            "document.activeElement?.getAttribute('data-structure') ?? null"
+          );
+
+          reached = focused !== null && offScreen.has(focused) ? focused : null;
+        }
+
+        assert.isNotNull(
+          reached,
+          `${plan.key} never reached an off-screen structure`
+        );
+        yield* waitForOnScreen(page, `[data-structure="${reached ?? ""}"]`);
+      })
+    )
+  );
+
+  it.live(
+    "moves focus with each arrow to an item that lies that way on screen",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* builtPage;
+
+          yield* showView(page, view);
+          yield* press(page, "0");
+
+          const centreOfFocus = inPage<{ x: number; y: number } | null>(
+            page,
+            `(() => {
+              const el = document.activeElement?.closest('[data-slot="canvas-items-item"]');
+              if (!el) return null;
+              const box = el.getBoundingClientRect();
+              return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+            })()`
+          );
+
+          const [first] = yield* inPage<ReadonlyArray<string>>(
+            page,
+            '[...document.querySelectorAll("[data-structure]")].map((el) => el.dataset.structure)'
+          );
+
+          yield* Effect.promise(() =>
+            page.locator(`[data-structure="${first ?? ""}"]`).focus()
+          );
+
+          const directions = {
+            ArrowDown: [0, 1],
+            ArrowLeft: [-1, 0],
+            ArrowRight: [1, 0],
+            ArrowUp: [0, -1],
+          } as const;
+
+          let moves = 0;
+
+          for (const key of [
+            "ArrowRight",
+            "ArrowDown",
+            "ArrowLeft",
+            "ArrowUp",
+            "ArrowRight",
+            "ArrowDown",
+          ] as const) {
+            const before = yield* centreOfFocus;
+
+            yield* press(page, key);
+
+            const after = yield* centreOfFocus;
+
+            assert.isNotNull(after, `${key} took focus off the map`);
+
+            if (before !== null && after !== null) {
+              const [dx, dy] = directions[key];
+              const ahead =
+                (after.x - before.x) * dx + (after.y - before.y) * dy;
+
+              if (after.x !== before.x || after.y !== before.y) {
+                moves += 1;
+                assert.isAbove(ahead, 0, `${key} moved focus the other way`);
+              }
+            }
+          }
+
+          assert.isAtLeast(moves, 3, "the arrows hardly moved focus");
+        })
+      )
   );
 
   it.live("keeps a pinned structure when a pan over empty space ends", () =>
