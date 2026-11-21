@@ -192,6 +192,10 @@ export type {
 
 export { cachedRoutesOf, cachedSceneOf } from "./scene-cache.ts";
 
+export { viewReadOf } from "./read-view.ts";
+
+export type { ViewBox, ViewRead, ViewReadSource } from "./read-view.ts";
+
 export { textGrowthAt, textSizes } from "./text-size.ts";
 
 export type { TextGrowth } from "./text-size.ts";
