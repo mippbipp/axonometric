@@ -11,7 +11,8 @@ import type {
   SegmentGuide,
   View,
 } from "@axonometric/contracts";
-import { Array as Arr, Duration, Effect, Option } from "effect";
+import { bindCanvasDrag } from "@axonometric/ui/lib/canvas-drag";
+import { Array as Arr, Option } from "effect";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
@@ -25,12 +26,6 @@ import {
 import { groundAt } from "./ground-at.ts";
 import { toPoints } from "./projection.ts";
 import { useSelection } from "./selection-context.ts";
-
-/** How far a press must move before it drags a segment, in pixels. */
-const dragThreshold = 4;
-
-/** How long after a press the click that follows it is still swallowed. */
-const clickWindow = Duration.millis(60);
 
 /** How wide a segment's invisible hit line is, in drawing units. */
 const hitWidth = 10;
@@ -48,25 +43,6 @@ const cursorOf = (view: View, axis: SegmentGuide["axis"]) => {
 
   return axis === "x" ? "cursor-nesw-resize" : "cursor-nwse-resize";
 };
-
-interface RouteEnds {
-  readonly from: Placement;
-  readonly to: Placement;
-}
-
-/** One press on a segment, until it's released. */
-interface Press {
-  readonly axis: SegmentGuide["axis"];
-  readonly ends: RouteEnds;
-  /** Where the press started, in window pixels. */
-  readonly from: { readonly x: number; readonly y: number };
-  /** The ground point under the press. */
-  readonly ground: GridPoint;
-  readonly hop: string;
-  readonly pointer: number;
-  readonly route: ReadonlyArray<GridPoint>;
-  readonly segment: number;
-}
 
 /** A press past the threshold, and the route it would leave. */
 interface Drag {
@@ -197,26 +173,30 @@ export function RouteEditor({
   const { selectedHop, selectHop } = useSelection();
   const preview = useDragPreview();
   const root = useRef<SVGGElement>(null);
-  const press = useRef<Press | undefined>(undefined);
-  const dragged = useRef(false);
-  // Set after a press ends, so the click that follows it is swallowed.
-  const swallow = useRef(false);
+  const stop = useRef<(() => void) | undefined>(undefined);
   const [drag, setDrag] = useState<Drag | undefined>();
   const live = editing?.canEdit === true;
 
-  // A drag ends with a click, which would pick the hop or clear the
-  // selection. The map surface listens for clicks natively, so the click is
-  // stopped natively too, on the way down.
+  // A press that never reached the drag threshold is a click on the hop.
+  // The map surface listens for clicks natively and clears the selection on
+  // one that lands on nothing, so this one is handled natively too, first.
   useEffect(() => {
     const element = root.current;
 
     const onClick = (event: MouseEvent) => {
-      if (dragged.current || swallow.current) {
-        dragged.current = false;
-        swallow.current = false;
-        event.stopPropagation();
-        event.preventDefault();
+      const target =
+        event.target instanceof Element
+          ? event.target.closest<SVGElement>("[data-route-segment]")
+          : null;
+      const hop = target?.dataset.hopId;
+
+      if (hop === undefined) {
+        return;
       }
+
+      event.stopPropagation();
+      event.preventDefault();
+      selectHop(hop);
     };
 
     element?.addEventListener("click", onClick, { capture: true });
@@ -224,7 +204,20 @@ export function RouteEditor({
     return () => {
       element?.removeEventListener("click", onClick, { capture: true });
     };
-  }, []);
+  }, [selectHop]);
+
+  useEffect(() => {
+    if (!live) {
+      stop.current?.();
+    }
+  }, [live]);
+
+  useEffect(
+    () => () => {
+      stop.current?.();
+    },
+    []
+  );
 
   useEffect(() => {
     if (drag === undefined) {
@@ -257,6 +250,7 @@ export function RouteEditor({
     const element = root.current;
 
     if (
+      editing === null ||
       !live ||
       event.button !== 0 ||
       event.shiftKey ||
@@ -268,9 +262,9 @@ export function RouteEditor({
     }
 
     const routed = Arr.findFirst(hops, (item) => item.hop.id === hop);
-    const ground = groundAt({ element, event, view });
+    const start = groundAt({ element, event, view });
 
-    if (Option.isNone(routed) || ground === undefined) {
+    if (Option.isNone(routed) || start === undefined) {
       return;
     }
 
@@ -281,124 +275,64 @@ export function RouteEditor({
       return;
     }
 
-    dragged.current = false;
-    swallow.current = false;
+    const axis = target.dataset.axis === "y" ? "y" : "x";
+    const route = routed.value.route.points;
+    const segment = Number(target.dataset.segment);
+    let latest: Drag | undefined;
 
-    // A segment is thin, so the pointer leaves it within a step or two of
-    // a drag. Capturing at once keeps the moves coming.
-    element.setPointerCapture(event.pointerId);
-    press.current = {
-      axis: target.dataset.axis === "y" ? "y" : "x",
-      ends: { from, to },
-      from: { x: event.clientX, y: event.clientY },
-      ground,
-      hop,
-      pointer: event.pointerId,
-      route: routed.value.route.points,
-      segment: Number(target.dataset.segment),
+    stop.current?.();
+
+    const unbind = bindCanvasDrag(element, event.nativeEvent, {
+      onEnd: ({ canceled }) => {
+        stop.current = undefined;
+        setDrag(undefined);
+
+        if (
+          !canceled &&
+          latest !== undefined &&
+          latest.refusal === undefined &&
+          !samePoints(latest.points, routeVertices(route))
+        ) {
+          editing.reroute(hop, latest.points);
+        }
+      },
+      onMove: (position) => {
+        const ground = groundAt({ element, event: position, view });
+
+        if (ground === undefined) {
+          return;
+        }
+
+        // A segment along x moves along y, and the other way round.
+        const offset = axis === "x" ? ground.y - start.y : ground.x - start.x;
+
+        const points = dragSegment({
+          ends: { from, to },
+          offset,
+          points: route,
+          segment,
+        });
+
+        if (latest !== undefined && samePoints(latest.points, points)) {
+          return;
+        }
+
+        latest = {
+          hop,
+          points,
+          refusal: samePoints(points, routeVertices(route))
+            ? undefined
+            : editing.refusalOfReroute(hop, points),
+        };
+        setDrag(latest);
+      },
+    });
+
+    stop.current = () => {
+      unbind();
+      stop.current = undefined;
+      setDrag(undefined);
     };
-  };
-
-  const onPointerMove = (event: ReactPointerEvent<SVGGElement>) => {
-    const { current } = press;
-    const element = root.current;
-
-    if (
-      editing === null ||
-      current === undefined ||
-      element === null ||
-      event.pointerId !== current.pointer
-    ) {
-      return;
-    }
-
-    const travel = Math.hypot(
-      event.clientX - current.from.x,
-      event.clientY - current.from.y
-    );
-
-    if (!dragged.current && travel < dragThreshold) {
-      return;
-    }
-
-    const ground = groundAt({ element, event, view });
-
-    if (ground === undefined) {
-      return;
-    }
-
-    // Capture only once it's a drag, so a plain click keeps its target.
-    if (!dragged.current) {
-      dragged.current = true;
-
-      if (!element.hasPointerCapture(event.pointerId)) {
-        element.setPointerCapture(event.pointerId);
-      }
-    }
-
-    // A segment along x moves along y, and the other way round.
-    const offset =
-      current.axis === "x"
-        ? ground.y - current.ground.y
-        : ground.x - current.ground.x;
-
-    const points = dragSegment({
-      ends: current.ends,
-      offset,
-      points: current.route,
-      segment: current.segment,
-    });
-
-    const unchanged = samePoints(points, routeVertices(current.route));
-
-    setDrag((before) =>
-      before !== undefined && samePoints(before.points, points)
-        ? before
-        : {
-            hop: current.hop,
-            points,
-            refusal: unchanged
-              ? undefined
-              : editing.refusalOfReroute(current.hop, points),
-          }
-    );
-  };
-
-  const end = (event: ReactPointerEvent<SVGGElement>, drop: boolean) => {
-    const { current } = press;
-
-    if (current === undefined || event.pointerId !== current.pointer) {
-      return;
-    }
-
-    press.current = undefined;
-
-    // The click that follows a press on a segment would clear the
-    // selection. A press that never moved picks the hop instead.
-    swallow.current = true;
-
-    const release = Effect.sync(() => {
-      swallow.current = false;
-    });
-
-    Effect.runFork(Effect.sleep(clickWindow).pipe(Effect.andThen(release)));
-
-    if (drop && !dragged.current) {
-      selectHop(current.hop);
-    }
-
-    if (
-      drop &&
-      dragged.current &&
-      drag !== undefined &&
-      editing !== null &&
-      drag.refusal === undefined &&
-      !samePoints(drag.points, routeVertices(current.route))
-    ) {
-      editing.reroute(drag.hop, drag.points);
-    }
-
-    setDrag(undefined);
   };
 
   const selected = Arr.findFirst(hops, (item) => item.hop.id === selectedHop);
@@ -407,17 +341,7 @@ export function RouteEditor({
     <g
       data-dragging-route={drag?.hop}
       data-route-editor={live ? "on" : "off"}
-      onLostPointerCapture={(event) => {
-        end(event, false);
-      }}
-      onPointerCancel={(event) => {
-        end(event, false);
-      }}
       onPointerDown={live ? onPointerDown : undefined}
-      onPointerMove={live ? onPointerMove : undefined}
-      onPointerUp={(event) => {
-        end(event, true);
-      }}
       ref={root}
     >
       {Option.isSome(selected) ? (
