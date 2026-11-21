@@ -166,26 +166,28 @@ describe("edge handles", () => {
     }
   }
 
-  it.effect("are ports: one key each, made of the structure and the side", () =>
-    Effect.gen(function* () {
-      const {
-        view: { scene },
-      } = yield* fitted("review", "iso");
+  it.effect(
+    "are hop ends: one key each, made of the structure and the side",
+    () =>
+      Effect.gen(function* () {
+        const {
+          view: { scene },
+        } = yield* fitted("review", "iso");
 
-      const all = handlesOf(scene);
+        const all = handlesOf(scene);
 
-      assert.isNotEmpty(all);
+        assert.isNotEmpty(all);
 
-      assert.lengthOf(
-        Arr.dedupeWith(all, (a, b) => a.id === b.id),
-        all.length
-      );
+        assert.lengthOf(
+          Arr.dedupeWith(all, (a, b) => a.id === b.id),
+          all.length
+        );
 
-      assert.deepStrictEqual(
-        Arr.filter(all, (spot) => spot.id !== `${spot.owner}:${spot.side}`),
-        []
-      );
-    })
+        assert.deepStrictEqual(
+          Arr.filter(all, (spot) => spot.id !== `${spot.owner}:${spot.side}`),
+          []
+        );
+      })
   );
 
   it.effect("are none for a structure the scene doesn't draw", () =>

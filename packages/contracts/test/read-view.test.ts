@@ -7,31 +7,33 @@ import { fixture } from "./fixture-maps.ts";
 
 const canvas = { height: 800, width: 1280 };
 
-const readAt = (view: View, move: (camera: Camera) => Camera = (c) => c) =>
-  Effect.gen(function* () {
-    const { data, layout } = yield* fixture("flake-pipeline");
-    const state = { data, layout, system: "flake-pipeline" };
-    const stops = chapterStopsOf(state);
-    const stop = Arr.lastNonEmpty(stops);
-    const fitted = fittedViewOf({ chapter: stop, size: canvas, state, view });
-    const camera = move(fitted.camera);
+const readAt = Effect.fnUntraced(function* (
+  view: View,
+  move: (camera: Camera) => Camera = (c) => c
+) {
+  const { data, layout } = yield* fixture("flake-pipeline");
+  const state = { data, layout, system: "flake-pipeline" };
+  const stops = chapterStopsOf(state);
+  const stop = Arr.lastNonEmpty(stops);
+  const fitted = fittedViewOf({ chapter: stop, size: canvas, state, view });
+  const camera = move(fitted.camera);
 
-    const read = viewReadOf({
-      chapter: stop,
-      inside: null,
-      multiSelection: new Set(["b", "a"]),
-      pinned: null,
-      scene: fitted.scene,
-      spotlight: null,
-      toScreen: ({ x, y }) => ({
-        x: x * camera.zoom + camera.x,
-        y: y * camera.zoom + camera.y,
-      }),
-      view,
-    });
-
-    return { camera, read, stop };
+  const read = viewReadOf({
+    chapter: stop,
+    inside: null,
+    multiSelection: new Set(["b", "a"]),
+    pinned: null,
+    scene: fitted.scene,
+    spotlight: null,
+    toScreen: ({ x, y }) => ({
+      x: x * camera.zoom + camera.x,
+      y: y * camera.zoom + camera.y,
+    }),
+    view,
   });
+
+  return { camera, read, stop };
+});
 
 const width = ({ left, right }: ViewBox) => right - left;
 const height = ({ bottom, top }: ViewBox) => bottom - top;

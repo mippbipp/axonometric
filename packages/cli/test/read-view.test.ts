@@ -125,8 +125,8 @@ const inside = (inner: Box, outer: Box, slack: number) =>
  * Asserts every box the tool reads matches the element drawn for it. The
  * page draws a pan or zoom a frame after it changes, so this retries.
  */
-const assertBoxesMatch = (page: Page) =>
-  Effect.gen(function* () {
+const assertBoxesMatch = Effect.fnUntraced(
+  function* (page: Page) {
     const read = yield* readView(page);
     const value = yield* attributeOf(page, "svg[data-scale]", "data-scale");
     const scale = Number(value);
@@ -151,12 +151,12 @@ const assertBoxesMatch = (page: Page) =>
       assert.isTrue(inside(one.box, dom, rounding), `${one.id} is in its line`);
       assert.isAtMost(gap(one.box, dom), hopReach * scale + rounding, one.id);
     }
-  }).pipe(
-    Effect.retry({
-      schedule: Schedule.spaced("100 millis"),
-      times: 30,
-    })
-  );
+  },
+  Effect.retry({
+    schedule: Schedule.spaced("100 millis"),
+    times: 30,
+  })
+);
 
 const structureIds = (read: Read) => Arr.map(read.structures, ({ id }) => id);
 

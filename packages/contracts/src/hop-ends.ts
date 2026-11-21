@@ -12,7 +12,7 @@ import type { Scene } from "./scene.ts";
  * A point a hop can be drawn from or to: an edge handle, or the middle of a
  * structure that has no clear spot for one.
  */
-export interface HopPort {
+export interface HopEnd {
   /** Where it is drawn, on screen. */
   readonly at: ScreenPoint;
   readonly ground: GridPoint;
@@ -23,21 +23,21 @@ export interface HopPort {
 }
 
 /**
- * Every port in `scene` of the structures in `revealed`: each structure's
- * edge handles, or one port at its middle when no side has room for one, so
+ * Every hop end in `scene` of the structures in `revealed`: each structure's
+ * edge handles, or one hop end at its middle when no side has room for one, so
  * every structure can take a hop. A centre key can't clash with a handle's,
  * which always ends in a side.
  */
-export const hopPortsOf = ({
+export const hopEndsOf = ({
   revealed,
   scene,
 }: {
   readonly revealed: ReadonlySet<string>;
   readonly scene: Scene;
-}): ReadonlyArray<HopPort> =>
+}): ReadonlyArray<HopEnd> =>
   Arr.flatMap(
     scene.structures,
-    ({ placement, structure }): ReadonlyArray<HopPort> => {
+    ({ placement, structure }): ReadonlyArray<HopEnd> => {
       if (!revealed.has(structure.id)) {
         return [];
       }
@@ -45,7 +45,7 @@ export const hopPortsOf = ({
       const spots = edgeSpotsOf({ scene, structure: structure.id });
 
       if (Arr.isReadonlyArrayNonEmpty(spots)) {
-        return Arr.map(spots, ({ at, ground, id, owner, side }): HopPort => ({
+        return Arr.map(spots, ({ at, ground, id, owner, side }): HopEnd => ({
           at,
           ground,
           key: id,
@@ -101,25 +101,25 @@ export const structureAt = ({
   );
 
 /**
- * The port a hop dropped at ground `point` lands on: the structure under it,
- * other than `except`, and that structure's port nearest the point on
+ * The hop end a hop dropped at ground `point` lands on: the structure under it,
+ * other than `except`, and that structure's hop end nearest the point on
  * screen, however far. `null` over empty ground.
  */
-export const hopPortAt = ({
+export const hopEndAt = ({
+  ends,
   except,
   placements,
   point,
-  ports,
   revealed,
   view,
 }: {
+  readonly ends: ReadonlyArray<HopEnd>;
   readonly except: string;
   readonly placements: Readonly<Partial<Record<string, Placement>>>;
   readonly point: GridPoint;
-  readonly ports: ReadonlyArray<HopPort>;
   readonly revealed: ReadonlySet<string>;
   readonly view: View;
-}): HopPort | null => {
+}): HopEnd | null => {
   const owner = structureAt({ except, placements, point, revealed });
 
   if (owner === null) {
@@ -130,14 +130,14 @@ export const hopPortAt = ({
 
   return Option.getOrNull(
     Arr.reduce(
-      Arr.filter(ports, (port) => port.owner === owner),
-      Option.none<HopPort>(),
-      (best, port) =>
+      Arr.filter(ends, (end) => end.owner === owner),
+      Option.none<HopEnd>(),
+      (best, end) =>
         Option.isSome(best) &&
         Math.hypot(best.value.at.sx - sx, best.value.at.sy - sy) <=
-          Math.hypot(port.at.sx - sx, port.at.sy - sy)
+          Math.hypot(end.at.sx - sx, end.at.sy - sy)
           ? best
-          : Option.some(port)
+          : Option.some(end)
     )
   );
 };

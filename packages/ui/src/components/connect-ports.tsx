@@ -112,9 +112,9 @@ const connectPorts = definePrimitive({
     };
 
     // createConnect's pointerdown snaps only to a port within a radius of
-    // the pointer, so it can't take a drop anywhere on a node. The drag goes
+    // the pointer, so it can't take a drop anywhere on a structure. The drag goes
     // through bindCanvasDrag, and the drop through target and commit. Move
-    // back once it can drop on a node: https://github.com/vercel-labs/ui/issues/960
+    // back once it can drop on a structure: https://github.com/vercel-labs/ui/issues/960
     const press = (event: PointerEvent, from: string) => {
       const root = context.element("root");
 

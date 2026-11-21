@@ -430,9 +430,9 @@ export {
 
 export type { EdgeSpot, Side } from "./edge-handle-spots.ts";
 
-export { hopPortAt, hopPortsOf, structureAt } from "./hop-ports.ts";
+export { hopEndAt, hopEndsOf, structureAt } from "./hop-ends.ts";
 
-export type { HopPort } from "./hop-ports.ts";
+export type { HopEnd } from "./hop-ends.ts";
 
 export {
   previewPieces,

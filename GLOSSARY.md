@@ -63,6 +63,10 @@ _Avoid_: path, sequence
 A small circle on the edge of the selected or hovered structure. Dragging from one to another structure draws a new hop.
 _Avoid_: port, anchor, connector
 
+**Hop end**:
+A point a hop can be drawn from or to: an edge handle, or the middle of a structure that has no room for one. ui-sdk calls it a port.
+_Avoid_: port (outside the code that wraps ui-sdk), anchor, connector
+
 **Group**:
 A named set of structures that belong together.
 _Avoid_: cluster, layer
@@ -218,6 +222,10 @@ _Avoid_: decision
 **Page tools**:
 The tools a map page offers an agent's browser for reading the map and moving the engineer's view. They never change the map.
 _Avoid_: WebMCP tools, agent tools
+
+**View tool**:
+A page tool that moves the engineer's view, such as `set_view` or `pin`, as opposed to `read_view`, which only reads it.
+_Avoid_: navigation tool
 
 **Revision**:
 An accepted state of the map, saved in its history. Not to be confused with a file revision.

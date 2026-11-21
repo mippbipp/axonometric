@@ -1,8 +1,8 @@
 import {
   handleRadius,
   handleStroke,
-  hopPortAt,
-  hopPortsOf,
+  hopEndAt,
+  hopEndsOf,
 } from "@axonometric/contracts";
 import type { View } from "@axonometric/contracts";
 import {
@@ -24,10 +24,10 @@ import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { HoveredIdContext } from "./tooltip-context.ts";
 
-/** Each port's own classes: the owner's handles show, the rest only as a target. */
+/** Each hop end's own classes: the owner's handles show, the rest only as a target. */
 const handleClass =
   "fill-paper stroke-pending cursor-crosshair data-[connect=target]:fill-pending";
-const hiddenPortClass =
+const hiddenEndClass =
   "fill-paper stroke-pending pointer-events-none opacity-0 data-[connect=target]:fill-pending data-[connect=target]:opacity-100";
 
 /**
@@ -37,9 +37,9 @@ const hiddenPortClass =
  * side panel for that structure, wherever on its footprint the drop is.
  * Dropping on empty space, or pressing Escape, draws nothing. With a
  * structure focused, `h` starts the same line from it, the arrows pick the
- * port it goes to, and Enter opens the label field; each step is announced.
+ * hop end it goes to, and Enter opens the label field; each step is announced.
  *
- * Every revealed structure has its ports here, unseen until the line aims at
+ * Every revealed structure has its hop ends here, unseen until the line aims at
  * one, so the arrows have somewhere to go. This is an editing layer: it keeps
  * each handle at least `gapAt(zoom)` clear of every name tag, code chip and
  * hop label, and a file's drawing never includes it. The handles are drawn
@@ -65,17 +65,17 @@ export function EdgeHandles({ view }: { readonly view: View }) {
   const [near, setNear] = useState<string | null>(null);
   const owner = stretch?.from ?? selected ?? hovered ?? near;
 
-  const ports = useMemo(
+  const ends = useMemo(
     () =>
       scene === null || revealed === undefined
         ? []
-        : hopPortsOf({ revealed, scene }),
+        : hopEndsOf({ revealed, scene }),
     [scene, revealed]
   );
 
   const byKey = useMemo(
-    () => new Map(ports.map((port) => [port.key, port])),
-    [ports]
+    () => new Map(ends.map((end) => [end.key, end])),
+    [ends]
   );
 
   if (editor === null || scene === null || !live) {
@@ -86,15 +86,15 @@ export function EdgeHandles({ view }: { readonly view: View }) {
   const ownerOf = (key: string) => byKey.get(key)?.owner ?? key;
 
   const label = (key: string) => {
-    const port = byKey.get(key);
+    const end = byKey.get(key);
 
-    if (port === undefined) {
+    if (end === undefined) {
       return key;
     }
 
-    return port.side === "centre"
-      ? nameOf(port.owner)
-      : `${nameOf(port.owner)}, ${port.side} edge`;
+    return end.side === "centre"
+      ? nameOf(end.owner)
+      : `${nameOf(end.owner)}, ${end.side} edge`;
   };
 
   // A drop opens the label form rather than making the hop, so the last
@@ -126,8 +126,8 @@ export function EdgeHandles({ view }: { readonly view: View }) {
         };
   };
 
-  const firstPortOf = (id: string | undefined) =>
-    ports.find((port) => port.owner === id)?.key ?? null;
+  const firstEndOf = (id: string | undefined) =>
+    ends.find((end) => end.owner === id)?.key ?? null;
 
   return (
     <ConnectPorts
@@ -153,31 +153,31 @@ export function EdgeHandles({ view }: { readonly view: View }) {
           : undefined
       }
       sourceOf={(target) =>
-        firstPortOf(
+        firstEndOf(
           target.closest<SVGElement>("[data-structure]")?.dataset.structure
         )
       }
       startKey={drawHopKey}
       targetAt={(point, from) =>
-        hopPortAt({
+        hopEndAt({
+          ends,
           except: ownerOf(from),
           placements: editor.placements,
           point,
-          ports,
           revealed: editor.revealed,
           view,
         })?.key ?? null
       }
     >
-      {ports.map((port) =>
-        port.owner === owner && port.side !== "centre" ? (
+      {ends.map((end) =>
+        end.owner === owner && end.side !== "centre" ? (
           <ConnectPort
             className={handleClass}
-            cx={port.at.sx}
-            cy={port.at.sy}
-            data-edge-handle={port.side}
+            cx={end.at.sx}
+            cy={end.at.sy}
+            data-edge-handle={end.side}
             data-edge-owner={owner}
-            key={port.key}
+            key={end.key}
             onPointerEnter={() => {
               setNear(owner);
             }}
@@ -186,17 +186,17 @@ export function EdgeHandles({ view }: { readonly view: View }) {
             }}
             r={handleRadius}
             strokeWidth={handleStroke}
-            value={port.key}
+            value={end.key}
           />
         ) : (
           <ConnectPort
-            className={hiddenPortClass}
-            cx={port.at.sx}
-            cy={port.at.sy}
-            key={port.key}
+            className={hiddenEndClass}
+            cx={end.at.sx}
+            cy={end.at.sy}
+            key={end.key}
             r={handleRadius}
             strokeWidth={handleStroke}
-            value={port.key}
+            value={end.key}
           />
         )
       )}
