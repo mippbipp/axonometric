@@ -1,6 +1,31 @@
 // oxlint-disable effecttsgo/missing-pipeable-signature -- called with its arguments in hand from a pointerdown handler, never piped.
 import { bindDrag, dragThreshold } from "@ui-sdk/core";
 
+const drags = { open: 0 };
+
+/** Whether a canvas drag is in progress, past its threshold. */
+export const canvasDragging = () => drags.open > 0;
+
+/**
+ * Counts one drag in progress until the returned function is called, which
+ * is safe to call twice. `bindCanvasDrag` calls it for every canvas drag, so
+ * a page tool can refuse while the engineer is mid-drag. A drag that doesn't
+ * use `bindCanvasDrag` calls it once. A counter, not a flag, so overlapping
+ * sources (a drag and a page state that shows one) don't release each other.
+ */
+export const markDragging = () => {
+  let held = true;
+
+  drags.open += 1;
+
+  return () => {
+    if (held) {
+      held = false;
+      drags.open -= 1;
+    }
+  };
+};
+
 interface CanvasDragHandlers {
   /** The pointer lifted, or Escape or the browser canceled the drag. */
   readonly onEnd: (end: { readonly canceled: boolean }) => void;
@@ -23,7 +48,13 @@ export function bindCanvasDrag(
   down: PointerEvent,
   { onEnd, onMove, onStart }: CanvasDragHandlers
 ) {
-  return bindDrag(
+  let release: (() => void) | undefined;
+  const letGo = () => {
+    release?.();
+    release = undefined;
+  };
+
+  const stop = bindDrag(
     // bindDrag only uses pointer capture and ownerDocument, which SVG
     // elements have, but types the element as HTMLElement.
     // https://github.com/vercel-labs/ui/issues/959
@@ -32,15 +63,22 @@ export function bindCanvasDrag(
     {
       cancelOnEscape: true,
       onEnd: (_event, canceled) => {
+        letGo();
         onEnd({ canceled });
       },
       onMove: ({ x, y }) => {
         onMove({ clientX: x, clientY: y });
       },
       onStart: () => {
+        release ??= markDragging();
         onStart?.();
       },
       threshold: dragThreshold,
     }
   );
+
+  return () => {
+    stop();
+    letGo();
+  };
 }

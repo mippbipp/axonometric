@@ -1,4 +1,8 @@
-import { bindCanvasDrag } from "@axonometric/ui/lib/canvas-drag";
+import {
+  bindCanvasDrag,
+  canvasDragging,
+  markDragging,
+} from "@axonometric/ui/lib/canvas-drag";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -187,5 +191,83 @@ describe("dragging on the canvas", () => {
 
     expect(el.capture).toHaveBeenCalledWith(1);
     expect(onEnd).toHaveBeenCalledWith({ canceled: false });
+  });
+});
+
+const dragOf = () => {
+  const el = mount("div");
+
+  return press(el, { onEnd: vi.fn<End>(), onMove: vi.fn<Move>() });
+};
+
+describe("a canvas drag in progress", () => {
+  it("is false until the pointer moves past the threshold", () => {
+    dragOf();
+    fireEvent.pointerMove(document, pointer(101));
+
+    expect(canvasDragging()).toBeFalsy();
+
+    fireEvent.pointerUp(document, pointer(101));
+
+    expect(canvasDragging()).toBeFalsy();
+  });
+
+  it("is true during a drag and false after the pointer lifts", () => {
+    dragOf();
+    fireEvent.pointerMove(document, pointer(110));
+
+    expect(canvasDragging()).toBeTruthy();
+
+    fireEvent.pointerUp(document, pointer(110));
+
+    expect(canvasDragging()).toBeFalsy();
+  });
+
+  it("is false after Escape cancels the drag", () => {
+    dragOf();
+    fireEvent.pointerMove(document, pointer(110));
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(canvasDragging()).toBeFalsy();
+  });
+
+  it("is false after the drag is stopped", () => {
+    const stop = dragOf();
+
+    fireEvent.pointerMove(document, pointer(110));
+
+    expect(canvasDragging()).toBeTruthy();
+
+    stop();
+
+    expect(canvasDragging()).toBeFalsy();
+  });
+
+  it("stays true while another drag is still going", () => {
+    const first = markDragging();
+
+    dragOf();
+    fireEvent.pointerMove(document, pointer(110));
+    fireEvent.pointerUp(document, pointer(110));
+
+    expect(canvasDragging()).toBeTruthy();
+
+    first();
+
+    expect(canvasDragging()).toBeFalsy();
+  });
+
+  it("releases a mark once however often it is called", () => {
+    const release = markDragging();
+    const other = markDragging();
+
+    release();
+    release();
+
+    expect(canvasDragging()).toBeTruthy();
+
+    other();
+
+    expect(canvasDragging()).toBeFalsy();
   });
 });
