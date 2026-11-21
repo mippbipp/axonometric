@@ -194,6 +194,8 @@ describe("dragging on the canvas", () => {
   });
 });
 
+const status = () => (canvasDragging() ? "dragging" : "idle");
+
 const dragOf = () => {
   const el = mount("div");
 
@@ -205,22 +207,22 @@ describe("a canvas drag in progress", () => {
     dragOf();
     fireEvent.pointerMove(document, pointer(101));
 
-    expect(canvasDragging()).toBeFalsy();
+    expect(status()).toBe("idle");
 
     fireEvent.pointerUp(document, pointer(101));
 
-    expect(canvasDragging()).toBeFalsy();
+    expect(status()).toBe("idle");
   });
 
   it("is true during a drag and false after the pointer lifts", () => {
     dragOf();
     fireEvent.pointerMove(document, pointer(110));
 
-    expect(canvasDragging()).toBeTruthy();
+    expect(status()).toBe("dragging");
 
     fireEvent.pointerUp(document, pointer(110));
 
-    expect(canvasDragging()).toBeFalsy();
+    expect(status()).toBe("idle");
   });
 
   it("is false after Escape cancels the drag", () => {
@@ -228,7 +230,7 @@ describe("a canvas drag in progress", () => {
     fireEvent.pointerMove(document, pointer(110));
     fireEvent.keyDown(document, { key: "Escape" });
 
-    expect(canvasDragging()).toBeFalsy();
+    expect(status()).toBe("idle");
   });
 
   it("is false after the drag is stopped", () => {
@@ -236,11 +238,11 @@ describe("a canvas drag in progress", () => {
 
     fireEvent.pointerMove(document, pointer(110));
 
-    expect(canvasDragging()).toBeTruthy();
+    expect(status()).toBe("dragging");
 
     stop();
 
-    expect(canvasDragging()).toBeFalsy();
+    expect(status()).toBe("idle");
   });
 
   it("stays true while another drag is still going", () => {
@@ -250,11 +252,11 @@ describe("a canvas drag in progress", () => {
     fireEvent.pointerMove(document, pointer(110));
     fireEvent.pointerUp(document, pointer(110));
 
-    expect(canvasDragging()).toBeTruthy();
+    expect(status()).toBe("dragging");
 
     first();
 
-    expect(canvasDragging()).toBeFalsy();
+    expect(status()).toBe("idle");
   });
 
   it("releases a mark once however often it is called", () => {
@@ -264,10 +266,10 @@ describe("a canvas drag in progress", () => {
     release();
     release();
 
-    expect(canvasDragging()).toBeTruthy();
+    expect(status()).toBe("dragging");
 
     other();
 
-    expect(canvasDragging()).toBeFalsy();
+    expect(status()).toBe("idle");
   });
 });
