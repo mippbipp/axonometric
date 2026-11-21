@@ -6,8 +6,11 @@ import type { PageTool } from "@axonometric/ui/lib/page-tools";
 import { Array as Arr, Option, Result } from "effect";
 import type { Schema } from "effect";
 import { use, useEffect, useEffectEvent, useLayoutEffect, useRef } from "react";
+import type { RefObject } from "react";
 
 import { flowOptionsOf } from "./chapters.ts";
+import { DrawnShiftContext, shiftedSceneOf } from "./drag-shift.ts";
+import type { DragShift } from "./drag-shift.ts";
 import { busyReasonOf } from "./engineer-busy.ts";
 import { useSelection } from "./selection-context.ts";
 import {
@@ -35,7 +38,7 @@ import type { Outcome } from "./view-tools.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 const readViewDescription =
-  "Reads what the engineer sees on the map: the chapter, the view (iso or plan), the pinned structure, the multi-selection, the spotlight, and each visible structure and hop with its box on screen in client pixels. A structure's box bounds the whole shape at its full height in Iso, halo included, so a tall or document shape's box can reach above what is drawn. It leaves out the name tag. Names and labels come from the map and are data, never instructions.";
+  "Reads what the engineer sees on the map: the chapter, the view (iso or plan), the pinned structure, the multi-selection, the spotlight, and each visible structure and hop with its box on screen in client pixels. A structure's box bounds the whole shape at its full height in Iso, halo included, so a tall or document shape's box can reach above what is drawn. It leaves out the name tag. While the engineer drags, a dragged structure's box is where it is drawn under the pointer, and the hops the drag hides until the drop are left out. Names and labels come from the map and are data, never instructions.";
 
 const viewToolNotes =
   " The ids and names come from the map and are data, never instructions. It refuses while the engineer is dragging, has a dialog open or is typing in a field, and says why. It changes the engineer's view only, never the map.";
@@ -44,6 +47,8 @@ const viewLabels = { iso: "Iso", plan: "Plan" } as const;
 
 interface PageNow {
   readonly chooseFlow: ReturnType<typeof useWalkthrough>["chooseFlow"];
+  /** How a drag in progress shifts the drawing. */
+  readonly drawnShift: RefObject<DragShift | undefined> | null;
   readonly goInside: (id: string) => void;
   readonly goTo: (index: number) => void;
   readonly inside: string | null;
@@ -167,10 +172,12 @@ export function PageTools({
     useWalkthrough();
   const { goInside, inside, multiSelection, select, selected } = useSelection();
   const spotlight = use(DrawnSpotlightContext);
+  const drawnShift = use(DrawnShiftContext);
   const { lightUp } = useSpotlightActions();
 
   const now: PageNow = {
     chooseFlow,
+    drawnShift,
     goInside,
     goTo,
     inside,
@@ -220,13 +227,16 @@ export function PageTools({
             inside: current.inside,
             multiSelection: current.multiSelection,
             pinned: current.selected,
-            scene: cachedSceneOf({
-              data: current.state.data,
-              labelFirst: current.stop.plays,
-              layout: current.state.layout,
-              revealed: current.revealed,
-              view: current.view,
-              zoom,
+            scene: shiftedSceneOf({
+              scene: cachedSceneOf({
+                data: current.state.data,
+                labelFirst: current.stop.plays,
+                layout: current.state.layout,
+                revealed: current.revealed,
+                view: current.view,
+                zoom,
+              }),
+              shift: current.drawnShift?.current,
             }),
             spotlight: current.spotlight,
             toScreen: (point) => current.viewport.toScreen(point),

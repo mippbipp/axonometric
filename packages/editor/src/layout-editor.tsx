@@ -21,7 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
-import { shiftDrawing } from "./drag-shift.ts";
+import { dragShiftOf, useShiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import {
@@ -163,12 +163,9 @@ export function LayoutEditor({
     return all;
   }, [placements]);
 
-  useEffect(() => {
-    // Hop labels are drawn outside this group, so look from the canvas.
-    const canvas = root.current?.ownerSVGElement;
-
-    if (canvas !== null && canvas !== undefined) {
-      shiftDrawing({
+  const shift = useMemo(
+    () =>
+      dragShiftOf({
         by:
           drag === undefined
             ? undefined
@@ -176,11 +173,12 @@ export function LayoutEditor({
         changing: drag?.ids,
         hops: state.data.hops,
         ids: drag === undefined || drag.resizing ? [] : drag.ids,
-        root: canvas,
         view,
-      });
-    }
-  }, [drag, view, state.data.hops]);
+      }),
+    [drag, view, state.data.hops]
+  );
+
+  useShiftDrawing({ root, shift });
 
   // Whatever is dragged or resized, the panel beside the map says what the
   // drop would leave: its reason when refused, else every warning `check`

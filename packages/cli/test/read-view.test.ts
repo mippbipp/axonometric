@@ -5,6 +5,7 @@ import type { Page } from "playwright";
 import {
   callTool,
   attributeOf,
+  centreOf,
   attributesOf,
   click,
   goToChapter,
@@ -297,6 +298,80 @@ describe("read_view", () => {
       );
     }
   });
+
+  it.live(
+    "reads a structure where a drag draws it, without the hops it hides",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* (
+            pages[1]?.open ?? Effect.die("no served page")
+          );
+
+          // Its hops don't all touch updater, so the drag leaves some shown.
+          yield* goToChapter(page, "c-gate");
+          yield* press(page, "0");
+
+          const from = yield* centreOf(page, '[data-structure="updater"]');
+
+          yield* Effect.promise(() => page.mouse.move(from.x, from.y));
+          yield* Effect.promise(() => page.mouse.down());
+          yield* Effect.promise(() =>
+            page.mouse.move(from.x + 60, from.y + 40, { steps: 12 })
+          );
+          yield* waitFor(page, '[data-structure="updater"][data-drag-shifted]');
+
+          yield* assertBoxesMatch(page);
+
+          const read = yield* readView(page);
+          const shownHops = yield* attributesOf(
+            page,
+            "[data-hop]:not([data-drag-hidden])",
+            "data-hop"
+          );
+          const allHops = yield* attributesOf(page, "[data-hop]", "data-hop");
+
+          assert.isBelow(
+            shownHops.length,
+            allHops.length,
+            "the drag hides hops"
+          );
+          assert.sameMembers(
+            Arr.map(read.hops, ({ id }) => id),
+            shownHops,
+            "read_view lists the hops the drag leaves shown"
+          );
+
+          yield* Effect.promise(() => page.keyboard.press("Escape"));
+          yield* Effect.promise(() => page.mouse.up());
+        })
+      )
+  );
+
+  it.live("reads a group's members where a group drag draws them", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* pages[1]?.open ?? Effect.die("no served page");
+
+        yield* goToChapter(page, "c-gate");
+        yield* press(page, "0");
+
+        const from = yield* centreOf(page, '[data-zone-title-hit="actions"]');
+
+        yield* Effect.promise(() => page.mouse.move(from.x, from.y));
+        yield* Effect.promise(() => page.mouse.down());
+        yield* Effect.promise(() =>
+          page.mouse.move(from.x + 60, from.y + 40, { steps: 12 })
+        );
+        yield* waitFor(page, "[data-structure][data-drag-shifted]");
+
+        yield* assertBoxesMatch(page);
+
+        yield* Effect.promise(() => page.keyboard.press("Escape"));
+        yield* Effect.promise(() => page.mouse.up());
+      })
+    )
+  );
 
   it.live("reads the multi-selection on the served page", () =>
     Effect.scoped(

@@ -37,7 +37,7 @@ List the tools of the engineer's tab. The page has seven: `read_view`, `go_to_ch
 - `inside`, the structure whose inside view covers the map, or `null`.
 - `pinned`, the pinned structure, and `multiSelection`, the structures picked together with Shift.
 - `spotlight`, the structures and hops drawn at full strength, or `null` when nothing fades.
-- `structures` and `hops`, each with its `id`, its name or `label`, and its `box` on screen in client pixels. Only what the chapter shows is listed.
+- `structures` and `hops`, each with its `id`, its name or `label`, and its `box` on screen in client pixels. Only what the chapter shows is listed. While the engineer drags, a dragged structure's box is where it is drawn under the pointer, and the hops it hides until the drop are left out.
 
 "Why does this one call that one?" starts with `pinned` and the `hops` that name it in `from` or `to`.
 

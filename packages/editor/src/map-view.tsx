@@ -20,7 +20,7 @@ import { DrawingContext, MapDrawing, viewDrawings } from "@axonometric/drawing";
 import type { HopState } from "@axonometric/drawing";
 import { CanvasItems } from "@axonometric/ui/components/canvas-items";
 import { Array as Arr, String as Str } from "effect";
-import { use, useCallback, useId, useMemo, useState } from "react";
+import { use, useCallback, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { ChapterPendingLook } from "./chapter-pending-look.tsx";
@@ -28,6 +28,8 @@ import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
 import { useProposedHopsIgnoringEdit } from "./connections-context.ts";
 import { useDraftSpot } from "./draft-spot.ts";
+import { DrawnShiftContext } from "./drag-shift.ts";
+import type { DragShift } from "./drag-shift.ts";
 import { DragOutlines } from "./drop-outline.tsx";
 import { useEditing } from "./editing-context.ts";
 import { EditorSceneContext, EditorViewContext } from "./editor-view.ts";
@@ -141,6 +143,7 @@ export function MapView({
   const multiSelected = useMemo(() => [...multiSelection], [multiSelection]);
   // The zoom the text is sized for, which the viewport reports as it zooms.
   const [textZoom, setTextZoom] = useState(1);
+  const drawnShift = useRef<DragShift | undefined>(undefined);
 
   const proposedHops = useProposedHopsIgnoringEdit();
 
@@ -256,98 +259,100 @@ export function MapView({
       <EditorViewContext value={editorView}>
         <EditorSceneContext value={scene}>
           <DrawnSpotlightContext value={spotlight}>
-            <Viewport
-              fit={fit}
-              fitKey={key}
-              ground={groundProjections[view]}
-              onTextZoom={setTextZoom}
-              title={`${drawing.title} of ${state.data.overview.title}`}
-            >
-              <CanvasItems
-                multiple={canEdit}
-                onSelectedChange={setMultiSelection}
-                pinned={selected}
-                selected={multiSelected}
+            <DrawnShiftContext value={drawnShift}>
+              <Viewport
+                fit={fit}
+                fitKey={key}
+                ground={groundProjections[view]}
+                onTextZoom={setTextZoom}
+                title={`${drawing.title} of ${state.data.overview.title}`}
               >
-                <MapDrawing
-                  ground={
-                    <>
-                      <DragOutlines view={view} />
-                      <SpotPicker view={view} />
-                    </>
-                  }
-                  hatch={hatch}
-                  hopsOverlay={
-                    <>
-                      <HopDraftLine
-                        revealed={revealed}
-                        state={state}
-                        view={view}
-                      />
-                      <RouteEditor
-                        hops={scene.hops}
-                        onHover={hoverHop}
-                        placements={state.layout.structures}
-                        view={view}
-                      />
-                      <ChapterPendingLook scene={scene} view={view} />
-                    </>
-                  }
-                  hopStates={hopStates}
-                  labelShown={(hop) =>
-                    hop === selectedHop || hop === hoveredHop
-                  }
-                  newlyRevealed={newlyRevealed}
-                  onHopHover={hoverHop}
-                  overlay={
-                    <>
-                      <NoteMarkers scene={scene} />
-                      <RemovedMarks scene={scene} view={view} />
-                      <RemovedHopMarks />
-                      <SpotCursor view={view} />
-                    </>
-                  }
-                  scene={scene}
-                  spotlight={spotlight}
-                  underlay={
-                    <>
-                      <PendingZones scene={scene} />
-                      <GroupEditor
-                        data={state.data}
-                        layout={state.layout}
-                        view={view}
-                        zones={scene.zones}
-                      />
-                      <g>
-                        {Arr.map(marked, (item) => (
-                          <NewMarker
-                            key={item.structure.id}
-                            placed={item}
-                            view={view}
-                          />
-                        ))}
-                        <SelectionMarker
+                <CanvasItems
+                  multiple={canEdit}
+                  onSelectedChange={setMultiSelection}
+                  pinned={selected}
+                  selected={multiSelected}
+                >
+                  <MapDrawing
+                    ground={
+                      <>
+                        <DragOutlines view={view} />
+                        <SpotPicker view={view} />
+                      </>
+                    }
+                    hatch={hatch}
+                    hopsOverlay={
+                      <>
+                        <HopDraftLine
+                          revealed={revealed}
+                          state={state}
+                          view={view}
+                        />
+                        <RouteEditor
+                          hops={scene.hops}
+                          onHover={hoverHop}
                           placements={state.layout.structures}
                           view={view}
                         />
-                        <AcceptedOutlines
-                          structures={scene.structures}
+                        <ChapterPendingLook scene={scene} view={view} />
+                      </>
+                    }
+                    hopStates={hopStates}
+                    labelShown={(hop) =>
+                      hop === selectedHop || hop === hoveredHop
+                    }
+                    newlyRevealed={newlyRevealed}
+                    onHopHover={hoverHop}
+                    overlay={
+                      <>
+                        <NoteMarkers scene={scene} />
+                        <RemovedMarks scene={scene} view={view} />
+                        <RemovedHopMarks />
+                        <SpotCursor view={view} />
+                      </>
+                    }
+                    scene={scene}
+                    spotlight={spotlight}
+                    underlay={
+                      <>
+                        <PendingZones scene={scene} />
+                        <GroupEditor
+                          data={state.data}
+                          layout={state.layout}
                           view={view}
+                          zones={scene.zones}
                         />
-                        <NewStructureSpot view={view} />
-                        <CompareRings
-                          marks={marks}
-                          structures={scene.structures}
-                          view={view}
-                        />
-                        <CompareHops hops={scene.hops} marks={marks} />
-                      </g>
-                    </>
-                  }
-                />
-                {children}
-              </CanvasItems>
-            </Viewport>
+                        <g>
+                          {Arr.map(marked, (item) => (
+                            <NewMarker
+                              key={item.structure.id}
+                              placed={item}
+                              view={view}
+                            />
+                          ))}
+                          <SelectionMarker
+                            placements={state.layout.structures}
+                            view={view}
+                          />
+                          <AcceptedOutlines
+                            structures={scene.structures}
+                            view={view}
+                          />
+                          <NewStructureSpot view={view} />
+                          <CompareRings
+                            marks={marks}
+                            structures={scene.structures}
+                            view={view}
+                          />
+                          <CompareHops hops={scene.hops} marks={marks} />
+                        </g>
+                      </>
+                    }
+                  />
+                  {children}
+                </CanvasItems>
+              </Viewport>
+            </DrawnShiftContext>
           </DrawnSpotlightContext>
         </EditorSceneContext>
       </EditorViewContext>

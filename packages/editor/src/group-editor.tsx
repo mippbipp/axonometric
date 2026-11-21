@@ -19,7 +19,7 @@ import { Array as Arr } from "effect";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useDragPreview } from "./drag-preview-context.ts";
-import { shiftDrawing } from "./drag-shift.ts";
+import { dragShiftOf, useShiftDrawing } from "./drag-shift.ts";
 import { useEditing } from "./editing-context.ts";
 import { groundAt } from "./ground-at.ts";
 import {
@@ -110,22 +110,20 @@ export function GroupEditor({
     return all;
   }, [layout.structures]);
 
-  // The drawing is shifted from the whole canvas, because the members are
-  // drawn in the structure layer, beside the zones.
-  useEffect(() => {
-    const canvas = root.current?.ownerSVGElement;
-
-    if (canvas !== null && canvas !== undefined) {
-      shiftDrawing({
+  const shift = useMemo(
+    () =>
+      dragShiftOf({
         by: drag?.by,
         groups: drag === undefined ? [] : [drag.group],
         hops: state.data.hops,
         ids: drag === undefined ? [] : Arr.map(drag.members, ([id]) => id),
-        root: canvas,
         view,
-      });
-    }
-  }, [drag, view, state.data.hops]);
+      }),
+    [drag, view, state.data.hops]
+  );
+
+  // The members are drawn in the structure layer, beside the zones.
+  useShiftDrawing({ root, shift });
 
   // The outlines are drawn in a layer under the zones.
   useEffect(() => {
