@@ -130,22 +130,18 @@ const useEngineerInput = (onPress: () => void) => {
   const onInput = useEffectEvent(onPress);
 
   useEffect(() => {
-    const events = ["pointerdown", "keydown", "wheel"] as const;
-    const listener = () => {
-      onInput();
-    };
+    const controller = new AbortController();
 
-    for (const event of events) {
-      globalThis.addEventListener(event, listener, {
+    for (const event of ["pointerdown", "keydown", "wheel"]) {
+      globalThis.addEventListener(event, () => onInput(), {
         capture: true,
         passive: true,
+        signal: controller.signal,
       });
     }
 
     return () => {
-      for (const event of events) {
-        globalThis.removeEventListener(event, listener, { capture: true });
-      }
+      controller.abort();
     };
   }, []);
 };
