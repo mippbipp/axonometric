@@ -90,9 +90,9 @@ export const registerPageTools = (tools: ReadonlyArray<PageTool>) => {
   return () => {
     controller.abort();
 
-    // Chromium 147 ignores the abort: the tool stayed listed 1.5 s after it,
-    // and registering the name again threw InvalidStateError. unregisterTool
-    // removes it, so React's second effect run in development can register.
+    // Chromium 147 kept a tool listed after the abort, so registering the
+    // name again threw InvalidStateError until unregisterTool removed it.
+    // Chromium 156 withdraws on the abort and has no unregisterTool.
     for (const name of registered) {
       try {
         context.unregisterTool?.(name);

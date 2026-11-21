@@ -77,7 +77,6 @@ const pages = [
 
 const readView = (page: Page) => callTool(page, "read_view", Read);
 
-/** The on-screen box of the first element matching `selector`. */
 const domBox = (page: Page, selector: string) =>
   inPage<Box>(
     page,
@@ -88,19 +87,12 @@ const domBox = (page: Page, selector: string) =>
   );
 
 /**
- * How far the tool's box may sit from the page's element, in drawing units,
- * which scale with the zoom. Measured on the pipeline map at fit (scale about
- * 0.5), in both views and both pages:
- *
- * - A hop's element is its 10 unit wide transparent hit line, so it reaches
- *   5 units outside the route's box (2.5 px at scale 0.5) and never inside it.
- * - A structure's box is the scene's outline bounds, which in Iso run to the
- *   shape's full iso height. A tall or document shape draws lower than that,
- *   so the box reaches up to 31.4 units (15.7 px) above the element and never
- *   below it. Plan's external shape differs by 8.5 units on each side.
- *
- * The limits below are 32 and 5 units plus half a pixel of rounding. A wrong
- * camera moves a box by tens of pixels.
+ * How far the tool's box may sit from the page's element, in drawing units.
+ * Measured on the pipeline map at fit (scale about 0.5), in both views and
+ * both pages. A hop's element is its 10 unit wide hit line, so it reaches 5
+ * units outside the route's box. A tall or document shape in Iso draws below
+ * the scene's full-height bounds, up to 31.4 units. A wrong camera moves a box
+ * by tens of pixels.
  */
 const structureReach = 32;
 const hopReach = 5;
@@ -114,17 +106,12 @@ const gap = (a: Box, b: Box) =>
     Math.abs(a.bottom - b.bottom)
   );
 
-/** Whether `inner` is inside `outer`, allowing `slack` pixels. */
 const inside = (inner: Box, outer: Box, slack: number) =>
   inner.left >= outer.left - slack &&
   inner.top >= outer.top - slack &&
   inner.right <= outer.right + slack &&
   inner.bottom <= outer.bottom + slack;
 
-/**
- * Asserts every box the tool reads matches the element drawn for it. The
- * page draws a pan or zoom a frame after it changes, so this retries.
- */
 const assertBoxesMatch = Effect.fnUntraced(
   function* (page: Page) {
     const read = yield* readView(page);

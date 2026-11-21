@@ -82,7 +82,6 @@ const readView = (page: Page) => callTool(page, "read_view", Read);
 const call = (page: Page, name: string, input: Input) =>
   callToolWith(page, { input, name }, Outcome);
 
-/** Calls a tool that should go ahead, and checks the notice it returns. */
 const says = Effect.fnUntraced(function* (
   page: Page,
   { input, tool }: { readonly input: Input; readonly tool: string },
@@ -93,7 +92,6 @@ const says = Effect.fnUntraced(function* (
   assert.deepStrictEqual(result, { notice, ok: true });
 });
 
-/** Calls a tool that should refuse, and returns its reason. */
 const refusal = Effect.fnUntraced(function* (
   page: Page,
   tool: string,
@@ -106,7 +104,6 @@ const refusal = Effect.fnUntraced(function* (
   return result.ok ? "" : result.reason;
 });
 
-/** Retries a check until the page has drawn what a tool changed. */
 const eventually = <A, R>(check: Effect.Effect<A, never, R>) =>
   check.pipe(
     Effect.catchDefect((cause) => Effect.fail(String(cause))),
@@ -133,7 +130,6 @@ const waitForNotice = (page: Page, text: string) =>
     })
   );
 
-/** Waits until `id` is bright and none of `faded` is. */
 const waitForBright = (
   page: Page,
   bright: ReadonlyArray<string>,
@@ -153,7 +149,6 @@ const waitForBright = (
     })
   );
 
-/** What the engineer sees of the view: the page's own attributes and `read_view`. */
 const lookAt = Effect.fnUntraced(function* (page: Page) {
   const read = yield* readView(page);
   const hops = yield* brightHops(page);
@@ -207,7 +202,6 @@ const viewTools = [
   "spotlight",
 ];
 
-/** A point on the map's background in the first chapter, in the Iso view. */
 const emptyPoint = { x: 700, y: 500 };
 
 const overviewPage = "[role='dialog'][data-overview-page][data-open]";
@@ -611,7 +605,6 @@ describe("view tools on the page", () => {
               page.mouse.move(emptyPoint.x, emptyPoint.y)
             );
 
-            // The engineer took the spotlight for good, so it doesn't come back.
             yield* waitForBright(page, ["upstream", "main"], []);
           })
         )
@@ -657,7 +650,6 @@ describe("view tools on the page", () => {
       ["spotlight", { structures: ["main"] }],
     ];
 
-    /** Every view tool refuses with `reason`, `read_view` works, and nothing moves. */
     const refusesEverything = Effect.fnUntraced(function* (
       page: Page,
       reason: string

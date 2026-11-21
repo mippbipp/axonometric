@@ -57,7 +57,6 @@ const shiftClick = Effect.fnUntraced(function* (
   }
 });
 
-/** Gives a structure keyboard focus, as the arrow keys would. */
 const focusStructure = (page: Page, id: string) =>
   Effect.promise(() => page.locator(`[data-structure="${id}"]`).focus());
 
@@ -151,7 +150,6 @@ const movesOf = (layout: Proposals["layout"]) => {
     : {};
 };
 
-/** The ids of the structures the box outlines as it touches them, sorted. */
 const touchedIds = (page: Page) =>
   Effect.promise(() =>
     page.evaluate<Array<string>>(
@@ -159,7 +157,6 @@ const touchedIds = (page: Page) =>
     )
   );
 
-/** The corners of the selection box, in window pixels. */
 const boxCorners = (page: Page) =>
   Effect.promise(() =>
     page.evaluate<Array<Point>>(
@@ -236,9 +233,6 @@ describe("selecting several structures", () => {
           assert.deepStrictEqual(selectedAfterToggle, ["page"]);
           yield* assertCount(page, "[data-inside-view]", 0);
 
-          // Escape closes the focused structure's tooltip, and the next one
-          // empties the set. Then a pinned structure joins the set with the
-          // first structure Shift adds.
           yield* press(page, "Escape");
           yield* waitGone(page, "[role=tooltip][data-open]");
           yield* press(page, "Escape");
@@ -279,8 +273,6 @@ describe("selecting several structures", () => {
             view,
           });
 
-          // While the box is held it outlines what it touches, and selects
-          // nothing yet.
           yield* waitFor(page, "[data-selection-box]");
           yield* waitFor(page, '[data-box-touched="server"]');
           const touchedWhileHeld = yield* touchedIds(page);
@@ -292,8 +284,6 @@ describe("selecting several structures", () => {
           const selectedWhileHeld = yield* multiSelectedIds(page);
           assert.deepStrictEqual(selectedWhileHeld, []);
 
-          // The box is the ground rectangle, so it has four corners and, in
-          // the Iso view, none of its sides is level.
           const corners = yield* boxCorners(page);
           assert.strictEqual(corners.length, 4);
           assert.strictEqual(
@@ -321,7 +311,6 @@ describe("selecting several structures", () => {
             '[data-ui-sdk-announcer=""]:text("3 structures selected.")'
           );
 
-          // A box drag never pans.
           const after = yield* cameraOf(page);
           assert.deepStrictEqual(after, before);
 
@@ -341,7 +330,6 @@ describe("selecting several structures", () => {
           yield* showView(page, view);
           yield* shiftClick(page, ["engineer"]);
 
-          // Over server only.
           yield* dragBox({
             from: { x: 7.6, y: 2.6 },
             page,
@@ -560,7 +548,6 @@ describe("nudging a selection", () => {
         yield* press(page, "ArrowRight");
         yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
 
-        // The Shift-click focuses server, so the arrows are the map's now.
         yield* shiftClick(page, ["server"]);
         yield* press(page, "ArrowRight");
         yield* press(page, "ArrowLeft");
@@ -583,7 +570,6 @@ describe("nudging a selection", () => {
 
         assert.isTrue(focused, "focus left the map");
 
-        // ] still changes chapter with focus on the map.
         yield* press(page, "BracketLeft");
         yield* waitFor(page, '[data-walkthrough][data-chapter="c-page"]');
       })

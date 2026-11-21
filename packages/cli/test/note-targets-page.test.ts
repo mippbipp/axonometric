@@ -401,8 +401,6 @@ describe("the keyboard", () => {
         const boxRingCount = yield* Effect.promise(() => boxRing.count());
         assert.strictEqual(boxRingCount, 1);
 
-        // Structures, packets, rings and zone titles share the map's one Tab
-        // stop.
         const stops = yield* Effect.promise(() =>
           page.evaluate<{ kinds: Array<string>; zero: number }>(
             `(() => {

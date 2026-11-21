@@ -101,7 +101,6 @@ const routePresses = ({
 
   const startsPan = (event: PointerEvent) => isPrimary(event) && !claims(event);
 
-  // A press that won't pan on its own is still half a pinch.
   const firstPress = (event: PointerEvent): Press => {
     if (startsPan(event)) {
       return { down: event, kind: "pending" };
@@ -133,7 +132,6 @@ const routePresses = ({
       case "held":
       case "pending": {
         if (event.pointerId === press.down.pointerId) {
-          // The release of the last press never arrived.
           press = firstPress(event);
           break;
         }
@@ -246,7 +244,6 @@ const pannableCanvas = definePrimitive({
       fitScale: number,
       details?: CameraDetails
     ) => {
-      // The limits read fitScale, so it goes first.
       store.set({ fitScale });
       viewport.setViewport(camera, details);
     };
@@ -328,8 +325,6 @@ const pannableCanvas = definePrimitive({
           );
         };
 
-        // On the window, so a key works wherever focus is, except where a
-        // handler above already took it.
         const onKeyDown = (event: KeyboardEvent) => {
           if (
             event.defaultPrevented ||

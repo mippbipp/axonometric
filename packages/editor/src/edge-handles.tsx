@@ -24,7 +24,6 @@ import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { HoveredIdContext } from "./tooltip-context.ts";
 
-/** Each hop end's own classes: the owner's handles show, the rest only as a target. */
 const handleClass =
   "fill-paper stroke-pending cursor-crosshair data-[connect=target]:fill-pending";
 const hiddenEndClass =
@@ -97,8 +96,6 @@ export function EdgeHandles({ view }: { readonly view: View }) {
       : `${nameOf(end.owner)}, ${end.side} edge`;
   };
 
-  // A drop opens the label form rather than making the hop, so the last
-  // step says what comes next.
   const message = (said: ConnectMessage) => {
     if (said.type === "start") {
       return `Drawing a hop from ${nameOf(ownerOf(said.from))}. Arrows pick where it goes, Enter names it, Escape cancels.`;

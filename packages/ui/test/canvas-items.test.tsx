@@ -18,7 +18,6 @@ import { Array as Arr } from "effect";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-/** Where each item sits on screen, as a 10 px square at its corner. */
 const places = {
   a: { x: 0, y: 0 },
   b: { x: 100, y: 0 },
@@ -60,7 +59,6 @@ const spies = (): Calls => ({
   onSelectedChange: vi.fn<Calls["onSelectedChange"]>(),
 });
 
-/** Structures a, b, c and far are selectable and open; p is a packet that only presses. */
 function Map({
   calls,
   multiple = true,

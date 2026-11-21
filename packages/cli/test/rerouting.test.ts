@@ -461,8 +461,6 @@ describe("rerouting a hop by dragging a segment", () => {
           yield* assertCount(page, "[data-hop-pending]", 0);
 
           const value = yield* middleOf(page, segmentSelector("h-store", 0));
-          // The gesture ended, so the next drag is a fresh one, and it is
-          // the first thing saved.
           yield* dragBy(page, value, by);
 
           const saved = yield* waitForRevision(home, 1);
@@ -546,7 +544,6 @@ describe("rerouting a hop by dragging a segment", () => {
         yield* Effect.sleep("300 millis");
         yield* assertCount(page, '[data-hop-panel="h-store"]', 1);
 
-        // A press that slips 2 px stays under the drag threshold: still a click.
         yield* Effect.promise(() => page.mouse.move(at.x, at.y));
         yield* Effect.promise(() => page.mouse.down());
         yield* Effect.promise(() => page.mouse.move(at.x + 2, at.y));
@@ -850,7 +847,6 @@ describe("moving a group from the keyboard", () => {
             [4.5, 8.5, 8.5, 12.5]
           );
 
-          // Shift moves two units, and the arrows only ever add to the last.
           yield* press(page, "Shift+Alt+ArrowDown");
 
           const second = yield* waitForRevision(home, 2);
@@ -867,7 +863,6 @@ describe("moving a group from the keyboard", () => {
             [2, 2, 8, 8]
           );
 
-          // Each press is one undo step.
           yield* press(page, "Control+z");
           yield* waitForRevision(home, 3);
           yield* press(page, "Control+z");
@@ -1619,8 +1614,6 @@ describe("the warnings while dragging", () => {
           from,
           screenDelta("plan", unit, { x: 0.5, y: 0 })
         );
-        // A half unit snaps back to where the leg was, so the preview is a
-        // line with no width, which waitFor counts as hidden.
         yield* waitFor(page, '[data-dragging-route="h-store"]');
         yield* Effect.sleep("600 millis");
 

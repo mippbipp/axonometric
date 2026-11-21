@@ -85,7 +85,6 @@ const world = () => find("[data-viewport]");
 
 const scale = () => Number(svg().dataset.scale);
 
-/** The world's translation in the pane's own pixels, rest offset included. */
 const translation = () => {
   const match = /translate\((?<x>[-\d.e]+)px,\s*(?<y>[-\d.e]+)px\)/u.exec(
     world().style.transform
@@ -110,7 +109,6 @@ const mouse = (extra: PointerExtras = {}) => ({
   ...extra,
 });
 
-/** Presses at (100, 100), moves by (dx, dy) and releases. */
 const drag = (
   target: Element,
   [dx, dy]: readonly [number, number],

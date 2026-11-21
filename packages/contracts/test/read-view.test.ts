@@ -38,9 +38,6 @@ const readAt = Effect.fnUntraced(function* (
 const width = ({ left, right }: ViewBox) => right - left;
 const height = ({ bottom, top }: ViewBox) => bottom - top;
 
-// A hop's line starts and ends on the outline of its structures, so its box
-// touches theirs exactly. Measured on flake-pipeline in both views: no
-// tolerance was needed.
 const touches = (a: ViewBox, b: ViewBox) =>
   a.left <= b.right &&
   b.left <= a.right &&

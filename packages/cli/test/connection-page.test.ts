@@ -478,7 +478,6 @@ describe.each(["iso", "plan"] as const)("mid-drag in the %s view", (which) => {
   );
 });
 
-/** The camera once two reads of it 150 ms apart agree. */
 const settledCamera = Effect.fnUntraced(function* (page: Page) {
   let last = yield* cameraOf(page);
 
@@ -498,7 +497,6 @@ const settledCamera = Effect.fnUntraced(function* (page: Page) {
   return yield* Effect.die(new Error("the camera never held still"));
 });
 
-/** Waits until the assertive announcer says `text`. */
 const waitForAlert = (page: Page, text: string) =>
   Effect.promise(() =>
     page.waitForFunction(
@@ -616,7 +614,6 @@ describe.each(["iso", "plan"] as const)(
           yield* goToChapterPaused(page, "c-all");
           yield* showViewFitted(page, which);
 
-          // Between the engineer and the map page, so both stay on screen.
           const groundOnScreen = (x: number, y: number) =>
             inPage<{ x: number; y: number }>(
               page,
@@ -641,7 +638,6 @@ describe.each(["iso", "plan"] as const)(
           yield* select(page, "engineer");
           yield* settledCamera(page);
 
-          // The map page's footprint is 4 to 6 along x and 0 to 2 along y.
           const middle = yield* groundOnScreen(5, 1);
           const nearest = yield* inPage<number>(
             page,
@@ -793,7 +789,6 @@ describe("a structure's description", () => {
         );
         assert.strictEqual(shortcut, "H");
 
-        // The first chapter shows the engineer and the page only.
         yield* goToChapterPaused(page, "c-page");
 
         const early = yield* Effect.promise(() =>

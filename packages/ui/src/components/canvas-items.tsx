@@ -219,7 +219,6 @@ function CanvasItems({
 
   const { viewport } = usePannableCanvas();
 
-  // A press focuses the item too, and that shouldn't move the map.
   const reveal = (event: FocusEvent<SVGGElement>) => {
     const item =
       event.target instanceof Element

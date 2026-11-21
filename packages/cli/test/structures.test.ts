@@ -158,8 +158,6 @@ describe("the tooltip on keyboard focus and Escape", () => {
           yield* goToChapter(page, "c-all");
           yield* pin(page, "page");
 
-          // The map is one Tab stop, so Tab leaves it and Shift+Tab comes
-          // back to the structure focused last.
           yield* Effect.promise(() => page.mouse.move(0, 0));
           yield* press(page, "Tab");
 
@@ -543,7 +541,6 @@ describe("the inside view", () => {
           yield* press(page, "ArrowLeft");
           yield* expectOutWithPin(page, "c-save");
 
-          // Coming out focuses the structure, where Enter goes back inside.
           const focusedAfterComeOut = yield* focusedOn(page);
           assert.strictEqual(focusedAfterComeOut, "page");
           yield* press(page, "Enter");
@@ -583,7 +580,6 @@ describe("the inside view", () => {
         yield* pin(page, "engineer");
         yield* assertCount(page, '[data-control="go-inside"]', 0);
 
-        // Enter on it only pins it.
         const focused = yield* focusedOn(page);
         assert.strictEqual(focused, "engineer");
         yield* press(page, "Enter");

@@ -117,7 +117,6 @@ interface GroundHandleProps {
   readonly value: string;
 }
 
-/** What a `set` call does: record a dry run's value, or commit. */
 type Call =
   | { readonly input: GroundInput; readonly kind: "commit" }
   | {
@@ -133,7 +132,6 @@ const arrows = new Map<string, GroundPoint>([
   ["ArrowUp", { x: 0, y: -1 }],
 ]);
 
-/** Which edges each corner drags: east moves the x edge at the far side. */
 const edgesOf = {
   ne: { east: true, south: false },
   nw: { east: false, south: false },
@@ -176,7 +174,6 @@ const sameDraft = (a: GroundDraft, b: GroundDraft) =>
     ? b.kind === "move" && samePoints(a.to, b.to)
     : b.kind === "resize" && sameBox(a.to, b.to);
 
-/** Where each of `keys` that `from` has sits. */
 const pointsOf = (
   keys: ReadonlyArray<string>,
   from: Readonly<Record<string, GroundPoint>>
@@ -200,7 +197,6 @@ const groundDrag = definePrimitive({
     const options = () => context.options();
     let call: Call = { kind: "trial" };
     let stop: (() => void) | undefined;
-    // The keys the running moveBy or resizeBy is for.
     let moving: Array<string> = [];
     let resizing = "";
 
@@ -214,7 +210,6 @@ const groundDrag = definePrimitive({
       }
     };
 
-    /** What `run` would ask `set` for, without committing it. */
     const trial = (run: () => boolean) => {
       const seen: Call = { kind: "trial" };
 
@@ -269,8 +264,6 @@ const groundDrag = definePrimitive({
       step: () => options().step,
     });
 
-    // Each move or resize starts from the boxes as they are when it starts,
-    // so a render during a drag doesn't move its start.
     const startFrom = () => {
       store.set({ boxes: { ...options().boxes } });
     };
@@ -521,8 +514,6 @@ const groundDrag = definePrimitive({
       );
     };
 
-    // On the document, so Alt and an arrow nudge wherever focus is, unless a
-    // handler above already took the key.
     const listen = (el: HTMLElement) => {
       el.ownerDocument.addEventListener("keydown", nudge);
 

@@ -88,10 +88,8 @@ export function SpotlightProvider({
   const [agent, setAgent] = useState<Spotlight | null>(null);
   const choiceKey = flowChoiceKey(flowChoice);
 
-  // What the engineer points at, pins, draws, or the chapter and flow they
-  // pick, takes the spotlight back from the agent for good, so going back to
-  // where they were doesn't bring it back. State adjusted while rendering
-  // runs before the stale spotlight is drawn.
+  // Cleared while rendering, not in an effect, so the stale spotlight is
+  // never drawn.
   const watched = [hovered, pinned, drawing, stop.id, choiceKey] as const;
   const [before, setBefore] = useState(watched);
 

@@ -24,10 +24,6 @@ type OnMove = GroundDragOptions["onMove"];
 type OnResize = NonNullable<GroundDragOptions["onResize"]>;
 type OnDraft = (draft: GroundDraft | null) => void;
 
-/**
- * The Iso view's ground: a unit along x is 36 px right and 18 down, and
- * along y 36 left and 18 down, so a straight screen drag moves on both axes.
- */
 const toScreen = ({ x, y }: GroundPoint) => ({
   clientX: (x - y) * 36,
   clientY: (x + y) * 18,
@@ -62,11 +58,6 @@ const spies = (accept = true): Calls => ({
   onResize: vi.fn<OnResize>(() => accept),
 });
 
-/**
- * Items a and b, and a's handles. A press on a moves a, b and the hidden
- * item that's never drawn; a press on b moves b. Alt and an arrow move the
- * focused item. What a call accepts lands in the boxes.
- */
 function Canvas({
   calls: { onDraft, onMove, onResize },
 }: {
@@ -189,7 +180,6 @@ const handle = (corner: string) =>
 
 const root = () => screen.getByTestId("root");
 
-/** Presses `el` at the origin and moves the pointer to `to`, still pressed. */
 const pressAndMove = (
   el: Element,
   to: { readonly clientX: number; readonly clientY: number }
@@ -198,7 +188,6 @@ const pressAndMove = (
   fireEvent.pointerMove(document, pointer(to));
 };
 
-/** Presses `el`, drags it by `by` on the ground and lets go. */
 const dragBy = (el: Element, by: GroundPoint) => {
   pressAndMove(el, toScreen(by));
   fireEvent.pointerUp(document, pointer(toScreen(by)));
@@ -229,7 +218,6 @@ describe("ground drag", () => {
 
     const calls = await mount();
 
-    // Straight down by 36 px is one unit along x and along y.
     pressAndMove(item("b"), { clientX: 0, clientY: 36 });
     fireEvent.pointerUp(document, pointer({ clientX: 0, clientY: 36 }));
 
@@ -283,7 +271,6 @@ describe("ground drag", () => {
 
     const calls = await mount();
 
-    // 1.3 lands on 1.5 and 0.8 on 1: each position snaps to half a unit.
     dragBy(item("a"), { x: 0.3, y: -0.2 });
 
     const committed = {
@@ -446,8 +433,6 @@ describe("ground drag", () => {
 
       const calls = await mount();
 
-      // a runs from (1, 1) to (3, 3). The se corner goes to (3.6, -2), so
-      // the width snaps to 2.5 and the height stops at half a unit.
       dragBy(handle("se"), { x: 0.6, y: -5 });
 
       const committed = { height: 0.5, width: 2.5, x: 1, y: 1 };

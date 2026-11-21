@@ -70,7 +70,6 @@ const placementOf = ({ height, width, x, y }: GroundBox): Placement => ({
   y,
 });
 
-/** A drag of one structure or a set, and where it would put them. */
 interface Drag {
   /** The structure under the pointer. */
   readonly id: string;
@@ -79,7 +78,6 @@ interface Drag {
    * is on one of its structures, else just `id`.
    */
   readonly ids: ReadonlyArray<string>;
-  /** Where each of `ids` goes, as the drop would put it. */
   readonly moves: ReadonlyArray<StructureMove>;
   readonly next: Placement;
   /** Why dropping here would be refused, or nothing when it wouldn't. */
@@ -217,7 +215,6 @@ export function LayoutEditor({
     );
   }, [drag, placements, setOutlines]);
 
-  /** Why a pointer drop of the moves in `to` would be refused, if it would. */
   const moveRefusal = (
     to: Readonly<Record<string, GridPoint>>,
     id: string,
@@ -353,10 +350,6 @@ export function LayoutEditor({
 /** How big a resize handle is, in drawing units. */
 const handleSize = 12;
 
-/**
- * A square handle on each corner of the selected structure's footprint. Each
- * is a button: the arrow keys move its corner.
- */
 function ResizeHandles({
   id,
   name,
@@ -364,7 +357,6 @@ function ResizeHandles({
   view,
 }: {
   readonly id: string;
-  /** The structure's name, for the handles' names. */
   readonly name: string;
   readonly placement: Placement;
   readonly view: View;

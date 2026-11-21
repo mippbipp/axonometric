@@ -486,7 +486,6 @@ describe("resizing from the keyboard and cancelling a resize", () => {
         const savedProposals = yield* proposalsIn(home);
 
         assert.isTrue(Option.isNone(savedProposals));
-        // Escape belonged to the drag, so the structure stays selected.
         yield* assertCount(page, '[data-resize-handle="se"]', 1);
       }),
     60_000

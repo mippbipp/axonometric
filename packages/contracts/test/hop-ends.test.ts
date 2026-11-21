@@ -27,7 +27,6 @@ const fitted = Effect.fnUntraced(function* (name: string, view: View) {
   return { layout, revealed, scene };
 });
 
-/** `scene` with structure `id`'s name tag grown over its whole outline. */
 const tagOver = (scene: Scene, id: string): Scene => ({
   ...scene,
   structures: Arr.map(scene.structures, (item) =>
@@ -159,7 +158,6 @@ describe("the hop end a drop lands on", () => {
 
           assert.isDefined(box);
 
-          // A quarter in from the north-west corner: far from every handle.
           const point = { x: box.x + box.w / 4, y: box.y + box.d / 4 };
           const { sx, sy } = groundProjections[view].toScreen(point);
           const distance = (end: (typeof ends)[number]) =>

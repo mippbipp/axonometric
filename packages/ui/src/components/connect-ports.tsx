@@ -223,9 +223,6 @@ const connectPorts = definePrimitive({
       }
     };
 
-    // On the document in the capture phase, so while a hop is drawn from the
-    // keyboard its keys reach nothing else: not the focused item's own
-    // arrows, nor the page's.
     const listen = (el: HTMLElement) => {
       const doc = el.ownerDocument;
 
@@ -244,7 +241,6 @@ const connectPorts = definePrimitive({
       store.subscribe(() => {
         const { connecting } = store.get();
 
-        // bindCanvasDrag counts a pointer drag; a keyboard draft counts here.
         if (connecting?.keyboard === true) {
           releaseBusy ??= markDragging();
         } else {

@@ -419,7 +419,6 @@ const overlaps = (a: Box, b: Box) =>
   a.y < b.y + b.height &&
   b.y < a.y + a.height;
 
-/** Opens the shapes map in `view`, zoomed in on the middle until some structures are off screen. */
 const zoomedIn = Effect.fnUntraced(function* (
   page: Page,
   view: (typeof views)[number]
@@ -436,7 +435,6 @@ const zoomedIn = Effect.fnUntraced(function* (
   yield* waitForScale(page, `> ${fitted * 3}`);
 });
 
-/** The id of a structure that is entirely outside the canvas. */
 const offScreenStructure = Effect.fnUntraced(function* (page: Page) {
   const svg = yield* canvasOf(page);
   const ids = yield* inPage<ReadonlyArray<string>>(
@@ -475,10 +473,6 @@ const waitForOnScreen = (page: Page, selector: string) =>
     )
   );
 
-/**
- * A structure on screen to start from, the structures off screen, and the
- * arrow key that points from the start towards the first of them.
- */
 const offScreenPlan = `(() => {
   const canvas = document.querySelector("svg[data-scale]").getBoundingClientRect();
   const centre = (box) => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
@@ -703,7 +697,6 @@ describe.each(views)("the viewport in %s", (view) => {
         const [scale, x, y] = yield* cameraOf(page);
         const ratio = scale / before[0];
 
-        // The drawing point under the pointer stays under it.
         assert.closeTo(at.x - x, (at.x - before[1]) * ratio, 1);
         assert.closeTo(at.y - y, (at.y - before[2]) * ratio, 1);
       })
@@ -772,7 +765,6 @@ describe("the viewport's touch and controls", () => {
             })
           );
 
-        // Both fingers start on the same structure.
         yield* send("touchStart", fingers(5));
 
         for (let step = 1; step <= 8; step += 1) {

@@ -11,7 +11,6 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { settle } from "@ui-sdk/core/testing";
 import { describe, expect, it, vi } from "vitest";
 
-/** Each port's centre on screen, and the structure it is on. */
 const ports = {
   "a:east": { structure: "a", x: 20, y: 50 },
   "b:north": { structure: "b", x: 150, y: 0 },
@@ -50,10 +49,6 @@ const spies = (): Calls => ({
   onDraft: vi.fn<OnDraft>(),
 });
 
-/**
- * Structures a, b and c, each a focusable `<g>`, and their ports. A pointer at
- * x 90 or more is over structure b, whose nearest port is b:west below y 25.
- */
 function Structures({
   calls,
   disabled = false,
@@ -179,12 +174,10 @@ const announcement = () =>
       })
   );
 
-/** Presses `key` where focus is. */
 const keyDown = (key: string) => {
   fireEvent.keyDown(document.activeElement ?? document.body, { key });
 };
 
-/** Focuses `el` and presses `key` on it. */
 const pressOn = (el: Element, key: string, init: KeyboardEventInit = {}) => {
   if (el instanceof HTMLElement || el instanceof SVGElement) {
     el.focus();
@@ -201,7 +194,6 @@ const startFromA = async () => {
   });
 };
 
-/** Presses port a:east and moves the pointer to `to`, still pressed. */
 const dragTo = async (to: { readonly x: number; readonly y: number }) => {
   fireEvent.pointerDown(port("a:east"), pointer(20, 50));
   fireEvent.pointerMove(document, pointer(to.x, to.y));
@@ -242,7 +234,6 @@ describe("connect ports", () => {
 
       keyDown("ArrowDown");
 
-      // c:north is below b:west; a's own port never takes a connection.
       expect(port("c:north").dataset.connect).toBe("target");
     });
 

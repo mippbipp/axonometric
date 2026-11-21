@@ -35,13 +35,10 @@ import { useSelection } from "./selection-context.ts";
 import { useStructuresById } from "./structures.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
-/** A drag of a group by its zone's title, and where it would put it. */
 interface Drag {
   readonly by: GridPoint;
   readonly group: string;
-  /** Every member of the group and where it was shown at the press. */
   readonly members: ReadonlyArray<readonly [string, Placement]>;
-  /** Where each member goes, as the drop would put it. */
   readonly moves: ReadonlyArray<StructureMove>;
   /** Why dropping here would be refused, or nothing when it wouldn't. */
   readonly refusal: string | undefined;
@@ -53,7 +50,6 @@ const shifted = (event: Event | undefined) =>
   (event instanceof MouseEvent || event instanceof KeyboardEvent) &&
   event.shiftKey;
 
-/** Selects the title box of the pinned group's panel, once it has drawn. */
 const selectTitleBox = () => {
   requestAnimationFrame(() => {
     document
@@ -198,7 +194,6 @@ export function GroupEditor({
     };
   };
 
-  /** The members of the group whose title `target` is, revealed or not. */
   const keysFor = (target: Element | null, press: GroundPress) => {
     const group =
       target?.closest<SVGElement>(titleSelector)?.dataset.zoneTitleHit;
