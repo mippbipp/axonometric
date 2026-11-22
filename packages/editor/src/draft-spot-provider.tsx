@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { addChangeOf, previewId } from "./add-change.ts";
 import CheckWorker from "./check.worker.ts?worker&inline";
 import { DraftAnswer, draftChecker, searchKeyOf } from "./draft-check.ts";
-import type { DraftAsk, DraftMap } from "./draft-check.ts";
+import type { DraftAsk, DraftMap, DraftStop } from "./draft-check.ts";
 import {
   DraftOutlineContext,
   DraftSpotContext,
@@ -30,6 +30,8 @@ interface DraftChecker {
   readonly ask: (ask: DraftAsk) => void;
   readonly close: () => void;
   readonly map: (map: DraftMap) => void;
+  /** Stops the ask being checked, and keeps the map. */
+  readonly stop: () => void;
 }
 
 /**
@@ -52,7 +54,7 @@ const startChecker = (answer: (found: DraftAnswer) => void): DraftChecker => {
     }
   });
 
-  const send = (message: DraftAsk | DraftMap) => {
+  const send = (message: DraftAsk | DraftMap | DraftStop) => {
     // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a Worker, not a window
     worker.postMessage(message);
   };
@@ -63,6 +65,9 @@ const startChecker = (answer: (found: DraftAnswer) => void): DraftChecker => {
       worker.terminate();
     },
     map: send,
+    stop: () => {
+      send({ kind: "draft stop" });
+    },
   };
 };
 
@@ -209,10 +214,12 @@ export function DraftSpotProvider({
     });
   }, [asked, panel]);
 
-  // The panel and the last spot belong to this opening of the form.
+  // The search, the panel and the last spot belong to this opening of the
+  // form. Cancel, a sent proposal and Edit turning off all close it here.
   useEffect(
     () => () => {
       if (open) {
+        checker.current?.stop();
         asks.current = { asked: undefined, number: asks.current.number };
         panel?.clear();
         setFound(undefined);

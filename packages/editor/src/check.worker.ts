@@ -3,7 +3,8 @@
 // chapter, which takes seconds on a big map. The page starts one worker for
 // the drag warnings and one for the add form, and each hears only its own
 // kind of message: a map once, then drag steps or drafts on it. A newer step
-// or draft stops the one before.
+// or draft stops the one before, and the add form stops its draft when it
+// closes.
 
 import { Result, Schema } from "effect";
 
@@ -48,8 +49,10 @@ addEventListener("message", (event: MessageEvent<unknown>) => {
 
     if (request.kind === "draft map") {
       checkers.drafts.map(request);
-    } else {
+    } else if (request.kind === "draft ask") {
       checkers.drafts.ask(request);
+    } else {
+      checkers.drafts.stop();
     }
   }
 });

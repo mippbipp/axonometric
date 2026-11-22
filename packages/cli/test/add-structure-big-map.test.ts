@@ -79,6 +79,77 @@ new MutationObserver(() => {
 /** Runs before the page's own scripts, so the page finds no workers. */
 const noWorkers = "delete globalThis.Worker;";
 
+/**
+ * Runs before the page's own scripts. It records when the add form's worker
+ * answers, and when Cancel is clicked, on the page's clock.
+ */
+const recordAnswers = `
+globalThis.draftAnswers = [];
+const PageWorker = globalThis.Worker;
+globalThis.Worker = class extends PageWorker {
+  constructor(url, options) {
+    super(url, options);
+    if (options?.name === "add form check") {
+      this.addEventListener("message", () => {
+        globalThis.draftAnswers.push(performance.now());
+      });
+    }
+  }
+};
+`;
+
+/**
+ * Runs before the page's own scripts. It records when Cancel is clicked and
+ * every long task, on the page's clock.
+ */
+const recordCancel = `
+globalThis.longTasks = [];
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    globalThis.longTasks.push({ at: entry.startTime, duration: entry.duration });
+  }
+}).observe({ type: "longtask" });
+addEventListener("click", (event) => {
+  if (event.target instanceof Element && event.target.closest('[data-add="cancel"]') !== null) {
+    globalThis.cancelledAt = performance.now();
+  }
+}, { capture: true });
+`;
+
+/**
+ * How long a test waits after Cancel for the search to show it kept going.
+ * A search for a new name here answers its spot about 4.5 s after it starts
+ * in the worker, and an in-page one draws a chapter about every 550 ms.
+ */
+const afterCancel = "10 seconds";
+
+/**
+ * Opens the form, types a name and cancels the form while the search for it
+ * is still running.
+ */
+const cancelMidSearch = Effect.fnUntraced(function* (page: Page) {
+  yield* openForm(page);
+  yield* settled(page);
+  yield* Effect.promise(() =>
+    page.locator('[data-add="name"]').fill(typedName)
+  );
+  yield* Effect.sleep("1 second");
+
+  const finding = yield* inPage<boolean>(
+    page,
+    `document.querySelector("[data-add-hint][data-finding]") !== null`
+  );
+
+  assert.isTrue(finding, "the search was still running at Cancel");
+  yield* click(page, '[data-add="cancel"]');
+  yield* Effect.promise(() =>
+    page
+      .locator("[data-add-structure]")
+      .waitFor({ state: "detached", timeout: 15_000 })
+  );
+  yield* Effect.sleep(afterCancel);
+});
+
 const served = (initScript: string) =>
   Effect.gen(function* () {
     const pipelineMapFiles = yield* pipelineMap;
@@ -312,6 +383,49 @@ describe("the add form on a big map", () => {
 
         assert.deepStrictEqual(filled, wanted, "with no workers");
         assert.deepStrictEqual(workerless.errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    240_000
+  );
+
+  it.live(
+    "stops finding a spot once the form is cancelled, in a worker",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* served(
+          `${recordAnswers}${recordCancel}`
+        );
+
+        yield* cancelMidSearch(page);
+
+        const late = yield* inPage<ReadonlyArray<number>>(
+          page,
+          "globalThis.draftAnswers.filter((at) => at > globalThis.cancelledAt)"
+        );
+
+        assert.deepStrictEqual(late, [], "the worker answered after Cancel");
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    240_000
+  );
+
+  it.live(
+    "stops finding a spot once the form is cancelled, on a page with no workers",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* served(`${noWorkers}${recordCancel}`);
+
+        yield* cancelMidSearch(page);
+
+        // The search on the page draws a chapter per long task, so a search
+        // that kept going shows here. The page settles within a second of
+        // closing the form, and with playback paused it then runs nothing.
+        const late = yield* inPage<ReadonlyArray<number>>(
+          page,
+          "globalThis.longTasks.filter(({ at }) => at > globalThis.cancelledAt + 1000).map(({ duration }) => Math.round(duration))"
+        );
+
+        assert.deepStrictEqual(late, [], "long tasks after Cancel");
+        assert.deepStrictEqual(errors, []);
       }).pipe(Effect.provide(NodeServices.layer)),
     240_000
   );

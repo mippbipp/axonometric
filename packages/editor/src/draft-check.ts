@@ -48,11 +48,21 @@ export const DraftAsk = Schema.Struct({
   picked: Schema.NullOr(GridPoint),
 });
 
-export const DraftRequest = Schema.Union([DraftMap, DraftAsk]);
+/**
+ * The add form closed: stop the ask being checked. The map stays held, so
+ * the next opening of the form doesn't send it again.
+ */
+export const DraftStop = Schema.Struct({
+  kind: Schema.Literal("draft stop"),
+});
+
+export const DraftRequest = Schema.Union([DraftMap, DraftAsk, DraftStop]);
 
 export type DraftMap = typeof DraftMap.Type;
 
 export type DraftAsk = typeof DraftAsk.Type;
+
+export type DraftStop = typeof DraftStop.Type;
 
 export type DraftRequest = typeof DraftRequest.Type;
 
@@ -198,8 +208,9 @@ interface Held {
 
 /**
  * Checks the add form's drafts, one at once: a new map or ask stops the ask
- * being checked. `answer` hears the spot each ask finds and its warnings.
- * The worker runs one, and so does the page where there are no workers.
+ * being checked, and so does `stop`, when the form closes. `answer` hears the
+ * spot each ask finds and its warnings. The worker runs one, and so does the
+ * page where there are no workers.
  */
 export const draftChecker = (answer: (found: DraftAnswer) => void) => {
   const held: Held = { checking: undefined, map: undefined, search: undefined };
@@ -222,6 +233,7 @@ export const draftChecker = (answer: (found: DraftAnswer) => void) => {
       }
     },
     close: stop,
+    stop,
     map: (map: DraftMap) => {
       stop();
       held.map = map;
