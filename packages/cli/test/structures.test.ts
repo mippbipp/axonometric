@@ -10,6 +10,8 @@ import {
   cameraOf,
   click,
   goToChapter,
+  inPage,
+  literal,
   press,
   textOf,
   waitForCameraChange,
@@ -715,6 +717,29 @@ describe("the side index", () => {
         yield* waitFor(page, '[data-walkthrough][data-chapter="c-save"]');
       })
     )
+  );
+
+  it.live(
+    "draws the focus ring of the selected item in a colour its fill doesn't have",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { page } = yield* widePage;
+
+          yield* click(page, indexItem("engineer"));
+          yield* waitFor(page, `${indexItem("engineer")}[aria-current="true"]`);
+          yield* press(page, "ArrowDown");
+          yield* press(page, "ArrowUp");
+          yield* waitFor(page, `${indexItem("engineer")}:focus-visible`);
+
+          const [outline, fill] = yield* inPage<[string, string]>(
+            page,
+            `(() => { const s = getComputedStyle(document.querySelector(${literal(indexItem("engineer"))})); return [s.outlineColor, s.backgroundColor]; })()`
+          );
+
+          assert.notStrictEqual(outline, fill);
+        })
+      )
   );
 
   it.live("selects on click and Enter; ↑ and ↓ only move focus", () =>
