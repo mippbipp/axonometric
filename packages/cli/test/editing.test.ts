@@ -144,6 +144,34 @@ describe("moving structures", () => {
         // Straight down the screen in the Iso view is along x and y at once.
         yield* dragBy(page, from, { x: 0, y: unit * 2.2 });
 
+        // PROBE
+        const dump = (label: string) =>
+          proposalsIn(home).pipe(
+            Effect.map((now) =>
+              process.stderr.write(
+                `PROBE243 ${label} ${JSON.stringify(
+                  Option.isSome(now)
+                    ? {
+                        kinds: Arr.map(now.value.layout, (c) => c.kind),
+                        n: now.value.layout.length,
+                        rev: now.value.revision,
+                      }
+                    : null
+                )}\n`
+              )
+            )
+          );
+        for (let i = 0; i < 150; i++) {
+          const now = yield* proposalsIn(home);
+          if (Option.isSome(now) && now.value.revision >= 1) {
+            break;
+          }
+          yield* Effect.sleep("100 millis");
+        }
+        yield* dump("first");
+        yield* Effect.sleep("2 seconds");
+        yield* dump("settled");
+        // END PROBE
         const saved = yield* waitForRevision(home, 1);
         const [change] = saved.layout;
 
