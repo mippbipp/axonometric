@@ -285,18 +285,8 @@ describe("the agent's layout changes in the page", () => {
         yield* waitGone(page, "[data-pending-group]");
         yield* waitGone(page, '[data-structure][data-pending="true"]');
 
-        // PROBE
-        const early = yield* readProposals(home);
-        process.stderr.write(
-          `PROBE257 first rev=${early.revision} n=${early.layout.length}\n`
-        );
-        yield* Effect.sleep("1500 millis");
-        const late = yield* readProposals(home);
-        process.stderr.write(
-          `PROBE257 settled rev=${late.revision} n=${late.layout.length}\n`
-        );
-        // END PROBE
-        const proposals = yield* readProposals(home);
+        // The map drops the group before the server has written the discard.
+        const proposals = yield* waitForRevision(home, 2);
 
         assert.deepStrictEqual(proposals.layout, []);
 

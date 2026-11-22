@@ -146,13 +146,6 @@ describe("moving structures", () => {
 
         // The drop lands in another group's zone, so the page writes the
         // move, then the group change that follows it: two writes.
-        // PROBE
-        yield* Effect.sleep("1500 millis");
-        const probed = yield* proposalsIn(home);
-        process.stderr.write(
-          `PROBE243 after 1.5s ${Option.isSome(probed) ? `rev=${probed.value.revision} moves=${probed.value.layout.length} structures=${probed.value.structures?.length}` : "none"}\n`
-        );
-        // END PROBE
         const saved = yield* waitForRevision(home, 2);
         const [change] = saved.layout;
 
