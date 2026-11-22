@@ -266,6 +266,23 @@ describe("the Ready for review button", () => {
         assert.strictEqual(named, 1);
         const whileOpen = yield* inPage<boolean>(page, covered);
 
+        if (!whileOpen) {
+          const dump = `JSON.stringify({
+            inert: [...document.querySelectorAll("[inert]")].map((el) => el.tagName + "." + el.className),
+            dialogOpen: document.querySelector("[data-review-dialog]")?.hasAttribute("data-open"),
+            mapLayerCovered: document.querySelector("[data-map-layer]")?.closest("[inert]") !== null,
+          })`;
+          const early = yield* inPage<string>(page, dump);
+          const late = yield* Effect.promise(() =>
+            page
+              .waitForFunction(covered, undefined, { timeout: 10_000 })
+              .then(() => "inert arrived after the read")
+              .catch(() => "inert never arrived in 10s")
+          );
+          const after = yield* inPage<string>(page, dump);
+
+          assert.fail(`PROBE-249 early=${early} then ${late}; after=${after}`);
+        }
         assert.isTrue(whileOpen);
 
         yield* press(page, "Escape");
