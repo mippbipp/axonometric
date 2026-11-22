@@ -57,7 +57,7 @@ No text overlaps. `check` is where these are reported. `build` doesn't draw ever
 - routes under boxes
 - overlapping zones
 - labels, arrowheads and chips drawn over other things
-- a hop's label with no clear spot beside its route in Plan view, which the drawing then leaves out. Shorten the label, or move the structures it passes apart so the route has room
+- a hop's label with no clear spot beside its route in Plan view, which the drawing then leaves out. Shorten the label, or move the structures it passes apart so the route has room. A chapter that plays hops labels only those, so a hop it fades doesn't warn there
 - routes that take a long way round
 - route overrides that don't start and end on a footprint's edge
 

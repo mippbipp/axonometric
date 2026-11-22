@@ -46,7 +46,7 @@ In each chapter, check:
 - The story and lede match what is on screen.
 - Every label can be read at this zoom.
 
-The last chapter draws every hop, so it is the most crowded view. If its routes or labels crowd each other, change the map. Cut the hops that add nothing the chapters didn't already show, such as a reply nobody needs, or move the structures apart (see below). Put each story in a flow, so the picker can fade the rest. And check that earlier chapters stay small: a chapter that plays many hops is a reason to split it.
+The last chapter draws every hop, so it is the most crowded view. If its routes or labels crowd each other, change the map. Cut the hops that add nothing the chapters didn't already show, such as a reply nobody needs, or move the structures apart (see below). Put each story in a flow, so the picker can fade the rest. A picked flow labels only its own hops, and its labels may sit over the faded routes, so far fewer of them are hidden. And check that earlier chapters stay small: a chapter that plays many hops is a reason to split it.
 
 Zoom to fit (`0`) before you judge.
 
