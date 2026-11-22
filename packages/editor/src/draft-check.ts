@@ -200,10 +200,11 @@ const checkDraft = Effect.fnUntraced(function* ({
 });
 
 /**
- * Draws the map before any structure is added, as proposed and as shown,
- * which every spot the search tries and every warnings check compares with.
- * Each chapter drawn is remembered, so the first search after the map
- * arrives waits on the new structure's chapters alone.
+ * Draws the map as proposed and as shown, which every spot the search tries
+ * and every warnings check compares with. Each chapter drawn is remembered,
+ * and a chapter that doesn't reveal the new structure draws as it does
+ * without it, so the first search after the map arrives draws only the
+ * chapters that do.
  */
 const warmUp = Effect.fnUntraced(function* ({ data, layout, shown }: DraftMap) {
   for (const drawn of [layout, shown]) {

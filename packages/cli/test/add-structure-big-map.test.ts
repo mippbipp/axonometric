@@ -25,9 +25,10 @@ import { makeHome, mapIn, startServe } from "./harness.ts";
 // of the name tag, so the search runs again for each keystroke.
 //
 // The flake pipeline has 15 structures, 29 hops and 8 chapters. Drawing one
-// chapter takes about half a second, and the search draws again only the
-// chapters that reveal the new structure, so it answers in well under a
-// second. The shapes map has no chapters: its one drawing shows the new
+// chapter takes about half a second. No chapter reveals a new structure, so
+// each draws as it did without it, and once the map is drawn the search
+// draws nothing again and answers in well under a second. The shapes map
+// has no chapters: its one drawing shows the new
 // structure, so the search draws it again at every spot it tries and takes
 // about 3 s. The tests of answers to a name typed over, and of Cancel, need
 // a search that is still running, so they use it.
