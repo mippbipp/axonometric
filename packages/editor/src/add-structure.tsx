@@ -78,14 +78,12 @@ export function AddStructureForm() {
 
   const setCoordinate = (axis: "x" | "y", value: number | null) => {
     if (value !== null && Number.isFinite(value)) {
-      // Built from the spot typed so far, not the one this render shows: the
-      // second axis can be typed before React draws the first one's spot.
-      placing.setSpot((held) => ({
-        x: held?.x ?? shownSpot?.x ?? 0,
-        y: held?.y ?? shownSpot?.y ?? 0,
+      placing.setSpot({
+        x: shownSpot?.x ?? 0,
+        y: shownSpot?.y ?? 0,
         // The typed axis comes last so it overrides x and y.
         [axis]: snap(value),
-      }));
+      });
     }
   };
 
