@@ -97,7 +97,7 @@ jobs:
               echo "RESULT run $i FAIL"
               fails=$((fails + 1))
             fi
-            grep -E "PROBE|FAIL|AssertionError|expected" "$RUNNER_TEMP/out.txt" || true
+            grep -E "PROBE|FAIL|Error|Timeout|waiting for|expected" "$RUNNER_TEMP/out.txt" || true
             echo "::endgroup::"
           done
           echo "SUMMARY ${{ matrix.file }}: $fails failures in $RUNS runs"

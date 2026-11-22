@@ -112,6 +112,22 @@ const addStructure = Effect.fnUntraced(function* (
   process.stderr.write(`PROBE262 at click ${state}\n`);
   // END PROBE
   yield* click(page, '[data-add="submit"]');
+  // PROBE
+  const after = (label: string) =>
+    Effect.promise(() =>
+      page.evaluate<string>(`JSON.stringify({
+        failure: document.querySelector("[data-add-failure]")?.textContent,
+        form: document.querySelectorAll("[data-add-structure]").length,
+        pending: document.querySelectorAll('[data-structure][data-pending="true"]').length,
+        sending: document.querySelector('[data-add="submit"]')?.textContent,
+      })`)
+    ).pipe(
+      Effect.map((out) => process.stderr.write(`PROBE262 ${label} ${out}\n`))
+    );
+  yield* after("after click");
+  yield* Effect.sleep("3 seconds");
+  yield* after("3s later");
+  // END PROBE
 });
 
 /** The pieces of the cross that run over a code chip or a name tag. */
