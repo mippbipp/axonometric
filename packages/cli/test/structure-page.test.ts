@@ -103,11 +103,12 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.evaluate(`(() => {
       window.__probe = [];
+      const box = () => { const r = document.querySelector('[data-add="submit"]')?.getBoundingClientRect(); return r ? Math.round(r.x) + "," + Math.round(r.y) : "none"; };
+      for (const type of ["pointerdown", "pointerup", "click", "submit"]) {
+        document.addEventListener(type, (e) => window.__probe.push(type + " on " + (e.target.closest?.("[data-add]")?.getAttribute("data-add") ?? e.target.tagName) + " btn@" + box()), true);
+      }
       const form = document.querySelector("[data-add-structure]");
-      const button = document.querySelector('[data-add="submit"]');
-      button.addEventListener("click", () => window.__probe.push("click disabled=" + button.disabled + " connected=" + button.isConnected + " checking=" + form.hasAttribute("data-checking")), true);
-      form.addEventListener("submit", () => window.__probe.push("submit"), true);
-      new MutationObserver(() => window.__probe.push("form mutated checking=" + form.hasAttribute("data-checking") + " btn=" + document.querySelector('[data-add="submit"]')?.textContent)).observe(form, { attributes: true, childList: true, subtree: true });
+      new MutationObserver(() => window.__probe.push("mut checking=" + form.hasAttribute("data-checking") + " btn@" + box())).observe(form, { attributes: true, childList: true, subtree: true });
     })()`)
   );
   const state = yield* Effect.promise(() =>
