@@ -367,27 +367,6 @@ describe("the add form", () => {
         yield* waitForAddForm(page);
         yield* waitFor(page, "[data-drag-warnings]");
 
-        // PROBE
-        const dump = (label: string) =>
-          Effect.promise(() =>
-            page.evaluate<string>(`JSON.stringify({
-              checking: document.querySelectorAll("[data-add-structure][data-checking]").length,
-              finding: document.querySelectorAll("[data-add-hint][data-finding]").length,
-              items: [...document.querySelectorAll("[data-drag-warning]")].map((e) => e.textContent.slice(0, 80)),
-              panels: document.querySelectorAll("[data-drag-warnings]").length,
-              x: document.querySelector('[data-add="x"]')?.value,
-              y: document.querySelector('[data-add="y"]')?.value,
-            })`)
-          ).pipe(
-            Effect.map((out) =>
-              process.stderr.write(`PROBE261 ${label} ${out}\n`)
-            )
-          );
-        yield* dump("first");
-        yield* Effect.sleep("2 seconds");
-        yield* dump("settled");
-        // END PROBE
-
         const fromForm = yield* zoneWarnings;
 
         assert.isAbove(fromForm.length, 0, "add form");

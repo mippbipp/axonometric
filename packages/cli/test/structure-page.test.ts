@@ -99,50 +99,7 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="y"]').fill(String(fields.y))
   );
-  // PROBE
-  yield* Effect.promise(() =>
-    page.evaluate(`(() => {
-      window.__probe = [];
-      const box = () => { const r = document.querySelector('[data-add="submit"]')?.getBoundingClientRect(); return r ? Math.round(r.x) + "," + Math.round(r.y) : "none"; };
-      for (const type of ["pointerdown", "pointerup", "click", "submit"]) {
-        document.addEventListener(type, (e) => window.__probe.push(type + " on " + (e.target.closest?.("[data-add]")?.getAttribute("data-add") ?? e.target.tagName) + " btn@" + box()), true);
-      }
-      const form = document.querySelector("[data-add-structure]");
-      new MutationObserver(() => window.__probe.push("mut checking=" + form.hasAttribute("data-checking") + " btn@" + box())).observe(form, { attributes: true, childList: true, subtree: true });
-    })()`)
-  );
-  const state = yield* Effect.promise(() =>
-    page.evaluate<string>(`JSON.stringify({
-      checking: document.querySelectorAll("[data-add-structure][data-checking]").length,
-      disabled: document.querySelector('[data-add="submit"]')?.disabled,
-      finding: document.querySelectorAll("[data-add-hint][data-finding]").length,
-      x: document.querySelector('[data-add="x"]')?.value,
-      y: document.querySelector('[data-add="y"]')?.value,
-    })`)
-  );
-  process.stderr.write(`PROBE262 at click ${state}\n`);
-  // END PROBE
   yield* click(page, '[data-add="submit"]');
-  // PROBE
-  const after = (label: string) =>
-    Effect.promise(() =>
-      page.evaluate<string>(`JSON.stringify({
-        failure: document.querySelector("[data-add-failure]")?.textContent,
-        form: document.querySelectorAll("[data-add-structure]").length,
-        pending: document.querySelectorAll('[data-structure][data-pending="true"]').length,
-        sending: document.querySelector('[data-add="submit"]')?.textContent,
-      })`)
-    ).pipe(
-      Effect.map((out) => process.stderr.write(`PROBE262 ${label} ${out}\n`))
-    );
-  yield* after("after click");
-  yield* Effect.sleep("3 seconds");
-  yield* after("3s later");
-  const log = yield* Effect.promise(() =>
-    page.evaluate<string>(`JSON.stringify(window.__probe)`)
-  );
-  process.stderr.write(`PROBE262 log ${log}\n`);
-  // END PROBE
 });
 
 /** The pieces of the cross that run over a code chip or a name tag. */

@@ -285,20 +285,6 @@ describe("the agent's layout changes in the page", () => {
         yield* waitGone(page, "[data-pending-group]");
         yield* waitGone(page, '[data-structure][data-pending="true"]');
 
-        // PROBE
-        const dump = (label: string) =>
-          Effect.gen(function* () {
-            const pr = yield* readProposals(home);
-            const value_1 = yield* readIn(root, mapKeys("review").layoutFile);
-            const lt = yield* decodeLayout(value_1);
-            process.stderr.write(
-              `PROBE257 ${label} errors=${errors.length} layRev=${lt.revision} page=${lt.structures.page?.x},${lt.structures.page?.y},${lt.structures.page?.w},${lt.structures.page?.d} prLayout=${pr.layout.length} prRev=${pr.revision}\n`
-            );
-          });
-        yield* dump("first");
-        yield* Effect.sleep("2 seconds");
-        yield* dump("settled");
-        // END PROBE
         const proposals = yield* readProposals(home);
 
         assert.deepStrictEqual(proposals.layout, []);
