@@ -100,6 +100,16 @@ const addStructure = Effect.fnUntraced(function* (
     page.locator('[data-add="y"]').fill(String(fields.y))
   );
   // PROBE
+  yield* Effect.promise(() =>
+    page.evaluate(`(() => {
+      window.__probe = [];
+      const form = document.querySelector("[data-add-structure]");
+      const button = document.querySelector('[data-add="submit"]');
+      button.addEventListener("click", () => window.__probe.push("click disabled=" + button.disabled + " connected=" + button.isConnected + " checking=" + form.hasAttribute("data-checking")), true);
+      form.addEventListener("submit", () => window.__probe.push("submit"), true);
+      new MutationObserver(() => window.__probe.push("form mutated checking=" + form.hasAttribute("data-checking") + " btn=" + document.querySelector('[data-add="submit"]')?.textContent)).observe(form, { attributes: true, childList: true, subtree: true });
+    })()`)
+  );
   const state = yield* Effect.promise(() =>
     page.evaluate<string>(`JSON.stringify({
       checking: document.querySelectorAll("[data-add-structure][data-checking]").length,
@@ -127,6 +137,10 @@ const addStructure = Effect.fnUntraced(function* (
   yield* after("after click");
   yield* Effect.sleep("3 seconds");
   yield* after("3s later");
+  const log = yield* Effect.promise(() =>
+    page.evaluate<string>(`JSON.stringify(window.__probe)`)
+  );
+  process.stderr.write(`PROBE262 log ${log}\n`);
   // END PROBE
 });
 
