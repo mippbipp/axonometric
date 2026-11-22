@@ -94,6 +94,14 @@ function PromptBox({
 }
 
 /**
+ * Where focus goes when the dialog closes. The button that opened it is gone
+ * once the batch is frozen, so it goes to the Pending tab, which lists the
+ * frozen items.
+ */
+const pendingTab = () =>
+  document.querySelector<HTMLElement>('[role="tab"][data-tab="pending"]');
+
+/**
  * The "Ready for review" button and its dialog. Pressing the button freezes
  * every open change and note into the next batch, copies the prompt, and
  * opens the dialog. When the browser refuses the clipboard, the dialog says
@@ -194,6 +202,7 @@ export function ReadyForReview() {
         <DialogContent
           className="border-ink bg-paper text-ink w-fit max-w-[min(32rem,90vw)] overscroll-contain p-0"
           data-review-dialog
+          finalFocus={pendingTab}
         >
           {sent === null ? null : (
             <div className="flex flex-col gap-3 p-4 text-sm">

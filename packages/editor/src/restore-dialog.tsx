@@ -23,6 +23,16 @@ export interface RestoreReport {
   readonly routes: ReadonlyArray<DifferenceLine>;
 }
 
+/**
+ * Where focus goes when the dialog closes. The Restore button that opened it
+ * is gone by then, so it goes to the revision's row in the History tab, or to
+ * the History tab when the row isn't drawn.
+ */
+const afterClose = (revision: number) => (): HTMLElement | null =>
+  document.querySelector<HTMLElement>(
+    `[data-history-list] [data-revision="${revision}"]`
+  ) ?? document.querySelector<HTMLElement>('[role="tab"][data-tab="history"]');
+
 /** What the dialog says about the layout changes a restore made. */
 const restoredText = (count: number) =>
   count === 1
@@ -74,6 +84,7 @@ export function RestoreDialog({
       <DialogContent
         className="border-ink bg-paper text-ink"
         data-restore-dialog
+        finalFocus={afterClose(revision)}
       >
         <div className="flex flex-col gap-3">
           <DialogTitle className="tracking-widest uppercase">
