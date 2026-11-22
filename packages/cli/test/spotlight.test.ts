@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem } from "effect";
+import { Array as Arr, Effect, FileSystem, String as Str } from "effect";
 import type { Page } from "playwright";
 
 import {
@@ -324,6 +324,86 @@ describe("the spotlight of a hovered item", () => {
             yield* assertInside(page, "h-main-watchdog");
             yield* assertOutside(page, "h-main-updater");
           }
+        })
+      ),
+    120_000
+  );
+});
+
+/** f-repair's hops, which the picked flow labels. */
+const repairHops = new Set([
+  "h-ruleset-updater",
+  "h-updater-workspace",
+  "h-updater-fixer",
+  "h-blocked-fixer",
+  "h-fixer-workspace",
+  "h-fixer-updater",
+  "h-workspace-updater",
+  "h-blocked-updater",
+  "h-updater-pr-fix",
+  "h-updater-issues",
+]);
+
+/** Where each label that fits is drawn, as `id x,y`, in page order. */
+const fittingLabelsOf = (page: Page) =>
+  Effect.promise(() =>
+    page.evaluate<ReadonlyArray<string>>(
+      `Array.from(document.querySelectorAll('[data-hop-label][data-hop-label-fits="true"]'), (label) => label.dataset.hopLabel + " " + label.getAttribute("x") + "," + label.getAttribute("y"))`
+    )
+  );
+
+const hopIdOf = (entry: string) => Str.split(" ")(entry)[0];
+
+describe("the labels of a picked flow", () => {
+  it.live(
+    "belong to the flow's hops, and stay put while a structure or hop is hovered",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { errors, page } = yield* pipelinePage;
+
+          yield* openChapter(page, "c-all");
+          yield* Effect.promise(() =>
+            page.locator('[data-flow="f-repair"]').click()
+          );
+
+          for (const view of views) {
+            yield* showView(page, view);
+            yield* assertOutside(page, "h-pr-build");
+
+            const picked = yield* fittingLabelsOf(page);
+
+            assert.isNotEmpty(picked, view);
+            assert.deepStrictEqual(
+              Arr.filter(picked, (entry) => !repairHops.has(hopIdOf(entry))),
+              [],
+              view
+            );
+
+            yield* Effect.promise(() =>
+              page.locator(structure("build")).hover()
+            );
+            yield* assertInside(page, "h-pr-build");
+
+            const onStructure = yield* fittingLabelsOf(page);
+
+            assert.deepStrictEqual(onStructure, picked, `${view}: structure`);
+
+            yield* pointAway(page);
+            yield* pointAtHop(page, "h-main-updater");
+            yield* assertInside(page, "h-main-updater");
+
+            const onHop = yield* fittingLabelsOf(page);
+
+            assert.deepStrictEqual(onHop, picked, `${view}: hop`);
+
+            yield* Effect.promise(() =>
+              page.locator(hop("h-main-updater")).dispatchEvent("pointerout")
+            );
+            yield* assertOutside(page, "h-main-updater");
+          }
+
+          assert.deepStrictEqual(errors, []);
         })
       ),
     120_000
