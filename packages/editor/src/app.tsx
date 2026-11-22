@@ -134,6 +134,16 @@ interface Notices {
   readonly notices?: ReactNode;
 }
 
+/**
+ * The `e` key. It reads the add form, to close it with Edit, so it is its own
+ * component: typing in the form then doesn't draw the whole page again.
+ */
+function EditToggleKey() {
+  useEditToggleKey();
+
+  return null;
+}
+
 function WalkthroughPage({ notices }: Notices) {
   const { fit, newlyRevealed, revealed, state, stop } = useWalkthrough();
   const { inside, multiSelection, selected } = useSelection();
@@ -164,8 +174,6 @@ function WalkthroughPage({ notices }: Notices) {
 
   const [switchBlocked] = blockedBy;
 
-  useEditToggleKey();
-
   useViewKey(() => {
     if (switchBlocked === undefined) {
       setView((current) => (current === "iso" ? "plan" : "iso"));
@@ -191,6 +199,7 @@ function WalkthroughPage({ notices }: Notices) {
       data-view={view}
       data-walkthrough
     >
+      <EditToggleKey />
       <header className="border-ink flex items-center gap-4 border-b px-4 py-2">
         <h1 className="text-sm font-medium tracking-widest uppercase">
           {state.data.overview.title}
