@@ -7,6 +7,8 @@ import recorded from "./default-spots.json" with { type: "json" };
 // The search reuses each chapter's drawing across every spot it tries and
 // every map it is asked about. default-spots.json holds the answers of the
 // search before it did, on 022ffd9, which drew every chapter of every spot.
+// Its warnings were recorded again for #112, which stopped a chapter warning
+// about the hidden label of a hop it fades. No spot changed.
 
 describe("the default spot for a new structure, on every fixture map", () => {
   for (const name of spotFixtures) {

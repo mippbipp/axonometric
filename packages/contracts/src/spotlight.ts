@@ -215,3 +215,18 @@ export const chapterSpotlightOf = ({
     play: playedHopsOf({ choice, data, stop }),
     revealed: stop.revealed,
   });
+
+/**
+ * The spotlight of the chapter and flow choice alone, with nothing hovered or
+ * pinned. Hop labels follow it.
+ */
+export const playSpotlightOf = ({
+  choice,
+  data,
+  stop,
+}: {
+  readonly choice: FlowChoice;
+  readonly data: Pick<MapData, "hops" | "flows">;
+  readonly stop: Pick<ChapterStop, "revealed" | "plays">;
+}): Spotlight | null =>
+  chapterSpotlightOf({ choice, data, hovered: null, pinned: null, stop });

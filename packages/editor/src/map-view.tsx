@@ -55,6 +55,7 @@ import {
 } from "./spotlight-context.ts";
 import { structureIdsOf, structureKey } from "./structure-key.ts";
 import { Viewport } from "./viewport.tsx";
+import { labelledHopsOf, useWarmFlowScenes } from "./warm-flow-scenes.ts";
 
 /** A dashed outline around the footprint of a newly revealed structure. */
 function NewMarker({
@@ -137,7 +138,7 @@ export function MapView({
   const hatch = `${idPrefix}hatch`;
   const selectedHop = useSelectedHop();
   const marks = useCompare();
-  const { hoveredHop, spotlight: chapterSpotlight } = useSpotlight();
+  const { hoveredHop, play, spotlight: chapterSpotlight } = useSpotlight();
   const { hoverHop } = useSpotlightActions();
   const { multiSelection, selected, setMultiSelection } = useSelection();
   const canEdit = useEditing()?.canEdit === true;
@@ -171,6 +172,13 @@ export function MapView({
     ]);
   }, [proposedHops]);
 
+  // Labels follow the play spotlight, so hovering never moves them. A hop a
+  // proposal draws or deletes is at full strength too, so no label sits on it.
+  const labelled = useMemo(
+    () => labelledHopsOf(play, hopStates),
+    [play, hopStates]
+  );
+
   // The scene at the zoom the text is sized for. It's the one the fit drew
   // when the viewport is at the fitted zoom, as the cache returns it.
   const scene = useMemo(
@@ -178,13 +186,16 @@ export function MapView({
       cachedSceneOf({
         data: state.data,
         labelFirst,
+        labelled,
         layout: state.layout,
         revealed,
         view,
         zoom: textZoom,
       }),
-    [state.data, state.layout, revealed, labelFirst, view, textZoom]
+    [state.data, state.layout, revealed, labelFirst, labelled, view, textZoom]
   );
+
+  useWarmFlowScenes({ hopStates, labelFirst, revealed, state, textZoom, view });
 
   // A hop a proposal draws or deletes stays at full strength, whichever
   // chapter is showing: no chapter plays it, and fading it would hide the
@@ -236,11 +247,21 @@ export function MapView({
           ...candidateCorners,
         ],
         fitTo,
+        labelled,
         size,
         state,
         view,
       }).camera,
-    [labelFirst, revealed, bearers, candidateCorners, fitTo, state, view]
+    [
+      labelFirst,
+      labelled,
+      revealed,
+      bearers,
+      candidateCorners,
+      fitTo,
+      state,
+      view,
+    ]
   );
 
   // The view fits again when the form opens and when it picks a new default

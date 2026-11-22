@@ -57,7 +57,7 @@ type Scenes = Map<string, Scene>;
 
 /**
  * Scenes by what they're drawn from: the map data, layout, revealed set and
- * routes, then the view, zoom and label order. The page keeps the same
+ * routes, then the view, zoom, label order and labelled hops. The page keeps the same
  * objects until they change, so they key a cache the garbage collector
  * clears.
  */
@@ -81,14 +81,17 @@ export const cachedSceneOf = (given: SceneSource): Scene => {
   byRevealed.set(source.revealed, byRoutes);
   byRoutes.set(routes, scenes);
 
-  const key = Arr.join(
-    [
-      source.view ?? "iso",
-      String(source.zoom ?? 1),
-      Arr.join(source.labelFirst ?? [], ","),
-    ],
-    "|"
-  );
+  // Hop ids are any text, so the lists are encoded whole rather than joined.
+  // oxlint-disable-next-line effecttsgo/global-json -- a cache key, never decoded
+  const key = JSON.stringify([
+    source.view ?? "iso",
+    source.zoom ?? 1,
+    source.labelFirst ?? [],
+    // No set labels every hop. An empty set labels none.
+    source.labelled === undefined
+      ? null
+      : Arr.sort([...source.labelled], Order.String),
+  ]);
 
   const cached = scenes.get(key);
 

@@ -81,6 +81,7 @@ const viewNames = {
 export const svgFileOf = ({
   background,
   chapter,
+  play,
   spotlight,
   state,
   theme,
@@ -98,6 +99,7 @@ export const svgFileOf = ({
   const scene = sceneOf({
     data,
     labelFirst: stop.plays,
+    labelled: play?.hops,
     layout,
     revealed: stop.revealed,
     routes: routeRevealed({ data, layout, revealed: stop.revealed }),

@@ -147,6 +147,7 @@ export {
   chapterSpotlightOf,
   defaultFlowChoice,
   playedHopsOf,
+  playSpotlightOf,
 } from "./spotlight.ts";
 
 export type { FlowChoice, Spotlight, SpotlightTarget } from "./spotlight.ts";

@@ -144,8 +144,12 @@ The set of structures that move, nudge, align and distribute together. It is sep
 _Avoid_: group selection, marquee
 
 **Spotlight**:
-The hops, and the structures at their ends, that the map draws at full strength while it fades the rest. It follows the ends of a hop being drawn, else what the pointer is on or the keyboard has focused, else what's pinned, else what the chapter or the picked flow plays.
+The hops, and the structures at their ends, that the map draws at full strength while it fades the rest. It follows the ends of a hop being drawn, else what the pointer is on or the keyboard has focused, else what's pinned, else what the chapter or the picked flow plays. Hop labels follow the play spotlight only, so hovering or pinning never moves them.
 _Avoid_: focus, highlight
+
+**Play spotlight**:
+The spotlight of the chapter or the picked flow alone, with nothing hovered or pinned. The map labels its hops, and a label may sit over a route outside it.
+_Avoid_: label set, flow spotlight
 
 **Side index**:
 The list of every structure by group, next to the view.

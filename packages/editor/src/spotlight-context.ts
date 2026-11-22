@@ -8,6 +8,12 @@ import { createContext, use } from "react";
  */
 export interface SpotlightState {
   readonly hoveredHop: string | null;
+  /**
+   * The play spotlight: the chapter's or the picked flow's, or `null` when
+   * nothing fades. Hop labels follow it. Hover, pins and the agent's
+   * `lightUp` don't change it, so labels stay put.
+   */
+  readonly play: Spotlight | null;
   /** The spotlight, or `null` when nothing fades. */
   readonly spotlight: Spotlight | null;
 }

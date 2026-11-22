@@ -1,4 +1,4 @@
-import { chapterSpotlightOf } from "@axonometric/contracts";
+import { chapterSpotlightOf, playSpotlightOf } from "@axonometric/contracts";
 import type { Spotlight, SpotlightTarget } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -85,6 +85,11 @@ export function SpotlightProvider({
     [state.data, stop, flowChoice, hovered, pinned, drawing]
   );
 
+  const play = useMemo(
+    () => playSpotlightOf({ choice: flowChoice, data: state.data, stop }),
+    [state.data, stop, flowChoice]
+  );
+
   const [agent, setAgent] = useState<Spotlight | null>(null);
   const choiceKey = flowChoiceKey(flowChoice);
 
@@ -105,8 +110,12 @@ export function SpotlightProvider({
   });
 
   const shown = useMemo(
-    (): SpotlightState => ({ hoveredHop, spotlight: agent ?? spotlight }),
-    [agent, spotlight, hoveredHop]
+    (): SpotlightState => ({
+      hoveredHop,
+      play,
+      spotlight: agent ?? spotlight,
+    }),
+    [agent, spotlight, hoveredHop, play]
   );
 
   const actions = useMemo(

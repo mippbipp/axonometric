@@ -1,7 +1,7 @@
 import { chapterStopsOf } from "./chapters.ts";
 import type { MapState } from "./map-state.ts";
 import type { View } from "./plan.ts";
-import { chapterSpotlightOf } from "./spotlight.ts";
+import { chapterSpotlightOf, playSpotlightOf } from "./spotlight.ts";
 import type { FlowChoice, Spotlight, SpotlightTarget } from "./spotlight.ts";
 
 /** What an exported SVG is of, and how it looks. */
@@ -10,6 +10,11 @@ export interface SvgRequest {
   readonly background: "paper" | "white";
   /** The chapter's index, from 0. */
   readonly chapter: number;
+  /**
+   * The play spotlight, with nothing hovered or pinned, or `null` when nothing
+   * fades. Hop labels follow it, as they do on the page.
+   */
+  readonly play: Spotlight | null;
   /** What to draw at full strength, or `null` to fade nothing. */
   readonly spotlight: Spotlight | null;
   readonly state: MapState;
@@ -56,6 +61,7 @@ export const svgRequestOf = ({
   return {
     background,
     chapter: index,
+    play: playSpotlightOf({ choice, data: state.data, stop }),
     spotlight: chapterSpotlightOf({
       choice,
       data: state.data,

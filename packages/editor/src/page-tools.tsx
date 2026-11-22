@@ -1,5 +1,5 @@
-import { cachedSceneOf, textZoomOf, viewReadOf } from "@axonometric/contracts";
-import type { Spotlight, View } from "@axonometric/contracts";
+import { viewReadOf } from "@axonometric/contracts";
+import type { Scene, Spotlight, View } from "@axonometric/contracts";
 import { usePannableCanvas } from "@axonometric/ui/components/pannable-canvas";
 import { registerPageTools } from "@axonometric/ui/lib/page-tools";
 import type { PageTool } from "@axonometric/ui/lib/page-tools";
@@ -11,6 +11,7 @@ import type { RefObject } from "react";
 import { flowOptionsOf } from "./chapters.ts";
 import { DrawnShiftContext, shiftedSceneOf } from "./drag-shift.ts";
 import type { DragShift } from "./drag-shift.ts";
+import { EditorSceneContext } from "./editor-view.ts";
 import { busyReasonOf } from "./engineer-busy.ts";
 import { useSelection } from "./selection-context.ts";
 import {
@@ -57,6 +58,8 @@ interface PageNow {
   readonly multiSelection: ReadonlySet<string>;
   readonly notify: (text: string | null) => void;
   readonly revealed: ReadonlySet<string>;
+  /** The scene the map draws. */
+  readonly scene: Scene;
   readonly select: (id: string | null) => void;
   readonly selected: string | null;
   readonly setView: (view: View) => void;
@@ -172,6 +175,12 @@ export function PageTools({
     useWalkthrough();
   const { goInside, inside, multiSelection, select, selected } = useSelection();
   const spotlight = use(DrawnSpotlightContext);
+  const scene = use(EditorSceneContext);
+
+  if (scene === null) {
+    throw new Error("PageTools needs a MapView above it.");
+  }
+
   const drawnShift = use(DrawnShiftContext);
   const { lightUp } = useSpotlightActions();
 
@@ -186,6 +195,7 @@ export function PageTools({
     multiSelection,
     notify,
     revealed,
+    scene,
     select,
     selected,
     setView,
@@ -220,7 +230,6 @@ export function PageTools({
         description: readViewDescription,
         execute: () => {
           const { current } = latest;
-          const zoom = textZoomOf(current.viewport.get().zoom);
 
           return viewReadOf({
             chapter: current.stop,
@@ -228,14 +237,7 @@ export function PageTools({
             multiSelection: current.multiSelection,
             pinned: current.selected,
             scene: shiftedSceneOf({
-              scene: cachedSceneOf({
-                data: current.state.data,
-                labelFirst: current.stop.plays,
-                layout: current.state.layout,
-                revealed: current.revealed,
-                view: current.view,
-                zoom,
-              }),
+              scene: current.scene,
               shift: current.drawnShift?.current,
             }),
             spotlight: current.spotlight,

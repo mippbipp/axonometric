@@ -56,7 +56,7 @@ Tell the engineer in chat what you are about to show, call one tool, then explai
 | `pick_flow` | `flow`: `chapter`, `all` or `flow:<id>` | Picks what the flow picker plays. Only the last chapter has the picker, and a refusal lists its choices. |
 | `spotlight` | `structures` and `hops`: lists of ids, all drawn in this chapter | Lights each id as pointing at it does, and fades the rest. A hop lights its two ends. A structure lights its hops and the structures at their other ends. Empty lists clear it. |
 
-`spotlight` is how you point at one hop while you explain it. Your own `pin`, `go_inside`, `go_to_chapter` and `pick_flow` end a spotlight when they change what is pinned, the chapter or the flow choice, so call `spotlight` last.
+`spotlight` is how you point at one hop while you explain it. It fades parts but doesn't move or add labels. Labels follow the chapter and the picked flow only. Your own `pin`, `go_inside`, `go_to_chapter` and `pick_flow` end a spotlight when they change what is pinned, the chapter or the flow choice, so call `spotlight` last.
 
 Each tool returns `{ "ok": true, "notice": ... }`. The page shows the notice, such as "Agent went to chapter 4", so the engineer knows why their view moved. A tool that can't go ahead returns `{ "ok": false, "reason": ... }`. Read the reason. An unknown chapter id or flow lists the valid ones, a chapter number past the end gives the chapter count, and a structure or hop that isn't drawn says so, so check `read_view`.
 

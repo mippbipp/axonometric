@@ -250,6 +250,11 @@ export interface FittedViewSource {
   readonly extra?: ((scene: Scene) => ReadonlyArray<ScreenPoint>) | undefined;
   /** The structures to fit. Defaults to the chapter's revealed ones. */
   readonly fitTo?: ReadonlySet<string> | undefined;
+  /**
+   * The hops whose labels are placed, as the page draws them, so labels count
+   * in the fit. See `SceneSource.labelled`.
+   */
+  readonly labelled?: ReadonlySet<string> | undefined;
   readonly size: CanvasSize;
   readonly state: Pick<MapState, "data" | "layout">;
   readonly view: View;
@@ -290,6 +295,7 @@ export const fittedViewOf = ({
   chapter,
   extra,
   fitTo = chapter.revealed,
+  labelled,
   size,
   state: { data, layout },
   view,
@@ -300,6 +306,7 @@ export const fittedViewOf = ({
   const source: SceneSource = {
     data,
     labelFirst: chapter.plays,
+    labelled,
     layout,
     revealed,
     routes,

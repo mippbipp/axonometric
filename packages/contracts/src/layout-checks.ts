@@ -12,6 +12,7 @@ import { routeLength, routeRevealed } from "./routing.ts";
 import type { HopRoute } from "./routing.ts";
 import { sceneClashes, sceneOf } from "./scene.ts";
 import type { Scene, SceneClash } from "./scene.ts";
+import { playSpotlightOf } from "./spotlight.ts";
 import { zonesOf } from "./zones.ts";
 
 /**
@@ -433,9 +434,10 @@ const stepKeysOf = (points: ReadonlyArray<GridPoint>) =>
   );
 
 /**
- * A finding for each hop whose label the scene leaves out in a view `check`
- * holds to the label rule, keyed so it is reported once per hop and view
- * across chapters.
+ * A finding for each labelled hop whose label the scene leaves out in a view
+ * `check` holds to the label rule, keyed so it is reported once per hop and
+ * view across chapters. A faded hop has no label by design, so it doesn't
+ * warn.
  */
 const hiddenLabelFindings = ({
   scene,
@@ -451,7 +453,10 @@ const hiddenLabelFindings = ({
     return [];
   }
 
-  const hidden = Arr.filter(scene.hops, ({ label }) => label === undefined);
+  const hidden = Arr.filter(
+    scene.hops,
+    ({ label, labelled }) => labelled && label === undefined
+  );
 
   return Arr.map(hidden, ({ hop }) => ({
     key: `label ${view} ${hop.id}`,
@@ -583,6 +588,12 @@ const findingsOf = (
   const routes = routeRevealed({ data, layout, revealed });
   const where = id === undefined ? "" : ` in chapter "${id}"`;
 
+  const labelled = playSpotlightOf({
+    choice: { kind: "chapter" },
+    data,
+    stop: { plays, revealed },
+  })?.hops;
+
   const routing = byMessage(
     Arr.flatMap(data.hops, (hop) => {
       const route = routes[hop.id];
@@ -595,6 +606,7 @@ const findingsOf = (
     scene: sceneOf({
       data,
       labelFirst: plays,
+      labelled,
       layout,
       revealed,
       routes,

@@ -1,14 +1,29 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Option, String as Str } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Option,
+  Record as Rec,
+  String as Str,
+} from "effect";
 
 import {
   groundProjections,
+  playSpotlightOf,
   routeRevealed,
   sceneClashes,
   sceneOf,
   views,
 } from "../src/index.ts";
-import type { MapData, Layout, Scene, ScreenRect, View } from "../src/index.ts";
+import type {
+  FlowChoice,
+  Layout,
+  MapData,
+  Scene,
+  ScreenRect,
+  View,
+} from "../src/index.ts";
+import allFlowsLabels from "./all-flows-labels.json" with { type: "json" };
 import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
 import { layoutProblems } from "./layout-problems.ts";
 import {
@@ -55,21 +70,29 @@ const gapTo = (points: Scene["hops"][number]["points"], rect: ScreenRect) => {
 const rectsOverlap = (a: ScreenRect, b: ScreenRect) =>
   a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-/** What's wrong with the placed labels of a scene, as readable lines. */
+/**
+ * What's wrong with the placed labels of a scene, as readable lines. A label
+ * may sit over a faded hop's route, so only labelled hops' routes count.
+ */
 const labelProblems = (scene: Scene) =>
-  Arr.flatMap(scene.hops, ({ hop, label, points }) => {
+  Arr.flatMap(scene.hops, ({ hop, label, labelled, points }) => {
     if (label === undefined) {
       return [];
     }
 
+    if (!labelled) {
+      return [`${hop.id}: it is faded, and its label is placed`];
+    }
+
     const others = Arr.filter(scene.hops, (other) => other.hop.id !== hop.id);
+    const lit = Arr.filter(others, (other) => other.labelled);
     const ownGap = gapTo(points, label);
 
     const onOwn = throughRect(points, label)
       ? [`${hop.id}: its label sits on its own route`]
       : [];
 
-    const onOther = Arr.flatMap(others, (other) =>
+    const onOther = Arr.flatMap(lit, (other) =>
       throughRect(other.points, label)
         ? [`${hop.id}: its label sits on ${other.hop.id}'s route`]
         : []
@@ -83,7 +106,7 @@ const labelProblems = (scene: Scene) =>
     // Plan view never puts a label nearer another route than its own.
     const nearer =
       scene.view === "plan"
-        ? Arr.flatMap(others, (other) =>
+        ? Arr.flatMap(lit, (other) =>
             gapTo(other.points, label) < ownGap
               ? [`${hop.id}: its label is nearer ${other.hop.id}'s route`]
               : []
@@ -106,15 +129,20 @@ const chaptersFor = (data: MapData) =>
     ? chaptersOf(data)
     : [{ id: "all", plays: [], revealed: everything(data) }];
 
+type Chapter = ReturnType<typeof chaptersFor>[number];
+
+/** A chapter's scene, labelled as the page labels it for `choice`. */
 const sceneIn = ({
   chapter,
+  choice = { kind: "chapter" },
   data,
   layout,
   routes = routeRevealed({ data, layout, revealed: chapter.revealed }),
   view,
   zoom,
 }: {
-  readonly chapter: ReturnType<typeof chaptersFor>[number];
+  readonly chapter: Chapter;
+  readonly choice?: FlowChoice;
   readonly data: MapData;
   readonly layout: Layout;
   readonly routes?: ReturnType<typeof routeRevealed>;
@@ -124,12 +152,41 @@ const sceneIn = ({
   sceneOf({
     data,
     labelFirst: chapter.plays,
+    labelled: playSpotlightOf({ choice, data, stop: chapter })?.hops,
     layout,
     revealed: chapter.revealed,
     routes,
     view,
     zoom,
   });
+
+/** The flow picker's choices besides the chapter's own: each flow, and all. */
+const flowChoicesOf = (data: MapData): ReadonlyArray<FlowChoice> => [
+  ...Arr.map(data.flows, ({ id }): FlowChoice => ({ id, kind: "flow" })),
+  { kind: "all" },
+];
+
+const choiceName = (choice: FlowChoice) =>
+  choice.kind === "flow" ? `flow ${choice.id}` : choice.kind;
+
+/** Every chapter with its own plays, then the last with each flow choice. */
+const chapterChoicesOf = (data: MapData) => {
+  const chapters = chaptersFor(data);
+  const last = Arr.last(chapters);
+
+  return [
+    ...Arr.map(chapters, (chapter) => ({
+      chapter,
+      choice: { kind: "chapter" } as FlowChoice,
+    })),
+    ...(Option.isSome(last)
+      ? Arr.map(flowChoicesOf(data), (choice) => ({
+          chapter: last.value,
+          choice,
+        }))
+      : []),
+  ];
+};
 
 /** Plan view at full size, and zoomed out so the map fits a 1280 × 800 page. */
 const zooms = [1, 0.6, 0.4241];
@@ -177,6 +234,20 @@ const chapterOf = (id: string, plays: ReadonlyArray<string>) => ({
 const warningText = (where: string) =>
   `the label of hop "h" has no clear spot beside its route${where} in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`;
 
+// JSON has no -0, so a rounded -0 is written as 0.
+const twoPlaces = (value: number) => Number(value.toFixed(2)) + 0;
+
+/** A rect rounded to 2 decimals, as all-flows-labels.json holds it. */
+const rounded = (rect: ScreenRect | undefined) =>
+  rect === undefined
+    ? null
+    : {
+        bottom: twoPlaces(rect.bottom),
+        left: twoPlaces(rect.left),
+        right: twoPlaces(rect.right),
+        top: twoPlaces(rect.top),
+      };
+
 describe("hop labels", () => {
   for (const name of [
     "plan-labels",
@@ -193,7 +264,7 @@ describe("hop labels", () => {
           Effect.gen(function* () {
             const { data, layout } = yield* fixture(name);
 
-            for (const chapter of chaptersFor(data)) {
+            for (const { chapter, choice } of chapterChoicesOf(data)) {
               const routes = routeRevealed({
                 data,
                 layout,
@@ -203,6 +274,7 @@ describe("hop labels", () => {
               for (const zoom of zooms) {
                 const scene = sceneIn({
                   chapter,
+                  choice,
                   data,
                   layout,
                   routes,
@@ -213,7 +285,7 @@ describe("hop labels", () => {
                 assert.deepStrictEqual(
                   labelProblems(scene),
                   [],
-                  `in chapter ${chapter.id} at zoom ${zoom}`
+                  `in chapter ${chapter.id}, ${choiceName(choice)}, at zoom ${zoom}`
                 );
               }
             }
@@ -221,6 +293,125 @@ describe("hop labels", () => {
       );
     }
   }
+
+  // all-flows-labels.json was recorded on main at effd82c, before the
+  // labelled set existed, by sceneOf with no labelFirst and no labelled,
+  // under Node as the tests run. Bun places one Iso label elsewhere.
+  it.effect("All flows draws the labels main drew, on flake-pipeline", () =>
+    Effect.gen(function* () {
+      const { data, layout } = yield* fixture("flake-pipeline");
+      const chapter = Option.getOrThrow(Arr.last(chaptersFor(data)));
+
+      const drawn = Rec.fromEntries(
+        Arr.flatMap(views, (view) =>
+          Arr.map([1, 0.4241], (zoom) => {
+            const scene = sceneOf({
+              data,
+              layout,
+              revealed: chapter.revealed,
+              view,
+              zoom,
+            });
+
+            return [
+              `${view} ${zoom}`,
+              Rec.fromEntries(
+                Arr.map(scene.hops, ({ hop, hoverLabel, label }) => [
+                  hop.id,
+                  { hoverLabel: rounded(hoverLabel), label: rounded(label) },
+                ])
+              ),
+            ] as const;
+          })
+        )
+      );
+
+      assert.deepStrictEqual(drawn, allFlowsLabels);
+    })
+  );
+
+  for (const name of ["flake-pipeline", "crowded", "review"]) {
+    for (const view of views) {
+      it.effect(
+        `with a flow picked, clash with nothing, in ${name}, ${view} view`,
+        () =>
+          Effect.gen(function* () {
+            const { data, layout } = yield* fixture(name);
+            const chapter = Option.getOrThrow(Arr.last(chaptersFor(data)));
+
+            assert.isNotEmpty(data.flows);
+
+            for (const { id } of data.flows) {
+              for (const zoom of zooms) {
+                const scene = sceneIn({
+                  chapter,
+                  choice: { id, kind: "flow" },
+                  data,
+                  layout,
+                  view,
+                  zoom,
+                });
+
+                const withLabels = Arr.filter(
+                  sceneClashes(scene),
+                  ({ parts }) => Arr.some(parts, ({ kind }) => kind === "label")
+                );
+
+                assert.deepStrictEqual(
+                  Arr.map(withLabels, ({ between }) => between),
+                  [],
+                  `with flow ${id} at zoom ${zoom}`
+                );
+              }
+            }
+          })
+      );
+    }
+  }
+
+  // Plan view at about the fit zoom of a 1280 × 800 page. f-repair's four
+  // stay hidden even when each is placed first: full-strength routes and
+  // fixed text leave them no spot.
+  const mostHiddenInPlan = [
+    { flow: "f-weekly", most: 1 },
+    { flow: "f-repair", most: 4 },
+    { flow: "f-review", most: 0 },
+    { flow: "f-stale", most: 0 },
+  ];
+
+  it.effect(
+    "with a flow picked, hide few of its labels, in flake-pipeline's Plan view",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("flake-pipeline");
+        const chapter = Option.getOrThrow(Arr.last(chaptersFor(data)));
+
+        for (const { flow, most } of mostHiddenInPlan) {
+          const scene = sceneIn({
+            chapter,
+            choice: { id: flow, kind: "flow" },
+            data,
+            layout,
+            view: "plan",
+            zoom: 0.4241,
+          });
+
+          const hops = new Set(
+            Arr.flatMap(data.flows, ({ hops: ids, id }) =>
+              id === flow ? ids : []
+            )
+          );
+
+          const hidden = Arr.filter(
+            scene.hops,
+            ({ hop, label }) => hops.has(hop.id) && label === undefined
+          );
+
+          assert.isNotEmpty(hops, flow);
+          assert.isAtMost(hidden.length, most, `flow ${flow}`);
+        }
+      })
+  );
 
   it.effect("are reported by sceneClashes when one sits on its own route", () =>
     Effect.gen(function* () {
