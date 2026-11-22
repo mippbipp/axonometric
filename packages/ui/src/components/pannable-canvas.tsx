@@ -490,7 +490,7 @@ function PannableCanvas({
   return <CanvasContext value={handle.api}>{root}</CanvasContext>;
 }
 
-export { PannableCanvas, pannableCanvas, usePannableCanvas };
+export { PannableCanvas, usePannableCanvas };
 export type {
   CameraDetails,
   CanvasSize,

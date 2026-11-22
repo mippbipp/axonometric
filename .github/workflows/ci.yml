@@ -177,7 +177,7 @@ jobs:
 
       - run: bun run ox
 
-      # Fails on any React Doctor finding in the editor.
+      # Fails on any React Doctor finding in the editor and ui packages.
       - run: bun run react-doctor
 
   # Fails when .github/workflows/actions.lock is out of sync with the

@@ -8,8 +8,9 @@ pre-commit:
         - "*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}"
         - "**/*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,css}"
       stage_fixed: true
-    # Blocks the commit on any React Doctor finding in the staged editor files.
+    # Blocks the commit on any React Doctor finding in the staged editor and ui files.
     - name: react-doctor
       glob:
         - "packages/editor/**/*.{ts,tsx,js,jsx,mjs,cjs}"
-      run: bunx react-doctor packages/editor --staged --blocking warning --no-score --yes
+        - "packages/ui/**/*.{ts,tsx,js,jsx,mjs,cjs}"
+      run: bunx react-doctor --project @axonometric/editor,@axonometric/ui --staged --blocking warning --no-score --yes

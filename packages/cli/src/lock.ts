@@ -5,6 +5,7 @@ import {
   Effect,
   FileSystem,
   Option,
+  Predicate,
   Schedule,
   Schema,
 } from "effect";
@@ -92,11 +93,30 @@ export const defaultLockWait: LockWait = {
   interval: Duration.millis(100),
 };
 
+/**
+ * Windows fails a read with `PermissionDenied` (EPERM) while another process
+ * is deleting the file. The deletion finishes within milliseconds, so the read
+ * is retried a few times. Elsewhere, and once the tries run out,
+ * `PermissionDenied` is a real failure.
+ */
+const removalRetries = Schedule.spaced(Duration.millis(20)).pipe(
+  Schedule.upTo({ duration: Duration.millis(500) })
+);
+
 /** The lock file's text, or nothing when there's no lock. */
-const readLock = Effect.fnUntraced(function* (file: string) {
+export const readLock = Effect.fnUntraced(function* (
+  file: string,
+  platform: NodeJS.Platform = process.platform
+) {
   const fs = yield* FileSystem.FileSystem;
 
   return yield* fs.readFileString(file).pipe(
+    Effect.retry({
+      schedule: removalRetries,
+      while: (error) =>
+        platform === "win32" &&
+        Predicate.isTagged(error.reason, "PermissionDenied"),
+    }),
     Effect.asSome,
     Effect.catchReason("PlatformError", "NotFound", () =>
       Effect.succeed(Option.none<string>())

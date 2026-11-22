@@ -250,5 +250,5 @@ function CanvasItem({
   );
 }
 
-export { CanvasItem, CanvasItems, canvasItems };
+export { CanvasItem, CanvasItems };
 export type { CanvasItemProps, CanvasItemsOptions, CanvasItemsState };
