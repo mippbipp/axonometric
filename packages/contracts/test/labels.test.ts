@@ -1,5 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Option, String as Str } from "effect";
+import {
+  Array as Arr,
+  Effect,
+  Option,
+  Record as Rec,
+  String as Str,
+} from "effect";
 
 import {
   groundProjections,
@@ -9,6 +15,7 @@ import {
   views,
 } from "../src/index.ts";
 import type { MapData, Layout, Scene, ScreenRect, View } from "../src/index.ts";
+import allFlowsLabels from "./all-flows-labels.json" with { type: "json" };
 import { chaptersOf, everything, fixture } from "./fixture-maps.ts";
 import { layoutProblems } from "./layout-problems.ts";
 import {
@@ -177,6 +184,20 @@ const chapterOf = (id: string, plays: ReadonlyArray<string>) => ({
 const warningText = (where: string) =>
   `the label of hop "h" has no clear spot beside its route${where} in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.`;
 
+// JSON has no -0, so a rounded -0 is written as 0.
+const twoPlaces = (value: number) => Number(value.toFixed(2)) + 0;
+
+/** A rect rounded to 2 decimals, as all-flows-labels.json holds it. */
+const rounded = (rect: ScreenRect | undefined) =>
+  rect === undefined
+    ? null
+    : {
+        bottom: twoPlaces(rect.bottom),
+        left: twoPlaces(rect.left),
+        right: twoPlaces(rect.right),
+        top: twoPlaces(rect.top),
+      };
+
 describe("hop labels", () => {
   for (const name of [
     "plan-labels",
@@ -221,6 +242,42 @@ describe("hop labels", () => {
       );
     }
   }
+
+  // all-flows-labels.json was recorded on main at effd82c, before the
+  // labelled set existed, by sceneOf with no labelFirst and no labelled,
+  // under Node as the tests run. Bun places one Iso label elsewhere.
+  it.effect("All flows draws the labels main drew, on flake-pipeline", () =>
+    Effect.gen(function* () {
+      const { data, layout } = yield* fixture("flake-pipeline");
+      const chapter = Option.getOrThrow(Arr.last(chaptersFor(data)));
+
+      const drawn = Rec.fromEntries(
+        Arr.flatMap(views, (view) =>
+          Arr.map([1, 0.4241], (zoom) => {
+            const scene = sceneOf({
+              data,
+              layout,
+              revealed: chapter.revealed,
+              view,
+              zoom,
+            });
+
+            return [
+              `${view} ${zoom}`,
+              Rec.fromEntries(
+                Arr.map(scene.hops, ({ hop, hoverLabel, label }) => [
+                  hop.id,
+                  { hoverLabel: rounded(hoverLabel), label: rounded(label) },
+                ])
+              ),
+            ] as const;
+          })
+        )
+      );
+
+      assert.deepStrictEqual(drawn, allFlowsLabels);
+    })
+  );
 
   it.effect("are reported by sceneClashes when one sits on its own route", () =>
     Effect.gen(function* () {

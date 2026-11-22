@@ -1,0 +1,1414 @@
+{
+  "iso 1": {
+    "h-main-updater": {
+      "hoverLabel": {
+        "bottom": 197.01,
+        "left": 128.37,
+        "right": 206.37,
+        "top": 182.01
+      },
+      "label": {
+        "bottom": 197.01,
+        "left": 128.37,
+        "right": 206.37,
+        "top": 182.01
+      }
+    },
+    "h-upstream-updater": {
+      "hoverLabel": {
+        "bottom": 199.5,
+        "left": 47.4,
+        "right": 168.6,
+        "top": 184.5
+      },
+      "label": null
+    },
+    "h-updater-pr": {
+      "hoverLabel": {
+        "bottom": 34.06,
+        "left": -132.98,
+        "right": -76.58,
+        "top": 19.06
+      },
+      "label": {
+        "bottom": 34.06,
+        "left": -132.98,
+        "right": -76.58,
+        "top": 19.06
+      }
+    },
+    "h-pr-build": {
+      "hoverLabel": {
+        "bottom": 213.75,
+        "left": 230.11,
+        "right": 322.51,
+        "top": 198.75
+      },
+      "label": {
+        "bottom": 213.75,
+        "left": 230.11,
+        "right": 322.51,
+        "top": 198.75
+      }
+    },
+    "h-attic-build": {
+      "hoverLabel": {
+        "bottom": 106.76,
+        "left": 328.24,
+        "right": 449.44,
+        "top": 91.76
+      },
+      "label": {
+        "bottom": 106.76,
+        "left": 328.24,
+        "right": 449.44,
+        "top": 91.76
+      }
+    },
+    "h-build-attic": {
+      "hoverLabel": {
+        "bottom": 273,
+        "left": 243.6,
+        "right": 386.4,
+        "top": 258
+      },
+      "label": null
+    },
+    "h-pr-checks": {
+      "hoverLabel": {
+        "bottom": 376.35,
+        "left": 192.2,
+        "right": 284.6,
+        "top": 361.35
+      },
+      "label": {
+        "bottom": 376.35,
+        "left": 192.2,
+        "right": 284.6,
+        "top": 361.35
+      }
+    },
+    "h-pr-scope": {
+      "hoverLabel": {
+        "bottom": 548.21,
+        "left": 399.37,
+        "right": 513.37,
+        "top": 533.21
+      },
+      "label": {
+        "bottom": 548.21,
+        "left": 399.37,
+        "right": 513.37,
+        "top": 533.21
+      }
+    },
+    "h-blocked-scope": {
+      "hoverLabel": {
+        "bottom": 468.14,
+        "left": -63.38,
+        "right": 29.02,
+        "top": 453.14
+      },
+      "label": {
+        "bottom": 468.14,
+        "left": -63.38,
+        "right": 29.02,
+        "top": 453.14
+      }
+    },
+    "h-build-ruleset": {
+      "hoverLabel": {
+        "bottom": 267.38,
+        "left": 13.64,
+        "right": 170.84,
+        "top": 252.38
+      },
+      "label": null
+    },
+    "h-checks-ruleset": {
+      "hoverLabel": {
+        "bottom": 241.08,
+        "left": 567.36,
+        "right": 731.76,
+        "top": 226.08
+      },
+      "label": {
+        "bottom": 241.08,
+        "left": 567.36,
+        "right": 731.76,
+        "top": 226.08
+      }
+    },
+    "h-scope-ruleset": {
+      "hoverLabel": {
+        "bottom": 460.58,
+        "left": 368.08,
+        "right": 460.48,
+        "top": 445.58
+      },
+      "label": {
+        "bottom": 460.58,
+        "left": 368.08,
+        "right": 460.48,
+        "top": 445.58
+      }
+    },
+    "h-ruleset-main": {
+      "hoverLabel": {
+        "bottom": 358.49,
+        "left": -173.97,
+        "right": -95.97,
+        "top": 343.49
+      },
+      "label": null
+    },
+    "h-ruleset-updater": {
+      "hoverLabel": {
+        "bottom": 37.08,
+        "left": -296.91,
+        "right": -204.51,
+        "top": 22.08
+      },
+      "label": {
+        "bottom": 37.08,
+        "left": -296.91,
+        "right": -204.51,
+        "top": 22.08
+      }
+    },
+    "h-updater-workspace": {
+      "hoverLabel": {
+        "bottom": 135,
+        "left": -112.8,
+        "right": 22.8,
+        "top": 120
+      },
+      "label": null
+    },
+    "h-updater-fixer": {
+      "hoverLabel": {
+        "bottom": 37.48,
+        "left": 79.21,
+        "right": 178.81,
+        "top": 22.48
+      },
+      "label": {
+        "bottom": 37.48,
+        "left": 79.21,
+        "right": 178.81,
+        "top": 22.48
+      }
+    },
+    "h-blocked-fixer": {
+      "hoverLabel": {
+        "bottom": 295.12,
+        "left": -22.64,
+        "right": 120.16,
+        "top": 280.12
+      },
+      "label": null
+    },
+    "h-fixer-workspace": {
+      "hoverLabel": {
+        "bottom": 164.11,
+        "left": 49.13,
+        "right": 134.33,
+        "top": 149.11
+      },
+      "label": null
+    },
+    "h-fixer-updater": {
+      "hoverLabel": {
+        "bottom": 18.16,
+        "left": 83.65,
+        "right": 168.85,
+        "top": 3.16
+      },
+      "label": {
+        "bottom": 18.16,
+        "left": 83.65,
+        "right": 168.85,
+        "top": 3.16
+      }
+    },
+    "h-workspace-updater": {
+      "hoverLabel": {
+        "bottom": 165.01,
+        "left": 36.63,
+        "right": 107.43,
+        "top": 150.01
+      },
+      "label": null
+    },
+    "h-blocked-updater": {
+      "hoverLabel": {
+        "bottom": 331.57,
+        "left": -343.65,
+        "right": -272.85,
+        "top": 316.57
+      },
+      "label": {
+        "bottom": 331.57,
+        "left": -343.65,
+        "right": -272.85,
+        "top": 316.57
+      }
+    },
+    "h-updater-pr-fix": {
+      "hoverLabel": {
+        "bottom": 55.74,
+        "left": -347.21,
+        "right": -254.81,
+        "top": 40.74
+      },
+      "label": {
+        "bottom": 55.74,
+        "left": -347.21,
+        "right": -254.81,
+        "top": 40.74
+      }
+    },
+    "h-updater-issues": {
+      "hoverLabel": {
+        "bottom": 170.12,
+        "left": -652.94,
+        "right": -466.94,
+        "top": 155.12
+      },
+      "label": {
+        "bottom": 170.12,
+        "left": -652.94,
+        "right": -466.94,
+        "top": 155.12
+      }
+    },
+    "h-issues-maintainer": {
+      "hoverLabel": {
+        "bottom": 578.84,
+        "left": -203.62,
+        "right": -111.22,
+        "top": 563.84
+      },
+      "label": {
+        "bottom": 578.84,
+        "left": -203.62,
+        "right": -111.22,
+        "top": 563.84
+      }
+    },
+    "h-pr-maintainer": {
+      "hoverLabel": {
+        "bottom": 385.5,
+        "left": -21,
+        "right": 93,
+        "top": 370.5
+      },
+      "label": null
+    },
+    "h-maintainer-pr": {
+      "hoverLabel": {
+        "bottom": 359.62,
+        "left": 33.49,
+        "right": 133.09,
+        "top": 344.62
+      },
+      "label": null
+    },
+    "h-maintainer-fixer": {
+      "hoverLabel": {
+        "bottom": 135.29,
+        "left": 243.53,
+        "right": 335.93,
+        "top": 120.29
+      },
+      "label": {
+        "bottom": 135.29,
+        "left": 243.53,
+        "right": 335.93,
+        "top": 120.29
+      }
+    },
+    "h-main-watchdog": {
+      "hoverLabel": {
+        "bottom": 331.5,
+        "left": 15,
+        "right": 129,
+        "top": 316.5
+      },
+      "label": null
+    },
+    "h-watchdog-maintainer": {
+      "hoverLabel": {
+        "bottom": 575.13,
+        "left": 402.47,
+        "right": 502.07,
+        "top": 560.13
+      },
+      "label": {
+        "bottom": 575.13,
+        "left": 402.47,
+        "right": 502.07,
+        "top": 560.13
+      }
+    }
+  },
+  "iso 0.4241": {
+    "h-main-updater": {
+      "hoverLabel": {
+        "bottom": 179.76,
+        "left": -23.97,
+        "right": 113.97,
+        "top": 153.24
+      },
+      "label": null
+    },
+    "h-upstream-updater": {
+      "hoverLabel": {
+        "bottom": 205.26,
+        "left": 0.83,
+        "right": 215.17,
+        "top": 178.74
+      },
+      "label": null
+    },
+    "h-updater-pr": {
+      "hoverLabel": {
+        "bottom": 19.1,
+        "left": -274.2,
+        "right": -174.46,
+        "top": -7.42
+      },
+      "label": {
+        "bottom": 19.1,
+        "left": -274.2,
+        "right": -174.46,
+        "top": -7.42
+      }
+    },
+    "h-pr-build": {
+      "hoverLabel": {
+        "bottom": 288.88,
+        "left": 123.06,
+        "right": 286.47,
+        "top": 262.35
+      },
+      "label": null
+    },
+    "h-attic-build": {
+      "hoverLabel": {
+        "bottom": 89.29,
+        "left": 293.29,
+        "right": 507.62,
+        "top": 62.76
+      },
+      "label": {
+        "bottom": 89.29,
+        "left": 293.29,
+        "right": 507.62,
+        "top": 62.76
+      }
+    },
+    "h-build-attic": {
+      "hoverLabel": {
+        "bottom": 278.76,
+        "left": 188.73,
+        "right": 441.27,
+        "top": 252.24
+      },
+      "label": null
+    },
+    "h-pr-checks": {
+      "hoverLabel": {
+        "bottom": 308.03,
+        "left": -95.23,
+        "right": 68.17,
+        "top": 281.5
+      },
+      "label": null
+    },
+    "h-pr-scope": {
+      "hoverLabel": {
+        "bottom": 374.38,
+        "left": -14.57,
+        "right": 187.04,
+        "top": 347.85
+      },
+      "label": null
+    },
+    "h-blocked-scope": {
+      "hoverLabel": {
+        "bottom": 558.45,
+        "left": 405.51,
+        "right": 568.92,
+        "top": 531.92
+      },
+      "label": {
+        "bottom": 558.45,
+        "left": 405.51,
+        "right": 568.92,
+        "top": 531.92
+      }
+    },
+    "h-build-ruleset": {
+      "hoverLabel": {
+        "bottom": 273.15,
+        "left": -46.76,
+        "right": 231.24,
+        "top": 246.62
+      },
+      "label": null
+    },
+    "h-checks-ruleset": {
+      "hoverLabel": {
+        "bottom": 131.56,
+        "left": 407.63,
+        "right": 698.37,
+        "top": 105.04
+      },
+      "label": {
+        "bottom": 131.56,
+        "left": 407.63,
+        "right": 698.37,
+        "top": 105.04
+      }
+    },
+    "h-scope-ruleset": {
+      "hoverLabel": {
+        "bottom": 404.76,
+        "left": 53.3,
+        "right": 216.7,
+        "top": 378.24
+      },
+      "label": null
+    },
+    "h-ruleset-main": {
+      "hoverLabel": {
+        "bottom": 364.25,
+        "left": -203.94,
+        "right": -66,
+        "top": 337.72
+      },
+      "label": null
+    },
+    "h-ruleset-updater": {
+      "hoverLabel": {
+        "bottom": 52.83,
+        "left": -399.42,
+        "right": -236.02,
+        "top": 26.3
+      },
+      "label": {
+        "bottom": 52.83,
+        "left": -399.42,
+        "right": -236.02,
+        "top": 26.3
+      }
+    },
+    "h-updater-workspace": {
+      "hoverLabel": {
+        "bottom": 140.76,
+        "left": -164.9,
+        "right": 74.9,
+        "top": 114.24
+      },
+      "label": null
+    },
+    "h-updater-fixer": {
+      "hoverLabel": {
+        "bottom": 36.83,
+        "left": 77.9,
+        "right": 254.04,
+        "top": 10.3
+      },
+      "label": {
+        "bottom": 36.83,
+        "left": 77.9,
+        "right": 254.04,
+        "top": 10.3
+      }
+    },
+    "h-blocked-fixer": {
+      "hoverLabel": {
+        "bottom": 300.88,
+        "left": -77.5,
+        "right": 175.03,
+        "top": 274.35
+      },
+      "label": null
+    },
+    "h-fixer-workspace": {
+      "hoverLabel": {
+        "bottom": 169.87,
+        "left": 16.4,
+        "right": 167.07,
+        "top": 143.34
+      },
+      "label": null
+    },
+    "h-fixer-updater": {
+      "hoverLabel": {
+        "bottom": 89.89,
+        "left": 17.92,
+        "right": 168.6,
+        "top": 63.37
+      },
+      "label": null
+    },
+    "h-workspace-updater": {
+      "hoverLabel": {
+        "bottom": 170.78,
+        "left": 9.42,
+        "right": 134.63,
+        "top": 144.25
+      },
+      "label": null
+    },
+    "h-blocked-updater": {
+      "hoverLabel": {
+        "bottom": 105.57,
+        "left": -58.85,
+        "right": 66.35,
+        "top": 79.05
+      },
+      "label": {
+        "bottom": 105.57,
+        "left": -58.85,
+        "right": 66.35,
+        "top": 79.05
+      }
+    },
+    "h-updater-pr-fix": {
+      "hoverLabel": {
+        "bottom": 116.76,
+        "left": -324.7,
+        "right": -161.3,
+        "top": 90.24
+      },
+      "label": null
+    },
+    "h-updater-issues": {
+      "hoverLabel": {
+        "bottom": -11.73,
+        "left": -431.47,
+        "right": -102.53,
+        "top": -38.26
+      },
+      "label": {
+        "bottom": -11.73,
+        "left": -431.47,
+        "right": -102.53,
+        "top": -38.26
+      }
+    },
+    "h-issues-maintainer": {
+      "hoverLabel": {
+        "bottom": 657.74,
+        "left": -275.69,
+        "right": -112.29,
+        "top": 631.21
+      },
+      "label": {
+        "bottom": 657.74,
+        "left": -275.69,
+        "right": -112.29,
+        "top": 631.21
+      }
+    },
+    "h-pr-maintainer": {
+      "hoverLabel": {
+        "bottom": 391.26,
+        "left": -64.8,
+        "right": 136.8,
+        "top": 364.74
+      },
+      "label": null
+    },
+    "h-maintainer-pr": {
+      "hoverLabel": {
+        "bottom": 365.38,
+        "left": -4.78,
+        "right": 171.36,
+        "top": 338.85
+      },
+      "label": null
+    },
+    "h-maintainer-fixer": {
+      "hoverLabel": {
+        "bottom": 437.38,
+        "left": 181.59,
+        "right": 344.99,
+        "top": 410.85
+      },
+      "label": null
+    },
+    "h-main-watchdog": {
+      "hoverLabel": {
+        "bottom": 337.26,
+        "left": -28.8,
+        "right": 172.8,
+        "top": 310.74
+      },
+      "label": null
+    },
+    "h-watchdog-maintainer": {
+      "hoverLabel": {
+        "bottom": 480.15,
+        "left": 278.64,
+        "right": 454.78,
+        "top": 453.62
+      },
+      "label": null
+    }
+  },
+  "plan 1": {
+    "h-main-updater": {
+      "hoverLabel": {
+        "bottom": 258,
+        "left": 352.5,
+        "right": 430.5,
+        "top": 243
+      },
+      "label": {
+        "bottom": 258,
+        "left": 352.5,
+        "right": 430.5,
+        "top": 243
+      }
+    },
+    "h-upstream-updater": {
+      "hoverLabel": {
+        "bottom": 229,
+        "left": 689.4,
+        "right": 810.6,
+        "top": 214
+      },
+      "label": {
+        "bottom": 229,
+        "left": 689.4,
+        "right": 810.6,
+        "top": 214
+      }
+    },
+    "h-updater-pr": {
+      "hoverLabel": {
+        "bottom": 574.5,
+        "left": -29.4,
+        "right": 27,
+        "top": 559.5
+      },
+      "label": {
+        "bottom": 574.5,
+        "left": -29.4,
+        "right": 27,
+        "top": 559.5
+      }
+    },
+    "h-pr-build": {
+      "hoverLabel": {
+        "bottom": 108,
+        "left": 718.8,
+        "right": 811.2,
+        "top": 93
+      },
+      "label": {
+        "bottom": 108,
+        "left": 718.8,
+        "right": 811.2,
+        "top": 93
+      }
+    },
+    "h-attic-build": {
+      "hoverLabel": {
+        "bottom": -72,
+        "left": 470.02,
+        "right": 591.23,
+        "top": -87
+      },
+      "label": {
+        "bottom": -72,
+        "left": 470.02,
+        "right": 591.23,
+        "top": -87
+      }
+    },
+    "h-build-attic": {
+      "hoverLabel": {
+        "bottom": 198,
+        "left": 678.6,
+        "right": 821.4,
+        "top": 183
+      },
+      "label": {
+        "bottom": 198,
+        "left": 678.6,
+        "right": 821.4,
+        "top": 183
+      }
+    },
+    "h-pr-checks": {
+      "hoverLabel": {
+        "bottom": 247.5,
+        "left": 774.6,
+        "right": 867,
+        "top": 232.5
+      },
+      "label": {
+        "bottom": 247.5,
+        "left": 774.6,
+        "right": 867,
+        "top": 232.5
+      }
+    },
+    "h-pr-scope": {
+      "hoverLabel": {
+        "bottom": 460.5,
+        "left": 1045,
+        "right": 1159,
+        "top": 445.5
+      },
+      "label": {
+        "bottom": 460.5,
+        "left": 1045,
+        "right": 1159,
+        "top": 445.5
+      }
+    },
+    "h-blocked-scope": {
+      "hoverLabel": {
+        "bottom": 746.5,
+        "left": 714.6,
+        "right": 807,
+        "top": 731.5
+      },
+      "label": {
+        "bottom": 746.5,
+        "left": 714.6,
+        "right": 807,
+        "top": 731.5
+      }
+    },
+    "h-build-ruleset": {
+      "hoverLabel": {
+        "bottom": 27,
+        "left": 626.4,
+        "right": 783.6,
+        "top": 12
+      },
+      "label": {
+        "bottom": 27,
+        "left": 626.4,
+        "right": 783.6,
+        "top": 12
+      }
+    },
+    "h-checks-ruleset": {
+      "hoverLabel": {
+        "bottom": 8.2,
+        "left": 505,
+        "right": 669.4,
+        "top": -6.8
+      },
+      "label": {
+        "bottom": 8.2,
+        "left": 505,
+        "right": 669.4,
+        "top": -6.8
+      }
+    },
+    "h-scope-ruleset": {
+      "hoverLabel": {
+        "bottom": 579,
+        "left": 363,
+        "right": 455.4,
+        "top": 564
+      },
+      "label": {
+        "bottom": 579,
+        "left": 363,
+        "right": 455.4,
+        "top": 564
+      }
+    },
+    "h-ruleset-main": {
+      "hoverLabel": {
+        "bottom": 712,
+        "left": 433.5,
+        "right": 511.5,
+        "top": 697
+      },
+      "label": {
+        "bottom": 712,
+        "left": 433.5,
+        "right": 511.5,
+        "top": 697
+      }
+    },
+    "h-ruleset-updater": {
+      "hoverLabel": {
+        "bottom": 537,
+        "left": -77.7,
+        "right": 14.7,
+        "top": 522
+      },
+      "label": {
+        "bottom": 537,
+        "left": -77.7,
+        "right": 14.7,
+        "top": 522
+      }
+    },
+    "h-updater-workspace": {
+      "hoverLabel": {
+        "bottom": 266,
+        "left": 83.4,
+        "right": 219,
+        "top": 251
+      },
+      "label": {
+        "bottom": 266,
+        "left": 83.4,
+        "right": 219,
+        "top": 251
+      }
+    },
+    "h-updater-fixer": {
+      "hoverLabel": {
+        "bottom": 27,
+        "left": 130.2,
+        "right": 229.8,
+        "top": 12
+      },
+      "label": {
+        "bottom": 27,
+        "left": 130.2,
+        "right": 229.8,
+        "top": 12
+      }
+    },
+    "h-blocked-fixer": {
+      "hoverLabel": {
+        "bottom": 817.5,
+        "left": 372.2,
+        "right": 515,
+        "top": 802.5
+      },
+      "label": {
+        "bottom": 817.5,
+        "left": 372.2,
+        "right": 515,
+        "top": 802.5
+      }
+    },
+    "h-fixer-workspace": {
+      "hoverLabel": {
+        "bottom": 195.5,
+        "left": 337,
+        "right": 422.2,
+        "top": 180.5
+      },
+      "label": {
+        "bottom": 195.5,
+        "left": 337,
+        "right": 422.2,
+        "top": 180.5
+      }
+    },
+    "h-fixer-updater": {
+      "hoverLabel": {
+        "bottom": 51.82,
+        "left": 137,
+        "right": 222.2,
+        "top": 36.82
+      },
+      "label": {
+        "bottom": 51.82,
+        "left": 137,
+        "right": 222.2,
+        "top": 36.82
+      }
+    },
+    "h-workspace-updater": {
+      "hoverLabel": {
+        "bottom": 147,
+        "left": 257.7,
+        "right": 328.5,
+        "top": 132
+      },
+      "label": {
+        "bottom": 147,
+        "left": 257.7,
+        "right": 328.5,
+        "top": 132
+      }
+    },
+    "h-blocked-updater": {
+      "hoverLabel": {
+        "bottom": 757.2,
+        "left": 162.45,
+        "right": 233.25,
+        "top": 742.2
+      },
+      "label": {
+        "bottom": 757.2,
+        "left": 162.45,
+        "right": 233.25,
+        "top": 742.2
+      }
+    },
+    "h-updater-pr-fix": {
+      "hoverLabel": {
+        "bottom": 237,
+        "left": -64.2,
+        "right": 28.2,
+        "top": 222
+      },
+      "label": {
+        "bottom": 237,
+        "left": -64.2,
+        "right": 28.2,
+        "top": 222
+      }
+    },
+    "h-updater-issues": {
+      "hoverLabel": {
+        "bottom": 847.5,
+        "left": -95,
+        "right": 91,
+        "top": 832.5
+      },
+      "label": {
+        "bottom": 847.5,
+        "left": -95,
+        "right": 91,
+        "top": 832.5
+      }
+    },
+    "h-issues-maintainer": {
+      "hoverLabel": {
+        "bottom": 1137,
+        "left": 808.8,
+        "right": 901.2,
+        "top": 1122
+      },
+      "label": {
+        "bottom": 1137,
+        "left": 808.8,
+        "right": 901.2,
+        "top": 1122
+      }
+    },
+    "h-pr-maintainer": {
+      "hoverLabel": {
+        "bottom": 597,
+        "left": 918,
+        "right": 1032,
+        "top": 582
+      },
+      "label": {
+        "bottom": 597,
+        "left": 918,
+        "right": 1032,
+        "top": 582
+      }
+    },
+    "h-maintainer-pr": {
+      "hoverLabel": {
+        "bottom": 697.5,
+        "left": 1037.4,
+        "right": 1137,
+        "top": 682.5
+      },
+      "label": {
+        "bottom": 697.5,
+        "left": 1037.4,
+        "right": 1137,
+        "top": 682.5
+      }
+    },
+    "h-maintainer-fixer": {
+      "hoverLabel": {
+        "bottom": 149.1,
+        "left": 663,
+        "right": 755.4,
+        "top": 134.1
+      },
+      "label": {
+        "bottom": 149.1,
+        "left": 663,
+        "right": 755.4,
+        "top": 134.1
+      }
+    },
+    "h-main-watchdog": {
+      "hoverLabel": {
+        "bottom": 577.5,
+        "left": 603,
+        "right": 717,
+        "top": 562.5
+      },
+      "label": {
+        "bottom": 577.5,
+        "left": 603,
+        "right": 717,
+        "top": 562.5
+      }
+    },
+    "h-watchdog-maintainer": {
+      "hoverLabel": {
+        "bottom": 425.5,
+        "left": 963,
+        "right": 1062.6,
+        "top": 410.5
+      },
+      "label": {
+        "bottom": 425.5,
+        "left": 963,
+        "right": 1062.6,
+        "top": 410.5
+      }
+    }
+  },
+  "plan 0.4241": {
+    "h-main-updater": {
+      "hoverLabel": {
+        "bottom": 253.26,
+        "left": 246.03,
+        "right": 383.97,
+        "top": 226.74
+      },
+      "label": null
+    },
+    "h-upstream-updater": {
+      "hoverLabel": {
+        "bottom": 245.26,
+        "left": 301.83,
+        "right": 516.17,
+        "top": 218.74
+      },
+      "label": null
+    },
+    "h-updater-pr": {
+      "hoverLabel": {
+        "bottom": 475.26,
+        "left": 33,
+        "right": 132.74,
+        "top": 448.74
+      },
+      "label": {
+        "bottom": 475.26,
+        "left": 33,
+        "right": 132.74,
+        "top": 448.74
+      }
+    },
+    "h-pr-build": {
+      "hoverLabel": {
+        "bottom": 119.53,
+        "left": 683.3,
+        "right": 846.7,
+        "top": 93
+      },
+      "label": {
+        "bottom": 119.53,
+        "left": 683.3,
+        "right": 846.7,
+        "top": 93
+      }
+    },
+    "h-attic-build": {
+      "hoverLabel": {
+        "bottom": -60.47,
+        "left": 255.83,
+        "right": 470.17,
+        "top": -87
+      },
+      "label": {
+        "bottom": -60.47,
+        "left": 255.83,
+        "right": 470.17,
+        "top": -87
+      }
+    },
+    "h-build-attic": {
+      "hoverLabel": {
+        "bottom": 193.26,
+        "left": 933,
+        "right": 1185.53,
+        "top": 166.74
+      },
+      "label": {
+        "bottom": 193.26,
+        "left": 933,
+        "right": 1185.53,
+        "top": 166.74
+      }
+    },
+    "h-pr-checks": {
+      "hoverLabel": {
+        "bottom": 226.66,
+        "left": 873,
+        "right": 1036.4,
+        "top": 200.14
+      },
+      "label": {
+        "bottom": 226.66,
+        "left": 873,
+        "right": 1036.4,
+        "top": 200.14
+      }
+    },
+    "h-pr-scope": {
+      "hoverLabel": {
+        "bottom": 545.26,
+        "left": 572.2,
+        "right": 773.8,
+        "top": 518.74
+      },
+      "label": null
+    },
+    "h-blocked-scope": {
+      "hoverLabel": {
+        "bottom": 790.46,
+        "left": 643.6,
+        "right": 807,
+        "top": 763.94
+      },
+      "label": {
+        "bottom": 790.46,
+        "left": 643.6,
+        "right": 807,
+        "top": 763.94
+      }
+    },
+    "h-build-ruleset": {
+      "hoverLabel": {
+        "bottom": 27,
+        "left": 527,
+        "right": 805,
+        "top": 0.47
+      },
+      "label": {
+        "bottom": 27,
+        "left": 527,
+        "right": 805,
+        "top": 0.47
+      }
+    },
+    "h-checks-ruleset": {
+      "hoverLabel": {
+        "bottom": -4.47,
+        "left": 502.13,
+        "right": 792.87,
+        "top": -31
+      },
+      "label": {
+        "bottom": -4.47,
+        "left": 502.13,
+        "right": 792.87,
+        "top": -31
+      }
+    },
+    "h-scope-ruleset": {
+      "hoverLabel": {
+        "bottom": 553.26,
+        "left": 683.3,
+        "right": 846.7,
+        "top": 526.74
+      },
+      "label": null
+    },
+    "h-ruleset-main": {
+      "hoverLabel": {
+        "bottom": 707.26,
+        "left": 403.53,
+        "right": 541.47,
+        "top": 680.74
+      },
+      "label": null
+    },
+    "h-ruleset-updater": {
+      "hoverLabel": {
+        "bottom": 313.26,
+        "left": -171.7,
+        "right": -8.3,
+        "top": 286.74
+      },
+      "label": null
+    },
+    "h-updater-workspace": {
+      "hoverLabel": {
+        "bottom": 261.26,
+        "left": 56.1,
+        "right": 295.9,
+        "top": 234.74
+      },
+      "label": null
+    },
+    "h-updater-fixer": {
+      "hoverLabel": {
+        "bottom": 43.26,
+        "left": 106.93,
+        "right": 283.07,
+        "top": 16.74
+      },
+      "label": null
+    },
+    "h-blocked-fixer": {
+      "hoverLabel": {
+        "bottom": 836.76,
+        "left": 344.47,
+        "right": 597,
+        "top": 810.24
+      },
+      "label": {
+        "bottom": 836.76,
+        "left": 344.47,
+        "right": 597,
+        "top": 810.24
+      }
+    },
+    "h-fixer-workspace": {
+      "hoverLabel": {
+        "bottom": 167.26,
+        "left": 337,
+        "right": 487.67,
+        "top": 140.74
+      },
+      "label": {
+        "bottom": 167.26,
+        "left": 337,
+        "right": 487.67,
+        "top": 140.74
+      }
+    },
+    "h-fixer-updater": {
+      "hoverLabel": {
+        "bottom": 65.26,
+        "left": 126.66,
+        "right": 277.34,
+        "top": 38.74
+      },
+      "label": null
+    },
+    "h-workspace-updater": {
+      "hoverLabel": {
+        "bottom": 215.76,
+        "left": 263.4,
+        "right": 388.6,
+        "top": 189.24
+      },
+      "label": null
+    },
+    "h-blocked-updater": {
+      "hoverLabel": {
+        "bottom": 843.16,
+        "left": 108.04,
+        "right": 233.25,
+        "top": 816.64
+      },
+      "label": {
+        "bottom": 843.16,
+        "left": 108.04,
+        "right": 233.25,
+        "top": 816.64
+      }
+    },
+    "h-updater-pr-fix": {
+      "hoverLabel": {
+        "bottom": 388.26,
+        "left": -111.7,
+        "right": 51.7,
+        "top": 361.74
+      },
+      "label": null
+    },
+    "h-updater-issues": {
+      "hoverLabel": {
+        "bottom": 988.26,
+        "left": -95,
+        "right": 233.93,
+        "top": 961.74
+      },
+      "label": {
+        "bottom": 988.26,
+        "left": -95,
+        "right": 233.93,
+        "top": 961.74
+      }
+    },
+    "h-issues-maintainer": {
+      "hoverLabel": {
+        "bottom": 1137,
+        "left": 773.3,
+        "right": 936.7,
+        "top": 1110.47
+      },
+      "label": {
+        "bottom": 1137,
+        "left": 773.3,
+        "right": 936.7,
+        "top": 1110.47
+      }
+    },
+    "h-pr-maintainer": {
+      "hoverLabel": {
+        "bottom": 597,
+        "left": 829.2,
+        "right": 1030.8,
+        "top": 570.47
+      },
+      "label": {
+        "bottom": 597,
+        "left": 829.2,
+        "right": 1030.8,
+        "top": 570.47
+      }
+    },
+    "h-maintainer-pr": {
+      "hoverLabel": {
+        "bottom": 527.26,
+        "left": 569.93,
+        "right": 746.07,
+        "top": 500.74
+      },
+      "label": null
+    },
+    "h-maintainer-fixer": {
+      "hoverLabel": {
+        "bottom": 219.06,
+        "left": 663,
+        "right": 826.4,
+        "top": 192.54
+      },
+      "label": {
+        "bottom": 219.06,
+        "left": 663,
+        "right": 826.4,
+        "top": 192.54
+      }
+    },
+    "h-main-watchdog": {
+      "hoverLabel": {
+        "bottom": 493.26,
+        "left": 499.2,
+        "right": 700.8,
+        "top": 466.74
+      },
+      "label": null
+    },
+    "h-watchdog-maintainer": {
+      "hoverLabel": {
+        "bottom": 473,
+        "left": 969.53,
+        "right": 1145.67,
+        "top": 446.47
+      },
+      "label": {
+        "bottom": 473,
+        "left": 969.53,
+        "right": 1145.67,
+        "top": 446.47
+      }
+    }
+  }
+}
