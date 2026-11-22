@@ -304,8 +304,10 @@ const useWaitingCount = () =>
   ).length;
 
 /**
- * The forms docked under the tabs, so the add form and the draw-hop form,
- * and what a drag or a proposal would leave, never cover the drawing.
+ * The forms docked at the foot of the side panel, below the warnings, so the
+ * add form and the draw-hop form never cover the drawing. The warnings sit
+ * above the forms so that one appearing as a check finishes grows upward and
+ * leaves the form's buttons where they were.
  */
 function DockedForms() {
   const placing = usePlacing();
@@ -500,8 +502,8 @@ export function SidePanel() {
           </Panel>
         )}
       </Tabs>
-      <DockedForms />
       <DragWarnings className="border-x-0 border-b-0" />
+      <DockedForms />
     </aside>
   );
 }
