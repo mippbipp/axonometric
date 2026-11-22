@@ -57,7 +57,7 @@ type Scenes = Map<string, Scene>;
 
 /**
  * Scenes by what they're drawn from: the map data, layout, revealed set and
- * routes, then the view, zoom and label order. The page keeps the same
+ * routes, then the view, zoom, label order and labelled hops. The page keeps the same
  * objects until they change, so they key a cache the garbage collector
  * clears.
  */
@@ -86,6 +86,10 @@ export const cachedSceneOf = (given: SceneSource): Scene => {
       source.view ?? "iso",
       String(source.zoom ?? 1),
       Arr.join(source.labelFirst ?? [], ","),
+      // Every hop is labelled apart from an empty set, which labels none.
+      source.labelled === undefined
+        ? "*"
+        : `=${Arr.join(Arr.sort([...source.labelled], Order.String), ",")}`,
     ],
     "|"
   );
