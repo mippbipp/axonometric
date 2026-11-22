@@ -89,7 +89,7 @@ Before you change the layout, find out whether an engineer is watching:
 axonometric status <home> --json
 ```
 
-While `pages` is above 0, a page is open, so propose with `layout --propose --reason` and let the engineer decide. With 0 pages, or when no server runs, apply the change directly.
+While `engineerPages` is above 0, the engineer has a page open, so propose with `layout --propose --reason` and let the engineer decide. With 0 engineer pages, or when no server runs, apply the change directly.
 
 To learn what the engineer decided, pass `--since <time>` with `--json`. The first reply's `now` is the time to pass next. `decisions` then lists the engineer's accepts and discards of your changes after that time, oldest first, each with its `at`, your `change` and the `decision`. A change the engineer takes over by editing the same structure counts as discarded. A discard carries no reason. The server keeps the last 50 in memory, so a restart empties them. When the engineer decided more than 50 since your `--since`, the oldest are gone, and the reply says `"truncated": true`. You missed some decisions, so don't assume a change you can't find in `decisions` is still pending or was accepted: reread `proposals.json` for what is pending and `layout.json` for what landed. `truncated` is `false` when `decisions` holds everything after `--since`. Each reply gives a new `now`, so nothing is missed or listed twice.
 

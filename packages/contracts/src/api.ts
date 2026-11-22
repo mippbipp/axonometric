@@ -54,6 +54,7 @@ export class MapApiGroup extends HttpApiGroup.make("map").add(
     success: MapState,
   }),
   HttpApiEndpoint.get("events", serverPaths.events, {
+    query: { by: Schema.optionalKey(Schema.String) },
     success: HttpApiSchema.StreamSse({ data: ServerEvent }),
   }),
   HttpApiEndpoint.get("status", serverPaths.status, {

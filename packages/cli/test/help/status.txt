@@ -8,7 +8,7 @@ ARGUMENTS
   home directory    The map's home folder, holding data.mjs and layout.json
 
 FLAGS
-  --json            Print { home, running, url, pid, since, pages, now } as JSON instead of text
+  --json            Print { home, running, url, pid, since, pages, engineerPages, now } as JSON instead of text
   --since string    With --json, also list the engineer's accepts and discards of your changes after this time, such as the now of an earlier status --json
 
 GLOBAL FLAGS

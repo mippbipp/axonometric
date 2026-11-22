@@ -386,6 +386,7 @@ export {
   serverPaths,
   ServerState,
   ServerStatus,
+  ServerStatusReply,
 } from "./server.ts";
 
 export {

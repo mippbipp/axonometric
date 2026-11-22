@@ -630,8 +630,26 @@ export const connectServed = ({
 
   const apply = (edit: PendingEdit) => dispatch({ _tag: "Apply", edit });
 
+  /**
+   * The events stream, marked as an agent's when the page was opened with
+   * `?by=agent` or a browser under automation opened it. The server counts
+   * the mark and trusts it for nothing else.
+   */
+  const eventsUrl = () => {
+    const url = new URL(served.events, document.baseURI);
+    const asAgent =
+      new URLSearchParams(location.search).get("by") === "agent" ||
+      navigator.webdriver;
+
+    if (asAgent) {
+      url.searchParams.set("by", "agent");
+    }
+
+    return url;
+  };
+
   const connect = () => {
-    const source = new EventSource(new URL(served.events, document.baseURI));
+    const source = new EventSource(eventsUrl());
 
     source.addEventListener("open", () => {
       if (view.stopped) {

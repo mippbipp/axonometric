@@ -172,7 +172,10 @@ describe("status", () => {
         text.stdout,
         `Serving ${home} at ${serve.url}, process ${process.pid}, since `
       );
-      assert.include(text.stdout, ", 0 pages connected.\n");
+      assert.include(
+        text.stdout,
+        ", 0 pages connected, 0 of them the engineer's.\n"
+      );
       const report = yield* decodeReport(json.stdout);
       assert.include(report, {
         home,
