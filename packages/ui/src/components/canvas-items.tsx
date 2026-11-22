@@ -1,6 +1,9 @@
 import { usePannableCanvas } from "@axonometric/ui/components/pannable-canvas";
+import type { PannableCanvasApi } from "@axonometric/ui/components/pannable-canvas";
+import { announce } from "@axonometric/ui/lib/announce";
 import {
   createChange,
+  createFocusRecovery,
   createRovingFocus,
   createSelection,
   definePrimitive,
@@ -8,11 +11,24 @@ import {
   type ChangeDetails,
 } from "@ui-sdk/core";
 import { usePart, usePrimitive, type PartProps } from "@ui-sdk/react/primitive";
+import { Array as Arr } from "effect";
 import type { FocusEvent, ReactNode } from "react";
 
 type CanvasItemsReason = "item-press";
 
+interface Box {
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+}
+
 interface CanvasItemsOptions {
+  /**
+   * The canvas the items sit on. `CanvasItems` passes it, so focus that
+   * loses its item can be placed by where the item was on the canvas.
+   */
+  readonly canvas?: PannableCanvasApi;
   /** Whether Shift with a press adds to and takes from the selection. */
   readonly multiple?: boolean;
   readonly onSelectedChange?: (
@@ -46,6 +62,13 @@ interface CanvasItemProps {
   readonly value: string;
 }
 
+const centreOf = (box: Box) => ({
+  x: (box.left + box.right) / 2,
+  y: (box.top + box.bottom) / 2,
+});
+
+const labelOf = (el: Element) => el.getAttribute("aria-label") ?? "the map";
+
 const arrows = new Set(["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"]);
 
 const canvasItems = definePrimitive({
@@ -62,6 +85,73 @@ const canvasItems = definePrimitive({
         slot: "item",
       }
     );
+
+    // Where the focused item was on the canvas, in canvas units, which a
+    // refit doesn't change. An unmounted item can't be measured, so this is
+    // noted as focus arrives and again as the item leaves, if it still can.
+    let seen: { readonly box: Box; readonly key: string } | null = null;
+
+    const note = (key: string, el: Element) => {
+      const { canvas } = context.options();
+
+      if (canvas !== undefined && el.isConnected) {
+        seen = { box: canvas.viewport.rectOf(el), key };
+      }
+    };
+
+    // When the focused item leaves, focus goes to the nearest item still on
+    // the map, or the canvas itself with none left, so it never falls to the
+    // page. spatialMove needs a direction and this has none, so nearness is
+    // the plain distance between centres.
+    const recovery = createFocusRecovery<CanvasItemProps>({
+      fallback: (lost) => {
+        const { canvas } = context.options();
+
+        // A map under an inert layer, such as one an inside view covers,
+        // can't take focus, and nothing was lost from the engineer's view.
+        if (lost.el.closest("[inert]") !== null) {
+          seen = null;
+
+          return null;
+        }
+
+        const from = seen?.key === lost.key ? seen.box : null;
+
+        seen = null;
+
+        const left = Arr.filter(roving.items(), (item) => item.el !== lost.el);
+        let target: HTMLElement | undefined;
+
+        if (canvas === undefined || from === null) {
+          target = left[0]?.el;
+        } else {
+          const here = centreOf(from);
+          let best = Infinity;
+
+          for (const item of left) {
+            const there = centreOf(canvas.viewport.rectOf(item.el));
+            const distance = Math.hypot(there.x - here.x, there.y - here.y);
+
+            if (distance < best) {
+              best = distance;
+              target = item.el;
+            }
+          }
+        }
+
+        const next = target ?? canvas?.surface();
+
+        if (next === undefined || next === null) {
+          return null;
+        }
+
+        announce(
+          `${labelOf(lost.el)} is no longer shown. Focus moved to ${labelOf(next)}.`
+        );
+
+        return next;
+      },
+    });
 
     const selectableKeys = () => {
       const keys: Array<string> = [];
@@ -113,11 +203,12 @@ const canvasItems = definePrimitive({
       props.onPress?.(event);
     };
 
-    return { activate, roving };
+    return { activate, note, recovery, roving };
   },
   controlled: ["selected"],
   name: "canvas-items",
   options: {
+    canvas: "value",
     multiple: "boolean",
     onSelectedChange: "callback",
     pinned: "value",
@@ -128,7 +219,26 @@ const canvasItems = definePrimitive({
       attrs: (state, part) => ({
         tabindex: part.api.roving.tabIndex(state, part),
       }),
-      bind: (el, part) => part.api.roving.bind(el, part),
+      bind: (el, part) => {
+        const unbindFocus = part.api.roving.bind(el, part);
+        const unbindRecovery = part.api.recovery.bind(el, part);
+
+        const onFocusIn = () => {
+          part.api.note(part.key, el);
+        };
+
+        el.addEventListener("focusin", onFocusIn);
+
+        return () => {
+          if (el.contains(document.activeElement)) {
+            part.api.note(part.key, el);
+          }
+
+          el.removeEventListener("focusin", onFocusIn);
+          unbindRecovery();
+          unbindFocus();
+        };
+      },
       focus: "roving",
       on: {
         keydown: (event, { api, el, key, props }) => {
@@ -209,15 +319,18 @@ function CanvasItems({
   onSelectedChange,
   pinned,
   selected,
-}: CanvasItemsOptions & { readonly children: ReactNode }) {
+}: Omit<CanvasItemsOptions, "canvas"> & { readonly children: ReactNode }) {
+  const canvas = usePannableCanvas();
+
   const handle = usePrimitive(canvasItems, {
+    canvas,
     multiple,
     onSelectedChange,
     pinned,
     selected,
   });
 
-  const { viewport } = usePannableCanvas();
+  const { viewport } = canvas;
 
   const reveal = (event: FocusEvent<SVGGElement>) => {
     const item =
