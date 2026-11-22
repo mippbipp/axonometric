@@ -199,6 +199,20 @@ const checkDraft = Effect.fnUntraced(function* ({
   answer({ kind: "problems", ask: ask.ask, spot, problems });
 });
 
+/**
+ * Draws the map before any structure is added, as proposed and as shown,
+ * which every spot the search tries and every warnings check compares with.
+ * Each chapter drawn is remembered, so the first search after the map
+ * arrives waits on the new structure's chapters alone.
+ */
+const warmUp = Effect.fnUntraced(function* ({ data, layout, shown }: DraftMap) {
+  for (const drawn of [layout, shown]) {
+    yield* runTurns(
+      proposalProblemsTurns({ before: { data, layout: drawn }, items: [] })
+    );
+  }
+});
+
 /** What a checker holds between messages: the map, and the ask it checks. */
 interface Held {
   checking: Fiber.Fiber<void> | undefined;
@@ -210,7 +224,9 @@ interface Held {
  * Checks the add form's drafts, one at once: a new map or ask stops the ask
  * being checked, and so does `stop`, when the form closes. `answer` hears the
  * spot each ask finds and its warnings. The worker runs one, and so does the
- * page where there are no workers.
+ * page where there are no workers. `warm` draws the map held until an ask
+ * stops it. The worker calls it after each map; the page doesn't, as
+ * drawing would hold its main thread.
  */
 export const draftChecker = (answer: (found: DraftAnswer) => void) => {
   const held: Held = { checking: undefined, map: undefined, search: undefined };
@@ -238,6 +254,13 @@ export const draftChecker = (answer: (found: DraftAnswer) => void) => {
       stop();
       held.map = map;
       held.search = undefined;
+    },
+    warm: () => {
+      stop();
+
+      if (held.map !== undefined) {
+        held.checking = Effect.runFork(warmUp(held.map));
+      }
     },
   };
 };

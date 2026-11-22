@@ -49,6 +49,7 @@ addEventListener("message", (event: MessageEvent<unknown>) => {
 
     if (request.kind === "draft map") {
       checkers.drafts.map(request);
+      checkers.drafts.warm();
     } else if (request.kind === "draft ask") {
       checkers.drafts.ask(request);
     } else {
