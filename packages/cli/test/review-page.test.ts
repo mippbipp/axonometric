@@ -8,6 +8,7 @@ import {
   assertTextIncludes,
   click,
   inPage,
+  literal,
   press,
   textOf,
   waitFor,
@@ -111,6 +112,32 @@ describe("a note on a structure", () => {
         assert.deepStrictEqual(errors, []);
       }),
     60_000
+  );
+
+  it.live("is sent from the box with Ctrl+Enter or ⌘+Enter, on every OS", () =>
+    Effect.gen(function* () {
+      const { home, page } = yield* servedReview();
+      const box =
+        "[data-structure-panel] [data-notes-section] [data-note-text]";
+
+      yield* pinServer(page);
+
+      for (const [text, keys] of [
+        ["Sent with Ctrl", "Control+Enter"],
+        ["Sent with Cmd", "Meta+Enter"],
+      ] as const) {
+        yield* Effect.promise(() => page.locator(box).fill(text));
+        yield* press(page, keys);
+        yield* waitFor(page, `[data-panel-note]:has-text(${literal(text)})`);
+      }
+
+      const proposals = yield* readProposals(home);
+
+      assert.deepStrictEqual(
+        Arr.map(proposals.notes ?? [], ({ text }) => text),
+        ["Sent with Ctrl", "Sent with Cmd"]
+      );
+    })
   );
 
   it.live("can be discarded while it is open", () =>
