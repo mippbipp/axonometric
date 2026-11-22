@@ -69,8 +69,14 @@ export type AgentDecision = typeof AgentDecision.Type;
 
 /** What `status --json` asks the running server for. */
 export const ServerStatus = Schema.Struct({
-  /** How many pages hold the events stream open, so how many are watching. */
+  /** How many pages hold the events stream open, the engineer's and an agent's own tabs together. */
   pages: Schema.Int,
+  /**
+   * How many of `pages` the engineer has open: those that did not say they
+   * are an agent's. The page says so with `by=agent` on the events stream, so
+   * this is the only thing the server takes from a page's word.
+   */
+  engineerPages: Schema.Int,
   /** The server's time for this reply. Pass it as `since` next time to miss and repeat nothing. */
   now: Schema.DateTimeUtcFromString,
   /** The decisions after `since`, oldest first. Empty without `since`. */

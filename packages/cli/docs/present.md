@@ -10,11 +10,11 @@ The page offers page tools for this. They read the map and move the engineer's v
 axonometric status <home> --json
 ```
 
-`running` is true while `serve` runs. `pages` counts the served pages that are open. A tab you opened yourself counts, so with one of yours open, `pages` of 1 may be only yours.
+`running` is true while `serve` runs. `pages` counts the served pages that are open, and `engineerPages` counts the ones that are the engineer's. A tab you open yourself is in `pages` but not in `engineerPages`, as long as it says it is yours: a browser under automation (agent-browser, Playwright) does so by itself. A tab you open through the engineer's own browser does not, so add `?by=agent` to its URL.
 
 - When `running` is false, start `serve` in the background (see `visual-check`), then give the engineer the URL.
-- When `pages` is 0, no engineer has the served page open. Give them the URL, ask them to open it, and check again.
-- When `pages` is above 0, a page is open. Go on to step 2.
+- When `engineerPages` is 0, the engineer has no served page open, even if `pages` is above 0 because of your own tab. Give them the URL, ask them to open it, and check again.
+- When `engineerPages` is above 0, the engineer has a page open. Go on to step 2.
 
 The built `<system>.html` never counts, because it doesn't talk to the server. If the engineer presents from that file, ask them.
 

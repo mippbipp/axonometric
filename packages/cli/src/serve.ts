@@ -480,9 +480,8 @@ const routes = ({
 
   // The page count is the open streams, so it counts from when one opens
   // until it ends for any reason.
-  const events = Stream.unwrap(
-    decisions.connected.pipe(Effect.as(eventStream))
-  );
+  const eventsFor = (by: string | undefined) =>
+    Stream.unwrap(decisions.connected(by).pipe(Effect.as(eventStream)));
 
   const served = {
     accept: Str.slice(1)(serverPaths.accept),
@@ -517,7 +516,7 @@ const routes = ({
         )
       )
       .handle("state", () => Effect.map(SubscriptionRef.get(held), shownState))
-      .handle("events", () => Effect.succeed(events))
+      .handle("events", ({ query }) => Effect.succeed(eventsFor(query.by)))
       .handle("status", ({ query }) => decisions.status(query.since))
   );
 
