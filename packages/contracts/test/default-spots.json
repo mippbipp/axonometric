@@ -423,12 +423,7 @@
         "x": -2,
         "y": 5
       },
-      "warnings": [
-        {
-          "added": false,
-          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        }
-      ]
+      "warnings": []
     },
     {
       "group": "pewter",
@@ -441,12 +436,7 @@
         "x": -2,
         "y": 5
       },
-      "warnings": [
-        {
-          "added": false,
-          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        }
-      ]
+      "warnings": []
     },
     {
       "group": "actions",
@@ -459,12 +449,7 @@
         "x": 13,
         "y": 4.5
       },
-      "warnings": [
-        {
-          "added": false,
-          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        }
-      ]
+      "warnings": []
     },
     {
       "group": "actions",
@@ -477,12 +462,7 @@
         "x": 13,
         "y": 4.5
       },
-      "warnings": [
-        {
-          "added": false,
-          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        }
-      ]
+      "warnings": []
     },
     {
       "group": "repo",
@@ -495,12 +475,7 @@
         "x": 2.5,
         "y": 15.5
       },
-      "warnings": [
-        {
-          "added": false,
-          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        }
-      ]
+      "warnings": []
     },
     {
       "group": "repo",
@@ -513,12 +488,7 @@
         "x": 2.5,
         "y": 15.5
       },
-      "warnings": [
-        {
-          "added": false,
-          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        }
-      ]
+      "warnings": []
     },
     {
       "group": "outside",
@@ -531,12 +501,7 @@
         "x": 14,
         "y": 12.5
       },
-      "warnings": [
-        {
-          "added": false,
-          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        }
-      ]
+      "warnings": []
     },
     {
       "group": "outside",
@@ -549,12 +514,7 @@
         "x": 14,
         "y": 12.5
       },
-      "warnings": [
-        {
-          "added": false,
-          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        }
-      ]
+      "warnings": []
     }
   ],
   "update-pipeline": [
@@ -572,11 +532,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -594,11 +550,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -616,11 +568,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -638,11 +586,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -660,11 +604,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -682,11 +622,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -704,11 +640,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -726,11 +658,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -748,11 +676,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     },
@@ -770,11 +694,7 @@
       "warnings": [
         {
           "added": false,
-          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
-        },
-        {
-          "added": false,
-          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-whole\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
         }
       ]
     }
