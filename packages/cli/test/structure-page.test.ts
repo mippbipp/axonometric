@@ -105,6 +105,8 @@ const addStructure = Effect.fnUntraced(function* (
       checking: document.querySelectorAll("[data-add-structure][data-checking]").length,
       disabled: document.querySelector('[data-add="submit"]')?.disabled,
       finding: document.querySelectorAll("[data-add-hint][data-finding]").length,
+      x: document.querySelector('[data-add="x"]')?.value,
+      y: document.querySelector('[data-add="y"]')?.value,
     })`)
   );
   process.stderr.write(`PROBE262 at click ${state}\n`);
