@@ -187,6 +187,20 @@ export const waitForAddForm = (page: Page) =>
       .waitFor(waitTimeout)
   );
 
+/**
+ * Waits until a dialog or page has made the map inert. ui-sdk's popup makes
+ * the rest of the page inert after the next paint, not in the click that
+ * opens it, so a read straight after the dialog shows can still see it live.
+ */
+export const waitForMapInert = (page: Page) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      `document.querySelector("[data-map-layer]").closest("[inert]") !== null`,
+      undefined,
+      waitTimeout
+    )
+  );
+
 /** Waits until no element matching `selector` is on the page. */
 export const waitGone = (page: Page, selector: string) =>
   Effect.promise(() =>
