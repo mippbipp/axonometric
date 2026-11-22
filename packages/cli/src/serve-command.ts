@@ -4,6 +4,7 @@ import {
   serverPaths,
   ServerState,
   ServerStatus,
+  ServerStatusReply,
 } from "@axonometric/contracts";
 import { NodeHttpClient } from "@effect/platform-node";
 import { Console, DateTime, Effect, Option, Schema } from "effect";
@@ -123,10 +124,16 @@ const askStatus = Effect.fnUntraced(function* (
   );
 
   return yield* client.execute(request).pipe(
-    Effect.flatMap(HttpClientResponse.schemaBodyJson(ServerStatus)),
-    Effect.mapError((cause) =>
-      ServerNotAnswering.make({ pid, reason: describeCause(cause), url })
-    )
+    Effect.flatMap(HttpClientResponse.schemaBodyJson(ServerStatusReply)),
+    Effect.mapBoth({
+      onSuccess: (reply): ServerStatus => ({
+        ...reply,
+        engineerPages: reply.engineerPages ?? reply.pages,
+        truncated: reply.truncated ?? false,
+      }),
+      onFailure: (cause) =>
+        ServerNotAnswering.make({ pid, reason: describeCause(cause), url }),
+    })
   );
 }, Effect.scoped);
 

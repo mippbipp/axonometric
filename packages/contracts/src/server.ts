@@ -91,6 +91,19 @@ export const ServerStatus = Schema.Struct({
 
 export type ServerStatus = typeof ServerStatus.Type;
 
+/**
+ * A status reply as the CLI reads it. A server started by an older CLI is
+ * still running after an upgrade, and its reply lacks `truncated`, or
+ * `engineerPages` as well. The server always sends both.
+ */
+export const ServerStatusReply = Schema.Struct({
+  ...ServerStatus.fields,
+  engineerPages: Schema.optionalKey(ServerStatus.fields.engineerPages),
+  truncated: Schema.optionalKey(ServerStatus.fields.truncated),
+});
+
+export type ServerStatusReply = typeof ServerStatusReply.Type;
+
 /** The largest request body the server reads, in bytes. */
 export const maxWriteBytes = 256 * 1024;
 

@@ -1,4 +1,7 @@
-import { ServerStatus } from "@axonometric/contracts";
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- a stub server for a reply no current server sends
+import { createServer } from "node:http";
+
+import { ServerState, ServerStatus } from "@axonometric/contracts";
 import type { LayoutChange } from "@axonometric/contracts";
 import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
@@ -20,6 +23,7 @@ import { minimalMap } from "./fixtures.ts";
 import {
   makeHome,
   mapIn,
+  mapKeys,
   readProposals,
   runCli,
   serveReviewMap,
@@ -238,6 +242,70 @@ describe("status --json", () => {
         yield* openUrl(url);
         yield* waitForPages(home, 3, 1);
       }).pipe(
+        Effect.provide([NodeServices.layer, NodeHttpClient.layerNodeHttp])
+      ),
+    60_000
+  );
+
+  it.live(
+    "reads the reply of a server an older CLI started, without engineerPages or truncated",
+    () =>
+      Effect.gen(function* () {
+        const oldReply =
+          '{"decisions":[],"now":"2026-11-01T09:00:00.000Z","pages":2}';
+
+        const stub = yield* Effect.acquireRelease(
+          Effect.callback<ReturnType<typeof createServer>>((resume) => {
+            const server = createServer((_, response) => {
+              response.setHeader("content-type", "application/json");
+              response.end(oldReply);
+            });
+
+            server.listen(0, "127.0.0.1", () => resume(Effect.succeed(server)));
+          }),
+          (server) =>
+            Effect.callback<undefined>((resume) => {
+              server.close(() => resume(Effect.undefined));
+            })
+        );
+
+        const address = stub.address();
+
+        assert.isObject(address);
+
+        const url = `http://127.0.0.1:${(address as { port: number }).port}`;
+        const files = yield* minimalMap;
+
+        const encodeState = Schema.encodeEffect(
+          Schema.fromJsonString(ServerState)
+        );
+
+        const root = yield* makeHome({
+          ...files,
+          [mapKeys("pipeline").serverStateFile]: yield* encodeState({
+            pid: process.pid,
+            since: "2026-11-01T09:00:00.000Z",
+            url,
+          }),
+        });
+
+        const { home } = mapIn(root, "pipeline");
+
+        const text = yield* runCli(home, ["status", home]);
+
+        assert.strictEqual(text.exitCode, 0, text.stderr);
+        assert.include(
+          text.stdout,
+          "2 pages connected, 2 of them the engineer's"
+        );
+
+        const report = yield* statusOf(home, "2026-11-01T08:00:00.000Z");
+
+        assert.strictEqual(report.pages, 2);
+        assert.strictEqual(report.engineerPages, 2);
+        assert.strictEqual(report.truncated, false);
+      }).pipe(
+        Effect.scoped,
         Effect.provide([NodeServices.layer, NodeHttpClient.layerNodeHttp])
       ),
     60_000
