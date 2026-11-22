@@ -140,23 +140,35 @@ globalThis.Worker = class extends PageWorker {
 };
 `;
 
-/**
- * Runs before the page's own scripts. It records when Cancel is clicked and
- * every long task, on the page's clock.
- */
-const recordCancel = `
+/** Runs before the page's own scripts. It records every long task, on the page's clock. */
+const recordLongTasks = `
 globalThis.longTasks = [];
 new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) {
     globalThis.longTasks.push({ at: entry.startTime, duration: entry.duration });
   }
 }).observe({ type: "longtask" });
+`;
+
+/**
+ * Runs before the page's own scripts. It records when Cancel is clicked and
+ * every long task, on the page's clock.
+ */
+const recordCancel = `${recordLongTasks}
 addEventListener("click", (event) => {
   if (event.target instanceof Element && event.target.closest('[data-add="cancel"]') !== null) {
     globalThis.cancelledAt = performance.now();
   }
 }, { capture: true });
 `;
+
+/**
+ * The longest the page may be held after Propose. Before the redraw left the
+ * main thread it ran two tasks of about 1.1 s here, each routing and drawing
+ * the map with the new structure, then the flows' scenes at 100 to 280 ms
+ * each. Measured on a 2-core Linux machine after, the longest was 50 to 80 ms.
+ */
+const proposeTaskMillis = 200;
 
 /**
  * How long a test waits after Cancel for the search to show it kept going.
@@ -586,6 +598,48 @@ describe("the add form on a big map", () => {
 
         assert.isAbove(busyFrames.length, 10, "frames while the check ran");
         assert.deepStrictEqual(tops, [tops[0]], "Propose's top across frames");
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    240_000
+  );
+
+  it.live(
+    "keeps the page responding after Propose, and draws the new structure",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* served(pipeline, recordLongTasks);
+
+        yield* openForm(page, pipeline);
+        yield* settled(page);
+        yield* Effect.promise(() =>
+          page.locator('[data-add="name"]').fill(typedName)
+        );
+        yield* settled(page);
+        yield* inPage(page, "globalThis.proposedAt = performance.now()");
+        yield* click(page, '[data-add="submit"]');
+        yield* Effect.promise(() =>
+          page
+            .locator("[data-add-structure]")
+            .waitFor({ state: "detached", timeout: 60_000 })
+        );
+        yield* Effect.promise(() =>
+          page
+            .locator('[data-map-layer] [data-structure^="build-cache-"]')
+            .waitFor(waitTimeout)
+        );
+        // The flows' scenes are drawn after the map, while the page is idle.
+        yield* Effect.sleep("4 seconds");
+
+        const longest = yield* inPage<number>(
+          page,
+          "Math.max(0, ...globalThis.longTasks.filter(({ at }) => at >= globalThis.proposedAt).map(({ duration }) => duration))"
+        );
+
+        assert.isAtMost(
+          Math.round(longest),
+          proposeTaskMillis,
+          "the longest task after Propose, in ms"
+        );
         assert.deepStrictEqual(errors, []);
       }).pipe(Effect.provide(NodeServices.layer)),
     240_000

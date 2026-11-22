@@ -17,14 +17,14 @@ import type { TestSpecification } from "vitest/node";
  * read-view, rerouting, view-tools-page and viewport are from CI run
  * 44962829997, on main at 7128af8.
  * add-structure-big-map is from CI run 44982215258, on #247 at c7d754a,
- * after its Cancel tests were added.
+ * after its Cancel tests were added, plus 15 s for #270's Propose test.
  * Files not listed take `defaultSeconds`.
  * A file that grows or a new slow one only skews the split until someone
  * updates this table, and `shard-sequencer.test.ts` fails when a shard
  * holds more than 60% of the weight.
  */
 export const fileSeconds = {
-  "add-structure-big-map.test.ts": 102,
+  "add-structure-big-map.test.ts": 117,
   "agent-changes-page.test.ts": 10,
   "connection-page.test.ts": 65,
   "drag-warnings-big-map.test.ts": 11,
