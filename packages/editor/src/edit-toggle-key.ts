@@ -1,10 +1,8 @@
-import { useEffect, useEffectEvent } from "react";
-
-import { isTyping } from "./chapter-keys.ts";
 import { useEditSwitch } from "./edit-context.ts";
 import { useHopDraft } from "./hop-draft-context.ts";
 import { useNewGroupForm } from "./new-group-context.ts";
 import { useNoteTool } from "./note-tool-context.ts";
+import { usePageKey } from "./page-key.ts";
 import { usePlacing } from "./place-context.ts";
 import { useSelection } from "./selection-context.ts";
 
@@ -38,35 +36,14 @@ export const useSwitchEdit = () => {
 };
 
 /**
- * Switches Edit with `e`. Keys typed into a field, or pressed with a
- * modifier, are left alone.
+ * Switches Edit with `e`. Keys typed into a field, or pressed with Alt, Ctrl
+ * or Meta, are left alone.
  */
 export const useEditToggleKey = () => {
   const edit = useEditSwitch();
   const switchEdit = useSwitchEdit();
 
-  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      edit === null ||
-      event.defaultPrevented ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      isTyping(event.target) ||
-      event.key.toLowerCase() !== editKey
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    switchEdit(!edit.on);
+  usePageKey(editKey, () => switchEdit(edit?.on !== true), {
+    when: () => edit !== null,
   });
-
-  useEffect(() => {
-    globalThis.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      globalThis.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
 };

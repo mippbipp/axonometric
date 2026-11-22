@@ -19,10 +19,10 @@ const pageTitle = "How it's built";
 
 /**
  * Keeps keys pressed in the open page, or on its header button, from the
- * map's handlers, which listen on the window: ] for the next chapter or +
- * to zoom stay off while the page is open. Escape goes on to ui-sdk, which
- * closes the page on it. Default actions such as Tab and scrolling still
- * happen.
+ * viewport's zoom keys, which listen on the window: + and 0 stay off while
+ * the page is open. The page's other keys are ui-sdk shortcuts, which the
+ * open page pauses. Escape goes on to ui-sdk, which closes the page on it.
+ * Default actions such as Tab and scrolling still happen.
  */
 const keepFromMap = (event: KeyboardEvent<HTMLElement>) => {
   if (event.key !== "Escape") {

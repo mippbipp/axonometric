@@ -16,6 +16,7 @@ import { useEditToggleKey } from "./edit-toggle-key.ts";
 import { EditToggle } from "./edit-toggle.tsx";
 import { EditToolbar } from "./edit-toolbar.tsx";
 import { useEditing } from "./editing-context.ts";
+import { useEscapeKey } from "./escape-key.ts";
 import { ExportMenu } from "./export-menu.tsx";
 import { FlowPicker } from "./flow-picker.tsx";
 import { HopDraftProvider } from "./hop-draft-provider.tsx";
@@ -40,7 +41,6 @@ import { PlaybackProvider } from "./playback-provider.tsx";
 import { screenRouteOf } from "./projection.ts";
 import { ReadyForReview } from "./ready-for-review.tsx";
 import { useSelection } from "./selection-context.ts";
-import { useSelectionKeys } from "./selection-keys.ts";
 import { SelectionProvider } from "./selection.tsx";
 import { SideIndex } from "./side-index.tsx";
 import { SidePanel } from "./side-panel.tsx";
@@ -158,8 +158,8 @@ function WalkthroughPage({ notices }: Notices) {
   const [view, setView] = useState<View>("iso");
   const [agentNotice, setAgentNotice] = useState<string | null>(null);
 
-  useChapterKeys(inside === null);
-  useSelectionKeys();
+  useChapterKeys();
+  useEscapeKey();
   useEditKeys();
   useInsideFocus(inside);
 
