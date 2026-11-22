@@ -336,6 +336,38 @@ describe("placement", () => {
       })
   );
 
+  it.effect(
+    "counts a two-member group's hops to a saved group's new member",
+    () =>
+      Effect.sync(() => {
+        // b3 is new in this run, so it has no placement when the pair is
+        // placed. Its three hops still make b the pair's busiest zone.
+        const data = mapOf(
+          [
+            ...Arr.map(["a1", "a2"], (id) => structure(id, "a")),
+            ...Arr.map(["b1", "b2", "b3"], (id) => structure(id, "b")),
+            structure("p0", "pair"),
+            structure("p1", "pair"),
+          ],
+          [
+            hop("b1", "b2"),
+            hop("p0", "b3"),
+            hop("p1", "b3"),
+            { ...hop("b3", "p0"), id: "b3-p0-reply" },
+            hop("p1", "a1"),
+          ]
+        );
+
+        const { layout } = placeStructures(
+          data,
+          layoutOf({ a1: at(0, 0), a2: at(4, 0), b1: at(20, 0), b2: at(24, 0) })
+        );
+
+        assertNextTo({ data, layout }, "pair", "b");
+        assertTidy(data, layout);
+      })
+  );
+
   it.effect("gives the same layout for the same two-member maps", () =>
     Effect.sync(() => {
       const maps = [

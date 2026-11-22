@@ -1419,19 +1419,56 @@ const betterSiting = Order.combineAll([
 ]);
 
 /**
- * Finds the two members of a new group a spot beside the zone in `ground`
- * they share the most hops with, ties going to the group `data.groups` lists
- * first. It tries the four sides of that zone at `groupGap`, then farther
- * out up to `searchMargin`. Of the arrangements and offsets whose zone is no
- * farther from the target's than from any other zone, it takes the first in
- * `betterSiting` order where both members fit. There is no
- * result when no zone in `ground` shares a hop with the members, or none of
- * the spots fits.
+ * The group the two members share the most hops with, counting hops to
+ * every structure, placed yet or not, and ties going to the group
+ * `data.groups` lists first. Only groups in `zoned`, those with something
+ * placed or laid out, can be the target. The rest are new one-member groups,
+ * whose structure is placed after the pairs beside the structures its hops
+ * connect to, so it comes to the pair. There is none when the members have
+ * no hop to such a group.
+ */
+const targetOf = (
+  data: MapData,
+  members: readonly [Structure, Structure],
+  zoned: ReadonlySet<string>
+): Option.Option<string> => {
+  const [{ group }] = members;
+  const groupOf = new Map(Arr.map(data.structures, (s) => [s.id, s.group]));
+
+  const ends = Arr.flatMap(members, ({ id }) =>
+    Arr.flatMap(neighboursOf(data, id), (end) =>
+      Option.toArray(Option.fromNullishOr(groupOf.get(end)))
+    )
+  );
+
+  const busiest = Arr.reduce(
+    data.groups,
+    { hops: 0, id: "" },
+    (best, other) => {
+      const hops = Arr.filter(ends, (end) => end === other.id).length;
+
+      return other.id !== group && zoned.has(other.id) && hops > best.hops
+        ? { hops, id: other.id }
+        : best;
+    }
+  );
+
+  return busiest.hops > 0 ? Option.some(busiest.id) : Option.none();
+};
+
+/**
+ * Finds the two members of a new group a spot beside `target`'s zone as it
+ * stands in `ground`. It tries the four sides of that zone at `groupGap`,
+ * then farther out up to `searchMargin`. Of the arrangements and offsets
+ * whose zone is no farther from the target's than from any other zone, it
+ * takes the first in `betterSiting` order where both members fit. There is
+ * no result when `target` has nothing in `ground`, or none of the spots
+ * fits.
  */
 const sitePair = (
   { data, onWork }: Pick<Placing, "data" | "onWork">,
   ground: ReadonlyArray<PlacedStructure>,
-  members: readonly [Structure, Structure]
+  { members, target: targetGroup }: PairTarget
 ): Option.Option<ReadonlyArray<PlacedStructure>> => {
   const [{ group }] = members;
   const ids = new Set(Arr.map(members, ({ id }) => id));
@@ -1445,25 +1482,11 @@ const sitePair = (
     )
   );
 
-  const busiest = Arr.reduce(
-    data.groups,
-    { hops: 0, id: "" },
-    (best, other) => {
-      const hops = Arr.filter(
-        ends,
-        ({ structure }) => structure.group === other.id
-      ).length;
-
-      return hops > best.hops ? { hops, id: other.id } : best;
-    }
-  );
-
-  return Option.flatMap(
-    busiest.hops > 0 ? zoneOf(ground, busiest.id) : Option.none(),
-    (target) => {
+  return Option.flatMap(targetGroup, (targetId) =>
+    Option.flatMap(zoneOf(ground, targetId), (target) => {
       const targetOutline = grow(target, zonePadding);
 
-      const others = Arr.map(otherZones(ground, busiest.id), (zone) =>
+      const others = Arr.map(otherZones(ground, targetId), (zone) =>
         grow(zone, zonePadding)
       );
 
@@ -1560,15 +1583,21 @@ const sitePair = (
       return Arr.findFirst(distances, (away) =>
         Arr.findFirst(Arr.sort(sitingsAway(away), betterSiting), accepted)
       );
-    }
+    })
   );
 };
 
+/** A new two-member group, and the group it goes beside (see `targetOf`). */
+interface PairTarget {
+  readonly members: readonly [Structure, Structure];
+  readonly target: Option.Option<string>;
+}
+
 /**
  * Moves each two-member group's members from their grid spots to beside the
- * zone they share the most hops with (see `sitePair`), in `groups` order, so
- * a later group sees where an earlier one went. A group that has nowhere to
- * go keeps its grid spots.
+ * zone they share the most hops with (see `targetOf` and `sitePair`), in
+ * `groups` order, so a later group sees where an earlier one went. A group
+ * that has nowhere to go keeps its grid spots.
  */
 const sitePairs = (
   context: Pick<Placing, "data" | "onWork">,
@@ -1577,9 +1606,21 @@ const sitePairs = (
     readonly initial: ReadonlyArray<PlacedStructure>;
   },
   pairs: ReadonlyArray<readonly [Structure, Structure]>
-) =>
-  Arr.reduce(pairs, layouts.arranged, (sofar, pair) => {
-    const ids = new Set(Arr.map(pair, ({ id }) => id));
+) => {
+  const zoned = new Set(
+    Arr.map(
+      [...layouts.initial, ...layouts.arranged],
+      ({ structure }) => structure.group
+    )
+  );
+
+  const targeted = Arr.map(pairs, (members) => ({
+    members,
+    target: targetOf(context.data, members, zoned),
+  }));
+
+  return Arr.reduce(targeted, layouts.arranged, (sofar, pair) => {
+    const ids = new Set(Arr.map(pair.members, ({ id }) => id));
 
     const ground = [
       ...layouts.initial,
@@ -1600,6 +1641,7 @@ const sitePairs = (
         ),
     });
   });
+};
 
 /** What placement did to a layout. */
 export interface PlacedLayout {
