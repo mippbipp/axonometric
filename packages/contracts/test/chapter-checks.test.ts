@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Predicate } from "effect";
+import { Array as Arr, Effect, Predicate, String as Str } from "effect";
 
 import {
   applyLayoutChanges,
@@ -7,6 +7,7 @@ import {
   chapterViews,
   checkMap,
   dragCheckOf,
+  drawingProblems,
   layoutAfterChanges,
   withCarriedRoutes,
 } from "../src/index.ts";
@@ -198,6 +199,34 @@ describe("checking a drag a chapter at a time", () => {
 
       step(nudged(map.layout, { ...right, dx: -3 }));
       assert.deepStrictEqual(step(nudged(map.layout, right)), first);
+    })
+  );
+});
+
+describe("the drawing warnings of two maps with one layout", () => {
+  it.effect("are each map's own, whichever map was drawn first", () =>
+    Effect.gen(function* () {
+      const { data, layout } = yield* fixture("crowded");
+
+      // The same chapters, with h-secret's ends swapped, so its warning
+      // names them the other way round.
+      const swapped: MapData = {
+        ...data,
+        hops: Arr.map(data.hops, (hop) =>
+          hop.id === "h-secret" ? { ...hop, from: hop.to, to: hop.from } : hop
+        ),
+      };
+
+      const secretOf = (map: MapData) =>
+        Arr.filter(
+          Arr.map(drawingProblems(map, layout), ({ message }) => message),
+          Str.startsWith('hop "h-secret"')
+        );
+
+      assert.deepStrictEqual(secretOf(data), [
+        'hop "h-secret" from "api" to "vault" runs under "west": no clear route goes around it. Move the structures apart to open a gap, or write a route override.',
+      ]);
+      assert.include(secretOf(swapped)[0], 'from "vault" to "api"');
     })
   );
 });

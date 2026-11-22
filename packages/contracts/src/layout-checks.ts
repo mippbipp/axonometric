@@ -712,6 +712,42 @@ const byHop = Order.mapInput(
   ([hop]: readonly [string, unknown]) => hop
 );
 
+/**
+ * What one chapter's drawing reads from the data: the chapter, the groups,
+ * the hops and the structures it reveals. A structure no chapter reveals
+ * isn't drawn, so a map with one added, such as the add form's at each spot
+ * it tries, draws every chapter as the map without it does.
+ */
+const drawnDataOf = (data: MapData, { id, plays, revealed }: ChapterView) =>
+  // oxlint-disable-next-line effecttsgo/global-json -- a cache key, never decoded
+  JSON.stringify([
+    id ?? null,
+    plays,
+    data.groups,
+    data.hops,
+    Arr.filter(data.structures, (structure) => revealed.has(structure.id)),
+  ]);
+
+/** Each chapter's `drawnDataOf`, by chapter id, worked out once per data. */
+const drawnDataOfMap = new WeakMap<MapData, Map<string, string>>();
+
+const drawnDataKeyOf = (data: MapData, view: ChapterView): string => {
+  const byChapter = drawnDataOfMap.get(data) ?? new Map<string, string>();
+  const chapter = view.id ?? "";
+  const known = byChapter.get(chapter);
+
+  if (known !== undefined) {
+    return known;
+  }
+
+  const made = drawnDataOf(data, view);
+
+  byChapter.set(chapter, made);
+  drawnDataOfMap.set(data, byChapter);
+
+  return made;
+};
+
 /** How many chapter drawings a `ChapterDrawings` remembers. */
 const findingsKept = 256;
 
@@ -725,16 +761,17 @@ export type ChapterDrawings = (
 ) => ReadonlyArray<ChapterFinding>;
 
 /**
- * A `ChapterDrawings` that remembers each chapter by what it draws. A drag
- * that moves one structure leaves the chapters that don't reveal it alone, so
- * they aren't routed or drawn again. A memory belongs to one map's data: its
- * keys don't name the data.
+ * A `ChapterDrawings` that remembers each chapter by what it draws, of the
+ * data and of the layout. A drag that moves one structure leaves the chapters
+ * that don't reveal it alone, so they aren't routed or drawn again, and
+ * neither are the chapters of a map that adds a structure they don't reveal.
+ * `view` is a chapter of `data`, as `chapterViews` gives it.
  */
 export const rememberedDrawings = (): ChapterDrawings => {
   const cache = new Map<string, ReadonlyArray<ChapterFinding>>();
 
   return ({ data, layout }, view) => {
-    const key = `${view.id ?? ""}\n${drawnKeyOf(layout, view)}`;
+    const key = `${drawnDataKeyOf(data, view)}\n${drawnKeyOf(layout, view)}`;
     const cached = cache.get(key);
 
     if (cached !== undefined) {
@@ -758,29 +795,14 @@ export const rememberedDrawings = (): ChapterDrawings => {
   };
 };
 
-const drawingsOfData = new WeakMap<MapData, ChapterDrawings>();
-
-/** The chapter drawings of callers that ask again about the same data. */
-const drawingsFor = (data: MapData): ChapterDrawings => {
-  const found = drawingsOfData.get(data);
-
-  if (found !== undefined) {
-    return found;
-  }
-
-  const made = rememberedDrawings();
-
-  drawingsOfData.set(data, made);
-
-  return made;
-};
+/** The chapter drawings every check shares, whatever data it asks about. */
+const drawings = rememberedDrawings();
 
 /** `drawingProblems`, pausing after each chapter it draws. */
 const drawingProblemTurns = function* (
   data: MapData,
   layout: Layout
 ): Turns<ReadonlyArray<MapProblem>> {
-  const drawings = drawingsFor(data);
   const chapters: Array<ReadonlyArray<ChapterFinding>> = [];
 
   for (const view of chapterViews(data)) {
