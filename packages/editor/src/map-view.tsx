@@ -55,6 +55,7 @@ import {
 } from "./spotlight-context.ts";
 import { structureIdsOf, structureKey } from "./structure-key.ts";
 import { Viewport } from "./viewport.tsx";
+import { labelledHopsOf, useWarmFlowScenes } from "./warm-flow-scenes.ts";
 
 /** A dashed outline around the footprint of a newly revealed structure. */
 function NewMarker({
@@ -174,8 +175,7 @@ export function MapView({
   // Labels follow the play spotlight, so hovering never moves them. A hop a
   // proposal draws or deletes is at full strength too, so no label sits on it.
   const labelled = useMemo(
-    () =>
-      play === null ? undefined : new Set([...play.hops, ...hopStates.keys()]),
+    () => labelledHopsOf(play, hopStates),
     [play, hopStates]
   );
 
@@ -194,6 +194,8 @@ export function MapView({
       }),
     [state.data, state.layout, revealed, labelFirst, labelled, view, textZoom]
   );
+
+  useWarmFlowScenes({ hopStates, labelFirst, revealed, state, textZoom, view });
 
   // A hop a proposal draws or deletes stays at full strength, whichever
   // chapter is showing: no chapter plays it, and fading it would hide the
