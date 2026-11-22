@@ -368,6 +368,76 @@ describe("placement", () => {
       })
   );
 
+  it.effect(
+    "puts a two-member group next to another that moves to its own target",
+    () =>
+      Effect.sync(() => {
+        // a's busiest zone is b, a new pair. b's is c, a saved group. The
+        // saved groups d and e stand where the group grid first puts b.
+        const data = mapOf(
+          [
+            ...Arr.map(["c1", "c2"], (id) => structure(id, "c")),
+            ...Arr.map(["d1", "d2"], (id) => structure(id, "d")),
+            ...Arr.map(["e1", "e2"], (id) => structure(id, "e")),
+            ...Arr.map(["a1", "a2"], (id) => structure(id, "a")),
+            ...Arr.map(["b1", "b2"], (id) => structure(id, "b")),
+          ],
+          [
+            hop("a1", "b1"),
+            hop("a2", "b2"),
+            hop("a1", "d1"),
+            hop("b1", "c1"),
+            hop("b2", "c2"),
+          ]
+        );
+
+        const saved = layoutOf({
+          c1: at(-40, 0),
+          c2: at(-36, 0),
+          d1: at(0, 0),
+          d2: at(4, 0),
+          e1: at(0, 12),
+          e2: at(4, 12),
+        });
+
+        const { layout } = placeStructures(data, saved);
+
+        assertNextTo({ data, layout }, "b", "c");
+        assertNextTo({ data, layout }, "a", "b");
+        assertTidy(data, layout);
+      })
+  );
+
+  it.effect(
+    "puts two two-member groups that are each other's target side by side",
+    () =>
+      Effect.sync(() => {
+        const data = mapOf(
+          [
+            ...Arr.map(["c1", "c2"], (id) => structure(id, "c")),
+            ...Arr.map(["d1", "d2"], (id) => structure(id, "d")),
+            ...Arr.map(["a1", "a2"], (id) => structure(id, "a")),
+            ...Arr.map(["b1", "b2"], (id) => structure(id, "b")),
+          ],
+          [hop("a1", "b1"), hop("b2", "a2"), hop("a1", "c1"), hop("b2", "d2")]
+        );
+
+        const saved = layoutOf({
+          c1: at(0, 0),
+          c2: at(4, 0),
+          d1: at(0, 20),
+          d2: at(4, 20),
+        });
+
+        const first = placeStructures(data, saved);
+
+        assert.deepStrictEqual(first, placeStructures(data, saved));
+        assertNextTo({ data, layout: first.layout }, "a", "b");
+        assertNextTo({ data, layout: first.layout }, "b", "a");
+        assertTidy(data, first.layout);
+      })
+  );
+
   it.effect("gives the same layout for the same two-member maps", () =>
     Effect.sync(() => {
       const maps = [

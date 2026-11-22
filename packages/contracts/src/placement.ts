@@ -1594,9 +1594,59 @@ interface PairTarget {
 }
 
 /**
+ * `pairs` in the order they're sited: each after the pair it targets, so it
+ * goes beside where that pair ends up, not where the grid first put it.
+ * Pairs are taken in `groups` order, each after its chain of targets. A
+ * chain that loops back, such as two pairs that target each other, is broken
+ * where it was entered: that pair goes first, beside its target's grid spot,
+ * and the rest of the loop then follows it back.
+ */
+const settlingOrder = (
+  pairs: ReadonlyArray<PairTarget>
+): ReadonlyArray<PairTarget> => {
+  const byGroup = new Map(
+    Arr.map(pairs, (pair) => [pair.members[0].group, pair])
+  );
+
+  const targetPair = (pair: PairTarget) =>
+    Option.getOrUndefined(
+      Option.flatMap(pair.target, (id) => Option.fromNullishOr(byGroup.get(id)))
+    );
+
+  const settled = new Set<PairTarget>();
+  const order: Array<PairTarget> = [];
+
+  for (const start of pairs) {
+    const chain: Array<PairTarget> = [];
+    let next: PairTarget | undefined = start;
+
+    while (next !== undefined && !settled.has(next) && !chain.includes(next)) {
+      chain.push(next);
+      next = targetPair(next);
+    }
+
+    const loop =
+      next !== undefined && chain.includes(next)
+        ? chain.indexOf(next)
+        : chain.length;
+
+    for (const pair of [
+      ...chain.slice(loop, loop + 1),
+      ...Arr.reverse(chain.slice(loop + 1)),
+      ...Arr.reverse(chain.slice(0, loop)),
+    ]) {
+      settled.add(pair);
+      order.push(pair);
+    }
+  }
+
+  return order;
+};
+
+/**
  * Moves each two-member group's members from their grid spots to beside the
  * zone they share the most hops with (see `targetOf` and `sitePair`), in
- * `groups` order, so a later group sees where an earlier one went. A group
+ * `settlingOrder`, so a pair sees where the pairs before it went. A group
  * that has nowhere to go keeps its grid spots.
  */
 const sitePairs = (
@@ -1619,28 +1669,32 @@ const sitePairs = (
     target: targetOf(context.data, members, zoned),
   }));
 
-  return Arr.reduce(targeted, layouts.arranged, (sofar, pair) => {
-    const ids = new Set(Arr.map(pair.members, ({ id }) => id));
+  return Arr.reduce(
+    settlingOrder(targeted),
+    layouts.arranged,
+    (sofar, pair) => {
+      const ids = new Set(Arr.map(pair.members, ({ id }) => id));
 
-    const ground = [
-      ...layouts.initial,
-      ...Arr.filter(sofar, ({ structure }) => !ids.has(structure.id)),
-    ];
+      const ground = [
+        ...layouts.initial,
+        ...Arr.filter(sofar, ({ structure }) => !ids.has(structure.id)),
+      ];
 
-    return Option.match(sitePair(context, ground, pair), {
-      onNone: () => sofar,
-      onSome: (sited) =>
-        Arr.map(sofar, (item) =>
-          Option.getOrElse(
-            Arr.findFirst(
-              sited,
-              ({ structure }) => structure.id === item.structure.id
-            ),
-            () => item
-          )
-        ),
-    });
-  });
+      return Option.match(sitePair(context, ground, pair), {
+        onNone: () => sofar,
+        onSome: (sited) =>
+          Arr.map(sofar, (item) =>
+            Option.getOrElse(
+              Arr.findFirst(
+                sited,
+                ({ structure }) => structure.id === item.structure.id
+              ),
+              () => item
+            )
+          ),
+      });
+    }
+  );
 };
 
 /** What placement did to a layout. */
