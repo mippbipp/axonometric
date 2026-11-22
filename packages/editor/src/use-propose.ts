@@ -31,7 +31,15 @@ export const usePropose = () => {
   const problemsOf = (change: StructureChange): ReadonlyArray<DraggedProblem> =>
     proposing?.problemsOf([structureItem(change)]) ?? [];
 
-  const send = (change: StructureChange, done?: () => void) => {
+  /**
+   * `warned` says the panel already shows what `change` adds, as the add
+   * form's check found it off the main thread, so it isn't worked out again.
+   */
+  const send = (
+    change: StructureChange,
+    done?: () => void,
+    { warned = false }: { readonly warned?: boolean } = {}
+  ) => {
     if (proposing === null) {
       return;
     }
@@ -46,7 +54,9 @@ export const usePropose = () => {
     }
 
     // What the change adds to check's report stays up for the engineer to read.
-    panel?.show({ problems: problemsOf(change) });
+    if (!warned) {
+      panel?.show({ problems: problemsOf(change) });
+    }
     run(
       (finish) => {
         proposing.propose(change, (outcome) => {

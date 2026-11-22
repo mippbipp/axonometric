@@ -104,7 +104,7 @@ export function AddStructureForm() {
         const made = addChangeOf({ draft, id: sentId, spot });
 
         if (made !== undefined && !sending) {
-          send(made, close);
+          send(made, close, { warned: !drafted.checking });
         }
       }}
     >
