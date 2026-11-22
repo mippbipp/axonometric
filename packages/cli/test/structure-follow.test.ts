@@ -361,6 +361,8 @@ describe("the add form", () => {
           page.locator('[data-add="name"]').fill("Build cache")
         );
         yield* choose(page, '[data-add="group"]', "people");
+        // A spot found after x is typed replaces it, so let the search finish.
+        yield* waitForAddForm(page);
         // Far from the engineer, in the middle of the loop group.
         yield* Effect.promise(() => page.locator('[data-add="x"]').fill("14"));
         yield* Effect.promise(() => page.locator('[data-add="y"]').fill("0"));

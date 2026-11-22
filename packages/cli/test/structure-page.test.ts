@@ -22,6 +22,7 @@ import {
   waitFor,
   waitTimeout,
   choose,
+  waitForAddForm,
 } from "./browser.ts";
 import { crosses, drawingReport, nameTagClashes } from "./drawing-report.ts";
 import type { Drawn, DrawingReport } from "./drawing-report.ts";
@@ -99,6 +100,10 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="y"]').fill(String(fields.y))
   );
+  // The form's check finishes after the fields are filled and shifts the
+  // form's layout, so a click before then can press and release on
+  // different elements.
+  yield* waitForAddForm(page);
   yield* click(page, '[data-add="submit"]');
 });
 
@@ -255,6 +260,7 @@ describe("adding a structure from the toolbar", () => {
       yield* Effect.promise(() =>
         page.locator('[data-add="name"]').fill("Dropped")
       );
+      yield* waitForAddForm(page);
       yield* click(page, '[data-add="submit"]');
       yield* Effect.promise(() =>
         page.waitForFunction(

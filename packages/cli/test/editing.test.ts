@@ -144,9 +144,15 @@ describe("moving structures", () => {
         // Straight down the screen in the Iso view is along x and y at once.
         yield* dragBy(page, from, { x: 0, y: unit * 2.2 });
 
-        const saved = yield* waitForRevision(home, 1);
+        // The drop lands in another group's zone, so the page writes the
+        // move, then the group change that follows it: two writes.
+        const saved = yield* waitForRevision(home, 2);
         const [change] = saved.layout;
 
+        assert.deepStrictEqual(
+          Arr.map(saved.structures ?? [], ({ change: made }) => made),
+          [{ action: "group", group: "loop", structure: "engineer" }]
+        );
         assert.strictEqual(saved.layout.length, 1);
         assert.isDefined(change);
 
