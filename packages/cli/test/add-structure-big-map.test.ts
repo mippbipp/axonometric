@@ -421,6 +421,60 @@ describe("the add form on a big map", () => {
   );
 
   it.live(
+    "keeps Propose where it is while the form's check runs and when it finishes",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* served(shapes, "");
+
+        yield* openForm(page, shapes);
+        yield* settled(page);
+
+        // A frame-by-frame record of where Propose sits, from a change to the
+        // name until the search for its spot has answered and been checked.
+        yield* inPage(
+          page,
+          `(() => {
+            globalThis.proposeAt = [];
+            const step = () => {
+              const box = document.querySelector('[data-add="submit"]')?.getBoundingClientRect();
+              const form = document.querySelector("[data-add-structure]");
+              const busy = form === null || form.hasAttribute("data-checking")
+                || document.querySelector("[data-add-hint][data-finding]") !== null;
+              globalThis.proposeAt.push({ busy, top: box?.top ?? null });
+              requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+          })()`
+        );
+        yield* Effect.promise(() =>
+          page.locator('[data-add="name"]').fill(typedName)
+        );
+        yield* Effect.sleep("500 millis");
+
+        const during = yield* inPage<boolean>(
+          page,
+          `document.querySelector("[data-add-hint][data-finding]") !== null`
+        );
+
+        assert.isTrue(during, "the search was still running");
+        yield* settled(page);
+        yield* Effect.sleep("500 millis");
+
+        const frames = yield* inPage<
+          ReadonlyArray<{ busy: boolean; top: number | null }>
+        >(page, "globalThis.proposeAt");
+
+        const tops = Arr.dedupe(Arr.map(frames, ({ top }) => top));
+        const busyFrames = Arr.filter(frames, ({ busy }) => busy);
+
+        assert.isAbove(busyFrames.length, 10, "frames while the check ran");
+        assert.deepStrictEqual(tops, [tops[0]], "Propose's top across frames");
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    240_000
+  );
+
+  it.live(
     "stops finding a spot once the form is cancelled, in a worker",
     () =>
       Effect.gen(function* () {
