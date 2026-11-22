@@ -11,7 +11,6 @@ import {
   type ChangeDetails,
 } from "@ui-sdk/core";
 import { usePart, usePrimitive, type PartProps } from "@ui-sdk/react/primitive";
-import { Array as Arr } from "effect";
 import type { FocusEvent, ReactNode } from "react";
 
 type CanvasItemsReason = "item-press";
@@ -119,23 +118,23 @@ const canvasItems = definePrimitive({
 
         seen = null;
 
-        const left = Arr.filter(roving.items(), (item) => item.el !== lost.el);
+        const here = from === null ? null : centreOf(from);
         let target: HTMLElement | undefined;
+        let best = Infinity;
 
-        if (canvas === undefined || from === null) {
-          target = left[0]?.el;
-        } else {
-          const here = centreOf(from);
-          let best = Infinity;
+        for (const item of roving.items()) {
+          // With no known position, the first item left wins.
+          const distance =
+            canvas === undefined || here === null
+              ? 0
+              : Math.hypot(
+                  centreOf(canvas.viewport.rectOf(item.el)).x - here.x,
+                  centreOf(canvas.viewport.rectOf(item.el)).y - here.y
+                );
 
-          for (const item of left) {
-            const there = centreOf(canvas.viewport.rectOf(item.el));
-            const distance = Math.hypot(there.x - here.x, there.y - here.y);
-
-            if (distance < best) {
-              best = distance;
-              target = item.el;
-            }
+          if (item.el !== lost.el && distance < best) {
+            best = distance;
+            target = item.el;
           }
         }
 
