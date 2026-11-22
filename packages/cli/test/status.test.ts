@@ -1,4 +1,7 @@
-import { ServerStatus } from "@axonometric/contracts";
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- a stub server for a reply no current server sends
+import { createServer } from "node:http";
+
+import { ServerState, ServerStatus } from "@axonometric/contracts";
 import type { LayoutChange } from "@axonometric/contracts";
 import { NodeHttpClient, NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
@@ -15,10 +18,12 @@ import {
 import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { makeAgentDecisions, maxDecisions } from "../src/agent-decisions.ts";
+import { openUrl } from "./browser.ts";
 import { minimalMap } from "./fixtures.ts";
 import {
   makeHome,
   mapIn,
+  mapKeys,
   readProposals,
   runCli,
   serveReviewMap,
@@ -30,6 +35,7 @@ import { moveOf, write } from "./revisions.ts";
 
 const Report = Schema.Struct({
   decisions: Schema.optionalKey(ServerStatus.fields.decisions),
+  engineerPages: Schema.optionalKey(Schema.Int),
   home: Schema.String,
   now: Schema.optionalKey(ServerStatus.fields.now),
   pages: Schema.optionalKey(Schema.Int),
@@ -59,10 +65,16 @@ const nowOf = (report: typeof Report.Type) => {
   return DateTime.formatIso(report.now);
 };
 
-/** Opens a page's events stream, and returns what closes it. */
-const openPage = Effect.fnUntraced(function* (url: string) {
+/** Opens a page's events stream, marked as an agent's with `by`, and returns what closes it. */
+const openPage = Effect.fnUntraced(function* (url: string, by?: string) {
+  const events = new URL("/api/events", url);
+
+  if (by !== undefined) {
+    events.searchParams.set("by", by);
+  }
+
   const reading = yield* HttpClient.HttpClient.use((client) =>
-    client.execute(HttpClientRequest.get(new URL("/api/events", url)))
+    client.execute(HttpClientRequest.get(events))
   ).pipe(
     Effect.flatMap((response) => Stream.runDrain(response.stream)),
     Effect.scoped,
@@ -73,11 +85,12 @@ const openPage = Effect.fnUntraced(function* (url: string) {
 });
 
 /** Waits until status reports `pages`: the server counts a stream a moment after it opens or closes. */
-const waitForPages = (home: string, pages: number) =>
+const waitForPages = (home: string, pages: number, engineer = pages) =>
   statusOf(home).pipe(
     Effect.filterOrFail(
-      (report) => report.pages === pages,
-      (report) => `status reports ${report.pages} pages, not ${pages}`
+      (report) => report.pages === pages && report.engineerPages === engineer,
+      (report) =>
+        `status reports ${report.pages} pages, ${report.engineerPages} the engineer's, not ${pages} and ${engineer}`
     ),
     Effect.retry({ schedule: Schedule.spaced("100 millis"), times: 200 }),
     Effect.orDie
@@ -158,6 +171,141 @@ describe("status --json", () => {
         yield* second.close;
         yield* waitForPages(home, 0);
       }).pipe(
+        Effect.provide([NodeServices.layer, NodeHttpClient.layerNodeHttp])
+      ),
+    60_000
+  );
+
+  it.live(
+    "counts an engineer's page, an agent's page and both together apart",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* serveReviewMap({}, []);
+
+        const agent = yield* openPage(url, "agent");
+
+        yield* waitForPages(home, 1, 0);
+
+        const engineer = yield* openPage(url);
+
+        const both = yield* waitForPages(home, 2, 1);
+
+        assert.strictEqual(both.pages, 2);
+
+        const text = yield* runCli(home, ["status", home]);
+
+        assert.include(
+          text.stdout,
+          "2 pages connected, 1 of them the engineer's"
+        );
+
+        yield* agent.close;
+        yield* waitForPages(home, 1, 1);
+        yield* engineer.close;
+        yield* waitForPages(home, 0);
+      }).pipe(
+        Effect.provide([NodeServices.layer, NodeHttpClient.layerNodeHttp])
+      ),
+    60_000
+  );
+
+  it.live(
+    "counts any other by value as the engineer's, so only the agent's own mark lowers the count",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* serveReviewMap({}, []);
+
+        yield* openPage(url, "engineer");
+        yield* openPage(url, "AGENT");
+        yield* waitForPages(home, 2);
+      }).pipe(
+        Effect.provide([NodeServices.layer, NodeHttpClient.layerNodeHttp])
+      ),
+    60_000
+  );
+
+  it.live(
+    "a real page counts as the engineer's unless it carries ?by=agent or runs under automation",
+    () =>
+      Effect.gen(function* () {
+        const { home, url } = yield* serveReviewMap({}, []);
+
+        const notAutomated =
+          "Object.defineProperty(navigator, 'webdriver', { get: () => false });";
+
+        yield* openUrl(url, { initScript: notAutomated });
+        yield* waitForPages(home, 1, 1);
+
+        yield* openUrl(`${url}?by=agent`, { initScript: notAutomated });
+        yield* waitForPages(home, 2, 1);
+
+        yield* openUrl(url);
+        yield* waitForPages(home, 3, 1);
+      }).pipe(
+        Effect.provide([NodeServices.layer, NodeHttpClient.layerNodeHttp])
+      ),
+    60_000
+  );
+
+  it.live(
+    "reads the reply of a server an older CLI started, without engineerPages or truncated",
+    () =>
+      Effect.gen(function* () {
+        const oldReply =
+          '{"decisions":[],"now":"2026-11-01T09:00:00.000Z","pages":2}';
+
+        const stub = yield* Effect.acquireRelease(
+          Effect.callback<ReturnType<typeof createServer>>((resume) => {
+            const server = createServer((_, response) => {
+              response.setHeader("content-type", "application/json");
+              response.end(oldReply);
+            });
+
+            server.listen(0, "127.0.0.1", () => resume(Effect.succeed(server)));
+          }),
+          (server) =>
+            Effect.callback<undefined>((resume) => {
+              server.close(() => resume(Effect.undefined));
+            })
+        );
+
+        const address = stub.address();
+
+        assert.isObject(address);
+
+        const url = `http://127.0.0.1:${(address as { port: number }).port}`;
+        const files = yield* minimalMap;
+
+        const encodeState = Schema.encodeEffect(
+          Schema.fromJsonString(ServerState)
+        );
+
+        const root = yield* makeHome({
+          ...files,
+          [mapKeys("pipeline").serverStateFile]: yield* encodeState({
+            pid: process.pid,
+            since: "2026-11-01T09:00:00.000Z",
+            url,
+          }),
+        });
+
+        const { home } = mapIn(root, "pipeline");
+
+        const text = yield* runCli(home, ["status", home]);
+
+        assert.strictEqual(text.exitCode, 0, text.stderr);
+        assert.include(
+          text.stdout,
+          "2 pages connected, 2 of them the engineer's"
+        );
+
+        const report = yield* statusOf(home, "2026-11-01T08:00:00.000Z");
+
+        assert.strictEqual(report.pages, 2);
+        assert.strictEqual(report.engineerPages, 2);
+        assert.strictEqual(report.truncated, false);
+      }).pipe(
+        Effect.scoped,
         Effect.provide([NodeServices.layer, NodeHttpClient.layerNodeHttp])
       ),
     60_000

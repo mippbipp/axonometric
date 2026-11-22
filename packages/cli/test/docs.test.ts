@@ -784,6 +784,22 @@ describe("axonometric docs", () => {
     }).pipe(Effect.provide(NodeServices.layer))
   );
 
+  it.effect(
+    "present and process read engineerPages, a status field that exists",
+    () =>
+      Effect.gen(function* () {
+        const { texts } = yield* allDocs;
+        const present = texts.present ?? "";
+        const process = texts.process ?? "";
+
+        assert.include(present, "`engineerPages`");
+        assert.include(present, "?by=agent");
+        assert.notInclude(present, "may be only yours");
+        assert.include(process, "`engineerPages`");
+        assert.notMatch(process, /While `pages` is above 0/u);
+      }).pipe(Effect.provide(NodeServices.layer))
+  );
+
   it.effect("review says what to do for every kind of item", () =>
     Effect.gen(function* () {
       const { texts } = yield* allDocs;

@@ -15,8 +15,8 @@ export const maxDecisions = 50;
  * so a restart empties it.
  */
 export interface AgentDecisions {
-  /** Counts a page for as long as the scope stays open. */
-  readonly connected: Effect.Effect<void, never, Scope.Scope>;
+  /** Counts a page for as long as the scope stays open. `by` is the page's own word, and only `agent` counts it apart from the engineer's. */
+  readonly connected: (by?: string) => Effect.Effect<void, never, Scope.Scope>;
   /** Logs `changes` as decided, all at one time. Call it once the files are saved. */
   readonly record: (
     changes: ReadonlyArray<LayoutChange>,
@@ -39,7 +39,7 @@ export const makeAgentDecisions = Effect.gen(function* () {
     readonly droppedAt: number;
     readonly held: ReadonlyArray<AgentDecision>;
   }>({ droppedAt: Number.NEGATIVE_INFINITY, held: [] });
-  const pages = yield* Ref.make(0);
+  const pages = yield* Ref.make({ agent: 0, engineer: 0 });
   const last = yield* Ref.make(Number.NEGATIVE_INFINITY);
 
   const stamp = Effect.gen(function* () {
@@ -52,10 +52,16 @@ export const makeAgentDecisions = Effect.gen(function* () {
     });
   });
 
-  const connected = Effect.acquireRelease(
-    Ref.update(pages, (count) => count + 1),
-    () => Ref.update(pages, (count) => count - 1)
-  ).pipe(Effect.asVoid);
+  const connected: AgentDecisions["connected"] = (by) => {
+    const who = by === "agent" ? "agent" : "engineer";
+    const bump = (step: number) =>
+      Ref.update(pages, (counts) => ({
+        ...counts,
+        [who]: counts[who] + step,
+      }));
+
+    return Effect.acquireRelease(bump(1), () => bump(-1)).pipe(Effect.asVoid);
+  };
 
   const record: AgentDecisions["record"] = Effect.fnUntraced(
     function* (changes, decision) {
@@ -92,14 +98,16 @@ export const makeAgentDecisions = Effect.gen(function* () {
   const status: AgentDecisions["status"] = Effect.fnUntraced(function* (since) {
     const now = yield* stamp;
     const { droppedAt, held } = yield* Ref.get(log);
+    const counts = yield* Ref.get(pages);
 
     return {
       decisions:
         since === undefined
           ? []
           : Arr.filter(held, ({ at }) => DateTime.isGreaterThan(at, since)),
+      engineerPages: counts.engineer,
       now,
-      pages: yield* Ref.get(pages),
+      pages: counts.engineer + counts.agent,
       truncated:
         since !== undefined && droppedAt > DateTime.toEpochMillis(since),
     };

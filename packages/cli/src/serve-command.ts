@@ -4,6 +4,7 @@ import {
   serverPaths,
   ServerState,
   ServerStatus,
+  ServerStatusReply,
 } from "@axonometric/contracts";
 import { NodeHttpClient } from "@effect/platform-node";
 import { Console, DateTime, Effect, Option, Schema } from "effect";
@@ -61,6 +62,7 @@ const StatusReport = Schema.Union([
     home: Schema.String,
     running: Schema.Literal(true),
     ...ServerState.fields,
+    engineerPages: ServerStatus.fields.engineerPages,
     pages: ServerStatus.fields.pages,
     now: ServerStatus.fields.now,
     decisions: Schema.optionalKey(ServerStatus.fields.decisions),
@@ -122,10 +124,16 @@ const askStatus = Effect.fnUntraced(function* (
   );
 
   return yield* client.execute(request).pipe(
-    Effect.flatMap(HttpClientResponse.schemaBodyJson(ServerStatus)),
-    Effect.mapError((cause) =>
-      ServerNotAnswering.make({ pid, reason: describeCause(cause), url })
-    )
+    Effect.flatMap(HttpClientResponse.schemaBodyJson(ServerStatusReply)),
+    Effect.mapBoth({
+      onSuccess: (reply): ServerStatus => ({
+        ...reply,
+        engineerPages: reply.engineerPages ?? reply.pages,
+        truncated: reply.truncated ?? false,
+      }),
+      onFailure: (cause) =>
+        ServerNotAnswering.make({ pid, reason: describeCause(cause), url }),
+    })
   );
 }, Effect.scoped);
 
@@ -168,8 +176,18 @@ const status = Effect.fn("status")(function* (
   }
 
   const state = server.value;
-  const { decisions, now, pages, truncated } = yield* askStatus(state, since);
-  const running = { home, running: true as const, ...state, now, pages };
+  const { decisions, engineerPages, now, pages, truncated } = yield* askStatus(
+    state,
+    since
+  );
+  const running = {
+    home,
+    running: true as const,
+    ...state,
+    engineerPages,
+    now,
+    pages,
+  };
 
   const report = yield* encodeReport(
     Option.isSome(since) ? { ...running, decisions, truncated } : running
@@ -178,7 +196,7 @@ const status = Effect.fn("status")(function* (
   yield* Console.log(
     json
       ? report
-      : `Serving ${home} at ${state.url}, process ${state.pid}, since ${state.since}, ${pages} ${pages === 1 ? "page" : "pages"} connected.`
+      : `Serving ${home} at ${state.url}, process ${state.pid}, since ${state.since}, ${pages} ${pages === 1 ? "page" : "pages"} connected, ${engineerPages} of them the engineer's.`
   );
 });
 
@@ -189,7 +207,7 @@ export const statusCommand = Command.make(
     json: Flag.Boolean("json").pipe(
       Flag.withDefault(false),
       Flag.withDescription(
-        "Print { home, running, url, pid, since, pages, now } as JSON instead of text"
+        "Print { home, running, url, pid, since, pages, engineerPages, now } as JSON instead of text"
       )
     ),
     since: Flag.String("since").pipe(
