@@ -14,6 +14,24 @@ import { sceneClashes, sceneOf } from "./scene.ts";
 import type { Scene, SceneClash } from "./scene.ts";
 import { zonesOf } from "./zones.ts";
 
+/**
+ * Work that pauses after each chapter it draws, so a caller can give the
+ * thread back between chapters and stop asking once the answer is stale.
+ * Drawing one chapter of a big map takes about half a second.
+ */
+export type Turns<A> = Generator<void, A, undefined>;
+
+/** Runs `turns` to the end, with no pauses, and gives its answer. */
+export const finished = <A>(turns: Turns<A>): A => {
+  for (;;) {
+    const turn = turns.next();
+
+    if (turn.done === true) {
+      return turn.value;
+    }
+  }
+};
+
 /** A structure and where the layout puts it. */
 export interface PlacedStructure {
   readonly placement: Placement;
@@ -757,6 +775,22 @@ const drawingsFor = (data: MapData): ChapterDrawings => {
   return made;
 };
 
+/** `drawingProblems`, pausing after each chapter it draws. */
+const drawingProblemTurns = function* (
+  data: MapData,
+  layout: Layout
+): Turns<ReadonlyArray<MapProblem>> {
+  const drawings = drawingsFor(data);
+  const chapters: Array<ReadonlyArray<ChapterFinding>> = [];
+
+  for (const view of chapterViews(data)) {
+    chapters.push(drawings({ data, layout }, view));
+    yield;
+  }
+
+  return firstShown(chapters);
+};
+
 /**
  * The warnings from routing and drawing each chapter in both views: routes
  * that share a segment or run under boxes, and anything else the Iso view or
@@ -767,11 +801,7 @@ export const drawingProblems: {
   (layout: Layout): (data: MapData) => ReadonlyArray<MapProblem>;
   (data: MapData, layout: Layout): ReadonlyArray<MapProblem>;
 } = dual(2, (data: MapData, layout: Layout): ReadonlyArray<MapProblem> =>
-  firstShown(
-    Arr.map(chapterViews(data), (view) =>
-      drawingsFor(data)({ data, layout }, view)
-    )
-  )
+  finished(drawingProblemTurns(data, layout))
 );
 
 /**
@@ -833,12 +863,24 @@ const checked = new WeakMap<
  * asks about the same layout before again at every change, and the drawing
  * warnings are the slow part.
  */
-const checkLayoutOnce = (data: MapData, layout: Layout) => {
-  const byLayout = checked.get(data) ?? new WeakMap();
-  const found = byLayout.get(layout) ?? [
+const checkLayoutTurns = function* (
+  data: MapData,
+  layout: Layout
+): Turns<ReadonlyArray<MapProblem>> {
+  const known = checked.get(data)?.get(layout);
+
+  if (known !== undefined) {
+    return known;
+  }
+
+  const found = [
     ...layoutWideProblems(data, layout),
-    ...drawingProblems(data, layout),
+    ...(yield* drawingProblemTurns(data, layout)),
   ];
+
+  // Looked up again, since another check may have stored this data's
+  // layouts while this one was paused.
+  const byLayout = checked.get(data) ?? new WeakMap();
 
   byLayout.set(layout, found);
   checked.set(data, byLayout);
@@ -851,6 +893,29 @@ export interface Checkable {
   readonly data: MapData;
   readonly layout: Layout;
 }
+
+/** `changedProblems`, pausing after each chapter it draws. */
+export const changedProblemsTurns = function* ({
+  after,
+  before,
+  scope = { of: "map" },
+}: {
+  readonly after: Checkable;
+  readonly before: Checkable;
+  readonly scope?: CheckScope;
+}): Turns<ReadonlyArray<DraggedProblem>> {
+  if (scope.of !== "map") {
+    return markedAdded(
+      checkChapter(after, scope.chapter),
+      checkChapter(before, scope.chapter)
+    );
+  }
+
+  const problemsAfter = yield* checkLayoutTurns(after.data, after.layout);
+  const problemsBefore = yield* checkLayoutTurns(before.data, before.layout);
+
+  return markedAdded(problemsAfter, problemsBefore);
+};
 
 /**
  * Everything `check` would report for the map `after`, in the order it
@@ -865,21 +930,6 @@ export interface Checkable {
  * new group or a structure revealed in it, is judged by what that chapter
  * shows. A drag the page checks a chapter at a time uses `dragCheckOf`.
  */
-export const changedProblems = ({
-  after,
-  before,
-  scope = { of: "map" },
-}: {
-  readonly after: Checkable;
-  readonly before: Checkable;
-  readonly scope?: CheckScope;
-}): ReadonlyArray<DraggedProblem> =>
-  scope.of === "map"
-    ? markedAdded(
-        checkLayoutOnce(after.data, after.layout),
-        checkLayoutOnce(before.data, before.layout)
-      )
-    : markedAdded(
-        checkChapter(after, scope.chapter),
-        checkChapter(before, scope.chapter)
-      );
+export const changedProblems = (
+  args: Parameters<typeof changedProblemsTurns>[0]
+): ReadonlyArray<DraggedProblem> => finished(changedProblemsTurns(args));

@@ -76,6 +76,7 @@ export {
   changedProblems,
   chapterViews,
   drawingProblems,
+  finished,
   footprintsOverlap,
   offEndFindings,
   onOutline,
@@ -95,6 +96,7 @@ export type {
   HopEnds,
   OffEnd,
   PlacedStructure,
+  Turns,
 } from "./layout-checks.ts";
 
 export { isoHeights } from "./iso-heights.ts";
@@ -589,7 +591,10 @@ export type { Mappable, MarkQuery, ProposedMap } from "./proposed-map.ts";
 
 export { namesOf } from "./review-names.ts";
 
-export { proposalProblems } from "./proposal-problems.ts";
+export {
+  proposalProblems,
+  proposalProblemsTurns,
+} from "./proposal-problems.ts";
 
 export {
   FinalId,
@@ -616,6 +621,7 @@ export type { DescribeNames, StructureAction } from "./structure-actions.ts";
 
 export {
   defaultSpotFor,
+  defaultSpotTurns,
   describePlacement,
   droppedIntoGroup,
   referencesTo,
@@ -624,7 +630,7 @@ export {
   structureChangeToLayout,
 } from "./structure-effects.ts";
 
-export type { StructureLanding } from "./structure-effects.ts";
+export type { DefaultSpot, StructureLanding } from "./structure-effects.ts";
 
 export {
   addedIds,
