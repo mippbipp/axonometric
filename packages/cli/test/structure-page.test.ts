@@ -260,6 +260,7 @@ describe("adding a structure from the toolbar", () => {
       yield* Effect.promise(() =>
         page.locator('[data-add="name"]').fill("Dropped")
       );
+      yield* waitForAddForm(page);
       yield* click(page, '[data-add="submit"]');
       yield* Effect.promise(() =>
         page.waitForFunction(
