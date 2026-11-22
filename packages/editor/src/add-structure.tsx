@@ -13,6 +13,7 @@ import {
 } from "@axonometric/ui/components/number-input";
 import { Toggle } from "@axonometric/ui/components/toggle";
 import { Array as Arr, Option } from "effect";
+import { useState } from "react";
 
 import { addChangeOf, previewId, sentId } from "./add-change.ts";
 import { ChoiceSelect } from "./choice-select.tsx";
@@ -44,6 +45,49 @@ const spotHint = (drafted: DraftSpot) => {
     ? `${footprintWords}, in the nearest spot to the group where check finds nothing new. Click the map to move it.`
     : `${footprintWords}. No spot near the group is clear: this one adds ${drafted.added === 1 ? "1 warning" : `${drafted.added} warnings`}, the fewest found. Click the map to move it.`;
 };
+
+/**
+ * One of the position's number inputs. While it has focus it keeps showing
+ * what it showed when the engineer reached it, until they type a number. A
+ * spot that the search finds in that time would otherwise rewrite the text
+ * under the caret, which drops the selection and makes ui-sdk refuse the
+ * digits typed next as "14-2".
+ */
+function CoordinateInput({
+  axis,
+  onCoordinate,
+  shown,
+}: {
+  readonly axis: "x" | "y";
+  readonly onCoordinate: (value: number | null) => void;
+  readonly shown: number | null;
+}) {
+  const [held, setHeld] = useState<{ readonly value: number | null }>();
+
+  return (
+    <NumberInput
+      onValueChange={(next) => {
+        if (next !== null && Number.isFinite(next)) {
+          setHeld(undefined);
+        }
+
+        onCoordinate(next);
+      }}
+      step={0.5}
+      value={held === undefined ? shown : held.value}
+    >
+      <NumberInputControl
+        data-add={axis}
+        onBlur={() => {
+          setHeld(undefined);
+        }}
+        onFocus={() => {
+          setHeld({ value: shown });
+        }}
+      />
+    </NumberInput>
+  );
+}
 
 /**
  * The form that adds a structure: its name, shape, group, status and
@@ -170,27 +214,23 @@ export function AddStructureForm() {
         <div className="flex items-end gap-1.5">
           <Field className="flex w-16 flex-col gap-1">
             <FieldLabel className="opacity-70">x</FieldLabel>
-            <NumberInput
-              onValueChange={(next) => {
+            <CoordinateInput
+              axis="x"
+              onCoordinate={(next) => {
                 setCoordinate("x", next);
               }}
-              step={0.5}
-              value={shownSpot?.x ?? null}
-            >
-              <NumberInputControl data-add="x" />
-            </NumberInput>
+              shown={shownSpot?.x ?? null}
+            />
           </Field>
           <Field className="flex w-16 flex-col gap-1">
             <FieldLabel className="opacity-70">y</FieldLabel>
-            <NumberInput
-              onValueChange={(next) => {
+            <CoordinateInput
+              axis="y"
+              onCoordinate={(next) => {
                 setCoordinate("y", next);
               }}
-              step={0.5}
-              value={shownSpot?.y ?? null}
-            >
-              <NumberInputControl data-add="y" />
-            </NumberInput>
+              shown={shownSpot?.y ?? null}
+            />
           </Field>
           <Toggle
             className={uiControlClass}

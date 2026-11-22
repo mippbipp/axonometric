@@ -6,19 +6,21 @@ import {
 } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Schema } from "effect";
+import { Array as Arr, Effect, Schedule, Schema } from "effect";
 import type { Page } from "playwright";
 
 import {
+  choose,
   click,
   goToChapterPaused,
   inPage,
   openUrl,
   waitFor,
+  waitTimeout,
 } from "./browser.ts";
 import { pipelineMap, shapesMap } from "./fixtures.ts";
 import type { HomeFiles } from "./harness.ts";
-import { makeHome, mapIn, startServe } from "./harness.ts";
+import { makeHome, mapIn, readProposals, startServe } from "./harness.ts";
 
 // The add form on maps where finding a spot for a new structure is slow.
 // Every change to the name moves the spot, because the name sets the width
@@ -83,6 +85,37 @@ new MutationObserver(() => {
   }
   globalThis.wasFinding = finding;
 }).observe(document, { attributes: true, childList: true, subtree: true });
+`;
+
+/**
+ * Runs before the page's own scripts. While \`globalThis.holdSpots\` is true,
+ * the add form's worker's spot answers wait in \`globalThis.heldSpots\`, and
+ * \`globalThis.releaseSpots()\` hands them to the page, so a test chooses the
+ * moment a late spot arrives.
+ */
+const holdSpots = `
+globalThis.holdSpots = false;
+globalThis.heldSpots = [];
+const HoldingWorker = globalThis.Worker;
+globalThis.Worker = class extends HoldingWorker {
+  constructor(url, options) {
+    super(url, options);
+    if (options?.name === "add form check") {
+      this.addEventListener("message", (event) => {
+        if (globalThis.holdSpots && event.data?.kind === "spot") {
+          event.stopImmediatePropagation();
+          globalThis.heldSpots.push({ data: event.data, worker: this });
+        }
+      });
+    }
+  }
+};
+globalThis.releaseSpots = () => {
+  globalThis.holdSpots = false;
+  for (const { data, worker } of globalThis.heldSpots.splice(0)) {
+    worker.dispatchEvent(new MessageEvent("message", { data }));
+  }
+};
 `;
 
 /** Runs before the page's own scripts, so the page finds no workers. */
@@ -191,7 +224,7 @@ const served = (map: Served, initScript: string) =>
       page.setViewportSize({ height: 900, width: 1600 })
     );
 
-    return { errors, page };
+    return { errors, home, page };
   }).pipe(Effect.provide(NodeServices.layer));
 
 const decodeData = Schema.decodeUnknownEffect(
@@ -416,6 +449,144 @@ describe("the add form on a big map", () => {
 
         assert.deepStrictEqual(filled, wanted, "with no workers");
         assert.deepStrictEqual(workerless.errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    240_000
+  );
+
+  it.live(
+    "keeps the x and y typed over a spot that arrives while they are being typed, and sends them",
+    () =>
+      Effect.gen(function* () {
+        const { errors, home, page } = yield* served(shapes, holdSpots);
+
+        yield* openForm(page, shapes);
+        yield* settled(page);
+
+        // The field is selected, then the search answers, then the digits are
+        // typed: the engineer's selection must survive the answer. A typed
+        // axis stops the search, so each axis gets a fresh form.
+        const typeDuringAnswer = Effect.fnUntraced(function* (
+          axis: "x" | "y",
+          digits: string
+        ) {
+          const field = page.locator(`[data-add="${axis}"]`);
+
+          yield* inPage(page, "globalThis.holdSpots = true");
+          yield* choose(page, '[data-add="group"]', "outside");
+          yield* Effect.promise(() =>
+            page.waitForFunction("globalThis.heldSpots.length > 0", undefined, {
+              timeout: 60_000,
+            })
+          );
+          yield* Effect.promise(() => field.click());
+          yield* Effect.promise(() => page.keyboard.press("ControlOrMeta+a"));
+          yield* inPage(page, "globalThis.releaseSpots()");
+          yield* Effect.promise(() =>
+            page
+              .locator("[data-add-hint]:not([data-finding])")
+              .waitFor(waitTimeout)
+          );
+          yield* Effect.promise(() => page.keyboard.type(digits));
+          yield* Effect.promise(() => field.blur());
+          yield* settled(page);
+        });
+
+        yield* typeDuringAnswer("x", "14");
+
+        const typedX = yield* shownSpot(page);
+
+        assert.strictEqual(typedX.x, 14, "x typed during the answer");
+        yield* click(page, '[data-add="cancel"]');
+        yield* openForm(page, shapes);
+        yield* settled(page);
+        yield* typeDuringAnswer("y", "7");
+
+        const typedY = yield* shownSpot(page);
+
+        assert.strictEqual(typedY.y, 7, "y typed during the answer");
+        yield* Effect.promise(() => page.locator('[data-add="x"]').fill("14"));
+        yield* Effect.promise(() =>
+          page.locator('[data-add="name"]').fill(typedName)
+        );
+        yield* settled(page);
+        yield* settled(page);
+
+        const spot = yield* shownSpot(page);
+
+        assert.deepStrictEqual(spot, { x: 14, y: 7 });
+        yield* click(page, '[data-add="submit"]');
+
+        const saved = yield* readProposals(home).pipe(
+          Effect.map(({ structures }) => structures?.[0]),
+          Effect.filterOrFail(
+            (first) => first !== undefined,
+            () => "proposals.json never held the structure"
+          ),
+          Effect.retry({ schedule: Schedule.spaced("100 millis"), times: 100 }),
+          Effect.orDie
+        );
+
+        assert.strictEqual(saved?.change.action, "add");
+
+        if (saved?.change.action === "add") {
+          assert.deepStrictEqual(saved.change.at, { d: 2, w: 2, x: 14, y: 7 });
+        }
+
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    240_000
+  );
+
+  it.live(
+    "keeps Propose where it is while the form's check runs and when it finishes",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* served(shapes, "");
+
+        yield* openForm(page, shapes);
+        yield* settled(page);
+
+        // A frame-by-frame record of where Propose sits, from a change to the
+        // name until the search for its spot has answered and been checked.
+        yield* inPage(
+          page,
+          `(() => {
+            globalThis.proposeAt = [];
+            const step = () => {
+              const box = document.querySelector('[data-add="submit"]')?.getBoundingClientRect();
+              const form = document.querySelector("[data-add-structure]");
+              const busy = form === null || form.hasAttribute("data-checking")
+                || document.querySelector("[data-add-hint][data-finding]") !== null;
+              globalThis.proposeAt.push({ busy, top: box?.top ?? null });
+              requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+          })()`
+        );
+        yield* Effect.promise(() =>
+          page.locator('[data-add="name"]').fill(typedName)
+        );
+        yield* Effect.sleep("500 millis");
+
+        const during = yield* inPage<boolean>(
+          page,
+          `document.querySelector("[data-add-hint][data-finding]") !== null`
+        );
+
+        assert.isTrue(during, "the search was still running");
+        yield* settled(page);
+        yield* Effect.sleep("500 millis");
+
+        const frames = yield* inPage<
+          ReadonlyArray<{ busy: boolean; top: number | null }>
+        >(page, "globalThis.proposeAt");
+
+        const tops = Arr.dedupe(Arr.map(frames, ({ top }) => top));
+        const busyFrames = Arr.filter(frames, ({ busy }) => busy);
+
+        assert.isAbove(busyFrames.length, 10, "frames while the check ran");
+        assert.deepStrictEqual(tops, [tops[0]], "Propose's top across frames");
+        assert.deepStrictEqual(errors, []);
       }).pipe(Effect.provide(NodeServices.layer)),
     240_000
   );
