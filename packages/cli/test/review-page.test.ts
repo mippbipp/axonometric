@@ -275,6 +275,61 @@ describe("the Ready for review button", () => {
   }
 
   it.live(
+    "leaves the page's keys off while it is open, and Escape only closes it",
+    () =>
+      Effect.gen(function* () {
+        const { page } = yield* servedReview();
+        const walkthrough = (name: string) =>
+          inPage<string | null>(
+            page,
+            `document.querySelector("[data-walkthrough]").getAttribute(${literal(name)})`
+          );
+        const editPressed = () =>
+          inPage<string | null>(
+            page,
+            `document.querySelector("[data-edit-toggle]").getAttribute("aria-pressed")`
+          );
+
+        yield* pinServer(page);
+        yield* pinNote(page, "Why a server?");
+        yield* waitFor(page, '[data-note-marker="server"]');
+
+        const editBefore = yield* editPressed();
+
+        yield* click(page, "[data-ready-for-review]");
+        yield* waitFor(page, "[data-review-dialog][data-open]");
+        // Off the prompt box, where typed keys are text anyway.
+        yield* Effect.promise(() => page.locator("[data-review-copy]").focus());
+
+        for (const key of ["]", "ArrowRight", "v", "e"]) {
+          yield* press(page, key);
+        }
+
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-review-dialog][data-open]");
+
+        const chapter = yield* walkthrough("data-chapter");
+        const view = yield* walkthrough("data-view");
+        const editAfter = yield* editPressed();
+
+        assert.strictEqual(chapter, "c-save");
+        assert.strictEqual(view, "iso");
+        assert.strictEqual(editAfter, editBefore);
+        // The pinned structure stays pinned: Escape went to the dialog.
+        yield* assertCount(
+          page,
+          '[data-structure-panel="server"][data-pinned]',
+          1
+        );
+
+        // Closed, the keys work again.
+        yield* press(page, "v");
+        yield* waitFor(page, '[data-walkthrough][data-view="plan"]');
+      }),
+    60_000
+  );
+
+  it.live(
     "is named by its title, covers the page, and closes on Escape",
     () =>
       Effect.gen(function* () {

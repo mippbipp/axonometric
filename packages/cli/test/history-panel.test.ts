@@ -775,6 +775,31 @@ describe("the History panel", () => {
   );
 
   it.live(
+    "leaves undo off while the restore dialog is open, so the restore it reports stays",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* servedWithTwo;
+
+        yield* openHistory(page);
+        yield* openRevision(page, 1);
+        yield* click(page, '[data-control="restore"]');
+        yield* waitFor(page, "[data-restore-dialog]");
+        yield* press(page, "Control+z");
+        yield* press(page, "Meta+z");
+        yield* press(page, "Escape");
+        yield* waitGone(page, "[data-restore-dialog]");
+
+        yield* assertCount(page, '[data-structure][data-pending="true"]', 3);
+
+        // Closed, undo takes the restore back.
+        yield* press(page, "Control+z");
+        yield* waitGone(page, '[data-structure][data-pending="true"]');
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    90_000
+  );
+
+  it.live(
     "names the restore dialog by its title, and Escape closes it like the Close button",
     () =>
       Effect.gen(function* () {
