@@ -16,12 +16,15 @@ import type { TestSpecification } from "vitest/node";
  * connection-page is scaled again in #144, whose tests added 8.4 s to a 71 s local run.
  * read-view, rerouting, view-tools-page and viewport are from CI run
  * 44962829997, on main at 7128af8.
+ * add-structure-big-map is a local time on a 2-core Linux machine (75 s,
+ * #230), with no CI time yet.
  * Files not listed take `defaultSeconds`.
  * A file that grows or a new slow one only skews the split until someone
  * updates this table, and `shard-sequencer.test.ts` fails when a shard
  * holds more than 60% of the weight.
  */
 export const fileSeconds = {
+  "add-structure-big-map.test.ts": 75,
   "agent-changes-page.test.ts": 10,
   "connection-page.test.ts": 65,
   "drag-warnings-big-map.test.ts": 11,
