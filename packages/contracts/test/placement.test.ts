@@ -220,12 +220,11 @@ describe("placement", () => {
       Effect.gen(function* () {
         const { data, layout } = yield* placedFixture("update-pipeline");
 
+        // Earlier chapters show h-merge faded, with no label to warn about.
+        // The last chapter plays nothing, so it labels every hop.
         assert.deepStrictEqual(
           Arr.map(layoutProblems(data, layout), ({ message }) => message),
-          [
-            hiddenLabel("h-bg-checks", "c-scope"),
-            hiddenLabel("h-merge", "c-watchdog"),
-          ]
+          [hiddenLabel("h-merge", "c-whole")]
         );
       })
   );

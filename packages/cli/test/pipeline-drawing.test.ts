@@ -6,7 +6,7 @@ import { makeHome, runCli, mapIn } from "./harness.ts";
 
 describe("check on the pipeline map", () => {
   it.effect(
-    "reports only the Plan label of the gate verdict, which has no clear spot",
+    "reports no warnings, as every played label has a clear spot",
     () =>
       Effect.gen(function* () {
         const pipelineMapFiles = yield* pipelineMap;
@@ -18,14 +18,11 @@ describe("check on the pipeline map", () => {
         ]);
 
         assert.strictEqual(result.exitCode, 0, result.stdout + result.stderr);
-        // The saved layout is the one the routing tests in contracts pin
-        // down. Every move of its structures that frees the label of
-        // "gate verdict" adds a bend those tests reject, and a shorter
-        // label would no longer say what the hop carries. A layout that
-        // `build` places itself has no warnings: see build-places.test.ts.
-        assert.include(result.stdout, ": 0 errors, 1 warning.");
-        assert.include(result.stdout, 'the label of hop "h-ruleset-updater"');
-        assert.include(result.stdout, 'in chapter "c-merge" in Plan view');
+        // The "gate verdict" label of h-ruleset-updater has no Plan spot in
+        // chapter "c-merge", which shows the hop but doesn't play it. There it
+        // is faded and unlabelled, so it doesn't warn. The chapters that
+        // label it find it a spot.
+        assert.include(result.stdout, ": 0 errors, 0 warnings.");
       }),
     // check routes and lays out every chapter of a 29-hop map.
     30_000

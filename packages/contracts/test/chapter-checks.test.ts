@@ -231,6 +231,88 @@ describe("the drawing warnings of two maps with one layout", () => {
   );
 });
 
+// The boxes of a and b are tall and half a unit apart, so h's label has no
+// spot. Only a chapter that plays h, or plays nothing, labels it.
+const crampedLayout: Layout = {
+  format: 1,
+  revision: 0,
+  routes: {},
+  structures: {
+    a: { d: 6, w: 2, x: 0, y: 0 },
+    b: { d: 6, w: 2, x: 2.5, y: 0 },
+    c: { d: 2, w: 2, x: 10, y: 2 },
+  },
+};
+
+/** A map of a, b and c with one chapter, which plays `plays`. */
+const playing = (plays: ReadonlyArray<string>): MapData => ({
+  chapters: [
+    {
+      id: "c1",
+      lede: "Lede.",
+      plays,
+      reveals: ["a", "b", "c"],
+      story: "Story.",
+      title: "c1",
+    },
+  ],
+  flows: [],
+  format: 1,
+  groups: [{ id: "main", title: "Main" }],
+  hops: [
+    {
+      from: "a",
+      id: "h",
+      label: "a label too wide for the gap",
+      payload: {},
+      to: "b",
+    },
+    { from: "b", id: "g", label: "fits", payload: {}, to: "c" },
+  ],
+  overview: { summary: "A map.", title: "Map" },
+  revision: 0,
+  structures: Arr.map(["a", "b", "c"], (id) => ({
+    code: "S",
+    group: "main",
+    howItsBuilt: "Built.",
+    id,
+    name: id,
+    oneLiner: "One line.",
+    shape: "box" as const,
+    status: "live" as const,
+    whatItDoes: "Does.",
+  })),
+});
+
+const hiddenLabelWarnings = (map: MapData) =>
+  Arr.filter(
+    Arr.map(drawingProblems(map, crampedLayout), ({ message }) => message),
+    Str.includes("has no clear spot beside its route")
+  );
+
+describe("the hidden-label warnings of two maps that play different hops", () => {
+  const playsH = playing(["h"]);
+  const playsG = playing(["g"]);
+
+  for (const [name, order] of [
+    ["the one that plays h", [playsH, playsG]],
+    ["the one that plays only g", [playsG, playsH]],
+  ] as const) {
+    it.effect(`are each map's own, when ${name} is drawn first`, () =>
+      Effect.sync(() => {
+        const found = new Map(
+          Arr.map(order, (map) => [map, hiddenLabelWarnings(map)])
+        );
+
+        assert.deepStrictEqual(found.get(playsH), [
+          'the label of hop "h" has no clear spot beside its route in chapter "c1" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label.',
+        ]);
+        assert.deepStrictEqual(found.get(playsG), []);
+      })
+    );
+  }
+});
+
 describe("the drag preview and the layout a drop saves", () => {
   it.effect(
     "report the problems check gives for the layout the served store would save",
