@@ -157,7 +157,8 @@ describe("clearing a stale lock", () => {
 
         yield* fs.writeFileString(file, holderOf("dead", deadPid));
 
-        const resume = yield* Deferred.make<string>();
+        const stalledAtSecondRead = yield* Deferred.make<boolean>();
+        const resume = yield* Deferred.make<boolean>();
         let reads = 0;
 
         // The slow command stalls after its second read of the lock, so the
@@ -169,7 +170,11 @@ describe("clearing a stale lock", () => {
               Effect.tap(() => {
                 reads += 1;
 
-                return reads === 2 ? Deferred.await(resume) : Effect.void;
+                return reads === 2
+                  ? Deferred.succeed(stalledAtSecondRead, true).pipe(
+                      Effect.andThen(Deferred.await(resume))
+                    )
+                  : Effect.void;
               })
             ),
         };
@@ -179,16 +184,13 @@ describe("clearing a stale lock", () => {
           Effect.forkChild
         );
 
-        yield* Effect.sleep("50 millis");
+        yield* Deferred.await(stalledAtSecondRead);
 
-        const quick = yield* attempt(file, holderOf("quick")).pipe(
-          Effect.forkChild
-        );
+        const quick = yield* attempt(file, holderOf("quick"));
 
-        yield* Effect.sleep("50 millis");
-        yield* Deferred.succeed(resume, "go");
+        yield* Deferred.succeed(resume, true);
 
-        const outcomes = [yield* Fiber.join(slow), yield* Fiber.join(quick)];
+        const outcomes = [yield* Fiber.join(slow), quick];
 
         assert.strictEqual(Arr.filter(outcomes, Option.isNone).length, 1);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer))
