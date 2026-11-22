@@ -479,7 +479,7 @@ describe("the add form on a big map", () => {
             })
           );
           yield* Effect.promise(() => field.click());
-          yield* Effect.promise(() => page.keyboard.press("Control+a"));
+          yield* Effect.promise(() => page.keyboard.press("ControlOrMeta+a"));
           yield* inPage(page, "globalThis.releaseSpots()");
           yield* Effect.promise(() =>
             page
