@@ -27,7 +27,9 @@ export interface Placing {
   readonly setDraft: (draft: Draft) => void;
   readonly setOpen: (open: boolean) => void;
   /** Sets the spot, as a click or a typed position does. */
-  readonly setSpot: (spot: GridPoint | null) => void;
+  readonly setSpot: (
+    spot: GridPoint | null | ((held: GridPoint | null) => GridPoint | null)
+  ) => void;
   /** The spot picked or typed, snapped to half units, or `null` for none yet. */
   readonly spot: GridPoint | null;
 }
