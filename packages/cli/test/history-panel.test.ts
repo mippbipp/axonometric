@@ -831,6 +831,33 @@ describe("the History panel", () => {
   }
 
   it.live(
+    "falls back to the History tab when the restored revision's row is gone",
+    () =>
+      Effect.gen(function* () {
+        const { errors, page } = yield* servedWithTwo;
+
+        yield* openHistory(page);
+        yield* openRevision(page, 1);
+        yield* click(page, '[role="tab"][data-tab="details"]');
+        yield* assertCount(page, "[data-history-list] [data-revision]", 0);
+        yield* click(page, '[data-control="restore"]');
+        yield* waitFor(page, "[data-restore-dialog]");
+        yield* click(page, '[data-control="close-restore"]');
+        yield* waitGone(page, "[data-restore-dialog]");
+
+        const focused = yield* Effect.promise(() =>
+          page.evaluate<string | null>(
+            `document.activeElement?.getAttribute("data-tab") ?? document.activeElement?.tagName ?? null`
+          )
+        );
+
+        assert.strictEqual(focused, "history");
+        assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    90_000
+  );
+
+  it.live(
     "lists the meaning differences in the restore dialog instead of dropping them",
     () =>
       Effect.gen(function* () {
