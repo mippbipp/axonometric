@@ -33,6 +33,7 @@ export const fileSeconds = {
   "export-command.test.ts": 27,
   "export-svg.test.ts": 5,
   "export.test.ts": 23,
+  "focus-recovery.test.ts": 12,
   "font-width.test.ts": 12,
   "group-chapter-page.test.ts": 23,
   "history-panel.test.ts": 15,

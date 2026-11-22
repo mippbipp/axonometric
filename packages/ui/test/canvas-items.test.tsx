@@ -59,12 +59,16 @@ const spies = (): Calls => ({
   onSelectedChange: vi.fn<Calls["onSelectedChange"]>(),
 });
 
+const noneHidden: ReadonlyArray<Key> = [];
+
 function Map({
   calls,
+  hidden = noneHidden,
   multiple = true,
   pinned = null,
 }: {
   readonly calls: Calls;
+  readonly hidden?: ReadonlyArray<Key>;
   readonly multiple?: boolean;
   readonly pinned?: Key | null;
 }) {
@@ -92,45 +96,53 @@ function Map({
           pinned={pinned}
           selected={selected}
         >
-          {Arr.map(["a", "b", "c", "far"] as const, (key) => (
-            <TooltipTrigger
-              controller={controller}
-              key={key}
-              payload={key}
-              render={
-                <CanvasItem
-                  aria-label={names[key]}
-                  aria-pressed={pinned === key}
-                  data-selected-here={selected.includes(key) ? "" : undefined}
-                  onOpen={() => {
-                    calls.onOpen(key);
-                  }}
-                  onPress={(event) => {
-                    calls.onPress(key, event);
-                  }}
-                  ref={(el) => {
-                    placed(el, key);
-                  }}
-                  selectable
-                  value={key}
-                />
-              }
+          {Arr.map(
+            Arr.filter(
+              ["a", "b", "c", "far"] as const,
+              (key) => !hidden.includes(key)
+            ),
+            (key) => (
+              <TooltipTrigger
+                controller={controller}
+                key={key}
+                payload={key}
+                render={
+                  <CanvasItem
+                    aria-label={names[key]}
+                    aria-pressed={pinned === key}
+                    data-selected-here={selected.includes(key) ? "" : undefined}
+                    onOpen={() => {
+                      calls.onOpen(key);
+                    }}
+                    onPress={(event) => {
+                      calls.onPress(key, event);
+                    }}
+                    ref={(el) => {
+                      placed(el, key);
+                    }}
+                    selectable
+                    value={key}
+                  />
+                }
+              >
+                <rect height="10" width="10" />
+              </TooltipTrigger>
+            )
+          )}
+          {hidden.includes("p") ? null : (
+            <CanvasItem
+              aria-label={names.p}
+              onPress={(event) => {
+                calls.onPress("p", event);
+              }}
+              ref={(el) => {
+                placed(el, "p");
+              }}
+              value="packet:p"
             >
-              <rect height="10" width="10" />
-            </TooltipTrigger>
-          ))}
-          <CanvasItem
-            aria-label={names.p}
-            onPress={(event) => {
-              calls.onPress("p", event);
-            }}
-            ref={(el) => {
-              placed(el, "p");
-            }}
-            value="packet:p"
-          >
-            <circle r="5" />
-          </CanvasItem>
+              <circle r="5" />
+            </CanvasItem>
+          )}
         </CanvasItems>
       </PannableCanvas>
       <button type="button">after</button>
@@ -161,6 +173,99 @@ const focusOn = (key: Key) => {
     item(key).focus();
   });
 };
+
+const heard = () => document.querySelector('[aria-live="polite"]')?.textContent;
+
+const mountWith = async (hidden: ReadonlyArray<Key>) => {
+  const calls = spies();
+  const view = render(<Map calls={calls} />);
+
+  await act(settle);
+
+  return {
+    hidden,
+    hide: async (next: ReadonlyArray<Key>) => {
+      view.rerender(<Map calls={calls} hidden={next} />);
+      await act(settle);
+    },
+  };
+};
+
+describe("focus recovery", () => {
+  it("moves focus to the nearest item left when the focused one leaves", async () => {
+    expect.hasAssertions();
+
+    const { hide } = await mountWith([]);
+
+    focusOn("b");
+    await hide(["b"]);
+
+    // Bravo sat at (100, 0). Alpha and Packet are both 100 away, and the tie
+    // goes to the first in document order.
+    expect(document.activeElement).toBe(item("a"));
+    await expect.poll(heard).toContain("Bravo is no longer shown");
+  });
+
+  it("picks the closest item, not the first in document order", async () => {
+    expect.hasAssertions();
+
+    const { hide } = await mountWith([]);
+
+    focusOn("c");
+    await hide(["c", "a"]);
+
+    expect(document.activeElement).toBe(item("p"));
+    await expect
+      .poll(heard)
+      .toBe("Charlie is no longer shown. Focus moved to Packet.");
+  });
+
+  it("keeps the Tab stop inside the map after the move", async () => {
+    expect.hasAssertions();
+
+    const user = userEvent.setup();
+    const { hide } = await mountWith([]);
+
+    focusOn("c");
+    await hide(["c", "a"]);
+
+    expect(stops()).toStrictEqual(["Packet"]);
+
+    await user.tab();
+
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "after" })
+    );
+  });
+
+  it("focuses the canvas when no item is left", async () => {
+    expect.hasAssertions();
+
+    const { hide } = await mountWith([]);
+
+    focusOn("a");
+    await hide(["a", "b", "c", "far", "p"]);
+
+    expect(document.activeElement).not.toBe(document.body);
+    expect((document.activeElement as HTMLElement | null)?.dataset.slot).toBe(
+      "pannable-canvas"
+    );
+    await expect
+      .poll(heard)
+      .toBe("Alpha is no longer shown. Focus moved to the map.");
+  });
+
+  it("leaves focus alone when an unfocused item leaves", async () => {
+    expect.hasAssertions();
+
+    const { hide } = await mountWith([]);
+
+    focusOn("a");
+    await hide(["far"]);
+
+    expect(document.activeElement).toBe(item("a"));
+  });
+});
 
 describe("canvas items", () => {
   it("gives each item the button role from the slot, on a <g>", async () => {

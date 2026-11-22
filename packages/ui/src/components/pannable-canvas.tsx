@@ -277,6 +277,7 @@ const pannableCanvas = definePrimitive({
         (context.element("controls")?.contains(target) ?? false),
       reframe,
       size,
+      surface: () => context.element("root") ?? null,
       viewport,
     };
   },
@@ -482,7 +483,10 @@ function PannableCanvas({
         </>
       ),
       className:
-        "relative size-full cursor-grab touch-none overflow-clip select-none active:cursor-grabbing",
+        "relative size-full cursor-grab touch-none overflow-clip select-none focus-visible:outline-2 focus-visible:-outline-offset-2 active:cursor-grabbing",
+      // Not a Tab stop. Focus lands here when the item that held it leaves
+      // and no other item is left.
+      tabIndex: -1,
     },
     "div"
   );
