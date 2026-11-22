@@ -12,7 +12,7 @@ import {
   press,
   waitFor,
   waitGone,
-  waitTimeout,
+  waitForMapInert,
 } from "./browser.ts";
 import { fullMap, minimalMap } from "./fixtures.ts";
 import { buildAndOpen } from "./harness.ts";
@@ -263,13 +263,7 @@ describe("the How it's built page", () => {
 
           // Everything the page covers is inert, so a click or Tab can't
           // reach it.
-          yield* Effect.promise(() =>
-            page.waitForFunction(
-              `document.querySelector("[data-map-layer]").closest("[inert]") !== null`,
-              undefined,
-              waitTimeout
-            )
-          );
+          yield* waitForMapInert(page);
 
           // Tab many times: focus never leaves the page or the header
           // button, which stays live to close it.

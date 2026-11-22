@@ -11,6 +11,7 @@ import {
   press,
   textOf,
   waitFor,
+  waitForMapInert,
   waitGone,
 } from "./browser.ts";
 import { openReviewMap, readProposals, runCli } from "./harness.ts";
@@ -264,6 +265,7 @@ describe("the Ready for review button", () => {
         );
 
         assert.strictEqual(named, 1);
+        yield* waitForMapInert(page);
         const whileOpen = yield* inPage<boolean>(page, covered);
 
         assert.isTrue(whileOpen);
