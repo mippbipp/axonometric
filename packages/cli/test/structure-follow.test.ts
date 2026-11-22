@@ -361,10 +361,30 @@ describe("the add form", () => {
           page.locator('[data-add="name"]').fill("Build cache")
         );
         yield* choose(page, '[data-add="group"]', "people");
+        // PROBE
+        const seen = (label: string) =>
+          Effect.promise(() =>
+            page.evaluate<string>(`JSON.stringify({
+              checking: document.querySelectorAll("[data-add-structure][data-checking]").length,
+              finding: document.querySelectorAll("[data-add-hint][data-finding]").length,
+              hint: document.querySelector("[data-add-hint]")?.textContent,
+              x: document.querySelector('[data-add="x"]')?.value,
+              y: document.querySelector('[data-add="y"]')?.value,
+            })`)
+          ).pipe(
+            Effect.map((out) =>
+              process.stderr.write(`PROBE261 ${label} ${out}\n`)
+            )
+          );
+        yield* seen("after group");
+        // END PROBE
         // Far from the engineer, in the middle of the loop group.
         yield* Effect.promise(() => page.locator('[data-add="x"]').fill("14"));
+        yield* seen("after x");
         yield* Effect.promise(() => page.locator('[data-add="y"]').fill("0"));
+        yield* seen("after y");
         yield* waitForAddForm(page);
+        yield* seen("after wait");
         yield* waitFor(page, "[data-drag-warnings]");
 
         const fromForm = yield* zoneWarnings;
