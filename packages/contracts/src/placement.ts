@@ -1362,22 +1362,50 @@ const arrangementsOf = ([first, second]: readonly [
       )
   );
 
-/** Values from `start` in half-unit steps, `span` units on. */
-const halfSteps = (start: number, span: number) =>
-  Arr.makeBy(span * 2 + 1, (step) => start + step / 2);
+/**
+ * How far along a side of the target zone, either way from the pair's hop
+ * ends, a pair is tried. A saved zone's side can be any length, and this
+ * keeps the spots tried, each scored by its hops, to a fixed number. Along a
+ * side up to twice this long, every spot is tried.
+ */
+const sideReach = 2 * searchMargin;
+
+/**
+ * Values in half-unit steps from `from` to `to`: all of them when they span
+ * no more than `2 * sideReach` units, else the `2 * sideReach` units of them
+ * centred as close to `near` as they can be.
+ */
+const halfSteps = (from: number, to: number, near: number) => {
+  const steps = Math.round((to - from) * 2) + 1;
+  const reach = sideReach * 2;
+  const middle = Math.round((near - from) * 2);
+  const first = Math.max(0, Math.min(middle - reach, steps - 1 - 2 * reach));
+  const last = Math.min(steps - 1, first + 2 * reach);
+
+  return Arr.makeBy(last - first + 1, (step) => from + (first + step) / 2);
+};
 
 /**
  * Where the top left corner of a box of `size` goes to stand `away` from
  * `target` on each of its four sides, overlapping it along that side by at
- * least half a unit.
+ * least half a unit, and no more than `sideReach` along it from `near`.
  */
 const besideOffsets = (
   target: Placement,
   size: Pick<Placement, "d" | "w">,
-  away: number
+  { away, near }: { readonly away: number; readonly near: Point }
 ): ReadonlyArray<Point> => {
-  const ys = halfSteps(target.y - size.d + 0.5, target.d + size.d - 1);
-  const xs = halfSteps(target.x - size.w + 0.5, target.w + size.w - 1);
+  const ys = halfSteps(
+    target.y - size.d + 0.5,
+    target.y + target.d - 0.5,
+    near.y - size.d / 2
+  );
+
+  const xs = halfSteps(
+    target.x - size.w + 0.5,
+    target.x + target.w - 0.5,
+    near.x - size.w / 2
+  );
 
   return [
     ...Arr.map(ys, (y) => ({ x: target.x + target.w + away, y })),
@@ -1502,49 +1530,66 @@ const sitePair = (
         ({ placement, structure }) => [structure.id, placement] as const
       );
 
+      // Where the pair's hops go, or the target's middle when none of them
+      // is placed yet.
+      const endsBounds = boundsOf(footprints(ends));
+
+      const near = Option.getOrElse(Option.map(endsBounds, centreOf), () =>
+        centreOf(target)
+      );
+
       const sitingsAway = (away: number) =>
         Arr.flatMap(arrangements, (block, arrangement) => {
           const size = sizeOf(block);
 
-          return Arr.flatMap(besideOffsets(target, size, away), (offset) => {
-            const outline = grow({ ...offset, ...size }, zonePadding);
-            const toTarget = groundGap(outline, targetOutline);
+          return Arr.flatMap(
+            besideOffsets(target, size, { away, near }),
+            (offset) => {
+              onWork("slot");
 
-            if (
-              !Arr.every(others, (zone) => toTarget <= groundGap(outline, zone))
-            ) {
-              return [];
+              const outline = grow({ ...offset, ...size }, zonePadding);
+              const toTarget = groundGap(outline, targetOutline);
+
+              if (
+                !Arr.every(
+                  others,
+                  (zone) => toTarget <= groundGap(outline, zone)
+                )
+              ) {
+                return [];
+              }
+
+              const laid = layBlock(block, offset);
+
+              const cost = hopCost(
+                hops,
+                new Map([
+                  ...fixed,
+                  ...Arr.map(
+                    laid,
+                    ({ placement, structure }) =>
+                      [structure.id, placement] as const
+                  ),
+                ])
+              );
+
+              const blocked = Arr.reduce(laid, 0, (sum, member) =>
+                Arr.reduce(
+                  neighboursOf(data, member.structure.id),
+                  sum,
+                  (count, id) =>
+                    Option.match(Option.fromNullishOr(groundById.get(id)), {
+                      onNone: () => count,
+                      onSome: (end) =>
+                        count +
+                        inTheWay(ground, member.placement, end.placement),
+                    })
+                )
+              );
+
+              return [{ arrangement, blocked, cost, laid, offset }];
             }
-
-            const laid = layBlock(block, offset);
-
-            const cost = hopCost(
-              hops,
-              new Map([
-                ...fixed,
-                ...Arr.map(
-                  laid,
-                  ({ placement, structure }) =>
-                    [structure.id, placement] as const
-                ),
-              ])
-            );
-
-            const blocked = Arr.reduce(laid, 0, (sum, member) =>
-              Arr.reduce(
-                neighboursOf(data, member.structure.id),
-                sum,
-                (count, id) =>
-                  Option.match(Option.fromNullishOr(groundById.get(id)), {
-                    onNone: () => count,
-                    onSome: (end) =>
-                      count + inTheWay(ground, member.placement, end.placement),
-                  })
-              )
-            );
-
-            return [{ arrangement, blocked, cost, laid, offset }];
-          });
+          );
         });
 
       const around = groundFor(ground, group);

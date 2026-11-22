@@ -15,6 +15,7 @@ import type {
   ScreenPoint,
   Structure,
 } from "../src/index.ts";
+import { layoutWideProblems } from "../src/layout-checks.ts";
 import { placeStructuresWith } from "../src/placement.ts";
 import { placedFixture } from "./fixture-maps.ts";
 import { grow, placementOf } from "./footprints.ts";
@@ -473,12 +474,47 @@ describe("placement", () => {
           work[kind] += 1;
         });
 
-        // Measured 80 slot tests and no drawings, as the pass tests only the
-        // first spots of its ranking. The ceilings are those of the 40
-        // one-member groups test above.
+        // Measured 4880 slot tests and no drawings: 4800 spots beside the
+        // target zones scored, and 80 tested for fit. The ceilings are those
+        // of the 40 one-member groups test above.
         assert.isAtMost(work.slot, 20_000);
         assert.isAtMost(work.drawing, 12);
         assert.lengthOf(Rec.keys(layout.structures), 40);
+      })
+  );
+
+  it.effect(
+    "places a two-member group beside a very wide zone with bounded work",
+    () =>
+      Effect.sync(() => {
+        const data = mapOf(
+          [
+            structure("w1", "wide"),
+            structure("w2", "wide"),
+            structure("p0", "pair"),
+            structure("p1", "pair"),
+          ],
+          [hop("w1", "w2"), hop("p0", "w1"), hop("p1", "w2")]
+        );
+
+        const work = { drawing: 0, slot: 0 };
+        const { layout } = placeStructuresWith(
+          data,
+          layoutOf({ w1: at(0, 0), w2: at(1998, 0) }),
+          (kind) => {
+            work[kind] += 1;
+          }
+        );
+
+        // Measured 868 slot tests. Trying every spot along the zone's 2,000
+        // unit sides scored 32,148.
+        assert.isAtMost(work.slot, 2000);
+        assert.strictEqual(work.drawing, 0);
+        assertNextTo({ data, layout }, "pair", "wide");
+
+        // Drawing a map this wide takes more memory than a test has, so only
+        // the layout-wide checks run.
+        assert.deepStrictEqual(layoutWideProblems(data, layout), []);
       })
   );
 
