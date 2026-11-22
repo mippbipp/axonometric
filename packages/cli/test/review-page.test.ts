@@ -214,6 +214,38 @@ describe("the Ready for review button", () => {
     90_000
   );
 
+  for (const how of ["Close", "Escape"] as const) {
+    it.live(
+      `puts focus on the Pending tab when the review dialog closes with ${how}`,
+      () =>
+        Effect.gen(function* () {
+          const { page } = yield* servedReview();
+
+          yield* pinServer(page);
+          yield* pinNote(page, "Why a server?");
+          yield* waitFor(page, '[data-note-marker="server"]');
+          yield* click(page, "[data-ready-for-review]");
+          yield* waitFor(page, "[data-review-dialog][data-open]");
+
+          if (how === "Close") {
+            yield* click(page, "[data-review-close]");
+          } else {
+            yield* press(page, "Escape");
+          }
+
+          yield* waitGone(page, "[data-review-dialog][data-open]");
+
+          const focused = yield* inPage<string | null>(
+            page,
+            `document.activeElement?.getAttribute("data-tab") ?? document.activeElement?.tagName ?? null`
+          );
+
+          assert.strictEqual(focused, "pending");
+        }),
+      60_000
+    );
+  }
+
   it.live(
     "is named by its title, covers the page, and closes on Escape",
     () =>

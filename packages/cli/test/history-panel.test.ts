@@ -797,6 +797,39 @@ describe("the History panel", () => {
     90_000
   );
 
+  for (const how of ["Close", "Escape"] as const) {
+    it.live(
+      `puts focus on the restored revision's row when the restore dialog closes with ${how}`,
+      () =>
+        Effect.gen(function* () {
+          const { errors, page } = yield* servedWithTwo;
+
+          yield* openHistory(page);
+          yield* openRevision(page, 1);
+          yield* click(page, '[data-control="restore"]');
+          yield* waitFor(page, "[data-restore-dialog]");
+
+          if (how === "Close") {
+            yield* click(page, '[data-control="close-restore"]');
+          } else {
+            yield* press(page, "Escape");
+          }
+
+          yield* waitGone(page, "[data-restore-dialog]");
+
+          const focused = yield* Effect.promise(() =>
+            page.evaluate<string | null>(
+              `document.activeElement?.closest("[data-history-list] [data-revision]")?.getAttribute("data-revision") ?? document.activeElement?.tagName ?? null`
+            )
+          );
+
+          assert.strictEqual(focused, "1");
+          assert.deepStrictEqual(errors, []);
+        }).pipe(Effect.provide(NodeServices.layer)),
+      90_000
+    );
+  }
+
   it.live(
     "lists the meaning differences in the restore dialog instead of dropping them",
     () =>
