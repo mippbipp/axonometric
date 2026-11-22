@@ -101,11 +101,12 @@ export function HistoryTab() {
         <ol className="flex flex-col gap-1.5">
           {Arr.map(entries, ({ by, items, message, revision, savedAt }) => {
             const isOpen = opened === revision;
+            const authors = authorsText(by);
 
             return (
               <li key={revision}>
                 <Toggle
-                  aria-label={`Revision ${revision}: ${message}, ${itemsText(items)}`}
+                  aria-label={`Revision ${revision}: ${message}, ${itemsText(items)}${authors === "" ? "" : `, ${authors}`}`}
                   className="border-ink focus-visible:outline-ink bg-paper text-ink data-[pressed]:bg-ink data-[pressed]:text-paper hover:bg-paper hover:text-ink data-[pressed]:hover:bg-ink data-[pressed]:hover:text-paper flex h-auto w-full min-w-0 cursor-pointer flex-col items-stretch justify-start gap-0.5 rounded-none border px-2 py-1.5 text-left text-xs font-normal whitespace-normal transition-none focus-visible:outline-2 focus-visible:outline-offset-1"
                   data-revision={revision}
                   onPressedChange={() => {
@@ -125,10 +126,10 @@ export function HistoryTab() {
                     </time>
                     <span>·</span>
                     <span data-revision-items>{itemsText(items)}</span>
-                    {by.engineer + by.agent === 0 ? null : (
+                    {authors === "" ? null : (
                       <>
                         <span>·</span>
-                        <span data-revision-authors>{authorsText(by)}</span>
+                        <span data-revision-authors>{authors}</span>
                       </>
                     )}
                   </span>
