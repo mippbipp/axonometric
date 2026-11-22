@@ -8,9 +8,9 @@ import { Array as Arr, Duration, Effect, Fiber, Result, Schema } from "effect";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import CheckWorker from "./check.worker.ts?worker&inline";
 import { CheckAnswer, dragChecker } from "./drag-check.ts";
 import type { CheckMap, CheckStep } from "./drag-check.ts";
-import DragCheckWorker from "./drag-check.worker.ts?worker&inline";
 import {
   ChangePreviewContext,
   nothingReported,
@@ -91,7 +91,7 @@ const startChecker = (answer: (found: CheckAnswer) => void): DragChecker => {
     return dragChecker(answer);
   }
 
-  const worker = new DragCheckWorker({ name: "drag check" });
+  const worker = new CheckWorker({ name: "drag check" });
 
   worker.addEventListener("message", (event: MessageEvent<unknown>) => {
     const decoded = decodeAnswer(event.data);

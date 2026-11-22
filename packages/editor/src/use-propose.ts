@@ -13,7 +13,7 @@ import { useSending } from "./use-sending.ts";
  * beside the map, the panel a drag uses.
  *
  * `send` shows them for the change it sends, and a refusal in the same panel.
- * A form that shows them as its fields change uses `useDraftPreview`.
+ * The add form shows them as its fields change through `DraftSpotProvider`.
  */
 export const usePropose = () => {
   const proposing = useProposed();

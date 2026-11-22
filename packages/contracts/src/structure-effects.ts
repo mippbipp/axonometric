@@ -1,8 +1,12 @@
 import { Array as Arr, Option, Order, Record as Rec } from "effect";
 import { dual } from "effect/Function";
 
-import { changedProblems, footprintsOverlap } from "./layout-checks.ts";
-import type { Checkable } from "./layout-checks.ts";
+import {
+  changedProblemsTurns,
+  finished,
+  footprintsOverlap,
+} from "./layout-checks.ts";
+import type { Checkable, Turns } from "./layout-checks.ts";
 import type { Layout, Placement } from "./layout.ts";
 import type { MapData, Structure } from "./map-data.ts";
 import { defaultFootprint, placeStructures } from "./placement.ts";
@@ -284,17 +288,8 @@ const gapBetween = (a: Placement, b: Placement): number =>
 const centreGap = (a: Placement, b: Placement): number =>
   Math.hypot(a.x + a.w / 2 - (b.x + b.w / 2), a.y + a.d / 2 - (b.y + b.d / 2));
 
-/**
- * Where a new structure called `name`, of `shape`, in group `group` goes if
- * the engineer doesn't pick a spot: the nearest spot to the group's zone, on
- * the half-unit grid, where the proposed map gains no `check` warning. A
- * spot inside the zone's bounds is the best. The search is the one the
- * warnings panel makes: it adds the structure to `data` and `layout`, the
- * map as proposed, and asks `changedProblems` what is new. When no spot
- * within `defaultSpotRadius` adds nothing, it is the one that adds the
- * fewest, and `added` says how many.
- */
-export const defaultSpotFor = ({
+/** `defaultSpotFor`, pausing after each chapter it draws. */
+export const defaultSpotTurns = function* ({
   data,
   group,
   layout,
@@ -306,7 +301,7 @@ export const defaultSpotFor = ({
   readonly layout: Layout;
   readonly name: string;
   readonly shape: Structure["shape"];
-}): DefaultSpot => {
+}): Turns<DefaultSpot> {
   // The structure the page would draw for this add, code and all: the name
   // tag holds the code, so a probe with another code is checked at another
   // width.
@@ -322,20 +317,20 @@ export const defaultSpotFor = ({
 
   const before: Checkable = { data, layout };
 
-  const addedAt = (spot: Placement): number =>
-    Arr.filter(
-      changedProblems({
-        after: {
-          data: withProbe,
-          layout: {
-            ...layout,
-            structures: { ...layout.structures, [probeId]: spot },
-          },
+  const addedAt = function* (spot: Placement): Turns<number> {
+    const found = yield* changedProblemsTurns({
+      after: {
+        data: withProbe,
+        layout: {
+          ...layout,
+          structures: { ...layout.structures, [probeId]: spot },
         },
-        before,
-      }),
-      ({ added }) => added
-    ).length;
+      },
+      before,
+    });
+
+    return Arr.filter(found, ({ added }) => added).length;
+  };
 
   const beside: Placement = {
     ...defaultFootprint,
@@ -380,7 +375,7 @@ export const defaultSpotFor = ({
   let best: DefaultSpot | undefined;
 
   for (const spot of nearest.slice(0, checkedSpots)) {
-    const added = addedAt(spot);
+    const added = yield* addedAt(spot);
 
     if (best === undefined || added < best.added) {
       best = { added, spot };
@@ -391,5 +386,19 @@ export const defaultSpotFor = ({
     }
   }
 
-  return best ?? { added: addedAt(beside), spot: beside };
+  return best ?? { added: yield* addedAt(beside), spot: beside };
 };
+
+/**
+ * Where a new structure called `name`, of `shape`, in group `group` goes if
+ * the engineer doesn't pick a spot: the nearest spot to the group's zone, on
+ * the half-unit grid, where the proposed map gains no `check` warning. A
+ * spot inside the zone's bounds is the best. The search is the one the
+ * warnings panel makes: it adds the structure to `data` and `layout`, the
+ * map as proposed, and asks `changedProblems` what is new. When no spot
+ * within `defaultSpotRadius` adds nothing, it is the one that adds the
+ * fewest, and `added` says how many.
+ */
+export const defaultSpotFor = (
+  args: Parameters<typeof defaultSpotTurns>[0]
+): DefaultSpot => finished(defaultSpotTurns(args));

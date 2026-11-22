@@ -1,6 +1,7 @@
 import type {
   BatchItem,
   ChangeId,
+  Checkable,
   CheckScope,
   DraggedProblem,
   Placement,
@@ -64,6 +65,11 @@ export interface ProposedStructures {
   readonly refusalOf: (change: StructureChange) => string | undefined;
   /** Why putting the proposed structure `id` at `next` would be refused. */
   readonly refusalOfPlace: (id: string, next: Placement) => string | undefined;
+  /**
+   * The map as proposed, with the frozen layout changes applied, as the page
+   * draws it. `problemsOf` compares with this map.
+   */
+  readonly shown: Checkable;
 }
 
 export const ProposedContext = createContext<ProposedStructures | null>(null);

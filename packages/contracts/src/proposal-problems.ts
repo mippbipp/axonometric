@@ -1,7 +1,12 @@
 import { Array as Arr, Order } from "effect";
 
-import { changedProblems } from "./layout-checks.ts";
-import type { Checkable, CheckScope, DraggedProblem } from "./layout-checks.ts";
+import { changedProblemsTurns, finished } from "./layout-checks.ts";
+import type {
+  Checkable,
+  CheckScope,
+  DraggedProblem,
+  Turns,
+} from "./layout-checks.ts";
 import type { Placement } from "./layout.ts";
 import type { BatchItem } from "./proposals.ts";
 import { applyOrder, specOf } from "./review-kinds.ts";
@@ -11,22 +16,8 @@ const byKind = Order.mapInput(Order.Number, (item: BatchItem) =>
   applyOrder.indexOf(item.kind)
 );
 
-/**
- * Everything `check` would report for the map as proposed with `items` taken
- * as they stand, each marked `added` when the map as proposed now didn't have
- * it. It is the check a drag runs. `items` are any open items of any kind: each
- * says through the kind table (`whenTaken`, else `appliesToData`) what it does
- * to the data and the layout, so a kind added to the table is checked with no
- * change here.
- *
- * `scope` is the whole map, which `check` reports, or the one chapter the
- * engineer is viewing, for a proposal that changes how a chapter draws, such
- * as a new group or a structure revealed in it.
- *
- * `moved` puts structures where a drop has just put them before the items
- * apply.
- */
-export const proposalProblems = ({
+/** `proposalProblems`, pausing after each chapter it draws. */
+export const proposalProblemsTurns = function* ({
   before,
   items,
   moved = {},
@@ -38,7 +29,7 @@ export const proposalProblems = ({
   /** Structures a drop has just moved, by id. */
   readonly moved?: Readonly<Record<string, Placement>>;
   readonly scope?: CheckScope;
-}): ReadonlyArray<DraggedProblem> => {
+}): Turns<ReadonlyArray<DraggedProblem>> {
   const from: Checkable = {
     data: before.data,
     layout: {
@@ -59,5 +50,24 @@ export const proposalProblems = ({
     }
   );
 
-  return changedProblems({ after, before: from, scope });
+  return yield* changedProblemsTurns({ after, before: from, scope });
 };
+
+/**
+ * Everything `check` would report for the map as proposed with `items` taken
+ * as they stand, each marked `added` when the map as proposed now didn't have
+ * it. It is the check a drag runs. `items` are any open items of any kind: each
+ * says through the kind table (`whenTaken`, else `appliesToData`) what it does
+ * to the data and the layout, so a kind added to the table is checked with no
+ * change here.
+ *
+ * `scope` is the whole map, which `check` reports, or the one chapter the
+ * engineer is viewing, for a proposal that changes how a chapter draws, such
+ * as a new group or a structure revealed in it.
+ *
+ * `moved` puts structures where a drop has just put them before the items
+ * apply.
+ */
+export const proposalProblems = (
+  args: Parameters<typeof proposalProblemsTurns>[0]
+): ReadonlyArray<DraggedProblem> => finished(proposalProblemsTurns(args));

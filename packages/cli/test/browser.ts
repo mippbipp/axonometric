@@ -173,6 +173,20 @@ export const waitForAllWarnings = (page: Page) =>
       .waitFor(waitTimeout)
   );
 
+/**
+ * Waits until the add form has found its spot for the draft as it stands and
+ * the warnings panel has checked it. Both happen off the page's main thread,
+ * so the form's spot, outline and warnings lag behind a change to its fields.
+ */
+export const waitForAddForm = (page: Page) =>
+  Effect.promise(() =>
+    page
+      .locator(
+        "[data-add-structure]:not([data-checking]) [data-add-hint]:not([data-finding])"
+      )
+      .waitFor(waitTimeout)
+  );
+
 /** Waits until no element matching `selector` is on the page. */
 export const waitGone = (page: Page, selector: string) =>
   Effect.promise(() =>

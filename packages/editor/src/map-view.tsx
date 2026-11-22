@@ -27,7 +27,7 @@ import { ChapterPendingLook } from "./chapter-pending-look.tsx";
 import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
 import { useProposedHopsIgnoringEdit } from "./connections-context.ts";
-import { useDraftSpot } from "./draft-spot.ts";
+import { useDraftOutline } from "./draft-spot.ts";
 import { DrawnShiftContext } from "./drag-shift.ts";
 import type { DragShift } from "./drag-shift.ts";
 import { DragOutlines } from "./drop-outline.tsx";
@@ -213,7 +213,7 @@ export function MapView({
 
   // The new structure's footprint counts in the fit while the form is open,
   // so it is never off the canvas.
-  const candidate = useDraftSpot();
+  const candidate = useDraftOutline();
   const candidateSpot = candidate?.spot;
 
   const candidateCorners = useMemo(
@@ -245,12 +245,13 @@ export function MapView({
 
   // The view fits again when the form opens and when it picks a new default
   // spot. A spot the engineer picked doesn't move the map under their hand.
+  // While a spot is being found the last one stays, so typing doesn't refit.
   const candidateKey =
     candidate === null
       ? ""
-      : candidate.picked
+      : candidate.picked || candidateSpot === undefined
         ? "+adding"
-        : `+adding ${candidate.spot.x},${candidate.spot.y}`;
+        : `+adding ${candidateSpot.x},${candidateSpot.y}`;
 
   const key = `${fitKey ?? fitKeyOf(fitTo)}${candidateKey}`;
 

@@ -24,6 +24,7 @@ import {
   press,
   textOf,
   waitFor,
+  waitForAddForm,
   waitTimeout,
   choose,
 } from "./browser.ts";
@@ -177,7 +178,7 @@ describe("the add form", () => {
 
           for (const group of ["people", "loop", "outside"]) {
             yield* choose(page, '[data-add="group"]', group);
-            yield* Effect.promise(() => page.waitForTimeout(600));
+            yield* waitForAddForm(page);
             yield* waitFor(page, "[data-spot-outline]");
 
             const outlineDrawn = yield* outlineOnCanvas(page);
@@ -218,6 +219,7 @@ describe("the add form", () => {
         yield* Effect.promise(() =>
           page.locator('[data-add="name"]').fill("Build cache")
         );
+        yield* waitForAddForm(page);
 
         const x = () =>
           Effect.promise(() => page.locator('[data-add="x"]').inputValue());
@@ -287,6 +289,7 @@ describe("the add form", () => {
         const first = yield* x();
 
         yield* choose(page, '[data-add="group"]', "outside");
+        yield* waitForAddForm(page);
         yield* Effect.promise(() =>
           page.waitForFunction(
             `document.querySelector('[data-add="x"]').value !== ${literal(first)}`,
@@ -361,6 +364,7 @@ describe("the add form", () => {
         // Far from the engineer, in the middle of the loop group.
         yield* Effect.promise(() => page.locator('[data-add="x"]').fill("14"));
         yield* Effect.promise(() => page.locator('[data-add="y"]').fill("0"));
+        yield* waitForAddForm(page);
         yield* waitFor(page, "[data-drag-warnings]");
 
         const fromForm = yield* zoneWarnings;

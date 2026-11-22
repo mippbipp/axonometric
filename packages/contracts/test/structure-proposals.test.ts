@@ -13,6 +13,7 @@ import {
   breakageOf,
   commitBatch,
   defaultSpotFor,
+  defaultSpotTurns,
   discardProposal,
   droppedIntoGroup,
   footprintsOverlap,
@@ -30,6 +31,7 @@ import {
   Verdict,
 } from "../src/index.ts";
 import type {
+  Turns,
   AcceptedItem,
   BatchItem,
   Layout,
@@ -1191,7 +1193,39 @@ const spotFor = (group: string, mapData = rowData, map = rowLayout) =>
     shape: "box",
   });
 
+/** How many times `turns` pauses before it gives its answer. */
+const pausesOf = <A>(turns: Turns<A>) => {
+  let pauses = 0;
+
+  while (turns.next().done !== true) {
+    pauses += 1;
+  }
+
+  return pauses;
+};
+
 describe("the default spot for a new structure", () => {
+  it.effect(
+    "pauses after every chapter it draws, so a page can stop a search for a name that changed",
+    () =>
+      Effect.gen(function* () {
+        const map = yield* fixture("review");
+
+        const pauses = pausesOf(
+          defaultSpotTurns({
+            ...map,
+            group: "loop",
+            name: "Build cache",
+            shape: "box",
+          })
+        );
+
+        // The first spot tried draws each chapter of the map with the new
+        // structure in it, and of the map before.
+        assert.isAtLeast(pauses, 2 * map.data.chapters.length);
+      })
+  );
+
   it("is a free 2 by 2 slot beside the group's zone, clear of every footprint", () => {
     const { spot } = spotFor("g2");
 

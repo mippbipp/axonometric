@@ -14,15 +14,17 @@ import type { TestSpecification } from "vitest/node";
  * connection-page and structure-page entries are scaled by their ubuntu change
  * in #160 (run 44682017583). export-svg and export are scaled by their ubuntu change in #165 (run 44684926905).
  * connection-page is scaled again in #144, whose tests added 8.4 s to a 71 s local run.
- * Four entries are not CI times. viewport (#138) is from a 36 s local run.
- * rerouting (#143), read-view (#154) and view-tools-page (#155) are
- * estimates with no recorded run.
+ * read-view, rerouting, view-tools-page and viewport are from CI run
+ * 44962829997, on main at 7128af8.
+ * add-structure-big-map is from CI run 44978554433, on #230's draft pull
+ * request.
  * Files not listed take `defaultSeconds`.
  * A file that grows or a new slow one only skews the split until someone
  * updates this table, and `shard-sequencer.test.ts` fails when a shard
  * holds more than 60% of the weight.
  */
 export const fileSeconds = {
+  "add-structure-big-map.test.ts": 65,
   "agent-changes-page.test.ts": 10,
   "connection-page.test.ts": 65,
   "drag-warnings-big-map.test.ts": 11,
@@ -39,7 +41,7 @@ export const fileSeconds = {
   "plan-view.test.ts": 9,
   "read-view.test.ts": 25,
   "readable-text-page.test.ts": 11,
-  "rerouting.test.ts": 60,
+  "rerouting.test.ts": 66,
   "review-page.test.ts": 12,
   "selection-edit.test.ts": 56,
   "status.test.ts": 12,
@@ -47,8 +49,8 @@ export const fileSeconds = {
   "structure-page.test.ts": 15,
   "structures.test.ts": 19,
   "text-page.test.ts": 19,
-  "view-tools-page.test.ts": 45,
-  "viewport.test.ts": 30,
+  "view-tools-page.test.ts": 60,
+  "viewport.test.ts": 35,
 } as const satisfies Readonly<Record<string, number>>;
 
 export const defaultSeconds = 2.5;
