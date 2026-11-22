@@ -74,7 +74,7 @@ export function SortableList({
           return row === undefined ? [] : [row];
         }).map((row) => (
           <SortableListItem
-            className="border-ink/40 data-[grabbed]:border-ink data-[sort-marked=true]:border-refused data-[grabbed]:outline-ink flex items-center gap-1.5 border px-1.5 py-1 text-sm data-[dragging]:opacity-80 data-[grabbed]:outline-2 data-[sort-marked=true]:border-dashed"
+            className="border-ink/50 data-[grabbed]:border-ink data-[sort-marked=true]:border-refused data-[grabbed]:outline-ink flex items-center gap-1.5 border px-1.5 py-1 text-sm data-[dragging]:opacity-80 data-[grabbed]:outline-2 data-[sort-marked=true]:border-dashed"
             data-sort-marked={row.note !== undefined}
             data-sort-row={row.id}
             key={row.id}
@@ -93,11 +93,11 @@ export function SortableList({
               data-sort-content={row.id}
             >
               {row.prefix === undefined ? null : (
-                <span className="opacity-60">{row.prefix}</span>
+                <span className="text-dim-ink">{row.prefix}</span>
               )}
               {row.name}
               {row.note === undefined ? null : (
-                <span className="opacity-60" data-sort-note={row.id}>
+                <span className="text-dim-ink" data-sort-note={row.id}>
                   {` · ${row.note}`}
                 </span>
               )}

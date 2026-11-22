@@ -13,6 +13,10 @@
   --face: light-dark(#efe9cc, #2a2920);
   --face-off: light-dark(#eae3c4, #232219);
   --muted: light-dark(#8e8a70, #6e6b54);
+  /* Text that recedes but stays readable: the ink 65% over the paper. It
+     measures 4.95:1 in light and 6.05:1 in dark on the paper, and 5.4:1 and
+     5.2:1 on a face. Opacity can't do this: opacity-50 gave 3.18 and 4.14. */
+  --dim: color-mix(in srgb, var(--ink) 65%, var(--paper));
   /* Pending changes: a blue that no status uses, and that stays clear of
      the ink the "new" marker is drawn in. */
   --pending: light-dark(#1d4ed8, #7aa7ff);
@@ -64,6 +68,7 @@
   --color-ink: var(--ink);
   --color-face: var(--face);
   --color-muted-ink: var(--muted);
+  --color-dim-ink: var(--dim);
   --color-pending: var(--pending);
   --color-multi: var(--multi);
   --color-refused: var(--refused);
