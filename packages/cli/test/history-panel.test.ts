@@ -291,6 +291,11 @@ describe("the History panel", () => {
           '[data-revision="1"] [data-revision-authors]',
           "1 by you, 1 by the agent"
         );
+        const row = page.getByRole("button", {
+          name: /^Revision 1: .*, 1 by you, 1 by the agent$/u,
+        });
+        const rows = yield* Effect.promise(() => row.count());
+        assert.strictEqual(rows, 1);
         assert.deepStrictEqual(errors, []);
       }),
     60_000
