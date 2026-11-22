@@ -150,13 +150,7 @@ describe("moving structures", () => {
             Effect.map((now) =>
               process.stderr.write(
                 `PROBE243 ${label} ${JSON.stringify(
-                  Option.isSome(now)
-                    ? {
-                        kinds: Arr.map(now.value.layout, (c) => c.kind),
-                        n: now.value.layout.length,
-                        rev: now.value.revision,
-                      }
-                    : null
+                  Option.isSome(now) ? now.value : null
                 )}\n`
               )
             )

@@ -7,19 +7,24 @@ on:
     inputs:
       runs:
         description: Loops per file
-        default: "30"
+        default: "60"
 
 permissions:
   contents: read
 
 jobs:
   stress:
-    name: stress ${{ matrix.file }}
+    name: stress ${{ matrix.file }} ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        file: [editing, agent-changes-page, structure-follow]
-    runs-on: windows-latest
+        include:
+          - { file: agent-changes-page, os: windows-latest }
+          - { file: structure-follow, os: windows-latest }
+          - { file: structure-page, os: ubuntu-24.04 }
+          - { file: structure-page, os: windows-latest }
+          - { file: structure-follow, os: ubuntu-24.04 }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -72,6 +77,11 @@ jobs:
         working-directory: packages/cli
         run: bunx playwright install-deps chromium
 
+      - name: Chromium libraries
+        if: runner.os == 'Linux'
+        working-directory: packages/cli
+        run: bunx playwright install-deps chromium
+
       - name: Build
         run: bunx turbo run build --filter=axonometric
 
@@ -79,7 +89,7 @@ jobs:
         shell: bash
         working-directory: packages/cli
         env:
-          RUNS: ${{ inputs.runs || '30' }}
+          RUNS: ${{ inputs.runs || '60' }}
         run: |
           fails=0
           for i in $(seq 1 "$RUNS"); do

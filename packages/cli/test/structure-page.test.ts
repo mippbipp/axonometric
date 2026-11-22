@@ -99,6 +99,16 @@ const addStructure = Effect.fnUntraced(function* (
   yield* Effect.promise(() =>
     page.locator('[data-add="y"]').fill(String(fields.y))
   );
+  // PROBE
+  const state = yield* Effect.promise(() =>
+    page.evaluate<string>(`JSON.stringify({
+      checking: document.querySelectorAll("[data-add-structure][data-checking]").length,
+      disabled: document.querySelector('[data-add="submit"]')?.disabled,
+      finding: document.querySelectorAll("[data-add-hint][data-finding]").length,
+    })`)
+  );
+  process.stderr.write(`PROBE262 at click ${state}\n`);
+  // END PROBE
   yield* click(page, '[data-add="submit"]');
 });
 
