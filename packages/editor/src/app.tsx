@@ -1,7 +1,7 @@
-import type { Hop, MapState, View } from "@axonometric/contracts";
+import type { MapState, View } from "@axonometric/contracts";
 import { cn } from "@axonometric/ui/lib/utils";
 import { Array as Arr } from "effect";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { AgentNotice } from "./agent-notice.tsx";
@@ -38,7 +38,6 @@ import { PageTools } from "./page-tools.tsx";
 import { PlacingProvider } from "./placing-provider.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { PlaybackProvider } from "./playback-provider.tsx";
-import { screenRouteOf } from "./projection.ts";
 import { ReadyForReview } from "./ready-for-review.tsx";
 import { useSelection } from "./selection-context.ts";
 import { SelectionProvider } from "./selection.tsx";
@@ -180,18 +179,6 @@ function WalkthroughPage({ notices }: Notices) {
     }
   });
 
-  const routeOf = useCallback(
-    (hop: Hop) =>
-      screenRouteOf({
-        data: state.data,
-        hop,
-        layout: state.layout,
-        revealed,
-        view,
-      }),
-    [state.data, state.layout, revealed, view]
-  );
-
   return (
     <main
       className="bg-paper text-ink flex h-svh flex-col font-mono"
@@ -240,7 +227,7 @@ function WalkthroughPage({ notices }: Notices) {
               state={state}
               view={view}
             >
-              <PacketLayer routeOf={routeOf} />
+              <PacketLayer />
               <PageTools
                 notify={setAgentNotice}
                 setView={setView}
