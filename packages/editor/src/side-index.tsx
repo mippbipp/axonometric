@@ -48,7 +48,8 @@ function IndexItem({
       aria-current={isSelected ? "true" : undefined}
       className={cn(
         itemClass,
-        isSelected && "bg-ink text-paper hover:bg-ink",
+        isSelected &&
+          "bg-ink text-paper hover:bg-ink focus-visible:outline-paper",
         isNew &&
           !isSelected &&
           "outline-ink outline-1 -outline-offset-1 outline-dashed"
@@ -77,7 +78,7 @@ function LaterItem({
   return (
     <RovingListItem
       aria-label={`${structure.name}, revealed in chapter ${chapter}`}
-      className={cn(itemClass, "opacity-50")}
+      className={cn(itemClass, "text-dim-ink")}
       data-index-structure={structure.id}
       data-revealed-in={chapter}
       onClick={() => {
