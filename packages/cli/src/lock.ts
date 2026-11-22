@@ -6,6 +6,7 @@ import {
   FileSystem,
   Option,
   Predicate,
+  Random,
   Schedule,
   Schema,
 } from "effect";
@@ -43,7 +44,8 @@ export class LockHeld extends Schema.TaggedError<
   }
 }
 
-const lockPathHint = ".axonometric/lock in the home folder";
+const lockPathHint =
+  ".axonometric/lock, and .axonometric/lock.takeover if it exists, in the home folder";
 
 /**
  * Creates `.axonometric/` in the home folder. The folder holds one process's
@@ -124,12 +126,105 @@ export const readLock = Effect.fnUntraced(function* (
   );
 });
 
+const takeoverSuffix = ".takeover";
+
+/**
+ * Stands in for a claimant whose claim file can't be decoded, which only
+ * happens when something other than this code wrote it.
+ */
+const unknownClaimant: LockHolder = {
+  pid: 0,
+  command: "unknown",
+  since: "an unknown time",
+};
+
+/**
+ * Creates `file` with `content` already in place, or fails with
+ * `AlreadyExists`. A hard link fails when its target exists, and a reader
+ * never sees a half-written file.
+ */
+const createWhole = Effect.fnUntraced(function* (
+  file: string,
+  content: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const suffix = yield* Random.nextInt;
+  const draft = `${file}.${suffix}.draft`;
+
+  yield* fs.writeFileString(draft, content);
+
+  const discardDraft = Effect.ignore(fs.remove(draft));
+
+  yield* fs.link(draft, file).pipe(Effect.ensuring(discardDraft));
+});
+
+/**
+ * Removes the lock whose text is `stale`, unless another command is doing so.
+ * Returns that command when it is, and nothing once this command has taken
+ * its turn.
+ *
+ * Only two things remove a lock: its holder on release, and the one command
+ * that holds the claim `<lock>.takeover`, a second file created the same way
+ * as the lock. A command that finds a lock stale may be late, since another
+ * command can clear the lock and take a fresh one before this one reads the
+ * claim. So the command re-reads the lock under the claim and removes it only
+ * while it still holds `stale`.
+ */
+const takeOverStale = Effect.fnUntraced(function* (
+  file: string,
+  content: string,
+  stale: string
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const claim = `${file}${takeoverSuffix}`;
+
+  const claimed = yield* createWhole(claim, content).pipe(
+    Effect.as(true),
+    Effect.catchReason("PlatformError", "AlreadyExists", () =>
+      Effect.succeed(false)
+    )
+  );
+
+  if (!claimed) {
+    const claimant = yield* readLock(claim);
+
+    return Option.some(
+      Option.flatMap(claimant, decodeHolder).pipe(
+        Option.getOrElse(() => unknownClaimant)
+      )
+    );
+  }
+
+  const releaseClaim = Effect.ignore(fs.remove(claim));
+
+  yield* Effect.gen(function* () {
+    const current = yield* readLock(file);
+
+    if (Option.contains(current, stale)) {
+      yield* fs
+        .remove(file)
+        .pipe(
+          Effect.catchReason("PlatformError", "NotFound", () => Effect.void)
+        );
+    }
+  }).pipe(Effect.ensuring(releaseClaim));
+
+  return Option.none<LockHolder>();
+});
+
 /**
  * One try at writing `content` to the lock. Returns who holds it when a live
- * process does. A lock whose process is gone is removed, and the try starts
- * over.
+ * process does, or when another command is clearing a stale lock. A lock
+ * whose process is gone is removed, and the try starts over.
+ *
+ * PID reuse isn't guarded against: a stale lock whose PID now belongs to
+ * another live process counts as held, and the command times out naming that
+ * PID.
  */
-const attempt = Effect.fnUntraced(function* (file: string, content: string) {
+export const attempt = Effect.fnUntraced(function* (
+  file: string,
+  content: string
+) {
   const fs = yield* FileSystem.FileSystem;
 
   while (true) {
@@ -157,23 +252,12 @@ const attempt = Effect.fnUntraced(function* (file: string, content: string) {
       return holder;
     }
 
-    // Another command clearing the same stale lock may already have taken
-    // a fresh one, so only remove the file while it still holds the stale
-    // text. A narrow race remains: a command can take a fresh lock between
-    // this read and the remove below, and lose it. That needs two commands
-    // to find the same stale lock within microseconds, which one user on
-    // one machine won't hit in practice, and a real fix needs an OS file
-    // lock that Node doesn't offer. PID reuse isn't guarded against either:
-    // a stale lock whose PID now belongs to another live process counts as
-    // held, and the command times out naming that PID.
-    const current = yield* readLock(file);
+    if (Option.isSome(text)) {
+      const claimant = yield* takeOverStale(file, content, text.value);
 
-    if (Option.isSome(text) && Option.contains(current, text.value)) {
-      yield* fs
-        .remove(file)
-        .pipe(
-          Effect.catchReason("PlatformError", "NotFound", () => Effect.void)
-        );
+      if (Option.isSome(claimant)) {
+        return claimant;
+      }
     }
   }
 });
