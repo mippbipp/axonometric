@@ -153,5 +153,5 @@ function RovingListItem({
   return <parts.Item className={cn(className)} {...props} />;
 }
 
-export { RovingList, RovingListItem, rovingList };
+export { RovingList, RovingListItem };
 export type { RovingListOptions, RovingListState };

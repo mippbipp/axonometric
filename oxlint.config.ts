@@ -273,7 +273,11 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/ui/src/components/*.tsx"],
+      files: [
+        "packages/ui/src/components/*.tsx",
+        // cva class tables moved out of component files for react-doctor
+        "packages/ui/src/lib/*-variants.ts",
+      ],
       rules: {
         "react/only-export-components": "off",
         // components own their appearance and may need structural values

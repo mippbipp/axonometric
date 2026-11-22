@@ -1,4 +1,4 @@
-import { buttonVariants } from "@axonometric/ui/components/button";
+import { buttonVariants } from "@axonometric/ui/lib/button-variants";
 import { cn } from "@axonometric/ui/lib/utils";
 import {
   Toolbar as ToolbarPrimitive,
