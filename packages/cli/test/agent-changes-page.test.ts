@@ -285,6 +285,17 @@ describe("the agent's layout changes in the page", () => {
         yield* waitGone(page, "[data-pending-group]");
         yield* waitGone(page, '[data-structure][data-pending="true"]');
 
+        // PROBE
+        const early = yield* readProposals(home);
+        process.stderr.write(
+          `PROBE257 first rev=${early.revision} n=${early.layout.length}\n`
+        );
+        yield* Effect.sleep("1500 millis");
+        const late = yield* readProposals(home);
+        process.stderr.write(
+          `PROBE257 settled rev=${late.revision} n=${late.layout.length}\n`
+        );
+        // END PROBE
         const proposals = yield* readProposals(home);
 
         assert.deepStrictEqual(proposals.layout, []);

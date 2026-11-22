@@ -7,7 +7,7 @@ on:
     inputs:
       runs:
         description: Loops per file
-        default: "60"
+        default: "120"
 
 permissions:
   contents: read
@@ -21,10 +21,6 @@ jobs:
         include:
           - { file: editing, os: windows-latest }
           - { file: agent-changes-page, os: windows-latest }
-          - { file: structure-follow, os: windows-latest }
-          - { file: structure-follow, os: ubuntu-24.04 }
-          - { file: structure-page, os: windows-latest }
-          - { file: structure-page, os: ubuntu-24.04 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -90,7 +86,7 @@ jobs:
         shell: bash
         working-directory: packages/cli
         env:
-          RUNS: ${{ inputs.runs || '60' }}
+          RUNS: ${{ inputs.runs || '120' }}
         run: |
           fails=0
           for i in $(seq 1 "$RUNS"); do
