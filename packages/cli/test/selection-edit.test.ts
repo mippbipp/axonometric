@@ -796,7 +796,7 @@ describe("undo and redo", () => {
   );
 
   it.live(
-    "Ctrl+Z undoes, and Ctrl+Shift+Z and Ctrl+Y redo",
+    "Ctrl or Cmd+Z undoes, and Ctrl or Cmd+Shift+Z and Ctrl+Y redo",
     () =>
       Effect.gen(function* () {
         const { home, page } = yield* servedAll;
@@ -819,6 +819,14 @@ describe("undo and redo", () => {
         yield* press(page, "Control+y");
         assert.deepStrictEqual(
           (yield* waitForRevision(home, 5)).layout,
+          moved.layout
+        );
+
+        yield* press(page, "Meta+z");
+        assert.deepStrictEqual((yield* waitForRevision(home, 6)).layout, []);
+        yield* press(page, "Meta+Shift+Z");
+        assert.deepStrictEqual(
+          (yield* waitForRevision(home, 7)).layout,
           moved.layout
         );
       }),

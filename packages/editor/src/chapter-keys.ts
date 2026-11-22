@@ -1,60 +1,20 @@
-import { useEffect, useEffectEvent } from "react";
-
+import { usePageKey } from "./page-key.ts";
+import { useSelection } from "./selection-context.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
-/** Keys that move to the next and the previous chapter. */
-const nextKeys = new Set(["ArrowRight", "]"]);
-
-const backKeys = new Set(["ArrowLeft", "["]);
-
-const arrowKeys = new Set(["ArrowRight", "ArrowLeft"]);
-
-export const isTyping = (target: EventTarget | null) =>
-  target instanceof HTMLElement &&
-  (target.isContentEditable ||
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement);
-
 /**
- * Moves between chapters with → and ←, or ] and [. Pass `arrows: false`
- * while something else owns → and ←, such as the inside view, where ← comes
- * out; ] and [ keep working. The map's items take the arrows while they have
- * focus, so → and ← change chapter only with focus outside the map. Keys
- * typed into a field, or pressed with a modifier, are left alone.
+ * Moves between chapters with → and ←, or ] and [. In the inside view → does
+ * nothing and ← comes out instead; ] and [ keep working. The map's items take
+ * the arrows while they have focus, so → and ← change chapter only with focus
+ * outside the map. Keys typed into a field, or pressed with Alt, Ctrl or
+ * Meta, are left alone.
  */
-export const useChapterKeys = (arrows: boolean) => {
-  const { back: previousChapter, next: nextChapter } = useWalkthrough();
+export const useChapterKeys = () => {
+  const { back, next } = useWalkthrough();
+  const { comeOut, inside } = useSelection();
 
-  const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      event.defaultPrevented ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      isTyping(event.target)
-    ) {
-      return;
-    }
-
-    if (!arrows && arrowKeys.has(event.key)) {
-      return;
-    }
-
-    if (nextKeys.has(event.key)) {
-      event.preventDefault();
-      nextChapter();
-    } else if (backKeys.has(event.key)) {
-      event.preventDefault();
-      previousChapter();
-    }
-  });
-
-  useEffect(() => {
-    globalThis.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      globalThis.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
+  usePageKey("]", next);
+  usePageKey("[", back);
+  usePageKey("arrowright", next, { when: () => inside === null });
+  usePageKey("arrowleft", inside === null ? back : comeOut);
 };

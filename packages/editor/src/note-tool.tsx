@@ -13,8 +13,8 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
-import { isTyping } from "./chapter-keys.ts";
 import { uiControlClass } from "./control-class.ts";
+import { dialogOpen, isTyping } from "./engineer-busy.ts";
 import { groundAt } from "./ground-at.ts";
 import { NoteToolContext, useNoteTool } from "./note-tool-context.ts";
 import type { NoteTool } from "./note-tool-context.ts";
@@ -87,7 +87,8 @@ const middleOf = (
 /**
  * Holds the Note tool and the spot it picked. Put it inside a
  * `SelectionProvider`: selecting a structure or a hop closes the spot's panel.
- * Escape disarms the tool, and closes the spot's panel when the tool is off.
+ * While the tool is armed, the arrow keys move its cursor and Enter picks the
+ * spot. `useEscapeKey` disarms it, and closes the spot's panel.
  */
 export function NoteToolProvider({
   children,
@@ -117,24 +118,19 @@ export function NoteToolProvider({
     [select]
   );
 
+  // Not a ui-sdk shortcut: those hear keys after the focused toolbar, whose
+  // arrow keys would move along its buttons first. It pauses while a dialog
+  // is open, like the page's shortcuts.
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || isTyping(event.target)) {
-      return;
-    }
-
-    if (event.key === "Escape") {
-      if (armed) {
-        event.preventDefault();
-        setCursor(null);
-      } else if (spot !== null) {
-        event.preventDefault();
-        setSpot(null);
-      }
-
-      return;
-    }
-
-    if (cursor === null || event.ctrlKey || event.metaKey || event.altKey) {
+    if (
+      cursor === null ||
+      event.defaultPrevented ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      isTyping(event.target) ||
+      dialogOpen()
+    ) {
       return;
     }
 
@@ -159,8 +155,6 @@ export function NoteToolProvider({
   });
 
   useEffect(() => {
-    // In the capture phase, so an armed tool gets the arrow keys before the
-    // toolbar that holds focus moves along its buttons with them.
     globalThis.addEventListener("keydown", onKeyDown, true);
 
     return () => {

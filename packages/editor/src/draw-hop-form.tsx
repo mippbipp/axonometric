@@ -2,7 +2,7 @@ import { maxHopLabelLength, newHopId } from "@axonometric/contracts";
 import { Button } from "@axonometric/ui/components/button";
 import { Input } from "@axonometric/ui/components/input";
 import { Array as Arr, Option, Result } from "effect";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useState } from "react";
 
 import { ChoiceSelect } from "./choice-select.tsx";
 import { useConnections } from "./connections-context.ts";
@@ -23,7 +23,8 @@ const focusOnOpen = (field: HTMLInputElement | null) => {
  * The form that finishes a hop: the structure it ends at, picked from a list
  * when the hop was started from "Draw hop from here", and its label. It lives
  * in the side panel under the tabs, never over the drawing. Sending proposes
- * the hop and selects it; cancelling, or Escape, draws nothing.
+ * the hop and selects it; cancelling draws nothing, and so does Escape
+ * (`useEscapeKey`).
  */
 export function DrawHopForm() {
   const drafting = useHopDraft();
@@ -37,24 +38,6 @@ export function DrawHopForm() {
   const [sending, setSending] = useState(false);
 
   const draft = drafting?.draft;
-
-  // Escape drops the draft from anywhere on the page, a field or not.
-  const cancelOnEscape = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key === "Escape" && draft !== null && draft !== undefined) {
-      setLabel("");
-      setFailure(undefined);
-      panel?.clear();
-      drafting?.cancel();
-    }
-  });
-
-  useEffect(() => {
-    globalThis.addEventListener("keydown", cancelOnEscape);
-
-    return () => {
-      globalThis.removeEventListener("keydown", cancelOnEscape);
-    };
-  }, []);
 
   if (
     drafting === null ||

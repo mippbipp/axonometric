@@ -1,7 +1,8 @@
 import { maxNoteLength } from "@axonometric/contracts";
 import { Button } from "@axonometric/ui/components/button";
 import { Textarea } from "@axonometric/ui/components/textarea";
-import { useState } from "react";
+import { useShortcut } from "@axonometric/ui/lib/shortcuts";
+import { useRef, useState } from "react";
 
 import { uiControlClass } from "./control-class.ts";
 import { LabelledField } from "./labelled-field.tsx";
@@ -51,6 +52,7 @@ export function NoteForm({
   const [text, setText] = useState(initial);
   const [failure, setFailure] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
 
   const send = () => {
     setSending(true);
@@ -63,6 +65,12 @@ export function NoteForm({
       }
     });
   };
+
+  // Ctrl+Enter and ⌘+Enter both send, on every platform, from this box only.
+  const inBox = { when: () => document.activeElement === box.current };
+
+  useShortcut("ctrl+enter", send, inBox);
+  useShortcut("meta+enter", send, inBox);
 
   return (
     <form
@@ -87,14 +95,9 @@ export function NoteForm({
           data-note-text
           maxLength={limit}
           name="note"
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault();
-              send();
-            }
-          }}
           onValueChange={setText}
           placeholder={placeholder}
+          ref={box}
           rows={rows}
           value={text}
         />

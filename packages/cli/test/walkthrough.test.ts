@@ -6,6 +6,7 @@ import {
   attributesOf,
   boxesOf,
   click,
+  literal,
   press,
   scaleOf,
   waitForScale,
@@ -214,6 +215,27 @@ describe("the chapter walkthrough", () => {
         yield* press(page, "ArrowLeft");
         yield* waitForChapter(page, "c-save");
         yield* press(page, "BracketLeft");
+        yield* waitForChapter(page, "c-page");
+      })
+    )
+  );
+
+  it.live("takes ] and [ typed with Shift, as some layouts type them", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { page } = yield* reviewPage;
+        // Playwright's US layout types } for Shift+], so the key is sent as
+        // such a layout sends it.
+        const shifted = (key: string) =>
+          Effect.promise(() =>
+            page.evaluate(
+              `document.body.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: ${literal(key)}, shiftKey: true }))`
+            )
+          );
+
+        yield* shifted("]");
+        yield* waitForChapter(page, "c-save");
+        yield* shifted("[");
         yield* waitForChapter(page, "c-page");
       })
     )
