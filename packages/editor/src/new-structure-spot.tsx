@@ -6,7 +6,7 @@ import {
 import type { GridPoint, View } from "@axonometric/contracts";
 import { useEffect, useRef, useState } from "react";
 
-import { useDraftSpot } from "./draft-spot.ts";
+import { useDraftOutline } from "./draft-spot.ts";
 import { groundAt } from "./ground-at.ts";
 import { newStructureFootprint } from "./new-structure.ts";
 import { usePlacing } from "./place-context.ts";
@@ -70,16 +70,16 @@ export function NewStructureSpot({ view }: { readonly view: View }) {
     };
   }, [picking, view, placing]);
 
-  const drafted = useDraftSpot();
+  const outline = useDraftOutline();
 
   const shown =
     picking && over !== null
       ? { ...over, ...newStructureFootprint }
-      : (drafted?.spot ?? null);
+      : outline?.spot;
 
   return (
     <g aria-hidden="true" className="pointer-events-none" ref={root}>
-      {shown === null ? null : (
+      {shown === undefined ? null : (
         <polygon
           className="stroke-pending fill-none"
           data-spot-outline=""

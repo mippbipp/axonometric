@@ -1,5 +1,4 @@
 import { maxStructureNameLength } from "@axonometric/contracts";
-import type { GridPoint } from "@axonometric/contracts";
 import { Button } from "@axonometric/ui/components/button";
 import {
   Field,
@@ -18,7 +17,7 @@ import { Array as Arr, Option } from "effect";
 import { addChangeOf, previewId, sentId } from "./add-change.ts";
 import { ChoiceSelect } from "./choice-select.tsx";
 import { uiControlClass } from "./control-class.ts";
-import { useDraftSpot } from "./draft-spot.ts";
+import { spotShown, useDraftSpot } from "./draft-spot.ts";
 import type { DraftSpot } from "./draft-spot.ts";
 import { LabelledField } from "./labelled-field.tsx";
 import { newStructureFootprint } from "./new-structure.ts";
@@ -26,23 +25,24 @@ import { usePlacing } from "./place-context.ts";
 import { useProposed } from "./proposed-context.ts";
 import { snap } from "./snap.ts";
 import { shapeChoices, statusChoices } from "./structure-actions.ts";
-import { useDraftPreview } from "./use-draft-preview.ts";
 import { usePropose } from "./use-propose.ts";
 import { useWalkthrough } from "./walkthrough-context.ts";
 
 const footprintWords = `Footprint ${newStructureFootprint.w} × ${newStructureFootprint.d}`;
 
 /** What the form says about where the structure goes. */
-const spotHint = (picked: GridPoint | null, drafted: DraftSpot | null) => {
-  if (picked !== null) {
-    return `${footprintWords} at ${picked.x}, ${picked.y}.`;
+const spotHint = (drafted: DraftSpot) => {
+  if (drafted.kind === "finding") {
+    return "Finding a spot near the group…";
   }
 
-  const added = drafted?.added ?? 0;
+  if (drafted.kind === "picked") {
+    return `${footprintWords} at ${drafted.spot.x}, ${drafted.spot.y}.`;
+  }
 
-  return added === 0
+  return drafted.added === 0
     ? `${footprintWords}, in the nearest spot to the group where check finds nothing new. Click the map to move it.`
-    : `${footprintWords}. No spot near the group is clear: this one adds ${added === 1 ? "1 warning" : `${added} warnings`}, the fewest found. Click the map to move it.`;
+    : `${footprintWords}. No spot near the group is clear: this one adds ${drafted.added === 1 ? "1 warning" : `${drafted.added} warnings`}, the fewest found. Click the map to move it.`;
 };
 
 /**
@@ -50,11 +50,14 @@ const spotHint = (picked: GridPoint | null, drafted: DraftSpot | null) => {
  * position. It lives in the side panel, beside the warnings it can raise,
  * and never over the drawing.
  *
- * The position starts at the first free slot beside the chosen group's zone
- * and follows the group and shape until the engineer clicks the map, with
- * "Pick on map", or types a spot. The new structure is a proposal and shows
- * in the pending look at once. As the fields change, the panel shows what
- * `check` would report for the map as proposed with the structure added.
+ * The position starts at the nearest clear spot beside the chosen group's
+ * zone and follows the group, shape and name until the engineer clicks the
+ * map, with "Pick on map", or types a spot. Finding it takes seconds on a big
+ * map, so it happens off the main thread: meanwhile the hint says so, the map
+ * keeps the last spot found, and Propose waits. The new structure is a
+ * proposal and shows in the pending look at once. As the fields change, the
+ * panel shows what `check` would report for the map as proposed with the
+ * structure added.
  */
 export function AddStructureForm() {
   const placing = usePlacing();
@@ -62,26 +65,22 @@ export function AddStructureForm() {
   const { state } = useWalkthrough();
   const { canPropose, clear, failure, send, sending } = usePropose();
   const drafted = useDraftSpot();
-  const spot = drafted?.spot ?? null;
 
-  const draft = placing?.draft;
-
-  const draftChange =
-    draft === undefined
-      ? undefined
-      : addChangeOf({ draft, id: previewId, spot });
-
-  useDraftPreview(draftChange);
-
-  if (placing === null || proposing === null || draft === undefined) {
+  if (placing === null || proposing === null || drafted === null) {
     return null;
   }
+
+  const { draft } = placing;
+  const finding = drafted.spot.kind === "finding";
+  const shownSpot = spotShown(drafted.spot);
+  // A structure is only sent to a spot found for the name as it stands.
+  const spot = finding ? null : (shownSpot ?? null);
 
   const setCoordinate = (axis: "x" | "y", value: number | null) => {
     if (value !== null && Number.isFinite(value)) {
       placing.setSpot({
-        x: spot?.x ?? 0,
-        y: spot?.y ?? 0,
+        x: shownSpot?.x ?? 0,
+        y: shownSpot?.y ?? 0,
         // The typed axis comes last so it overrides x and y.
         [axis]: snap(value),
       });
@@ -94,16 +93,15 @@ export function AddStructureForm() {
 
   return (
     <form
+      aria-busy={drafted.checking}
       aria-label="Add a structure"
       className="flex flex-col gap-2 text-xs"
       data-add-structure
+      data-checking={drafted.checking ? "" : undefined}
       onSubmit={(event) => {
         event.preventDefault();
 
-        const made =
-          draft === undefined
-            ? undefined
-            : addChangeOf({ draft, id: sentId, spot });
+        const made = addChangeOf({ draft, id: sentId, spot });
 
         if (made !== undefined && !sending) {
           send(made, close);
@@ -177,7 +175,7 @@ export function AddStructureForm() {
                 setCoordinate("x", next);
               }}
               step={0.5}
-              value={spot?.x ?? null}
+              value={shownSpot?.x ?? null}
             >
               <NumberInputControl data-add="x" />
             </NumberInput>
@@ -189,7 +187,7 @@ export function AddStructureForm() {
                 setCoordinate("y", next);
               }}
               step={0.5}
-              value={spot?.y ?? null}
+              value={shownSpot?.y ?? null}
             >
               <NumberInputControl data-add="y" />
             </NumberInput>
@@ -205,8 +203,12 @@ export function AddStructureForm() {
             {placing.picking ? "Click the map…" : "Pick on map"}
           </Toggle>
         </div>
-        <p className="opacity-70" data-add-hint>
-          {spotHint(placing.spot, drafted)}
+        <p
+          className="opacity-70"
+          data-add-hint
+          data-finding={finding ? "" : undefined}
+        >
+          {spotHint(drafted.spot)}
         </p>
       </FieldSet>
       {failure === undefined ? null : (
@@ -222,7 +224,11 @@ export function AddStructureForm() {
         <Button
           className={uiControlClass}
           data-add="submit"
-          disabled={!canPropose || sending || draftChange === undefined}
+          disabled={
+            !canPropose ||
+            sending ||
+            addChangeOf({ draft, id: previewId, spot }) === undefined
+          }
           type="submit"
         >
           {sending ? "Saving…" : "Propose"}

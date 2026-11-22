@@ -258,6 +258,7 @@ export function ServedApp({ store }: { readonly store: ServedStore }) {
       proposed,
       refusalOf: store.structures.refusalOf,
       refusalOfPlace: store.structures.refusalOfPlace,
+      shown,
     };
   }, [proposed, shown, proposals.structures, view.stopped, store]);
 

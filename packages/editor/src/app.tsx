@@ -8,6 +8,7 @@ import { AgentNotice } from "./agent-notice.tsx";
 import { Breadcrumb } from "./breadcrumb.tsx";
 import { useChapterKeys } from "./chapter-keys.ts";
 import { ChapterRail } from "./chapter-rail.tsx";
+import { DraftSpotProvider } from "./draft-spot-provider.tsx";
 import { DragPreviewProvider } from "./drag-preview.tsx";
 import { useEditSwitch } from "./edit-context.ts";
 import { useEditKeys } from "./edit-keys.ts";
@@ -344,9 +345,11 @@ export function App({
                     <NoteToolProvider>
                       <SideTabProvider>
                         <PlacingProvider>
-                          <NewGroupProvider>
-                            <WalkthroughPage notices={notices} />
-                          </NewGroupProvider>
+                          <DraftSpotProvider>
+                            <NewGroupProvider>
+                              <WalkthroughPage notices={notices} />
+                            </NewGroupProvider>
+                          </DraftSpotProvider>
                         </PlacingProvider>
                       </SideTabProvider>
                     </NoteToolProvider>
