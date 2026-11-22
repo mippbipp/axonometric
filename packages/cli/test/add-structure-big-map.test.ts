@@ -1,6 +1,12 @@
+import {
+  defaultSpotFor,
+  Layout,
+  MapData,
+  proposalProblems,
+} from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect } from "effect";
+import { Array as Arr, Effect, Schema } from "effect";
 import type { Page } from "playwright";
 
 import {
@@ -21,7 +27,9 @@ import { makeHome, mapIn, startServe } from "./harness.ts";
 // A slow runner slows every keystroke, so the test doesn't hold one to a
 // fixed time. It types the same keys into the Flows tab's name field, which
 // checks nothing as it changes, and holds the add form's slowest keystroke to
-// a factor of that one's.
+// a factor of that one's. Measured on a 2-core Linux machine, the Flows
+// field's slowest keystroke took 20 to 35 ms to paint, the add form's 20 to
+// 60 ms once the search left the main thread, and over 13 s before.
 
 /** The add form's slowest keystroke may be this many times the baseline's. */
 const factor = 5;
@@ -51,19 +59,152 @@ addEventListener("keydown", () => {
 }, { capture: true });
 `;
 
-const served = Effect.gen(function* () {
-  const pipelineMapFiles = yield* pipelineMap;
-  const root = yield* makeHome(pipelineMapFiles);
-  const { home } = mapIn(root, "flake-pipeline");
-  const serve = yield* startServe(home, ["--port", "0"]);
-  const { errors, page } = yield* openUrl(serve.url, { initScript: timeKeys });
+/**
+ * Runs before the page's own scripts. It records the name field's value each
+ * time the hint stops saying a spot is being found, so a test can tell which
+ * names the form showed a spot for.
+ */
+const recordSettles = `
+globalThis.settledFor = [];
+new MutationObserver(() => {
+  const hint = document.querySelector("[data-add-hint]");
+  const finding = hint !== null && hint.hasAttribute("data-finding");
+  if (globalThis.wasFinding === true && !finding && hint !== null) {
+    globalThis.settledFor.push(document.querySelector('[data-add="name"]').value);
+  }
+  globalThis.wasFinding = finding;
+}).observe(document, { attributes: true, childList: true, subtree: true });
+`;
 
-  yield* Effect.promise(() =>
-    page.setViewportSize({ height: 900, width: 1600 })
+/** Runs before the page's own scripts, so the page finds no workers. */
+const noWorkers = "delete globalThis.Worker;";
+
+const served = (initScript: string) =>
+  Effect.gen(function* () {
+    const pipelineMapFiles = yield* pipelineMap;
+    const root = yield* makeHome(pipelineMapFiles);
+    const { home } = mapIn(root, "flake-pipeline");
+    const serve = yield* startServe(home, ["--port", "0"]);
+    const { errors, page } = yield* openUrl(serve.url, { initScript });
+
+    yield* Effect.promise(() =>
+      page.setViewportSize({ height: 900, width: 1600 })
+    );
+
+    return { errors, page };
+  }).pipe(Effect.provide(NodeServices.layer));
+
+const decodeData = Schema.decodeUnknownEffect(
+  Schema.Struct({ default: MapData })
+);
+
+const decodeLayout = Schema.decodeUnknownEffect(
+  Schema.Struct({ default: Layout })
+);
+
+/** The flake pipeline's data and layout, as the page loads them. */
+const pipelineState = Effect.gen(function* () {
+  const folder = new URL("fixtures/flake-pipeline/map/", import.meta.url);
+
+  const dataModule: unknown = yield* Effect.promise(
+    () => import(new URL("data.mjs", folder).href)
+  );
+  const { default: data } = yield* decodeData(dataModule);
+
+  const layoutModule: unknown = yield* Effect.promise(
+    () =>
+      import(new URL("layout.json", folder).href, {
+        with: { type: "json" },
+      })
+  );
+  const { default: layout } = yield* decodeLayout(layoutModule);
+
+  return { data, layout };
+}).pipe(Effect.orDie);
+
+/** Opens the add form on the whole pipeline. */
+const openForm = Effect.fnUntraced(function* (page: Page) {
+  yield* goToChapterPaused(page, "c-all");
+  yield* click(page, '[data-control="add-structure"]');
+  yield* waitFor(page, "[data-add-structure]");
+});
+
+/** Waits until the form has found its spot and checked it. */
+const settled = (page: Page) =>
+  Effect.promise(() =>
+    page
+      .locator(
+        "[data-add-structure]:not([data-checking]) [data-add-hint]:not([data-finding])"
+      )
+      .waitFor({ timeout: 120_000 })
   );
 
-  return { errors, page };
-}).pipe(Effect.provide(NodeServices.layer));
+/** The x and y the form shows. */
+const shownSpot = Effect.fnUntraced(function* (page: Page) {
+  const x = yield* Effect.promise(() =>
+    page.locator('[data-add="x"]').inputValue()
+  );
+  const y = yield* Effect.promise(() =>
+    page.locator('[data-add="y"]').inputValue()
+  );
+
+  return { x: Number(x), y: Number(y) };
+});
+
+/**
+ * Where `defaultSpotFor` puts a box called `name` in the first group, and
+ * the warnings `check` would then report, as the panel words them.
+ */
+const expectedFor = Effect.fnUntraced(function* (name: string) {
+  const { data, layout } = yield* pipelineState;
+  const group = data.groups[0]?.id ?? "";
+  const { spot } = defaultSpotFor({ data, group, layout, name, shape: "box" });
+
+  const problems = proposalProblems({
+    before: { data, layout },
+    items: [
+      {
+        change: {
+          action: "add",
+          at: spot,
+          structure: {
+            group,
+            id: "draft-structure",
+            name,
+            shape: "box",
+            status: "planned",
+          },
+        },
+        id: "preview",
+        kind: "structure",
+      },
+    ],
+  });
+
+  return {
+    spot: { x: spot.x, y: spot.y },
+    warnings: Arr.map(problems, ({ problem }) => problem.message),
+  };
+});
+
+/** The name the tests type, a letter first and then the rest. */
+const firstLetter = "B";
+
+const rest = "uild cache";
+
+const typedName = `${firstLetter}${rest}`;
+
+/** The spot the form shows, and the warnings in the panel. */
+const shown = Effect.fnUntraced(function* (page: Page) {
+  const spot = yield* shownSpot(page);
+
+  const warnings = yield* inPage<ReadonlyArray<string>>(
+    page,
+    `[...document.querySelectorAll("[data-drag-warning] [data-warning-message]")].map((item) => item.textContent)`
+  );
+
+  return { spot, warnings };
+});
 
 /**
  * Types `keys` into the field `selector`, as a person types, and gives the
@@ -94,7 +235,7 @@ describe("the add form on a big map", () => {
     "keeps painting every keystroke of a new structure's name",
     () =>
       Effect.gen(function* () {
-        const { errors, page } = yield* served;
+        const { errors, page } = yield* served(timeKeys);
 
         yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-tab="flows"]');
@@ -104,13 +245,7 @@ describe("the add form on a big map", () => {
 
         yield* click(page, '[data-control="add-structure"]');
         yield* waitFor(page, "[data-add-structure]");
-        yield* Effect.promise(() =>
-          page.waitForFunction(
-            `document.querySelector('[data-add="x"]')?.value !== ""`,
-            undefined,
-            { timeout: 120_000 }
-          )
-        );
+        yield* settled(page);
 
         const slowest = yield* slowestKey(page, '[data-add="name"]');
         const allowed = baseline * factor + floorMillis;
@@ -121,6 +256,62 @@ describe("the add form on a big map", () => {
           `a keystroke held the page for ${Math.round(slowest)} ms, where the Flows tab's name field took ${Math.round(baseline)} ms`
         );
         assert.deepStrictEqual(errors, []);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    240_000
+  );
+
+  it.live(
+    "shows the spot for the name as typed, never for a name typed over, with workers or without",
+    () =>
+      Effect.gen(function* () {
+        // Worked out once, since it takes as long as the page's own search.
+        const wanted = yield* expectedFor(typedName);
+
+        const typing = yield* served(recordSettles);
+        const name = typing.page.locator('[data-add="name"]');
+
+        yield* openForm(typing.page);
+        yield* settled(typing.page);
+        yield* inPage(typing.page, "globalThis.settledFor.splice(0).length");
+        yield* Effect.promise(() => name.click());
+        yield* Effect.promise(() => typing.page.keyboard.type(firstLetter));
+        // Long enough that the search for the first letter has started drawing.
+        yield* Effect.sleep("1 second");
+        yield* Effect.promise(() =>
+          typing.page.keyboard.type(rest, { delay: 40 })
+        );
+        yield* settled(typing.page);
+
+        const settledFor = yield* inPage<ReadonlyArray<string>>(
+          typing.page,
+          "globalThis.settledFor"
+        );
+
+        assert.deepStrictEqual(settledFor, [typedName]);
+
+        const typed = yield* shown(typing.page);
+
+        assert.deepStrictEqual(typed, wanted, "with workers");
+
+        const proposeDisabled = yield* Effect.promise(() =>
+          typing.page.locator('[data-add="submit"]').isDisabled()
+        );
+
+        assert.isFalse(proposeDisabled);
+        assert.deepStrictEqual(typing.errors, []);
+
+        const workerless = yield* served(noWorkers);
+
+        yield* openForm(workerless.page);
+        yield* Effect.promise(() =>
+          workerless.page.locator('[data-add="name"]').fill(typedName)
+        );
+        yield* settled(workerless.page);
+
+        const filled = yield* shown(workerless.page);
+
+        assert.deepStrictEqual(filled, wanted, "with no workers");
+        assert.deepStrictEqual(workerless.errors, []);
       }).pipe(Effect.provide(NodeServices.layer)),
     240_000
   );
