@@ -56,7 +56,7 @@
     "format": "oxfmt --check",
     "format:fix": "oxfmt --write",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "react-doctor": "react-doctor packages/editor --blocking warning --no-score --yes"
+    "react-doctor": "react-doctor --project @axonometric/editor,@axonometric/ui --blocking warning --no-score --yes"
   },
   "devDependencies": {
     "@axonometric/config": "workspace:*",

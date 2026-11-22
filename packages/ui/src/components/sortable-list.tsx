@@ -164,5 +164,5 @@ function SortableListHandle({
   );
 }
 
-export { SortableList, SortableListHandle, SortableListItem, sortableList };
+export { SortableList, SortableListHandle, SortableListItem };
 export type { SortableListOptions, SortableListState };

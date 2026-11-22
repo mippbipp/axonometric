@@ -1,9 +1,10 @@
-import { Toggle, toggleVariants } from "@axonometric/ui/components/toggle";
+import { Toggle } from "@axonometric/ui/components/toggle";
 import {
   Toolbar,
   ToolbarButton,
   ToolbarSeparator,
 } from "@axonometric/ui/components/toolbar";
+import { toggleVariants } from "@axonometric/ui/lib/toggle-variants";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { checkPattern, settle } from "@ui-sdk/core/testing";
