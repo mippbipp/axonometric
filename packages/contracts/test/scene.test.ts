@@ -10,6 +10,7 @@ import {
 import {
   arrowheadOf,
   arrowHalfWidth,
+  cachedSceneOf,
   arrowPolygon,
   corners,
   groundProjections,
@@ -1042,6 +1043,49 @@ const drawnOver = (first: string, second: string) =>
     (where) =>
       `${first} is drawn over ${second}${where}. Move the structures apart, so the drawing has room.`
   );
+
+describe("the scene cache", () => {
+  it.effect(
+    "keeps the scenes of labelled sets whose ids would join the same apart",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("review");
+        const [first, second, third, ...rest] = data.hops;
+
+        assert.isDefined(first);
+        assert.isDefined(second);
+        assert.isDefined(third);
+
+        // Two hops named "a" and "b", and one named "a,b", join to the same
+        // text, so a key that joins ids would hand one set the other's scene.
+        const renamed: MapData = {
+          ...data,
+          hops: [
+            { ...first, id: "a" },
+            { ...second, id: "b" },
+            { ...third, id: "a,b" },
+            ...rest,
+          ],
+        };
+
+        const revealed = everything(renamed);
+        const labelledOf = (ids: ReadonlyArray<string>) =>
+          Arr.flatMap(
+            cachedSceneOf({
+              data: renamed,
+              labelled: new Set(ids),
+              layout,
+              revealed,
+              view: "plan",
+            }).hops,
+            ({ hop, labelled }) => (labelled ? [hop.id] : [])
+          );
+
+        assert.deepStrictEqual(labelledOf(["a", "b"]), ["a", "b"]);
+        assert.deepStrictEqual(labelledOf(["a,b"]), ["a,b"]);
+      })
+  );
+});
 
 describe("ground clashes", () => {
   it.effect("reports a route that touches another box's corner", () =>

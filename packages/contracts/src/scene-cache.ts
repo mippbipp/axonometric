@@ -81,18 +81,17 @@ export const cachedSceneOf = (given: SceneSource): Scene => {
   byRevealed.set(source.revealed, byRoutes);
   byRoutes.set(routes, scenes);
 
-  const key = Arr.join(
-    [
-      source.view ?? "iso",
-      String(source.zoom ?? 1),
-      Arr.join(source.labelFirst ?? [], ","),
-      // Every hop is labelled apart from an empty set, which labels none.
-      source.labelled === undefined
-        ? "*"
-        : `=${Arr.join(Arr.sort([...source.labelled], Order.String), ",")}`,
-    ],
-    "|"
-  );
+  // Hop ids are any text, so the lists are encoded whole rather than joined.
+  // oxlint-disable-next-line effecttsgo/global-json -- a cache key, never decoded
+  const key = JSON.stringify([
+    source.view ?? "iso",
+    source.zoom ?? 1,
+    source.labelFirst ?? [],
+    // No set labels every hop. An empty set labels none.
+    source.labelled === undefined
+      ? null
+      : Arr.sort([...source.labelled], Order.String),
+  ]);
 
   const cached = scenes.get(key);
 
