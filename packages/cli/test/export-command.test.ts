@@ -1,3 +1,4 @@
+import { MapData } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -71,6 +72,33 @@ const fadedOf = (text: string, kind: string, id: string) => {
 
   return /data-faded="(?<value>[^"]*)"/u.exec(tag ?? "")?.groups?.value;
 };
+
+/** A hop label in an SVG: the only text that paints its stroke first. */
+const hopLabel =
+  /<text[^>]* paint-order="stroke"[^>]*>(?<label>[^<]*)<\/text>/gu;
+
+/** The text of every hop label an SVG draws. */
+const hopLabelsIn = (text: string) =>
+  Arr.map(
+    [...Str.matchAll(hopLabel)(text)],
+    ({ groups }) => groups?.label ?? ""
+  );
+
+const decodeData = Schema.decodeUnknownEffect(
+  Schema.Struct({ default: MapData })
+);
+
+/** The flake-pipeline fixture's data.mjs, decoded. */
+const pipelineData = Effect.promise(
+  () =>
+    import(
+      new URL("fixtures/flake-pipeline/map/data.mjs", import.meta.url).href
+    )
+).pipe(
+  Effect.flatMap(decodeData),
+  Effect.map(({ default: data }) => data),
+  Effect.orDie
+);
 
 describe("export", () => {
   describe("--format excalidraw", () => {
@@ -270,7 +298,7 @@ describe("export", () => {
     );
 
     it.effect(
-      "--flow draws a picked flow's hops in the spotlight",
+      "--flow draws a picked flow's hops in the spotlight, and labels only them",
       () =>
         Effect.gen(function* () {
           const pipelineMapFiles = yield* pipelineMap;
@@ -300,12 +328,41 @@ describe("export", () => {
           );
           assert.strictEqual(fadedOf(staleText, "structure", "build"), "true");
 
+          const data = yield* pipelineData;
+
+          const staleHops = new Set(
+            Arr.flatMap(data.flows, ({ hops, id }) =>
+              id === "f-stale" ? hops : []
+            )
+          );
+
+          const labelsOf = (inFlow: boolean) =>
+            new Set(
+              Arr.flatMap(data.hops, ({ id, label }) =>
+                staleHops.has(id) === inFlow ? [label] : []
+              )
+            );
+
+          const staleLabels = hopLabelsIn(staleText);
+
+          assert.isNotEmpty(staleLabels);
+          assert.deepStrictEqual(
+            Arr.filter(staleLabels, (label) => !labelsOf(true).has(label)),
+            []
+          );
+
           // The last chapter plays nothing, so no --flow means all flows.
           const all = yield* runCli(home, ["export", map, "--flow", "all"]);
           const none = yield* runCli(home, ["export", map]);
 
           assert.strictEqual(all.files[file], none.files[file]);
           assert.notInclude(all.files[file] ?? "", 'data-faded="true"');
+          assert.isTrue(
+            Arr.some(hopLabelsIn(all.files[file] ?? ""), (label) =>
+              labelsOf(false).has(label)
+            ),
+            "all flows labels hops outside f-stale"
+          );
         }).pipe(Effect.provide(NodeServices.layer)),
       // Three exports of a 29-hop map, each placing every hop's label.
       60_000
