@@ -19,6 +19,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { file: editing, os: windows-latest }
+          - { file: agent-changes-page, os: windows-latest }
+          - { file: structure-follow, os: windows-latest }
+          - { file: structure-follow, os: ubuntu-24.04 }
+          - { file: structure-page, os: windows-latest }
           - { file: structure-page, os: ubuntu-24.04 }
     runs-on: ${{ matrix.os }}
     steps:
