@@ -190,6 +190,11 @@ export interface SceneHop {
    */
   readonly label: ScreenRect | undefined;
   /**
+   * Whether its label is placed, because the hop is in the play spotlight or
+   * nothing fades. See `SceneSource.labelled`.
+   */
+  readonly labelled: boolean;
+  /**
    * The hop's own line on screen, from the source's edge to the target's
    * edge: its route, moved sideways into its own lane where it runs on the
    * same grid line as another route, so no two hops' lines coincide.
@@ -1194,6 +1199,59 @@ const spotsBeside = (
 const spotOnLeg = (leg: Leg, size: TagSize) =>
   rectAround(lerp({ from: leg.start, t: 0.5, to: leg.end }), size);
 
+/** How big a hop label's box is, for `text` grown by `grow`. */
+const labelSizeOf = (text: string, grow: number): TagSize => ({
+  height: labelHeight * grow,
+  width: labelWidth(text, grow),
+});
+
+/** A route's legs, each with its length. */
+const legsOf = (points: ReadonlyArray<ScreenPoint>): ReadonlyArray<Leg> =>
+  Arr.map(segmentsOf(points), (segment) => ({
+    ...segment,
+    length: segmentLength(segment),
+  }));
+
+/**
+ * The order a label tries legs in: legs long enough for it first, then the
+ * longer, then the earlier.
+ */
+const legOrder = (size: TagSize) =>
+  Order.combine(
+    Order.mapInput(Order.Number, (leg: Leg) =>
+      leg.length >= roomNeeded(leg, size) ? 0 : 1
+    ),
+    Order.combine(
+      Order.mapInput(Order.Number, (leg: Leg) => -leg.length),
+      Order.mapInput(Order.Number, (leg: Leg) => leg.index)
+    )
+  );
+
+/**
+ * Where a label with no clear spot shows on hover: the middle of the first
+ * leg in `legOrder`.
+ */
+const hoverSpotOf = (sorted: ReadonlyArray<Leg>, size: TagSize) => {
+  const [longest] = sorted;
+
+  return longest === undefined ? undefined : spotOnLeg(longest, size);
+};
+
+/** `hoverSpotOf` a hop's route, for a label that isn't placed. */
+const unplacedHoverSpot = ({
+  grow,
+  points,
+  text,
+}: {
+  readonly grow: number;
+  readonly points: ReadonlyArray<ScreenPoint>;
+  readonly text: string;
+}) => {
+  const size = labelSizeOf(text, grow);
+
+  return hoverSpotOf(Arr.sort(legsOf(points), legOrder(size)), size);
+};
+
 /** How far along itself a label of `width` reaches. */
 const roomNeeded = (leg: Leg, { height, width }: TagSize) =>
   (Math.abs(leg.end.sx - leg.start.sx) * width +
@@ -1300,24 +1358,9 @@ const labelSpot = ({
    */
   readonly within: ScreenRect;
 }): LabelPlacement => {
-  const size = { height: labelHeight * grow, width: labelWidth(text, grow) };
-
-  const legs: ReadonlyArray<Leg> = Arr.map(segmentsOf(points), (segment) => ({
-    ...segment,
-    length: segmentLength(segment),
-  }));
-
-  const order = Order.combine(
-    Order.mapInput(Order.Number, (leg: Leg) =>
-      leg.length >= roomNeeded(leg, size) ? 0 : 1
-    ),
-    Order.combine(
-      Order.mapInput(Order.Number, (leg: Leg) => -leg.length),
-      Order.mapInput(Order.Number, (leg: Leg) => leg.index)
-    )
-  );
-
-  const sorted = Arr.sort(legs, order);
+  const size = labelSizeOf(text, grow);
+  const legs = legsOf(points);
+  const sorted = Arr.sort(legs, legOrder(size));
 
   const ownRoute: Obstacles = {
     lines: Arr.map(legs, lineObstacle),
@@ -1438,12 +1481,7 @@ const labelSpot = ({
     )
   );
 
-  const [longest] = sorted;
-
-  const onLongest =
-    longest === undefined ? undefined : spotOnLeg(longest, size);
-
-  return { fallback: spot ?? onLongest, spot };
+  return { fallback: spot ?? hoverSpotOf(sorted, size), spot };
 };
 
 /** Whether a name tag at a spot keeps clear of `around`. */
@@ -1564,6 +1602,12 @@ export interface SceneSource {
    * in order. The rest follow in data.mjs order.
    */
   readonly labelFirst?: ReadonlyArray<string> | undefined;
+  /**
+   * The hops whose labels are placed: the play spotlight's. A hop outside it is
+   * faded, gets no label and shows it on hover, and its route is one a label may
+   * cross. Undefined labels every hop.
+   */
+  readonly labelled?: ReadonlySet<string> | undefined;
   readonly layout: Layout;
   /** The structures drawn, such as those revealed so far. */
   readonly revealed: ReadonlySet<string>;
@@ -1774,6 +1818,7 @@ export const tagScene = (source: SceneSource): Scene => {
       hidden: [],
       hoverLabel: undefined,
       label: undefined,
+      labelled: true,
     })),
     structures,
     view: source.view ?? "iso",
@@ -1796,15 +1841,18 @@ export const tagScene = (source: SceneSource): Scene => {
 /**
  * Lays out everything a view draws for `revealed`: the structures in
  * painter's order with their tags and chips, the zones with their titles,
- * and the hops between revealed structures with their labels. Zone titles
- * are placed first, clear of boxes, tags, chips and routes. Then labels go
- * one by one, `labelFirst` first and the rest in data.mjs order, each in
- * the first free spot at its own route: clear of every box, tag, chip,
- * zone title, other route and label placed before it. A label with no free
- * spot is hidden, and shows on hover at `hoverLabel`.
+ * and the hops between revealed structures with their labels. Name tags and
+ * zone titles are placed first, clear of boxes, tags, chips and every route.
+ * Then the labels of the `labelled` hops go one by one, `labelFirst` first
+ * and the rest in data.mjs order, each in the first free spot at its own
+ * route: clear of every box, tag, chip, zone title, other labelled hop's
+ * route and label placed before it. A faded hop's route is no obstacle, and
+ * the hop gets no label. A label with no free spot is hidden, and a hidden
+ * or faded hop's label shows on hover at `hoverLabel`.
  */
 export const sceneOf = (source: SceneSource): Scene => {
-  const { labelFirst = [], view = "iso" } = source;
+  const { labelFirst = [], labelled, view = "iso" } = source;
+  const isLabelled = (id: string) => labelled === undefined || labelled.has(id);
 
   const {
     allLines,
@@ -1907,44 +1955,58 @@ export const sceneOf = (source: SceneSource): Scene => {
     )
   );
 
-  const labelled = Arr.reduce(
-    labelOrder,
-    Arr.empty<SceneHop>(),
-    (done, item) => {
-      const { fallback, spot } = labelSpot({
-        avoid: {
-          lines: Arr.flatMap(lines, ({ id, segments }) =>
-            id === item.hop.id ? [] : segments
-          ),
-          shapes: [
-            ...fixed,
-            ...Arr.flatMap(done, ({ label }) =>
-              label === undefined ? [] : [obstacle(rectPolygon(label))]
-            ),
-          ],
-        },
-        grow: growth.label,
-        mayBeNearerAnother: labelMayBeNearerAnother[view],
-        mayOverhang: labelMayOverhang[view],
-        points: item.points,
-        reach: labelReachLimit[view] * groundUnit[view],
-        text: item.hop.label,
-        within: drawnExtent,
-      });
-
+  const placed = Arr.reduce(labelOrder, Arr.empty<SceneHop>(), (done, item) => {
+    if (!isLabelled(item.hop.id)) {
       return [
         ...done,
         {
           ...item,
           hidden: hiddenOf(item.hop, item.points),
-          hoverLabel: fallback,
-          label: spot,
+          hoverLabel: unplacedHoverSpot({
+            grow: growth.label,
+            points: item.points,
+            text: item.hop.label,
+          }),
+          label: undefined,
+          labelled: false,
         },
       ];
     }
-  );
 
-  const byHop = new Map(Arr.map(labelled, (item) => [item.hop.id, item]));
+    const { fallback, spot } = labelSpot({
+      avoid: {
+        lines: Arr.flatMap(lines, ({ id, segments }) =>
+          id === item.hop.id || !isLabelled(id) ? [] : segments
+        ),
+        shapes: [
+          ...fixed,
+          ...Arr.flatMap(done, ({ label }) =>
+            label === undefined ? [] : [obstacle(rectPolygon(label))]
+          ),
+        ],
+      },
+      grow: growth.label,
+      mayBeNearerAnother: labelMayBeNearerAnother[view],
+      mayOverhang: labelMayOverhang[view],
+      points: item.points,
+      reach: labelReachLimit[view] * groundUnit[view],
+      text: item.hop.label,
+      within: drawnExtent,
+    });
+
+    return [
+      ...done,
+      {
+        ...item,
+        hidden: hiddenOf(item.hop, item.points),
+        hoverLabel: fallback,
+        label: spot,
+        labelled: true,
+      },
+    ];
+  });
+
+  const byHop = new Map(Arr.map(placed, (item) => [item.hop.id, item]));
 
   const hops = Arr.flatMap(routed, ({ hop }) =>
     Option.toArray(Option.fromNullishOr(byHop.get(hop.id)))
@@ -2368,7 +2430,8 @@ const clashOf = (first: ClashPart, second: ClashPart): SceneClash => ({
  * Every pair of things in a scene drawn over each other, by the overlap
  * rule: no two of the name tags, hop labels, zone titles, code chips and
  * box outlines overlap (a chip sits on its own box), and no route runs
- * through a name tag, a zone title or a label, its own included. A
+ * through a name tag or a zone title, nor a labelled hop's route through a
+ * label, its own included. A faded hop's route may run under a label. A
  * route may run through the tag of a structure it starts or ends at only
  * where it can't avoid it, so that counts too. On the ground, no route
  * touches a box's outline other than at its own ends, lies along a zone's
@@ -2437,9 +2500,10 @@ export const sceneClashes = (scene: Scene): ReadonlyArray<SceneClash> => {
     })
   );
 
-  const crossings = Arr.flatMap(scene.hops, ({ hop, points }) =>
+  const crossings = Arr.flatMap(scene.hops, ({ hop, labelled, points }) =>
     Arr.flatMap(text, (shape) =>
       shape.kind === "chip" ||
+      (shape.kind === "label" && !labelled) ||
       !Arr.some(segmentsOf(points), (segment) =>
         segmentCrosses(segment, shape.polygon)
       )
