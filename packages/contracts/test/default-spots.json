@@ -1,0 +1,782 @@
+{
+  "pipeline": [
+    {
+      "group": "pipeline",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 2,
+        "y": 2
+      },
+      "warnings": []
+    },
+    {
+      "group": "pipeline",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 2,
+        "y": 2
+      },
+      "warnings": []
+    }
+  ],
+  "shapes": [
+    {
+      "group": "people",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 0.5,
+        "y": -3
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "name tag is drawn on top of \"store\". Move one of them apart, so the tag under the front corner has room."
+        },
+        {
+          "added": false,
+          "message": "name tag is drawn on top of \"document\". Move one of them apart, so the tag under the front corner has room."
+        },
+        {
+          "added": false,
+          "message": "the zones of groups \"people\" and \"core\" overlap."
+        },
+        {
+          "added": false,
+          "message": "the zones of groups \"core\" and \"outside\" overlap."
+        }
+      ]
+    },
+    {
+      "group": "people",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 0.5,
+        "y": -3
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "name tag is drawn on top of \"store\". Move one of them apart, so the tag under the front corner has room."
+        },
+        {
+          "added": false,
+          "message": "name tag is drawn on top of \"document\". Move one of them apart, so the tag under the front corner has room."
+        },
+        {
+          "added": false,
+          "message": "the zones of groups \"people\" and \"core\" overlap."
+        },
+        {
+          "added": false,
+          "message": "the zones of groups \"core\" and \"outside\" overlap."
+        }
+      ]
+    }
+  ],
+  "review": [
+    {
+      "group": "people",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": -2,
+        "y": 0.5
+      },
+      "warnings": []
+    },
+    {
+      "group": "people",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": -2,
+        "y": 0.5
+      },
+      "warnings": []
+    },
+    {
+      "group": "loop",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 6,
+        "y": 6.5
+      },
+      "warnings": []
+    },
+    {
+      "group": "loop",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 6,
+        "y": 6.5
+      },
+      "warnings": []
+    },
+    {
+      "group": "outside",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 16,
+        "y": 0.5
+      },
+      "warnings": []
+    },
+    {
+      "group": "outside",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 16,
+        "y": 0.5
+      },
+      "warnings": []
+    }
+  ],
+  "crowded": [
+    {
+      "group": "edge",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": -2,
+        "y": 0.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "hop \"h-secret\" from \"api\" to \"vault\" runs under \"west\": no clear route goes around it. Move the structures apart to open a gap, or write a route override."
+        }
+      ]
+    },
+    {
+      "group": "edge",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": -2,
+        "y": 0.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "hop \"h-secret\" from \"api\" to \"vault\" runs under \"west\": no clear route goes around it. Move the structures apart to open a gap, or write a route override."
+        }
+      ]
+    },
+    {
+      "group": "core",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 14.5,
+        "y": -2
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "hop \"h-secret\" from \"api\" to \"vault\" runs under \"west\": no clear route goes around it. Move the structures apart to open a gap, or write a route override."
+        }
+      ]
+    },
+    {
+      "group": "core",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 14.5,
+        "y": -2
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "hop \"h-secret\" from \"api\" to \"vault\" runs under \"west\": no clear route goes around it. Move the structures apart to open a gap, or write a route override."
+        }
+      ]
+    },
+    {
+      "group": "vault",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 5.5,
+        "y": 12.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "hop \"h-secret\" from \"api\" to \"vault\" runs under \"west\": no clear route goes around it. Move the structures apart to open a gap, or write a route override."
+        }
+      ]
+    },
+    {
+      "group": "vault",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 5.5,
+        "y": 12.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "hop \"h-secret\" from \"api\" to \"vault\" runs under \"west\": no clear route goes around it. Move the structures apart to open a gap, or write a route override."
+        }
+      ]
+    }
+  ],
+  "plan-labels": [
+    {
+      "group": "pewter",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 12.5,
+        "y": 15.5
+      },
+      "warnings": []
+    },
+    {
+      "group": "pewter",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 12.5,
+        "y": 15.5
+      },
+      "warnings": []
+    },
+    {
+      "group": "repo",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 8,
+        "y": 5
+      },
+      "warnings": []
+    },
+    {
+      "group": "repo",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 8,
+        "y": 5
+      },
+      "warnings": []
+    },
+    {
+      "group": "actions",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 0,
+        "y": 4
+      },
+      "warnings": []
+    },
+    {
+      "group": "actions",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 0,
+        "y": 4
+      },
+      "warnings": []
+    },
+    {
+      "group": "upstream",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": -2,
+        "y": 11
+      },
+      "warnings": []
+    },
+    {
+      "group": "upstream",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": -2,
+        "y": 11
+      },
+      "warnings": []
+    },
+    {
+      "group": "people",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 4.5,
+        "y": 8.5
+      },
+      "warnings": []
+    },
+    {
+      "group": "people",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 4.5,
+        "y": 8.5
+      },
+      "warnings": []
+    }
+  ],
+  "flake-pipeline": [
+    {
+      "group": "pewter",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": -2,
+        "y": 5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "pewter",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": -2,
+        "y": 5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "actions",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 13,
+        "y": 4.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "actions",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 13,
+        "y": 4.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "repo",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 2.5,
+        "y": 15.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "repo",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 2.5,
+        "y": 15.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "outside",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 14,
+        "y": 12.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "outside",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 14,
+        "y": 12.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-ruleset-updater\" has no clear spot beside its route in chapter \"c-merge\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    }
+  ],
+  "update-pipeline": [
+    {
+      "group": "pewter",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 2.5,
+        "y": 5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "pewter",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 2.5,
+        "y": 5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "repo",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 13,
+        "y": 5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "repo",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 13,
+        "y": 5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "actions",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 19,
+        "y": 14.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "actions",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 19,
+        "y": 14.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "upstream",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 11,
+        "y": -7.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "upstream",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 11,
+        "y": -7.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "people",
+      "name": "New structure",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 1,
+        "y": 12.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    },
+    {
+      "group": "people",
+      "name": "Build cache",
+      "shape": "box",
+      "added": 0,
+      "spot": {
+        "d": 2,
+        "w": 2,
+        "x": 1,
+        "y": 12.5
+      },
+      "warnings": [
+        {
+          "added": false,
+          "message": "the label of hop \"h-bg-checks\" has no clear spot beside its route in chapter \"c-scope\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        },
+        {
+          "added": false,
+          "message": "the label of hop \"h-merge\" has no clear spot beside its route in chapter \"c-watchdog\" in Plan view, so the drawing leaves it out and it shows only on hover. Move the structures it passes apart, or shorten the label."
+        }
+      ]
+    }
+  ]
+}

@@ -16,13 +16,22 @@ import {
   openUrl,
   waitFor,
 } from "./browser.ts";
-import { pipelineMap } from "./fixtures.ts";
+import { pipelineMap, shapesMap } from "./fixtures.ts";
+import type { HomeFiles } from "./harness.ts";
 import { makeHome, mapIn, startServe } from "./harness.ts";
 
-// The add form on a map big enough that finding a spot for a new structure
-// takes seconds: the flake pipeline, with 15 structures, 29 hops and 8
-// chapters. Every change to the name moves the spot, because the name sets
-// the width of the name tag, so the search runs again for each keystroke.
+// The add form on maps where finding a spot for a new structure is slow.
+// Every change to the name moves the spot, because the name sets the width
+// of the name tag, so the search runs again for each keystroke.
+//
+// The flake pipeline has 15 structures, 29 hops and 8 chapters. Drawing one
+// chapter takes about half a second. No chapter reveals a new structure, so
+// each draws as it did without it, and once the map is drawn the search
+// draws nothing again and answers in well under a second. The shapes map
+// has no chapters: its one drawing shows the new
+// structure, so the search draws it again at every spot it tries and takes
+// about 3 s. The tests of answers to a name typed over, and of Cancel, need
+// a search that is still running, so they use it.
 //
 // A slow runner slows every keystroke, so the test doesn't hold one to a
 // fixed time. It types the same keys into the Flows tab's name field, which
@@ -118,8 +127,9 @@ addEventListener("click", (event) => {
 
 /**
  * How long a test waits after Cancel for the search to show it kept going.
- * A search for a new name here answers its spot about 4.5 s after it starts
- * in the worker, and an in-page one draws a chapter about every 550 ms.
+ * A search for a new name on the shapes map answers its spot about 3 s
+ * after it starts in the worker, and an in-page one draws in tasks of about
+ * 90 ms.
  */
 const afterCancel = "10 seconds";
 
@@ -128,7 +138,7 @@ const afterCancel = "10 seconds";
  * is still running.
  */
 const cancelMidSearch = Effect.fnUntraced(function* (page: Page) {
-  yield* openForm(page);
+  yield* openForm(page, shapes);
   yield* settled(page);
   yield* Effect.promise(() =>
     page.locator('[data-add="name"]').fill(typedName)
@@ -150,11 +160,30 @@ const cancelMidSearch = Effect.fnUntraced(function* (page: Page) {
   yield* Effect.sleep(afterCancel);
 });
 
-const served = (initScript: string) =>
+/** A fixture map the tests serve, and the chapter the form opens in. */
+interface Served {
+  readonly chapter: string | undefined;
+  readonly files: Effect.Effect<HomeFiles>;
+  readonly folder: string;
+}
+
+const pipeline: Served = {
+  chapter: "c-all",
+  files: pipelineMap,
+  folder: "flake-pipeline",
+};
+
+const shapes: Served = {
+  chapter: undefined,
+  files: shapesMap,
+  folder: "shapes",
+};
+
+const served = (map: Served, initScript: string) =>
   Effect.gen(function* () {
-    const pipelineMapFiles = yield* pipelineMap;
-    const root = yield* makeHome(pipelineMapFiles);
-    const { home } = mapIn(root, "flake-pipeline");
+    const files = yield* map.files;
+    const root = yield* makeHome(files);
+    const { home } = mapIn(root, map.folder);
     const serve = yield* startServe(home, ["--port", "0"]);
     const { errors, page } = yield* openUrl(serve.url, { initScript });
 
@@ -173,9 +202,9 @@ const decodeLayout = Schema.decodeUnknownEffect(
   Schema.Struct({ default: Layout })
 );
 
-/** The flake pipeline's data and layout, as the page loads them. */
-const pipelineState = Effect.gen(function* () {
-  const folder = new URL("fixtures/flake-pipeline/map/", import.meta.url);
+/** A fixture map's data and layout, as the page loads them. */
+const stateOf = Effect.fnUntraced(function* (map: Served) {
+  const folder = new URL(`fixtures/${map.folder}/map/`, import.meta.url);
 
   const dataModule: unknown = yield* Effect.promise(
     () => import(new URL("data.mjs", folder).href)
@@ -191,11 +220,14 @@ const pipelineState = Effect.gen(function* () {
   const { default: layout } = yield* decodeLayout(layoutModule);
 
   return { data, layout };
-}).pipe(Effect.orDie);
+}, Effect.orDie);
 
-/** Opens the add form on the whole pipeline. */
-const openForm = Effect.fnUntraced(function* (page: Page) {
-  yield* goToChapterPaused(page, "c-all");
+/** Opens the add form, on the map's last chapter when it has chapters. */
+const openForm = Effect.fnUntraced(function* (page: Page, map: Served) {
+  if (map.chapter !== undefined) {
+    yield* goToChapterPaused(page, map.chapter);
+  }
+
   yield* click(page, '[data-control="add-structure"]');
   yield* waitFor(page, "[data-add-structure]");
 });
@@ -226,8 +258,8 @@ const shownSpot = Effect.fnUntraced(function* (page: Page) {
  * Where `defaultSpotFor` puts a box called `name` in the first group, and
  * the warnings `check` would then report, as the panel words them.
  */
-const expectedFor = Effect.fnUntraced(function* (name: string) {
-  const { data, layout } = yield* pipelineState;
+const expectedFor = Effect.fnUntraced(function* (map: Served, name: string) {
+  const { data, layout } = yield* stateOf(map);
   const group = data.groups[0]?.id ?? "";
   const { spot } = defaultSpotFor({ data, group, layout, name, shape: "box" });
 
@@ -306,7 +338,7 @@ describe("the add form on a big map", () => {
     "keeps painting every keystroke of a new structure's name",
     () =>
       Effect.gen(function* () {
-        const { errors, page } = yield* served(timeKeys);
+        const { errors, page } = yield* served(pipeline, timeKeys);
 
         yield* goToChapterPaused(page, "c-all");
         yield* click(page, '[data-tab="flows"]');
@@ -336,18 +368,19 @@ describe("the add form on a big map", () => {
     () =>
       Effect.gen(function* () {
         // Worked out once, since it takes as long as the page's own search.
-        const wanted = yield* expectedFor(typedName);
+        const wanted = yield* expectedFor(shapes, typedName);
 
-        const typing = yield* served(recordSettles);
+        const typing = yield* served(shapes, recordSettles);
         const name = typing.page.locator('[data-add="name"]');
 
-        yield* openForm(typing.page);
+        yield* openForm(typing.page, shapes);
         yield* settled(typing.page);
         yield* inPage(typing.page, "globalThis.settledFor.splice(0).length");
         yield* Effect.promise(() => name.click());
         yield* Effect.promise(() => typing.page.keyboard.type(firstLetter));
-        // Long enough that the search for the first letter has started drawing.
-        yield* Effect.sleep("1 second");
+        // Long enough that the search for the first letter has started
+        // drawing, which takes about 1.5 s here, and short of its answer.
+        yield* Effect.sleep("300 millis");
         yield* Effect.promise(() =>
           typing.page.keyboard.type(rest, { delay: 40 })
         );
@@ -371,9 +404,9 @@ describe("the add form on a big map", () => {
         assert.isFalse(proposeDisabled);
         assert.deepStrictEqual(typing.errors, []);
 
-        const workerless = yield* served(noWorkers);
+        const workerless = yield* served(shapes, noWorkers);
 
-        yield* openForm(workerless.page);
+        yield* openForm(workerless.page, shapes);
         yield* Effect.promise(() =>
           workerless.page.locator('[data-add="name"]').fill(typedName)
         );
@@ -392,6 +425,7 @@ describe("the add form on a big map", () => {
     () =>
       Effect.gen(function* () {
         const { errors, page } = yield* served(
+          shapes,
           `${recordAnswers}${recordCancel}`
         );
 
@@ -412,13 +446,16 @@ describe("the add form on a big map", () => {
     "stops finding a spot once the form is cancelled, on a page with no workers",
     () =>
       Effect.gen(function* () {
-        const { errors, page } = yield* served(`${noWorkers}${recordCancel}`);
+        const { errors, page } = yield* served(
+          shapes,
+          `${noWorkers}${recordCancel}`
+        );
 
         yield* cancelMidSearch(page);
 
-        // The search on the page draws a chapter per long task, so a search
-        // that kept going shows here. The page settles within a second of
-        // closing the form, and with playback paused it then runs nothing.
+        // The search on the page draws in long tasks, so a search that kept
+        // going shows here. The page settles within a second of closing the
+        // form, and with nothing to play it then runs nothing.
         const late = yield* inPage<ReadonlyArray<number>>(
           page,
           "globalThis.longTasks.filter(({ at }) => at > globalThis.cancelledAt + 1000).map(({ duration }) => Math.round(duration))"

@@ -6,8 +6,9 @@ import { draftChecker } from "../../editor/src/draft-check.ts";
 import type { DraftAnswer } from "../../editor/src/draft-check.ts";
 
 // The add form's checker as the worker runs it, and as the page runs it where
-// there are no workers, on the flake pipeline: 8 chapters, so finding a spot
-// for a new name takes seconds. The page's own tests of the form are in
+// there are no workers, on the shapes map. It has no chapters, so its one
+// drawing shows the new structure and the search draws it again at every
+// spot it tries, which takes seconds. The page's own tests of the form are in
 // add-structure-big-map.test.ts.
 
 const decodeData = Schema.decodeUnknownEffect(
@@ -18,8 +19,8 @@ const decodeLayout = Schema.decodeUnknownEffect(
   Schema.Struct({ default: Layout })
 );
 
-const pipelineState = Effect.gen(function* () {
-  const folder = new URL("fixtures/flake-pipeline/map/", import.meta.url);
+const shapesState = Effect.gen(function* () {
+  const folder = new URL("fixtures/shapes/map/", import.meta.url);
 
   const dataModule: unknown = yield* Effect.promise(
     () => import(new URL("data.mjs", folder).href)
@@ -42,7 +43,7 @@ describe("the add form's checker", () => {
     "answers nothing more once the form stops it mid-search",
     () =>
       Effect.gen(function* () {
-        const { data, layout } = yield* pipelineState;
+        const { data, layout } = yield* shapesState;
         const answers: Array<DraftAnswer> = [];
         const checker = draftChecker((found) => {
           answers.push(found);
@@ -52,8 +53,10 @@ describe("the add form's checker", () => {
         checker.ask({
           ask: 1,
           draft: {
-            group: "pewter",
-            name: "Build cache",
+            group: "people",
+            // A name no other test asks for, since the checks remember
+            // every drawing they make, across tests in one process.
+            name: "Checker stop probe",
             shape: "box",
             status: "planned",
           },
@@ -67,8 +70,8 @@ describe("the add form's checker", () => {
         assert.deepStrictEqual(answers, [], "nothing answered yet");
         checker.stop();
 
-        // A whole search for a first name here took 9.4 s in Node, so a
-        // search the stop missed would answer within this wait.
+        // A whole search for this name here took 3.1 s in Bun, so a search
+        // the stop missed would answer within this wait.
         yield* Effect.sleep("10 seconds");
         assert.deepStrictEqual(answers, []);
       }),
