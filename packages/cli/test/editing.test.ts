@@ -290,7 +290,15 @@ describe("the pending look", () => {
         const from = yield* centreOf(page, '[data-structure="engineer"]');
 
         yield* dragBy(page, from, { x: 0, y: unit * 2.2 });
-        yield* waitForRevision(home, 1);
+
+        // The drop lands in another group's zone, so the page writes the
+        // move, then the group change that follows it: two writes.
+        const saved = yield* waitForRevision(home, 2);
+
+        assert.deepStrictEqual(
+          Arr.map(saved.structures ?? [], ({ change }) => change),
+          [{ action: "group", group: "loop", structure: "engineer" }]
+        );
         yield* waitFor(
           page,
           '[data-structure="engineer"][data-pending="true"]'
@@ -783,7 +791,15 @@ describe("editing off", () => {
         const from = yield* centreOf(page, '[data-structure="engineer"]');
 
         yield* dragBy(page, from, { x: 0, y: unit * 2.2 });
-        yield* waitForRevision(home, 1);
+
+        // The drop lands in another group's zone, so the page writes the
+        // move, then the group change that follows it: two writes.
+        const saved = yield* waitForRevision(home, 2);
+
+        assert.deepStrictEqual(
+          Arr.map(saved.structures ?? [], ({ change }) => change),
+          [{ action: "group", group: "loop", structure: "engineer" }]
+        );
 
         yield* serve.stop;
         yield* waitFor(page, "[data-server-stopped]");
