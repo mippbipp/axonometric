@@ -193,7 +193,16 @@ export type {
   FittedViewSource,
 } from "./fitted-view.ts";
 
-export { cachedRoutesOf, cachedSceneOf } from "./scene-cache.ts";
+export {
+  cachedRoutesOf,
+  cachedSceneOf,
+  rememberScenes,
+  sameContent,
+  scenesDrawnBy,
+  cachedTagClashesOf,
+  knownSceneOf,
+} from "./scene-cache.ts";
+export type { DrawnScene, ScenesDrawn } from "./scene-cache.ts";
 
 export { viewReadOf } from "./read-view.ts";
 

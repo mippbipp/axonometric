@@ -1,18 +1,20 @@
 /// <reference lib="webworker" />
-// The page's slow checks, off its main thread. Each routes and draws every
-// chapter, which takes seconds on a big map. The page starts one worker for
-// the drag warnings and one for the add form, and each hears only its own
-// kind of message: a map once, then drag steps or drafts on it. A newer step
-// or draft stops the one before, and the add form stops its draft when it
+// The page's slow checks and drawings, off its main thread. Each check routes
+// and draws every chapter, which takes seconds on a big map. The page starts
+// one worker for the drag warnings, one for the add form and one for drawing
+// a map it hasn't drawn, and each hears only its own kind of message: a map
+// once, then drag steps or drafts on it, or maps to draw. A newer step, draft
+// or map stops the one before, and the add form stops its draft when it
 // closes.
 
 import { Result, Schema } from "effect";
 
 import { draftChecker, DraftRequest } from "./draft-check.ts";
 import { CheckRequest, dragChecker } from "./drag-check.ts";
+import { SceneAsk, sceneDrawer } from "./scene-draw.ts";
 
 const decodeRequest = Schema.decodeUnknownResult(
-  Schema.Union([CheckRequest, DraftRequest])
+  Schema.Union([CheckRequest, DraftRequest, SceneAsk])
 );
 
 const post = (found: unknown) => {
@@ -23,6 +25,7 @@ const post = (found: unknown) => {
 interface Checkers {
   drafts?: ReturnType<typeof draftChecker>;
   drags?: ReturnType<typeof dragChecker>;
+  scenes?: ReturnType<typeof sceneDrawer>;
 }
 
 const checkers: Checkers = {};
@@ -36,7 +39,10 @@ addEventListener("message", (event: MessageEvent<unknown>) => {
 
   const request = decoded.success;
 
-  if (request.kind === "map" || request.kind === "step") {
+  if (request.kind === "scene ask") {
+    checkers.scenes ??= sceneDrawer(post);
+    checkers.scenes.ask(request);
+  } else if (request.kind === "map" || request.kind === "step") {
     checkers.drags ??= dragChecker(post);
 
     if (request.kind === "map") {

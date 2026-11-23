@@ -10,6 +10,7 @@ import {
 import {
   arrowheadOf,
   arrowHalfWidth,
+  cachedRoutesOf,
   cachedSceneOf,
   arrowPolygon,
   corners,
@@ -26,6 +27,7 @@ import type {
   GridPoint,
   Layout,
   MapData,
+  Scene,
   SceneClash,
   Placement,
   ScreenPoint,
@@ -1083,6 +1085,75 @@ describe("the scene cache", () => {
 
         assert.deepStrictEqual(labelledOf(["a", "b"]), ["a", "b"]);
         assert.deepStrictEqual(labelledOf(["a,b"]), ["a,b"]);
+      })
+  );
+
+  it.effect(
+    "gives a copy of the map the same scene, and a map that differs its own",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* fixture("review");
+        const revealed = everything(data);
+        const source = { data, layout, revealed, view: "iso" } as const;
+        const scene = cachedSceneOf(source);
+
+        assert.strictEqual(
+          cachedSceneOf({
+            ...source,
+            data: structuredClone(data),
+            layout: structuredClone(layout),
+            revealed: new Set(revealed),
+          }),
+          scene,
+          "a copy"
+        );
+
+        const [moved] = data.structures;
+
+        assert.isDefined(moved);
+
+        const at = layout.structures[moved.id];
+
+        assert.isDefined(at);
+
+        const movedLayout = {
+          ...layout,
+          structures: {
+            ...layout.structures,
+            [moved.id]: { ...at, x: at.x + 1 },
+          },
+        };
+
+        const renamed = {
+          ...data,
+          structures: Arr.map(data.structures, (structure) =>
+            structure.id === moved.id
+              ? { ...structure, name: `${structure.name} renamed` }
+              : structure
+          ),
+        };
+
+        const placed = (drawn: Scene) =>
+          Arr.findFirst(
+            drawn.structures,
+            ({ structure }) => structure.id === moved.id
+          ).pipe(Option.getOrThrow);
+
+        assert.deepStrictEqual(
+          placed(cachedSceneOf({ ...source, layout: movedLayout })).placement,
+          movedLayout.structures[moved.id],
+          "a moved structure"
+        );
+        assert.strictEqual(
+          placed(cachedSceneOf({ ...source, data: renamed })).structure.name,
+          `${moved.name} renamed`,
+          "a renamed structure"
+        );
+        assert.deepStrictEqual(
+          cachedRoutesOf({ data, layout: movedLayout, revealed }),
+          routeRevealed({ data, layout: movedLayout, revealed }),
+          "the moved structure's routes"
+        );
       })
   );
 });

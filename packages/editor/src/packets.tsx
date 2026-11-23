@@ -1,35 +1,34 @@
-import type { Hop } from "@axonometric/contracts";
 import { CanvasItem } from "@axonometric/ui/components/canvas-items";
 import { Array as Arr } from "effect";
-import { useMemo } from "react";
+import { use, useMemo } from "react";
 
 import type { PacketRun } from "./chapters.ts";
+import { EditorSceneContext } from "./editor-view.ts";
 import { useDropOutlines } from "./outlines-context.ts";
 import { packetAt } from "./packet-schedule.ts";
 import { usePlayback, usePlaybackClock } from "./playback.ts";
 import { pointAlong } from "./projection.ts";
 import type { ScreenPoint } from "./projection.ts";
 
-/**
- * A view's drawn route for a hop, in its own screen coordinates, or
- * `undefined` when the view doesn't draw the hop. Keep it stable between
- * renders, for example with `useCallback`, so routes aren't recomputed.
- */
-export type RouteOf = (hop: Hop) => ReadonlyArray<ScreenPoint> | undefined;
+/** Each drawn hop's line on screen, as the view draws it. */
+type HopLines = ReadonlyMap<string, ReadonlyArray<ScreenPoint>>;
 
 function Packet({
-  routeOf,
+  lines,
   run,
   runIndex,
 }: {
-  readonly routeOf: RouteOf;
+  readonly lines: HopLines;
   readonly run: PacketRun;
   readonly runIndex: number;
 }) {
   const { selected, selectPacket } = usePlayback();
   const moving = useDropOutlines()?.outlines?.moving;
   const clock = usePlaybackClock();
-  const routes = useMemo(() => Arr.map(run.hops, routeOf), [run, routeOf]);
+  const routes = useMemo(
+    () => Arr.map(run.hops, (hop) => lines.get(hop.id)),
+    [run, lines]
+  );
   const at = packetAt({ clock, hops: run.hops.length });
   const hop = run.hops[at.hop];
   const route = routes[at.hop];
@@ -90,21 +89,31 @@ function Packet({
 }
 
 /**
- * The packets for the current chapter, one per run, drawn inside a view's
- * SVG. `routeOf` gives each hop's route in the view's coordinates, so the
- * Iso view and Plan view share the timing and differ only in the routes.
+ * The packets for the current chapter, one per run, drawn inside a
+ * view's SVG. Each packet walks its hop's line as the view's scene draws
+ * it, so the Iso view and Plan view share the timing and differ only in the
+ * lines. Put it inside a `MapView`.
  *
  * Packets carry no label. The hop's own label, drawn once by the view at the
  * hop, names what the packet carries, and the side panel shows it when the
  * packet is selected.
  */
-export function PacketLayer({ routeOf }: { readonly routeOf: RouteOf }) {
+export function PacketLayer() {
   const { playing, runs } = usePlayback();
+  const scene = use(EditorSceneContext);
+
+  const lines = useMemo(
+    (): HopLines =>
+      new Map(
+        Arr.map(scene?.hops ?? [], ({ hop, points }) => [hop.id, points])
+      ),
+    [scene]
+  );
 
   return (
     <g data-packets data-playing={playing}>
       {Arr.map(runs, (run, index) => (
-        <Packet key={run.id} routeOf={routeOf} run={run} runIndex={index} />
+        <Packet key={run.id} lines={lines} run={run} runIndex={index} />
       ))}
     </g>
   );

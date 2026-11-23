@@ -8,14 +8,12 @@ import { corners, tagDrop } from "./iso.ts";
 import type { ScreenPoint, ScreenRect } from "./iso.ts";
 import type { MapState } from "./map-state.ts";
 import type { View } from "./plan.ts";
-import { cachedRoutesOf, cachedSceneOf } from "./scene-cache.ts";
-import { sceneClashes, tagScene } from "./scene.ts";
-import type {
-  Scene,
-  SceneClash,
-  SceneSource,
-  SceneStructure,
-} from "./scene.ts";
+import {
+  cachedRoutesOf,
+  cachedSceneOf,
+  cachedTagClashesOf,
+} from "./scene-cache.ts";
+import type { Scene, SceneSource, SceneStructure } from "./scene.ts";
 
 // What Zoom to fit shows is worked out here from the map state, the chapter,
 // the view and the canvas size, and the page's viewport only applies the
@@ -63,18 +61,9 @@ const textZoomsFrom = (from: number) => {
   return zooms;
 };
 
-/** Whether a clash puts a name tag over another tag or over a box. */
-const tagClash = ({ parts: [first, second] }: SceneClash) =>
-  (first.kind === "tag" && (second.kind === "tag" || second.kind === "box")) ||
-  (first.kind === "box" && second.kind === "tag");
-
 /** The name tag clashes in `source`'s bare scene at `zoom`, as keys. */
-const tagClashesAt = (source: SceneSource, zoom: number) => {
-  const scene = tagScene({ ...source, zoom });
-  const clashes = Arr.filter(sceneClashes(scene), tagClash);
-
-  return new Set(Arr.map(clashes, ({ between }) => Arr.join(between, " × ")));
-};
+const tagClashesAt = (source: SceneSource, zoom: number) =>
+  new Set(cachedTagClashesOf({ ...source, zoom }));
 
 /**
  * The zoom that Zoom to fit uses for `source`'s drawing, given the zoom
