@@ -48,10 +48,12 @@ jobs:
       - name: Loop editing.test.ts 60 times
         shell: bash
         run: |
+          bunx turbo run build --filter=axonometric
+          cd packages/cli
           fails=0
           for i in $(seq 1 60); do
             echo "::group::loop $i"
-            if ! bunx turbo run test --filter=axonometric -- editing.test.ts --reporter=verbose; then
+            if ! bunx vitest run test/editing.test.ts --reporter=verbose; then
               fails=$((fails + 1))
               echo "LOOP $i FAILED"
             fi
