@@ -546,6 +546,26 @@ const tagsClear = (members: ReadonlyArray<PlacedStructure>) =>
   );
 
 /**
+ * `block` with the least spacing, `pitch` widened in half units, at which no
+ * name tag covers a box.
+ */
+const spaced = (block: Omit<Block, "spacing">): Block => {
+  const spacings = Arr.map(
+    Arr.range(0, (widestPitch - pitch) * 2),
+    (step) => pitch + step / 2
+  );
+
+  const spacing = Option.getOrElse(
+    Arr.findFirst(spacings, (candidate) =>
+      tagsClear(layBlock({ ...block, spacing: candidate }, origin))
+    ),
+    () => widestPitch
+  );
+
+  return { ...block, spacing };
+};
+
+/**
  * Lays out a new group as a block about as wide as it is deep, filled row by
  * row in a snake, so each member sits next to the one before it. Slots are
  * `pitch` apart, widened in half units until no name tag covers a box.
@@ -563,26 +583,7 @@ const blockOf = (data: MapData, members: ReadonlyArray<Structure>): Block => {
     return { slot: { column, row }, structure };
   });
 
-  const spacings = Arr.map(
-    Arr.range(0, (widestPitch - pitch) * 2),
-    (step) => pitch + step / 2
-  );
-
-  const block = (spacing: number): Block => ({
-    columns,
-    members: slotted,
-    rows,
-    spacing,
-  });
-
-  const spacing = Option.getOrElse(
-    Arr.findFirst(spacings, (candidate) =>
-      tagsClear(layBlock(block(candidate), origin))
-    ),
-    () => widestPitch
-  );
-
-  return block(spacing);
+  return spaced({ columns, members: slotted, rows });
 };
 
 /** Where row or column `index` starts, given the sizes of those before it. */
@@ -1317,6 +1318,430 @@ const arrangeBlocks = (
   return layBlocks(faced, offsets);
 };
 
+/**
+ * The Euclidean distance between two footprints on the ground, 0 where they
+ * touch or overlap.
+ */
+const groundGap = (a: Placement, b: Placement) =>
+  Math.hypot(
+    Math.max(0, b.x - (a.x + a.w), a.x - (b.x + b.w)),
+    Math.max(0, b.y - (a.y + a.d), a.y - (b.y + b.d))
+  );
+
+/**
+ * The ways to stand two members: side by side in a row or stacked in a
+ * column, each in both orders, in that order. Each is spaced as a block is.
+ */
+const arrangementsOf = ([first, second]: readonly [
+  Structure,
+  Structure,
+]): ReadonlyArray<Block> =>
+  Arr.flatMap(
+    [
+      { columns: 2, rows: 1 },
+      { columns: 1, rows: 2 },
+    ],
+    ({ columns, rows }) =>
+      Arr.map(
+        [
+          [first, second],
+          [second, first],
+        ],
+        (ordered) =>
+          spaced({
+            columns,
+            members: Arr.map(ordered, (structure, index) => ({
+              slot: {
+                column: columns === 2 ? index : 0,
+                row: rows === 2 ? index : 0,
+              },
+              structure,
+            })),
+            rows,
+          })
+      )
+  );
+
+/**
+ * How far along a side of the target zone, either way from the pair's hop
+ * ends, a pair is tried. A saved zone's side can be any length, and this
+ * keeps the spots tried, each scored by its hops, to a fixed number. Along a
+ * side up to twice this long, every spot is tried.
+ */
+const sideReach = 2 * searchMargin;
+
+/**
+ * Values in half-unit steps from `from` to `to`: all of them when they span
+ * no more than `2 * sideReach` units, else the `2 * sideReach` units of them
+ * centred as close to `near` as they can be.
+ */
+const halfSteps = (from: number, to: number, near: number) => {
+  const steps = Math.round((to - from) * 2) + 1;
+  const reach = sideReach * 2;
+  const middle = Math.round((near - from) * 2);
+  const first = Math.max(0, Math.min(middle - reach, steps - 1 - 2 * reach));
+  const last = Math.min(steps - 1, first + 2 * reach);
+
+  return Arr.makeBy(last - first + 1, (step) => from + (first + step) / 2);
+};
+
+/**
+ * Where the top left corner of a box of `size` goes to stand `away` from
+ * `target` on each of its four sides, overlapping it along that side by at
+ * least half a unit, and no more than `sideReach` along it from `near`.
+ */
+const besideOffsets = (
+  target: Placement,
+  size: Pick<Placement, "d" | "w">,
+  { away, near }: { readonly away: number; readonly near: Point }
+): ReadonlyArray<Point> => {
+  const ys = halfSteps(
+    target.y - size.d + 0.5,
+    target.y + target.d - 0.5,
+    near.y - size.d / 2
+  );
+
+  const xs = halfSteps(
+    target.x - size.w + 0.5,
+    target.x + target.w - 0.5,
+    near.x - size.w / 2
+  );
+
+  return [
+    ...Arr.map(ys, (y) => ({ x: target.x + target.w + away, y })),
+    ...Arr.map(ys, (y) => ({ x: target.x - away - size.w, y })),
+    ...Arr.map(xs, (x) => ({ x, y: target.y + target.d + away })),
+    ...Arr.map(xs, (x) => ({ x, y: target.y - away - size.d })),
+  ];
+};
+
+/** A way to stand a two-member group beside its target zone. */
+interface Siting {
+  readonly arrangement: number;
+  /**
+   * How many structures of the ground stand between the members and the
+   * structures their hops connect to (see `inTheWay`).
+   */
+  readonly blocked: number;
+  readonly cost: HopCost;
+  readonly laid: ReadonlyArray<PlacedStructure>;
+  readonly offset: Point;
+}
+
+const bySiting = (key: (siting: Siting) => number) =>
+  Order.mapInput(Order.Number, key);
+
+/**
+ * Fewest structures in the way of the members' hops first, then cheapest
+ * hops, then the topmost and leftmost, then arrangement order. Each route
+ * bends round a structure in its way, and the bends crowd out Plan labels, so
+ * they count before length. In flake-pipeline, ranking by length alone left
+ * a Plan label with no spot.
+ */
+const betterSiting = Order.combineAll([
+  bySiting((siting) => siting.blocked),
+  Order.mapInput(cheaper, (siting: Siting) => siting.cost),
+  bySiting((siting) => siting.offset.y),
+  bySiting((siting) => siting.offset.x),
+  bySiting((siting) => siting.arrangement),
+]);
+
+/**
+ * The group the two members share the most hops with, counting hops to
+ * every structure, placed yet or not, and ties going to the group
+ * `data.groups` lists first. Only groups in `zoned`, those with something
+ * placed or laid out, can be the target. The rest are new one-member groups,
+ * whose structure is placed after the pairs beside the structures its hops
+ * connect to, so it comes to the pair. There is none when the members have
+ * no hop to such a group.
+ */
+const targetOf = (
+  data: MapData,
+  members: readonly [Structure, Structure],
+  zoned: ReadonlySet<string>
+): Option.Option<string> => {
+  const [{ group }] = members;
+  const groupOf = new Map(Arr.map(data.structures, (s) => [s.id, s.group]));
+
+  const ends = Arr.flatMap(members, ({ id }) =>
+    Arr.flatMap(neighboursOf(data, id), (end) =>
+      Option.toArray(Option.fromNullishOr(groupOf.get(end)))
+    )
+  );
+
+  const busiest = Arr.reduce(
+    data.groups,
+    { hops: 0, id: "" },
+    (best, other) => {
+      const hops = Arr.filter(ends, (end) => end === other.id).length;
+
+      return other.id !== group && zoned.has(other.id) && hops > best.hops
+        ? { hops, id: other.id }
+        : best;
+    }
+  );
+
+  return busiest.hops > 0 ? Option.some(busiest.id) : Option.none();
+};
+
+/**
+ * Finds the two members of a new group a spot beside `target`'s zone as it
+ * stands in `ground`. It tries the four sides of that zone at `groupGap`,
+ * then farther out up to `searchMargin`. Of the arrangements and offsets
+ * whose zone is no farther from the target's than from any other zone, it
+ * takes the first in `betterSiting` order where both members fit. There is
+ * no result when `target` has nothing in `ground`, or none of the spots
+ * fits.
+ */
+const sitePair = (
+  { data, onWork }: Pick<Placing, "data" | "onWork">,
+  ground: ReadonlyArray<PlacedStructure>,
+  { members, target: targetGroup }: PairTarget
+): Option.Option<ReadonlyArray<PlacedStructure>> => {
+  const [{ group }] = members;
+  const ids = new Set(Arr.map(members, ({ id }) => id));
+  const groundById = new Map(
+    Arr.map(ground, (item) => [item.structure.id, item])
+  );
+
+  const ends = Arr.flatMap(members, ({ id }) =>
+    Arr.flatMap(neighboursOf(data, id), (end) =>
+      Option.toArray(Option.fromNullishOr(groundById.get(end)))
+    )
+  );
+
+  return Option.flatMap(targetGroup, (targetId) =>
+    Option.flatMap(zoneOf(ground, targetId), (target) => {
+      const targetOutline = grow(target, zonePadding);
+
+      const others = Arr.map(otherZones(ground, targetId), (zone) =>
+        grow(zone, zonePadding)
+      );
+
+      const arrangements = arrangementsOf(members);
+
+      const hops = Arr.filter(
+        data.hops,
+        ({ from, to }) => ids.has(from) || ids.has(to)
+      );
+
+      const fixed = Arr.map(
+        ends,
+        ({ placement, structure }) => [structure.id, placement] as const
+      );
+
+      // Where the pair's hops go, or the target's middle when none of them
+      // is placed yet.
+      const endsBounds = boundsOf(footprints(ends));
+
+      const near = Option.getOrElse(Option.map(endsBounds, centreOf), () =>
+        centreOf(target)
+      );
+
+      const sitingsAway = (away: number) =>
+        Arr.flatMap(arrangements, (block, arrangement) => {
+          const size = sizeOf(block);
+
+          return Arr.flatMap(
+            besideOffsets(target, size, { away, near }),
+            (offset) => {
+              onWork("slot");
+
+              const outline = grow({ ...offset, ...size }, zonePadding);
+              const toTarget = groundGap(outline, targetOutline);
+
+              if (
+                !Arr.every(
+                  others,
+                  (zone) => toTarget <= groundGap(outline, zone)
+                )
+              ) {
+                return [];
+              }
+
+              const laid = layBlock(block, offset);
+
+              const cost = hopCost(
+                hops,
+                new Map([
+                  ...fixed,
+                  ...Arr.map(
+                    laid,
+                    ({ placement, structure }) =>
+                      [structure.id, placement] as const
+                  ),
+                ])
+              );
+
+              const blocked = Arr.reduce(laid, 0, (sum, member) =>
+                Arr.reduce(
+                  neighboursOf(data, member.structure.id),
+                  sum,
+                  (count, id) =>
+                    Option.match(Option.fromNullishOr(groundById.get(id)), {
+                      onNone: () => count,
+                      onSome: (end) =>
+                        count +
+                        inTheWay(ground, member.placement, end.placement),
+                    })
+                )
+              );
+
+              return [{ arrangement, blocked, cost, laid, offset }];
+            }
+          );
+        });
+
+      const around = groundFor(ground, group);
+
+      const accepted = (siting: Siting) => {
+        const [first, second] = siting.laid;
+
+        if (first === undefined || second === undefined) {
+          return Option.none();
+        }
+
+        onWork("slot");
+
+        if (!fits(around, first)) {
+          return Option.none();
+        }
+
+        onWork("slot");
+
+        const withFirst: Ground = {
+          drawn: [...around.drawn, drawnOf(first)],
+          placed: [...around.placed, first],
+          zones: around.zones,
+        };
+
+        return fits(withFirst, second)
+          ? Option.some(siting.laid)
+          : Option.none();
+      };
+
+      const distances = Arr.makeBy(
+        Math.floor((searchMargin - groupGap) / pitch) + 1,
+        (step) => groupGap + step * pitch
+      );
+
+      return Arr.findFirst(distances, (away) =>
+        Arr.findFirst(Arr.sort(sitingsAway(away), betterSiting), accepted)
+      );
+    })
+  );
+};
+
+/** A new two-member group, and the group it goes beside (see `targetOf`). */
+interface PairTarget {
+  readonly members: readonly [Structure, Structure];
+  readonly target: Option.Option<string>;
+}
+
+/**
+ * `pairs` in the order they're sited: each after the pair it targets, so it
+ * goes beside where that pair ends up, not where the grid first put it.
+ * Pairs are taken in `groups` order, each after its chain of targets. A
+ * chain that loops back, such as two pairs that target each other, is broken
+ * where it was entered: that pair goes first, beside its target's grid spot,
+ * and the rest of the loop then follows it back.
+ */
+const settlingOrder = (
+  pairs: ReadonlyArray<PairTarget>
+): ReadonlyArray<PairTarget> => {
+  const byGroup = new Map(
+    Arr.map(pairs, (pair) => [pair.members[0].group, pair])
+  );
+
+  const targetPair = (pair: PairTarget) =>
+    Option.getOrUndefined(
+      Option.flatMap(pair.target, (id) => Option.fromNullishOr(byGroup.get(id)))
+    );
+
+  const settled = new Set<PairTarget>();
+  const order: Array<PairTarget> = [];
+
+  for (const start of pairs) {
+    const chain: Array<PairTarget> = [];
+    let next: PairTarget | undefined = start;
+
+    while (next !== undefined && !settled.has(next) && !chain.includes(next)) {
+      chain.push(next);
+      next = targetPair(next);
+    }
+
+    const loop =
+      next !== undefined && chain.includes(next)
+        ? chain.indexOf(next)
+        : chain.length;
+
+    for (const pair of [
+      ...chain.slice(loop, loop + 1),
+      ...Arr.reverse(chain.slice(loop + 1)),
+      ...Arr.reverse(chain.slice(0, loop)),
+    ]) {
+      settled.add(pair);
+      order.push(pair);
+    }
+  }
+
+  return order;
+};
+
+/**
+ * Moves each two-member group's members from their grid spots to beside the
+ * zone they share the most hops with (see `targetOf` and `sitePair`), in
+ * `settlingOrder`, so a pair sees where the pairs before it went. A group
+ * that has nowhere to go keeps its grid spots.
+ */
+const sitePairs = (
+  context: Pick<Placing, "data" | "onWork">,
+  layouts: {
+    readonly arranged: ReadonlyArray<PlacedStructure>;
+    readonly initial: ReadonlyArray<PlacedStructure>;
+  },
+  pairs: ReadonlyArray<readonly [Structure, Structure]>
+) => {
+  const zoned = new Set(
+    Arr.map(
+      [...layouts.initial, ...layouts.arranged],
+      ({ structure }) => structure.group
+    )
+  );
+
+  const targeted = Arr.map(pairs, (members) => ({
+    members,
+    target: targetOf(context.data, members, zoned),
+  }));
+
+  return Arr.reduce(
+    settlingOrder(targeted),
+    layouts.arranged,
+    (sofar, pair) => {
+      const ids = new Set(Arr.map(pair.members, ({ id }) => id));
+
+      const ground = [
+        ...layouts.initial,
+        ...Arr.filter(sofar, ({ structure }) => !ids.has(structure.id)),
+      ];
+
+      return Option.match(sitePair(context, ground, pair), {
+        onNone: () => sofar,
+        onSome: (sited) =>
+          Arr.map(sofar, (item) =>
+            Option.getOrElse(
+              Arr.findFirst(
+                sited,
+                ({ structure }) => structure.id === item.structure.id
+              ),
+              () => item
+            )
+          ),
+      });
+    }
+  );
+};
+
 /** What placement did to a layout. */
 export interface PlacedLayout {
   /** Every structure's placement, in data.mjs order. */
@@ -1359,8 +1784,9 @@ const place = (
     )
   );
 
-  // Groups with nothing placed yet are laid out as blocks. The rest of the
-  // new structures join their group one at a time.
+  // Groups with nothing placed yet are laid out as blocks, and those of two
+  // members then move beside the zone they share the most hops with. The rest
+  // of the new structures join their group one at a time.
   const placedGroups = new Set(
     Arr.map(initial, ({ structure }) => structure.group)
   );
@@ -1388,16 +1814,22 @@ const place = (
     Math.floor(drawingBudget / Math.max(oneMemberGroups.size, 1))
   );
 
-  const blocks = arrangeBlocks(
+  const arranged = arrangeBlocks(
     data,
     initial,
-    Arr.map(fresh, (group) =>
-      blockOf(
-        data,
-        Arr.filter(unplaced, (structure) => structure.group === group)
-      )
-    )
+    Arr.map(fresh, (group) => blockOf(data, membersOfGroup(group)))
   );
+
+  const pairs = Arr.flatMap(fresh, (group) => {
+    const members = membersOfGroup(group);
+    const [first, second] = members;
+
+    return members.length === 2 && first !== undefined && second !== undefined
+      ? [[first, second] as const]
+      : [];
+  });
+
+  const blocks = sitePairs({ data, onWork }, { arranged, initial }, pairs);
 
   const blockSpot = new Map(
     Arr.map(blocks, ({ placement, structure }) => [structure.id, placement])
@@ -1482,9 +1914,11 @@ const place = (
  * A group with nothing placed yet is laid out as a block about as wide as it
  * is deep, with structures joined by hops next to each other. The blocks
  * sit in rows and columns arranged to shorten the hops between groups, and
- * members move to the side of their block facing where their hops go. A new structure in a group that
- * already has placed members takes the free slot nearest its group and the
- * structures its hops connect to. Every new placement lands on a half unit
+ * members move to the side of their block facing where their hops go. A new
+ * group of two members then moves to stand beside the zone it shares the most
+ * hops with, each member on the side facing its own hops. A new structure in a
+ * group that already has placed members takes the free slot nearest its group
+ * and the structures its hops connect to. Every new placement lands on a half unit
  * with a 2×2 footprint, clear of every other footprint and name tag, and
  * keeps its zone `groupGap` away from other groups' structures. The same
  * input always gives the same result. The revision is left as it is.

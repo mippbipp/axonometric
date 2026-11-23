@@ -15,6 +15,7 @@ import type {
   ScreenPoint,
   Structure,
 } from "../src/index.ts";
+import { layoutWideProblems } from "../src/layout-checks.ts";
 import { placeStructuresWith } from "../src/placement.ts";
 import { placedFixture } from "./fixture-maps.ts";
 import { grow, placementOf } from "./footprints.ts";
@@ -136,6 +137,68 @@ const fourGroupsOf = (size: number, hops: ReadonlyArray<Hop>) =>
     hops
   );
 
+/**
+ * Seven groups of four linked in a chain, with a few hops across it, and a
+ * two-member group "pair" whose members each have a hop to the same-numbered
+ * structure of `target`. `extra` adds hops.
+ */
+const chainWithPair = (target: string, extra: ReadonlyArray<Hop> = []) => {
+  const names = ["a", "b", "c", "d", "e", "f", "g"];
+
+  return mapOf(
+    [
+      ...Arr.flatMap(names, (group) =>
+        Arr.map(Arr.range(0, 3), (n) => structure(`${group}${n}`, group))
+      ),
+      structure("p0", "pair"),
+      structure("p1", "pair"),
+    ],
+    [
+      ...Arr.flatMap(names, (group) =>
+        Arr.map(Arr.range(0, 2), (n) => hop(`${group}${n}`, `${group}${n + 1}`))
+      ),
+      ...Arr.map(Arr.drop(names, 1), (group, index) =>
+        hop(`${names[index]}3`, `${group}0`)
+      ),
+      hop("a1", "d2"),
+      hop("b2", "f1"),
+      hop("c1", "g3"),
+      hop("p0", `${target}0`),
+      hop("p1", `${target}1`),
+      ...extra,
+    ]
+  );
+};
+
+/** The gap between two zones' bounding boxes on the ground. */
+const zoneGap = (a: Placement, b: Placement) =>
+  Math.hypot(
+    Math.max(0, b.x - (a.x + a.w), a.x - (b.x + b.w)),
+    Math.max(0, b.y - (a.y + a.d), a.y - (b.y + b.d))
+  );
+
+/** Asserts that no other group's zone is nearer `group`'s than `target`'s. */
+const assertNextTo = (
+  { data, layout }: { readonly data: MapData; readonly layout: Layout },
+  group: string,
+  target: string
+) => {
+  const own = zoneOf(layout, idsIn(data, group));
+  const near = zoneGap(own, zoneOf(layout, idsIn(data, target)));
+
+  for (const { id } of data.groups) {
+    const other = zoneOf(layout, idsIn(data, id));
+
+    if (id !== group) {
+      assert.isAtMost(
+        near,
+        zoneGap(own, other),
+        `${group} is nearer ${id} than ${target}`
+      );
+    }
+  }
+};
+
 const assertTidy = (data: MapData, layout: Layout) => {
   const placements = Rec.toEntries(layout.structures);
 
@@ -212,6 +275,258 @@ describe("placement", () => {
       assert.isAtMost(work.drawing, 12);
       assert.lengthOf(Rec.keys(layout.structures), 40);
     })
+  );
+
+  it.effect(
+    "puts a two-member group next to the zone it shares the most hops with",
+    () =>
+      Effect.sync(() => {
+        for (const target of ["a", "b", "e", "g"]) {
+          const data = chainWithPair(target);
+          const { layout } = placeStructures(data, layoutOf());
+
+          assertNextTo({ data, layout }, "pair", target);
+          assertTidy(data, layout);
+        }
+      })
+  );
+
+  it.effect(
+    "puts a two-member group next to the first of two zones with as many hops",
+    () =>
+      Effect.sync(() => {
+        const data = chainWithPair("b", [hop("p0", "e0"), hop("p1", "e1")]);
+
+        const { layout } = placeStructures(data, layoutOf());
+
+        assertNextTo({ data, layout }, "pair", "b");
+        assertTidy(data, layout);
+      })
+  );
+
+  it.effect(
+    "puts each member of a two-member group on the side facing its hop neighbours",
+    () =>
+      Effect.sync(() => {
+        const data = fourGroupsOf(4, [
+          hop("a1", "a2"),
+          hop("b1", "b2"),
+          hop("c1", "c2"),
+          hop("a4", "b1"),
+          hop("b4", "c1"),
+        ]);
+
+        const pair = mapOf(
+          [
+            ...data.structures,
+            structure("p0", "pair"),
+            structure("p1", "pair"),
+          ],
+          [...data.hops, hop("p1", "d1"), hop("p1", "d2"), hop("p0", "p1")]
+        );
+
+        const { layout } = placeStructures(pair, layoutOf());
+        const target = zoneOf(layout, idsIn(pair, "d"));
+
+        assertNextTo({ data: pair, layout }, "pair", "d");
+        assert.isBelow(
+          gap(placementOf(layout, "p1"), target),
+          gap(placementOf(layout, "p0"), target)
+        );
+        assertTidy(pair, layout);
+      })
+  );
+
+  it.effect(
+    "counts a two-member group's hops to a saved group's new member",
+    () =>
+      Effect.sync(() => {
+        // b3 is new in this run, so it has no placement when the pair is
+        // placed. Its three hops still make b the pair's busiest zone.
+        const data = mapOf(
+          [
+            ...Arr.map(["a1", "a2"], (id) => structure(id, "a")),
+            ...Arr.map(["b1", "b2", "b3"], (id) => structure(id, "b")),
+            structure("p0", "pair"),
+            structure("p1", "pair"),
+          ],
+          [
+            hop("b1", "b2"),
+            hop("p0", "b3"),
+            hop("p1", "b3"),
+            { ...hop("b3", "p0"), id: "b3-p0-reply" },
+            hop("p1", "a1"),
+          ]
+        );
+
+        const { layout } = placeStructures(
+          data,
+          layoutOf({ a1: at(0, 0), a2: at(4, 0), b1: at(20, 0), b2: at(24, 0) })
+        );
+
+        assertNextTo({ data, layout }, "pair", "b");
+        assertTidy(data, layout);
+      })
+  );
+
+  it.effect(
+    "puts a two-member group next to another that moves to its own target",
+    () =>
+      Effect.sync(() => {
+        // a's busiest zone is b, a new pair. b's is c, a saved group. The
+        // saved groups d and e stand where the group grid first puts b.
+        const data = mapOf(
+          [
+            ...Arr.map(["c1", "c2"], (id) => structure(id, "c")),
+            ...Arr.map(["d1", "d2"], (id) => structure(id, "d")),
+            ...Arr.map(["e1", "e2"], (id) => structure(id, "e")),
+            ...Arr.map(["a1", "a2"], (id) => structure(id, "a")),
+            ...Arr.map(["b1", "b2"], (id) => structure(id, "b")),
+          ],
+          [
+            hop("a1", "b1"),
+            hop("a2", "b2"),
+            hop("a1", "d1"),
+            hop("b1", "c1"),
+            hop("b2", "c2"),
+          ]
+        );
+
+        const saved = layoutOf({
+          c1: at(-40, 0),
+          c2: at(-36, 0),
+          d1: at(0, 0),
+          d2: at(4, 0),
+          e1: at(0, 12),
+          e2: at(4, 12),
+        });
+
+        const { layout } = placeStructures(data, saved);
+
+        assertNextTo({ data, layout }, "b", "c");
+        assertNextTo({ data, layout }, "a", "b");
+        assertTidy(data, layout);
+      })
+  );
+
+  it.effect(
+    "puts two two-member groups that are each other's target side by side",
+    () =>
+      Effect.sync(() => {
+        const data = mapOf(
+          [
+            ...Arr.map(["c1", "c2"], (id) => structure(id, "c")),
+            ...Arr.map(["d1", "d2"], (id) => structure(id, "d")),
+            ...Arr.map(["a1", "a2"], (id) => structure(id, "a")),
+            ...Arr.map(["b1", "b2"], (id) => structure(id, "b")),
+          ],
+          [hop("a1", "b1"), hop("b2", "a2"), hop("a1", "c1"), hop("b2", "d2")]
+        );
+
+        const saved = layoutOf({
+          c1: at(0, 0),
+          c2: at(4, 0),
+          d1: at(0, 20),
+          d2: at(4, 20),
+        });
+
+        const first = placeStructures(data, saved);
+
+        assert.deepStrictEqual(first, placeStructures(data, saved));
+        assertNextTo({ data, layout: first.layout }, "a", "b");
+        assertNextTo({ data, layout: first.layout }, "b", "a");
+        assertTidy(data, first.layout);
+      })
+  );
+
+  it.effect("gives the same layout for the same two-member maps", () =>
+    Effect.sync(() => {
+      const maps = [
+        chainWithPair("b"),
+        chainWithPair("b", [hop("p0", "e0"), hop("p1", "e1")]),
+      ];
+
+      for (const data of maps) {
+        assert.deepStrictEqual(
+          placeStructures(data, layoutOf()),
+          placeStructures(data, layoutOf())
+        );
+      }
+    })
+  );
+
+  it.effect(
+    "places 40 structures in 20 two-member groups with bounded work",
+    () =>
+      Effect.sync(() => {
+        const data = mapOf(
+          Arr.map(Arr.range(0, 39), (index) =>
+            structure(`s${index}`, `g${Math.floor(index / 2)}`)
+          ),
+          Arr.map(Arr.range(0, 59), (index) => ({
+            ...hop(`s${(index * 7) % 40}`, `s${(index * 13 + 5) % 40}`),
+            id: `h${index}`,
+          }))
+        );
+
+        const work = { drawing: 0, slot: 0 };
+        const { layout } = placeStructuresWith(data, layoutOf(), (kind) => {
+          work[kind] += 1;
+        });
+
+        // Measured 4880 slot tests and no drawings: 4800 spots beside the
+        // target zones scored, and 80 tested for fit. The ceilings are those
+        // of the 40 one-member groups test above.
+        assert.isAtMost(work.slot, 20_000);
+        assert.isAtMost(work.drawing, 12);
+        assert.lengthOf(Rec.keys(layout.structures), 40);
+      })
+  );
+
+  it.effect(
+    "places a two-member group beside a very wide zone with bounded work",
+    () =>
+      Effect.sync(() => {
+        const data = mapOf(
+          [
+            structure("w1", "wide"),
+            structure("w2", "wide"),
+            structure("p0", "pair"),
+            structure("p1", "pair"),
+          ],
+          [hop("w1", "w2"), hop("p0", "w1"), hop("p1", "w2")]
+        );
+
+        const work = { drawing: 0, slot: 0 };
+        const { layout } = placeStructuresWith(
+          data,
+          layoutOf({ w1: at(0, 0), w2: at(1998, 0) }),
+          (kind) => {
+            work[kind] += 1;
+          }
+        );
+
+        // Measured 868 slot tests. Trying every spot along the zone's 2,000
+        // unit sides scored 32,148.
+        assert.isAtMost(work.slot, 2000);
+        assert.strictEqual(work.drawing, 0);
+        assertNextTo({ data, layout }, "pair", "wide");
+
+        // Drawing a map this wide takes more memory than a test has, so only
+        // the layout-wide checks run.
+        assert.deepStrictEqual(layoutWideProblems(data, layout), []);
+      })
+  );
+
+  it.effect(
+    "places flake-pipeline's two-member zone next to repo, from an empty layout",
+    () =>
+      Effect.gen(function* () {
+        const { data, layout } = yield* placedFixture("flake-pipeline");
+
+        assertNextTo({ data, layout }, "outside", "repo");
+        assert.deepStrictEqual(layoutProblems(data, layout), []);
+      })
   );
 
   it.effect(
