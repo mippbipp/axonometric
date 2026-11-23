@@ -126,13 +126,28 @@ const sceneWorker = () => {
         hear(read);
       }
     });
-    // A worker that fails would leave the view on the old map, so the page
-    // draws every map itself from then on.
-    worker.addEventListener("error", () => {
-      publish({ failed: true, progress: null });
-    });
+    worker.addEventListener("error", fail);
 
     return worker;
+  };
+
+  // A worker that fails, or that the browser won't start or send a map to,
+  // would leave the view on the old map, so the page draws every map itself
+  // from then on.
+  const fail = () => {
+    held.worker?.terminate();
+    held.worker = undefined;
+    publish({ failed: true, progress: null });
+  };
+
+  const send = (message: SceneAsk) => {
+    try {
+      held.worker ??= start();
+      // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a Worker, not a window
+      held.worker.postMessage(message);
+    } catch {
+      fail();
+    }
   };
 
   return {
@@ -146,19 +161,14 @@ const sceneWorker = () => {
 
       held.asked = map;
       held.number += 1;
-      held.worker ??= start();
-
-      const message: SceneAsk = {
+      send({
         ask: held.number,
         data: map.state.data,
         kind: "scene ask",
         layout: map.state.layout,
         revealed: [...map.revealed],
         wants,
-      };
-
-      // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a Worker, not a window
-      held.worker.postMessage(message);
+      });
     },
     close: () => {
       held.worker?.terminate();
