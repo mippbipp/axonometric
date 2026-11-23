@@ -1,0 +1,61 @@
+name: Stress 275
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ticket/275-editing-drags]
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - run: bun ci
+
+      - name: Find the Playwright version
+        id: playwright
+        shell: bash
+        run: |
+          version=$(sed -n 's/^    "playwright": \["playwright@\([^"]*\)".*/\1/p' bun.lock | head -n 1)
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/ms-playwright" >>"$GITHUB_ENV"
+
+      - uses: actions/cache@v6.1.0
+        id: browsers
+        with:
+          path: ${{ runner.temp }}/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Download Chromium for Playwright
+        if: steps.browsers.outputs.cache-hit != 'true'
+        working-directory: packages/cli
+        run: bunx playwright install --only-shell chromium
+
+      - name: Loop editing.test.ts 60 times
+        shell: bash
+        run: |
+          fails=0
+          for i in $(seq 1 60); do
+            echo "::group::loop $i"
+            if ! bunx turbo run test --filter=axonometric -- editing.test.ts --reporter=verbose; then
+              fails=$((fails + 1))
+              echo "LOOP $i FAILED"
+            fi
+            echo "::endgroup::"
+          done
+          echo "FAILED LOOPS: $fails of 60"
+          [ "$fails" -eq 0 ]
