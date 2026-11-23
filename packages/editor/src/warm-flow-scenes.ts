@@ -2,7 +2,7 @@ import { cachedSceneOf, playSpotlightOf } from "@axonometric/contracts";
 import type { MapState, Spotlight, View } from "@axonometric/contracts";
 import type { HopState } from "@axonometric/drawing";
 import { Array as Arr } from "effect";
-import { use, useEffect } from "react";
+import { use, useEffect, useMemo } from "react";
 
 import { flowChoiceKey, flowOptionsOf } from "./chapters.ts";
 import { WalkthroughContext } from "./walkthrough-context.ts";
@@ -42,50 +42,74 @@ const whenIdle: Idle = (work) => {
 };
 
 /**
- * While the last chapter's flow picker is showing, places the scene of every
- * other flow choice in idle time, one scene per callback, so a pick finds its
- * labels already placed. It stops when the inputs change or the page closes.
+ * The labelled sets of every other flow choice, while the last chapter's
+ * flow picker is showing, so they can be placed before a pick. Empty
+ * otherwise.
+ */
+export const useOtherFlowLabels = ({
+  data,
+  hopStates,
+}: {
+  readonly data: MapState["data"];
+  readonly hopStates: ReadonlyMap<string, HopState>;
+}): ReadonlyArray<ReadonlySet<string> | undefined> => {
+  const walkthrough = use(WalkthroughContext);
+  const picking = walkthrough?.isLast === true;
+  const flowChoice = walkthrough?.flowChoice;
+  const stop = walkthrough?.stop;
+
+  return useMemo(() => {
+    if (!picking || flowChoice === undefined || stop === undefined) {
+      return [];
+    }
+
+    const own = flowChoiceKey(flowChoice);
+
+    return Arr.flatMap(
+      flowOptionsOf({ flows: data.flows, stop }),
+      ({ choice, key }) =>
+        key === own
+          ? []
+          : [labelledHopsOf(playSpotlightOf({ choice, data, stop }), hopStates)]
+    );
+  }, [picking, flowChoice, stop, data, hopStates]);
+};
+
+/**
+ * Places the scene of each labelled set in `others` in idle time, one scene
+ * per callback, so a flow pick finds its labels already placed. It waits
+ * while `ready` is false, and stops when the inputs change or the page
+ * closes.
  */
 export const useWarmFlowScenes = ({
-  hopStates,
   labelFirst,
+  others,
+  ready,
   revealed,
   state,
   textZoom,
   view,
 }: {
-  readonly hopStates: ReadonlyMap<string, HopState>;
   readonly labelFirst: ReadonlyArray<string> | undefined;
+  readonly others: ReadonlyArray<ReadonlySet<string> | undefined>;
+  readonly ready: boolean;
   readonly revealed: ReadonlySet<string>;
   readonly state: MapState;
   readonly textZoom: number;
   readonly view: View;
 }) => {
-  const walkthrough = use(WalkthroughContext);
-  const picking = walkthrough?.isLast === true;
-  const flowChoice = walkthrough?.flowChoice;
-  const stop = walkthrough?.stop;
   const { data, layout } = state;
 
   useEffect(() => {
-    if (!picking || flowChoice === undefined || stop === undefined) {
+    if (!ready) {
       return noop;
     }
 
-    const own = flowChoiceKey(flowChoice);
-
-    const others = Arr.filter(
-      flowOptionsOf({ flows: data.flows, stop }),
-      ({ key }) => key !== own
-    );
-
-    const pending = Arr.map(others, ({ choice }) => () => {
-      const play = playSpotlightOf({ choice, data, stop });
-
+    const pending = Arr.map(others, (labelled) => () => {
       cachedSceneOf({
         data,
         labelFirst,
-        labelled: labelledHopsOf(play, hopStates),
+        labelled,
         layout,
         revealed,
         view,
@@ -111,16 +135,5 @@ export const useWarmFlowScenes = ({
     return () => {
       cancel();
     };
-  }, [
-    picking,
-    flowChoice,
-    stop,
-    data,
-    layout,
-    hopStates,
-    labelFirst,
-    revealed,
-    view,
-    textZoom,
-  ]);
+  }, [ready, others, data, layout, labelFirst, revealed, view, textZoom]);
 };

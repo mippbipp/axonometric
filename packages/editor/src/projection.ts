@@ -1,18 +1,4 @@
-import {
-  cachedRoutesOf,
-  groundProjections,
-  drawnRoutes,
-} from "@axonometric/contracts";
-import type {
-  GridPoint,
-  GridPosition,
-  HopRoute,
-  Layout,
-  MapData,
-  Placement,
-  ScreenPoint,
-  View,
-} from "@axonometric/contracts";
+import type { GridPoint, Placement, ScreenPoint } from "@axonometric/contracts";
 import { Array as Arr } from "effect";
 
 export {
@@ -94,72 +80,6 @@ export const routeHop = ({ from, to }: HopEnds): ReadonlyArray<GridPoint> => {
   }
 
   return [toEdge(start, bend, from), bend, toEdge(end, bend, to)];
-};
-
-const lineCache = new WeakMap<
-  Readonly<Record<string, HopRoute>>,
-  Map<View, Readonly<Record<string, ReadonlyArray<GridPosition>>>>
->();
-
-/** Each routed hop's own line on the ground in `view`, as the scene draws it. */
-const linesOf = ({
-  data,
-  layout,
-  routes,
-  view,
-}: {
-  readonly data: MapData;
-  readonly layout: Layout;
-  readonly routes: Readonly<Record<string, HopRoute>>;
-  readonly view: View;
-}): Readonly<Record<string, ReadonlyArray<GridPosition>>> => {
-  const byView =
-    lineCache.get(routes) ??
-    new Map<View, Readonly<Record<string, ReadonlyArray<GridPosition>>>>();
-
-  const cached = byView.get(view);
-
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const lines = drawnRoutes({
-    hops: data.hops,
-    placements: layout.structures,
-    routes,
-    view,
-  });
-
-  byView.set(view, lines);
-  lineCache.set(routes, byView);
-
-  return lines;
-};
-
-/**
- * A hop's line on screen in `view`, its own lane of its route as the scene
- * draws it, or `undefined` when it has none, such as when either end isn't
- * revealed. Packets walk along these points.
- */
-export const screenRouteOf = ({
-  data,
-  hop,
-  layout,
-  revealed,
-  view,
-}: {
-  readonly data: MapData;
-  readonly hop: { readonly id: string };
-  readonly layout: Layout;
-  readonly revealed: ReadonlySet<string>;
-  readonly view: View;
-}): ReadonlyArray<ScreenPoint> | undefined => {
-  const routes = cachedRoutesOf({ data, layout, revealed });
-  const line = linesOf({ data, layout, routes, view })[hop.id];
-
-  return line === undefined
-    ? undefined
-    : Arr.map(line, groundProjections[view].toScreen);
 };
 
 /**

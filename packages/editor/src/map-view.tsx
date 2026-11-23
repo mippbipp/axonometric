@@ -1,33 +1,19 @@
-import type {
-  CanvasSize,
-  MapState,
-  SceneStructure,
-  View,
-} from "@axonometric/contracts";
+import type { MapState, SceneStructure, View } from "@axonometric/contracts";
 import {
-  cachedSceneOf,
   dashes,
-  fitKeyOf,
-  fittedViewOf,
-  marked as marksOf,
-  proposedHopMark,
-  removedHopMark,
   groundOutline,
   groundProjections,
   toPoints,
 } from "@axonometric/contracts";
 import { DrawingContext, MapDrawing, viewDrawings } from "@axonometric/drawing";
-import type { HopState } from "@axonometric/drawing";
 import { CanvasItems } from "@axonometric/ui/components/canvas-items";
 import { Array as Arr, String as Str } from "effect";
-import { use, useCallback, useId, useMemo, useRef, useState } from "react";
+import { use, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import { ChapterPendingLook } from "./chapter-pending-look.tsx";
 import { useCompare } from "./compare-context.ts";
 import { CompareHops, CompareRings } from "./compare-look.tsx";
-import { useProposedHopsIgnoringEdit } from "./connections-context.ts";
-import { useDraftOutline } from "./draft-spot.ts";
 import { DrawnShiftContext } from "./drag-shift.ts";
 import type { DragShift } from "./drag-shift.ts";
 import { DragOutlines } from "./drop-outline.tsx";
@@ -35,8 +21,8 @@ import { useEditing } from "./editing-context.ts";
 import { EditorSceneContext, EditorViewContext } from "./editor-view.ts";
 import { GroupEditor } from "./group-editor.tsx";
 import { HopDraftLine } from "./hop-draft-line.tsx";
+import { useMapDrawing } from "./map-drawing.ts";
 import { NewStructureSpot } from "./new-structure-spot.tsx";
-import { spotRingCorners, useNoteBearers } from "./note-bearers.ts";
 import { NoteMarkers } from "./note-markers.tsx";
 import { SpotCursor, SpotPicker } from "./note-tool.tsx";
 import { pageDrawing } from "./page-environment.ts";
@@ -55,7 +41,6 @@ import {
 } from "./spotlight-context.ts";
 import { structureIdsOf, structureKey } from "./structure-key.ts";
 import { Viewport } from "./viewport.tsx";
-import { labelledHopsOf, useWarmFlowScenes } from "./warm-flow-scenes.ts";
 
 /** A dashed outline around the footprint of a newly revealed structure. */
 function NewMarker({
@@ -108,11 +93,11 @@ const useSelectedHop = () => use(PlaybackContext)?.selected?.hop.id;
 export function MapView({
   children,
   fitKey,
-  revealed,
-  fitTo = revealed,
+  revealed: nextRevealed,
+  fitTo = nextRevealed,
   labelFirst,
   newlyRevealed = none,
-  state,
+  state: nextState,
   view,
 }: {
   readonly children?: ReactNode;
@@ -138,7 +123,7 @@ export function MapView({
   const hatch = `${idPrefix}hatch`;
   const selectedHop = useSelectedHop();
   const marks = useCompare();
-  const { hoveredHop, play, spotlight: chapterSpotlight } = useSpotlight();
+  const { hoveredHop, spotlight: chapterSpotlight } = useSpotlight();
   const { hoverHop } = useSpotlightActions();
   const { multiSelection, selected, setMultiSelection } = useSelection();
   const canEdit = useEditing()?.canEdit === true;
@@ -151,51 +136,22 @@ export function MapView({
   const [textZoom, setTextZoom] = useState(1);
   const drawnShift = useRef<DragShift | undefined>(undefined);
 
-  const proposedHops = useProposedHopsIgnoringEdit();
-
-  // How the page marks the hops its proposals draw, relabel or delete. A
-  // file's drawing passes none.
-  const hopStates = useMemo((): ReadonlyMap<string, HopState> => {
-    if (proposedHops === undefined) {
-      return new Map();
-    }
-
-    return new Map([
-      ...Arr.map(
-        [...marksOf(proposedHops, proposedHopMark)],
-        (id): readonly [string, HopState] => [id, "proposed"]
-      ),
-      ...Arr.map(
-        [...marksOf(proposedHops, removedHopMark)],
-        (id): readonly [string, HopState] => [id, "removed"]
-      ),
-    ]);
-  }, [proposedHops]);
-
-  // Labels follow the play spotlight, so hovering never moves them. A hop a
-  // proposal draws or deletes is at full strength too, so no label sits on it.
-  const labelled = useMemo(
-    () => labelledHopsOf(play, hopStates),
-    [play, hopStates]
-  );
-
-  // The scene at the zoom the text is sized for. It's the one the fit drew
-  // when the viewport is at the fitted zoom, as the cache returns it.
-  const scene = useMemo(
-    () =>
-      cachedSceneOf({
-        data: state.data,
-        labelFirst,
-        labelled,
-        layout: state.layout,
-        revealed,
-        view,
-        zoom: textZoom,
-      }),
-    [state.data, state.layout, revealed, labelFirst, labelled, view, textZoom]
-  );
-
-  useWarmFlowScenes({ hopStates, labelFirst, revealed, state, textZoom, view });
+  const {
+    fit,
+    fitKey: drawnKey,
+    hopStates,
+    revealed,
+    scene,
+    state,
+  } = useMapDrawing({
+    fitKey,
+    fitTo,
+    labelFirst,
+    revealed: nextRevealed,
+    state: nextState,
+    textZoom,
+    view,
+  });
 
   // A hop a proposal draws or deletes stays at full strength, whichever
   // chapter is showing: no chapter plays it, and fading it would hide the
@@ -220,62 +176,6 @@ export function MapView({
       )
     : [];
 
-  const bearers = useNoteBearers();
-
-  // The new structure's footprint counts in the fit while the form is open,
-  // so it is never off the canvas.
-  const candidate = useDraftOutline();
-  const candidateSpot = candidate?.spot;
-
-  const candidateCorners = useMemo(
-    () =>
-      candidateSpot === undefined
-        ? []
-        : groundOutline(candidateSpot, groundProjections[view]),
-    [candidateSpot, view]
-  );
-
-  const fit = useCallback(
-    (size: CanvasSize) =>
-      fittedViewOf({
-        chapter: { plays: labelFirst ?? [], revealed },
-        // A spot can lie far from everything else, so its ring counts in the
-        // fit. It is the page's editing layer, so an export's extent leaves
-        // it out.
-        extra: (fitted) => [
-          ...spotRingCorners(fitted, bearers),
-          ...candidateCorners,
-        ],
-        fitTo,
-        labelled,
-        size,
-        state,
-        view,
-      }).camera,
-    [
-      labelFirst,
-      labelled,
-      revealed,
-      bearers,
-      candidateCorners,
-      fitTo,
-      state,
-      view,
-    ]
-  );
-
-  // The view fits again when the form opens and when it picks a new default
-  // spot. A spot the engineer picked doesn't move the map under their hand.
-  // While a spot is being found the last one stays, so typing doesn't refit.
-  const candidateKey =
-    candidate === null
-      ? ""
-      : candidate.picked || candidateSpot === undefined
-        ? "+adding"
-        : `+adding ${candidateSpot.x},${candidateSpot.y}`;
-
-  const key = `${fitKey ?? fitKeyOf(fitTo)}${candidateKey}`;
-
   const editorView = useMemo(
     () => ({ placements: state.layout.structures, revealed, view }),
     [view, state.layout.structures, revealed]
@@ -289,7 +189,7 @@ export function MapView({
             <DrawnShiftContext value={drawnShift}>
               <Viewport
                 fit={fit}
-                fitKey={key}
+                fitKey={drawnKey}
                 ground={groundProjections[view]}
                 onTextZoom={setTextZoom}
                 title={`${drawing.title} of ${state.data.overview.title}`}
