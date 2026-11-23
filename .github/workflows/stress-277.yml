@@ -1,0 +1,91 @@
+name: Stress 277
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ticket/277-propose-longtask]
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    name: stress (${{ matrix.mode }})
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [sequential, parallel]
+    runs-on: macos-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - run: bun ci
+
+      - name: Find the Playwright version
+        id: playwright
+        shell: bash
+        run: |
+          version=$(sed -n 's/^    "playwright": \["playwright@\([^"]*\)".*/\1/p' bun.lock | head -n 1)
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/ms-playwright" >>"$GITHUB_ENV"
+
+      - uses: actions/cache@v6.1.0
+        id: browsers
+        with:
+          path: ${{ runner.temp }}/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Download Chromium for Playwright
+        if: steps.browsers.outputs.cache-hit != 'true'
+        working-directory: packages/cli
+        run: bunx playwright install --only-shell chromium
+
+      - name: Loop the Propose long-task cases
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+          T277_INSTR: ${{ github.workspace }}/.github/stress-277/instr.js.txt
+          T277_PROFILE: "1"
+        run: |
+          python3 .github/stress-277/instrument.py
+          bunx turbo run build --filter=axonometric
+          cd packages/cli
+          out="$RUNNER_TEMP/t277"
+          mkdir -p "$out"
+          fails=0
+          runs=0
+          copies=1
+          if [ "$MODE" = parallel ]; then copies=3; fi
+          for i in $(seq 1 30); do
+            echo "::group::round $i"
+            pids=""
+            for j in $(seq 1 "$copies"); do
+              T277_OUT="$out/dump-$j.jsonl" bunx vitest run test/add-structure-big-map.test.ts -t "keeps the page responding" >"$out/log-$i-$j.txt" 2>&1 &
+              pids="$pids $!"
+            done
+            for pid in $pids; do
+              runs=$((runs + 1))
+              wait "$pid" || fails=$((fails + 1))
+            done
+            grep -h -E "Tests |expected [0-9]+ to be at most" "$out"/log-$i-*.txt || true
+            echo "::endgroup::"
+          done
+          cat "$out"/dump-*.jsonl >"$out/all.jsonl"
+          python3 "$GITHUB_WORKSPACE/.github/stress-277/summary.py" "$out/all.jsonl" | tee "$out/summary.txt"
+          echo "FAILED VITEST RUNS: $fails of $runs"
+
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: t277-${{ matrix.mode }}
+          path: ${{ runner.temp }}/t277

@@ -1,0 +1,31 @@
+globalThis.loafs = [];
+globalThis.marks = [];
+try {
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      if (e.duration < 50) continue;
+      globalThis.loafs.push({
+        at: Math.round(e.startTime), dur: Math.round(e.duration),
+        block: Math.round(e.blockingDuration), render: Math.round(e.renderStart ? e.startTime + e.duration - e.renderStart : 0),
+        style: Math.round(e.styleAndLayoutStart ? e.startTime + e.duration - e.styleAndLayoutStart : 0),
+        scripts: e.scripts.map((s) => ({ at: Math.round(s.startTime), dur: Math.round(s.duration), inv: s.invoker, type: s.invokerType, fn: s.sourceFunctionName, pos: s.sourceCharPosition, layout: Math.round(s.forcedStyleAndLayoutDuration) })),
+      });
+    }
+  }).observe({ type: "long-animation-frame", buffered: true });
+} catch {}
+const MarkWorker = globalThis.Worker;
+globalThis.Worker = class extends MarkWorker {
+  constructor(url, options) {
+    super(url, options);
+    const name = options?.name;
+    this.addEventListener("message", (event) => {
+      if (event.data?.kind === "scene answer") globalThis.marks.push({ at: Math.round(performance.now()), what: `answer ${event.data.ask} done=${event.data.done} fitted=${event.data.fitted} n=${event.data.drawn.length}` });
+    });
+    const post = this.postMessage.bind(this);
+    this.postMessage = (m, ...r) => {
+      if (m?.kind === "scene ask") globalThis.marks.push({ at: Math.round(performance.now()), what: `ask ${m.ask} wants=${m.wants.map((w) => w.view + "@" + w.zoom.toFixed(2) + (w.fit ? "+fit" : "")).join(",")}` });
+      return post(m, ...r);
+    };
+  }
+};
+addEventListener("click", (e) => { const t = e.target instanceof Element ? e.target.closest("[data-view],[data-add]") : null; if (t) globalThis.marks.push({ at: Math.round(performance.now()), what: "click " + (t.getAttribute("data-view") ?? t.getAttribute("data-add")) }); }, { capture: true });
