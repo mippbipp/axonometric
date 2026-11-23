@@ -7,7 +7,7 @@ import {
 } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Array as Arr, Effect, Schedule, Schema } from "effect";
+import { Array as Arr, Effect, Option, Result, Schedule, Schema } from "effect";
 import type { Page } from "playwright";
 
 import {
@@ -174,12 +174,101 @@ const farSpotNote = Schema.encodeEffect(Schema.fromJsonString(NoteAdd))({
 }).pipe(Effect.orDie);
 
 /**
- * The longest the page may be held after Propose. Before the redraw left the
- * main thread it ran two tasks of about 1.1 s here, each routing and drawing
- * the map with the new structure, then the flows' scenes at 100 to 280 ms
- * each. Measured on a 2-core Linux machine after, the longest was 50 to 80 ms.
+ * The most CPU time one main-thread task may take after Propose. Before the
+ * redraw left the main thread it ran two tasks of about 1.1 s here, each
+ * routing and drawing the map with the new structure, then the flows' scenes
+ * at 100 to 280 ms each. Measured on a 2-core Linux machine after, the
+ * longest took 50 to 80 ms.
+ *
+ * The limit is on CPU time, not wall time, because a shared CI runner can
+ * stall a task that does little work. On macOS runners with three copies of
+ * this file at once, a quarter of the runs had a task over 200 ms of wall
+ * time, and none had one over 95 ms of CPU time.
  */
 const proposeTaskMillis = 200;
+
+/** A trace event, with what reading the main thread's tasks needs. */
+const TraceEvent = Schema.Struct({
+  args: Schema.optionalKey(Schema.Unknown),
+  dur: Schema.optionalKey(Schema.Finite),
+  name: Schema.String,
+  ph: Schema.String,
+  pid: Schema.Finite,
+  tdur: Schema.optionalKey(Schema.Finite),
+  tid: Schema.Finite,
+});
+
+const Trace = Schema.Struct({ traceEvents: Schema.Array(TraceEvent) });
+
+const decodeTrace = Schema.decodeUnknownEffect(Schema.fromJsonString(Trace));
+
+const TracedFrame = Schema.Struct({ processId: Schema.Finite });
+
+const TracingStarted = Schema.Struct({
+  data: Schema.Struct({ frames: Schema.Tuple([TracedFrame]) }),
+});
+
+/** The page a trace started on, as `TracingStartedInBrowser` names it. */
+const isTracedPage = Schema.is(TracingStarted);
+
+const isThreadName = Schema.is(Schema.Struct({ name: Schema.String }));
+
+/**
+ * Runs `effect` while Chromium traces the page, and gives the CPU time of
+ * each task the page's main thread ran meanwhile, in ms.
+ */
+const mainThreadCpu = Effect.fnUntraced(function* <A, E, R>(
+  page: Page,
+  effect: Effect.Effect<A, E, R>
+) {
+  const browser = page.context().browser();
+
+  if (browser === null) {
+    return yield* Effect.die("the page has no browser to trace");
+  }
+
+  yield* Effect.promise(() =>
+    browser.startTracing(page, {
+      categories: ["disabled-by-default-devtools.timeline"],
+    })
+  );
+  // The file's tests share the browser, and it traces one page at a time.
+  yield* effect.pipe(
+    Effect.onError(() =>
+      Effect.tryPromise({
+        catch: () => "tracing had stopped",
+        try: () => browser.stopTracing(),
+      }).pipe(Effect.ignore)
+    )
+  );
+
+  const traced = yield* Effect.promise(() => browser.stopTracing());
+  const { traceEvents } = yield* decodeTrace(traced.toString("utf8"));
+
+  const pid = Arr.findFirst(traceEvents, ({ args, name }) =>
+    name === "TracingStartedInBrowser" && isTracedPage(args)
+      ? Option.some(args.data.frames[0].processId)
+      : Option.none()
+  ).pipe(Option.getOrThrow);
+
+  const tid = Arr.findFirst(traceEvents, (event) =>
+    event.ph === "M" &&
+    event.pid === pid &&
+    isThreadName(event.args) &&
+    event.args.name === "CrRendererMain"
+      ? Option.some(event.tid)
+      : Option.none()
+  ).pipe(Option.getOrThrow);
+
+  return Arr.filterMap(traceEvents, (event) =>
+    event.name === "RunTask" &&
+    event.pid === pid &&
+    event.tid === tid &&
+    event.tdur !== undefined
+      ? Result.succeed(event.tdur / 1000)
+      : Result.failVoid
+  );
+}, Effect.orDie);
 
 /**
  * How long a test waits after Cancel for the search to show it kept going.
@@ -630,10 +719,7 @@ describe("the add form on a big map", () => {
       `keeps the page responding after Propose, and draws the new structure${label}`,
       () =>
         Effect.gen(function* () {
-          const { errors, page, url } = yield* served(
-            pipeline,
-            recordLongTasks
-          );
+          const { errors, page, url } = yield* served(pipeline, "");
 
           if (note) {
             const body = yield* farSpotNote;
@@ -664,37 +750,38 @@ describe("the add form on a big map", () => {
             yield* Effect.sleep("4 seconds");
           }
 
-          yield* inPage(page, "globalThis.proposedAt = performance.now()");
-          yield* click(page, '[data-add="submit"]');
-
-          if (switchView) {
-            // The worker takes about a second to draw the new map.
-            yield* Effect.sleep("150 millis");
-            yield* showView(page, "plan");
-          }
-
-          yield* Effect.promise(() =>
-            page
-              .locator("[data-add-structure]")
-              .waitFor({ state: "detached", timeout: 60_000 })
-          );
-          yield* Effect.promise(() =>
-            page
-              .locator('[data-map-layer] [data-structure^="build-cache-"]')
-              .waitFor(waitTimeout)
-          );
-          // The flows' scenes are drawn after the map, while the page is idle.
-          yield* Effect.sleep("4 seconds");
-
-          const longest = yield* inPage<number>(
+          const tasks = yield* mainThreadCpu(
             page,
-            "Math.max(0, ...globalThis.longTasks.filter(({ at }) => at >= globalThis.proposedAt).map(({ duration }) => duration))"
+            Effect.gen(function* () {
+              yield* click(page, '[data-add="submit"]');
+
+              if (switchView) {
+                // The worker takes about a second to draw the new map.
+                yield* Effect.sleep("150 millis");
+                yield* showView(page, "plan");
+              }
+
+              yield* Effect.promise(() =>
+                page
+                  .locator("[data-add-structure]")
+                  .waitFor({ state: "detached", timeout: 60_000 })
+              );
+              yield* Effect.promise(() =>
+                page
+                  .locator('[data-map-layer] [data-structure^="build-cache-"]')
+                  .waitFor(waitTimeout)
+              );
+              // The flows' scenes are drawn after the map, while the page is
+              // idle.
+              yield* Effect.sleep("4 seconds");
+            })
           );
 
+          assert.isNotEmpty(tasks, "the trace's main-thread tasks");
           assert.isAtMost(
-            Math.round(longest),
+            Math.round(Math.max(...tasks)),
             proposeTaskMillis,
-            "the longest task after Propose, in ms"
+            "the most CPU time a task took after Propose, in ms"
           );
           assert.deepStrictEqual(errors, []);
         }).pipe(Effect.provide(NodeServices.layer)),
