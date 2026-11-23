@@ -16,6 +16,7 @@ import {
   goToChapterPaused,
   inPage,
   openUrl,
+  showView,
   waitFor,
   waitTimeout,
 } from "./browser.ts";
@@ -614,10 +615,19 @@ describe("the add form on a big map", () => {
   );
 
   // A note on an empty spot far from the map counts in the fit, so it draws
-  // the map at smaller text zooms. The worker draws those too.
-  for (const withNote of [false, true]) {
+  // the map at smaller text zooms. The worker draws those too. A switch of
+  // view while the worker draws the new map asks it for the other view.
+  for (const { label, note, switchView } of [
+    { label: "", note: false, switchView: false },
+    { label: ", with a far spot note", note: true, switchView: false },
+    {
+      label: ", switching views meanwhile",
+      note: false,
+      switchView: true,
+    },
+  ]) {
     it.live(
-      `keeps the page responding after Propose, and draws the new structure${withNote ? ", with a far spot note" : ""}`,
+      `keeps the page responding after Propose, and draws the new structure${label}`,
       () =>
         Effect.gen(function* () {
           const { errors, page, url } = yield* served(
@@ -625,7 +635,7 @@ describe("the add form on a big map", () => {
             recordLongTasks
           );
 
-          if (withNote) {
+          if (note) {
             const body = yield* farSpotNote;
             const sent = yield* post(url, "/api/notes", body);
 
@@ -634,7 +644,7 @@ describe("the add form on a big map", () => {
 
           yield* openForm(page, pipeline);
 
-          if (withNote) {
+          if (note) {
             yield* waitFor(page, '[data-note-marker^="spot:"]');
           }
 
@@ -643,8 +653,26 @@ describe("the add form on a big map", () => {
             page.locator('[data-add="name"]').fill(typedName)
           );
           yield* settled(page);
+
+          if (switchView) {
+            // Drawing a map in a view for the first time at a zoom takes a
+            // second on the page, with or without the worker, so the map
+            // before is drawn in both views first.
+            yield* showView(page, "plan");
+            yield* Effect.sleep("4 seconds");
+            yield* showView(page, "iso");
+            yield* Effect.sleep("4 seconds");
+          }
+
           yield* inPage(page, "globalThis.proposedAt = performance.now()");
           yield* click(page, '[data-add="submit"]');
+
+          if (switchView) {
+            // The worker takes about a second to draw the new map.
+            yield* Effect.sleep("150 millis");
+            yield* showView(page, "plan");
+          }
+
           yield* Effect.promise(() =>
             page
               .locator("[data-add-structure]")

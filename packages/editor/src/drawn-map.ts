@@ -46,12 +46,19 @@ interface Shown extends Drawable {
   readonly fitKey: string;
 }
 
-/** How far the worker has drawn the map asked for last. */
+/** How far the worker has drawn the map asked for last, for the choices in `wants`. */
 interface Progress {
   readonly done: boolean;
   readonly fitted: boolean;
   readonly map: Drawable;
+  /** The key of the wants it was asked for (see `wantsKeyOf`). */
+  readonly wants: string;
 }
+
+/** A key that is the same for two lists of wants that draw the same. */
+const wantsKeyOf = (wants: ReadonlyArray<SceneWant>) =>
+  // oxlint-disable-next-line effecttsgo/global-json -- a comparison key, never decoded
+  JSON.stringify(wants);
 
 const sameSet = (first: ReadonlySet<string>, second: ReadonlySet<string>) =>
   first.size === second.size && Arr.every([...first], (id) => second.has(id));
@@ -68,9 +75,9 @@ interface Drawing {
   readonly progress: Progress | null;
 }
 
-/** The worker, the map asked for last and its number, and what is drawn of it. */
+/** The worker, the map and wants asked for last and their number, and what is drawn of them. */
 interface WorkerState {
-  asked: Drawable | undefined;
+  asked: { readonly map: Drawable; readonly wants: string } | undefined;
   drawing: Drawing;
   number: number;
   worker: Worker | undefined;
@@ -105,15 +112,20 @@ const sceneWorker = () => {
     }
 
     rememberScenes({
-      data: asked.state.data,
+      data: asked.map.state.data,
       drawn: answer.drawn,
-      layout: asked.state.layout,
-      revealed: asked.revealed,
+      layout: asked.map.state.layout,
+      revealed: asked.map.revealed,
       routes: answer.routes,
     });
     publish({
       failed: false,
-      progress: { done: answer.done, fitted: answer.fitted, map: asked },
+      progress: {
+        done: answer.done,
+        fitted: answer.fitted,
+        map: asked.map,
+        wants: asked.wants,
+      },
     });
   };
 
@@ -153,14 +165,23 @@ const sceneWorker = () => {
 
   return {
     ask: (map: Drawable, wants: ReadonlyArray<SceneWant>) => {
-      if (held.asked !== undefined && sameMap(held.asked, map)) {
-        // The same map again, in new objects: its drawings fit it too.
-        held.asked = map;
+      const key = wantsKeyOf(wants);
+
+      if (
+        held.asked !== undefined &&
+        held.asked.wants === key &&
+        sameMap(held.asked.map, map)
+      ) {
+        // The same map and choices again, in new objects: its drawings fit
+        // them too.
+        held.asked = { map, wants: key };
 
         return;
       }
 
-      held.asked = map;
+      // A new map, or the same map drawn another way, such as in another
+      // view: the worker stops what it draws and draws this.
+      held.asked = { map, wants: key };
       held.number += 1;
       send({
         ask: held.number,
@@ -200,6 +221,91 @@ const wantOf = (
 });
 
 /**
+ * What a view will draw of its map, first things first: the scene, the scenes
+ * its fit tries as it fits them, and the other labelled sets.
+ */
+const wantsOf = ({
+  as,
+  canvas,
+  extras,
+  fitTo,
+}: {
+  readonly as: DrawnAs;
+  readonly canvas: CanvasSize | undefined;
+  readonly extras: FitExtras;
+  readonly fitTo: ReadonlySet<string>;
+}): ReadonlyArray<SceneWant> => [
+  wantOf(as, as.labelled, null),
+  ...(canvas === undefined
+    ? []
+    : [wantOf(as, as.labelled, { extras, fitTo: [...fitTo], size: canvas })]),
+  ...Arr.map(as.later, (labelled) => wantOf(as, labelled, null)),
+];
+
+/**
+ * What the view draws now, whether the worker must be asked for `next`, and
+ * whether the page may warm other scenes itself.
+ */
+const drawingNow = ({
+  as,
+  live,
+  next,
+  progress,
+  shown,
+  wantsKey,
+}: {
+  readonly as: DrawnAs;
+  readonly live: boolean;
+  readonly next: Shown;
+  readonly progress: Progress | null;
+  readonly shown: Shown;
+  readonly wantsKey: string;
+}) => {
+  const known =
+    knownSceneOf({
+      data: next.state.data,
+      labelFirst: as.labelFirst,
+      labelled: as.labelled,
+      layout: next.state.layout,
+      revealed: next.revealed,
+      view: as.view,
+      zoom: as.zoom,
+    }) !== undefined;
+
+  // The view takes the map once the worker has answered for it drawn as the
+  // view draws it now. A view, a label or a fit that has changed since asks
+  // again, rather than drawing here what the worker didn't.
+  const answered =
+    progress !== null &&
+    progress.wants === wantsKey &&
+    sameMap(progress.map, next);
+
+  const drawNow =
+    !live ||
+    known ||
+    answered ||
+    sameContent(shown.state.data, next.state.data);
+
+  if (!drawNow) {
+    return { ask: true, target: shown, warm: false };
+  }
+
+  const fitHeld = live && answered && !progress.fitted;
+
+  // While the worker draws this map, it draws the other labelled sets too,
+  // so the page leaves them to it. A map the page drew itself, such as one
+  // a drag made, the page warms.
+  const drawing =
+    live && progress !== null && !progress.done && sameMap(progress.map, next);
+
+  return {
+    ask: false,
+    target: fitHeld ? { ...next, fitKey: shown.fitKey } : next,
+    warm: !drawing,
+  };
+};
+
+/**
  * The map a view draws now, and the fit key it fits by.
  *
  * Routing and drawing a big map takes about a second, so a map whose data is
@@ -236,32 +342,16 @@ export const useDrawnMap = ({
     drawer.drawing
   );
 
-  const known =
-    knownSceneOf({
-      data: next.state.data,
-      labelFirst: as.labelFirst,
-      labelled: as.labelled,
-      layout: next.state.layout,
-      revealed: next.revealed,
-      view: as.view,
-      zoom: as.zoom,
-    }) !== undefined;
-
-  const live = workers && !failed;
-  // Once the worker has answered for this map, the view takes it, even if
-  // the text zoom has moved on since and its scene there is drawn here.
-  const forNext = progress !== null && sameMap(progress.map, next);
-
-  const drawNow =
-    !live || known || forNext || sameContent(shown.state.data, next.state.data);
-
-  const fitHeld = live && forNext && !progress.fitted;
-
-  const target: Shown = drawNow
-    ? fitHeld
-      ? { ...next, fitKey: shown.fitKey }
-      : next
-    : shown;
+  const wants = wantsOf({ as, canvas: size(), extras, fitTo });
+  const wantsKey = wantsKeyOf(wants);
+  const { ask, target, warm } = drawingNow({
+    as,
+    live: workers && !failed,
+    next,
+    progress,
+    shown,
+    wantsKey,
+  });
 
   if (
     target.state !== shown.state ||
@@ -271,29 +361,20 @@ export const useDrawnMap = ({
     setShown(target);
   }
 
-  const ask = useEffectEvent((map: Drawable) => {
-    const canvas = size();
-
-    drawer.ask(map, [
-      wantOf(as, as.labelled, null),
-      ...(canvas === undefined
-        ? []
-        : [
-            wantOf(as, as.labelled, {
-              extras,
-              fitTo: [...fitTo],
-              size: canvas,
-            }),
-          ]),
-      ...Arr.map(as.later, (labelled) => wantOf(as, labelled, null)),
-    ]);
+  // The worker hears of a new map, or of the same map wanted another way.
+  // `wantsKey` names the wants by content, so a new list that draws the same
+  // doesn't ask again.
+  const asking = useEffectEvent((map: Drawable, key: string) => {
+    if (key === wantsKey) {
+      drawer.ask(map, wants);
+    }
   });
 
   useEffect(() => {
-    if (!drawNow) {
-      ask(next);
+    if (ask) {
+      asking(next, wantsKey);
     }
-  }, [drawNow, next]);
+  }, [ask, next, wantsKey]);
 
   useEffect(
     () => () => {
@@ -302,5 +383,5 @@ export const useDrawnMap = ({
     [drawer]
   );
 
-  return { ...target, warm: !live || !forNext || progress.done };
+  return { ...target, warm };
 };
