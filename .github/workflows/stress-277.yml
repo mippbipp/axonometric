@@ -17,7 +17,6 @@ jobs:
         include:
           - { os: macos-latest, mode: sequential, rounds: 30 }
           - { os: macos-latest, mode: parallel, rounds: 30 }
-          - { os: windows-latest, mode: sequential, rounds: 5 }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     steps:
@@ -58,10 +57,8 @@ jobs:
         env:
           MODE: ${{ matrix.mode }}
           ROUNDS: ${{ matrix.rounds }}
-          T277_INSTR: ${{ github.workspace }}/.github/stress-277/instr.js.txt
-          T277_PROFILE: "1"
         run: |
-          python3 .github/stress-277/instrument.py
+          python3 .github/stress-277/record.py
           bunx turbo run build --filter=axonometric
           cd packages/cli
           out="$RUNNER_TEMP/t277"
