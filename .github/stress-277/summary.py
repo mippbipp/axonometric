@@ -44,7 +44,7 @@ for label in sorted({d['label'] for d in rows}):
     print(f"case {label!r}: {len(ls)} runs, longest after Propose min {ls[0]} median {ls[len(ls)//2]} max {ls[-1]}, over {limit}: {sum(1 for x in ls if x > limit)}")
 for d in rows:
     p = d['p']
-    print(f"== {d['label']!r} longest {d['longest']}{'  FAIL' if d['longest'] > limit else ''}")
+    print(f"== {d['label']!r} longest {d['longest']}{'  FAIL' if d['longest'] > limit else ''}  tasks over 30 ms [wall, cpu] {d.get('cpu')}")
     marks = [(m['at'] - p, m['what']) for m in d['marks'] if m['at'] >= p]
     print('   marks:', [(t, w[:34]) for t, w in marks][:7])
     runs = profile_runs(d['prof'], d['now'] - p) if d.get('prof') else []

@@ -26,8 +26,21 @@ rep('''          yield* inPage(page, "globalThis.proposedAt = performance.now()"
             yield* Effect.promise(() => cdp.send("Profiler.setSamplingInterval", { interval: 1000 }));
             yield* Effect.promise(() => cdp.send("Profiler.start"));
           }
+          const tracer = page.context().browser();
+          if (tracer !== null) {
+            yield* Effect.promise(() => tracer.startTracing(page, { categories: ["disabled-by-default-devtools.timeline"] }));
+          }
           yield* inPage(page, "globalThis.proposedAt = performance.now()");''')
-rep('''          const longest = yield* inPage<number>(''', '''          const prof = profiling ? (yield* Effect.promise(() => cdp.send("Profiler.stop"))).profile : null;
+rep('''          const longest = yield* inPage<number>(''', '''          const traced = tracer === null ? null : (yield* Effect.promise(() => tracer.stopTracing())).toString("utf8");
+          const cpu = (() => {
+            if (traced === null) return null;
+            const events = JSON.parse(traced).traceEvents;
+            const started = events.find((e) => e.name === "TracingStartedInBrowser");
+            const pid = started?.args?.data?.frames?.[0]?.processId;
+            const main = events.find((e) => e.ph === "M" && e.name === "thread_name" && e.pid === pid && e.args.name === "CrRendererMain");
+            return events.filter((e) => e.name === "RunTask" && main !== undefined && e.pid === main.pid && e.tid === main.tid && e.dur >= 30000).map((e) => [Math.round(e.dur / 1000), e.tdur === undefined ? null : Math.round(e.tdur / 1000)]);
+          })();
+          const prof = profiling ? (yield* Effect.promise(() => cdp.send("Profiler.stop"))).profile : null;
           const dump = yield* inPage<string>(
             page,
             "JSON.stringify({ p: Math.round(globalThis.proposedAt), now: Math.round(performance.now()), long: globalThis.longTasks.map(({ at, duration }) => [Math.round(at), Math.round(duration)]), marks: globalThis.marks, loafs: globalThis.loafs })"
@@ -35,7 +48,7 @@ rep('''          const longest = yield* inPage<number>(''', '''          const p
           const longest = yield* inPage<number>(''')
 rep('''          assert.isAtMost(
             Math.round(longest),
-            proposeTaskMillis,''', '''          appendFileSync(t277Out, `${JSON.stringify({ label, longest: Math.round(longest), ...JSON.parse(dump), prof })}\\n`);
+            proposeTaskMillis,''', '''          appendFileSync(t277Out, `${JSON.stringify({ label, longest: Math.round(longest), cpu, ...JSON.parse(dump), prof })}\\n`);
           assert.isAtMost(
             Math.round(longest),
             proposeTaskMillis,''')

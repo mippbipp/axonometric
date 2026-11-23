@@ -10,12 +10,15 @@ permissions:
 
 jobs:
   stress:
-    name: stress (${{ matrix.mode }})
+    name: stress (${{ matrix.os }}, ${{ matrix.mode }})
     strategy:
       fail-fast: false
       matrix:
-        mode: [sequential, parallel]
-    runs-on: macos-latest
+        include:
+          - { os: macos-latest, mode: sequential, rounds: 30 }
+          - { os: macos-latest, mode: parallel, rounds: 30 }
+          - { os: windows-latest, mode: sequential, rounds: 5 }
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7.0.1
@@ -54,6 +57,7 @@ jobs:
         shell: bash
         env:
           MODE: ${{ matrix.mode }}
+          ROUNDS: ${{ matrix.rounds }}
           T277_INSTR: ${{ github.workspace }}/.github/stress-277/instr.js.txt
           T277_PROFILE: "1"
         run: |
@@ -66,7 +70,7 @@ jobs:
           runs=0
           copies=1
           if [ "$MODE" = parallel ]; then copies=3; fi
-          for i in $(seq 1 30); do
+          for i in $(seq 1 "$ROUNDS"); do
             echo "::group::round $i"
             pids=""
             for j in $(seq 1 "$copies"); do
@@ -87,5 +91,5 @@ jobs:
       - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
-          name: t277-${{ matrix.mode }}
+          name: t277-${{ matrix.os }}-${{ matrix.mode }}
           path: ${{ runner.temp }}/t277
