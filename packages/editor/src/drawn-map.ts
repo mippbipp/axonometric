@@ -61,11 +61,17 @@ const sameMap = (first: Drawable, second: Drawable) =>
   sameContent(first.state.layout, second.state.layout) &&
   sameSet(first.revealed, second.revealed);
 
+/** How far the worker has drawn, and whether it failed and the page draws instead. */
+interface Drawing {
+  readonly failed: boolean;
+  readonly progress: Progress | null;
+}
+
 /** The worker, the map asked for last and its number, and what is drawn of it. */
 interface WorkerState {
   asked: Drawable | undefined;
+  drawing: Drawing;
   number: number;
-  progress: Progress | null;
   worker: Worker | undefined;
 }
 
@@ -77,9 +83,17 @@ const sceneWorker = () => {
   const listeners = new Set<() => void>();
   const held: WorkerState = {
     asked: undefined,
+    drawing: { failed: false, progress: null },
     number: 0,
-    progress: null,
     worker: undefined,
+  };
+
+  const publish = (drawing: Drawing) => {
+    held.drawing = drawing;
+
+    for (const listener of listeners) {
+      listener();
+    }
   };
 
   const hear = (answer: SceneAnswer) => {
@@ -96,11 +110,10 @@ const sceneWorker = () => {
       revealed: asked.revealed,
       routes: answer.routes,
     });
-    held.progress = { done: answer.done, fitted: answer.fitted, map: asked };
-
-    for (const listener of listeners) {
-      listener();
-    }
+    publish({
+      failed: false,
+      progress: { done: answer.done, fitted: answer.fitted, map: asked },
+    });
   };
 
   const start = () => {
@@ -112,6 +125,11 @@ const sceneWorker = () => {
       if (read !== undefined) {
         hear(read);
       }
+    });
+    // A worker that fails would leave the view on the old map, so the page
+    // draws every map itself from then on.
+    worker.addEventListener("error", () => {
+      publish({ failed: true, progress: null });
     });
 
     return worker;
@@ -147,7 +165,7 @@ const sceneWorker = () => {
       held.worker = undefined;
       held.asked = undefined;
     },
-    progress: () => held.progress,
+    drawing: () => held.drawing,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
 
@@ -182,7 +200,7 @@ const wantOf = (
  *
  * A map with the same data, such as one with a structure dragged, is drawn
  * at once, as it follows the engineer's hand. So is every map where the
- * browser has no workers.
+ * browser has no workers, or once the worker has failed.
  */
 export const useDrawnMap = ({
   as,
@@ -196,10 +214,13 @@ export const useDrawnMap = ({
   /** The canvas the view last fitted, if it has fitted yet. */
   readonly size: () => CanvasSize | undefined;
 }): DrawnMap => {
-  const live = "Worker" in globalThis;
+  const workers = "Worker" in globalThis;
   const [shown, setShown] = useState<Shown>(next);
   const drawer = useMemo(() => sceneWorker(), []);
-  const progress = useSyncExternalStore(drawer.subscribe, drawer.progress);
+  const { failed, progress } = useSyncExternalStore(
+    drawer.subscribe,
+    drawer.drawing
+  );
 
   const known =
     knownSceneOf({
@@ -212,10 +233,14 @@ export const useDrawnMap = ({
       zoom: as.zoom,
     }) !== undefined;
 
-  const drawNow =
-    !live || known || sameContent(shown.state.data, next.state.data);
-
+  const live = workers && !failed;
+  // Once the worker has answered for this map, the view takes it, even if
+  // the text zoom has moved on since and its scene there is drawn here.
   const forNext = progress !== null && sameMap(progress.map, next);
+
+  const drawNow =
+    !live || known || forNext || sameContent(shown.state.data, next.state.data);
+
   const fitHeld = live && forNext && !progress.fitted;
 
   const target: Shown = drawNow
