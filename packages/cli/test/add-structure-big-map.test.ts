@@ -2,6 +2,7 @@ import {
   defaultSpotFor,
   Layout,
   MapData,
+  NoteAdd,
   proposalProblems,
 } from "@axonometric/contracts";
 import { NodeServices } from "@effect/platform-node";
@@ -21,6 +22,7 @@ import {
 import { pipelineMap, shapesMap } from "./fixtures.ts";
 import type { HomeFiles } from "./harness.ts";
 import { makeHome, mapIn, readProposals, startServe } from "./harness.ts";
+import { post } from "./revisions.ts";
 
 // The add form on maps where finding a spot for a new structure is slow.
 // Every change to the name moves the spot, because the name sets the width
@@ -162,6 +164,14 @@ addEventListener("click", (event) => {
 }, { capture: true });
 `;
 
+/** A note on an empty spot far from everything on the map. */
+const farSpotNote = Schema.encodeEffect(Schema.fromJsonString(NoteAdd))({
+  baseFileRevision: 0,
+  id: "n-far",
+  target: { kind: "spot", x: 150, y: 100 },
+  text: "Far away",
+}).pipe(Effect.orDie);
+
 /**
  * The longest the page may be held after Propose. Before the redraw left the
  * main thread it ran two tasks of about 1.1 s here, each routing and drawing
@@ -236,7 +246,7 @@ const served = (map: Served, initScript: string) =>
       page.setViewportSize({ height: 900, width: 1600 })
     );
 
-    return { errors, home, page };
+    return { errors, home, page, url: serve.url };
   }).pipe(Effect.provide(NodeServices.layer));
 
 const decodeData = Schema.decodeUnknownEffect(
@@ -603,47 +613,66 @@ describe("the add form on a big map", () => {
     240_000
   );
 
-  it.live(
-    "keeps the page responding after Propose, and draws the new structure",
-    () =>
-      Effect.gen(function* () {
-        const { errors, page } = yield* served(pipeline, recordLongTasks);
+  // A note on an empty spot far from the map counts in the fit, so it draws
+  // the map at smaller text zooms. The worker draws those too.
+  for (const withNote of [false, true]) {
+    it.live(
+      `keeps the page responding after Propose, and draws the new structure${withNote ? ", with a far spot note" : ""}`,
+      () =>
+        Effect.gen(function* () {
+          const { errors, page, url } = yield* served(
+            pipeline,
+            recordLongTasks
+          );
 
-        yield* openForm(page, pipeline);
-        yield* settled(page);
-        yield* Effect.promise(() =>
-          page.locator('[data-add="name"]').fill(typedName)
-        );
-        yield* settled(page);
-        yield* inPage(page, "globalThis.proposedAt = performance.now()");
-        yield* click(page, '[data-add="submit"]');
-        yield* Effect.promise(() =>
-          page
-            .locator("[data-add-structure]")
-            .waitFor({ state: "detached", timeout: 60_000 })
-        );
-        yield* Effect.promise(() =>
-          page
-            .locator('[data-map-layer] [data-structure^="build-cache-"]')
-            .waitFor(waitTimeout)
-        );
-        // The flows' scenes are drawn after the map, while the page is idle.
-        yield* Effect.sleep("4 seconds");
+          if (withNote) {
+            const body = yield* farSpotNote;
+            const sent = yield* post(url, "/api/notes", body);
 
-        const longest = yield* inPage<number>(
-          page,
-          "Math.max(0, ...globalThis.longTasks.filter(({ at }) => at >= globalThis.proposedAt).map(({ duration }) => duration))"
-        );
+            assert.strictEqual(sent.status, 200, sent.body);
+          }
 
-        assert.isAtMost(
-          Math.round(longest),
-          proposeTaskMillis,
-          "the longest task after Propose, in ms"
-        );
-        assert.deepStrictEqual(errors, []);
-      }).pipe(Effect.provide(NodeServices.layer)),
-    240_000
-  );
+          yield* openForm(page, pipeline);
+
+          if (withNote) {
+            yield* waitFor(page, '[data-note-marker^="spot:"]');
+          }
+
+          yield* settled(page);
+          yield* Effect.promise(() =>
+            page.locator('[data-add="name"]').fill(typedName)
+          );
+          yield* settled(page);
+          yield* inPage(page, "globalThis.proposedAt = performance.now()");
+          yield* click(page, '[data-add="submit"]');
+          yield* Effect.promise(() =>
+            page
+              .locator("[data-add-structure]")
+              .waitFor({ state: "detached", timeout: 60_000 })
+          );
+          yield* Effect.promise(() =>
+            page
+              .locator('[data-map-layer] [data-structure^="build-cache-"]')
+              .waitFor(waitTimeout)
+          );
+          // The flows' scenes are drawn after the map, while the page is idle.
+          yield* Effect.sleep("4 seconds");
+
+          const longest = yield* inPage<number>(
+            page,
+            "Math.max(0, ...globalThis.longTasks.filter(({ at }) => at >= globalThis.proposedAt).map(({ duration }) => duration))"
+          );
+
+          assert.isAtMost(
+            Math.round(longest),
+            proposeTaskMillis,
+            "the longest task after Propose, in ms"
+          );
+          assert.deepStrictEqual(errors, []);
+        }).pipe(Effect.provide(NodeServices.layer)),
+      240_000
+    );
+  }
 
   it.live(
     "stops finding a spot once the form is cancelled, in a worker",

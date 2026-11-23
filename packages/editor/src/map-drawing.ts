@@ -2,8 +2,6 @@ import {
   cachedSceneOf,
   fitKeyOf,
   fittedViewOf,
-  groundOutline,
-  groundProjections,
   marked as marksOf,
   proposedHopMark,
   removedHopMark,
@@ -16,7 +14,8 @@ import { useCallback, useMemo, useRef } from "react";
 import { useProposedHopsIgnoringEdit } from "./connections-context.ts";
 import { useDraftOutline } from "./draft-spot.ts";
 import { useDrawnMap } from "./drawn-map.ts";
-import { spotRingCorners, useNoteBearers } from "./note-bearers.ts";
+import { fitExtraPoints, fitExtrasOf } from "./fit-extras.ts";
+import { useNoteBearers } from "./note-bearers.ts";
 import { useSpotlight } from "./spotlight-context.ts";
 import {
   labelledHopsOf,
@@ -94,8 +93,18 @@ export const useMapDrawing = ({
         ? "+adding"
         : `+adding ${candidateSpot.x},${candidateSpot.y}`;
 
+  const bearers = useNoteBearers();
+
+  // What the fit counts besides the map, as plain data the worker's fit
+  // counts too, so both try the same zooms.
+  const extras = useMemo(
+    () => fitExtrasOf(bearers, candidateSpot),
+    [bearers, candidateSpot]
+  );
+
   const drawn = useDrawnMap({
     as: { labelFirst, labelled, later: otherFlows, view, zoom: textZoom },
+    extras,
     fitTo,
     next: {
       fitKey: `${fitKey ?? fitKeyOf(fitTo)}${candidateKey}`,
@@ -133,29 +142,13 @@ export const useMapDrawing = ({
     view,
   });
 
-  const bearers = useNoteBearers();
-
-  const candidateCorners = useMemo(
-    () =>
-      candidateSpot === undefined
-        ? []
-        : groundOutline(candidateSpot, groundProjections[view]),
-    [candidateSpot, view]
-  );
-
   const fit = useCallback(
     (size: CanvasSize) => {
       fittedSize.current = size;
 
       return fittedViewOf({
         chapter: { plays: labelFirst ?? [], revealed },
-        // A spot can lie far from everything else, so its ring counts in the
-        // fit. It is the page's editing layer, so an export's extent leaves
-        // it out.
-        extra: (fitted) => [
-          ...spotRingCorners(fitted, bearers),
-          ...candidateCorners,
-        ],
+        extra: (fitted) => fitExtraPoints(fitted, extras),
         fitTo,
         labelled,
         size,
@@ -163,16 +156,7 @@ export const useMapDrawing = ({
         view,
       }).camera;
     },
-    [
-      labelFirst,
-      labelled,
-      revealed,
-      bearers,
-      candidateCorners,
-      fitTo,
-      state,
-      view,
-    ]
+    [labelFirst, labelled, revealed, extras, fitTo, state, view]
   );
 
   return {

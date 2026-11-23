@@ -3,12 +3,16 @@ import {
   cachedRoutesOf,
   cachedSceneOf,
   fittedViewOf,
+  GridPoint,
   Layout,
   MapData,
+  Placement,
   scenesDrawnBy,
 } from "@axonometric/contracts";
 import type { DrawnScene, HopRoute, ScenesDrawn } from "@axonometric/contracts";
 import { Array as Arr, Effect, Fiber, Result, Schema } from "effect";
+
+import { fitExtraPoints, noFitExtras } from "./fit-extras.ts";
 
 /**
  * Drawing a big map's scene and its zoom to fit takes about a second, so the
@@ -22,8 +26,25 @@ const CanvasSize = Schema.Struct({
   height: Schema.Finite,
 });
 
-/** The structures a fit holds, on a canvas of `size`. */
+/** What carries a note, as the fit counts it: see `FitExtras`. */
+const FitNotes = Schema.Struct({
+  hops: Schema.Array(Schema.String),
+  spots: Schema.Array(GridPoint),
+  structures: Schema.Array(Schema.String),
+});
+
+/** What the page's fit counts besides the map: see `FitExtras`. */
+const FitExtrasSchema = Schema.Struct({
+  candidate: Schema.NullOr(Placement),
+  notes: Schema.NullOr(FitNotes),
+});
+
+/**
+ * The structures a fit holds on a canvas of `size`, and the extra points it
+ * counts, as the page fits them.
+ */
 const FitWant = Schema.Struct({
+  extras: FitExtrasSchema,
   fitTo: Schema.Array(Schema.String),
   size: CanvasSize,
 });
@@ -106,6 +127,7 @@ const drawWant = (
   want: SceneWant
 ): ScenesDrawn<number | undefined> => {
   const labelled = want.labelled === null ? undefined : new Set(want.labelled);
+  const extras = want.fit?.extras ?? noFitExtras;
 
   return scenesDrawnBy((): number | undefined => {
     const fitted =
@@ -113,6 +135,7 @@ const drawWant = (
         ? undefined
         : fittedViewOf({
             chapter: { plays: want.labelFirst, revealed },
+            extra: (scene) => fitExtraPoints(scene, extras),
             fitTo: new Set(want.fit.fitTo),
             labelled,
             size: want.fit.size,

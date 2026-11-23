@@ -14,6 +14,7 @@ import {
 } from "react";
 
 import CheckWorker from "./check.worker.ts?worker&inline";
+import type { FitExtras } from "./fit-extras.ts";
 import { readSceneAnswer } from "./scene-draw.ts";
 import type { SceneAnswer, SceneAsk, SceneWant } from "./scene-draw.ts";
 
@@ -214,11 +215,14 @@ const wantOf = (
  */
 export const useDrawnMap = ({
   as,
+  extras,
   fitTo,
   next,
   size,
 }: {
   readonly as: DrawnAs;
+  /** What the view's fit counts besides the map. */
+  readonly extras: FitExtras;
   readonly fitTo: ReadonlySet<string>;
   readonly next: Drawable & { readonly fitKey: string };
   /** The canvas the view last fitted, if it has fitted yet. */
@@ -274,7 +278,13 @@ export const useDrawnMap = ({
       wantOf(as, as.labelled, null),
       ...(canvas === undefined
         ? []
-        : [wantOf(as, as.labelled, { fitTo: [...fitTo], size: canvas })]),
+        : [
+            wantOf(as, as.labelled, {
+              extras,
+              fitTo: [...fitTo],
+              size: canvas,
+            }),
+          ]),
       ...Arr.map(as.later, (labelled) => wantOf(as, labelled, null)),
     ]);
   });
