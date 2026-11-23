@@ -321,7 +321,17 @@ export function LayoutEditor({
       }}
       onMove={(to, { input }) =>
         saveMove({
-          dropOne: dropping.drop,
+          // The drawing can lag the latest map while a worker draws new
+          // data (see `useDrawnMap`), so a move keeps the footprint the
+          // latest map gives the structure, and changes its position alone.
+          dropOne: (id, next) => {
+            const now = state.layout.structures[id];
+
+            return dropping.drop(
+              id,
+              now === undefined ? next : { ...next, d: now.d, w: now.w }
+            );
+          },
           editing,
           input,
           placements,
