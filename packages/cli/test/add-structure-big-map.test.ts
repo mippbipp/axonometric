@@ -177,13 +177,13 @@ const farSpotNote = Schema.encodeEffect(Schema.fromJsonString(NoteAdd))({
  * The most CPU time one main-thread task may take after Propose. Before the
  * redraw left the main thread it ran two tasks of about 1.1 s here, each
  * routing and drawing the map with the new structure, then the flows' scenes
- * at 100 to 280 ms each. Measured on a 2-core Linux machine after, the
- * longest took 50 to 80 ms.
+ * at 100 to 280 ms each. The longest of those took 970 to 2040 ms of CPU
+ * time.
  *
  * The limit is on CPU time, not wall time, because a shared CI runner can
  * stall a task that does little work. On macOS runners with three copies of
  * this file at once, a quarter of the runs had a task over 200 ms of wall
- * time, and none had one over 95 ms of CPU time.
+ * time, and no task took over 115 ms of CPU time.
  */
 const proposeTaskMillis = 200;
 
