@@ -51,13 +51,18 @@ jobs:
           bunx turbo run build --filter=axonometric
           cd packages/cli
           fails=0
-          for i in $(seq 1 60); do
+          for i in $(seq 1 30); do
             echo "::group::loop $i"
-            if ! bunx vitest run test/editing.test.ts --reporter=verbose; then
-              fails=$((fails + 1))
-              echo "LOOP $i FAILED"
-            fi
+            pids=""
+            for j in 1 2 3 4; do
+              bunx vitest run test/editing.test.ts --reporter=verbose >"$RUNNER_TEMP/out-$j.log" 2>&1 &
+              pids="$pids $!"
+            done
+            bad=0
+            for pid in $pids; do wait "$pid" || bad=$((bad + 1)); done
+            cat "$RUNNER_TEMP"/out-*.log
+            fails=$((fails + bad))
             echo "::endgroup::"
           done
-          echo "FAILED LOOPS: $fails of 60"
+          echo "FAILED RUNS: $fails of 120"
           [ "$fails" -eq 0 ]
